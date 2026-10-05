@@ -14,16 +14,7 @@ export const REQUIREMENT_TYPES = [
 
 export const REQUIREMENT_LEVELS = ["critical", "high", "medium", "low"];
 
-export const REQUIREMENT_IMPORT_FORMATS = [
-  "md",
-  "txt",
-  "csv",
-  "openapi",
-  "postman",
-  "pdf",
-  "docx",
-  "xlsx",
-];
+export const REQUIREMENT_IMPORT_FORMATS = ["md", "txt", "csv", "openapi", "postman"];
 
 export const REQUIREMENT_SOURCE_TYPE_OPTIONS = [
   { value: "SRS", label: "Đặc tả yêu cầu phần mềm" },
@@ -90,6 +81,7 @@ export function parseCommaValues(value) {
 
 export function createInitialRequirementForm() {
   return {
+    customValues: {},
     title: "",
     type: "functional",
     priority: "medium",

@@ -32,6 +32,7 @@ export default function RequirementsPage({ project, section }) {
   const requirementId = section[0] && !["new", "import"].includes(section[0]) ? section[0] : "";
   const [items, setItems] = useState([]);
   const [members, setMembers] = useState([]);
+  const [customFields, setCustomFields] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selected, setSelected] = useState(null);
   const [versions, setVersions] = useState([]);
@@ -60,17 +61,49 @@ export default function RequirementsPage({ project, section }) {
     visibility: "private",
     shared_with: [],
     ai_enabled: false,
+    source_type: "SRS",
   });
   const [preview, setPreview] = useState(null);
   const [selectedIndexes, setSelectedIndexes] = useState([]);
+  const [importComparison, setImportComparison] = useState(null);
+  const [separateIndexes, setSeparateIndexes] = useState([]);
+  const [separateReasons, setSeparateReasons] = useState({});
   const [upload, setUpload] = useState(null);
   const [uploadAccess, setUploadAccess] = useState({
     visibility: "private",
     shared_with: [],
     ai_enabled: false,
+    source_type: "SRS",
   });
   const [sourceDocument, setSourceDocument] = useState(null);
   const [sourceDocuments, setSourceDocuments] = useState([]);
+  useEffect(() => {
+    if (!preview?._id || preview.status !== "PREVIEW_READY") {
+      setImportComparison(null);
+      setSeparateIndexes([]);
+      setSeparateReasons({});
+      return;
+    }
+    let active = true;
+    setImportComparison(null);
+    setSeparateIndexes([]);
+    setSeparateReasons({});
+    testingApi.compareRequirementImport(preview._id).then(
+      (value) => {
+        if (active) setImportComparison(value);
+      },
+      (reason) => {
+        if (active) setError(messageOf(reason));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [preview?._id, preview?.revision, preview?.status]);
+  const rememberSourceDocument = (document) => {
+    setSourceDocument(document);
+    setSourceDocuments((items) => [document, ...items.filter((item) => item._id !== document._id)]);
+  };
   const [draft, setDraft] = useState(null);
   const [draftDirty, setDraftDirty] = useState(false);
   const [saveState, setSaveState] = useState("saved");
@@ -93,6 +126,7 @@ export default function RequirementsPage({ project, section }) {
       });
       setItems(values.items);
       setPageInfo(values);
+      setCustomFields(await testingApi.listRequirementFields(project._id));
       if (project.current_permissions?.includes("project.members.read")) {
         setMembers(
           (await testingApi.listMembers(project._id)).filter((item) => item.status === "ACTIVE"),
@@ -144,6 +178,9 @@ export default function RequirementsPage({ project, section }) {
       dependencies: (current.dependencies || []).join("\n"),
       tags: (selected.tags || current.tags || []).join(", "),
       ownerId: selected.owner_id || current.owner_id || "",
+      details: current.details || {},
+      sectionStates: current.section_states || {},
+      customValues: current.custom_values || {},
     });
     setDraftDirty(false);
     setSaveState("saved");
@@ -206,6 +243,9 @@ export default function RequirementsPage({ project, section }) {
                   .map((value) => value.trim())
                   .filter(Boolean),
                 owner_id: snapshot.ownerId.trim() || null,
+                details: snapshot.details,
+                section_states: snapshot.sectionStates,
+                custom_values: snapshot.customValues,
               },
             },
           );
@@ -286,6 +326,7 @@ export default function RequirementsPage({ project, section }) {
           .map((value) => value.trim())
           .filter(Boolean),
         owner_id: form.ownerId.trim() || null,
+        custom_values: form.customValues,
       });
       setForm(createInitialRequirementForm());
       setCreating(false);
@@ -388,6 +429,9 @@ export default function RequirementsPage({ project, section }) {
         source_refs: current.source_refs || [],
         tags: selected.tags || current.tags || [],
         owner_id: selected.owner_id || current.owner_id || null,
+        details: current.details || {},
+        section_states: current.section_states || {},
+        custom_values: current.custom_values || {},
         change_reason: answer.reason,
         expected_current_version_id: selected.current_version_id,
       });
@@ -398,30 +442,113 @@ export default function RequirementsPage({ project, section }) {
   };
   const importPreview = async (event) => {
     event.preventDefault();
-    if (!docText(importValue.content).trim()) {
+    if (
+      !(
+        typeof importValue.content === "string" ? importValue.content : docText(importValue.content)
+      ).trim()
+    ) {
       setError("Nhập nội dung tài liệu trước khi tạo bản xem trước");
       return;
     }
     try {
       const document = await testingApi.createRequirementDocument(project._id, importValue);
-      setSourceDocument(document);
+      rememberSourceDocument(document);
       const result = await testingApi.extractRequirementDocument(
         document._id,
         `source-${document.content_hash}`,
       );
       setPreview(result);
       setSelectedIndexes(result.preview.map((_, index) => index));
-      setSourceDocument(await testingApi.getRequirementDocument(document._id));
+      rememberSourceDocument(await testingApi.getRequirementDocument(document._id));
     } catch (reason) {
       setError(messageOf(reason));
     }
   };
   const confirmImport = async () => {
     try {
-      await testingApi.confirmRequirementImport(preview._id, selectedIndexes, preview.revision);
+      if (!importComparison || importComparison.revision !== preview.revision) {
+        setError("Cần đối chiếu với yêu cầu hiện có trước khi xác nhận nhập");
+        return;
+      }
+      const activeSeparateIndexes = separateIndexes.filter(
+        (index) =>
+          selectedIndexes.includes(index) &&
+          importComparison.comparisons?.some(
+            (entry) =>
+              entry.candidate_index === index &&
+              entry.matches.some(
+                (match) =>
+                  !["IN_IMPORT", "SAME_KEY_IN_IMPORT"].includes(match.match_type) ||
+                  selectedIndexes.includes(match.candidate_index),
+              ),
+          ),
+      );
+      await testingApi.confirmRequirementImport(
+        preview._id,
+        selectedIndexes,
+        preview.revision,
+        activeSeparateIndexes,
+        Object.fromEntries(
+          Object.entries(separateReasons).filter(([index]) =>
+            activeSeparateIndexes.includes(Number(index)),
+          ),
+        ),
+      );
       setPreview(null);
       setSelectedIndexes([]);
       setImporting(false);
+      await load();
+    } catch (reason) {
+      setError(
+        reason?.code === "IMPORT_REQUIREMENT_KEY_CONFLICT"
+          ? "Mã yêu cầu đã tồn tại trong dự án hoặc trùng với mục đang nhập  Hãy sửa mã trong bản xem trước hoặc bỏ chọn mục trùng"
+          : messageOf(reason),
+      );
+    }
+  };
+  const resolveImportMatch = async (candidateIndex, match, action) => {
+    const candidate = preview?.preview?.[candidateIndex];
+    if (!candidate || !match.requirement_id) return;
+    const answer = await ask({
+      title:
+        action === "link_source" ? "Gắn nguồn vào yêu cầu hiện có" : "Tạo phiên bản yêu cầu mới",
+      description:
+        action === "link_source"
+          ? `Gắn nguồn của ${candidate.title} vào ${match.requirement_key || match.title} mà không đổi nội dung`
+          : `Tạo bản nháp mới cho ${match.requirement_key || match.title} từ đúng nội dung ứng viên ${candidate.title}  Trường không có trong ứng viên sẽ để trống  Phiên bản cũ vẫn được lưu`,
+      confirmLabel: action === "link_source" ? "Gắn nguồn" : "Tạo phiên bản nháp",
+      fields: [
+        {
+          name: "reason",
+          label: "Lý do đối chiếu",
+          required: true,
+          multiline: true,
+          autoFocus: true,
+        },
+      ],
+    });
+    if (!answer) return;
+    try {
+      const selectedCandidateIds = new Set(
+        selectedIndexes.map((index) => preview.preview[index]?.candidate_id).filter(Boolean),
+      );
+      const updated = await testingApi.resolveRequirementImportCandidate(
+        preview._id,
+        candidate.candidate_id,
+        {
+          expected_revision: preview.revision,
+          target_requirement_id: match.requirement_id,
+          expected_target_version_id: match.version_id,
+          action,
+          reason: answer.reason,
+        },
+      );
+      setPreview(updated);
+      setSelectedIndexes(
+        updated.preview.flatMap((item, index) =>
+          selectedCandidateIds.has(item.candidate_id) ? [index] : [],
+        ),
+      );
       await load();
     } catch (reason) {
       setError(messageOf(reason));
@@ -430,7 +557,11 @@ export default function RequirementsPage({ project, section }) {
   const uploadPreview = async (event) => {
     event.preventDefault();
     if (!upload) return;
-    const format = upload.name.split(".").pop().toLowerCase();
+    const extension = upload.name.split(".").pop().toLowerCase();
+    const format =
+      ["json", "yaml", "yml"].includes(extension) && uploadAccess.source_type === "API_SPEC"
+        ? uploadAccess.api_format || "openapi"
+        : extension;
     try {
       const document = await testingApi.uploadRequirementDocument(
         project._id,
@@ -438,7 +569,7 @@ export default function RequirementsPage({ project, section }) {
         format,
         uploadAccess,
       );
-      setSourceDocument(document);
+      rememberSourceDocument(document);
       if (document.status === "PARSE_FAILED") {
         setPreview(null);
         setError("Tệp gốc đã được lưu nhưng bộ phân tích không đọc được nội dung");
@@ -450,7 +581,7 @@ export default function RequirementsPage({ project, section }) {
       );
       setPreview(result);
       setSelectedIndexes(result.preview.map((_, index) => index));
-      setSourceDocument(await testingApi.getRequirementDocument(document._id));
+      rememberSourceDocument(await testingApi.getRequirementDocument(document._id));
     } catch (reason) {
       setError(messageOf(reason));
     }
@@ -461,7 +592,7 @@ export default function RequirementsPage({ project, section }) {
         sourceDocument._id,
         sourceDocument.revision,
       );
-      setSourceDocument(document);
+      rememberSourceDocument(document);
       if (document.status !== "READY") {
         setError("Bộ phân tích vẫn chưa đọc được tệp gốc");
         return;
@@ -477,6 +608,9 @@ export default function RequirementsPage({ project, section }) {
     }
   };
   const editCandidate = (index, patch) => {
+    setImportComparison(null);
+    setSeparateIndexes([]);
+    setSeparateReasons({});
     setPreview((value) => ({
       ...value,
       preview: value.preview.map((candidate, candidateIndex) =>
@@ -521,9 +655,6 @@ export default function RequirementsPage({ project, section }) {
       actors: [...new Set(candidates.flatMap((candidate) => candidate.actors || []))],
       dependencies: [...new Set(candidates.flatMap((candidate) => candidate.dependencies || []))],
       source_refs: candidates.flatMap((candidate) => candidate.source_refs || []),
-      extraction_confidence: Math.min(
-        ...candidates.map((candidate) => candidate.extraction_confidence ?? 1),
-      ),
       candidate_relation: "merged",
     };
     try {
@@ -947,7 +1078,7 @@ export default function RequirementsPage({ project, section }) {
         </div>
       }
     >
-      {error && <ErrorState message={error} />}
+      {error && !importing && <ErrorState message={error} />}
       {selected ? (
         <>
           <RequirementCurrentVersionPanel
@@ -955,6 +1086,7 @@ export default function RequirementsPage({ project, section }) {
             selected={selected}
             draft={draft}
             members={members}
+            customFields={customFields}
             saveState={saveState}
             can={can}
             checkingWithAi={checkingWithAi}
@@ -1053,6 +1185,7 @@ export default function RequirementsPage({ project, section }) {
                 form={form}
                 setForm={setForm}
                 members={members}
+                customFields={customFields}
                 saving={saving}
                 onSubmit={create}
               />
@@ -1074,6 +1207,11 @@ export default function RequirementsPage({ project, section }) {
                 preview={preview}
                 selectedIndexes={selectedIndexes}
                 setSelectedIndexes={setSelectedIndexes}
+                importComparison={importComparison}
+                separateIndexes={separateIndexes}
+                setSeparateIndexes={setSeparateIndexes}
+                separateReasons={separateReasons}
+                setSeparateReasons={setSeparateReasons}
                 onSaveReview={() =>
                   saveImportReview(preview.preview, "Chỉnh sửa nội dung ứng viên yêu cầu")
                 }
@@ -1082,8 +1220,16 @@ export default function RequirementsPage({ project, section }) {
                 onReject={rejectCandidate}
                 onEditCandidate={editCandidate}
                 onConfirm={confirmImport}
+                onResolveMatch={resolveImportMatch}
                 sourceDocument={sourceDocument}
                 onRetrySource={retrySourceDocument}
+                project={project}
+                sourceDocuments={sourceDocuments}
+                onTemplatePreview={(job) => {
+                  setPreview(job);
+                  setSelectedIndexes(job.preview.map((_, index) => index));
+                }}
+                onError={setError}
               />
             )}
           </div>

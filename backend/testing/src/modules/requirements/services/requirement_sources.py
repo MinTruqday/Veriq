@@ -33,7 +33,7 @@ class RequirementSourceResult:
 async def create_requirement_source(project_id, payload, user):
     await get_project(project_id, user, 'knowledge.manage')
     content_hash = hashlib.sha256(payload.content.encode("utf-8")).hexdigest()
-    existing = await requirement_document_repository.find_by_hash(project_id, content_hash)
+    existing = await requirement_document_repository.find_by_hash(project_id, content_hash, user.id)
     if existing:
         return RequirementSourceResult(
             existing, existing.get("index_status") == 'INDEXED'

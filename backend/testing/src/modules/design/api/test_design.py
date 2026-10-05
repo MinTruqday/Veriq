@@ -15,6 +15,7 @@ from src.schemas.contracts.requirements import ReviewTransitionInput
 from src.schemas.contracts.utility import (
     GenerateInput,
     TestCaseGenerateInput,
+    TechniqueRecommendationInput,
 )
 from src.schemas.contracts.design import TestCaseDraftCreate as CaseDraftCreate
 from src.schemas.contracts.design import TestCaseDraftPatch as CaseDraftPatch
@@ -43,6 +44,7 @@ from src.modules.design.services.test_case_lifecycle import (
 from src.modules.design.services.test_case_assistance import (
     find_duplicate_test_case_records,
     generate_test_case_draft_records,
+    recommend_test_design_techniques,
 )
 from src.modules.design.services.test_scenario import (
     archive_test_scenario_record,
@@ -335,6 +337,15 @@ async def generate_test_cases(
     return envelope(await generate_test_case_draft_records(version_id, payload, user))
 
 
+@router.post("/phien-ban-yeu-cau/{version_id}/ai/de-xuat-ky-thuat")
+async def recommend_techniques(
+    version_id: str,
+    payload: TechniqueRecommendationInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await recommend_test_design_techniques(version_id, payload, user))
+
+
 @router.post("/du-an/{project_id}/ca-kiem-thu/sinh", status_code=201)
 async def generate_project_test_cases(
     project_id: str, payload: TestCaseGenerateInput, user: CurrentUser = Depends(get_current_user)
@@ -348,8 +359,11 @@ async def generate_project_test_cases(
         payload.requirement_version_id,
         GenerateInput(
             categories=payload.categories,
+            techniques=payload.techniques,
             count_per_category=payload.count_per_category,
+            max_cases=payload.max_cases,
             instruction=payload.instruction,
+            preview_only=payload.preview_only,
         ),
         user,
     )
@@ -358,14 +372,3 @@ async def generate_project_test_cases(
 @router.get("/du-an/{project_id}/ca-kiem-thu/trung-lap")
 async def find_duplicates(project_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await find_duplicate_test_case_records(project_id, user))
-
-
-def techniques_for_category(category):
-    return {
-        "boundary": ["boundary_value", "equivalence_partitioning"],
-        "permission": ["permission_matrix"],
-        "state_transition": ["state_transition"],
-        "api": ["contract", "negative_testing"],
-        "negative": ["negative_testing"],
-        "validation": ["equivalence_partitioning"],
-    }.get(category, ["functional"])

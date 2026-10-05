@@ -118,7 +118,14 @@ async def remove_project_artifact(project_id: str, artifact_version_id: str):
     for key in tuple(SEARCH_CACHE):
         if key[0] == project_id:
             SEARCH_CACHE.pop(key, None)
-    return {"status": "removed", "artifact_version_id": artifact_version_id}
+    from src.knowledge.graph.repository import graph_repository
+
+    graph_result = await graph_repository.delete_artifact_version(project_id, artifact_version_id)
+    return {
+        "status": "removed",
+        "artifact_version_id": artifact_version_id,
+        "graph_removed": graph_result[0]["removed"] if graph_result else 0,
+    }
 
 
 async def search_project_knowledge(project_id: str, req: ProjectKnowledgeSearchRequest):

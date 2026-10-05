@@ -14,8 +14,10 @@ from src.core.common import (
     validate_doc,
 )
 from src.repositories.requirement import requirement_repository
+from src.repositories.requirement_template import requirement_template_repository
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
+    validate_requirement_api_operations,
     validate_requirement_sources,
 )
 
@@ -53,9 +55,37 @@ async def persist_acceptance_criteria(version, values):
     return version
 
 
+async def validate_requirement_custom_values(project_id, requirement):
+    values = requirement.custom_values or {}
+    fields = await requirement_template_repository.list_fields(project_id)
+    definitions = {field["key"]: field for field in fields}
+    if set(values) - set(definitions):
+        raise HTTPException(status_code=422, detail={"code": "UNKNOWN_CUSTOM_FIELD"})
+    for field in fields:
+        if field.get("requirement_types") and requirement.type not in field["requirement_types"]:
+            if field["key"] in values:
+                raise HTTPException(status_code=422, detail={"code": "CUSTOM_FIELD_NOT_APPLICABLE", "field": field["key"]})
+            continue
+        value = values.get(field["key"])
+        if field["required"] and value in (None, ""):
+            raise HTTPException(status_code=422, detail={"code": "CUSTOM_FIELD_REQUIRED", "field": field["key"]})
+        if value is None:
+            continue
+        valid = (
+            field["value_type"] in ("text", "date") and isinstance(value, str)
+            or field["value_type"] == "number" and isinstance(value, (int, float)) and not isinstance(value, bool)
+            or field["value_type"] == "boolean" and isinstance(value, bool)
+            or field["value_type"] == "choice" and isinstance(value, str) and value in field["choices"]
+        )
+        if not valid:
+            raise HTTPException(status_code=422, detail={"code": "CUSTOM_FIELD_INVALID", "field": field["key"]})
+
+
 async def create_requirement_record(project_id, payload, user, origin="manual"):
     await get_project(project_id, user, "requirement.create")
-    await validate_requirement_sources(project_id, payload.source_refs)
+    await validate_requirement_custom_values(project_id, payload)
+    await validate_requirement_sources(project_id, payload.source_refs, user)
+    await validate_requirement_api_operations(project_id, payload.details, payload.source_refs, user)
     validate_doc(payload.content_doc)
     requirement_key = payload.requirement_key or await next_key(
         project_id, 'requirement', 'REQ'
@@ -80,6 +110,9 @@ async def create_requirement_record(project_id, payload, user, origin="manual"):
         "source_refs": payload.source_refs,
         "tags": payload.tags,
         "owner_id": payload.owner_id or user.id,
+        "details": payload.details,
+        "section_states": payload.section_states,
+        "custom_values": payload.custom_values,
         "acceptance_criterion_ids": [],
         "parent_version_id": None,
         "change_reason": 'Khởi tạo Requirement',
@@ -268,7 +301,16 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
         for item in criteria:
             validate_doc(item["content_doc"])
     if "source_refs" in changes:
-        await validate_requirement_sources(project_id, changes["source_refs"])
+        await validate_requirement_sources(project_id, changes["source_refs"], user)
+    if any(key in changes for key in ("custom_values", "type", "details", "section_states")):
+        await validate_requirement_custom_values(
+            project_id,
+            RequirementCreate(**{
+                **version,
+                **changes,
+                "acceptance_criteria": [],
+            }),
+        )
     content_doc = changes.get("content_doc")
     if content_doc is not None:
         validate_doc(content_doc)
@@ -342,7 +384,9 @@ async def create_requirement_version_record(requirement_id, payload, user):
                 "current_version_id": requirement["current_version_id"],
             },
         )
-    await validate_requirement_sources(requirement["project_id"], payload.source_refs)
+    await validate_requirement_sources(requirement["project_id"], payload.source_refs, user)
+    await validate_requirement_api_operations(requirement["project_id"], payload.details, payload.source_refs, user)
+    await validate_requirement_custom_values(requirement["project_id"], payload)
     parent = await requirement_repository.find_version(requirement["current_version_id"])
     latest = await requirement_repository.find_latest_version(requirement_id)
     timestamp = now()
@@ -364,6 +408,9 @@ async def create_requirement_version_record(requirement_id, payload, user):
         "source_refs": payload.source_refs,
         "tags": payload.tags,
         "owner_id": payload.owner_id or requirement.get("owner_id"),
+        "details": payload.details,
+        "section_states": payload.section_states,
+        "custom_values": payload.custom_values,
         "acceptance_criterion_ids": [],
         "parent_version_id": parent["_id"],
         "change_reason": payload.change_reason,
@@ -380,15 +427,20 @@ async def create_requirement_version_record(requirement_id, payload, user):
         await requirement_repository.delete_acceptance_criteria(version["_id"])
         await requirement_repository.delete_version(version["_id"], requirement["project_id"])
         raise
-    await index_requirement_version(version)
-    await requirement_repository.activate_version(
+    activated = await requirement_repository.activate_version(
         requirement_id,
         version["_id"],
         'CHANGED',
         payload.tags,
         payload.owner_id or requirement.get("owner_id"),
         timestamp,
+        payload.expected_current_version_id,
     )
+    if not activated:
+        await requirement_repository.delete_acceptance_criteria(version["_id"])
+        await requirement_repository.delete_version(version["_id"], requirement["project_id"])
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+    await index_requirement_version(version)
     await audit(
         user.id,
         "requirement_version_created",

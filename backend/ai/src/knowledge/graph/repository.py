@@ -57,6 +57,31 @@ class GraphRepository:
             {"project_id": project_id, "scope_id": scope_id, "identifiers": values},
         )
 
+    async def delete_artifact_version(self, project_id, artifact_version_id):
+        parents = await graph_client.read(
+            "MATCH (parent:Artifact {project_id: $project_id})-[:RELATED]->"
+            "(artifact:Artifact {project_id: $project_id}) "
+            "WHERE artifact.artifact_version_id = $artifact_version_id "
+            "AND parent.artifact_type = replace(artifact.artifact_type, '_version', '') "
+            "RETURN DISTINCT parent.scope_id AS scope_id",
+            {"project_id": project_id, "artifact_version_id": artifact_version_id},
+        )
+        removed = await graph_client.execute(
+            "MATCH (artifact:Artifact {project_id: $project_id}) "
+            "WHERE artifact.artifact_version_id = $artifact_version_id "
+            "WITH collect(artifact) AS artifacts "
+            "FOREACH (item IN artifacts | DETACH DELETE item) "
+            "RETURN size(artifacts) AS removed",
+            {"project_id": project_id, "artifact_version_id": artifact_version_id},
+        )
+        for parent in parents:
+            await graph_client.execute(
+                "MATCH (artifact:Artifact {project_id: $project_id, scope_id: $scope_id}) "
+                "WHERE NOT (artifact)--() DELETE artifact",
+                {"project_id": project_id, "scope_id": parent["scope_id"]},
+            )
+        return removed
+
     async def search(self, project_id, query, limit=20):
         matches = await graph_client.read(
             """

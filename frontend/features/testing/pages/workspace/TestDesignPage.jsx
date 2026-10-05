@@ -92,6 +92,24 @@ export default function TestDesignPage({ project }) {
   const [creatingScenario, setCreatingScenario] = useState(false);
   const [creatingDataSet, setCreatingDataSet] = useState(false);
   const [aiAction, setAiAction] = useState("");
+  const [selectedTechniques, setSelectedTechniques] = useState([]);
+  const [maximumCases, setMaximumCases] = useState(5);
+  const [techniqueAdvice, setTechniqueAdvice] = useState(null);
+  const [generationPreview, setGenerationPreview] = useState(null);
+  const [selectedGenerated, setSelectedGenerated] = useState([]);
+  const [generatedReasons, setGeneratedReasons] = useState({});
+  useEffect(() => {
+    setTechniqueAdvice(null);
+    setGenerationPreview(null);
+    setSelectedGenerated([]);
+    setGeneratedReasons({});
+    setSelectedTechniques([]);
+  }, [selectedRequirement]);
+  useEffect(() => {
+    setGenerationPreview(null);
+    setSelectedGenerated([]);
+    setGeneratedReasons({});
+  }, [selectedTechniques, maximumCases]);
   const can = (permission) => project.current_permissions?.includes(permission);
   const canReadTestData = project.current_permissions?.includes("testdata.read");
   const load = useCallback(async () => {
@@ -205,7 +223,7 @@ export default function TestDesignPage({ project }) {
         priority: form.priority,
         risk: form.risk,
         objective_doc: textDoc(form.title),
-        preconditions_doc: textDoc("Hệ thống sẵn sàng"),
+        preconditions_doc: textDoc(""),
         steps: [
           {
             id: crypto.randomUUID(),
@@ -217,7 +235,7 @@ export default function TestDesignPage({ project }) {
         ],
         test_data: {},
         expected_result_doc: form.expected,
-        postconditions_doc: textDoc("Dữ liệu kiểm thử được kiểm soát"),
+        postconditions_doc: textDoc(""),
         tags: [],
         techniques: [],
         automation_status: "manual",
@@ -277,16 +295,94 @@ export default function TestDesignPage({ project }) {
   };
   const generate = async () => {
     if (!selectedRequirement) return setError("Cần chọn yêu cầu trước khi tạo ca kiểm thử");
+    if (!selectedTechniques.length) return setError("Chọn ít nhất một kỹ thuật thiết kế kiểm thử");
+    setError("");
+    setGenerationPreview(null);
+    setSelectedGenerated([]);
+    setGeneratedReasons({});
     setAiAction("testcase");
     try {
-      await testingApi.generateTestCases(selectedRequirement, {
-        categories: AI_TEST_GENERATION_CATEGORIES,
-        count_per_category: 1,
-        instruction: "Tạo theo phiên bản chuẩn và tiêu chí chấp nhận",
+      const result = await testingApi.generateTestCases(selectedRequirement, {
+        categories: [],
+        techniques: selectedTechniques,
+        max_cases: maximumCases,
+        preview_only: true,
+        instruction:
+          "Tạo ca kiểm thử có đầu vào và kết quả kiểm chứng được bằng tiếng Việt theo kỹ thuật người dùng đã chọn",
       });
-      await load();
+      setGenerationPreview(result);
+      setSelectedGenerated(
+        result.items.flatMap((item, index) => (item.similar_cases?.length ? [] : [index])),
+      );
+      setGeneratedReasons({});
+    } catch (reason) {
+      const missing = reason.details?.unapplied_techniques;
+      setError(
+        Array.isArray(missing) && missing.length
+          ? `${messageOf(reason)}  Thiếu bằng chứng cho ${missing.map(valueLabel).join("  ")}`
+          : messageOf(reason),
+      );
+    } finally {
+      setAiAction("");
+    }
+  };
+  const recommendTechniques = async () => {
+    if (!selectedRequirement) return setError("Cần chọn yêu cầu trước khi nhận gợi ý");
+    setError("");
+    setAiAction("technique");
+    try {
+      const result = await testingApi.recommendTestTechniques(selectedRequirement, {
+        instruction:
+          "Gợi ý kỹ thuật thiết kế kiểm thử phù hợp bằng tiếng Việt và nêu dẫn chứng cùng phần bao phủ dự kiến so với ca hiện có",
+      });
+      setTechniqueAdvice(result);
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      setAiAction("");
+    }
+  };
+  const saveGenerated = async () => {
+    if (!selectedGenerated.length || !generationPreview) return;
+    if (
+      selectedGenerated.some(
+        (index) =>
+          generationPreview.items[index].similar_cases?.length && !generatedReasons[index]?.trim(),
+      )
+    ) {
+      setError("Cần ghi lý do tạo riêng cho từng ca gần giống");
+      return;
+    }
+    setAiAction("saving-generated");
+    let currentIndex = null;
+    let savedCount = 0;
+    try {
+      for (const index of selectedGenerated) {
+        currentIndex = index;
+        await testingApi.createTestDraft(project._id, {
+          ...generationPreview.items[index].draft,
+          duplicate_reason: generatedReasons[index]?.trim() || null,
+        });
+        savedCount += 1;
+        setSelectedGenerated((values) => values.filter((value) => value !== index));
+      }
+      setGenerationPreview(null);
+      setSelectedGenerated([]);
+      await load();
+    } catch (reason) {
+      if (reason.code === "TEST_CASE_DUPLICATE_REVIEW_REQUIRED" && currentIndex !== null) {
+        setGenerationPreview((current) => ({
+          ...current,
+          items: current.items.map((item, index) =>
+            index === currentIndex
+              ? { ...item, similar_cases: reason.details?.matches || [] }
+              : item,
+          ),
+        }));
+        setSelectedGenerated((values) => values.filter((value) => value !== currentIndex));
+      }
+      if (savedCount) await load();
+      setError(savedCount ? `Đã lưu ${savedCount} ca  ${messageOf(reason)}` : messageOf(reason));
     } finally {
       setAiAction("");
     }
@@ -443,7 +539,16 @@ export default function TestDesignPage({ project }) {
               aria-label="Yêu cầu nguồn"
               className="apple-input min-w-72"
               value={selectedRequirement}
-              onChange={(event) => setSelectedRequirement(event.target.value)}
+              disabled={Boolean(aiAction)}
+              onChange={(event) => {
+                setSelectedRequirement(event.target.value);
+                setSelectedTechniques([]);
+                setTechniqueAdvice(null);
+                setGenerationPreview(null);
+                setSelectedGenerated([]);
+                setGeneratedReasons({});
+                setError("");
+              }}
             >
               <option value="">Chọn yêu cầu</option>
               {requirements.map((item) => (
@@ -452,6 +557,17 @@ export default function TestDesignPage({ project }) {
                 </option>
               ))}
             </select>
+            {can("ai.generate_testcase") && (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={Boolean(aiAction) || !selectedRequirement}
+                aria-busy={aiAction === "technique"}
+                onClick={recommendTechniques}
+              >
+                {aiAction === "technique" ? "AI đang đánh giá kỹ thuật" : "AI gợi ý kỹ thuật"}
+              </button>
+            )}
             {can("ai.generate_testcase") && can("testcase.create") && (
               <button
                 aria-busy={aiAction === "testcase"}
@@ -460,7 +576,7 @@ export default function TestDesignPage({ project }) {
                 type="button"
                 onClick={generate}
               >
-                {aiAction === "testcase" ? "AI đang tạo ca kiểm thử" : "Tạo 4 nhóm ca kiểm thử"}
+                {aiAction === "testcase" ? "AI đang tạo bản xem trước" : "Xem trước ca kiểm thử"}
               </button>
             )}
             {can("ai.generate_scenario") && can("testscenario.create") && (
@@ -511,6 +627,186 @@ export default function TestDesignPage({ project }) {
               </button>
             )}
           </div>
+          {can("ai.generate_testcase") && (
+            <div className="space-y-4 border-t border-border p-5">
+              <fieldset>
+                <legend className="mb-2 font-medium">Kỹ thuật thiết kế kiểm thử</legend>
+                <div className="flex flex-wrap gap-4">
+                  {[
+                    ["equivalence_partitioning", "Phân vùng tương đương"],
+                    ["boundary_value", "Giá trị biên"],
+                    ["decision_table", "Bảng quyết định"],
+                    ["state_transition", "Chuyển trạng thái"],
+                    ["error_guessing", "Dự đoán lỗi"],
+                  ].map(([value, label]) => (
+                    <label className="flex items-center gap-2 text-sm" key={value}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTechniques.includes(value)}
+                        disabled={Boolean(aiAction)}
+                        onChange={(event) =>
+                          setSelectedTechniques((current) =>
+                            event.target.checked
+                              ? [...current, value]
+                              : current.filter((item) => item !== value),
+                          )
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <label className="field-label block max-w-48">
+                Số ca tối đa
+                <input
+                  className="apple-input mt-2"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={maximumCases}
+                  disabled={Boolean(aiAction)}
+                  onChange={(event) => setMaximumCases(Number(event.target.value))}
+                />
+              </label>
+              {techniqueAdvice && (
+                <div className="space-y-3">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={Boolean(aiAction)}
+                    onClick={() =>
+                      setSelectedTechniques(
+                        techniqueAdvice.items
+                          .filter((item) => item.suitability === "recommended")
+                          .map((item) => item.technique),
+                      )
+                    }
+                  >
+                    Chọn các kỹ thuật AI đề xuất
+                  </button>
+                  {techniqueAdvice.items.map((item) => (
+                    <div
+                      className="rounded-control border border-border p-3 text-sm"
+                      key={item.technique}
+                    >
+                      <p className="font-medium">
+                        {valueLabel(item.technique)} {valueLabel(item.suitability)}
+                      </p>
+                      <p>{item.rationale}</p>
+                      {!!item.expected_coverage?.length && (
+                        <p>Phần bao phủ dự kiến {item.expected_coverage.join("  ")}</p>
+                      )}
+                      {!!item.existing_coverage_refs?.length && (
+                        <p>Ca đã bao phủ {item.existing_coverage_refs.join("  ")}</p>
+                      )}
+                      {!!item.incremental_coverage?.length && (
+                        <p>Phần có thể bổ sung {item.incremental_coverage.join("  ")}</p>
+                      )}
+                      {!!item.missing_information?.length && (
+                        <p>Còn thiếu {item.missing_information.join("  ")}</p>
+                      )}
+                      <p className="text-ink-muted">Dẫn chứng {item.evidence_refs.join("  ")}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {generationPreview && (
+                <div className="space-y-3 border-t border-border pt-4">
+                  <p className="font-medium">Bản xem trước chưa được lưu</p>
+                  {generationPreview.items.map((item, index) => (
+                    <div
+                      className="flex gap-3 rounded-control border border-border p-3 text-sm"
+                      key={index}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`Lưu ca kiểm thử ${item.draft.title}`}
+                        checked={selectedGenerated.includes(index)}
+                        onChange={(event) =>
+                          setSelectedGenerated((current) =>
+                            event.target.checked
+                              ? [...current, index]
+                              : current.filter((value) => value !== index),
+                          )
+                        }
+                      />
+                      <span>
+                        <span className="block font-medium">{item.draft.title}</span>
+                        <span className="block">
+                          Kỹ thuật {item.draft.techniques.map(valueLabel).join("  ")}
+                        </span>
+                        {docText(item.draft.preconditions_doc) && (
+                          <span className="block">
+                            Điều kiện {docText(item.draft.preconditions_doc)}
+                          </span>
+                        )}
+                        {(item.draft.steps || []).map((step) => (
+                          <span className="block" key={step.id}>
+                            Bước {step.order} {docText(step.action_doc)} Kết quả{" "}
+                            {docText(step.expected_doc)}
+                          </span>
+                        ))}
+                        <span className="block">
+                          Kết quả cuối {docText(item.draft.expected_result_doc)}
+                        </span>
+                        <span className="block">
+                          Mục cần kiểm chứng {item.coverage_obligations.join("  ")}
+                        </span>
+                        <span className="block">Dẫn chứng {item.evidence_refs.join("  ")}</span>
+                        {!!item.similar_cases.length && (
+                          <span className="block text-ink-muted">
+                            Ca hiện có gần giống{" "}
+                            {item.similar_cases
+                              .map((caseItem) =>
+                                caseItem.id.startsWith("preview:")
+                                  ? `Ca ${Number(caseItem.id.slice(8)) + 1} trong bản xem trước`
+                                  : caseItem.title || caseItem.id,
+                              )
+                              .join("  ")}
+                          </span>
+                        )}
+                        {!!item.similar_cases.length && selectedGenerated.includes(index) && (
+                          <label className="mt-2 block">
+                            Lý do tạo ca riêng
+                            <input
+                              className="apple-input mt-1"
+                              value={generatedReasons[index] || ""}
+                              onChange={(event) =>
+                                setGeneratedReasons((current) => ({
+                                  ...current,
+                                  [index]: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                  <button
+                    className="apple-button"
+                    type="button"
+                    disabled={
+                      !selectedGenerated.length ||
+                      Boolean(aiAction) ||
+                      selectedGenerated.some(
+                        (index) =>
+                          generationPreview.items[index].similar_cases?.length &&
+                          !generatedReasons[index]?.trim(),
+                      )
+                    }
+                    aria-busy={aiAction === "saving-generated"}
+                    onClick={saveGenerated}
+                  >
+                    {aiAction === "saving-generated"
+                      ? "Đang lưu ca đã chọn"
+                      : "Lưu ca kiểm thử đã chọn"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </Panel>
       )}
       {can("testcase.template.read") && <TestCaseTemplatesPanel project={project} />}

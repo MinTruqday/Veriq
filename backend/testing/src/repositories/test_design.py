@@ -47,6 +47,11 @@ class TestDesignRepository:
             .to_list(limit)
         )
 
+    async def list_related_case_drafts(self, project_id, version_id, limit):
+        return await database.value.test_case_drafts.find(
+            {"project_id": project_id, "requirement_version_ids": version_id}
+        ).sort("updated_at", -1).to_list(limit)
+
     async def list_versions_for_case(self, test_case_id, limit=500):
         return (
             await database.value.test_case_versions.find({"test_case_id": test_case_id})
@@ -238,6 +243,15 @@ class TestDesignRepository:
     async def count_acceptance_criteria(self, query):
         return await database.value.acceptance_criteria.count_documents(query)
 
+    async def list_acceptance_criteria_by_ids(self, project_id, requirement_version_ids, criterion_ids):
+        return await database.value.acceptance_criteria.find(
+            {
+                "project_id": project_id,
+                "requirement_version_id": {"$in": requirement_version_ids},
+                "_id": {"$in": criterion_ids},
+            }
+        ).to_list(len(criterion_ids))
+
     async def find_scenario(self, scenario_id, project_id):
         return await database.value.test_scenarios.find_one(
             {"_id": scenario_id, "project_id": project_id}
@@ -284,9 +298,29 @@ class TestDesignRepository:
         await database.value.test_imports.insert_one(value)
         return value
 
-    async def confirm_import(self, import_id, changes):
+    async def claim_import(self, import_id, project_id):
+        return await database.value.test_imports.find_one_and_update(
+            {"_id": import_id, "project_id": project_id, "status": "PREVIEW_READY"},
+            {"$set": {"status": "CONFIRMING"}},
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def reset_import(self, import_id, project_id):
         await database.value.test_imports.update_one(
-            {"_id": import_id}, {"$set": changes}
+            {"_id": import_id, "project_id": project_id, "status": "CONFIRMING"},
+            {"$set": {"status": "PREVIEW_READY"}},
+        )
+
+    async def delete_created_import_drafts(self, project_id, draft_ids):
+        if draft_ids:
+            await database.value.test_case_drafts.delete_many(
+                {"_id": {"$in": draft_ids}, "project_id": project_id, "origin": "import"}
+            )
+
+    async def confirm_import(self, import_id, project_id, changes):
+        return await database.value.test_imports.update_one(
+            {"_id": import_id, "project_id": project_id, "status": "CONFIRMING"},
+            {"$set": changes},
         )
 
     async def list_requirement_evidence(self, query, limit):

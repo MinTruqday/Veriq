@@ -322,6 +322,8 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "acceptance_criterion_ids": draft["acceptance_criterion_ids"],
         "scenario_id": draft.get("scenario_id"),
         "source_evidence": draft.get("source_evidence", []),
+        "coverage_obligations": draft.get("coverage_obligations", []),
+        "evidence_refs": draft.get("evidence_refs", []),
         "plain_text_projection": project_test_text(draft),
         "parent_version_id": parent_version_id,
         "change_reason": payload.change_reason,

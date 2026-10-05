@@ -1,17 +1,268 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.common import audit, get_project, get_project_entity, new_id, now, validate_doc
-from src.schemas.contracts.requirements import RequirementCreate
+from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, validate_doc
+from src.schemas.contracts.requirements import RequirementCreate, RequirementExtractionInput, RequirementVersionCreate
 from src.repositories.requirement_import import requirement_import_repository
-from src.modules.requirements.services.requirement_import import atomic_requirement_candidates, parse_requirement_import
+from src.modules.requirements.services.requirement_import import atomic_requirement_candidates
+from src.modules.requirements.services.requirement_documents import create_requirement_document_record, require_document_access
 from src.modules.requirements.services.requirement_indexing import validate_requirement_sources
-from src.modules.requirements.services.requirement_records import create_requirement_record
+from src.modules.requirements.services.requirement_records import create_requirement_record, create_requirement_version_record
 from src.modules.requirements.services.requirement_transformations import unique_source_refs
+from src.repositories.analysis import analysis_repository
+from src.clients.project_knowledge import remove_artifact
 from src.modules.requirements.services.requirement_workflow import (
     candidate_fingerprint,
     prepare_requirement_candidates,
 )
+from src.modules.design.services.linters import requirement_duplicate_score
+from src.schemas.contracts.requirements import RequirementDuplicateCheckInput
+
+
+async def authorize_requirement_import_job(job, user):
+    if job.get("template_id"):
+        from src.modules.requirements.services.requirement_templates import get_template_version
+        from src.repositories.requirement_template import requirement_template_repository
+
+        template = await get_template_version(
+            job["project_id"], job["template_id"], job["template_version"], user
+        )
+        source = await requirement_template_repository.find(job["template_id"])
+        if source and source.get("project_id") == job["project_id"] and template.get("project_id") != job["project_id"] and not (job.get("template_public_view") and source.get("status") == "PUBLISHED"):
+            raise HTTPException(status_code=403, detail={"code": "TEMPLATE_SOURCE_ACCESS_DENIED"})
+    document_ids = {
+        reference["requirement_document_id"]
+        for item in job.get("preview", [])
+        for reference in item.get("source_refs", [])
+        if reference.get("requirement_document_id")
+    }
+    if job.get("source_document_id"):
+        document_ids.add(job["source_document_id"])
+    for document_id in document_ids:
+        document = await requirement_import_repository.find_source_document(document_id, job["project_id"])
+        if not document:
+            raise HTTPException(status_code=422, detail={"code": "IMPORT_SOURCE_MISSING"})
+        await require_document_access(document, user, 'requirement_document.read')
+
+
+async def compare_requirement_import_job(job, user):
+    await authorize_requirement_import_job(job, user)
+    await get_project(job["project_id"], user, "requirement.read")
+    requirements, versions = await requirement_import_repository.list_current_requirements(job["project_id"])
+    if len(requirements) > 20000:
+        raise HTTPException(status_code=422, detail={"code": "IMPORT_REQUIREMENT_COMPARISON_LIMIT_EXCEEDED"})
+    if len(versions) != len(requirements):
+        raise HTTPException(status_code=409, detail={"code": "IMPORT_REQUIREMENT_VERSION_MISSING"})
+    threshold = RequirementDuplicateCheckInput().threshold
+    comparisons = []
+    matched_version_ids = set()
+    criteria_cache = {}
+    for index, candidate in enumerate(job.get("preview", [])):
+        matches = []
+        for previous_index, previous in enumerate(job.get("preview", [])[:index]):
+            score, reasons = requirement_duplicate_score(
+                {**candidate, "acceptance_criteria": []},
+                {**previous, "acceptance_criteria": []},
+            )
+            same_key = bool(
+                candidate.get("requirement_key")
+                and candidate["requirement_key"] == previous.get("requirement_key")
+            )
+            if score >= threshold or same_key:
+                matches.append({
+                    "candidate_index": previous_index,
+                    "requirement_key": previous.get("requirement_key"),
+                    "title": previous.get("title"),
+                    "content": plain_text(previous.get("content_doc", {})),
+                    "score": score,
+                    "match_type": "SAME_KEY_IN_IMPORT" if same_key else "IN_IMPORT",
+                    "reasons": reasons,
+                    "affected_test_cases": [],
+                })
+        for requirement in requirements:
+            version = versions.get(requirement.get("current_version_id"))
+            if not version:
+                continue
+            score, reasons = requirement_duplicate_score(
+                {**candidate, "acceptance_criteria": []}, version
+            )
+            same_key = bool(
+                candidate.get("requirement_key")
+                and candidate["requirement_key"] == requirement.get("requirement_key")
+            )
+            if requirement.get("status") in {"OBSOLETE", "ARCHIVED"} and not same_key:
+                continue
+            if score < threshold and not same_key:
+                continue
+            exact_core = (
+                score == 1
+                and candidate.get("type") == version.get("type")
+                and all(
+                    not candidate.get(field) or candidate[field] == version.get(field, [])
+                    for field in ("actors", "business_rules", "dependencies", "details", "section_states", "custom_values")
+                )
+            )
+            if exact_core:
+                if version["_id"] not in criteria_cache:
+                    criteria_cache[version["_id"]] = await analysis_repository.list_acceptance_criteria(version["_id"])
+                existing_criteria = criteria_cache[version["_id"]]
+                exact_core = len(existing_criteria) < 500 and [
+                    plain_text(item.get("content_doc") or {}).strip()
+                    for item in candidate.get("acceptance_criteria", [])
+                ] == [
+                    (item.get("plain_text") or plain_text(item.get("content_doc") or {})).strip()
+                    for item in existing_criteria
+                ]
+            matches.append({
+                "requirement_id": requirement["_id"],
+                "requirement_key": requirement.get("requirement_key"),
+                "requirement_status": requirement.get("status"),
+                "version_id": version["_id"],
+                "title": version.get("title"),
+                "content": version.get("plain_text_projection") or plain_text(version.get("content_doc", {})),
+                "score": score,
+                "match_type": "EXACT" if exact_core else "SAME_KEY" if same_key else "POSSIBLE",
+                "reasons": reasons,
+            })
+            matched_version_ids.add(version["_id"])
+        matches.sort(key=lambda item: (-item["score"], str(item.get("requirement_id", item.get("candidate_index")))))
+        comparisons.append({
+            "candidate_index": index,
+            "candidate_id": candidate.get("candidate_id"),
+            "matches": matches,
+        })
+    if matched_version_ids:
+        cases, case_versions = await requirement_import_repository.list_linked_test_cases(
+            job["project_id"], list(matched_version_ids)
+        )
+        if len(case_versions) > 20000:
+            raise HTTPException(status_code=422, detail={"code": "IMPORT_TEST_CASE_IMPACT_LIMIT_EXCEEDED"})
+        case_by_id = {item["_id"]: item for item in cases}
+        affected = {}
+        for case_version in case_versions:
+            case = case_by_id.get(case_version.get("test_case_id"))
+            if not case or case.get("current_version_id") != case_version["_id"]:
+                continue
+            for version_id in case_version.get("requirement_version_ids", []):
+                affected.setdefault(version_id, []).append({
+                    "test_case_id": case["_id"],
+                    "test_case_key": case.get("test_case_key"),
+                })
+        for comparison in comparisons:
+            for match in comparison["matches"]:
+                match["affected_test_cases"] = affected.get(match.get("version_id"), [])
+    return {"job_id": job["_id"], "revision": job["revision"], "comparisons": comparisons}
+
+
+async def resolve_requirement_import_candidate(job_id, candidate_id, payload, user):
+    job = await get_project_entity(
+        "import_jobs", job_id, user, "requirement_document.review_extraction"
+    )
+    if job.get("status") != "PREVIEW_READY" or job.get("revision") != payload.expected_revision:
+        raise HTTPException(409, detail={"code": "IMPORT_REVISION_CONFLICT"})
+    candidate = next(
+        (item for item in job.get("preview", []) if item.get("candidate_id") == candidate_id), None
+    )
+    if not candidate:
+        raise HTTPException(404, detail={"code": "IMPORT_CANDIDATE_NOT_FOUND"})
+    comparison = await compare_requirement_import_job(job, user)
+    match = next(
+        (
+            item
+            for entry in comparison["comparisons"]
+            if entry["candidate_id"] == candidate_id
+            for item in entry["matches"]
+            if item.get("requirement_id") == payload.target_requirement_id
+            and item.get("version_id") == payload.expected_target_version_id
+        ),
+        None,
+    )
+    if not match:
+        raise HTTPException(409, detail={"code": "IMPORT_MATCH_CHANGED"})
+    requirement = await get_project_entity(
+        "requirements", payload.target_requirement_id, user, "requirement.version.create"
+    )
+    if requirement.get("current_version_id") != payload.expected_target_version_id:
+        raise HTTPException(409, detail={"code": "REVISION_CONFLICT"})
+    criteria = await analysis_repository.list_acceptance_criteria(
+        payload.expected_target_version_id
+    )
+    old_criteria = [
+        {
+            "key": item["key"],
+            "content_doc": item["content_doc"],
+            "status": item.get("status", "draft"),
+            "source_span": item.get("source_span"),
+        }
+        for item in criteria
+    ]
+    current = await requirement_import_repository.find_current_version(
+        job["project_id"], payload.expected_target_version_id
+    )
+    if not current:
+        raise HTTPException(409, detail={"code": "IMPORT_MATCH_CHANGED"})
+    source_refs = unique_source_refs(
+        current.get("source_refs", []) + candidate.get("source_refs", [])
+    )
+    if payload.action == "link_source" and match["match_type"] != "EXACT":
+        raise HTTPException(422, detail={"code": "SOURCE_LINK_REQUIRES_EXACT_MATCH"})
+    if payload.action == "link_source" and source_refs == current.get("source_refs", []):
+        raise HTTPException(409, detail={"code": "SOURCE_ALREADY_LINKED"})
+    values = {
+        **current,
+        "requirement_key": requirement.get("requirement_key"),
+        "acceptance_criteria": old_criteria,
+        "source_refs": source_refs,
+        "change_reason": payload.reason,
+        "expected_current_version_id": current["_id"],
+    }
+    if payload.action == "create_version":
+        values.update({
+            "title": candidate["title"],
+            "type": candidate["type"],
+            "content_doc": candidate["content_doc"],
+            "acceptance_criteria": candidate.get("acceptance_criteria", []),
+        })
+        for field in ("priority", "risk", "business_rules", "actors", "dependencies", "tags", "details", "section_states", "custom_values"):
+            values[field] = candidate.get(field, RequirementCreate.model_fields[field].get_default(call_default_factory=True))
+    claimed = await requirement_import_repository.claim_confirmation(
+        job_id, job["project_id"], "PREVIEW_READY", "RESOLVING", user.id, now(),
+        payload.expected_revision,
+    )
+    if not claimed:
+        raise HTTPException(409, detail={"code": "IMPORT_REVISION_CONFLICT"})
+    try:
+        version = await create_requirement_version_record(
+            requirement["_id"], RequirementVersionCreate(**values), user
+        )
+    except Exception:
+        await requirement_import_repository.reset_confirmation(
+            job_id, job["project_id"], "RESOLVING", "PREVIEW_READY", now()
+        )
+        raise
+    resolution = {
+        "candidate_id": candidate_id,
+        "action": payload.action,
+        "requirement_id": requirement["_id"],
+        "from_version_id": current["_id"],
+        "to_version_id": version["_id"],
+        "reason": payload.reason,
+        "resolved_by": user.id,
+        "resolved_at": now(),
+    }
+    updated = await requirement_import_repository.finish_resolution(
+        job_id, job["project_id"], payload.expected_revision + 1,
+        [item for item in job["preview"] if item.get("candidate_id") != candidate_id],
+        resolution, now(),
+    )
+    if not updated:
+        raise HTTPException(409, detail={"code": "IMPORT_RESOLUTION_INCOMPLETE"})
+    if updated["status"] == "CONFIRMED" and job.get("source_document_id"):
+        await requirement_import_repository.confirm_document(
+            job["source_document_id"], job["project_id"], "CONFIRMED", now()
+        )
+    await audit(user.id, "requirement_import_candidate_resolved", "RequirementImport", job_id, job["project_id"], resolution)
+    return updated
 
 
 
@@ -24,6 +275,7 @@ async def extract_requirement_candidates(document_id, payload, user):
         user,
         'requirement_document.extract',
     )
+    await require_document_access(document, user, 'requirement_document.read')
     if document.get("status") == 'ARCHIVED':
         raise HTTPException(
             status_code=409, detail={"code": 'DOCUMENT_ARCHIVED'}
@@ -47,7 +299,10 @@ async def extract_requirement_candidates(document_id, payload, user):
         document["project_id"],
     )
     job_id = new_id('RIMP')
-    candidates = prepare_requirement_candidates(job_id, atomic_requirement_candidates(document))
+    extracted = atomic_requirement_candidates(document)
+    if len(extracted) > 500:
+        raise HTTPException(status_code=413, detail={"code": "IMPORT_CANDIDATE_LIMIT_EXCEEDED"})
+    candidates = prepare_requirement_candidates(job_id, extracted)
     job = {
         "_id": job_id,
         "project_id": document["project_id"],
@@ -58,6 +313,7 @@ async def extract_requirement_candidates(document_id, payload, user):
         "status": 'PREVIEW_READY',
         "preview": candidates,
         "candidate_count": len(candidates),
+        "warnings": ["NO_DOCUMENTED_BEHAVIOR_TO_DRAFT"] if not candidates else [],
         "extraction_mode": 'DETERMINISTIC',
         "idempotency_key": payload.idempotency_key,
         "revision": 1,
@@ -87,18 +343,32 @@ async def extract_requirement_candidates(document_id, payload, user):
 
 
 async def create_requirement_import_job(project_id, payload, user):
-    
-    await get_project(project_id, user, 'requirement.create')
-    job_id = new_id('RIMP')
-    previews = prepare_requirement_candidates(
-        job_id,
-        parse_requirement_import(payload.content, payload.format),
+    document = await create_requirement_document_record(project_id, payload, user)
+    return await extract_requirement_candidates(
+        document["_id"],
+        RequirementExtractionInput(idempotency_key=f"source-{document['content_hash']}"),
+        user,
     )
+
+
+async def create_requirement_preview_from_candidates(project_id, filename, candidates, user, template_id=None, template_version=None, template_public_view=False):
+    await get_project(project_id, user, 'requirement.create')
+    if not candidates or len(candidates) > 500:
+        raise HTTPException(status_code=422, detail={"code": "IMPORT_CANDIDATE_COUNT_INVALID"})
+    if template_id:
+        existing = await requirement_import_repository.find_by_template_version(project_id, template_id, template_version, template_public_view)
+        if existing:
+            return existing
+    job_id = new_id('RIMP')
+    previews = prepare_requirement_candidates(job_id, candidates)
     job = {
         "_id": job_id,
         "project_id": project_id,
-        "filename": payload.filename,
-        "format": payload.format,
+        "filename": filename,
+        "format": "template",
+        "template_id": template_id,
+        "template_version": template_version,
+        "template_public_view": template_public_view,
         "status": 'PREVIEW_READY',
         "preview": previews,
         "candidate_count": len(previews),
@@ -106,15 +376,13 @@ async def create_requirement_import_job(project_id, payload, user):
         "created_by": user.id,
         "created_at": now(),
     }
-    await requirement_import_repository.insert(job)
-    await audit(
-        user.id,
-        'requirement_import_previewed',
-        'RequirementImport',
-        job["_id"],
-        project_id,
-        {"count": len(previews)},
-    )
+    try:
+        await requirement_import_repository.insert(job)
+    except DuplicateKeyError:
+        if template_id:
+            return await requirement_import_repository.find_by_template_version(project_id, template_id, template_version, template_public_view)
+        raise
+    await audit(user.id, 'requirement_import_previewed', 'RequirementImport', job_id, project_id, {"count": len(previews), "template_id": template_id})
     return job
 
 
@@ -123,6 +391,7 @@ async def review_requirement_import_job(job_id, payload, user):
     job = await get_project_entity(
         'import_jobs', job_id, user, 'requirement_document.review_extraction'
     )
+    await authorize_requirement_import_job(job, user)
     if job.get("status") != 'PREVIEW_READY':
         raise HTTPException(
             status_code=409,
@@ -161,7 +430,7 @@ async def review_requirement_import_job(job_id, payload, user):
         job["project_id"],
         'PREVIEW_READY',
         payload.expected_revision,
-        preview,
+        prepare_requirement_candidates(job_id, preview),
         user.id,
         now(),
         review_note=payload.review_note,
@@ -186,6 +455,7 @@ async def merge_requirement_import_candidates(job_id, payload, user):
     job = await get_project_entity(
         'import_jobs', job_id, user, 'requirement_document.review_extraction'
     )
+    await authorize_requirement_import_job(job, user)
     if job.get("status") != 'PREVIEW_READY':
         raise HTTPException(
             status_code=409, detail={"code": 'IMPORT_PREVIEW_NOT_EDITABLE'}
@@ -210,7 +480,7 @@ async def merge_requirement_import_candidates(job_id, payload, user):
         [source for parent in parents for source in parent.get("source_refs", [])]
         + merged.get("source_refs", [])
     )
-    await validate_requirement_sources(job["project_id"], merged["source_refs"])
+    await validate_requirement_sources(job["project_id"], merged["source_refs"], user)
     merged_id = new_id('RCAND')
     merged.update(
         {
@@ -219,10 +489,6 @@ async def merge_requirement_import_candidates(job_id, payload, user):
             "candidate_revision": 1,
             "candidate_relation": 'merged',
             "parent_candidate_ids": candidate_ids,
-            "extraction_confidence": min(
-                (float(item.get("extraction_confidence", 1)) for item in parents),
-                default=1,
-            ),
         }
     )
     first_index = min(
@@ -246,7 +512,7 @@ async def merge_requirement_import_candidates(job_id, payload, user):
         job["project_id"],
         'PREVIEW_READY',
         payload.expected_revision,
-        next_preview,
+        prepare_requirement_candidates(job_id, next_preview),
         user.id,
         now(),
         push_field="candidate_lineage",
@@ -276,6 +542,7 @@ async def split_requirement_import_candidate(job_id, candidate_id, payload, user
     job = await get_project_entity(
         'import_jobs', job_id, user, 'requirement_document.review_extraction'
     )
+    await authorize_requirement_import_job(job, user)
     if job.get("status") != 'PREVIEW_READY':
         raise HTTPException(
             status_code=409, detail={"code": 'IMPORT_PREVIEW_NOT_EDITABLE'}
@@ -299,7 +566,7 @@ async def split_requirement_import_candidate(job_id, candidate_id, payload, user
         child["source_refs"] = unique_source_refs(
             parent.get("source_refs", []) + child.get("source_refs", [])
         )
-        await validate_requirement_sources(job["project_id"], child["source_refs"])
+        await validate_requirement_sources(job["project_id"], child["source_refs"], user)
         child.update(
             {
                 "candidate_id": new_id('RCAND'),
@@ -307,7 +574,6 @@ async def split_requirement_import_candidate(job_id, candidate_id, payload, user
                 "candidate_revision": 1,
                 "candidate_relation": f"{'split'}-{index + 1}",
                 "parent_candidate_ids": [candidate_id],
-                "extraction_confidence": float(parent.get("extraction_confidence", 1)),
             }
         )
         children.append(child)
@@ -332,7 +598,7 @@ async def split_requirement_import_candidate(job_id, candidate_id, payload, user
         job["project_id"],
         'PREVIEW_READY',
         payload.expected_revision,
-        next_preview,
+        prepare_requirement_candidates(job_id, next_preview),
         user.id,
         now(),
         push_field="candidate_lineage",
@@ -362,6 +628,7 @@ async def reject_requirement_import_candidate(job_id, candidate_id, payload, use
     job = await get_project_entity(
         'import_jobs', job_id, user, 'requirement_document.review_extraction'
     )
+    await authorize_requirement_import_job(job, user)
     if job.get("status") != 'PREVIEW_READY':
         raise HTTPException(
             status_code=409, detail={"code": 'IMPORT_PREVIEW_NOT_EDITABLE'}
@@ -396,7 +663,7 @@ async def reject_requirement_import_candidate(job_id, candidate_id, payload, use
         job["project_id"],
         'PREVIEW_READY',
         payload.expected_revision,
-        next_preview,
+        prepare_requirement_candidates(job_id, next_preview),
         user.id,
         now(),
         push_field="rejected_candidates",
@@ -422,10 +689,13 @@ async def confirm_requirement_import_job(job_id, payload, user):
     job = await get_project_entity(
         'import_jobs', job_id, user, 'requirement_document.confirm_extraction'
     )
+    await authorize_requirement_import_job(job, user)
     await get_project(job["project_id"], user, 'requirement.create')
     if job["status"] == 'CONFIRMED':
         return {"job": job, "requirements": None}
-    indexes = payload.selected_indexes or list(range(len(job["preview"])))
+    indexes = payload.selected_indexes
+    if not indexes:
+        raise HTTPException(status_code=422, detail={"code": "IMPORT_SELECTION_REQUIRED"})
     indexes = list(dict.fromkeys(indexes))
     for index in indexes:
         if index < 0 or index >= len(job["preview"]):
@@ -433,6 +703,51 @@ async def confirm_requirement_import_job(job_id, payload, user):
                 status_code=422,
                 detail={"code": 'INVALID_PREVIEW_INDEX'},
             )
+        item = job["preview"][index]
+        if not plain_text(item.get("content_doc") or {}).strip() or not item.get("source_refs"):
+            raise HTTPException(status_code=422, detail={"code": "IMPORT_CANDIDATE_INCOMPLETE", "index": index})
+    comparison = await compare_requirement_import_job(job, user)
+    key_conflicts = sorted({
+        item["candidate_index"]
+        for item in comparison["comparisons"]
+        if item["candidate_index"] in indexes
+        and job["preview"][item["candidate_index"]].get("requirement_key")
+        and any(
+            match.get("requirement_key")
+            == job["preview"][item["candidate_index"]].get("requirement_key")
+            and (
+                match["match_type"] != "SAME_KEY_IN_IMPORT"
+                or match["candidate_index"] in indexes
+            )
+            for match in item["matches"]
+        )
+    })
+    if key_conflicts:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IMPORT_REQUIREMENT_KEY_CONFLICT", "candidate_indexes": key_conflicts},
+        )
+    matched_indexes = {
+        item["candidate_index"]
+        for item in comparison["comparisons"]
+        if any(
+            match["match_type"] not in {"IN_IMPORT", "SAME_KEY_IN_IMPORT"} or match["candidate_index"] in indexes
+            for match in item["matches"]
+        )
+    }
+    unresolved = sorted((set(indexes) & matched_indexes) - set(payload.separate_indexes))
+    if unresolved:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IMPORT_MATCH_REVIEW_REQUIRED", "candidate_indexes": unresolved},
+        )
+    if set(payload.separate_indexes) - (set(indexes) & matched_indexes):
+        raise HTTPException(status_code=422, detail={"code": "INVALID_IMPORT_RESOLUTION"})
+    if any(
+        not payload.separate_reasons.get(index, "").strip()
+        for index in payload.separate_indexes
+    ):
+        raise HTTPException(status_code=422, detail={"code": "IMPORT_SEPARATE_REASON_REQUIRED"})
     claimed = await requirement_import_repository.claim_confirmation(
         job_id,
         job["project_id"],
@@ -465,6 +780,8 @@ async def confirm_requirement_import_job(job_id, payload, user):
     except Exception:
         requirement_ids = [item["_id"] for item in created]
         version_ids = [item["current_version"]["_id"] for item in created]
+        for version_id in version_ids:
+            await remove_artifact(job["project_id"], version_id)
         await requirement_import_repository.delete_created_requirements(
             requirement_ids, version_ids
         )
@@ -511,6 +828,7 @@ async def confirm_requirement_import_job(job_id, payload, user):
         {
             "created_requirement_ids": [item["_id"] for item in created],
             "selected_indexes": indexes,
+            "separate_reasons": payload.separate_reasons,
             "rejected_indexes": rejected_indexes,
         },
     )

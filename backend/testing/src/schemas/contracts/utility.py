@@ -4,7 +4,17 @@ from pydantic import BaseModel, Field
 
 class GenerateInput(BaseModel):
     categories: list[str] = Field(default_factory=list, max_length=20)
+    techniques: list[Literal[
+        "equivalence_partitioning", "boundary_value", "decision_table",
+        "state_transition", "error_guessing",
+    ]] = Field(default_factory=list, max_length=5)
     count_per_category: int = Field(default=1, ge=1, le=20)
+    max_cases: int | None = Field(default=None, ge=1, le=100)
+    instruction: str = Field(default="", max_length=5000)
+    preview_only: bool = False
+
+
+class TechniqueRecommendationInput(BaseModel):
     instruction: str = Field(default="", max_length=5000)
 
 
@@ -67,4 +77,3 @@ class BulkProposalApproveInput(BaseModel):
     review_note: str = Field(min_length=2, max_length=2000)
     preview: bool = False
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
-

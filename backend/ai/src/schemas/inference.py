@@ -90,6 +90,9 @@ class TestingAssistanceResult(BaseModel):
         max_length=100,
         description="Analysis findings pending acknowledgement",
     )
+    readiness: str | None = None
+    conflicts: List[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    context: dict[str, Any] = Field(default_factory=dict)
     evidence_refs: List[str] = Field(
         default_factory=list, max_length=200, description="Evidence identifiers supporting the result"
     )
@@ -246,20 +249,71 @@ class GeneratedCaseOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=2, max_length=300)
-    category: str = Field(min_length=2, max_length=100)
+    category: Literal[
+        "happy_path", "negative", "boundary", "validation", "permission",
+        "state_transition", "integration", "error_handling", "data_persistence",
+        "concurrency", "api", "ui", "custom",
+    ]
     objective: str = Field(min_length=2, max_length=5000)
-    preconditions: str = Field(min_length=2, max_length=5000)
+    preconditions: str = Field(default="", max_length=5000)
     steps: List[GeneratedStepOutput] = Field(min_length=1, max_length=50)
     expected: str = Field(min_length=2, max_length=5000)
     acceptance_criterion_ids: List[str] = Field(default_factory=list, max_length=100)
+    techniques: List[Literal[
+        "equivalence_partitioning", "boundary_value", "decision_table",
+        "state_transition", "error_guessing",
+    ]] = Field(default_factory=list, max_length=5)
+    coverage_obligations: List[str] = Field(default_factory=list, max_length=20)
+    evidence_refs: List[str] = Field(default_factory=list, max_length=100)
 
 
 class GeneratedCasesOutput(BaseModel):
-    """Generate exactly the requested count for each category. Every candidate needs concrete input and a verifiable result, may use only acceptance criterion identifiers present in evidence, and must avoid generic templates."""
+    """When categories are supplied generate exactly the requested count for each category  When selected_design_techniques are supplied without categories generate only evidence supported cases up to maximum_cases and identify one or more selected techniques for each case  Each such case needs specific coverage_obligations and cited evidence_refs  Use every selected technique only when evidence supports it and otherwise report the missing prerequisite in warnings  Every candidate needs concrete input and a verifiable result and may use only acceptance criterion identifiers present in evidence  Derive equivalence classes boundaries decision rules states and error hypotheses only from evidence  A successful flow does not imply any specific failure behavior  If a selected technique needs an undocumented failure condition omit that technique and report the missing information in warnings  Write interface neutral actions and preconditions when the source does not specify an interface  Do not invent undocumented values or generic templates"""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["scenario_generation", "test_generation"]
     suggestions: List[GeneratedCaseOutput] = Field(min_length=1, max_length=100)
+    evidence_refs: List[str] = Field(min_length=1, max_length=200)
+    confidence: float = Field(ge=0, le=1)
+    warnings: List[str] = Field(default_factory=list, max_length=20)
+
+
+class GeneratedCaseGroundingReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=0)
+    unsupported_claims: List[str] = Field(default_factory=list)
+
+
+class GeneratedCasesGroundingReview(BaseModel):
+    """Review every generated test case against the provided requirement and acceptance criteria  Flag any claimed behavior expected outcome message data store limit precondition or failure response that the evidence does not establish  Concrete example test data may be proposed but must not be presented as a documented rule  Return one review for every case in input order  An empty unsupported_claims list means the case is grounded"""
+    model_config = ConfigDict(extra="forbid")
+
+    cases: List[GeneratedCaseGroundingReview] = Field(min_length=1, max_length=100)
+
+
+class TechniqueRecommendationItemOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    technique: Literal[
+        "equivalence_partitioning", "boundary_value", "decision_table",
+        "state_transition", "error_guessing",
+    ]
+    suitability: Literal["recommended", "possible", "insufficient_evidence", "not_applicable"]
+    rationale: str = Field(min_length=2, max_length=2000)
+    expected_coverage: List[str] = Field(default_factory=list, max_length=20)
+    incremental_coverage: List[str] = Field(default_factory=list, max_length=20)
+    existing_coverage_refs: List[str] = Field(default_factory=list, max_length=100)
+    missing_information: List[str] = Field(default_factory=list, max_length=20)
+    evidence_refs: List[str] = Field(default_factory=list, max_length=100)
+
+
+class TechniqueRecommendationsOutput(BaseModel):
+    """Assess which test design techniques fit each requirement from cited evidence and existing tests  Distinguish behavior explicitly stated in evidence from hypothetical possibilities  Mark a technique recommended only when the source defines enough input classes rules boundaries or states to apply it concretely  When prerequisites are absent mark possible or insufficient_evidence and name the missing information  Expected and incremental coverage must describe only behavior supported by cited evidence  Do not assume empty inputs unchanged data extra states reverse transitions numeric limits or defect history  For each technique identify what existing cited tests already cover and what would be incremental  Never generate or save test cases"""
+    model_config = ConfigDict(extra="forbid")
+
+    capability: Literal["technique_recommendation"]
+    suggestions: List[TechniqueRecommendationItemOutput] = Field(min_length=1, max_length=5)
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=20)
@@ -554,6 +608,77 @@ class LessonsLearnedClustersOutput(BaseModel):
     capability: Literal["lessons_learned_clustering"]
     suggestions: List[LessonsLearnedClusterSuggestionOutput] = Field(min_length=1, max_length=100)
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
+    confidence: float = Field(ge=0, le=1)
+    warnings: List[str] = Field(default_factory=list, max_length=20)
+
+
+class RequirementTemplateAPIOperationOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_ref: str = Field(min_length=1, max_length=200)
+    method: str = Field(min_length=1, max_length=20)
+    path: str | None = None
+    url_template: str | None = None
+    operation_id: str | None = None
+    folder: str | None = None
+
+
+class RequirementTemplateSuggestionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=2, max_length=300)
+    type: Literal["functional", "non_functional", "business_rule", "api", "ui", "data", "permission", "integration", "constraint"]
+    content: str = Field(min_length=2, max_length=10000)
+    evidence_refs: List[str] = Field(min_length=1, max_length=20)
+    source_quotes: dict[str, str] = Field(default_factory=dict)
+    missing_sections: List[str] = Field(default_factory=list, max_length=20)
+    not_applicable_sections: List[str] = Field(default_factory=list, max_length=20)
+    acceptance_criteria: List[str] = Field(default_factory=list, max_length=50)
+    actors: List[str] = Field(default_factory=list, max_length=50)
+    business_rules: List[str] = Field(default_factory=list, max_length=50)
+    dependencies: List[str] = Field(default_factory=list, max_length=50)
+    user_story_actor: str | None = None
+    user_story_goal: str | None = None
+    user_story_value: str | None = None
+    main_flow: str | None = None
+    exception_flow: str | None = None
+    data_rules: str | None = None
+    integration: str | None = None
+    quality_measure: str | None = None
+    api_operations: List[RequirementTemplateAPIOperationOutput] = Field(default_factory=list, max_length=50)
+
+
+class RequirementTemplateSynthesisOutput(BaseModel):
+    """Synthesize a Requirements template draft only from supplied documents or templates. Each proposed requirement must cite exact evidence and a verbatim quote for document evidence. Preserve source distinctions, report duplicates and conflicts, and mark absent applicable information as missing. Never create test cases or approve import."""
+    model_config = ConfigDict(extra="forbid")
+
+    capability: Literal["requirement_template_synthesis"] = "requirement_template_synthesis"
+    context: dict[str, Any] = Field(default_factory=dict)
+    suggestions: List[RequirementTemplateSuggestionOutput] = Field(default_factory=list, max_length=100)
+    conflicts: List[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    evidence_refs: List[str] = Field(min_length=1, max_length=200)
+    confidence: float = Field(ge=0, le=1)
+    warnings: List[str] = Field(default_factory=list, max_length=50)
+
+
+class RequirementTemplateReviewFindingOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_index: int | None = Field(default=None, ge=0)
+    field: str = Field(min_length=1, max_length=100)
+    issue: str = Field(min_length=2, max_length=1000)
+    evidence_refs: List[str] = Field(min_length=1, max_length=20)
+    suggested_source_quote: str | None = Field(default=None, min_length=2, max_length=2000)
+
+
+class RequirementTemplateReviewOutput(BaseModel):
+    """Review whether a Requirements template is suitable for import without changing it  Report a missing field only when the source shows that field applies to this specific requirement and its omission prevents import  A field absent from the source is not automatically required  Do not demand data rules dependencies quality measures or User Story fields merely because they exist in the schema  Distinguish missing applicable information from not applicable information  Identify contradictions and unsupported assumptions  Write issue in the requested natural language without raw schema names  Suggest an exact source quote only when it appears in an AI permitted source document  Do not invent fields requirements actors acceptance criteria response codes or quality limits  Do not generate test cases or approve import"""
+    model_config = ConfigDict(extra="forbid")
+
+    capability: Literal["requirement_template_review"]
+    readiness: Literal["ready_for_import", "needs_information", "conflict"]
+    findings: List[RequirementTemplateReviewFindingOutput] = Field(default_factory=list, max_length=50)
+    evidence_refs: List[str] = Field(min_length=1, max_length=100)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=20)
 

@@ -57,10 +57,13 @@ class GeneratedCase(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     category: str
     objective: str = Field(min_length=2, max_length=5000)
-    preconditions: str = Field(min_length=2, max_length=5000)
+    preconditions: str = Field(default="", max_length=5000)
     steps: list[GeneratedStep] = Field(min_length=1, max_length=50)
     expected: str = Field(min_length=2, max_length=5000)
     acceptance_criterion_ids: list[str] = Field(default_factory=list)
+    techniques: list[str] = Field(default_factory=list)
+    coverage_obligations: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
 
 
 class TestBasisRef(BaseModel):

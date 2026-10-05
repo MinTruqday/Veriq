@@ -87,6 +87,9 @@ class TestCaseDraftCreate(BaseModel):
     scenario_id: str | None = None
     origin: Literal["manual", "ai_generated", "clone", "import", "maintenance"] = "manual"
     source_evidence: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
+    coverage_obligations: list[str] = Field(default_factory=list, max_length=100)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=200)
+    duplicate_reason: str | None = Field(default=None, min_length=2, max_length=2000)
 
     @field_validator(
         "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc"
@@ -102,6 +105,10 @@ class TestCaseDraftCreate(BaseModel):
         orders = [step.order for step in self.steps]
         if len(orders) != len(set(orders)):
             raise ValueError("Thứ tự bước kiểm thử không được trùng")
+        if self.evidence_refs and not set(self.evidence_refs) <= {
+            item.get("artifact_version_id") for item in self.source_evidence
+        }:
+            raise ValueError("Dẫn chứng không nằm trong nguồn của ca kiểm thử")
         return self
 
 
@@ -261,4 +268,3 @@ class RegressionApprovalInput(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=300)
     selected_test_case_version_ids: list[str] | None = Field(default=None, max_length=5000)
     review_note: str = Field(default="", max_length=5000)
-

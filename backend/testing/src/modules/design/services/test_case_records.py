@@ -11,6 +11,8 @@ from src.core.common import (
     plain_text,
 )
 from src.repositories.test_design import test_design_repository
+from src.repositories.analysis import analysis_repository
+from src.modules.design.services.linters import duplicate_score
 
 
 def project_test_text(value):
@@ -27,6 +29,15 @@ def project_test_text(value):
             plain_text(value.get("expected_result_doc", {})),
         ]
     ).strip()
+
+
+async def comparison_cases(project_id):
+    versions = await analysis_repository.list_active_test_case_versions(project_id, "ACTIVE", 2001)
+    drafts = await test_design_repository.list_case_drafts(project_id, 2001)
+    if len(versions) > 2000 or len(drafts) > 2000:
+        raise HTTPException(status_code=422, detail={"code": "TEST_CASE_COMPARISON_LIMIT_EXCEEDED", "message": "Có quá nhiều ca kiểm thử để đối chiếu đầy đủ, chưa cho tạo ca mới có thể trùng"})
+    settings = await test_design_repository.find_project_settings(project_id)
+    return versions + drafts, settings.get("testcase_duplicate_threshold", 0.72)
 
 
 async def validate_design_sources(
@@ -126,10 +137,60 @@ async def create_test_case_draft_record(project_id, payload, user):
         payload.test_condition_ids,
     )
     await validate_data_set_versions(project_id, payload.data_set_version_ids)
+    if payload.origin == "ai_generated":
+        existing, threshold = await comparison_cases(project_id)
+        matches = sorted(
+            (
+                (score, item)
+                for item in existing
+                if (score := duplicate_score(payload.model_dump(), item)[0]) >= threshold
+            ),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )[:3]
+        if matches and not (payload.duplicate_reason or "").strip():
+            raise HTTPException(status_code=409, detail={"code": "TEST_CASE_DUPLICATE_REVIEW_REQUIRED", "message": "Cần bỏ qua ca gần giống hoặc ghi lý do tạo ca riêng", "matches": [{"id": item["_id"], "title": item.get("title"), "score": score} for score, item in matches]})
+    source_evidence = payload.source_evidence
+    if payload.evidence_refs or payload.coverage_obligations:
+        version_ids = list(dict.fromkeys(payload.requirement_version_ids))
+        versions = await analysis_repository.list_requirement_versions(
+            project_id, version_ids, len(version_ids)
+        ) if version_ids else []
+        criterion_ids = list(dict.fromkeys(
+            item.get("artifact_version_id") for item in source_evidence
+            if item.get("artifact_type") == "acceptance_criterion" and item.get("artifact_version_id")
+        ))
+        criteria = await test_design_repository.list_acceptance_criteria_by_ids(
+            project_id, version_ids, criterion_ids
+        ) if criterion_ids else []
+        expected = {
+            ("requirement_version", item["_id"]): item.get("plain_text_projection") or plain_text(item.get("content_doc", {}))
+            for item in versions
+        }
+        expected.update({
+            ("acceptance_criterion", item["_id"]): item.get("plain_text") or plain_text(item.get("content_doc", {}))
+            for item in criteria
+        })
+        seen = set()
+        canonical = []
+        for item in source_evidence:
+            identity = (item.get("artifact_type"), item.get("artifact_version_id"))
+            if identity in seen or not expected.get(identity) or item.get("text") != expected[identity]:
+                raise HTTPException(status_code=422, detail={"code": "TEST_CASE_EVIDENCE_CHANGED"})
+            seen.add(identity)
+            canonical.append({
+                "artifact_type": identity[0],
+                "artifact_version_id": identity[1],
+                "text": expected[identity],
+            })
+        if not payload.evidence_refs or not set(payload.evidence_refs) <= {item[1] for item in seen}:
+            raise HTTPException(status_code=422, detail={"code": "TEST_CASE_EVIDENCE_CHANGED"})
+        source_evidence = canonical
     draft = {
         "_id": new_id('TCD'),
         "project_id": project_id,
         **payload.model_dump(),
+        "source_evidence": source_evidence,
         "test_case_key": payload.test_case_key
         or await next_key(project_id, 'test_case', 'TC'),
         "status": 'DRAFT',
@@ -168,12 +229,23 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         if payload.data_set_version_ids is not None
         else draft.get("data_set_version_ids", []),
     )
+    changes = payload.model_dump()
+    if (draft.get("evidence_refs") or draft.get("coverage_obligations")) and any(
+        changes.get(field) is not None and changes[field] != draft.get(field)
+        for field in (
+            "title", "type", "objective_doc", "preconditions_doc", "steps", "test_data",
+            "expected_result_doc", "postconditions_doc", "techniques",
+            "requirement_version_ids", "acceptance_criterion_ids",
+        )
+    ):
+        changes["coverage_obligations"] = []
+        changes["evidence_refs"] = []
     updated = await optimistic_patch(
         "test_case_drafts",
         draft_id,
         draft["project_id"],
         payload.expected_revision,
-        payload.model_dump(),
+        changes,
     )
     await audit(user.id, "test_case_draft_updated", "TestCaseDraft", draft_id, draft["project_id"])
     return updated

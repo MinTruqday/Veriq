@@ -12,6 +12,7 @@ from src.repositories.common import common_repository
 from src.clients.project_knowledge import index_artifact, remove_artifact
 from src.modules.requirements.services.requirement_import import (
     extract_file_content,
+    source_document_text,
     supported_requirement_formats,
 )
 from src.modules.requirements.services.requirement_workflow import serialized_content
@@ -60,12 +61,14 @@ async def create_requirement_document_record(project_id, payload, user):
     await get_project(project_id, user, 'requirement_document.upload')
     shared_with = await validate_document_recipients(project_id, payload.shared_with)
     content = serialized_content(payload.content)
+    normalized_content = payload.content if payload.format in ("openapi", "postman") else source_document_text(payload.content)
+    normalized = serialized_content(normalized_content)
     if len(content.encode("utf-8")) > 26214400:
         raise HTTPException(status_code=413, detail={"code": 'IMPORT_TOO_LARGE'})
     content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    existing = await requirement_document_repository.find_by_hash(project_id, content_hash)
+    existing = await requirement_document_repository.find_by_hash(project_id, content_hash, user.id)
     if existing:
-        return existing
+        return await require_document_access(existing, user, 'requirement_document.read')
     timestamp = now()
     document = {
         "_id": new_id('RDOC'),
@@ -79,10 +82,10 @@ async def create_requirement_document_record(project_id, payload, user):
             "sha256": content_hash,
             "size": len(content.encode("utf-8")),
         },
-        "normalized_content": payload.content,
-        "normalized_content_hash": content_hash,
+        "normalized_content": normalized_content,
+        "normalized_content_hash": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
         "source_version": '1',
-        "source_type": 'REFERENCE',
+        "source_type": 'API_SPEC' if payload.format in ("openapi", "postman") else payload.source_type,
         "authority": 'PROJECT_REFERENCE',
         "approval_status": 'DRAFT',
         "status": 'READY',
@@ -99,10 +102,10 @@ async def create_requirement_document_record(project_id, payload, user):
         await requirement_document_repository.insert(document)
     except DuplicateKeyError:
         existing = await requirement_document_repository.find_by_hash(
-            project_id, content_hash
+            project_id, content_hash, user.id
         )
         if existing:
-            return existing
+            return await require_document_access(existing, user, 'requirement_document.read')
         raise
     await audit(
         user.id,
@@ -194,6 +197,7 @@ async def upload_requirement_document_record(
     visibility="private",
     shared_with=None,
     ai_enabled=False,
+    source_type="REFERENCE",
 ):
     if format not in supported_requirement_formats():
         raise HTTPException(status_code=422, detail={"code": 'UNSUPPORTED_IMPORT_FORMAT'})
@@ -205,9 +209,9 @@ async def upload_requirement_document_record(
     shared_with = await validate_document_recipients(project_id, shared_with or [])
     resolved_filename = filename or f"{'requirements'}.{format}"
     content_hash = hashlib.sha256(data).hexdigest()
-    existing = await requirement_document_repository.find_by_hash(project_id, content_hash)
+    existing = await requirement_document_repository.find_by_hash(project_id, content_hash, user.id)
     if existing:
-        return RequirementDocumentResult(existing)
+        return RequirementDocumentResult(await require_document_access(existing, user, 'requirement_document.read'))
     document_id = new_id('RDOC')
     source = await store_raw_requirement_source(
         project_id,
@@ -226,7 +230,7 @@ async def upload_requirement_document_record(
         "raw_source": source,
         "normalized_content": None,
         "source_version": '1',
-        "source_type": 'REFERENCE',
+        "source_type": 'API_SPEC' if format in ("openapi", "postman") else source_type,
         "authority": 'PROJECT_REFERENCE',
         "approval_status": 'DRAFT',
         "status": 'UPLOADED',
@@ -243,10 +247,10 @@ async def upload_requirement_document_record(
         await requirement_document_repository.insert(document)
     except DuplicateKeyError:
         existing = await requirement_document_repository.find_by_hash(
-            project_id, content_hash
+            project_id, content_hash, user.id
         )
         if existing:
-            return RequirementDocumentResult(existing)
+            return RequirementDocumentResult(await require_document_access(existing, user, 'requirement_document.read'))
         raise
     await audit(
         user.id,
@@ -446,11 +450,12 @@ async def update_requirement_document_ai_read(document_id, payload, user):
     if payload.ai_enabled:
         indexed = await index_requirement_document(updated)
         if not indexed:
-            await requirement_document_repository.update(
-                document_id,
-                document["project_id"],
-                {"ai_enabled": False, "updated_at": now()},
-            )
+            if not document.get("ai_enabled"):
+                await requirement_document_repository.update(
+                    document_id,
+                    document["project_id"],
+                    {"ai_enabled": False, "updated_at": now()},
+                )
             raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
     else:
         await remove_artifact(updated["project_id"], updated["_id"])

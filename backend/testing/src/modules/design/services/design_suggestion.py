@@ -18,43 +18,13 @@ async def requirement_evidence(project_id, requirement_version_ids):
         query, 500
     )
     if requirement_version_ids and len(versions) != len(set(requirement_version_ids)):
-        raise HTTPException(status_code=422, detail={"code": {'requirement_limit': 500,
- 'list_limit': 200,
- 'evidence_text_limit': 4000,
- 'security_candidate_prefix': 'SEC-',
- 'performance_scenario_prefix': 'PERF-',
- 'security_result_prefix': 'SECSUG',
- 'performance_result_prefix': 'PERFPLAN',
- 'security_result_type': 'SECURITY_TEST_SUGGESTION',
- 'suggested_status': 'SUGGESTED',
- 'pending_review_status': 'PENDING_REVIEW',
- 'draft_status': 'DRAFT',
- 'success_status': 'SUCCESS',
- 'ai_origin': 'ai_generated',
- 'metric_keys': {'response_time': 'response_time_p95_ms',
-                 'error_rate': 'error_rate',
-                 'throughput': 'throughput'}}["invalid_requirement_code"]})
+        raise HTTPException(status_code=422, detail={"code": "INVALID_REQUIREMENT_VERSION"})
     return versions, [
         {
             "artifact_type": "requirement_version",
             "artifact_id": item.get("requirement_id"),
             "artifact_version_id": item["_id"],
-            "authority": {'requirement_limit': 500,
- 'list_limit': 200,
- 'evidence_text_limit': 4000,
- 'security_candidate_prefix': 'SEC-',
- 'performance_scenario_prefix': 'PERF-',
- 'security_result_prefix': 'SECSUG',
- 'performance_result_prefix': 'PERFPLAN',
- 'security_result_type': 'SECURITY_TEST_SUGGESTION',
- 'suggested_status': 'SUGGESTED',
- 'pending_review_status': 'PENDING_REVIEW',
- 'draft_status': 'DRAFT',
- 'success_status': 'SUCCESS',
- 'ai_origin': 'ai_generated',
- 'metric_keys': {'response_time': 'response_time_p95_ms',
-                 'error_rate': 'error_rate',
-                 'throughput': 'throughput'}}["project_baseline_authority"],
+            "authority": item.get("status") or "PROJECT_REQUIREMENT_VERSION",
             "text": " ".join(
                 filter(
                     None,
@@ -93,22 +63,7 @@ class DesignSuggestionService:
                 {
                     "artifact_type": "design_request",
                     "artifact_id": payload.idempotency_key,
-                    "authority": {'requirement_limit': 500,
- 'list_limit': 200,
- 'evidence_text_limit': 4000,
- 'security_candidate_prefix': 'SEC-',
- 'performance_scenario_prefix': 'PERF-',
- 'security_result_prefix': 'SECSUG',
- 'performance_result_prefix': 'PERFPLAN',
- 'security_result_type': 'SECURITY_TEST_SUGGESTION',
- 'suggested_status': 'SUGGESTED',
- 'pending_review_status': 'PENDING_REVIEW',
- 'draft_status': 'DRAFT',
- 'success_status': 'SUCCESS',
- 'ai_origin': 'ai_generated',
- 'metric_keys': {'response_time': 'response_time_p95_ms',
-                 'error_rate': 'error_rate',
-                 'throughput': 'throughput'}}["user_request_authority"],
+                    "authority": "USER_REQUEST",
                     "text": json.dumps(
                         {"categories": payload.categories, "context": payload.context},
                         ensure_ascii=False,
@@ -121,22 +76,7 @@ class DesignSuggestionService:
         if {item["category"] for item in candidates} != set(payload.categories) or any(
             not set(item["requirement_version_ids"]) <= version_ids for item in candidates
         ):
-            raise HTTPException(502, detail={"code": {'requirement_limit': 500,
- 'list_limit': 200,
- 'evidence_text_limit': 4000,
- 'security_candidate_prefix': 'SEC-',
- 'performance_scenario_prefix': 'PERF-',
- 'security_result_prefix': 'SECSUG',
- 'performance_result_prefix': 'PERFPLAN',
- 'security_result_type': 'SECURITY_TEST_SUGGESTION',
- 'suggested_status': 'SUGGESTED',
- 'pending_review_status': 'PENDING_REVIEW',
- 'draft_status': 'DRAFT',
- 'success_status': 'SUCCESS',
- 'ai_origin': 'ai_generated',
- 'metric_keys': {'response_time': 'response_time_p95_ms',
-                 'error_rate': 'error_rate',
-                 'throughput': 'throughput'}}["generation_invalid_code"]})
+            raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
         candidates = [
             {
                 **item,
@@ -228,22 +168,7 @@ class DesignSuggestionService:
                 {
                     "artifact_type": "design_request",
                     "artifact_id": payload.idempotency_key,
-                    "authority": {'requirement_limit': 500,
- 'list_limit': 200,
- 'evidence_text_limit': 4000,
- 'security_candidate_prefix': 'SEC-',
- 'performance_scenario_prefix': 'PERF-',
- 'security_result_prefix': 'SECSUG',
- 'performance_result_prefix': 'PERFPLAN',
- 'security_result_type': 'SECURITY_TEST_SUGGESTION',
- 'suggested_status': 'SUGGESTED',
- 'pending_review_status': 'PENDING_REVIEW',
- 'draft_status': 'DRAFT',
- 'success_status': 'SUCCESS',
- 'ai_origin': 'ai_generated',
- 'metric_keys': {'response_time': 'response_time_p95_ms',
-                 'error_rate': 'error_rate',
-                 'throughput': 'throughput'}}["user_request_authority"],
+                    "authority": "USER_REQUEST",
                     "text": json.dumps(
                         {
                             "objective": payload.objective,
@@ -260,22 +185,7 @@ class DesignSuggestionService:
         )
         scenarios = validated_suggestions(ai_result, PerformanceScenario)
         if {item["workload_type"] for item in scenarios} != set(payload.workload_types):
-            raise HTTPException(502, detail={"code": {'requirement_limit': 500,
- 'list_limit': 200,
- 'evidence_text_limit': 4000,
- 'security_candidate_prefix': 'SEC-',
- 'performance_scenario_prefix': 'PERF-',
- 'security_result_prefix': 'SECSUG',
- 'performance_result_prefix': 'PERFPLAN',
- 'security_result_type': 'SECURITY_TEST_SUGGESTION',
- 'suggested_status': 'SUGGESTED',
- 'pending_review_status': 'PENDING_REVIEW',
- 'draft_status': 'DRAFT',
- 'success_status': 'SUCCESS',
- 'ai_origin': 'ai_generated',
- 'metric_keys': {'response_time': 'response_time_p95_ms',
-                 'error_rate': 'error_rate',
-                 'throughput': 'throughput'}}["generation_invalid_code"]})
+            raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
         scenarios = [
             {**item, "scenario_id": f"{'PERF-'}{index}"}
             for index, item in enumerate(scenarios, 1)

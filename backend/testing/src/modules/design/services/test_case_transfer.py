@@ -2,6 +2,7 @@ import csv
 import io
 
 from fastapi import HTTPException, UploadFile
+from pydantic import ValidationError
 
 from src.core.auth import CurrentUser
 from src.core.common import audit, envelope, get_project, get_project_entity, new_id, now
@@ -14,7 +15,32 @@ from src.schemas.contracts.requirements import (
 )
 from src.modules.integrations.services.api_artifact_formats import create_xlsx, lexical_similarity, model_metadata, terms
 from src.modules.requirements.services.requirement_import import extract_xlsx_csv
-from src.modules.design.services.test_case_records import create_test_case_draft_record
+from src.modules.design.services.test_case_records import comparison_cases, create_test_case_draft_record
+from src.modules.design.services.linters import duplicate_score
+
+
+async def compare_test_import_candidates(project_id, preview, selected_indexes=None):
+    existing_cases, threshold = await comparison_cases(project_id)
+    selected = set(selected_indexes) if selected_indexes is not None else set(range(len(preview)))
+    results = {}
+    previous = []
+    for index, item in enumerate(preview):
+        if index not in selected:
+            continue
+        candidate = item["draft"]
+        matches = []
+        for existing in existing_cases + previous:
+            if item.get("source_test_case_key") and item["source_test_case_key"] == existing.get("test_case_key"):
+                score = 1
+            elif item.get("source_projection") and item["source_projection"] == str(existing.get("plain_text_projection") or "").strip():
+                score = 1
+            else:
+                score, _ = duplicate_score(candidate, existing)
+            if score >= threshold:
+                matches.append({"id": existing["_id"], "title": existing.get("title", ""), "score": score})
+        results[index] = sorted(matches, key=lambda match: match["score"], reverse=True)[:3]
+        previous.append({"_id": f"preview:{index}", **candidate, "test_case_key": item.get("source_test_case_key"), "plain_text_projection": item.get("source_projection")})
+    return results
 
 
 async def recover_trace_links(project_id: str, user: CurrentUser):
@@ -100,21 +126,61 @@ async def preview_test_import(
         raise HTTPException(status_code=422, detail={"code": 'TEST_IMPORT_FORMAT_UNSUPPORTED'})
     content = str(payload.content)
     rows = list(csv.DictReader(io.StringIO(content)))
-    preview = [
-        {
-            "title": row.get("title") or f"{'Test Case dòng '}{index + 1}",
-            "type": row.get("type") or 'custom',
-            "priority": row.get("priority") or 'medium',
-            "risk": row.get("risk") or 'medium',
-            "precondition": row.get("precondition") or 'Hệ thống sẵn sàng',
-            "action": row.get("action") or row.get("steps") or 'Thực hiện thao tác',
-            "expected": row.get("expected")
-            or row.get("expected_result")
-            or 'Kết quả đúng theo đặc tả',
-            "tags": [item.strip() for item in (row.get("tags") or "").split(",") if item.strip()],
-        }
-        for index, row in enumerate(rows[: 5000])
-    ]
+    if len(rows) > 2000:
+        raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_ROW_LIMIT_EXCEEDED", "message": "Tệp có quá 2000 dòng dữ liệu, cần chia thành nhiều lần nhập", "limit": 2000, "received": len(rows)})
+    preview = []
+    invalid_rows = []
+    for index, row in enumerate(rows, 2):
+        if not any(str(value or "").strip() for value in row.values()):
+            continue
+        title = str(row.get("title") or "").strip()
+        action = str(row.get("action") or row.get("steps") or "").strip()
+        expected = str(row.get("expected") or row.get("expected_result") or "").strip()
+        projection = str(row.get("plain_text_projection") or "").strip()
+        if len(title) < 2 or bool(action) != bool(expected) or not (action or projection):
+            invalid_rows.append(index)
+            continue
+        try:
+            draft = TestCaseDraftCreate(
+                title=title,
+                type=row.get("type") or "custom",
+                priority=row.get("priority") or "medium",
+                risk=row.get("risk") or "medium",
+                objective_doc=text_document(projection),
+                preconditions_doc=text_document(str(row.get("precondition") or "").strip()),
+                steps=[{
+                    "id": "step-1",
+                    "order": 1,
+                    "action_doc": text_document(action),
+                    "test_data": {},
+                    "expected_doc": text_document(expected),
+                }] if action else [],
+                expected_result_doc=text_document(expected),
+                postconditions_doc=text_document(""),
+                tags=[item.strip() for item in (row.get("tags") or "").split(",") if item.strip()],
+                origin="import",
+            )
+        except ValidationError:
+            invalid_rows.append(index)
+            continue
+        preview.append({
+            "title": title,
+            "type": draft.type,
+            "priority": draft.priority,
+            "risk": draft.risk,
+            "expected": expected,
+            "incomplete": not bool(action),
+            "source_test_case_key": str(row.get("test_case_key") or "").strip(),
+            "source_projection": projection,
+            "draft": draft.model_dump(),
+        })
+    if invalid_rows:
+        raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_ROWS_INCOMPLETE", "message": f"Có {len(invalid_rows)} dòng thiếu tên hoặc thiếu dữ liệu kiểm thử, bắt đầu từ dòng {invalid_rows[0]}", "rows": invalid_rows[:20], "count": len(invalid_rows)})
+    if not preview:
+        raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_EMPTY", "message": "Tệp không có ca kiểm thử để nhập"})
+    comparisons = await compare_test_import_candidates(project_id, preview)
+    for index, matches in comparisons.items():
+        preview[index]["similar_cases"] = matches
     job = {
         "_id": new_id('TIMP'),
         "project_id": project_id,
@@ -164,46 +230,58 @@ async def confirm_test_import(
     job = await get_project_entity("test_imports", job_id, user, "testcase.import")
     if job["status"] == 'CONFIRMED':
         return envelope(job)
-    selected = payload.selected_indexes or list(range(len(job["preview"])))
-    created = []
+    selected = payload.selected_indexes
+    if not selected:
+        raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_SELECTION_REQUIRED"})
+    if len(selected) != len(set(selected)):
+        raise HTTPException(status_code=422, detail={"code": "DUPLICATE_PREVIEW_INDEX"})
+    drafts = []
     for index in selected:
         if index < 0 or index >= len(job["preview"]):
             raise HTTPException(status_code=422, detail={"code": 'INVALID_PREVIEW_INDEX'})
         item = job["preview"][index]
-        draft = await create_test_case_draft_record(
+        if item.get("incomplete") and not payload.accept_incomplete:
+            raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_INCOMPLETE_ACK_REQUIRED", "message": "Cần xác nhận ca nhập chưa có bước và kết quả kiểm chứng"})
+        if not item.get("draft"):
+            raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_REUPLOAD_REQUIRED", "message": "Bản xem trước cũ cần được tải lên lại để kiểm tra nguồn dữ liệu"})
+        drafts.append(TestCaseDraftCreate(**item["draft"]))
+    comparisons = await compare_test_import_candidates(job["project_id"], job["preview"], selected)
+    duplicates = [index for index in selected if comparisons[index] and index not in payload.separate_indexes]
+    if duplicates:
+        raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_DUPLICATE_REVIEW_REQUIRED", "message": "Cần bỏ chọn ca trùng hoặc ghi lý do tạo ca riêng", "indexes": duplicates, "matches": {index: comparisons[index] for index in duplicates}})
+    if set(payload.separate_indexes) - {index for index in selected if comparisons[index] or job["preview"][index].get("similar_cases")}:
+        raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_RESOLUTION_INVALID"})
+    if any(not payload.separate_reasons.get(index, "").strip() for index in payload.separate_indexes):
+        raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_SEPARATE_REASON_REQUIRED", "message": "Cần ghi lý do tạo ca kiểm thử riêng khi có ca gần giống"})
+    claimed = await test_design_repository.claim_import(job_id, job["project_id"])
+    if not claimed:
+        raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_CONFIRM_IN_PROGRESS"})
+    created = []
+    try:
+        for draft_data in drafts:
+            draft = await create_test_case_draft_record(
+                job["project_id"],
+                draft_data,
+                user,
+            )
+            created.append(draft)
+        confirmed = await test_design_repository.confirm_import(
+            job_id,
             job["project_id"],
-            TestCaseDraftCreate(
-                title=item["title"],
-                type=item["type"],
-                priority=item["priority"],
-                risk=item["risk"],
-                preconditions_doc=text_document(item["precondition"]),
-                steps=[
-                    {
-                        "id": 'step-1',
-                        "order": 1,
-                        "action_doc": text_document(item["action"]),
-                        "test_data": {},
-                        "expected_doc": text_document(item["expected"]),
-                    }
-                ],
-                test_data={},
-                expected_result_doc=text_document(item["expected"]),
-                postconditions_doc=text_document('Hoàn tất'),
-                tags=item["tags"],
-                origin='import',
-            ),
-            user,
+            {
+                "status": 'CONFIRMED',
+                "created_draft_ids": [item["_id"] for item in created],
+                "selected_indexes": selected,
+                "separate_reasons": {index: payload.separate_reasons[index].strip() for index in payload.separate_indexes},
+                "confirmed_at": now(),
+            },
         )
-        created.append(draft)
-    await test_design_repository.confirm_import(
-        job_id,
-        {
-            "status": 'CONFIRMED',
-            "created_draft_ids": [item["_id"] for item in created],
-            "confirmed_at": now(),
-        },
-    )
+        if confirmed.matched_count != 1:
+            raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_CONFIRM_IN_PROGRESS"})
+    except Exception:
+        await test_design_repository.delete_created_import_drafts(job["project_id"], [item["_id"] for item in created])
+        await test_design_repository.reset_import(job_id, job["project_id"])
+        raise
     return envelope({"job_id": job_id, "drafts": created})
 
 

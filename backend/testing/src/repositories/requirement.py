@@ -297,10 +297,10 @@ class RequirementRepository:
         )
 
     async def activate_version(
-        self, requirement_id, version_id, status, tags, owner_id, updated_at
+        self, requirement_id, version_id, status, tags, owner_id, updated_at, expected_current_version_id
     ):
-        await database.value.requirements.update_one(
-            {"_id": requirement_id},
+        result = await database.value.requirements.update_one(
+            {"_id": requirement_id, "current_version_id": expected_current_version_id},
             {
                 "$set": {
                     "current_version_id": version_id,
@@ -311,6 +311,7 @@ class RequirementRepository:
                 }
             },
         )
+        return result.modified_count == 1
 
     async def list_versions(self, requirement_id, limit=500):
         return (

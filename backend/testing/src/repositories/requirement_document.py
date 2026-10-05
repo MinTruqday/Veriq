@@ -8,9 +8,9 @@ class RequirementDocumentRepository:
     def documents(self):
         return database.value.requirement_documents
 
-    async def find_by_hash(self, project_id, content_hash):
+    async def find_by_hash(self, project_id, content_hash, created_by):
         return await self.documents.find_one(
-            {"project_id": project_id, "content_hash": content_hash}
+            {"project_id": project_id, "content_hash": content_hash, "created_by": created_by}
         )
 
     async def find(self, document_id, project_id):

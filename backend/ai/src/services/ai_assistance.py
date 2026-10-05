@@ -6,10 +6,11 @@ from loguru import logger
 
 from src.core.infrastructure.configuration import settings
 from src.core.security.guardrails import guardrails_engine
-from src.prompts.testing import build_testing_prompt
+from src.prompts.testing import build_generated_cases_grounding_prompt, build_testing_prompt
 from src.runtime.output import normalize_narrative_payload
 from src.schemas.inference import (
     TestingAssistanceRequest,
+    GeneratedCasesGroundingReview,
     TestingAssistanceDegradedMode,
     TestingAssistanceResult,
     TestingAssistanceStatus,
@@ -58,22 +59,6 @@ def nested_values(value, key_name):
     return values
 
 
-def constrain_evidence_references(value, allowed_references):
-    if isinstance(value, dict):
-        return {
-            key: (
-                [reference for reference in item if str(reference) in allowed_references]
-                or list(allowed_references)
-                if key == "evidence_refs" and isinstance(item, list)
-                else constrain_evidence_references(item, allowed_references)
-            )
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [constrain_evidence_references(item, allowed_references) for item in value]
-    return value
-
-
 async def generate_ai_assistance(req: TestingAssistanceRequest):
     evidence = [
         {
@@ -89,7 +74,9 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
         evidence,
         compact=req.capability in {"project_question", "requirement_quality_analysis"},
     )
-    inspected = await guardrails_engine.async_inspect_input(source_text)
+    inspected = await guardrails_engine.async_inspect_input(
+        "\n".join(str(item.get("text", ""))[:4000] for item in evidence)
+    )
     if not inspected.get("is_safe", False):
         raise HTTPException(status_code=422, detail={"code": "qa_evidence_unsafe"})
     allowed_evidence_refs = evidence_reference_ids(evidence)
@@ -98,7 +85,7 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
         req.capability,
         req.project_id,
         req.instruction,
-        str(inspected.get("sanitized_text") or ""),
+        source_text,
         allowed_evidence_refs,
         schema,
     )
@@ -113,12 +100,11 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
         generated = await structured(
             prompt,
             schema,
+            max_tokens=4096,
             timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
             provider_schema=False,
         )
-        generated_data = constrain_evidence_references(
-            normalize_narrative_payload(generated.model_dump()), allowed_evidence_refs
-        )
+        generated_data = normalize_narrative_payload(generated.model_dump())
         generated_data["capability"] = req.capability
         generated_data.setdefault("confidence", 0)
         generated_data.setdefault("warnings", [])
@@ -127,6 +113,30 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
         )
         if unknown_refs:
             raise ValueError("AI_EVIDENCE_REF_UNKNOWN")
+        if req.capability == "test_generation" and generated_data.get("suggestions"):
+            cases = generated_data["suggestions"]
+            review = await structured(
+                build_generated_cases_grounding_prompt(evidence, cases),
+                GeneratedCasesGroundingReview,
+                max_tokens=4096,
+                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                provider_schema=False,
+            )
+            if [item.index for item in review.cases] != list(range(len(cases))):
+                raise ValueError("AI_GROUNDING_REVIEW_INVALID")
+            unsupported = [item for item in review.cases if item.unsupported_claims]
+            if unsupported:
+                logger.warning(
+                    "AI generated cases rejected as ungrounded count={} indices={}",
+                    len(unsupported),
+                    [item.index for item in unsupported],
+                )
+                rejected = {item.index for item in unsupported}
+                generated_data["suggestions"] = [
+                    case for index, case in enumerate(cases) if index not in rejected
+                ]
+                if not generated_data["suggestions"]:
+                    raise ValueError("AI_UNGROUNDED_OUTPUT")
         if req.capability == "test_condition_generation":
             generated_data["suggestions"] = generated_data.pop("condition_candidates")
         generated_data.update(
@@ -154,7 +164,11 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
             "ValidationError",
             "ValueError",
         }
-        failure_code = "AI_OUTPUT_INVALID" if output_invalid else "AI_PROVIDER_UNAVAILABLE"
+        failure_code = (
+            "AI_UNGROUNDED_OUTPUT"
+            if str(error) == "AI_UNGROUNDED_OUTPUT"
+            else "AI_OUTPUT_INVALID" if output_invalid else "AI_PROVIDER_UNAVAILABLE"
+        )
         degraded_mode = (
             TestingAssistanceDegradedMode.OUTPUT
             if output_invalid

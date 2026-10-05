@@ -9,6 +9,7 @@ export default function RequirementCurrentVersionPanel({
   selected,
   draft,
   members,
+  customFields,
   saveState,
   can,
   checkingWithAi,
@@ -271,6 +272,144 @@ export default function RequirementCurrentVersionPanel({
                 ))}
               </select>
             </div>
+            <details className="rounded-control border border-border p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                Thông tin theo loại yêu cầu
+              </summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {[
+                  ["user_story.actor", "Vai trò trong User Story"],
+                  ["user_story.goal", "Mục tiêu trong User Story"],
+                  ["user_story.value", "Giá trị trong User Story"],
+                  ["main_flow", "Luồng chính"],
+                  ["exception_flow", "Luồng ngoại lệ"],
+                  ["data_rules", "Dữ liệu và quy tắc"],
+                  ["integration", "Giao diện hoặc tích hợp"],
+                  ["quality_measure", "Thuộc tính chất lượng và mức đo"],
+                ].map(([key, label]) => {
+                  const [group, child] = key.split(".");
+                  const value = child ? draft.details?.[group]?.[child] : draft.details?.[key];
+                  return (
+                    <div className="space-y-2" key={key}>
+                      <label className="field-label block">
+                        {label}
+                        <textarea
+                          className="apple-input mt-2"
+                          rows={2}
+                          value={value || ""}
+                          onChange={(event) => {
+                            const nested = child
+                              ? { ...draft.details?.[group], [child]: event.target.value }
+                              : null;
+                            onDraftChange({
+                              details: child
+                                ? { ...draft.details, [group]: nested }
+                                : { ...draft.details, [key]: event.target.value },
+                              sectionStates: {
+                                ...draft.sectionStates,
+                                [key]: event.target.value.trim() ? "provided" : "missing",
+                                ...(child
+                                  ? {
+                                      [group]: Object.values(nested).some((item) =>
+                                        String(item).trim(),
+                                      )
+                                        ? "provided"
+                                        : "missing",
+                                    }
+                                  : {}),
+                              },
+                            });
+                          }}
+                        />
+                      </label>
+                      <select
+                        className="apple-input"
+                        aria-label={`Trạng thái ${label}`}
+                        value={draft.sectionStates?.[key] || ""}
+                        onChange={(event) => {
+                          const sectionStates = { ...draft.sectionStates };
+                          if (event.target.value) sectionStates[key] = event.target.value;
+                          else delete sectionStates[key];
+                          onDraftChange({ sectionStates });
+                        }}
+                      >
+                        <option value="">Chưa xác định</option>
+                        <option value="provided">Đã có</option>
+                        <option value="missing">Còn thiếu</option>
+                        <option value="not_applicable">Không áp dụng</option>
+                      </select>
+                    </div>
+                  );
+                })}
+                {customFields
+                  .filter(
+                    (field) =>
+                      !field.requirement_types?.length ||
+                      field.requirement_types.includes(draft.type),
+                  )
+                  .map((field) => (
+                    <label className="field-label" key={field.key}>
+                      {field.label}
+                      {field.value_type === "boolean" ? (
+                        <input
+                          className="ml-2"
+                          type="checkbox"
+                          checked={Boolean(draft.customValues?.[field.key])}
+                          onChange={(event) =>
+                            onDraftChange({
+                              customValues: {
+                                ...draft.customValues,
+                                [field.key]: event.target.checked,
+                              },
+                            })
+                          }
+                        />
+                      ) : field.value_type === "choice" ? (
+                        <select
+                          className="apple-input mt-2"
+                          value={draft.customValues?.[field.key] || ""}
+                          onChange={(event) =>
+                            onDraftChange({
+                              customValues: {
+                                ...draft.customValues,
+                                [field.key]: event.target.value,
+                              },
+                            })
+                          }
+                        >
+                          <option value="">Chưa chọn</option>
+                          {field.choices.map((choice) => (
+                            <option key={choice}>{choice}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className="apple-input mt-2"
+                          type={
+                            field.value_type === "number"
+                              ? "number"
+                              : field.value_type === "date"
+                                ? "date"
+                                : "text"
+                          }
+                          value={draft.customValues?.[field.key] ?? ""}
+                          onChange={(event) =>
+                            onDraftChange({
+                              customValues: {
+                                ...draft.customValues,
+                                [field.key]:
+                                  field.value_type === "number" && event.target.value !== ""
+                                    ? Number(event.target.value)
+                                    : event.target.value,
+                              },
+                            })
+                          }
+                        />
+                      )}
+                    </label>
+                  ))}
+              </div>
+            </details>
             <button className="secondary-button" type="button" onClick={saveDraft}>
               Lưu bản nháp
             </button>
@@ -292,6 +431,36 @@ export default function RequirementCurrentVersionPanel({
               label="Nội dung yêu cầu"
               readOnly
             />
+            {(Object.keys(current.details || {}).length > 0 ||
+              Object.keys(current.custom_values || {}).length > 0) && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {Object.entries(current.details || {}).map(([key, value]) => (
+                  <div className="rounded-control border border-border p-3" key={key}>
+                    <p className="field-label">{valueLabel(key)}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm">
+                      {key === "api_operations" && Array.isArray(value)
+                        ? value
+                            .map(
+                              (operation) =>
+                                `${operation.method} ${operation.path || operation.url_template}`,
+                            )
+                            .join("  ")
+                        : typeof value === "object"
+                          ? Object.values(value).filter(Boolean).join("  ")
+                          : value}
+                    </p>
+                  </div>
+                ))}
+                {Object.entries(current.custom_values || {}).map(([key, value]) => (
+                  <div className="rounded-control border border-border p-3" key={key}>
+                    <p className="field-label">
+                      {customFields.find((field) => field.key === key)?.label || key}
+                    </p>
+                    <p className="mt-1 text-sm">{String(value)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

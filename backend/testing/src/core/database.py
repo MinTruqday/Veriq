@@ -119,8 +119,29 @@ async def create_indexes():
     await db.project_members.create_index([("project_id", 1), ("user_id", 1)], unique=True)
     await db.project_members.create_index([("user_id", 1), ("status", 1)])
     await db.requirements.create_index([("project_id", 1), ("requirement_key", 1)], unique=True)
-    await ensure_unique_index(db.requirement_documents, [("project_id", 1), ("content_hash", 1)])
+    await ensure_unique_index(db.requirement_documents, [("project_id", 1), ("created_by", 1), ("content_hash", 1)])
+    indexes = await db.requirement_documents.list_indexes().to_list(length=1000)
+    for index in indexes:
+        if dict(index["key"]) == {"project_id": 1, "content_hash": 1} and index.get("unique"):
+            await db.requirement_documents.drop_index(index["name"])
     await db.requirement_documents.create_index([("project_id", 1), ("created_at", -1)])
+    await db.requirement_templates.create_index([("project_id", 1), ("updated_at", -1)])
+    await db.requirement_templates.create_index([("status", 1), ("updated_at", -1)])
+    await db.requirement_template_versions.create_index([("template_id", 1), ("version", -1)], unique=True)
+    await db.requirement_custom_fields.create_index([("project_id", 1), ("key", 1)], unique=True)
+    await db.import_jobs.update_many(
+        {"template_id": {"$exists": True}, "template_public_view": {"$exists": False}},
+        {"$set": {"template_public_view": False}},
+    )
+    await ensure_partial_unique_index(
+        db.import_jobs,
+        [("project_id", 1), ("template_id", 1), ("template_version", 1), ("template_public_view", 1)],
+        {"template_id": {"$exists": True}},
+    )
+    indexes = await db.import_jobs.list_indexes().to_list(length=1000)
+    for index in indexes:
+        if dict(index["key"]) == {"project_id": 1, "template_id": 1, "template_version": 1}:
+            await db.import_jobs.drop_index(index["name"])
     await db.requirement_versions.create_index([("requirement_id", 1), ("version", 1)], unique=True)
     await db.acceptance_criteria.create_index(
         [("requirement_version_id", 1), ("key", 1)], unique=True
@@ -141,8 +162,10 @@ async def create_indexes():
         [("project_id", 1), ("status", 1), ("updated_at", -1)]
     )
     await db.test_case_drafts.create_index([("project_id", 1), ("updated_at", -1)])
+    await db.test_case_drafts.create_index([("project_id", 1), ("requirement_version_ids", 1)])
     await db.test_cases.create_index([("project_id", 1), ("test_case_key", 1)], unique=True)
     await db.test_case_versions.create_index([("test_case_id", 1), ("version", 1)], unique=True)
+    await db.test_case_versions.create_index([("project_id", 1), ("requirement_version_ids", 1)])
     await db.trace_links.create_index([("project_id", 1), ("source_type", 1), ("source_id", 1)])
     await db.trace_links.create_index([("project_id", 1), ("target_type", 1), ("target_id", 1)])
     await db.trace_links.create_index(

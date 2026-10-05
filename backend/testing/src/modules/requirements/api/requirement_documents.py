@@ -15,6 +15,7 @@ from src.schemas.contracts.requirements import (
     RequirementExtractionInput,
     RequirementParseRetry,
 )
+from src.schemas.contracts.common import KnowledgeSourceType
 from src.modules.requirements.services.requirement_documents import (
     archive_requirement_document_record,
     create_requirement_document_record,
@@ -58,6 +59,7 @@ async def upload_requirement_document(
     visibility: str = Form(default="private"),
     shared_with: str = Form(default="[]"),
     ai_enabled: bool = Form(default=False),
+    source_type: KnowledgeSourceType = Form(default="REFERENCE"),
     file: UploadFile = File(),
     user: CurrentUser = Depends(get_current_user),
 ):
@@ -84,6 +86,7 @@ async def upload_requirement_document(
         visibility,
         recipients,
         ai_enabled,
+        source_type,
     )
     return envelope(
         result.data,

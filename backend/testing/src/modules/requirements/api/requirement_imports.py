@@ -9,17 +9,21 @@ from src.schemas.contracts.requirements import (
     RequirementCandidateRejectInput,
     RequirementCandidateSplitInput,
     RequirementImportReview,
+    RequirementImportResolution,
 )
 from src.modules.requirements.services.requirement_import import (
     extract_file_content,
     supported_requirement_formats,
 )
 from src.modules.requirements.services.requirement_import_workflow import (
+    authorize_requirement_import_job,
+    compare_requirement_import_job,
     confirm_requirement_import_job,
     create_requirement_import_job,
     merge_requirement_import_candidates,
     reject_requirement_import_candidate,
     review_requirement_import_job,
+    resolve_requirement_import_candidate,
     split_requirement_import_candidate,
 )
 
@@ -62,7 +66,16 @@ async def get_requirement_import(job_id: str, user: CurrentUser = Depends(get_cu
     job = await get_project_entity(
         "import_jobs", job_id, user, "requirement_document.review_extraction"
     )
+    await authorize_requirement_import_job(job, user)
     return envelope(job, revision=job.get("revision", 1))
+
+
+@router.get("/nhap-yeu-cau/{job_id}/doi-chieu")
+async def compare_requirement_import(job_id: str, user: CurrentUser = Depends(get_current_user)):
+    job = await get_project_entity(
+        "import_jobs", job_id, user, "requirement_document.review_extraction"
+    )
+    return envelope(await compare_requirement_import_job(job, user), revision=job["revision"])
 
 
 @router.patch("/nhap-yeu-cau/{job_id}")
@@ -102,6 +115,17 @@ async def reject_requirement_candidate(
     user: CurrentUser = Depends(get_current_user),
 ):
     updated = await reject_requirement_import_candidate(job_id, candidate_id, payload, user)
+    return envelope(updated, revision=updated["revision"])
+
+
+@router.post("/nhap-yeu-cau/{job_id}/ung-vien/{candidate_id}/doi-chieu")
+async def resolve_requirement_candidate(
+    job_id: str,
+    candidate_id: str,
+    payload: RequirementImportResolution,
+    user: CurrentUser = Depends(get_current_user),
+):
+    updated = await resolve_requirement_import_candidate(job_id, candidate_id, payload, user)
     return envelope(updated, revision=updated["revision"])
 
 

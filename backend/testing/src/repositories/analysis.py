@@ -68,6 +68,11 @@ class AnalysisRepository:
             {"project_id": project_id, "status": active_status}
         ).to_list(limit)
 
+    async def list_related_active_test_case_versions(self, project_id, version_id, limit):
+        return await database.value.test_case_versions.find(
+            {"project_id": project_id, "status": "ACTIVE", "requirement_version_ids": version_id}
+        ).to_list(limit)
+
     async def list_active_defects(self, project_id, excluded_statuses, limit=2000):
         return await database.value.defects.find(
             {"project_id": project_id, "status": {"$nin": list(excluded_statuses)}}

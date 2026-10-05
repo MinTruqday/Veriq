@@ -63,11 +63,60 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  confirmRequirementImport: (id, selectedIndexes, expectedRevision) =>
+  listRequirementTemplates: (id) => testingRequest(`/du-an/${id}/mau-yeu-cau`),
+  createRequirementTemplate: (id, payload) =>
+    testingRequest(`/du-an/${id}/mau-yeu-cau`, { method: "POST", body: JSON.stringify(payload) }),
+  updateRequirementTemplate: (id, templateId, payload) =>
+    testingRequest(`/du-an/${id}/mau-yeu-cau/${templateId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  synthesizeRequirementTemplate: (id, payload) =>
+    testingRequest(`/du-an/${id}/mau-yeu-cau/tong-hop`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  previewRequirementTemplate: (id, templateId) =>
+    testingRequest(`/du-an/${id}/mau-yeu-cau/${templateId}/xem-truoc`, { method: "POST" }),
+  reviewRequirementTemplate: (id, templateId) =>
+    testingStreamRequest(`/du-an/${id}/mau-yeu-cau/${templateId}/ai/kiem-tra`, { method: "POST" }),
+  listRequirementFields: (id) => testingRequest(`/du-an/${id}/truong-yeu-cau`),
+  createRequirementField: (id, payload) =>
+    testingRequest(`/du-an/${id}/truong-yeu-cau`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  requestRequirementTemplatePublication: (id, templateId, payload) =>
+    testingRequest(`/du-an/${id}/mau-yeu-cau/${templateId}/de-nghi-phat-hanh`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  consentRequirementTemplatePublication: (id, templateId, payload) =>
+    testingRequest(`/du-an/${id}/mau-yeu-cau/${templateId}/dong-y`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  approveRequirementTemplatePublication: (id, templateId) =>
+    testingRequest(`/du-an/${id}/mau-yeu-cau/${templateId}/duyet-phat-hanh`, { method: "POST" }),
+  compareRequirementImport: (id) => testingRequest(`/nhap-yeu-cau/${id}/doi-chieu`),
+  resolveRequirementImportCandidate: (id, candidateId, payload) =>
+    testingRequest(`/nhap-yeu-cau/${id}/ung-vien/${candidateId}/doi-chieu`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  confirmRequirementImport: (
+    id,
+    selectedIndexes,
+    expectedRevision,
+    separateIndexes = [],
+    separateReasons = {},
+  ) =>
     testingRequest(`/nhap-yeu-cau/${id}/xac-nhan`, {
       method: "POST",
       body: JSON.stringify({
         selected_indexes: selectedIndexes,
+        separate_indexes: separateIndexes,
+        separate_reasons: separateReasons,
         expected_revision: expectedRevision,
       }),
     }),
@@ -109,6 +158,7 @@ export const designTestingApi = {
     body.append("visibility", access.visibility || "private");
     body.append("shared_with", JSON.stringify(access.shared_with || []));
     body.append("ai_enabled", String(Boolean(access.ai_enabled)));
+    body.append("source_type", access.source_type || "REFERENCE");
     return testingRequest(`/du-an/${id}/tai-lieu-yeu-cau/tai-len`, { method: "POST", body });
   },
   listRequirementDocuments: (id, query = "") =>
@@ -329,6 +379,11 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  recommendTestTechniques: (versionId, payload = {}) =>
+    testingStreamRequest(`/phien-ban-yeu-cau/${versionId}/ai/de-xuat-ky-thuat`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   generateProjectTestCases: (projectId, payload) =>
     testingStreamRequest(`/du-an/${projectId}/ca-kiem-thu/sinh`, {
       method: "POST",
@@ -342,10 +397,10 @@ export const designTestingApi = {
     body.append("file", file);
     return testingRequest(`/du-an/${id}/nhap-ca-kiem-thu/tai-len`, { method: "POST", body });
   },
-  confirmTestImport: (id, selectedIndexes) =>
+  confirmTestImport: (id, payload) =>
     testingRequest(`/nhap-ca-kiem-thu/${id}/xac-nhan`, {
       method: "POST",
-      body: JSON.stringify({ selected_indexes: selectedIndexes }),
+      body: JSON.stringify(payload),
     }),
   exportTestCases: (id, format = "csv") =>
     downloadTestingFile(

@@ -44,6 +44,25 @@ class RequirementCreate(BaseModel):
     source_refs: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     tags: list[str] = Field(default_factory=list, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
+    details: dict[str, Any] = Field(default_factory=dict)
+    section_states: dict[str, Literal["provided", "missing", "not_applicable"]] = Field(default_factory=dict)
+    custom_values: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_section_states(self):
+        for key, state in self.section_states.items():
+            if key in type(self).model_fields and key not in {"details", "section_states"}:
+                value = getattr(self, key)
+            else:
+                value = self.details
+                for part in key.split("."):
+                    value = value.get(part) if isinstance(value, dict) else None
+            present = any(bool(item) for item in value.values()) if isinstance(value, dict) else bool(value)
+            if state == "provided" and not present:
+                raise ValueError(f"Section {key} is marked provided without content")
+            if state in ("missing", "not_applicable") and present:
+                raise ValueError(f"Section {key} conflicts with its content")
+        return self
 
 
 class RequirementDraftPatch(BaseModel):
@@ -61,6 +80,65 @@ class RequirementDraftPatch(BaseModel):
     source_refs: list[dict[str, Any]] | None = Field(default=None, max_length=200)
     tags: list[str] | None = Field(default=None, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
+    details: dict[str, Any] | None = None
+    section_states: dict[str, Literal["provided", "missing", "not_applicable"]] | None = None
+    custom_values: dict[str, Any] | None = None
+
+
+class RequirementCustomFieldCreate(BaseModel):
+    key: str = Field(min_length=2, max_length=80, pattern=r"^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=2, max_length=200)
+    value_type: Literal["text", "number", "boolean", "date", "choice"]
+    required: bool = False
+    choices: list[str] = Field(default_factory=list, max_length=100)
+    requirement_types: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_choices(self):
+        if self.value_type == "choice" and not self.choices:
+            raise ValueError("Choice field needs options")
+        if self.value_type != "choice" and self.choices:
+            raise ValueError("Only choice fields may define options")
+        return self
+
+
+class RequirementTemplateCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    description: str = Field(default="", max_length=2000)
+    product_types: list[Literal["web", "mobile", "api", "desktop", "embedded", "other"]] = Field(min_length=1, max_length=6)
+    context: dict[str, Any] = Field(default_factory=dict)
+    requirements: list[RequirementCreate] = Field(default_factory=list, max_length=100)
+    source_document_ids: list[str] = Field(default_factory=list, max_length=100)
+    source_template_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+class RequirementTemplateUpdate(RequirementTemplateCreate):
+    expected_version: int = Field(ge=1)
+    conflict_resolutions: list[str] = Field(default_factory=list, max_length=100)
+
+
+class RequirementTemplateSynthesis(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    product_types: list[Literal["web", "mobile", "api", "desktop", "embedded", "other"]] = Field(min_length=1, max_length=6)
+    source_document_ids: list[str] = Field(default_factory=list, max_length=100)
+    source_template_ids: list[str] = Field(default_factory=list, max_length=20)
+    instruction: str = Field(default="", max_length=3000)
+
+    @model_validator(mode="after")
+    def require_source(self):
+        if not self.source_document_ids and not self.source_template_ids:
+            raise ValueError("At least one source is required")
+        return self
+
+
+class RequirementTemplatePublish(BaseModel):
+    expected_version: int = Field(ge=1)
+    public_template: RequirementTemplateCreate
+
+
+class RequirementTemplateConsent(BaseModel):
+    document_id: str = Field(min_length=1, max_length=200)
+    approved: bool
 
 
 class RequirementAIAnalysisInput(BaseModel):
@@ -137,6 +215,7 @@ class ImportCreate(BaseModel):
     visibility: Literal["private", "project", "shared"] = "private"
     shared_with: list[str] = Field(default_factory=list, max_length=100)
     ai_enabled: bool = False
+    source_type: KnowledgeSourceType = "REFERENCE"
 
     @model_validator(mode="after")
     def validate_access(self):
@@ -260,7 +339,18 @@ class ReviewCommentPatch(BaseModel):
 
 class ImportConfirm(BaseModel):
     selected_indexes: list[int] = Field(default_factory=list, max_length=2000)
+    separate_indexes: list[int] = Field(default_factory=list, max_length=2000)
+    separate_reasons: dict[int, str] = Field(default_factory=dict)
+    accept_incomplete: bool = False
     expected_revision: int | None = Field(default=None, ge=1)
+
+
+class RequirementImportResolution(BaseModel):
+    expected_revision: int = Field(ge=1)
+    target_requirement_id: str = Field(min_length=1, max_length=200)
+    expected_target_version_id: str = Field(min_length=1, max_length=200)
+    action: Literal["link_source", "create_version"]
+    reason: str = Field(min_length=2, max_length=2000)
 
 
 class APIArtifactReview(BaseModel):
@@ -288,7 +378,6 @@ class RequirementCandidateReview(RequirementCreate):
     candidate_id: str | None = Field(default=None, max_length=200)
     candidate_status: RequirementCandidateStatus = RequirementCandidateStatus.ACTIVE
     candidate_revision: int = Field(default=1, ge=1)
-    extraction_confidence: float = Field(default=1, ge=0, le=1)
     candidate_relation: str | None = Field(default=None, max_length=80)
     parent_candidate_ids: list[str] = Field(default_factory=list, max_length=500)
 

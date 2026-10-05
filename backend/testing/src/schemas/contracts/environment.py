@@ -192,9 +192,9 @@ class PerformancePlanDraftInput(BaseModel):
     workload_types: list[Literal["baseline", "load", "stress", "spike", "soak"]] = Field(
         default_factory=lambda: ["baseline", "load", "stress"], min_length=1, max_length=5
     )
-    target_virtual_users: int = Field(default=100, ge=1, le=1000000)
+    target_virtual_users: int = Field(ge=1, le=1000000)
     target_requests_per_second: float | None = Field(default=None, gt=0, le=1000000)
-    duration_minutes: int = Field(default=30, ge=1, le=10080)
+    duration_minutes: int = Field(ge=1, le=10080)
     response_time_p95_ms: int | None = Field(default=None, ge=1, le=3600000)
     maximum_error_rate: float | None = Field(default=None, ge=0, le=1)
     context: str = Field(default="", max_length=5000)

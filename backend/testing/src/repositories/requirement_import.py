@@ -4,6 +4,14 @@ from src.core.database import database
 
 
 class RequirementImportRepository:
+    async def find_source_document(self, document_id, project_id):
+        return await database.value.requirement_documents.find_one(
+            {"_id": document_id, "project_id": project_id}
+        )
+    async def find_by_template_version(self, project_id, template_id, version, public_view=False):
+        return await database.value.import_jobs.find_one(
+            {"project_id": project_id, "template_id": template_id, "template_version": version, "template_public_view": public_view}
+        )
     async def find_by_source_document(self, document_id):
         return await database.value.import_jobs.find_one(
             {"source_document_id": document_id}
@@ -13,6 +21,40 @@ class RequirementImportRepository:
         return await database.value.import_jobs.find_one(
             {"_id": job_id, "project_id": project_id}
         )
+
+    async def list_current_requirements(self, project_id):
+        requirements = await database.value.requirements.find(
+            {"project_id": project_id},
+            {"_id": 1, "requirement_key": 1, "current_version_id": 1, "status": 1},
+        ).to_list(20001)
+        if len(requirements) > 20000:
+            return requirements, {}
+        versions = await database.value.requirement_versions.find(
+            {"project_id": project_id, "_id": {"$in": [item["current_version_id"] for item in requirements]}}
+        ).to_list(len(requirements))
+        return requirements, {item["_id"]: item for item in versions}
+
+    async def find_current_version(self, project_id, version_id):
+        return await database.value.requirement_versions.find_one(
+            {"project_id": project_id, "_id": version_id}
+        )
+
+    async def list_linked_test_cases(self, project_id, version_ids):
+        versions = await database.value.test_case_versions.find(
+            {"project_id": project_id, "requirement_version_ids": {"$in": version_ids}},
+            {"_id": 1, "test_case_id": 1, "requirement_version_ids": 1},
+        ).to_list(20001)
+        if len(versions) > 20000:
+            return [], versions
+        cases = await database.value.test_cases.find(
+            {
+                "project_id": project_id,
+                "_id": {"$in": list({item["test_case_id"] for item in versions})},
+                "status": {"$ne": "OBSOLETE"},
+            },
+            {"_id": 1, "test_case_key": 1, "current_version_id": 1},
+        ).to_list(len(versions))
+        return cases, versions
 
     async def insert(self, job):
         await database.value.import_jobs.insert_one(job)
@@ -65,6 +107,27 @@ class RequirementImportRepository:
                 "revision": revision,
             },
             update,
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def finish_resolution(self, job_id, project_id, revision, preview, resolution, updated_at):
+        return await database.value.import_jobs.find_one_and_update(
+            {
+                "_id": job_id,
+                "project_id": project_id,
+                "status": "RESOLVING",
+                "revision": revision,
+            },
+            {
+                "$set": {
+                    "status": "PREVIEW_READY" if preview else "CONFIRMED",
+                    "preview": preview,
+                    "candidate_count": len(preview),
+                    "updated_at": updated_at,
+                },
+                "$push": {"resolutions": resolution},
+                "$inc": {"revision": 1},
+            },
             return_document=ReturnDocument.AFTER,
         )
 

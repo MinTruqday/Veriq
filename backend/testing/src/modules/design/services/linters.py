@@ -92,6 +92,26 @@ def duplicate_score(left, right):
     left_text = _test_projection(left)
     right_text = _test_projection(right)
     lexical = SequenceMatcher(None, left_text, right_text).ratio()
+    left_data = [left.get("test_data") or {}, *(step.get("test_data") or {} for step in left.get("steps", []))]
+    right_data = [right.get("test_data") or {}, *(step.get("test_data") or {} for step in right.get("steps", []))]
+    if any(left_data) and any(right_data) and left_data != right_data:
+        return 0, ["Dữ liệu kiểm thử khác nhau"]
+    left_actions = " ".join(plain_text(step.get("action_doc", {})) for step in left.get("steps", []))
+    right_actions = " ".join(plain_text(step.get("action_doc", {})) for step in right.get("steps", []))
+    left_values = set(re.findall(r"\d+(?:[.,]\d+)?", left_actions))
+    right_values = set(re.findall(r"\d+(?:[.,]\d+)?", right_actions))
+    if left_values and right_values and left_values != right_values:
+        return 0, ["Giá trị đầu vào khác nhau"]
+    left_outcome = " ".join(" ".join([
+        *(plain_text(step.get("expected_doc", {})) for step in left.get("steps", [])),
+        plain_text(left.get("expected_result_doc", {})),
+    ]).lower().split())
+    right_outcome = " ".join(" ".join([
+        *(plain_text(step.get("expected_doc", {})) for step in right.get("steps", [])),
+        plain_text(right.get("expected_result_doc", {})),
+    ]).lower().split())
+    if not left_outcome or not right_outcome or left_outcome != right_outcome:
+        return 0, ["Kết quả mong đợi không trùng khớp"]
     left_links = set(left.get("requirement_version_ids", [])) | set(
         left.get("acceptance_criterion_ids", [])
     )

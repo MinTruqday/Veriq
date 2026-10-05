@@ -80,6 +80,7 @@ export async function testingStreamRequest(path, options = {}) {
     const error = new Error(messageOf(body, "Không thể hoàn tất yêu cầu AI"));
     error.status = response.status;
     error.code = body?.error?.code || body?.detail?.code;
+    error.details = body?.error?.details || body?.detail?.details;
     notify("failed");
     throw error;
   }
@@ -107,6 +108,7 @@ export async function testingStreamRequest(path, options = {}) {
       const error = new Error(messageOf(body, event.code || "Không thể hoàn tất yêu cầu AI"));
       error.status = event.status || response.status;
       error.code = body?.error?.code || body?.detail?.code || event.code;
+      error.details = body?.error?.details || body?.detail?.details;
       throw error;
     }
   };

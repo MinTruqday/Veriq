@@ -179,7 +179,7 @@ async def prepare_requirement_output(
             for requirement, version in sources
         ]
     )
-    await validate_requirement_sources(project_id, source_refs)
+    await validate_requirement_sources(project_id, source_refs, user)
     timestamp = now()
     requirement_id = f"{transformation['_id']}-{'REQ'}-{index + 1}"
     version_id = f"{transformation['_id']}-{'REQV'}-{index + 1}"

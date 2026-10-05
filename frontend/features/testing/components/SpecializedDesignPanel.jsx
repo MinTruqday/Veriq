@@ -16,11 +16,11 @@ export default function SpecializedDesignPanel({ project, requirements }) {
   const [performance, setPerformance] = useState({
     name: "",
     objective: "",
-    targetVirtualUsers: 100,
-    targetRequestsPerSecond: 50,
-    durationMinutes: 30,
-    responseTimeP95Ms: 800,
-    maximumErrorRate: 0.01,
+    targetVirtualUsers: "",
+    targetRequestsPerSecond: "",
+    durationMinutes: "",
+    responseTimeP95Ms: "",
+    maximumErrorRate: "",
   });
   const [error, setError] = useState("");
   const [aiAction, setAiAction] = useState("");
@@ -84,14 +84,28 @@ export default function SpecializedDesignPanel({ project, requirements }) {
         requirement_version_ids: requirementVersionIds,
         workload_types: ["baseline", "load", "stress", "spike", "soak"],
         target_virtual_users: Number(performance.targetVirtualUsers),
-        target_requests_per_second: Number(performance.targetRequestsPerSecond),
+        target_requests_per_second: performance.targetRequestsPerSecond
+          ? Number(performance.targetRequestsPerSecond)
+          : null,
         duration_minutes: Number(performance.durationMinutes),
-        response_time_p95_ms: Number(performance.responseTimeP95Ms),
-        maximum_error_rate: Number(performance.maximumErrorRate),
+        response_time_p95_ms: performance.responseTimeP95Ms
+          ? Number(performance.responseTimeP95Ms)
+          : null,
+        maximum_error_rate: performance.maximumErrorRate
+          ? Number(performance.maximumErrorRate)
+          : null,
         context: "",
         idempotency_key: crypto.randomUUID(),
       });
-      setPerformance((current) => ({ ...current, name: "", objective: "" }));
+      setPerformance({
+        name: "",
+        objective: "",
+        targetVirtualUsers: "",
+        targetRequestsPerSecond: "",
+        durationMinutes: "",
+        responseTimeP95Ms: "",
+        maximumErrorRate: "",
+      });
       await load();
     } catch (reason) {
       setError(messageOf(reason));
@@ -213,6 +227,7 @@ export default function SpecializedDesignPanel({ project, requirements }) {
                   aria-label="Số người dùng ảo mục tiêu"
                   className="apple-input"
                   min="1"
+                  required
                   type="number"
                   value={performance.targetVirtualUsers}
                   onChange={(event) =>
@@ -237,6 +252,7 @@ export default function SpecializedDesignPanel({ project, requirements }) {
                   aria-label="Thời lượng kiểm thử phút"
                   className="apple-input"
                   min="1"
+                  required
                   type="number"
                   value={performance.durationMinutes}
                   onChange={(event) =>

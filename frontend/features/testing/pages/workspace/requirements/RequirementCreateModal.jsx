@@ -11,6 +11,7 @@ export default function RequirementCreateModal({
   form,
   setForm,
   members,
+  customFields,
   saving,
   onSubmit,
 }) {
@@ -150,6 +151,68 @@ export default function RequirementCreateModal({
             </select>
           </label>
         </div>
+        {customFields
+          .filter(
+            (field) =>
+              !field.requirement_types?.length || field.requirement_types.includes(form.type),
+          )
+          .map((field) => (
+            <label className="field-label block" key={field.key}>
+              {field.label}
+              {field.value_type === "boolean" ? (
+                <input
+                  className="ml-2"
+                  type="checkbox"
+                  checked={Boolean(form.customValues?.[field.key])}
+                  onChange={(event) =>
+                    updateForm({
+                      customValues: { ...form.customValues, [field.key]: event.target.checked },
+                    })
+                  }
+                />
+              ) : field.value_type === "choice" ? (
+                <select
+                  className="apple-input mt-2"
+                  required={field.required}
+                  value={form.customValues?.[field.key] || ""}
+                  onChange={(event) =>
+                    updateForm({
+                      customValues: { ...form.customValues, [field.key]: event.target.value },
+                    })
+                  }
+                >
+                  <option value="">Chưa chọn</option>
+                  {field.choices.map((choice) => (
+                    <option key={choice}>{choice}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="apple-input mt-2"
+                  required={field.required}
+                  type={
+                    field.value_type === "number"
+                      ? "number"
+                      : field.value_type === "date"
+                        ? "date"
+                        : "text"
+                  }
+                  value={form.customValues?.[field.key] ?? ""}
+                  onChange={(event) =>
+                    updateForm({
+                      customValues: {
+                        ...form.customValues,
+                        [field.key]:
+                          field.value_type === "number" && event.target.value !== ""
+                            ? Number(event.target.value)
+                            : event.target.value,
+                      },
+                    })
+                  }
+                />
+              )}
+            </label>
+          ))}
         <div className="flex justify-end gap-3">
           <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
             Hủy
