@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.agents.supervisor.graph import canonical_workflow
+from src.agents.runner.graph import canonical_workflow
 from src.core.dependency import get_current_user, oauth2_scheme
 from src.memory.long_term import long_term_memory
 from src.memory.short_term import run_store
@@ -12,9 +12,26 @@ from src.services.agent_metrics import agentops
 from src.services.inference import model_metadata
 from src.services.project_access import project_access
 from src.services.token_accounting import current_usage, start_accounting
+from src.tools.registry import registered_tools, tool_access
 
 
 router = APIRouter(prefix="/tac-tu", tags=["Tác tử kiểm thử"])
+
+
+@router.get("/du-an/{project_id}/nang-luc")
+async def list_agent_capabilities(
+    project_id: str,
+    token: str = Depends(oauth2_scheme),
+    user: CurrentUser = Depends(get_current_user),
+):
+    _, permissions = await project_access(project_id, token)
+    capabilities = []
+    for tool in registered_tools().values():
+        access = tool_access(tool)
+        if not access or access.permission not in permissions or not tool.metadata.get("user_selectable"):
+            continue
+        capabilities.append({"name": access.name, "label": tool.metadata.get("label", access.name)})
+    return sorted(capabilities, key=lambda item: item["label"])
 
 
 @router.post("/luot-chay", status_code=201)

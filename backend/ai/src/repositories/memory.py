@@ -7,9 +7,13 @@ class MemoryRepository:
     def _database(self):
         return database.mongodb[settings.AI_DB_NAME]
 
-    async def list_long_term(self, project_id, limit):
+    async def list_long_term(self, project_id, requester_id, limit):
         return await self._database.long_term_memory.find(
-            {"project_id": project_id, "trusted": True}
+            {
+                "project_id": project_id,
+                "trusted": True,
+                "owner_id": requester_id,
+            }
         ).sort("created_at", -1).to_list(length=limit)
 
     async def record_long_term(self, run_id, value):

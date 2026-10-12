@@ -165,7 +165,7 @@ class AnalyticsService:
                 source_query["status"] = {"$ne": 'ARCHIVED'}
                 if not user.is_system_admin:
                     source_query["$and"] = [
-                        source_query.pop("$or"),
+                        {"$or": source_query.pop("$or")},
                         {
                             "$or": [
                                 {"created_by": user.id},

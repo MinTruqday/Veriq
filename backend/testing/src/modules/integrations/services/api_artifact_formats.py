@@ -115,12 +115,12 @@ def parse_postman(value):
     operations = []
     variable_names = [
         item.get("key")
-        for item in value.get("variable", [])
+        for item in value.get("variable") or []
         if item.get("key") and not secret_pattern().search(item.get("key", ""))
     ]
 
     def walk(nodes, folder=""):
-        for node in nodes:
+        for node in nodes or []:
             if "item" in node:
                 walk(node["item"], "/".join(filter(None, [folder, node.get("name", "")])))
                 continue
@@ -140,11 +140,18 @@ def parse_postman(value):
                     "method": request.get("method", "GET").upper(),
                     "header_names": [
                         item.get("key")
-                        for item in request.get("header", [])
+                        for item in request.get("header") or []
                         if item.get("key") and not secret_pattern().search(item.get("key", ""))
                     ],
                     "body": sanitize(request.get("body", {})),
-                    "script_events": [item.get("listen") for item in node.get("event", [])],
+                    "responses": {
+                        str(response["code"]): {"name": response.get("name", "")}
+                        for response in node.get("response") or []
+                        if isinstance(response, dict)
+                        and isinstance(response.get("code"), int)
+                        and 100 <= response["code"] <= 599
+                    },
+                    "script_events": [item.get("listen") for item in node.get("event") or []],
                     "variable_names": variable_names,
                 }
             )
@@ -154,68 +161,41 @@ def parse_postman(value):
 
 
 def api_case_blueprints(operation):
-    responses = operation.get("responses", {})
-    response_codes = list(responses)
-    success = next(
-        (code for code in response_codes if str(code).startswith("2")), "2xx theo đặc tả"
-    )
-    cases = [
-        {
-            "category": "success",
-            "title": f"{operation['method']} {operation['path']} thành công",
-            "action": "Gửi request hợp lệ theo schema",
-            "test_data": {},
-            "expected": f"Response {success} và schema đúng đặc tả",
-        }
-    ]
-    parameter_names = [
-        item.get("name") for item in operation.get("parameters", []) if item.get("required")
-    ]
-    if parameter_names:
-        cases.append(
-            {
-                "category": "required_missing",
-                "title": f"Thiếu trường bắt buộc {parameter_names[0]}",
-                "action": f"Gửi request không có {parameter_names[0]}",
-                "test_data": {"missing": parameter_names[0]},
-                "expected": expected_error(responses, ["400", "422"], "lỗi validation theo đặc tả"),
-            }
-        )
-    for category, candidates, action in [
-        ("auth", ["401"], "Gửi request không có thông tin xác thực"),
-        ("forbidden", ["403"], "Gửi request với quyền không đủ"),
-        ("not_found", ["404"], "Gửi request tới tài nguyên không tồn tại"),
-        ("conflict", ["409"], "Gửi request gây xung đột trạng thái"),
-        ("schema_mismatch", ["400", "422"], "Gửi request sai kiểu dữ liệu"),
-    ]:
-        matched = next((code for code in candidates if code in responses), None)
-        if matched:
-            cases.append(
-                {
-                    "category": category,
-                    "title": f"{operation['method']} {operation['path']} {category}",
-                    "action": action,
-                    "test_data": {},
-                    "expected": f"Response {matched} và schema đúng đặc tả",
-                }
-            )
+    responses = operation.get("responses") or {}
+    if not isinstance(responses, dict):
+        return []
+    cases = []
+    for code, response in responses.items():
+        status = str(code).strip()
+        if not status.isdigit() or not 100 <= int(status) <= 599:
+            continue
+        detail = response if isinstance(response, dict) else {}
+        description = str(detail.get("description") or detail.get("name") or "").strip()
+        cases.append({
+            "response_code": status,
+            "title": f"{operation['method']} {operation['path']} phản hồi {status}",
+            "expected": f"HTTP {status} {description}".strip(),
+        })
     return cases
 
 
-def expected_error(responses, candidates, fallback):
-    code = next((value for value in candidates if value in responses), None)
-    return f"Response {code} và schema đúng đặc tả" if code else fallback
-
-
-def sanitize(value):
+def sanitize(value, sensitive_context=False):
     if isinstance(value, dict):
-        return {
-            key: sanitize(item)
-            for key, item in value.items()
-            if not secret_pattern().search(str(key))
-        }
+        result = {}
+        for key, item in value.items():
+            key_text = str(key)
+            key_sensitive = bool(secret_pattern().search(key_text))
+            if sensitive_context and key_text.lower() in {
+                "value", "example", "examples", "default", "enum", "const"
+            }:
+                result[key] = '{{VERIQ_SECRET_VALUE}}'
+            elif key_sensitive and not isinstance(item, (dict, list)):
+                result[key] = '{{VERIQ_SECRET_VALUE}}'
+            else:
+                result[key] = sanitize(item, sensitive_context or key_sensitive)
+        return result
     if isinstance(value, list):
-        return [sanitize(item) for item in value]
+        return [sanitize(item, sensitive_context) for item in value]
     return value
 
 

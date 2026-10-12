@@ -4,7 +4,7 @@ from fastapi import HTTPException
 
 from src.core.common import get_project
 from src.repositories.requirement_analysis import requirement_analysis_repository
-from src.modules.quality.services.quality_policy import evaluate_rules
+from src.modules.design.services.linters import evaluate_rules
 
 def basis_text(value):
     for field in ['plain_text_projection', 'plain_text', 'normalized_content', 'description', 'title', 'name']:
@@ -13,7 +13,9 @@ def basis_text(value):
     return ""
 
 
-async def resolve_basis(project_id, refs):
+async def resolve_basis(project_id, refs, user):
+    from src.modules.requirements.services.requirement_documents import require_document_access
+
     snapshots = []
     seen = set()
     for ref in refs:
@@ -49,6 +51,8 @@ async def resolve_basis(project_id, refs):
                     "artifact_id": identifier,
                 },
             )
+        if collection == "requirement_documents":
+            await require_document_access(value, user, "requirement_document.read")
         text = basis_text(value)
         if ref.artifact_type == 'REQUIREMENT_VERSION':
             criteria = await requirement_analysis_repository.list_acceptance_criteria(
@@ -96,6 +100,16 @@ async def list_test_basis(project_id, user, artifact_type="", query_text="", lim
                 {"title": pattern},
                 {"name": pattern},
                 {"plain_text_projection": pattern},
+            ]
+        if collection_name == "requirement_documents" and not user.is_system_admin:
+            query["$and"] = [
+                {
+                    "$or": [
+                        {"created_by": user.id},
+                        {"visibility": "project"},
+                        {"visibility": "shared", "shared_with": user.id},
+                    ]
+                }
             ]
         values = await requirement_analysis_repository.list_basis(
             collection_name, query, limit

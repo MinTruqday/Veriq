@@ -1,22 +1,8 @@
 import hashlib
 from bson.json_util import dumps as bson_dumps
 from fastapi import HTTPException
-from src.repositories.execution_policy import execution_policy_repository
+from src.repositories.execution_state import execution_state_repository
 
-
-
-FROZEN_RUN_SCOPE_FIELDS = tuple(['test_plan_id',
- 'test_suite_ids',
- 'test_case_version_ids',
- 'environment',
- 'environment_id',
- 'release',
- 'release_id',
- 'build',
- 'build_id',
- 'device_matrix_id',
- 'device_profile_keys',
- 'device_matrix_snapshot'])
 def defect_transitions():
     return {"NEW": {"CONFIRMED", "DUPLICATE", "REJECTED"}, "CONFIRMED": {"DUPLICATE", "IN_PROGRESS", "REJECTED"}, "IN_PROGRESS": {"RESOLVED"}, "RESOLVED": {"READY_FOR_RETEST", "REOPENED"}, "READY_FOR_RETEST": set(), "REOPENED": {"IN_PROGRESS", "RESOLVED"}, "CLOSED": {"REOPENED"}, "REJECTED": {"REOPENED"}, "DUPLICATE": {"REOPENED"}}
 
@@ -26,7 +12,23 @@ def execution_transitions():
 
 
 def frozen_run_scope(run):
-    return {field: run.get(field) for field in FROZEN_RUN_SCOPE_FIELDS}
+    return {
+        field: run.get(field)
+        for field in (
+            'test_plan_id',
+            'test_suite_ids',
+            'test_case_version_ids',
+            'environment',
+            'environment_id',
+            'release',
+            'release_id',
+            'build',
+            'build_id',
+            'device_matrix_id',
+            'device_profile_keys',
+            'device_matrix_snapshot',
+        )
+    }
 
 
 def frozen_run_scope_hash(scope):
@@ -40,7 +42,7 @@ async def enforce_not_applicable_policy(project_id, status, step_results=None):
     )
     if not uses_not_applicable:
         return
-    project = await execution_policy_repository.project_settings(project_id)
+    project = await execution_state_repository.project_settings(project_id)
     if not project or not (project.get("settings") or {}).get(
         'allow_not_applicable_results',
         False,
@@ -53,7 +55,7 @@ async def enforce_not_applicable_policy(project_id, status, step_results=None):
 
 async def select_resume_execution(run, user):
     version_ids = list(run.get("test_case_version_ids", []))
-    membership = await execution_policy_repository.active_membership_role(
+    membership = await execution_state_repository.active_membership_role(
         run["project_id"], user.id, 'ACTIVE'
     )
     assignments = run.get("test_case_assignments") or {}
@@ -76,7 +78,7 @@ async def select_resume_execution(run, user):
                 status_code=403,
                 detail={"code": 'TEST_RUN_ASSIGNMENT_REQUIRED'},
             )
-    results = await execution_policy_repository.list_results(run["_id"], eligible_ids)
+    results = await execution_state_repository.list_results(run["_id"], eligible_ids)
     by_version = {item["test_case_version_id"]: item for item in results}
     current_version_id = next(
         (
@@ -99,7 +101,7 @@ async def select_resume_execution(run, user):
         )
     current_execution = by_version.get(current_version_id) if current_version_id else None
     current_version = (
-        await execution_policy_repository.find_test_case_version(
+        await execution_state_repository.find_test_case_version(
             current_version_id, run["project_id"]
         )
         if current_version_id
@@ -121,12 +123,12 @@ async def select_resume_execution(run, user):
 
 async def replay_resume_event(run, event):
     execution = (
-        await execution_policy_repository.find_result(event.get("current_execution_id"))
+        await execution_state_repository.find_result(event.get("current_execution_id"))
         if event.get("current_execution_id")
         else None
     )
     version = (
-        await execution_policy_repository.find_test_case_version(
+        await execution_state_repository.find_test_case_version(
             event.get("current_test_case_version_id"), run["project_id"]
         )
         if event.get("current_test_case_version_id")
@@ -148,7 +150,7 @@ async def replay_resume_event(run, event):
 
 
 async def validate_test_versions(project_id, version_ids):
-    count = await execution_policy_repository.count_test_case_versions(
+    count = await execution_state_repository.count_test_case_versions(
         project_id, version_ids
     )
     if count != len(set(version_ids)):

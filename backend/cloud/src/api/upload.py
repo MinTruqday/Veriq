@@ -18,7 +18,6 @@ from src.core.response import APIResponse
 from src.core.storage import download_file
 from src.schemas.upload import ConfirmUploadRequest, PresignedUrlRequest
 from src.services.upload import UploadService
-from src.services.upload_policy import UploadPolicyService
 
 router = APIRouter(prefix="/tai-len")
 
@@ -29,7 +28,7 @@ async def upload_image(
     current_user: CurrentUser = Depends(require_system_admin),
     db=Depends(get_db),
 ) -> Any:
-    await UploadPolicyService.validate_svg(file)
+    await UploadService.validate_svg(file)
     result = await UploadService.upload_image(file, owner_id=current_user.id, is_system=True)
     return APIResponse(data=result, message="Truyền tải hình ảnh hoàn tất", status=201)
 
@@ -50,10 +49,10 @@ async def upload_asset(
     current_user: CurrentUser = Depends(get_current_user),
     db=Depends(get_db),
 ) -> Any:
-    size = await UploadPolicyService.file_size(file)
-    await UploadPolicyService.enforce_quota(current_user.id, size)
+    size = await UploadService.file_size(file)
+    await UploadService.enforce_quota(current_user.id, size)
     result = await UploadService.upload_document(file, owner_id=current_user.id)
-    item = await UploadPolicyService.register_item(result, current_user.id)
+    item = await UploadService.register_item(result, current_user.id)
     return APIResponse(
         data={**result, "item_id": item.id}, message="Truyền tải tệp tin hoàn tất", status=201
     )
@@ -69,7 +68,7 @@ async def get_presigned_url_for_upload(
         raise HTTPException(status_code=403, detail="Không có quyền tải tệp hệ thống")
     is_temporary = req.is_message_attachment
     if not req.is_system and not is_temporary:
-        await UploadPolicyService.enforce_quota(current_user.id, req.size)
+        await UploadService.enforce_quota(current_user.id, req.size)
     result = await UploadService.get_presigned_upload_url(
         req.filename,
         req.content_type,
@@ -86,7 +85,7 @@ async def get_presigned_url_for_upload(
         "is_system": req.is_system,
         "is_message_attachment": req.is_message_attachment,
     }
-    await UploadPolicyService.reserve(result["file_path"], reservation)
+    await UploadService.reserve(result["file_path"], reservation)
     return APIResponse(
         data=result, message="Khởi tạo đường dẫn truyền tải bảo mật hoàn tất", status=200
     )
@@ -108,8 +107,8 @@ async def confirm_upload(
         "is_system": req.is_system,
         "is_message_attachment": req.is_message_attachment,
     }
-    await UploadPolicyService.confirm_reservation(req.file_path, expected)
-    await UploadPolicyService.verify_stored_object(req.file_path, req.size, req.content_type)
+    await UploadService.confirm_reservation(req.file_path, expected)
+    await UploadService.verify_stored_object(req.file_path, req.size, req.content_type)
     result = {
         "url": req.file_path,
         "filename": req.filename,
@@ -120,13 +119,13 @@ async def confirm_upload(
         return APIResponse(data=result, message="Xác thực tải lên hệ thống hoàn tất", status=201)
     is_temporary = req.is_message_attachment
     if is_temporary:
-        await UploadPolicyService.record_temporary_file(
+        await UploadService.record_temporary_file(
             current_user.id, req.file_path, req.filename
         )
         result["expires_in_days"] = 14
     else:
-        await UploadPolicyService.enforce_quota(current_user.id, req.size)
-        item = await UploadPolicyService.register_item(result, current_user.id)
+        await UploadService.enforce_quota(current_user.id, req.size)
+        item = await UploadService.register_item(result, current_user.id)
         result["item_id"] = item.id
     return APIResponse(data=result, message="Xác thực truyền tải tệp hoàn tất", status=201)
 
@@ -137,7 +136,7 @@ async def get_presigned_preview_url(
     current_user: CurrentUser = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    if not await UploadPolicyService.can_download(
+    if not await UploadService.can_download(
         file_path, current_user.id, current_user.system_role == SystemRole.ADMIN
     ):
         raise HTTPException(status_code=403, detail="Không có quyền xem trước tệp này")
@@ -153,7 +152,7 @@ async def get_presigned_download_url(
     current_user: CurrentUser = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    if not await UploadPolicyService.can_download(
+    if not await UploadService.can_download(
         file_path, current_user.id, current_user.system_role == SystemRole.ADMIN
     ):
         raise HTTPException(status_code=403, detail="Không có quyền tải xuống tệp này")
@@ -166,7 +165,7 @@ async def get_message_attachment_content(
     file_path: str,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    if not await UploadPolicyService.can_download(
+    if not await UploadService.can_download(
         file_path, current_user.id, current_user.system_role == SystemRole.ADMIN
     ):
         raise HTTPException(status_code=403, detail="Không có quyền tải xuống tệp này")
@@ -204,11 +203,11 @@ async def upload_chunk(
         )
     total_size = sum(part.stat().st_size for part in parts)
     try:
-        UploadPolicyService.validate_size(total_size)
+        UploadService.validate_size(total_size)
     except HTTPException:
         shutil.rmtree(chunk_dir)
         raise
-    await UploadPolicyService.enforce_quota(current_user.id, total_size)
+    await UploadService.enforce_quota(current_user.id, total_size)
     content = bytearray()
     for part in parts:
         async with aiofiles.open(part, "rb") as stream:
@@ -226,7 +225,7 @@ async def upload_chunk(
             "size": total_size,
             "content_type": content_type,
         }
-        item = await UploadPolicyService.register_item(result, current_user.id)
+        item = await UploadService.register_item(result, current_user.id)
         result["item_id"] = item.id
     finally:
         shutil.rmtree(chunk_dir, ignore_errors=True)
@@ -248,13 +247,13 @@ async def upload_via_request(
             status_code=403, detail="Liên kết không hợp lệ, hết hạn hoặc sai mật khẩu"
         )
 
-    size = await UploadPolicyService.file_size(file)
+    size = await UploadService.file_size(file)
     owner_id = req_info["owner_id"]
     target_folder_id = req_info["target_folder_id"]
 
-    await UploadPolicyService.enforce_quota(owner_id, size)
+    await UploadService.enforce_quota(owner_id, size)
     result = await UploadService.upload_document(file, owner_id=owner_id)
 
-    item = await UploadPolicyService.register_item(result, owner_id, target_folder_id)
+    item = await UploadService.register_item(result, owner_id, target_folder_id)
     result["item_id"] = item.id
     return APIResponse(data=result, message="Truyền tải tệp tin qua yêu cầu hoàn tất", status=201)

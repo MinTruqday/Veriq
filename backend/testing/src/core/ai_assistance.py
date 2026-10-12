@@ -3,11 +3,14 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
+import httpx
+from fastapi import HTTPException
+
 from src.clients.ai_assistance import ai_assistance_client
 from src.core.metrics import AI_GENERATION_LATENCY, AI_REQUESTS
 
 
-stream_sink: ContextVar[Callable[[str], Awaitable[None]] | None] = ContextVar(
+stream_sink: ContextVar[Callable[[dict], Awaitable[None]] | None] = ContextVar(
     "stream_sink", default=None
 )
 
@@ -45,6 +48,14 @@ async def request_ai_assistance(capability, project_id, instruction, evidence):
     started_at = time.perf_counter()
     try:
         sink = stream_sink.get()
+        if sink:
+            await sink(
+                {
+                    "type": "accepted",
+                    "characters": len(str(instruction or ""))
+                    + sum(len(str(item.get("text") or "")) for item in evidence),
+                }
+            )
         result = await ai_assistance_client.request(
             {
                 "capability": capability,
@@ -70,6 +81,30 @@ async def request_ai_assistance(capability, project_id, instruction, evidence):
         latency_ms = round((time.perf_counter() - started_at) * 1000, 3)
         AI_GENERATION_LATENCY.labels(capability).observe(latency_ms / 1000)
         AI_REQUESTS.labels(capability, 'degraded').inc()
+        if isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 422:
+            try:
+                await error.response.aread()
+                detail = error.response.json().get("detail")
+            except (ValueError, httpx.HTTPError):
+                detail = None
+            evidence_too_long = isinstance(detail, list) and any(
+                item.get("type") == "string_too_long"
+                and item.get("loc", [None, None])[:2] == ["body", "evidence"]
+                and item.get("loc", [None])[-1] == "text"
+                for item in detail
+                if isinstance(item, dict)
+            )
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "AI_EVIDENCE_TOO_LONG" if evidence_too_long else "AI_INPUT_REJECTED",
+                    "message": (
+                        "Bằng chứng dài hơn mức AI có thể xử lý nguyên vẹn  Cần chia yêu cầu thành các phần có thể rà soát riêng"
+                        if evidence_too_long
+                        else "AI từ chối bằng chứng hoặc chỉ dẫn hiện tại  Cần kiểm tra lại nguồn và thử lại"
+                    ),
+                },
+            ) from error
         return {
             "capability": capability,
             "suggestions": [],

@@ -36,7 +36,17 @@ class OperationsService:
             {"index_status": {"$in": ['PENDING', 'FAILED']}},
         ) + await operations_repository.count_records(
             "test_case_versions",
-            {"index_status": {"$in": ['PENDING', 'FAILED']}},
+            {"$or": [
+                {"index_status": {"$in": ['PENDING', 'FAILED']}},
+                {"index_status": {"$exists": False}},
+            ]},
+        )
+        test_case_approval_backlog = await operations_repository.count_records(
+            "test_case_versions",
+            {"$or": [
+                {"trace_status": {"$in": ['PENDING', 'FAILED']}},
+                {"approval_audit_status": {"$in": ['PENDING', 'FAILED']}},
+            ]},
         )
         audit_events = await OperationsService._audit_events(
             limit, audit_q, audit_event, audit_project_id
@@ -49,6 +59,7 @@ class OperationsService:
             "storage_usage": await OperationsService._storage_usage(),
             "audit_events": audit_events,
             "knowledge_indexing_backlog": indexing_backlog,
+            "test_case_approval_derived_backlog": test_case_approval_backlog,
             "ai_models": {'impact_analysis': 'evidence_impact_analysis',
  'maintenance_proposal': 'maintenance_analysis',
  'regression': 'risk_scoring'},

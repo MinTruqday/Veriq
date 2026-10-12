@@ -4,13 +4,13 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DEFAULT_TIMEOUT=120 \
-    PIP_RETRIES=10 \
+    PIP_DEFAULT_TIMEOUT=30 \
+    PIP_RETRIES=3 \
     PYTHONPATH=/app
 
 COPY cloud/requirements.txt .
 
-RUN pip install -q --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY cloud/src/ ./src/
 

@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RuntimeLimits:
-    supervisor_steps: int
     agent_steps: int
     tool_calls_per_task: int
     tool_errors: int
@@ -13,7 +12,6 @@ class RuntimeLimits:
 
 
 limits = RuntimeLimits(
-    supervisor_steps=12,
     agent_steps=8,
     tool_calls_per_task=6,
     tool_errors=2,

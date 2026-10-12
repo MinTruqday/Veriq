@@ -268,6 +268,16 @@ export default function RequirementSourceDocumentsPanel({
             label: "AI đọc",
             render: (item) => (item.ai_enabled ? "Đã cho phép" : "Chưa cho phép"),
           },
+          {
+            key: "index_status",
+            label: "Chỉ mục AI",
+            render: (item) =>
+              item.index_status === "INDEXED"
+                ? "Đã lập chỉ mục"
+                : item.index_status === "FAILED"
+                  ? "Lập chỉ mục thất bại"
+                  : "Chưa lập chỉ mục",
+          },
           { key: "revision", label: "Phiên bản" },
           {
             key: "actions",

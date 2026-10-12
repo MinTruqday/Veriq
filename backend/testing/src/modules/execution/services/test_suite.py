@@ -12,7 +12,7 @@ from src.core.common import (
     sort_spec,
 )
 from src.repositories.test_design import test_design_repository
-from src.modules.execution.services.execution_policy import validate_test_versions
+from src.modules.execution.services.execution_state import validate_test_versions
 
 
 

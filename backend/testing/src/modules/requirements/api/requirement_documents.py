@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 
 from src.core.auth import CurrentUser, get_current_user
+from src.core.configuration import settings
 from src.core.common import envelope, get_project_entity
 from src.schemas.contracts.project import ProjectArchiveInput
 from src.schemas.contracts.requirements import (
@@ -22,6 +23,7 @@ from src.modules.requirements.services.requirement_documents import (
     get_requirement_document_record,
     list_requirement_document_records,
     read_raw_requirement_source,
+    require_document_access,
     reindex_requirement_document_record,
     restore_requirement_document_record,
     retry_requirement_document_parse_record,
@@ -65,7 +67,7 @@ async def upload_requirement_document(
 ):
     if format not in supported_requirement_formats():
         raise HTTPException(status_code=422, detail={"code": "UNSUPPORTED_IMPORT_FORMAT"})
-    data = await file.read(26214401)
+    data = await file.read(settings.MAX_UPLOAD_SIZE_BYTES + 1)
     try:
         recipients = json.loads(shared_with)
     except json.JSONDecodeError as error:
@@ -215,6 +217,7 @@ async def download_requirement_document(
     document = await get_project_entity(
         "requirement_documents", document_id, user, "requirement_document.download"
     )
+    await require_document_access(document, user, "requirement_document.download")
     data = await read_raw_requirement_source(document)
     filename = safe_requirement_filename(document.get("filename") or "source.bin")
     return Response(

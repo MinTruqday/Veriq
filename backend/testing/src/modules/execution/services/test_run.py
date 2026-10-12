@@ -10,7 +10,7 @@ from src.core.common import (
 )
 from src.repositories.test_run import test_run_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
-from src.modules.execution.services.execution_policy import validate_test_versions
+from src.modules.execution.services.execution_state import validate_test_versions
 from src.clients.project_knowledge import index_artifact
 from src.modules.execution.services.test_run_execution import (
     abort_test_run_record,

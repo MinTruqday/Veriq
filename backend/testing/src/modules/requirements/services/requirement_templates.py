@@ -36,6 +36,7 @@ def starter_templates():
                 "actors_and_systems": [],
                 "glossary": [],
                 "assumptions": [],
+                "constraints": [],
             },
             "requirements": [],
         }
@@ -365,7 +366,7 @@ async def update_template(project_id, template_id, payload, user):
         for conflict, resolution in zip(synthesis["conflicts"], payload.conflict_resolutions):
             if conflict.get("reason") != "CONTEXT_SOURCE_CONFLICT":
                 continue
-            selected = payload.context.get(conflict["title"])
+            selected = payload.context.model_dump().get(conflict["title"])
             selected_text = "\n".join(str(item) for item in selected) if isinstance(selected, list) else str(selected or "")
             if not selected_text.strip() or resolution.strip() != selected_text.strip():
                 raise HTTPException(status_code=422, detail={"code": "TEMPLATE_CONTEXT_CONFLICT_UNRESOLVED", "field": conflict["title"]})
@@ -454,7 +455,7 @@ async def review_template(project_id, template_id, user):
         result = await request_ai_assistance(
             "requirement_template_review",
             project_id,
-            "Rà soát phần mẫu Requirements được cung cấp bằng tiếng Việt  Chỉ nêu mục còn thiếu khi tài liệu chứng minh mục đó áp dụng cho yêu cầu cụ thể và sự thiếu sót cản trở việc nhập  Mục không xuất hiện trong nguồn không mặc nhiên là bắt buộc  Nêu mâu thuẫn và chỉ trích nguyên văn tài liệu được phép cho AI đọc  Viết nhận xét bằng tiếng Việt không dùng tên trường nội bộ  Nếu không có đủ mẫu trong phần này thì không kết luận toàn bộ mẫu đã sẵn sàng  Không tự sửa mẫu",
+            "Review the supplied Requirements template  Write every user facing field in Vietnamese and never use internal field names  Report a missing item only when the permitted source proves it applies to a specific requirement and its absence blocks import  An item absent from the source is not automatically required  Report conflicts with exact quotations from permitted documents  Do not conclude the entire template is ready when the current batch is incomplete  Do not modify the template",
             batch,
         )
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
@@ -540,7 +541,7 @@ async def synthesize_template(project_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": "TEMPLATE_SOURCE_EMPTY"})
     results = []
     for start in range(0, len(evidence), 8):
-        result = await request_ai_assistance("requirement_template_synthesis", project_id, payload.instruction or "Tổng hợp mẫu yêu cầu bằng tiếng Việt và nêu rõ thông tin còn thiếu hoặc mâu thuẫn", evidence[start:start + 8])
+        result = await request_ai_assistance("requirement_template_synthesis", project_id, payload.instruction or "Synthesize a Requirements template  Write every user facing field in Vietnamese and identify missing information or conflicts", evidence[start:start + 8])
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
             raise HTTPException(status_code=503, detail={"code": "TEMPLATE_SYNTHESIS_UNAVAILABLE", "warnings": result.get("warnings", [])})
         results.append(result)

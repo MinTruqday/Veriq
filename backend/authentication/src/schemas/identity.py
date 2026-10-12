@@ -94,6 +94,7 @@ class UserInDB(UserBase):
 
 
 class UserResponse(UserBase):
+    email: str
     id: str = Field(alias="_id")
     created_at: datetime
     has_passkey: bool = False

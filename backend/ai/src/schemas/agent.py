@@ -75,7 +75,6 @@ class AgentTask(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
     tool_calls: list[ToolCall] = Field(default_factory=list)
-    depends_on: list[str] = Field(default_factory=list, max_length=100)
 
 
 class PlannedTask(BaseModel):
@@ -96,25 +95,13 @@ class AgentResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-class AgentReview(BaseModel):
-    continue_execution: bool
-    reason_codes: list[str] = Field(default_factory=list)
-
-
-class SupervisorPlan(BaseModel):
+class AgentPlan(BaseModel):
     intent: str
     success_criteria: list[str] = Field(default_factory=list)
     tasks: list[PlannedTask] = Field(default_factory=list)
 
 
-class SupervisorReview(BaseModel):
-    goal_complete: bool
-    success_criteria: list[str] = Field(default_factory=list)
-    tasks: list[PlannedTask] = Field(default_factory=list)
-    reason_codes: list[str] = Field(default_factory=list)
-
-
-class SupervisorProposal(BaseModel):
+class AgentProposal(BaseModel):
     summary: str
     evidence_refs: list[str] = Field(default_factory=list)
     actions: list[dict[str, Any]] = Field(default_factory=list)
@@ -130,7 +117,7 @@ class VeriqRunState(BaseModel):
     permissions: list[str] = Field(default_factory=list)
     objective: str
     intent: str = ""
-    supervisor_plan: list[dict[str, Any]] = Field(default_factory=list)
+    execution_plan: list[dict[str, Any]] = Field(default_factory=list)
     active_task: dict[str, Any] | None = None
     completed_tasks: list[dict[str, Any]] = Field(default_factory=list)
     agent_results: list[dict[str, Any]] = Field(default_factory=list)

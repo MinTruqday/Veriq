@@ -4,6 +4,7 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, validate_doc
 from src.schemas.contracts.requirements import RequirementCreate, RequirementExtractionInput, RequirementVersionCreate
 from src.repositories.requirement_import import requirement_import_repository
+from src.repositories.requirement import requirement_repository
 from src.modules.requirements.services.requirement_import import atomic_requirement_candidates
 from src.modules.requirements.services.requirement_documents import create_requirement_document_record, require_document_access
 from src.modules.requirements.services.requirement_indexing import validate_requirement_sources
@@ -256,6 +257,27 @@ async def resolve_requirement_import_candidate(job_id, candidate_id, payload, us
         resolution, now(),
     )
     if not updated:
+        restored = await requirement_repository.rollback_activated_version(
+            requirement["_id"],
+            job["project_id"],
+            version["_id"],
+            current["_id"],
+            requirement["status"],
+            requirement.get("tags", []),
+            requirement.get("owner_id"),
+            now(),
+        )
+        if restored:
+            try:
+                await remove_artifact(job["project_id"], version["_id"])
+            finally:
+                await requirement_repository.delete_acceptance_criteria(version["_id"])
+                await requirement_repository.delete_version(version["_id"], job["project_id"])
+                await requirement_import_repository.reset_confirmation(
+                    job_id, job["project_id"], "RESOLVING", "PREVIEW_READY", now()
+                )
+        else:
+            raise HTTPException(status_code=409, detail={"code": "IMPORT_RESOLUTION_COMPENSATION_REQUIRED"})
         raise HTTPException(409, detail={"code": "IMPORT_RESOLUTION_INCOMPLETE"})
     if updated["status"] == "CONFIRMED" and job.get("source_document_id"):
         await requirement_import_repository.confirm_document(
@@ -801,7 +823,7 @@ async def confirm_requirement_import_job(job_id, payload, user):
         )
         raise
     rejected_indexes = [index for index in range(len(job["preview"])) if index not in indexes]
-    await requirement_import_repository.confirm(
+    confirmed = await requirement_import_repository.confirm(
         job_id,
         job["project_id"],
         'CONFIRMING',
@@ -812,6 +834,25 @@ async def confirm_requirement_import_job(job_id, payload, user):
         user.id,
         now(),
     )
+    if not confirmed:
+        current = await requirement_import_repository.find(job_id, job["project_id"])
+        if current and current.get("status") == "CONFIRMED":
+            return {"job": current, "requirements": None}
+        requirement_ids = [item["_id"] for item in created]
+        version_ids = [item["current_version"]["_id"] for item in created]
+        for version_id in version_ids:
+            await remove_artifact(job["project_id"], version_id)
+        await requirement_import_repository.delete_created_requirements(
+            requirement_ids, version_ids
+        )
+        await requirement_import_repository.reset_confirmation(
+            job_id,
+            job["project_id"],
+            "CONFIRMING",
+            "PREVIEW_READY",
+            now(),
+        )
+        raise HTTPException(status_code=409, detail={"code": "IMPORT_CONFIRMATION_COMPENSATED"})
     if job.get("source_document_id"):
         await requirement_import_repository.confirm_document(
             job["source_document_id"],
@@ -828,7 +869,10 @@ async def confirm_requirement_import_job(job_id, payload, user):
         {
             "created_requirement_ids": [item["_id"] for item in created],
             "selected_indexes": indexes,
-            "separate_reasons": payload.separate_reasons,
+            "separate_reasons": {
+                str(index): payload.separate_reasons[index].strip()
+                for index in payload.separate_indexes
+            },
             "rejected_indexes": rejected_indexes,
         },
     )

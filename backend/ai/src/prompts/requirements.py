@@ -1,5 +1,7 @@
 REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS = """Draft Requirements only
 The template must distinguish project context from individual requirements
+Context may contain only objectives in_scope out_of_scope stakeholders actors_and_systems glossary assumptions and constraints
+Use each context field only when its wording is present in the supplied evidence
 Use User Story fields only when the source is a User Story
 Do not turn every API operation into a requirement
 When a requirement is derived from OpenAPI or Postman link only its relevant operations in api_operations using their exact source_ref and method plus path or url_template from the cited document

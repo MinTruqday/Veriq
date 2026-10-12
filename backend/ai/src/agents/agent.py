@@ -1,8 +1,8 @@
 import asyncio
 
-from src.prompts.agents import agent_execution_prompt, agent_review_prompt
+from src.prompts.agents import agent_execution_prompt
 from src.runtime.limits import limits
-from src.schemas.agent import AgentResult, AgentReview, AgentTaskStatus, ToolExecutionStatus
+from src.schemas.agent import AgentResult, AgentTaskStatus, ToolExecutionStatus
 from src.runtime.output import normalize_narrative, normalize_narratives
 from src.services.inference import structured
 from src.tools.registry import authorize_tool, invoke_tool
@@ -42,39 +42,6 @@ async def execute_task(task, evidence, permissions, token, approval_status=None)
             errors += 1
         if errors >= limits.tool_errors:
             break
-        remaining_calls = bounded_calls[index + 1 :]
-        if not remaining_calls:
-            continue
-        try:
-            review = await structured(
-                agent_review_prompt(
-                    task.model_dump(mode="json"),
-                    [item.artifact_version_id or item.artifact_id for item in evidence],
-                    observations,
-                    [item.model_dump(mode="json") for item in remaining_calls],
-                ),
-                AgentReview,
-                max_tokens=300,
-                timeout_seconds=limits.task_timeout_seconds,
-                provider_schema=True,
-            )
-            observations.append(
-                {
-                    "phase": "RE_EVALUATE",
-                    "continue_execution": review.continue_execution,
-                    "reason_codes": review.reason_codes,
-                }
-            )
-            if not review.continue_execution:
-                break
-        except Exception:
-            observations.append(
-                {
-                    "phase": "RE_EVALUATE",
-                    "continue_execution": True,
-                    "reason_codes": ["AI_PROVIDER_UNAVAILABLE"],
-                }
-            )
     try:
         result = await structured(
             agent_execution_prompt(

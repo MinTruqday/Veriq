@@ -127,11 +127,11 @@ async def create_requirement_source(project_id, payload, user):
 
 
 async def list_requirement_sources(project_id, include_archived, user):
-    await get_project(project_id, user, 'knowledge.read')
-    query = {"project_id": project_id}
+    from src.modules.requirements.services.requirement_documents import list_requirement_document_records
+
+    documents = await list_requirement_document_records(project_id, "", "", 1000, user)
     if not include_archived:
-        query["status"] = {"$ne": 'ARCHIVED'}
-    documents = await requirement_document_repository.list(query, 1000)
+        documents = [item for item in documents if item.get("status") != "ARCHIVED"]
     project = await requirement_document_repository.project_authority_order(project_id)
     order = (project or {}).get("settings", {}).get(
         "knowledge_authority_order", ['APPROVED_SOURCE', 'CONTROLLED_SOURCE', 'PROJECT_REFERENCE', 'SUPPLEMENTAL', 'DRAFT', 'UNVERIFIED']
@@ -144,12 +144,15 @@ async def list_requirement_sources(project_id, include_archived, user):
 
 
 async def reindex_requirement_source(document_id, user):
+    from src.modules.requirements.services.requirement_documents import require_document_access
+
     document = await get_project_entity(
         'requirement_documents',
         document_id,
         user,
         'knowledge.manage',
     )
+    await require_document_access(document, user, 'knowledge.manage')
     if document.get("status") == 'ARCHIVED':
         raise HTTPException(
             status_code=409, detail={"code": 'KNOWLEDGE_SOURCE_ARCHIVED'}
@@ -207,9 +210,12 @@ async def reindex_requirement_source(document_id, user):
 
 
 async def archive_requirement_source(document_id, payload, user):
+    from src.modules.requirements.services.requirement_documents import require_document_access
+
     document = await get_project_entity(
         'requirement_documents', document_id, user, 'knowledge.manage'
     )
+    await require_document_access(document, user, 'knowledge.manage')
     await require_action_policy(
         document["project_id"],
         user,

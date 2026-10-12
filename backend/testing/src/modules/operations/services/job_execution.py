@@ -105,25 +105,46 @@ async def execute_job(event: str, body: dict, payload: dict, user: CurrentUser):
 
 
 async def reindex_artifact(project_id: str, version_id: str):
-    
     artifact = await analysis_repository.find_requirement_version(project_id, version_id)
-    
-    
-    if not artifact:
+    if artifact:
+        collection = 'requirement_versions'
+        artifact_type = 'requirement_version'
+        artifact_id = artifact['requirement_id']
+        authority = 'APPROVED_SOURCE' if artifact.get('status') == 'BASELINED' else 'DRAFT'
+        metadata = {
+            'acceptance_criterion_ids': artifact.get('acceptance_criterion_ids', []),
+            'source_document_ids': artifact.get('source_document_ids', []),
+        }
+    else:
         artifact = await analysis_repository.find_test_case_version(project_id, version_id)
-        
-        
+        collection = 'test_case_versions'
+        artifact_type = 'test_case_version'
+        artifact_id = artifact['test_case_id'] if artifact else None
+        authority = 'APPROVED_SOURCE'
+        metadata = {
+            'requirement_version_ids': artifact.get('requirement_version_ids', []) if artifact else [],
+            'acceptance_criterion_ids': artifact.get('acceptance_criterion_ids', []) if artifact else [],
+        }
     if not artifact:
         raise HTTPException(status_code=404, detail={"code": 'ARTIFACT_VERSION_NOT_FOUND'})
     indexed = await index_artifact(
         project_id,
-        'test_case_version',
-        artifact['test_case_id'],
+        artifact_type,
+        artifact_id,
         artifact["_id"],
         artifact.get("title", ""),
         artifact.get("plain_text_projection", ""),
         artifact.get("status", 'ACTIVE'),
-        'APPROVED_SOURCE',
+        authority,
         artifact.get("version"),
+        **metadata,
+    )
+    await analysis_repository.set_artifact_index_result(
+        collection,
+        project_id,
+        version_id,
+        'INDEXED' if indexed else 'FAILED',
+        None if indexed else 'KNOWLEDGE_INDEX_FAILED',
+        now() if indexed else None,
     )
     return {"indexed": indexed, "artifact_version_id": version_id}

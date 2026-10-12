@@ -1,56 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { ErrorState, Panel, StatusPill } from "./WorkspacePrimitives";
 
-const INTENTS = [
-  { value: "project_question", label: "Hỏi đáp dự án", permission: "ai.ask_project" },
-  {
-    value: "requirement_quality_analysis",
-    label: "Phân tích yêu cầu",
-    permission: "ai.run_lint",
-  },
-  {
-    value: "test_generation",
-    label: "Sinh ca kiểm thử",
-    permission: "ai.generate_testcase",
-  },
-  { value: "impact_analysis", label: "Phân tích ảnh hưởng", permission: "ai.run_impact" },
-  {
-    value: "retrieve_project_evidence",
-    label: "Đề xuất hồi quy",
-    permission: "ai.generate_regression",
-  },
-  {
-    value: "get_execution_history",
-    label: "Phân tích lỗi thực thi",
-    permission: "testrun.read",
-  },
-  {
-    value: "status_report_narrative",
-    label: "Báo cáo trạng thái",
-    permission: "teststatusreport.update",
-  },
-  {
-    value: "completion_report_narrative",
-    label: "Báo cáo hoàn tất",
-    permission: "testcompletion.update",
-  },
-];
-
 export default function AgentRunPanel({ project }) {
-  const intents = INTENTS.filter((item) => project.current_permissions?.includes(item.permission));
-  const [intent, setIntent] = useState(intents[0]?.value || "");
+  const [intents, setIntents] = useState([]);
+  const [intent, setIntent] = useState("");
   const [objective, setObjective] = useState("");
   const [targetIds, setTargetIds] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
-  const [actionEdits, setActionEdits] = useState("");
+  const [actionEdits, setActionEdits] = useState([]);
   const [run, setRun] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const canRun = Boolean(intent);
+
+  useEffect(() => {
+    let active = true;
+    testingApi
+      .listAgentCapabilities(project._id)
+      .then((values) => {
+        if (!active) return;
+        setIntents(values);
+        setIntent((current) =>
+          values.some((item) => item.name === current) ? current : values[0]?.name || "",
+        );
+      })
+      .catch((reason) => {
+        if (active) setError(messageOf(reason));
+      });
+    return () => {
+      active = false;
+    };
+  }, [project._id]);
 
   const execute = async () => {
     if (!objective.trim()) return;
@@ -67,7 +51,7 @@ export default function AgentRunPanel({ project }) {
           .filter(Boolean),
       });
       setRun(nextRun);
-      setActionEdits(JSON.stringify(nextRun.proposal?.actions || [], null, 2));
+      setActionEdits(nextRun.proposal?.actions || []);
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -84,20 +68,11 @@ export default function AgentRunPanel({ project }) {
       return;
     }
     try {
-      let edits = [];
-      if (decision === "EDIT") {
-        try {
-          edits = JSON.parse(actionEdits);
-        } catch {
-          setError("Nội dung chỉnh sửa phải là JSON hợp lệ");
-          setBusy(false);
-          return;
-        }
-        if (!Array.isArray(edits) || edits.length === 0) {
-          setError("Cần ít nhất một hành động được chỉnh sửa");
-          setBusy(false);
-          return;
-        }
+      const edits = decision === "EDIT" ? actionEdits : [];
+      if (decision === "EDIT" && edits.length === 0) {
+        setError("Cần ít nhất một hành động được chỉnh sửa");
+        setBusy(false);
+        return;
       }
       const nextRun = await testingApi.decideAgentRun(run.run_id, {
         decision,
@@ -106,7 +81,7 @@ export default function AgentRunPanel({ project }) {
         action_edits: edits,
       });
       setRun(nextRun);
-      setActionEdits(JSON.stringify(nextRun.proposal?.actions || [], null, 2));
+      setActionEdits(nextRun.proposal?.actions || []);
       setDecisionNote("");
     } catch (reason) {
       setError(messageOf(reason));
@@ -115,7 +90,25 @@ export default function AgentRunPanel({ project }) {
     }
   };
 
-  if (!canRun) return null;
+  if (!canRun) {
+    return error ? (
+      <Panel title="Tác tử kiểm thử">
+        <div className="p-4">
+          <ErrorState message={error} />
+        </div>
+      </Panel>
+    ) : null;
+  }
+
+  const updateActionArgument = (actionIndex, name, value) => {
+    setActionEdits((items) =>
+      items.map((item, index) =>
+        index === actionIndex ? { ...item, arguments: { ...item.arguments, [name]: value } } : item,
+      ),
+    );
+  };
+
+  const outcomes = Array.isArray(run?.agent_results) ? run.agent_results : [];
 
   return (
     <Panel title="Tác tử kiểm thử">
@@ -129,7 +122,7 @@ export default function AgentRunPanel({ project }) {
             onChange={(event) => setIntent(event.target.value)}
           >
             {intents.map((item) => (
-              <option value={item.value} key={item.value}>
+              <option value={item.name} key={item.name}>
                 {item.label}
               </option>
             ))}
@@ -170,6 +163,22 @@ export default function AgentRunPanel({ project }) {
               <span>{run.run_id}</span>
               <span>Vai trò {valueLabel(run.role)}</span>
             </div>
+            {outcomes.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-ink">Trạng thái kết quả</h3>
+                <div className="mt-2 grid gap-2">
+                  {outcomes.map((outcome) => (
+                    <div
+                      className="flex flex-wrap items-center gap-2 rounded-control border border-border bg-surface px-3 py-2"
+                      key={outcome.task_id}
+                    >
+                      <StatusPill value={outcome.status} />
+                      {outcome.summary && <span className="text-ink-muted">{outcome.summary}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {run.proposal?.summary && (
               <div>
                 <h3 className="font-semibold text-ink">Kết quả</h3>
@@ -203,14 +212,63 @@ export default function AgentRunPanel({ project }) {
             )}
             {run.status === "APPROVAL_REQUIRED" && (
               <div className="grid gap-3">
-                <label className="grid gap-2 font-medium text-ink">
-                  Hành động đề xuất dạng JSON
-                  <textarea
-                    className="apple-input min-h-40 font-mono text-xs"
-                    value={actionEdits}
-                    onChange={(event) => setActionEdits(event.target.value)}
-                  />
-                </label>
+                <div className="grid gap-3">
+                  <p className="font-medium text-ink">Hành động đề xuất</p>
+                  {actionEdits.map((action, actionIndex) => (
+                    <fieldset
+                      className="grid gap-3 rounded-control border border-border p-3"
+                      key={`${action.task_id}-${action.tool_name}-${actionIndex}`}
+                    >
+                      <legend className="px-1 text-sm font-medium">
+                        Hành động {actionIndex + 1}
+                      </legend>
+                      {Object.entries(action.arguments || {}).map(([name, value]) => {
+                        const editable =
+                          value === null || ["string", "number", "boolean"].includes(typeof value);
+                        if (!editable) {
+                          return (
+                            <p className="text-sm text-ink-muted" key={name}>
+                              {valueLabel(name)} sẽ được giữ nguyên vì có cấu trúc nhiều phần
+                            </p>
+                          );
+                        }
+                        if (typeof value === "boolean") {
+                          return (
+                            <label className="flex items-center gap-2 text-sm" key={name}>
+                              <input
+                                checked={value}
+                                type="checkbox"
+                                onChange={(event) =>
+                                  updateActionArgument(actionIndex, name, event.target.checked)
+                                }
+                              />
+                              {valueLabel(name)}
+                            </label>
+                          );
+                        }
+                        return (
+                          <label className="grid gap-2 text-sm" key={name}>
+                            {valueLabel(name)}
+                            <input
+                              className="apple-input"
+                              type={typeof value === "number" ? "number" : "text"}
+                              value={value ?? ""}
+                              onChange={(event) =>
+                                updateActionArgument(
+                                  actionIndex,
+                                  name,
+                                  typeof value === "number"
+                                    ? Number(event.target.value)
+                                    : event.target.value,
+                                )
+                              }
+                            />
+                          </label>
+                        );
+                      })}
+                    </fieldset>
+                  ))}
+                </div>
                 <label className="grid gap-2 font-medium text-ink">
                   Ghi chú quyết định
                   <textarea
@@ -231,7 +289,7 @@ export default function AgentRunPanel({ project }) {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={busy || !decisionNote.trim() || !actionEdits.trim()}
+                    disabled={busy || !decisionNote.trim() || !actionEdits.length}
                     onClick={() => decide("EDIT")}
                   >
                     Lưu chỉnh sửa

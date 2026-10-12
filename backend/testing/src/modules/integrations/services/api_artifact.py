@@ -16,21 +16,21 @@ from src.schemas.contracts.requirements import (
 )
 from src.modules.integrations.services.api_artifact_formats import (
     api_case_blueprints,
-    model_metadata,
     operation_fingerprint,
     operation_identity,
     parse_openapi,
     parse_postman,
     public_api_import,
+    sanitize,
     sanitize_postman,
 )
 from src.repositories.api_artifact import api_artifact_repository
-from src.modules.design.services.test_case_records import create_test_case_draft_record
 from src.modules.design.services.test_case_transfer import (
     confirm_test_import,
     export_test_cases,
     preview_test_import,
     recover_trace_links,
+    store_test_import_preview,
     upload_test_import,
 )
 
@@ -108,7 +108,7 @@ async def import_api_artifact(
         "preview": operations,
         "raw_content": sanitize_postman(value)
         if payload.format == 'postman'
-        else None,
+        else sanitize(value),
         "selected_indexes": list(range(len(operations))),
         "status": 'PREVIEW_READY',
         "revision": 1,
@@ -135,7 +135,9 @@ async def review_api_artifact(
     if artifact.get("status") not in set(['PREVIEW_READY', 'REVIEWED']):
         raise HTTPException(status_code=409, detail={"code": 'API_ARTIFACT_NOT_REVIEWABLE'})
     preview = artifact.get("preview") or []
-    selected = payload.selected_indexes or list(range(len(preview)))
+    selected = payload.selected_indexes
+    if not selected:
+        raise HTTPException(status_code=422, detail={"code": "API_ARTIFACT_SELECTION_REQUIRED", "message": "Cần chọn ít nhất một thao tác API sau khi rà soát"})
     if len(set(selected)) != len(selected) or any(
         index < 0 or index >= len(preview) for index in selected
     ):
@@ -274,9 +276,19 @@ async def confirm_api_artifact(
 
 async def list_api_operations(project_id: str, user: CurrentUser):
     await get_project(project_id, user, 'apiartifact.read')
+    artifacts = await api_artifact_repository.list_imports(
+        {"project_id": project_id, "status": 'CONFIRMED'}, 5000
+    )
+    if not artifacts:
+        return envelope([])
     return envelope(
         await api_artifact_repository.list_operations(
-            {"project_id": project_id}, 5000, ("path", 1)
+            {
+                "project_id": project_id,
+                "import_id": {"$in": [artifact["_id"] for artifact in artifacts]},
+            },
+            5000,
+            ("path", 1),
         )
     )
 
@@ -285,63 +297,67 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
     operation = await get_project_entity(
         'api_operations', operation_id, user, 'ai.generate_api_testcase'
     )
+    await get_project(operation["project_id"], user, "testcase.import")
+    await get_project(operation["project_id"], user, "testcase.create")
+    artifact = await api_artifact_repository.find_import(
+        operation["import_id"], operation["project_id"]
+    )
+    if not artifact or artifact.get("status") != 'CONFIRMED':
+        raise HTTPException(status_code=409, detail={"code": "API_ARTIFACT_NOT_CONFIRMED"})
     cases = api_case_blueprints(operation)
-    created = []
+    if not cases:
+        raise HTTPException(status_code=422, detail={"code": "API_OPERATION_HAS_NO_TESTABLE_RESPONSES", "message": "Thao tác API chưa có phản hồi đủ rõ trong đặc tả để đề xuất ca kiểm thử"})
+    preview = []
     for case in cases:
-        draft = await create_test_case_draft_record(
-            operation["project_id"],
-            TestCaseDraftCreate(
-                title=case["title"],
-                type='api',
-                priority='high'
-                if case["category"] in set(['auth', 'forbidden', 'conflict'])
-                else 'medium',
-                risk='high'
-                if case["category"] in set(['auth', 'schema_mismatch'])
-                else 'medium',
-                preconditions_doc=text_document(
-                    'API operation {method} {path} tồn tại trong đặc tả'.format(
-                        method=operation["method"], path=operation["path"]
-                    )
-                ),
-                steps=[
-                    {
-                        "id": 'step-1',
-                        "order": 1,
-                        "action_doc": text_document(case["action"]),
-                        "test_data": case["test_data"],
-                        "expected_doc": text_document(case["expected"]),
-                    }
-                ],
-                test_data=case["test_data"],
-                expected_result_doc=text_document(case["expected"]),
-                postconditions_doc=text_document('Không lưu secret vào artifact kiểm thử'),
-                tags=[*['api'], case["category"]],
-                automation_status='candidate',
-                origin='ai_generated',
-                source_evidence=[
-                    {
-                        "artifact_type": 'api_operation',
-                        "artifact_version_id": operation_id,
-                        "path": operation["path"],
-                        "method": operation["method"],
-                    }
-                ],
-            ),
-            user,
+        draft = TestCaseDraftCreate(
+            title=case["title"],
+            type='api',
+            expected_result_doc=text_document(case["expected"]),
+            tags=['api'],
+            automation_status='manual',
+            origin='import',
+            source_evidence=[
+                {
+                    "artifact_type": 'api_operation',
+                    "artifact_version_id": operation_id,
+                    "path": operation["path"],
+                    "method": operation["method"],
+                    "response_code": case["response_code"],
+                }
+            ],
         )
-        created.append(draft)
+        preview.append({
+            "title": draft.title,
+            "type": draft.type,
+            "priority": draft.priority,
+            "risk": draft.risk,
+            "expected": case["expected"],
+            "incomplete": True,
+            "source_test_case_key": "",
+            "source_projection": "",
+            "draft": draft.model_dump(),
+        })
+    job = await store_test_import_preview(
+        operation["project_id"],
+        f"{operation['method']} {operation['path']}",
+        "api_operation",
+        preview,
+        user,
+        {
+            "source_api_operation_id": operation_id,
+            "source_api_operation_fingerprint": operation_fingerprint(operation),
+            "source_api_import_id": operation["import_id"],
+        },
+    )
     await audit(
         user.id,
-        'api_tests_generated',
+        'api_test_preview_created',
         'APIOperation',
         operation_id,
         operation["project_id"],
-        {"count": len(created)},
+        {"count": len(preview)},
     )
-    return envelope(
-        {"items": created, "model": model_metadata('api_test_generation'), "evidence": operation}
-    )
+    return envelope(job)
 
 
 async def build_api_artifact_diff(project_id, from_artifact_id, to_artifact_id):

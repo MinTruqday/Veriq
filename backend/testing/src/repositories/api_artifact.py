@@ -32,6 +32,11 @@ class APIArtifactRepository:
             cursor = cursor.sort(*sort)
         return await cursor.to_list(limit)
 
+    async def find_operation(self, operation_id, project_id):
+        return await database.value.api_operations.find_one(
+            {"_id": operation_id, "project_id": project_id}
+        )
+
     async def upsert_operation(self, value):
         await database.value.api_operations.update_one(
             {"_id": value["_id"]}, {"$setOnInsert": value}, upsert=True

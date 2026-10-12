@@ -200,8 +200,14 @@ export default function AppShell({ children, requireAuth }) {
             {aiStream.status === "complete"
               ? "AI đã hoàn tất xử lý"
               : aiStream.status === "failed"
-                ? "AI không thể hoàn tất xử lý"
+                ? "AI chưa tạo được kết quả"
                 : "AI đang xử lý nội dung"}
+          </p>
+          {aiStream.status === "failed" && aiStream.message && (
+            <p className="mt-1 max-w-80 text-xs text-ink-muted">{aiStream.message}</p>
+          )}
+          <p className="mt-1 text-xs text-ink-muted">
+            Đã nhận {aiStream.inputCharacters || 0} ký tự đầu vào
           </p>
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-quiet">
             <div className="h-full w-2/3 animate-pulse rounded-full bg-brand" />

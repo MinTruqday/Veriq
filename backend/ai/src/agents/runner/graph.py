@@ -2,7 +2,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from src.agents.supervisor.nodes import (
+from src.agents.runner.nodes import (
     aggregate,
     apply,
     execute_agent,
@@ -10,9 +10,9 @@ from src.agents.supervisor.nodes import (
     plan,
     route_after_aggregate,
     route_after_context,
-    route_after_review,
+    route_after_finalize,
     route_after_agent,
-    re_evaluate,
+    finalize,
     verify,
 )
 
@@ -26,16 +26,14 @@ class CanonicalState(TypedDict, total=False):
     constraints: dict[str, Any]
     tasks: list[dict[str, Any]]
     success_criteria: list[str]
-    task_index: int
     results: list[dict[str, Any]]
-    review_complete: bool
 
 
 workflow = StateGraph(CanonicalState)
 workflow.add_node("load_context", load_context)
 workflow.add_node("plan", plan)
 workflow.add_node("execute", execute_agent)
-workflow.add_node("re_evaluate", re_evaluate)
+workflow.add_node("finalize", finalize)
 workflow.add_node("aggregate", aggregate)
 workflow.add_node("apply", apply)
 workflow.add_node("verify", verify)
@@ -47,19 +45,19 @@ workflow.add_conditional_edges(
         "plan": "plan",
         "apply": "apply",
         "verify": "verify",
-        "re_evaluate": "re_evaluate",
+        "finalize": "finalize",
     },
 )
 workflow.add_edge("plan", "execute")
 workflow.add_conditional_edges(
     "execute",
     route_after_agent,
-    {"execute": "execute", "review": "re_evaluate"},
+    {"execute": "execute", "finalize": "finalize"},
 )
 workflow.add_conditional_edges(
-    "re_evaluate",
-    route_after_review,
-    {"execute": "execute", "aggregate": "aggregate"},
+    "finalize",
+    route_after_finalize,
+    {"aggregate": "aggregate"},
 )
 workflow.add_conditional_edges(
     "aggregate",

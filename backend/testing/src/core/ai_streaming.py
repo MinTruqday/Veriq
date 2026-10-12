@@ -19,8 +19,8 @@ class AIStreamingMiddleware:
         response_status = 500
         response_body = bytearray()
 
-        async def emit(piece):
-            await queue.put({"type": "delta", "delta": piece})
+        async def emit(event):
+            await queue.put(event if isinstance(event, dict) else {"type": "delta", "delta": event})
 
         async def capture(message):
             nonlocal response_status

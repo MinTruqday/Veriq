@@ -29,7 +29,8 @@ import {
 
 export default function RequirementsPage({ project, section }) {
   const { ask, dialog } = useActionDialog();
-  const requirementId = section[0] && !["new", "import"].includes(section[0]) ? section[0] : "";
+  const sectionKey = section[0] || "";
+  const requirementId = sectionKey && !["new", "import"].includes(sectionKey) ? sectionKey : "";
   const [items, setItems] = useState([]);
   const [members, setMembers] = useState([]);
   const [customFields, setCustomFields] = useState([]);
@@ -77,6 +78,9 @@ export default function RequirementsPage({ project, section }) {
   });
   const [sourceDocument, setSourceDocument] = useState(null);
   const [sourceDocuments, setSourceDocuments] = useState([]);
+  useEffect(() => {
+    if (sectionKey === "import") setImporting(true);
+  }, [sectionKey]);
   useEffect(() => {
     if (!preview?._id || preview.status !== "PREVIEW_READY") {
       setImportComparison(null);

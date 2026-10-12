@@ -313,6 +313,35 @@ class RequirementRepository:
         )
         return result.modified_count == 1
 
+    async def rollback_activated_version(
+        self,
+        requirement_id,
+        project_id,
+        activated_version_id,
+        previous_version_id,
+        previous_status,
+        previous_tags,
+        previous_owner_id,
+        updated_at,
+    ):
+        result = await database.value.requirements.update_one(
+            {
+                "_id": requirement_id,
+                "project_id": project_id,
+                "current_version_id": activated_version_id,
+            },
+            {
+                "$set": {
+                    "current_version_id": previous_version_id,
+                    "status": previous_status,
+                    "tags": previous_tags,
+                    "owner_id": previous_owner_id,
+                    "updated_at": updated_at,
+                }
+            },
+        )
+        return result.modified_count == 1
+
     async def list_versions(self, requirement_id, limit=500):
         return (
             await database.value.requirement_versions.find(

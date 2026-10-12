@@ -137,6 +137,6 @@ def validate_structured_output(text: Any, schema: Type[Any]) -> Any:
             errors.append(error)
     if errors:
         raise StructuredOutputError(
-            f"Structured output did not match schema: {errors[-1]}"
-        ) from errors[-1]
+            f"Structured output did not match schema: {errors[0]}"
+        ) from errors[0]
     raise StructuredOutputError("Structured output did not contain a candidate")

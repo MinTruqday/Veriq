@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from src.repositories.storage import storage_repository
 from src.schemas.storage import StorageItemCreate, StorageItemInDB, StorageItemUpdate
 from src.services.storage_analytics import get_quota_analytics, get_storage_quota
-from src.services.storage_policy import object_prefixes
+from src.services.storage_paths import object_prefixes
 from src.services.storage_sharing import (
     get_public_item,
     get_recent_items,

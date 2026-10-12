@@ -12,6 +12,8 @@ x-service-environment: &service-environment
   REDIS_URI: ${REDIS_URI:?REDIS_URI is required}
   PLATFORM_SYSTEM_ID: ${PLATFORM_SYSTEM_ID:?PLATFORM_SYSTEM_ID is required}
   INTERNAL_API_URL: ${INTERNAL_API_URL:?INTERNAL_API_URL is required}
+  MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:?MAX_UPLOAD_SIZE_BYTES is required}
+  MIN_UPLOAD_SIZE_BYTES: ${MIN_UPLOAD_SIZE_BYTES:?MIN_UPLOAD_SIZE_BYTES is required}
 
 x-object-storage-environment: &object-storage-environment
   OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:?OBJECT_STORAGE_ENDPOINT is required}

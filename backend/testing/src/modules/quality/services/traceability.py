@@ -447,25 +447,25 @@ class TraceabilityService:
     @classmethod
     async def create_snapshot(cls, project_id, payload, user):
         await get_project(project_id, user, "coverage.snapshot.create")
-        idempotency_key = str(payload.get("idempotency_key") or "").strip() or None
+        idempotency_key = payload.idempotency_key
         if idempotency_key:
             existing = await traceability_repository.find_snapshot(project_id, idempotency_key)
             if existing:
                 return existing
         metrics = await cls.coverage(
             project_id,
-            str(payload.get("build") or ""),
-            str(payload.get("build_id") or ""),
-            str(payload.get("release") or ""),
-            str(payload.get("release_id") or ""),
+            payload.build,
+            payload.build_id or "",
+            payload.release,
+            payload.release_id or "",
             user,
         )
         snapshot = {
             "_id": new_id('COV'),
             "project_id": project_id,
-            "label": str(payload.get("label") or ""),
-            "release_id": str(payload.get("release_id") or "") or None,
-            "build_id": str(payload.get("build_id") or "") or None,
+            "label": payload.label,
+            "release_id": payload.release_id,
+            "build_id": payload.build_id,
             "idempotency_key": idempotency_key,
             "metrics": metrics,
             "created_by": user.id,

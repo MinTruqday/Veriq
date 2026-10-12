@@ -303,7 +303,7 @@ const valueLabels = {
 };
 
 export function statusLabel(value) {
-  return labels[value] || String(value || "Chưa xác định");
+  return labels[String(value || "").toUpperCase()] || String(value || "Chưa xác định");
 }
 
 export function valueLabel(value) {

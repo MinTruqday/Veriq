@@ -3,11 +3,7 @@ from datetime import datetime, timezone
 from src.agents.agent import execute_task
 from src.knowledge.evidence import package
 from src.knowledge.hybrid import hybrid_evidence
-from src.prompts.agents import (
-    aggregate_prompt,
-    supervisor_plan_prompt,
-    supervisor_review_prompt,
-)
+from src.prompts.agents import agent_plan_prompt
 from src.runtime.limits import limits
 from src.schemas.agent import (
     AgentApprovalStatus,
@@ -17,9 +13,8 @@ from src.schemas.agent import (
     AgentTask,
     PlannedTask,
     EvidenceItem,
-    SupervisorPlan,
-    SupervisorProposal,
-    SupervisorReview,
+    AgentPlan,
+    AgentProposal,
     ToolExecutionStatus,
     ToolCall,
     VeriqRunState,
@@ -51,14 +46,7 @@ def available_tools(permissions, intent="", compact=False):
             if compact:
                 arguments = {
                     "required": schema.get("required", []),
-                    "properties": {
-                        key: {
-                            attribute: value
-                            for attribute, value in specification.items()
-                            if attribute in {"type", "enum", "minimum", "maximum"}
-                        }
-                        for key, specification in schema.get("properties", {}).items()
-                    },
+                    "properties": sorted(schema.get("properties", {})),
                 }
             values.append(
                 {
@@ -101,61 +89,14 @@ def direct_capability_task(run, evidence_refs):
 
 
 def bounded_tasks(tasks, run):
-    return list(tasks)[: limits.supervisor_steps]
-
-
-def task_scope(task):
-    identifiers = sorted(
-        {
-            str(value)
-            for call in task.tool_calls
-            for key, value in call.arguments.items()
-            if key != "project_id" and key.endswith("_id") and value
-        }
-    )
-    if identifiers:
-        return tuple(identifiers)
-    references = sorted(set(task.evidence_refs))
-    if references:
-        return tuple(references)
-    return (" ".join(task.objective.casefold().split()),)
-
-
-def task_tools(task):
-    return tuple(sorted({call.tool_name for call in task.tool_calls}))
-
-
-def coordinate_tasks(tasks, existing=()):
-    accepted = list(existing)
-    signatures = {(task_scope(task), task_tools(task)) for task in accepted}
-    objectives = {
-        (task_scope(task), " ".join(task.objective.casefold().split()))
-        for task in accepted
-    }
-    coordinated = []
-    for task in tasks:
-        scope = task_scope(task)
-        tools = task_tools(task)
-        objective = " ".join(task.objective.casefold().split())
-        if not tools or (scope, tools) in signatures or (scope, objective) in objectives:
-            continue
-        dependencies = [
-            previous.task_id
-            for previous in accepted
-            if task_scope(previous) == scope and task_tools(previous) != tools
-        ]
-        task = task.model_copy(update={"depends_on": dependencies})
-        accepted.append(task)
-        coordinated.append(task)
-        signatures.add((scope, tools))
-        objectives.add((scope, objective))
-    return coordinated
+    first = next(iter(tasks), None)
+    return [first] if first else []
 
 
 def validated_tasks(tasks, run, evidence_refs, maximum=None, known_identifiers=None):
     tool_values = registered_tools()
     validated = []
-    task_limit = max(0, limits.supervisor_steps - len(run.completed_tasks))
+    task_limit = max(0, 1 - len(run.completed_tasks))
     if maximum is not None:
         task_limit = min(task_limit, maximum)
     for planned in bounded_tasks(tasks, run)[:task_limit]:
@@ -258,7 +199,7 @@ def route_after_context(state):
     if run.approval_status == AgentApprovalStatus.APPROVED and state.get("tasks"):
         return "apply"
     if run.approval_status == AgentApprovalStatus.REJECTED and state.get("tasks"):
-        return "re_evaluate"
+        return "finalize"
     return "plan"
 
 
@@ -270,30 +211,29 @@ async def plan(state):
     ]
     direct_task = direct_capability_task(run, evidence_refs)
     if direct_task:
-        run.supervisor_plan = [direct_task.model_dump(mode="json")]
+        run.execution_plan = [direct_task.model_dump(mode="json")]
         run.status = AgentRunStatus.RUNNING
         run.current_step = 1
         return {
             "run": run.model_dump(mode="python"),
             "tasks": [direct_task.model_dump(mode="python")],
             "success_criteria": [run.objective],
-            "task_index": 0,
             "results": [],
         }
-    prompt = supervisor_plan_prompt(
+    prompt = agent_plan_prompt(
         run.project_id,
         run.run_id,
         run.objective,
         run.intent,
         state.get("target_artifact_ids", []),
-        available_tools(run.permissions, run.intent),
+        available_tools(run.permissions, run.intent, compact=True),
         evidence_refs,
         state.get("constraints", {}),
     )
     try:
         generated = await structured(
             prompt,
-            SupervisorPlan,
+            AgentPlan,
             max_tokens=1600,
             timeout_seconds=limits.task_timeout_seconds,
         )
@@ -316,7 +256,6 @@ async def plan(state):
             "run": run.model_dump(mode="python"),
             "tasks": [],
             "success_criteria": [],
-            "task_index": 0,
             "results": [result.model_dump(mode="python")],
         }
     allowed_identifiers = list(
@@ -339,7 +278,7 @@ async def plan(state):
         evidence_refs,
         known_identifiers=allowed_identifiers,
     )
-    tasks = coordinate_tasks(task for task in tasks if task.tool_calls)
+    tasks = [task for task in tasks if task.tool_calls]
     results = []
     if not tasks:
         results.append(
@@ -352,14 +291,13 @@ async def plan(state):
                 warnings=["MANUAL_REVIEW_REQUIRED"],
             ).model_dump(mode="python")
         )
-    run.supervisor_plan = [task.model_dump(mode="json") for task in tasks]
+    run.execution_plan = [task.model_dump(mode="json") for task in tasks]
     run.status = AgentRunStatus.RUNNING
     run.current_step = 1
     return {
         "run": run.model_dump(mode="python"),
         "tasks": [task.model_dump(mode="python") for task in tasks],
         "success_criteria": generated.success_criteria,
-        "task_index": 0,
         "results": results,
     }
 
@@ -367,27 +305,9 @@ async def plan(state):
 async def execute_agent(state):
     run = state_run(state)
     tasks = [AgentTask(**item) for item in state.get("tasks", [])]
-    index = int(state.get("task_index", 0))
-    if index >= len(tasks):
+    if not tasks:
         return {}
-    task = tasks[index]
-    completed_ids = {item.get("task_id") for item in run.completed_tasks}
-    if not set(task.depends_on).issubset(completed_ids):
-        result = AgentResult(
-            task_id=task.task_id,
-            status=AgentTaskStatus.INSUFFICIENT_EVIDENCE,
-            summary="Nhiệm vụ phụ thuộc chưa hoàn tất",
-            evidence_refs=task.evidence_refs,
-            reason_codes=["TASK_DEPENDENCY_INCOMPLETE"],
-        )
-        run.completed_tasks.append(task.model_dump(mode="json"))
-        run.agent_results.append(result.model_dump(mode="json"))
-        run.current_step += 1
-        return {
-            "run": run.model_dump(mode="python"),
-            "task_index": index + 1,
-            "results": [*state.get("results", []), result.model_dump(mode="python")],
-        }
+    task = tasks[0]
     run.active_task = task.model_dump(mode="json")
     evidence_by_ref = {
         item.get("artifact_version_id") or item.get("artifact_id"): item
@@ -407,6 +327,18 @@ async def execute_agent(state):
         state["token"],
         run.approval_status,
     )
+    tool_evidence_refs = []
+    for observation in observations:
+        if observation.get("status") != ToolExecutionStatus.COMPLETED:
+            continue
+        evidence_ref = f"{task.task_id}:{observation.get('tool_name', 'tool')}"
+        observation["evidence_ref"] = evidence_ref
+        tool_evidence_refs.append(evidence_ref)
+    if tool_evidence_refs:
+        run.evidence_refs = list(dict.fromkeys([*run.evidence_refs, *tool_evidence_refs]))
+        result.evidence_refs = list(
+            dict.fromkeys([*result.evidence_refs, *tool_evidence_refs])
+        )
     run.completed_tasks.append(task.model_dump(mode="json"))
     run.agent_results.append(result.model_dump(mode="json"))
     run.observations.extend(observations)
@@ -422,160 +354,52 @@ async def execute_agent(state):
     run.current_step += 1
     return {
         "run": run.model_dump(mode="python"),
-        "task_index": index + 1,
         "results": [*state.get("results", []), result.model_dump(mode="python")],
     }
 
 
 def route_after_agent(state):
-    return "execute" if int(state.get("task_index", 0)) < len(state.get("tasks", [])) else "review"
+    return "finalize"
 
 
-async def re_evaluate(state):
+async def finalize(state):
     run = state_run(state)
     results = [AgentResult(**item) for item in state.get("results", [])]
-    if not state.get("tasks"):
-        reason_codes = list(
-            dict.fromkeys(code for item in results for code in item.reason_codes)
-        )
-        run.observations.append(
-            {
-                "phase": "RE_EVALUATE",
-                "goal_complete": True,
-                "reason_codes": reason_codes,
-                "new_task_count": 0,
-            }
-        )
-        return {"run": run.model_dump(mode="python"), "review_complete": True}
-    remaining = max(0, limits.supervisor_steps - len(run.completed_tasks))
-    if remaining == 0:
-        run.observations.append(
-            {"phase": "RE_EVALUATE", "reason_code": "AGENT_LIMIT_REACHED"}
-        )
-        return {"run": run.model_dump(mode="python"), "review_complete": True}
-    prompt = supervisor_review_prompt(
-        run.objective,
-        state.get("success_criteria", []),
-        [item.model_dump(mode="json") for item in results],
-        available_tools(run.permissions, run.intent, compact=True),
-        run.evidence_refs,
-        remaining,
+    reason_codes = list(
+        dict.fromkeys(code for item in results for code in item.reason_codes)
     )
-    try:
-        review = await structured(
-            prompt,
-            SupervisorReview,
-            max_tokens=1400,
-            timeout_seconds=limits.task_timeout_seconds,
-        )
-    except Exception:
-        review = SupervisorReview(
-            goal_complete=True,
-            success_criteria=state.get("success_criteria", []),
-            reason_codes=["AI_PROVIDER_UNAVAILABLE"],
-        )
-    allowed_identifiers = list(
-        dict.fromkeys(
-            [
-                *run.evidence_refs,
-                *state.get("target_artifact_ids", []),
-                *[
-                    item.get("artifact_id")
-                    for item in state.get("evidence", [])
-                    if item.get("artifact_id")
-                ],
-            ]
-        )
-    )
-    new_tasks = validated_tasks(
-        review.tasks,
-        run,
-        run.evidence_refs,
-        remaining,
-        allowed_identifiers,
-    )
-    existing = [AgentTask(**item) for item in state.get("tasks", [])]
-    new_tasks = coordinate_tasks(
-        (task for task in new_tasks if task.tool_calls),
-        existing,
-    )
-    complete = review.goal_complete or not new_tasks
     run.observations.append(
         {
-            "phase": "RE_EVALUATE",
-            "goal_complete": complete,
-            "reason_codes": review.reason_codes,
-            "new_task_count": len(new_tasks),
+            "phase": "FINALIZE",
+            "goal_complete": True,
+            "reason_codes": reason_codes,
+            "new_task_count": 0,
         }
     )
-    if complete:
-        return {
-            "run": run.model_dump(mode="python"),
-            "review_complete": True,
-            "success_criteria": review.success_criteria or state.get("success_criteria", []),
-        }
-    combined = [*state.get("tasks", []), *[item.model_dump(mode="python") for item in new_tasks]]
-    run.supervisor_plan.extend(item.model_dump(mode="json") for item in new_tasks)
     return {
         "run": run.model_dump(mode="python"),
-        "tasks": combined,
-        "review_complete": False,
-        "success_criteria": review.success_criteria or state.get("success_criteria", []),
+        "success_criteria": state.get("success_criteria", []),
     }
 
 
-def route_after_review(state):
-    return "aggregate" if state.get("review_complete", True) else "execute"
+def route_after_finalize(state):
+    return "aggregate"
 
 
 async def aggregate(state):
     run = state_run(state)
     results = [AgentResult(**item) for item in state.get("results", [])]
-    provider_unavailable = any(
-        "AI_PROVIDER_UNAVAILABLE" in [*item.reason_codes, *item.warnings]
-        for item in results
+    proposal = AgentProposal(
+        summary=" ".join(item.summary for item in results),
+        evidence_refs=list(
+            dict.fromkeys(reference for item in results for reference in item.evidence_refs)
+        ),
+        actions=[action for item in results for action in item.proposals],
+        warnings=list(dict.fromkeys(warning for item in results for warning in item.warnings)),
+        success_criteria_met=state.get("success_criteria", [])
+        if all(item.status == AgentTaskStatus.COMPLETED for item in results)
+        else [],
     )
-    if provider_unavailable:
-        proposal = SupervisorProposal(
-            summary=" ".join(item.summary for item in results),
-            evidence_refs=list(
-                dict.fromkeys(reference for item in results for reference in item.evidence_refs)
-            ),
-            actions=[action for item in results for action in item.proposals],
-            warnings=list(dict.fromkeys(warning for item in results for warning in item.warnings)),
-            success_criteria_met=state.get("success_criteria", [])
-            if all(item.status == AgentTaskStatus.COMPLETED for item in results)
-            else [],
-        )
-    else:
-        prompt = aggregate_prompt(
-            run.objective,
-            state.get("success_criteria", []),
-            [item.model_dump(mode="json") for item in results],
-        )
-        try:
-            proposal = await structured(
-                prompt,
-                SupervisorProposal,
-                max_tokens=1200,
-                timeout_seconds=limits.task_timeout_seconds,
-            )
-        except Exception:
-            proposal = SupervisorProposal(
-                summary=" ".join(item.summary for item in results),
-                evidence_refs=list(
-                    dict.fromkeys(
-                        reference for item in results for reference in item.evidence_refs
-                    )
-                ),
-                actions=[action for item in results for action in item.proposals],
-                warnings=list(
-                    dict.fromkeys(warning for item in results for warning in item.warnings)
-                ),
-                success_criteria_met=state.get("success_criteria", [])
-                if all(item.status == AgentTaskStatus.COMPLETED for item in results)
-                else [],
-            )
     tasks = {item["task_id"]: AgentTask(**item) for item in state.get("tasks", [])}
     pending_actions = []
     if run.approval_status != AgentApprovalStatus.REJECTED:

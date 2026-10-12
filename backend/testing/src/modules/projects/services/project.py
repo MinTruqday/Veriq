@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.authentication import get_project_creation_policy
-from src.core.auth import permissions_for_role, project_permissions
+from src.core.auth import archive_read_permissions, permissions_for_role, project_permissions
 from src.core.common import (
     audit,
     get_project,
@@ -26,6 +26,12 @@ def project_access(project, membership, grant):
         else set()
     )
     grant_permissions = set(grant.get("permissions", [])) & project_permissions() if grant else set()
+    if project.get("status", "active").lower() == "archived":
+        allowed = archive_read_permissions() | {"project.restore"}
+        if (project.get("settings") or {}).get("read_after_archive_policy", "ALLOW_READ") == "DENY_READ":
+            allowed = {"project.read", "project.restore"}
+        role_permissions &= allowed
+        grant_permissions &= allowed
     return {
         **project,
         "current_membership": membership,

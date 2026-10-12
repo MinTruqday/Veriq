@@ -17,7 +17,7 @@ async def hybrid_evidence(project_id, query, requester_id, token=None, limit=Non
             from src.tools.testing import retrieve_project_evidence
 
             raw = await retrieve_project_evidence.ainvoke(
-                {"project_id": project_id, "query": query, "artifact_types": ""},
+                {"project_id": project_id, "instruction": query, "artifact_types": ""},
                 config=RunnableConfig(
                     configurable={"token": token, "project_id": project_id}
                 ),
@@ -96,7 +96,7 @@ async def hybrid_evidence(project_id, query, requester_id, token=None, limit=Non
     except Exception:
         degraded.append("GRAPH_UNAVAILABLE")
     try:
-        for memory in await long_term_memory.list(project_id, maximum):
+        for memory in await long_term_memory.list(project_id, requester_id, maximum):
             text = str(memory.get("proposal") or memory.get("objective") or "")
             if query.lower() in text.lower():
                 items.append(

@@ -368,6 +368,8 @@ async def apply_test_case_revision(
     "READ",
     "knowledge.read",
     owner_domain="analysis",
+    label="Tìm bằng chứng dự án",
+    user_selectable=True,
 )
 async def retrieve_project_evidence(
     project_id: Annotated[str, Field(description="Project identifier")],
@@ -542,6 +544,8 @@ async def suggest_regression_scope(
     "READ",
     "testrun.read",
     owner_domain="execution",
+    label="Lịch sử thực thi",
+    user_selectable=True,
 )
 async def get_execution_history(
     project_id: Annotated[str, Field(description="Project identifier")], config: RunnableConfig = None

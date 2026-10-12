@@ -64,14 +64,23 @@ class AnalysisRepository:
         ).to_list(limit)
 
     async def list_active_test_case_versions(self, project_id, active_status, limit=2000):
-        return await database.value.test_case_versions.find(
-            {"project_id": project_id, "status": active_status}
-        ).to_list(limit)
+        return await database.value.test_cases.aggregate([
+            {"$match": {"project_id": project_id, "status": active_status, "current_version_id": {"$ne": None}}},
+            {"$lookup": {"from": "test_case_versions", "localField": "current_version_id", "foreignField": "_id", "as": "version"}},
+            {"$unwind": "$version"},
+            {"$replaceRoot": {"newRoot": "$version"}},
+            {"$limit": limit},
+        ]).to_list(limit)
 
     async def list_related_active_test_case_versions(self, project_id, version_id, limit):
-        return await database.value.test_case_versions.find(
-            {"project_id": project_id, "status": "ACTIVE", "requirement_version_ids": version_id}
-        ).to_list(limit)
+        return await database.value.test_cases.aggregate([
+            {"$match": {"project_id": project_id, "status": "ACTIVE", "current_version_id": {"$ne": None}}},
+            {"$lookup": {"from": "test_case_versions", "localField": "current_version_id", "foreignField": "_id", "as": "version"}},
+            {"$unwind": "$version"},
+            {"$replaceRoot": {"newRoot": "$version"}},
+            {"$match": {"project_id": project_id, "requirement_version_ids": version_id}},
+            {"$limit": limit},
+        ]).to_list(limit)
 
     async def list_active_defects(self, project_id, excluded_statuses, limit=2000):
         return await database.value.defects.find(
@@ -133,6 +142,20 @@ class AnalysisRepository:
     async def find_test_case_version(self, project_id, version_id):
         return await database.value.test_case_versions.find_one(
             {"_id": version_id, "project_id": project_id}
+        )
+
+    async def set_artifact_index_result(
+        self, collection, project_id, version_id, index_status, error_code, indexed_at
+    ):
+        return await database.value[collection].update_one(
+            {"_id": version_id, "project_id": project_id},
+            {
+                "$set": {
+                    "index_status": index_status,
+                    "index_error_code": error_code,
+                    "indexed_at": indexed_at,
+                }
+            },
         )
 
 

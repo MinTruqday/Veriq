@@ -72,7 +72,7 @@ export const designTestingApi = {
       body: JSON.stringify(payload),
     }),
   synthesizeRequirementTemplate: (id, payload) =>
-    testingRequest(`/du-an/${id}/mau-yeu-cau/tong-hop`, {
+    testingStreamRequest(`/du-an/${id}/mau-yeu-cau/tong-hop`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -343,6 +343,11 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  createGeneratedTestDrafts: (id, payload) =>
+    testingRequest(`/du-an/${id}/ban-nhap-ca-kiem-thu/lo`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   getTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}`),
   updateTestDraft: (id, payload) =>
     testingRequest(`/ban-nhap-ca-kiem-thu/${id}`, {
@@ -440,7 +445,7 @@ export const designTestingApi = {
     }),
   listApiOperations: (id) => testingRequest(`/du-an/${id}/dac-ta-giao-dien/thao-tac`),
   generateApiTests: (id) =>
-    testingStreamRequest(`/dac-ta-giao-dien/thao-tac/${id}/sinh-ca-kiem-thu`, {
+    testingRequest(`/dac-ta-giao-dien/thao-tac/${id}/sinh-ca-kiem-thu`, {
       method: "POST",
     }),
   traceability: (id) => testingRequest(`/du-an/${id}/truy-vet`),

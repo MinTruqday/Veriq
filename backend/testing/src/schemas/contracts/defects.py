@@ -46,6 +46,53 @@ class DefectCreate(BaseModel):
     prevention_candidate: bool = False
 
 
+class DefectPatch(BaseModel):
+    expected_revision: int = Field(ge=1)
+    title: str | None = Field(default=None, min_length=2, max_length=300)
+    description_doc: dict[str, Any] | None = None
+    steps_to_reproduce: list[dict[str, Any]] | None = Field(default=None, max_length=500)
+    actual_result_doc: dict[str, Any] | None = None
+    expected_result_doc: dict[str, Any] | None = None
+    severity: Literal["blocker", "critical", "major", "minor", "trivial"] | None = None
+    priority: Literal["critical", "high", "medium", "low"] | None = None
+    environment: str | None = Field(default=None, max_length=500)
+    environment_id: str | None = Field(default=None, max_length=200)
+    release: str | None = Field(default=None, max_length=200)
+    release_id: str | None = Field(default=None, max_length=200)
+    build: str | None = Field(default=None, max_length=200)
+    build_id: str | None = Field(default=None, max_length=200)
+    assignee: str | None = Field(default=None, max_length=200)
+    attachments: list[dict[str, Any]] | None = Field(default=None, max_length=100)
+    linked_test_result_id: str | None = Field(default=None, max_length=200)
+    linked_test_case_version_id: str | None = Field(default=None, max_length=200)
+    linked_requirement_version_ids: list[str] | None = Field(default=None, max_length=200)
+    root_cause_category: Literal[
+        "REQUIREMENT",
+        "DESIGN",
+        "IMPLEMENTATION",
+        "CONFIGURATION",
+        "TEST_DATA",
+        "TEST_CASE_GAP",
+        "ENVIRONMENT",
+        "INTEGRATION",
+        "DEPLOYMENT",
+        "PROCESS",
+        "THIRD_PARTY",
+        "UNKNOWN",
+    ] | None = None
+    root_cause_detail: str | None = Field(default=None, max_length=5000)
+    injected_phase: str | None = Field(default=None, max_length=200)
+    detected_phase: str | None = Field(default=None, max_length=200)
+    escape_reason: str | None = Field(default=None, max_length=5000)
+    prevention_candidate: bool | None = None
+
+    @model_validator(mode="after")
+    def require_change(self):
+        if self.model_fields_set == {"expected_revision"}:
+            raise ValueError("Phải có ít nhất một trường cần cập nhật")
+        return self
+
+
 class DefectTransition(BaseModel):
     expected_revision: int = Field(ge=1)
     to_status: Literal[

@@ -40,28 +40,27 @@ class TestDesignRepository:
             {"project_id": project_id, "requirement_id": requirement_id}, {"_id": 1}
         ).to_list(limit)
 
-    async def list_case_drafts(self, project_id, limit):
+    async def list_case_drafts(self, project_id, limit, statuses=None):
+        query = {"project_id": project_id}
+        if statuses is not None:
+            query["status"] = {"$in": statuses}
         return (
-            await database.value.test_case_drafts.find({"project_id": project_id})
+            await database.value.test_case_drafts.find(query)
             .sort("updated_at", -1)
             .to_list(limit)
         )
 
-    async def list_related_case_drafts(self, project_id, version_id, limit):
-        return await database.value.test_case_drafts.find(
-            {"project_id": project_id, "requirement_version_ids": version_id}
-        ).sort("updated_at", -1).to_list(limit)
+    async def list_related_case_drafts(self, project_id, version_id, limit, statuses=None):
+        query = {"project_id": project_id, "requirement_version_ids": version_id}
+        if statuses is not None:
+            query["status"] = {"$in": statuses}
+        return await database.value.test_case_drafts.find(query).sort("updated_at", -1).to_list(limit)
 
     async def list_versions_for_case(self, test_case_id, limit=500):
         return (
             await database.value.test_case_versions.find({"test_case_id": test_case_id})
             .sort("version", -1)
             .to_list(limit)
-        )
-
-    async def update_case_draft_metadata(self, draft_id, changes):
-        await database.value.test_case_drafts.update_one(
-            {"_id": draft_id}, {"$set": changes}
         )
 
     async def list_selected_case_versions(self, project_id, test_case_id, version_ids):
@@ -143,6 +142,47 @@ class TestDesignRepository:
 
     async def insert_case_version(self, value):
         await database.value.test_case_versions.insert_one(value)
+
+    async def set_case_version_index_result(
+        self, version_id, project_id, index_status, error_code, indexed_at
+    ):
+        return await database.value.test_case_versions.update_one(
+            {"_id": version_id, "project_id": project_id},
+            {
+                "$set": {
+                    "index_status": index_status,
+                    "index_error_code": error_code,
+                    "indexed_at": indexed_at,
+                }
+            },
+        )
+
+    async def set_case_version_approval_result(
+        self,
+        version_id,
+        project_id,
+        index_status,
+        index_error_code,
+        indexed_at,
+        trace_status,
+        trace_error_code,
+        approval_audit_status,
+        approval_audit_error_code,
+    ):
+        return await database.value.test_case_versions.update_one(
+            {"_id": version_id, "project_id": project_id},
+            {
+                "$set": {
+                    "index_status": index_status,
+                    "index_error_code": index_error_code,
+                    "indexed_at": indexed_at,
+                    "trace_status": trace_status,
+                    "trace_error_code": trace_error_code,
+                    "approval_audit_status": approval_audit_status,
+                    "approval_audit_error_code": approval_audit_error_code,
+                }
+            },
+        )
 
     async def activate_case_version(
         self, test_case_id, project_id, parent_version_id, version_id, status, updated_at
@@ -263,6 +303,12 @@ class TestDesignRepository:
         )
         return (project or {}).get("settings") or {}
 
+    async def find_current_requirement(self, project_id, requirement_id):
+        return await database.value.requirements.find_one(
+            {"_id": requirement_id, "project_id": project_id},
+            {"current_version_id": 1, "status": 1},
+        )
+
     async def list_conditions(self, query, limit):
         return await database.value.test_conditions.find(
             query, {"_id": 1, "status": 1}
@@ -311,10 +357,10 @@ class TestDesignRepository:
             {"$set": {"status": "PREVIEW_READY"}},
         )
 
-    async def delete_created_import_drafts(self, project_id, draft_ids):
+    async def delete_created_drafts(self, project_id, draft_ids):
         if draft_ids:
             await database.value.test_case_drafts.delete_many(
-                {"_id": {"$in": draft_ids}, "project_id": project_id, "origin": "import"}
+                {"_id": {"$in": draft_ids}, "project_id": project_id}
             )
 
     async def confirm_import(self, import_id, project_id, changes):

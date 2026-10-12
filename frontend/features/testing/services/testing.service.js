@@ -4,6 +4,7 @@ import { projectTestingApi } from "./testing.projects";
 import { qualityTestingApi } from "./testing.quality";
 
 export {
+  agentReadRequest,
   agentRequest,
   downloadTestingFile,
   testingRequest,

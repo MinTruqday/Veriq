@@ -192,6 +192,7 @@ export default function RequirementTemplatePanel({
     actors_and_systems: "",
     glossary: "",
     assumptions: "",
+    constraints: "",
   });
   const [requirements, setRequirements] = useState([emptyRequirement()]);
   const [resolutions, setResolutions] = useState([]);
@@ -504,6 +505,7 @@ export default function RequirementTemplatePanel({
           ["actors_and_systems", "Tác nhân và hệ thống"],
           ["glossary", "Thuật ngữ"],
           ["assumptions", "Giả định"],
+          ["constraints", "Ràng buộc dự án"],
         ].map(([key, label]) => (
           <label className="field-label" key={key}>
             {label}
@@ -1094,6 +1096,7 @@ export default function RequirementTemplatePanel({
                   actors_and_systems: "Tác nhân và hệ thống",
                   glossary: "Thuật ngữ",
                   assumptions: "Giả định",
+                  constraints: "Ràng buộc dự án",
                 }[key] || key}{" "}
                 {Array.isArray(value) ? value.join("  ") : String(value || "")}
               </p>

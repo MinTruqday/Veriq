@@ -192,6 +192,7 @@ async def clone_test_case_record(test_case_id, payload, user):
             expected_result_doc=version["expected_result_doc"],
             postconditions_doc=version["postconditions_doc"],
             tags=version.get("tags", []),
+            owner_id=version.get("owner_id"),
             techniques=version.get("techniques", []),
             automation_status=version.get(
                 "automation_status", 'manual'
@@ -200,9 +201,12 @@ async def clone_test_case_record(test_case_id, payload, user):
             data_set_version_ids=version.get("data_set_version_ids", []),
             requirement_version_ids=version.get("requirement_version_ids", []),
             acceptance_criterion_ids=version.get("acceptance_criterion_ids", []),
+            test_condition_ids=version.get("test_condition_ids", []),
             scenario_id=version.get("scenario_id"),
             origin='clone',
             source_evidence=source_evidence,
+            evidence_refs=version.get("evidence_refs", []),
+            evidence_quotes=version.get("evidence_quotes", []),
         ),
         user,
     )
@@ -226,15 +230,13 @@ async def list_test_case_versions(test_case_id, user):
 
 async def create_test_case_version_draft_record(test_case_id, payload, user):
     test_case = await get_project_entity('test_cases', test_case_id, user, 'testcase.version.create')
-    expected_version_id = str(payload.get("expected_current_version_id") or "")
+    expected_version_id = payload.expected_current_version_id
     if expected_version_id != test_case.get("current_version_id"):
         raise HTTPException(
             status_code=409,
             detail={"code": 'REVISION_CONFLICT', "current_version_id": test_case.get("current_version_id")},
         )
-    reason = str(payload.get("change_reason") or "").strip()
-    if len(reason) < 2:
-        raise HTTPException(status_code=422, detail={"code": 'CHANGE_REASON_REQUIRED'})
+    reason = payload.change_reason.strip()
     version = await test_design_repository.find_case_version(
         expected_version_id, test_case["project_id"]
     )
@@ -244,7 +246,7 @@ async def create_test_case_version_draft_record(test_case_id, payload, user):
         test_case["project_id"],
         TestCaseDraftCreate(
             test_case_key=test_case["test_case_key"],
-            title=str(payload.get("title") or version["title"]),
+            title=payload.title or version["title"],
             type=version["type"],
             priority=version["priority"],
             risk=version["risk"],
@@ -255,6 +257,7 @@ async def create_test_case_version_draft_record(test_case_id, payload, user):
             expected_result_doc=version["expected_result_doc"],
             postconditions_doc=version["postconditions_doc"],
             tags=version.get("tags", []),
+            owner_id=version.get("owner_id"),
             techniques=version.get("techniques", []),
             automation_status=version.get(
                 "automation_status", 'manual'
@@ -263,6 +266,7 @@ async def create_test_case_version_draft_record(test_case_id, payload, user):
             data_set_version_ids=version.get("data_set_version_ids", []),
             requirement_version_ids=version.get("requirement_version_ids", []),
             acceptance_criterion_ids=version.get("acceptance_criterion_ids", []),
+            test_condition_ids=version.get("test_condition_ids", []),
             scenario_id=version.get("scenario_id"),
             origin='manual',
             source_evidence=[
@@ -274,14 +278,13 @@ async def create_test_case_version_draft_record(test_case_id, payload, user):
                     "relation": 'new_version_from',
                 },
             ],
+            evidence_refs=version.get("evidence_refs", []),
+            evidence_quotes=version.get("evidence_quotes", []),
         ),
         user,
+        parent_version_id=version["_id"],
+        change_reason=reason,
     )
-    await test_design_repository.update_case_draft_metadata(
-        result["_id"], {"change_reason": reason, "parent_version_id": version["_id"]}
-    )
-    result["change_reason"] = reason
-    result["parent_version_id"] = version["_id"]
     return result
 
 
@@ -321,11 +324,9 @@ async def set_test_case_obsolete(test_case_id, payload, user):
         'NEEDS_UPDATE',
     }:
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
-    if payload.get("expected_current_version_id") != test_case.get("current_version_id"):
+    if payload.expected_current_version_id != test_case.get("current_version_id"):
         raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT', "current_version_id": test_case.get("current_version_id")})
-    reason = str(payload.get("reason") or "").strip()
-    if len(reason) < 2:
-        raise HTTPException(status_code=422, detail={"code": 'OBSOLETE_REASON_REQUIRED'})
+    reason = payload.reason.strip()
     timestamp = now()
     updated = await test_design_repository.set_case_lifecycle_status(
         test_case_id,
@@ -346,11 +347,9 @@ async def restore_test_case_record(test_case_id, payload, user):
     test_case = await get_project_entity('test_cases', test_case_id, user, 'testcase.restore')
     if test_case.get("status") != 'OBSOLETE':
         return test_case
-    if payload.get("expected_current_version_id") != test_case.get("current_version_id"):
+    if payload.expected_current_version_id != test_case.get("current_version_id"):
         raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
-    reason = str(payload.get("reason") or "").strip()
-    if len(reason) < 2:
-        raise HTTPException(status_code=422, detail={"code": 'RESTORE_REASON_REQUIRED'})
+    reason = payload.reason.strip()
     timestamp = now()
     updated = await test_design_repository.set_case_lifecycle_status(
         test_case_id,

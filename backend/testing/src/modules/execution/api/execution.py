@@ -6,6 +6,7 @@ from src.core.common import envelope, get_project
 from src.schemas.contracts.defects import (
     BugTraceSuggestionInput,
     DefectCreate,
+    DefectPatch,
     DefectRetestInput,
     DefectTraceUpdateInput,
     DefectTransition,
@@ -499,7 +500,7 @@ async def update_defect_trace(
 @router.patch("/du-an/{project_id}/loi/{defect_id}")
 async def update_defect(
     defect_id: str,
-    payload: dict = Body(),
+    payload: DefectPatch,
     project_id: str | None = None,
     user: CurrentUser = Depends(get_current_user),
 ):

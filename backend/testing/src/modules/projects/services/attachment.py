@@ -36,7 +36,11 @@ class AttachmentService:
                     status_code=422,
                     detail={"code": 'ATTACHMENT_ARTIFACT_TYPE_INVALID'},
                 )
-            if not await test_design_repository.artifact_exists(
+            if collection == "requirement_documents":
+                from src.modules.requirements.services.requirement_documents import get_requirement_document_record
+
+                await get_requirement_document_record(payload.artifact_id, user)
+            elif not await test_design_repository.artifact_exists(
                 collection, project_id, payload.artifact_id
             ):
                 raise HTTPException(
@@ -90,7 +94,35 @@ class AttachmentService:
             query["artifact_type"] = artifact_type
         if artifact_id:
             query["artifact_id"] = artifact_id
-        return await test_design_repository.list_attachments(query)
+        attachments = await test_design_repository.list_attachments(query)
+        document_ids = {
+            item.get("artifact_id")
+            for item in attachments
+            if item.get("artifact_type") == "requirement_document" and item.get("artifact_id")
+        }
+        if not document_ids:
+            return attachments
+        from src.modules.requirements.services.requirement_documents import require_document_access
+        from src.repositories.requirement_document import requirement_document_repository
+
+        documents = await requirement_document_repository.list_by_ids(project_id, list(document_ids))
+        by_id = {item["_id"]: item for item in documents}
+        visible = []
+        for attachment in attachments:
+            if attachment.get("artifact_type") != "requirement_document":
+                visible.append(attachment)
+                continue
+            document = by_id.get(attachment.get("artifact_id"))
+            if not document:
+                continue
+            try:
+                await require_document_access(document, user, "requirement_document.read")
+            except HTTPException as error:
+                if error.status_code != 403:
+                    raise
+                continue
+            visible.append(attachment)
+        return visible
 
     @staticmethod
     async def delete(attachment_id: str, user: CurrentUser):

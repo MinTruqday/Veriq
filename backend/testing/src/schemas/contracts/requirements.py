@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.schemas.contracts.common import (
     KnowledgeApprovalStatus,
@@ -102,11 +102,33 @@ class RequirementCustomFieldCreate(BaseModel):
         return self
 
 
+class RequirementTemplateContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    objectives: str = Field(default="", max_length=10000)
+    in_scope: str = Field(default="", max_length=10000)
+    out_of_scope: str = Field(default="", max_length=10000)
+    stakeholders: list[str] = Field(default_factory=list, max_length=200)
+    actors_and_systems: list[str] = Field(default_factory=list, max_length=200)
+    glossary: list[str] = Field(default_factory=list, max_length=500)
+    assumptions: list[str] = Field(default_factory=list, max_length=200)
+    constraints: list[str] = Field(default_factory=list, max_length=200)
+
+    @field_validator("stakeholders", "actors_and_systems", "glossary", "assumptions", "constraints", mode="before")
+    @classmethod
+    def normalize_lines(cls, value):
+        if isinstance(value, str):
+            value = value.splitlines()
+        if not isinstance(value, list):
+            raise ValueError("Template context list is invalid")
+        return [str(item).strip() for item in value if str(item).strip()]
+
+
 class RequirementTemplateCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     description: str = Field(default="", max_length=2000)
     product_types: list[Literal["web", "mobile", "api", "desktop", "embedded", "other"]] = Field(min_length=1, max_length=6)
-    context: dict[str, Any] = Field(default_factory=dict)
+    context: RequirementTemplateContext = Field(default_factory=RequirementTemplateContext)
     requirements: list[RequirementCreate] = Field(default_factory=list, max_length=100)
     source_document_ids: list[str] = Field(default_factory=list, max_length=100)
     source_template_ids: list[str] = Field(default_factory=list, max_length=20)

@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.storage import storage_client
+from src.core.configuration import settings
 from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.repositories.requirement_document import requirement_document_repository
 from src.repositories.common import common_repository
@@ -63,7 +64,7 @@ async def create_requirement_document_record(project_id, payload, user):
     content = serialized_content(payload.content)
     normalized_content = payload.content if payload.format in ("openapi", "postman") else source_document_text(payload.content)
     normalized = serialized_content(normalized_content)
-    if len(content.encode("utf-8")) > 26214400:
+    if len(content.encode("utf-8")) > settings.MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(status_code=413, detail={"code": 'IMPORT_TOO_LARGE'})
     content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
     existing = await requirement_document_repository.find_by_hash(project_id, content_hash, user.id)
@@ -203,7 +204,7 @@ async def upload_requirement_document_record(
         raise HTTPException(status_code=422, detail={"code": 'UNSUPPORTED_IMPORT_FORMAT'})
     if not data:
         raise HTTPException(status_code=422, detail={"code": 'EMPTY_IMPORT'})
-    if len(data) > 26214400:
+    if len(data) > settings.MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(status_code=413, detail={"code": 'IMPORT_TOO_LARGE'})
     await get_project(project_id, user, 'requirement_document.upload')
     shared_with = await validate_document_recipients(project_id, shared_with or [])
@@ -303,8 +304,16 @@ async def upload_requirement_document_record(
     )
     document = await requirement_document_repository.find(document_id, project_id)
     if document.get("ai_enabled"):
-        await index_requirement_document(document)
+        indexed = await index_requirement_document(document)
+        if not indexed:
+            await requirement_document_repository.update(
+                document_id,
+                project_id,
+                {"ai_enabled": False, "updated_at": now()},
+            )
         document = await requirement_document_repository.find(document_id, project_id)
+        if not indexed:
+            return RequirementDocumentResult(document, 'DEGRADED', 'KNOWLEDGE_INDEX_FAILED')
     return RequirementDocumentResult(document)
 
 

@@ -80,6 +80,14 @@ async def setup_indexes():
             "long_term_memory": [
                 IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)]),
                 IndexModel([("project_id", ASCENDING), ("trusted", ASCENDING)]),
+                IndexModel(
+                    [
+                        ("project_id", ASCENDING),
+                        ("owner_id", ASCENDING),
+                        ("trusted", ASCENDING),
+                        ("created_at", DESCENDING),
+                    ]
+                ),
                 IndexModel([("run_id", ASCENDING)], unique=True),
             ],
         }

@@ -3,7 +3,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project_entity, new_id, now, plain_text
 from src.repositories.test_run import test_run_repository
-from src.modules.execution.services.execution_policy import (
+from src.modules.execution.services.execution_state import (
     execution_transitions,
     enforce_not_applicable_policy,
     frozen_run_scope,

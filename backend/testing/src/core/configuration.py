@@ -12,6 +12,7 @@ class Settings:
     CONTENT_URL: str = os.environ["CONTENT_URL"]
     WORKER_URL: str = os.environ["WORKER_URL"]
     CLOUD_URL: str = os.environ["CLOUD_URL"]
+    MAX_UPLOAD_SIZE_BYTES: int = int(os.environ["MAX_UPLOAD_SIZE_BYTES"])
 
 
 settings = Settings()

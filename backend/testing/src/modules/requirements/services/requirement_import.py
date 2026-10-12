@@ -6,6 +6,7 @@ import re
 import zipfile
 
 from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 from fastapi import HTTPException
 from pypdf import PdfReader
 import yaml
@@ -222,38 +223,49 @@ def extract_docx(data):
 
 
 def extract_xlsx_csv(data):
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        names = set(archive.namelist())
-        shared = []
-        if "xl/sharedStrings.xml" in names:
-            root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
-            shared = [
-                "".join(node.text or "" for node in item.iter() if node.tag.endswith("}t"))
-                for item in root
-            ]
-        sheets = sorted(
-            name
-            for name in names
-            if name.startswith("xl/worksheets/sheet") and name.endswith(".xml")
-        )
-        rows = []
-        for sheet in sheets:
-            root = ElementTree.fromstring(archive.read(sheet))
-            for row in (node for node in root.iter() if node.tag.endswith("}row")):
-                values = []
-                for cell in (node for node in row if node.tag.endswith("}c")):
-                    cell_type = cell.attrib.get("t")
-                    if cell_type == "inlineStr":
-                        value = "".join(
-                            node.text or "" for node in cell.iter() if node.tag.endswith("}t")
-                        )
-                    else:
-                        value_node = next((node for node in cell if node.tag.endswith("}v")), None)
-                        value = value_node.text if value_node is not None else ""
-                    if cell_type == "s" and value:
-                        value = shared[int(value)]
-                    values.append(value or "")
-                rows.append(values)
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            names = set(archive.namelist())
+            shared = []
+            if "xl/sharedStrings.xml" in names:
+                root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+                shared = [
+                    "".join(node.text or "" for node in item.iter() if node.tag.endswith("}t"))
+                    for item in root
+                ]
+            sheets = sorted(
+                name
+                for name in names
+                if name.startswith("xl/worksheets/sheet") and name.endswith(".xml")
+            )
+            rows = []
+            for sheet in sheets:
+                root = ElementTree.fromstring(archive.read(sheet))
+                for row in (node for node in root.iter() if node.tag.endswith("}row")):
+                    values = []
+                    for cell in (node for node in row if node.tag.endswith("}c")):
+                        reference = cell.attrib.get("r", "")
+                        column = "".join(character for character in reference if character.isalpha())
+                        if column:
+                            position = 0
+                            for character in column.upper():
+                                position = position * 26 + ord(character) - ord("A") + 1
+                            while len(values) < position - 1:
+                                values.append("")
+                        cell_type = cell.attrib.get("t")
+                        if cell_type == "inlineStr":
+                            value = "".join(
+                                node.text or "" for node in cell.iter() if node.tag.endswith("}t")
+                            )
+                        else:
+                            value_node = next((node for node in cell if node.tag.endswith("}v")), None)
+                            value = value_node.text if value_node is not None else ""
+                        if cell_type == "s" and value:
+                            value = shared[int(value)]
+                        values.append(value or "")
+                    rows.append(values)
+    except (zipfile.BadZipFile, KeyError, IndexError, ValueError, DefusedXmlException, ElementTree.ParseError) as error:
+        raise HTTPException(status_code=422, detail={"code": "IMPORT_XLSX_INVALID"}) from error
     stream = io.StringIO()
     writer = csv.writer(stream)
     writer.writerows(rows)

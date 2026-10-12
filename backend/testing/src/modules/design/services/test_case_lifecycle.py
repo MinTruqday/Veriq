@@ -2,7 +2,7 @@ from fastapi import HTTPException
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, require_action_policy
 from src.repositories.test_design import test_design_repository
-from src.modules.design.services.linters import lint_test_case
+from src.modules.design.services.linters import has_verifiable_steps, lint_test_case
 from src.clients.project_knowledge import index_artifact
 from src.modules.design.services.test_case_records import project_test_text
 
@@ -56,6 +56,8 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
             status_code=409,
             detail={"code": 'REVISION_CONFLICT', "current_revision": draft["revision"]},
         )
+    if not has_verifiable_steps(draft):
+        raise HTTPException(status_code=409, detail={"code": "TEST_CASE_STEPS_REQUIRED", "message": "Cần bổ sung hành động và kết quả mong đợi cho từng bước trước khi gửi duyệt"})
     findings = lint_test_case(draft)
     project_settings = await test_design_repository.find_project_settings(project_id)
     lint_blocking = project_settings.get(
@@ -140,7 +142,7 @@ async def approve_test_case_draft_record(draft_id, payload, user):
     if draft["status"] == 'APPROVED' and draft.get(
         "frozen_version_id"
     ):
-        return await approved_test_case_result(draft)
+        return await approved_test_case_result(draft, user)
     if draft["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
     if draft["revision"] != payload.expected_revision:
@@ -148,6 +150,8 @@ async def approve_test_case_draft_record(draft_id, payload, user):
             status_code=409,
             detail={"code": 'REVISION_CONFLICT', "current_revision": draft["revision"]},
         )
+    if not has_verifiable_steps(draft):
+        raise HTTPException(status_code=409, detail={"code": "TEST_CASE_STEPS_REQUIRED", "message": "Cần bổ sung hành động và kết quả mong đợi cho từng bước trước khi phê duyệt"})
     findings = lint_test_case(draft)
     project_settings = await test_design_repository.find_project_settings(draft["project_id"])
     lint_blocking = project_settings.get(
@@ -169,36 +173,10 @@ async def approve_test_case_draft_record(draft_id, payload, user):
             and current.get("status") == 'APPROVED'
             and current.get("frozen_version_id")
         ):
-            return await approved_test_case_result(current)
+            return await approved_test_case_result(current, user)
         raise HTTPException(status_code=409, detail={"code": 'TEST_CASE_APPROVAL_IN_PROGRESS'})
     test_case, version = await persist_test_case_version(claimed, payload, user)
-    trace_ready = True
-    try:
-        await create_suggested_trace_records(claimed, version, user)
-    except Exception:
-        trace_ready = False
-    indexed = await index_artifact(
-        version["project_id"],
-        'test_case_version',
-        version["test_case_id"],
-        version["_id"],
-        version["title"],
-        version["plain_text_projection"],
-        version["status"],
-        'APPROVED_SOURCE',
-        version["version"],
-        requirement_version_ids=version.get("requirement_version_ids", []),
-        acceptance_criterion_ids=version.get("acceptance_criterion_ids", []),
-    )
-    await audit(
-        user.id,
-        'test_case_version_approved',
-        'TestCaseVersion',
-        version["_id"],
-        claimed["project_id"],
-        {"draft_id": draft_id},
-    )
-    ready = trace_ready and indexed
+    ready = await finalize_test_case_derivatives(claimed, version, user)
     return {
         "data": {"test_case": {**test_case, "current_version_id": version["_id"]}, "version": version},
         "status": 'SUCCESS' if ready else 'DEGRADED',
@@ -222,14 +200,110 @@ async def claim_test_case_draft(draft, payload, user):
     )
 
 
-async def approved_test_case_result(draft):
+async def approved_test_case_result(draft, user):
     version = await test_design_repository.find_case_version(
         draft["frozen_version_id"], draft["project_id"]
     )
+    if not version:
+        raise HTTPException(status_code=409, detail={"code": 'TEST_CASE_APPROVAL_INCOMPLETE'})
     test_case = await test_design_repository.find_case(
         version["test_case_id"], draft["project_id"]
     )
-    return {"data": {"test_case": test_case, "version": version}, "status": 'SUCCESS', "degraded_mode": None}
+    if not test_case:
+        raise HTTPException(status_code=409, detail={"code": 'TEST_CASE_APPROVAL_INCOMPLETE'})
+    tracks_approval_derivatives = any(
+        field in version for field in ("trace_status", "approval_audit_status")
+    )
+    ready = (
+        await finalize_test_case_derivatives(draft, version, user)
+        if tracks_approval_derivatives
+        else version.get("index_status") == 'INDEXED'
+    )
+    return {
+        "data": {"test_case": test_case, "version": version},
+        "status": 'SUCCESS' if ready else 'DEGRADED',
+        "degraded_mode": None if ready else 'DEGRADED_DERIVED_DATA',
+    }
+
+
+async def finalize_test_case_derivatives(draft, version, user):
+    trace_ready = version.get("trace_status") == 'READY'
+    if not trace_ready:
+        try:
+            await create_suggested_trace_records(draft, version, user)
+            trace_ready = True
+        except Exception:
+            trace_ready = False
+    indexed = version.get("index_status") == 'INDEXED'
+    if not indexed:
+        try:
+            indexed = await index_artifact(
+                version["project_id"],
+                'test_case_version',
+                version["test_case_id"],
+                version["_id"],
+                version["title"],
+                version["plain_text_projection"],
+                version["status"],
+                'APPROVED_SOURCE',
+                version["version"],
+                requirement_version_ids=version.get("requirement_version_ids", []),
+                acceptance_criterion_ids=version.get("acceptance_criterion_ids", []),
+            )
+        except Exception:
+            indexed = False
+    audit_ready = version.get("approval_audit_status") == 'READY'
+    if not audit_ready:
+        try:
+            await audit(
+                user.id,
+                'test_case_version_approved',
+                'TestCaseVersion',
+                version["_id"],
+                version["project_id"],
+                {"draft_id": draft["_id"]},
+            )
+            audit_ready = True
+        except Exception:
+            audit_ready = False
+    derived_status = {
+        "index_status": 'INDEXED' if indexed else 'FAILED',
+        "index_error_code": None if indexed else 'KNOWLEDGE_INDEX_FAILED',
+        "indexed_at": version.get("indexed_at") or (now() if indexed else None),
+        "trace_status": 'READY' if trace_ready else 'FAILED',
+        "trace_error_code": None if trace_ready else 'TRACE_LINK_CREATION_FAILED',
+        "approval_audit_status": 'READY' if audit_ready else 'FAILED',
+        "approval_audit_error_code": None if audit_ready else 'APPROVAL_AUDIT_FAILED',
+    }
+    try:
+        await test_design_repository.set_case_version_approval_result(
+            version["_id"],
+            version["project_id"],
+            derived_status["index_status"],
+            derived_status["index_error_code"],
+            derived_status["indexed_at"],
+            derived_status["trace_status"],
+            derived_status["trace_error_code"],
+            derived_status["approval_audit_status"],
+            derived_status["approval_audit_error_code"],
+        )
+    except Exception:
+        indexed = False
+        trace_ready = False
+        audit_ready = False
+        derived_status.update(
+            {
+                "index_status": 'FAILED',
+                "index_error_code": 'APPROVAL_STATUS_PERSIST_FAILED',
+                "indexed_at": None,
+                "trace_status": 'FAILED',
+                "trace_error_code": 'APPROVAL_STATUS_PERSIST_FAILED',
+                "approval_audit_status": 'FAILED',
+                "approval_audit_error_code": 'APPROVAL_STATUS_PERSIST_FAILED',
+            }
+        )
+    version.update(derived_status)
+    return trace_ready and indexed and audit_ready
 
 
 async def persist_test_case_version(draft, payload, user):
@@ -244,12 +318,16 @@ async def persist_test_case_version(draft, payload, user):
         )
         if existing:
             latest = await test_design_repository.find_latest_case_version(existing["_id"])
-            if not latest:
+            if not latest or latest["_id"] != existing.get("current_version_id"):
                 raise HTTPException(status_code=409, detail={"code": 'TEST_CASE_VERSION_HISTORY_INVALID'})
+            if draft.get("parent_version_id") != latest["_id"]:
+                raise HTTPException(status_code=409, detail={"code": "TEST_CASE_BASE_VERSION_CHANGED"})
             test_case = existing
             version_number = int(latest["version"]) + 1
             parent_version_id = latest["_id"]
         else:
+            if draft.get("parent_version_id"):
+                raise HTTPException(status_code=409, detail={"code": "TEST_CASE_PARENT_VERSION_CHANGED"})
             test_case = {
                 "_id": new_id('TC'),
                 "project_id": draft["project_id"],
@@ -320,15 +398,29 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "data_set_version_ids": draft.get("data_set_version_ids", []),
         "requirement_version_ids": draft["requirement_version_ids"],
         "acceptance_criterion_ids": draft["acceptance_criterion_ids"],
+        "test_condition_ids": draft.get("test_condition_ids", []),
         "scenario_id": draft.get("scenario_id"),
-        "source_evidence": draft.get("source_evidence", []),
+        "source_evidence": (
+            draft.get("source_evidence", [])
+            if draft.get("origin") != "ai_generated" or draft.get("evidence_refs")
+            else []
+        ),
         "coverage_obligations": draft.get("coverage_obligations", []),
         "evidence_refs": draft.get("evidence_refs", []),
+        "evidence_quotes": draft.get("evidence_quotes", []),
+        "challenge_hypotheses": draft.get("challenge_hypotheses", []),
         "plain_text_projection": project_test_text(draft),
         "parent_version_id": parent_version_id,
-        "change_reason": payload.change_reason,
+        "change_reason": draft.get("change_reason") or payload.change_reason,
         "review_note": payload.review_note,
         "status": 'ACTIVE',
+        "index_status": 'PENDING',
+        "index_error_code": None,
+        "indexed_at": None,
+        "trace_status": 'PENDING',
+        "trace_error_code": None,
+        "approval_audit_status": 'PENDING',
+        "approval_audit_error_code": None,
         "approved_by": user.id,
         "created_at": timestamp,
     }
@@ -401,7 +493,11 @@ async def create_suggested_trace_records(draft, version, user):
                 if ai_generated
                 else 'CONFIRMED',
                 "revision": 1,
-                "evidence": draft.get("source_evidence", []),
+                "evidence": (
+                    draft.get("source_evidence", [])
+                    if draft.get("origin") != "ai_generated" or draft.get("evidence_refs")
+                    else []
+                ),
                 "created_by": user.id,
                 "created_at": now(),
             }

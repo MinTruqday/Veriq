@@ -6,6 +6,7 @@ import aiofiles
 from fastapi import HTTPException
 
 from src.core.storage import upload_file
+from src.core.infrastructure.configuration import settings
 from src.services.file import FileService
 from src.services.upload import UploadService
 
@@ -46,7 +47,7 @@ class ChunkService:
             return {"is_complete": False, "uploaded": chunk_index}
 
         total_size = sum(part.stat().st_size for part in parts)
-        if total_size > 104857600:
+        if total_size > settings.MAX_UPLOAD_SIZE_BYTES:
             shutil.rmtree(chunk_dir)
             raise HTTPException(status_code=413, detail="Tệp tải lên vượt quá kích thước cho phép")
 

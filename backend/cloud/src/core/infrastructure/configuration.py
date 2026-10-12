@@ -21,6 +21,8 @@ class Settings:
     AUTHENTICATION_URL: str = os.environ["AUTHENTICATION_URL"]
     CLOUD_DB_NAME: str = os.environ["CLOUD_DB_NAME"]
     COMPRESSIBLE_TEXT_EXTENSIONS: str = os.environ["COMPRESSIBLE_TEXT_EXTENSIONS"]
+    MAX_UPLOAD_SIZE_BYTES: int = int(os.environ["MAX_UPLOAD_SIZE_BYTES"])
+    MIN_UPLOAD_SIZE_BYTES: int = int(os.environ["MIN_UPLOAD_SIZE_BYTES"])
 
 
 settings = Settings()

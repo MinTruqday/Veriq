@@ -19,6 +19,11 @@ class GeneratedStep(BaseModel):
     test_data: dict = Field(default_factory=dict)
 
 
+class GeneratedEvidenceQuote(BaseModel):
+    evidence_ref: str = Field(min_length=1, max_length=200)
+    quote: str = Field(min_length=2, max_length=1000)
+
+
 class SecurityCandidate(BaseModel):
     category: str
     title: str = Field(min_length=2, max_length=300)
@@ -62,8 +67,10 @@ class GeneratedCase(BaseModel):
     expected: str = Field(min_length=2, max_length=5000)
     acceptance_criterion_ids: list[str] = Field(default_factory=list)
     techniques: list[str] = Field(default_factory=list)
+    challenge_techniques: list[str] = Field(default_factory=list)
     coverage_obligations: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
+    evidence_quotes: list[GeneratedEvidenceQuote] = Field(min_length=1, max_length=20)
 
 
 class TestBasisRef(BaseModel):

@@ -15,6 +15,7 @@ from src.core.common import (
 )
 from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_template import requirement_template_repository
+from src.schemas.contracts.requirements import RequirementCreate
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
     validate_requirement_api_operations,

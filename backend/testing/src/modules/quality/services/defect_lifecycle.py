@@ -12,14 +12,14 @@ from src.core.common import (
 )
 from src.repositories.defect import defect_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
-from src.modules.execution.services.execution_policy import defect_transitions
+from src.modules.execution.services.execution_state import defect_transitions
 
 
 
 
 
 async def update_defect_record(defect_id, payload, project_id, user):
-    
+    payload = payload.model_dump(exclude_unset=True)
     defect = await get_project_entity(
         'defects',
         defect_id,
@@ -33,22 +33,6 @@ async def update_defect_record(defect_id, payload, project_id, user):
     expected_revision = payload.get("expected_revision")
     if not isinstance(expected_revision, int):
         raise HTTPException(status_code=422, detail={"code": 'EXPECTED_REVISION_REQUIRED'})
-    if (
-        "root_cause_category" in payload
-        and payload["root_cause_category"] not in ['REQUIREMENT',
- 'DESIGN',
- 'IMPLEMENTATION',
- 'CONFIGURATION',
- 'TEST_DATA',
- 'TEST_CASE_GAP',
- 'ENVIRONMENT',
- 'INTEGRATION',
- 'DEPLOYMENT',
- 'PROCESS',
- 'THIRD_PARTY',
- 'UNKNOWN']
-    ):
-        raise HTTPException(status_code=422, detail={"code": 'INVALID_ROOT_CAUSE_CATEGORY'})
     if "assignee" in payload:
         await get_project(defect["project_id"], user, 'defect.assign')
     if any(

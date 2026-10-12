@@ -4,12 +4,12 @@ from src.core.common import plain_text
 from src.repositories.analysis import analysis_repository
 
 
-def confidence_band(score, policy):
-    if score >= policy["high_confidence_minimum"]:
-        return policy["high_confidence_band"]
-    if score >= policy["medium_confidence_minimum"]:
-        return policy["medium_confidence_band"]
-    return policy["low_confidence_band"]
+def confidence_band(score):
+    if score >= 0.75:
+        return 'HIGH'
+    if score >= 0.5:
+        return 'MEDIUM'
+    return 'LOW'
 
 
 async def find_duplicate_defect_pairs(project_id):
@@ -124,34 +124,7 @@ async def build_defect_trace_candidates(defect):
                 or requirement.get("requirement_key"),
                 "title": version.get("title") or requirement.get("title", ""),
                 "confidence": round(score, 4),
-                "confidence_band": confidence_band(score, {'text_weight': 0.7,
- 'requirement_direct_increment': 0.35,
- 'requirement_test_trace_increment': 0.2,
- 'requirement_minimum': 0.25,
- 'requirement_text_reason_minimum': 0.3,
- 'test_shared_requirement_increment': 0.25,
- 'test_direct_increment': 0.3,
- 'test_minimum': 0.3,
- 'test_text_reason_minimum': 0.35,
- 'high_confidence_minimum': 0.75,
- 'medium_confidence_minimum': 0.5,
- 'maximum_candidates': 50,
- 'high_confidence_band': 'HIGH',
- 'medium_confidence_band': 'MEDIUM',
- 'low_confidence_band': 'LOW',
- 'current_requirement_reason': 'CURRENT_REQUIREMENT_LINK',
- 'linked_test_reason': 'LINKED_TEST_CASE_TRACE',
- 'similar_requirement_reason': 'SIMILAR_REQUIREMENT_TEXT',
- 'current_test_reason': 'CURRENT_LINK',
- 'shared_requirement_reason': 'SHARED_REQUIREMENT_TRACE',
- 'similar_behavior_reason': 'SIMILAR_BEHAVIOR_TEXT',
- 'add_requirement_operation': 'ADD_REQUIREMENT_LINK',
- 'set_test_case_operation': 'SET_TEST_CASE_LINK',
- 'current_requirement_excluded_status': 'OBSOLETE',
- 'current_test_case_excluded_status': 'OBSOLETE',
- 'requirement_artifact_type': 'requirement_version',
- 'test_case_artifact_type': 'test_case_version',
- 'defect_artifact_type': 'defect'}),
+                "confidence_band": confidence_band(score),
                 "reason_codes": reasons,
                 "evidence": [
                     {
@@ -203,34 +176,7 @@ async def build_defect_trace_candidates(defect):
                 "title": version["title"],
                 "requirement_version_ids": version.get("requirement_version_ids", []),
                 "confidence": round(score, 4),
-                "confidence_band": confidence_band(score, {'text_weight': 0.7,
- 'requirement_direct_increment': 0.35,
- 'requirement_test_trace_increment': 0.2,
- 'requirement_minimum': 0.25,
- 'requirement_text_reason_minimum': 0.3,
- 'test_shared_requirement_increment': 0.25,
- 'test_direct_increment': 0.3,
- 'test_minimum': 0.3,
- 'test_text_reason_minimum': 0.35,
- 'high_confidence_minimum': 0.75,
- 'medium_confidence_minimum': 0.5,
- 'maximum_candidates': 50,
- 'high_confidence_band': 'HIGH',
- 'medium_confidence_band': 'MEDIUM',
- 'low_confidence_band': 'LOW',
- 'current_requirement_reason': 'CURRENT_REQUIREMENT_LINK',
- 'linked_test_reason': 'LINKED_TEST_CASE_TRACE',
- 'similar_requirement_reason': 'SIMILAR_REQUIREMENT_TEXT',
- 'current_test_reason': 'CURRENT_LINK',
- 'shared_requirement_reason': 'SHARED_REQUIREMENT_TRACE',
- 'similar_behavior_reason': 'SIMILAR_BEHAVIOR_TEXT',
- 'add_requirement_operation': 'ADD_REQUIREMENT_LINK',
- 'set_test_case_operation': 'SET_TEST_CASE_LINK',
- 'current_requirement_excluded_status': 'OBSOLETE',
- 'current_test_case_excluded_status': 'OBSOLETE',
- 'requirement_artifact_type': 'requirement_version',
- 'test_case_artifact_type': 'test_case_version',
- 'defect_artifact_type': 'defect'}),
+                "confidence_band": confidence_band(score),
                 "reason_codes": reasons,
                 "evidence": [
                     {

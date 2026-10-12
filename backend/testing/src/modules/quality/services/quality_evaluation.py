@@ -1,29 +1,9 @@
-from functools import lru_cache
-
 from fastapi import HTTPException
-from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
-from src.core.configuration import settings
 from src.repositories.quality import quality_repository
 from src.modules.execution.services.test_monitoring import effective_snapshot
-
-
-
-
-@lru_cache(maxsize=1)
-def quality_evaluation_policy():
-    client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
-    try:
-        document = client[settings.TESTING_DB_NAME].runtime_policies.find_one(
-            {"_id": "quality_evaluation"}, {"_id": 0, "values": 1}
-        )
-    finally:
-        client.close()
-    if not isinstance(document, dict) or not isinstance(document.get("values"), dict):
-        raise RuntimeError("Thiếu chính sách đánh giá chất lượng")
-    return document["values"]
 
 
 def system_recommendation(gate_status, critical_risks):
@@ -107,7 +87,6 @@ async def list_evaluations(project_id, release_id, user):
 
 
 async def create_evaluation(project_id, payload, user):
-    codes = quality_evaluation_policy()["codes"]
     await get_project(project_id, user, 'qualityevaluation.create')
     if payload.idempotency_key:
         existing = await quality_repository.find_evaluation_by_idempotency_key(
@@ -119,7 +98,7 @@ async def create_evaluation(project_id, payload, user):
                 or existing.get("build_id") != payload.build_id
             ):
                 raise HTTPException(
-                    status_code=409, detail={"code": codes["idempotency_reused"]}
+                    status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'}
                 )
             return existing
     release = await quality_repository.find_release(payload.release_id, project_id)
@@ -137,11 +116,11 @@ async def create_evaluation(project_id, payload, user):
         or len(snapshots) != len(set(payload.measurement_snapshot_refs))
     ):
         raise HTTPException(
-            status_code=422, detail={"code": codes["source_not_in_project"]}
+            status_code=422, detail={"code": 'QUALITY_EVALUATION_SOURCE_NOT_IN_PROJECT'}
         )
     if any(item.get("release_id") not in {None, payload.release_id} for item in snapshots):
         raise HTTPException(
-            status_code=422, detail={"code": codes["measurement_release_mismatch"]}
+            status_code=422, detail={"code": 'MEASUREMENT_RELEASE_MISMATCH'}
         )
     monitoring = await effective_snapshot(monitoring)
     plan = await quality_repository.find_test_plan(
@@ -155,7 +134,7 @@ async def create_evaluation(project_id, payload, user):
     )
     if not plan or not strategy or not gate:
         raise HTTPException(
-            status_code=422, detail={"code": codes["source_incomplete"]}
+            status_code=422, detail={"code": 'QUALITY_EVALUATION_SOURCE_INCOMPLETE'}
         )
     unresolved = await quality_repository.list_unresolved_defects(
         project_id,
@@ -170,7 +149,7 @@ async def create_evaluation(project_id, payload, user):
     if payload.recommendation and payload.recommendation != recommendation:
         raise HTTPException(
             status_code=422,
-            detail={"code": codes["recommendation_mismatch"], "expected": recommendation},
+            detail={"code": 'SYSTEM_RECOMMENDATION_MISMATCH', "expected": recommendation},
         )
     human_decision = await quality_repository.find_latest_decision(
         monitoring["_id"], project_id
@@ -229,17 +208,16 @@ async def create_evaluation(project_id, payload, user):
 
 
 async def update_evaluation(evaluation_id, payload, user):
-    codes = quality_evaluation_policy()["codes"]
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.create')
     if value["status"] != 'DRAFT':
-        raise HTTPException(status_code=409, detail={"code": codes["immutable"]})
+        raise HTTPException(status_code=409, detail={"code": 'QUALITY_EVALUATION_IMMUTABLE'})
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
     if "recommendation" in changes and changes["recommendation"] != value.get(
         "system_recommendation", value.get("recommendation")
     ):
         raise HTTPException(
-            status_code=409, detail={"code": codes["recommendation_immutable"]}
+            status_code=409, detail={"code": 'SYSTEM_RECOMMENDATION_IMMUTABLE'}
         )
     changes.pop("recommendation", None)
     if "rationale" in changes:
@@ -254,7 +232,7 @@ async def update_evaluation(evaluation_id, payload, user):
         {"$set": changes, "$inc": {"revision": 1}},
     )
     if not updated:
-        raise HTTPException(status_code=409, detail={"code": codes["revision_conflict"]})
+        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
     await audit(
         user.id,
         'quality_evaluation_updated',
@@ -267,11 +245,10 @@ async def update_evaluation(evaluation_id, payload, user):
 
 
 async def submit_evaluation(evaluation_id, payload, user):
-    codes = quality_evaluation_policy()["codes"]
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.review')
     if value["status"] != 'DRAFT':
         raise HTTPException(
-            status_code=409, detail={"code": codes["invalid_transition"]}
+            status_code=409, detail={"code": 'INVALID_QUALITY_EVALUATION_TRANSITION'}
         )
     updated = await quality_repository.update_evaluation(
         {
@@ -291,7 +268,7 @@ async def submit_evaluation(evaluation_id, payload, user):
         },
     )
     if not updated:
-        raise HTTPException(status_code=409, detail={"code": codes["revision_conflict"]})
+        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
     await audit(
         user.id,
         'quality_evaluation_submitted',
@@ -304,10 +281,9 @@ async def submit_evaluation(evaluation_id, payload, user):
 
 
 async def review_evaluation(evaluation_id, payload, user):
-    codes = quality_evaluation_policy()["codes"]
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.review')
     if value["status"] != 'IN_REVIEW':
-        raise HTTPException(status_code=409, detail={"code": codes["not_in_review"]})
+        raise HTTPException(status_code=409, detail={"code": 'QUALITY_EVALUATION_NOT_IN_REVIEW'})
     history = [
         *value.get("reviewed_by", []),
         {"actor_id": user.id, "decision": payload.decision, "note": payload.note, "at": now()},
@@ -324,7 +300,7 @@ async def review_evaluation(evaluation_id, payload, user):
         {"$set": changes, "$inc": {"revision": 1}},
     )
     if not updated:
-        raise HTTPException(status_code=409, detail={"code": codes["revision_conflict"]})
+        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
     await audit(
         user.id,
         'quality_evaluation_reviewed',
@@ -337,17 +313,16 @@ async def review_evaluation(evaluation_id, payload, user):
 
 
 async def add_waiver(evaluation_id, payload, user):
-    codes = quality_evaluation_policy()["codes"]
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.create')
     if value["status"] not in ['DRAFT', 'IN_REVIEW']:
-        raise HTTPException(status_code=409, detail={"code": codes["immutable"]})
+        raise HTTPException(status_code=409, detail={"code": 'QUALITY_EVALUATION_IMMUTABLE'})
     if payload.expiry_at <= now():
-        raise HTTPException(status_code=422, detail={"code": codes["waiver_expiry_future"]})
+        raise HTTPException(status_code=422, detail={"code": 'WAIVER_EXPIRY_MUST_BE_FUTURE'})
     if not await quality_repository.find_active_member(
         value["project_id"], payload.owner_id, 'ACTIVE'
     ):
         raise HTTPException(
-            status_code=422, detail={"code": codes["waiver_owner_not_member"]}
+            status_code=422, detail={"code": 'WAIVER_OWNER_NOT_PROJECT_MEMBER'}
         )
     expected_revision = payload.expected_revision or value["revision"]
     waiver = {
@@ -367,7 +342,7 @@ async def add_waiver(evaluation_id, payload, user):
         {"$push": {"waivers": waiver}, "$set": {"updated_at": now()}, "$inc": {"revision": 1}},
     )
     if not updated:
-        raise HTTPException(status_code=409, detail={"code": codes["stale_revision"]})
+        raise HTTPException(status_code=409, detail={"code": 'STALE_REVISION'})
     await audit(
         user.id,
         'quality_waiver_created',
@@ -380,7 +355,6 @@ async def add_waiver(evaluation_id, payload, user):
 
 
 async def decide_waiver(evaluation_id, waiver_id, payload, user):
-    codes = quality_evaluation_policy()["codes"]
     value = await get_evaluation(
         evaluation_id, user, 'qualityevaluation.waiver.approve'
     )
@@ -388,10 +362,10 @@ async def decide_waiver(evaluation_id, waiver_id, payload, user):
         (item for item in value.get("waivers", []) if item["waiver_id"] == waiver_id), None
     )
     if not waiver:
-        raise HTTPException(status_code=404, detail={"code": codes["waiver_not_found"]})
+        raise HTTPException(status_code=404, detail={"code": 'WAIVER_NOT_FOUND'})
     if waiver["status"] != 'PENDING':
         raise HTTPException(
-            status_code=409, detail={"code": codes["waiver_already_decided"]}
+            status_code=409, detail={"code": 'WAIVER_ALREADY_DECIDED'}
         )
     waivers = [
         {
@@ -416,7 +390,7 @@ async def decide_waiver(evaluation_id, waiver_id, payload, user):
         {"$set": {"waivers": waivers, "updated_at": now()}, "$inc": {"revision": 1}},
     )
     if not updated:
-        raise HTTPException(status_code=409, detail={"code": codes["revision_conflict"]})
+        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
     await audit(
         user.id,
         'quality_waiver_decided',
@@ -429,21 +403,20 @@ async def decide_waiver(evaluation_id, waiver_id, payload, user):
 
 
 async def approve_evaluation(evaluation_id, payload, user):
-    codes = quality_evaluation_policy()["codes"]
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.approve')
     if value["status"] != 'IN_REVIEW':
-        raise HTTPException(status_code=409, detail={"code": codes["not_in_review"]})
+        raise HTTPException(status_code=409, detail={"code": 'QUALITY_EVALUATION_NOT_IN_REVIEW'})
     if not any(
         item.get("decision") == 'ENDORSE'
         for item in value.get("reviewed_by", [])
     ):
         raise HTTPException(
-            status_code=409, detail={"code": codes["endorsement_required"]}
+            status_code=409, detail={"code": 'QUALITY_EVALUATION_ENDORSEMENT_REQUIRED'}
         )
     if any(
         item.get("status") == 'PENDING' for item in value.get("waivers", [])
     ):
-        raise HTTPException(status_code=409, detail={"code": codes["pending_waiver"]})
+        raise HTTPException(status_code=409, detail={"code": 'PENDING_QUALITY_WAIVER'})
     recommendation = value.get("system_recommendation", value.get("recommendation"))
     if (
         value.get("quality_gate_status") == 'FAIL'
@@ -454,7 +427,7 @@ async def approve_evaluation(evaluation_id, payload, user):
         )
     ):
         raise HTTPException(
-            status_code=409, detail={"code": codes["failed_gate_waiver_required"]}
+            status_code=409, detail={"code": 'FAILED_GATE_REQUIRES_APPROVED_WAIVER'}
         )
     human_decision = await quality_repository.find_latest_decision(
         value["snapshot_id"], value["project_id"]
@@ -480,7 +453,7 @@ async def approve_evaluation(evaluation_id, payload, user):
         },
     )
     if not updated:
-        raise HTTPException(status_code=409, detail={"code": codes["revision_conflict"]})
+        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
     await audit(
         user.id,
         'product_quality_evaluation_approved',

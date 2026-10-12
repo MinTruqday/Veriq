@@ -1,11 +1,7 @@
 import ast
 import math
-from functools import lru_cache
-
-from pymongo import MongoClient
 
 from src.core.common import now
-from src.core.configuration import settings
 from src.repositories.measurement import measurement_repository
 
 
@@ -33,23 +29,22 @@ def ratio(numerator, denominator):
     return round(float(numerator) * 100 / float(denominator), 4)
 
 
-@lru_cache(maxsize=1)
-def measurement_policy():
-    client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
-    try:
-        document = client[settings.TESTING_DB_NAME].runtime_policies.find_one(
-            {"_id": "measurement_engine"}, {"_id": 0, "values": 1}
-        )
-    finally:
-        client.close()
-    if not isinstance(document, dict) or not isinstance(document.get("values"), dict):
-        raise RuntimeError("Thiếu chính sách đo lường")
-    return document["values"]
-
-
 def validate_formula_source(formula_type, formula, data_sources):
-    policy = measurement_policy()
-    unknown_sources = sorted(set(data_sources) - set(policy["formula_sources"]))
+    unknown_sources = sorted(set(data_sources) - {
+        'testing-domain',
+        'test_monitoring_snapshots',
+        'test_results',
+        'test_cases',
+        'test_case_versions',
+        'automation_script_drafts',
+        'automation_executions',
+        'defects',
+        'requirements',
+        'requirement_versions',
+        'maintenance_proposals',
+        'regression_recommendations',
+        'environment_incidents',
+    })
     if unknown_sources:
         return {
             "valid": False,
@@ -159,8 +154,20 @@ async def compute_custom_metric(project_id, release_id, definition):
                 if isinstance(value, (int, float)) and not isinstance(value, bool)
             }
         )
-    policy = measurement_policy()
-    collection_names = set(policy["counted_collections"])
+    collection_names = {
+        'requirements',
+        'acceptance_criteria',
+        'test_conditions',
+        'test_results',
+        'test_cases',
+        'test_case_versions',
+        'automation_script_drafts',
+        'automation_executions',
+        'defects',
+        'maintenance_proposals',
+        'regression_recommendations',
+        'environment_incidents',
+    }
     requested = (
         collection_names
         if 'testing-domain' in definition.get("data_sources", [])
@@ -168,7 +175,9 @@ async def compute_custom_metric(project_id, release_id, definition):
     )
     for collection_name in requested:
         count_query = {"project_id": project_id}
-        if release_id and collection_name in policy["release_scoped_collections"]:
+        if release_id and collection_name in {
+            'test_results', 'automation_executions', 'defects', 'environment_incidents'
+        }:
             count_query["release_id"] = release_id
         variables[f"{collection_name}_count"] = await measurement_repository.count_collection(
             collection_name, count_query
@@ -193,9 +202,21 @@ async def compute_custom_metric(project_id, release_id, definition):
 
 
 async def compute_metric(project_id, release_id, key):
-    policy = measurement_policy()
     source = {"key": key, "release_id": release_id}
-    if key in policy["snapshot_metric_fields"]:
+    snapshot_metric = None
+    if key == 'REQUIREMENT_COVERAGE':
+        snapshot_metric = 'requirement_coverage'
+    elif key in {'AC_COVERAGE', 'ACCEPTANCE_CRITERION_COVERAGE'}:
+        snapshot_metric = 'acceptance_criteria_coverage'
+    elif key in {'CONDITION_COVERAGE', 'TEST_CONDITION_COVERAGE'}:
+        snapshot_metric = 'test_condition_coverage'
+    elif key == 'RISK_COVERAGE':
+        snapshot_metric = 'risk_coverage'
+    elif key == 'EXECUTION_PROGRESS':
+        snapshot_metric = 'execution_percent'
+    elif key == 'PASS_RATE':
+        snapshot_metric = 'pass_rate'
+    if snapshot_metric:
         query = {"project_id": project_id}
         if release_id:
             query["release_id"] = release_id
@@ -205,7 +226,7 @@ async def compute_metric(project_id, release_id, key):
         if not snapshot:
             return None, source
         metrics = snapshot.get("metrics", {})
-        value = metrics.get(policy["snapshot_metric_fields"][key])
+        value = metrics.get(snapshot_metric)
         source.update(
             {
                 "monitoring_snapshot_id": snapshot["_id"],
@@ -213,7 +234,7 @@ async def compute_metric(project_id, release_id, key):
             }
         )
         return value, source
-    if key == policy["metric_keys"]["blocked_rate"]:
+    if key == 'BLOCKED_RATE':
         query = {"project_id": project_id}
         if release_id:
             query["release_id"] = release_id
@@ -236,25 +257,25 @@ async def compute_metric(project_id, release_id, key):
             }
         )
         return ratio(metrics.get("blocked", 0), denominator), source
-    if key == policy["metric_keys"]["stale_test_ratio"]:
+    if key == 'STALE_TEST_RATIO':
         total = await measurement_repository.count_collection(
-            policy["collections"]["test_cases"],
-            {"project_id": project_id, "status": {"$ne": policy["statuses"]["archived"]}},
+            'test_cases',
+            {"project_id": project_id, "status": {"$ne": 'ARCHIVED'}},
         )
         stale = await measurement_repository.count_collection(
-            policy["collections"]["test_cases"],
-            {"project_id": project_id, "status": policy["statuses"]["needs_update"]},
+            'test_cases',
+            {"project_id": project_id, "status": 'NEEDS_UPDATE'},
         )
         source.update({"test_case_count": total, "stale_count": stale})
         return ratio(stale, total), source
-    if key == policy["metric_keys"]["automation_coverage"]:
+    if key == 'AUTOMATION_COVERAGE':
         total = await measurement_repository.count_collection(
-            policy["collections"]["test_case_versions"],
-            {"project_id": project_id, "status": {"$in": policy["statuses"]["approved_test_case_versions"]}},
+            'test_case_versions',
+            {"project_id": project_id, "status": {"$in": ['APPROVED', 'FROZEN']}},
         )
         automated = await measurement_repository.count_collection(
-            policy["collections"]["automation_script_drafts"],
-            {"project_id": project_id, "status": policy["statuses"]["approved"]},
+            'automation_script_drafts',
+            {"project_id": project_id, "status": 'APPROVED'},
         )
         source.update({"test_case_version_count": total, "approved_script_count": automated})
         return ratio(min(automated, total), total), source
@@ -263,26 +284,26 @@ async def compute_metric(project_id, release_id, key):
     if release_id:
         defects["release_id"] = release_id
         runs["release_id"] = release_id
-    if key == policy["metric_keys"]["defect_reopen_rate"]:
-        total = await measurement_repository.count_collection(policy["collections"]["defects"], defects)
+    if key == 'DEFECT_REOPEN_RATE':
+        total = await measurement_repository.count_collection('defects', defects)
         reopened = await measurement_repository.count_collection(
-            policy["collections"]["defects"],
+            'defects',
             {
                 **defects,
                 "$or": [
                     {"reopen_count": {"$gt": 0}},
-                    {"history.action": policy["statuses"]["reopened"]},
+                    {"history.action": 'REOPENED'},
                 ],
             },
         )
         source.update({"defect_count": total, "reopened_count": reopened})
         return ratio(reopened, total), source
-    if key == policy["metric_keys"]["critical_defect_aging"]:
+    if key == 'CRITICAL_DEFECT_AGING':
         rows = await measurement_repository.list_defect_dates(
             {
                 **defects,
-                "severity": {"$in": policy["statuses"]["critical_severities"]},
-                "status": {"$nin": policy["statuses"]["closed_or_rejected"]},
+                "severity": {"$in": ['blocker', 'critical', 'BLOCKER', 'CRITICAL']},
+                "status": {"$nin": ['CLOSED', 'REJECTED']},
             },
             {"created_at": 1},
             10000,
@@ -297,7 +318,7 @@ async def compute_metric(project_id, release_id, key):
         )
         source["defect_ids"] = [item["_id"] for item in rows]
         return round(value, 4), source
-    if key == policy["metric_keys"]["mean_time_to_retest"]:
+    if key == 'MEAN_TIME_TO_RETEST':
         rows = await measurement_repository.list_defect_dates(
             {**defects, "resolved_at": {"$type": "date"}, "retested_at": {"$type": "date"}},
             {"resolved_at": 1, "retested_at": 1},
@@ -311,25 +332,25 @@ async def compute_metric(project_id, release_id, key):
         ]
         source["sample_size"] = len(durations)
         return round(sum(durations) / len(durations), 4) if durations else None, source
-    if key == policy["metric_keys"]["requirement_volatility"]:
+    if key == 'REQUIREMENT_VOLATILITY':
         total = await measurement_repository.count_collection(
-            policy["collections"]["requirements"], {"project_id": project_id}
+            'requirements', {"project_id": project_id}
         )
         changed = len(await measurement_repository.distinct_changed_requirements(project_id))
         source.update({"requirement_count": total, "changed_requirement_count": changed})
         return ratio(changed, total), source
-    if key == policy["metric_keys"]["impact_proposal_acceptance_rate"]:
+    if key == 'IMPACT_PROPOSAL_ACCEPTANCE_RATE':
         query = {"project_id": project_id}
         total = await measurement_repository.count_collection(
-            policy["collections"]["maintenance_proposals"], query
+            'maintenance_proposals', query
         )
         accepted = await measurement_repository.count_collection(
-            policy["collections"]["maintenance_proposals"],
-            {**query, "status": {"$in": policy["statuses"]["accepted_proposals"]}},
+            'maintenance_proposals',
+            {**query, "status": {"$in": ['ACCEPTED', 'APPROVED', 'APPLIED']}},
         )
         source.update({"proposal_count": total, "accepted_count": accepted})
         return ratio(accepted, total), source
-    if key == policy["metric_keys"]["regression_effectiveness"]:
+    if key == 'REGRESSION_EFFECTIVENESS':
         rows = await measurement_repository.list_regression_results(
             project_id, 10000
         )
@@ -337,26 +358,26 @@ async def compute_metric(project_id, release_id, key):
         detected = sum(len(item.get("detected_defect_ids", [])) for item in rows)
         source.update({"selected_count": selected, "detected_defect_count": detected})
         return ratio(detected, selected), source
-    if key in policy["automation_stability_keys"]:
+    if key in {'AUTOMATION_STABILITY', 'AUTOMATION_PASS_STABILITY'}:
         rows = await measurement_repository.list_automation_statuses(
             runs, 10000
         )
         completed = [
-            item for item in rows if item.get("status") in policy["statuses"]["completed_automation"]
+            item for item in rows if item.get("status") in {'PASSED', 'FAILED', 'COMPLETED'}
         ]
         passed = sum(
-            1 for item in completed if item.get("status") == policy["statuses"]["passed"]
+            1 for item in completed if item.get("status") == 'PASSED'
         )
         source.update({"execution_count": len(completed), "passed_count": passed})
         return ratio(passed, len(completed)), source
-    if key in policy["defect_efficiency_keys"]:
+    if key in {'ESCAPED_DEFECT_RATE', 'DEFECT_REMOVAL_EFFICIENCY'}:
         production = await measurement_repository.count_collection(
-            policy["collections"]["environment_incidents"],
+            'environment_incidents',
             {"project_id": project_id, "production": True, "linked_defect_ids.0": {"$exists": True}},
         )
         removed = await measurement_repository.count_collection(
-            policy["collections"]["defects"],
-            {**defects, "status": policy["statuses"]["closed"]},
+            'defects',
+            {**defects, "status": 'CLOSED'},
         )
         if not production:
             return None, {**source, "reason": 'PRODUCTION_INCIDENT_DATA_UNAVAILABLE'}
@@ -364,7 +385,7 @@ async def compute_metric(project_id, release_id, key):
         source.update({"escaped_count": production, "removed_count": removed})
         return (
             ratio(production, denominator)
-            if key == policy["metric_keys"]["escaped_defect_rate"]
+            if key == 'ESCAPED_DEFECT_RATE'
             else ratio(removed, denominator)
         ), source
     return None, {**source, "reason": 'METRIC_SOURCE_UNAVAILABLE'}

@@ -95,8 +95,10 @@ export async function register(email, password, full_name, slug, agreed_to_terms
     },
     body: JSON.stringify({ email, password, full_name, slug, agreed_to_terms }),
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(errorMessage(json, "Không thể tạo hồ sơ người dùng mới"));
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.data) {
+    throw new Error(errorMessage(json, "Không thể tạo hồ sơ người dùng mới"));
+  }
   return json.data;
 }
 export async function getUserMe() {
@@ -113,7 +115,8 @@ export async function getUserMe() {
         return null;
       }
       if (!res.ok) throw new Error("Không thể xác minh phiên đăng nhập");
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
+      if (!json?.data) throw new Error("Không thể xác minh phiên đăng nhập");
       return json.data;
     } finally {
       userMePromise = null;
@@ -203,8 +206,9 @@ export const forgotPasswordAPI = async (email) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
-  if (!res.ok) throw new Error("Không thể tạo tiến trình khôi phục mật khẩu");
-  return res.json();
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(errorMessage(data, "Không thể tạo tiến trình khôi phục mật khẩu"));
+  return data?.data || data;
 };
 export const resetPasswordAPI = async (token, newPassword) => {
   const res = await fetch(`${API_URL}/xac-thuc/dat-lai-mat-khau`, {
@@ -212,9 +216,9 @@ export const resetPasswordAPI = async (token, newPassword) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, new_password: newPassword }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(data, "Không thể cập nhật cấu trúc mật khẩu mới"));
-  return data.data || data;
+  return data?.data || data;
 };
 export const verifyCodeAPI = async (token) => {
   const res = await fetch(`${API_URL}/xac-thuc/xac-nhan-ma`, {
@@ -222,9 +226,9 @@ export const verifyCodeAPI = async (token) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(data, "Lỗi sai lệch mã thông báo xác thực"));
-  return data.data || data;
+  return data?.data || data;
 };
 export const passkeyLoginBeginAPI = async (email) => {
   const res = await fetch(`${API_URL}/xac-thuc/khoa-bao-mat/dang-nhap/bat-dau`, {
@@ -232,9 +236,9 @@ export const passkeyLoginBeginAPI = async (email) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(data, "Không thể tạo luồng đăng nhập chứng thư số"));
-  return data.data || data;
+  return data?.data || data;
 };
 export const passkeyLoginFinishAPI = async (email, credential) => {
   const res = await fetch(`${API_URL}/xac-thuc/khoa-bao-mat/dang-nhap/hoan-tat`, {
@@ -243,9 +247,9 @@ export const passkeyLoginFinishAPI = async (email, credential) => {
     body: JSON.stringify({ email, credential }),
     credentials: "include",
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(data, "Lỗi hoàn tất luồng đăng nhập chứng thư số"));
-  return data.data || data;
+  return data?.data || data;
 };
 export const passkeyRegisterBeginAPI = async (email) => {
   const res = await fetch(`${API_URL}/xac-thuc/khoa-bao-mat/dang-ky/bat-dau`, {
@@ -253,9 +257,9 @@ export const passkeyRegisterBeginAPI = async (email) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(data, "Không thể tạo luồng đăng ký chứng thư số"));
-  return data.data || data;
+  return data?.data || data;
 };
 export const passkeyRegisterFinishAPI = async (email, credential) => {
   const res = await fetch(`${API_URL}/xac-thuc/khoa-bao-mat/dang-ky/hoan-tat`, {
@@ -263,14 +267,14 @@ export const passkeyRegisterFinishAPI = async (email, credential) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, credential }),
   });
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(data, "Lỗi hoàn tất luồng đăng ký chứng thư số"));
-  return data.data || data;
+  return data?.data || data;
 };
 export const getGoogleLoginUrlAPI = async () => {
   const res = await fetch(`${API_URL}/xac-thuc/google/dang-nhap`);
-  const data = await res.json();
-  if (!res.ok || !data.data?.url)
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.data?.url)
     throw new Error("Không thể tải điểm cuối xác thực định danh Google");
   return data.data.url;
 };
@@ -279,7 +283,7 @@ export const completeGoogleLoginAPI = async (code, state) => {
     `${API_URL}/xac-thuc/google/chuyen-huong?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
     { credentials: "include" },
   );
-  const data = await res.json();
+  const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(data, "Không thể xác thực bằng Google"));
-  return data.data || data;
+  return data?.data || data;
 };

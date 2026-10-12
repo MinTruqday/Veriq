@@ -62,7 +62,7 @@ async def list_conditions(project_id, user, q, status, risk, testability_status,
 async def create_condition(project_id, payload, user):
     
     await get_project(project_id, user, 'testcondition.create')
-    basis_snapshots = await resolve_basis(project_id, payload.basis_refs)
+    basis_snapshots = await resolve_basis(project_id, payload.basis_refs, user)
     timestamp = now()
     value = {
         "_id": new_id('TCON'),
@@ -113,7 +113,7 @@ async def update_condition(condition_id, payload, user):
     changes.pop("expected_revision", None)
     if payload.basis_refs is not None:
         changes["basis_snapshots"] = await resolve_basis(
-            condition["project_id"], payload.basis_refs
+            condition["project_id"], payload.basis_refs, user
         )
     TestConditionCreate.model_validate({**condition, **changes})
     changes["updated_at"] = now()
@@ -300,7 +300,7 @@ async def run_ai_analysis(project_id, payload, user):
                 detail={"code": 'IDEMPOTENCY_KEY_REUSED'},
             )
         return existing
-    basis_snapshots = await resolve_basis(project_id, payload.basis_refs)
+    basis_snapshots = await resolve_basis(project_id, payload.basis_refs, user)
     evidence = [
         {
             "artifact_type": item["artifact_type"],
@@ -413,7 +413,7 @@ async def condition_coverage(project_id, user):
 async def run_deterministic_analysis(project_id, payload, user):
     
     await get_project(project_id, user, 'testanalysis.execute')
-    snapshots = await resolve_basis(project_id, payload.basis_refs)
+    snapshots = await resolve_basis(project_id, payload.basis_refs, user)
     findings = deterministic_testability_findings(snapshots)
     await audit(
         user.id,
@@ -456,7 +456,11 @@ async def create_analysis_finding(project_id, payload, user):
             status_code=422, detail={"code": 'TEST_BASIS_TYPE_INVALID'}
         )
     identifier = payload.artifact_version_id or payload.artifact_id
-    if not await test_analysis_repository.find_basis(
+    if collection_name == "requirement_documents":
+        from src.modules.requirements.services.requirement_documents import get_requirement_document_record
+
+        await get_requirement_document_record(identifier, user, "requirement_document.read")
+    elif not await test_analysis_repository.find_basis(
         collection_name, identifier, project_id
     ):
         raise HTTPException(

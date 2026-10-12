@@ -10,7 +10,7 @@ class AIAssistanceClient:
     async def request(
         self,
         payload: dict,
-        stream_sink: Callable[[str], Awaitable[None]] | None = None,
+        stream_sink: Callable[[dict], Awaitable[None]] | None = None,
     ) -> dict:
         async with httpx.AsyncClient(timeout=1800) as client:
             if not stream_sink:
@@ -28,6 +28,8 @@ class AIAssistanceClient:
                 headers={"X-Internal-Token": settings.SECRET_KEY},
                 json=payload,
             ) as response:
+                if response.is_error:
+                    await response.aread()
                 response.raise_for_status()
                 result = None
                 async for line in response.aiter_lines():
@@ -35,7 +37,7 @@ class AIAssistanceClient:
                         continue
                     event = json.loads(line[6:])
                     if event.get("type") == "delta":
-                        await stream_sink(str(event.get("delta") or ""))
+                        await stream_sink({"type": "delta", "delta": str(event.get("delta") or "")})
                     elif event.get("type") == "result":
                         result = event.get("data")
                     elif event.get("type") == "error":

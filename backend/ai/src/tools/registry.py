@@ -24,6 +24,8 @@ def with_tool_access(
     requires_approval: bool = False,
     verification: dict[str, Any] | None = None,
     owner_domain: CapabilityDomain | None = None,
+    label: str | None = None,
+    user_selectable: bool = False,
 ) -> Callable:
     def decorate(function: Callable):
         value = tool(function)
@@ -34,6 +36,8 @@ def with_tool_access(
             "permission": permission,
             "requires_approval": requires_approval,
             "verification": verification,
+            "label": label or function.__name__,
+            "user_selectable": user_selectable,
         }
         return value
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import (
@@ -9,6 +9,8 @@ from src.schemas.contracts.design import (
     ScenarioCreate,
     ScenarioPatch,
     TestCaseCloneInput,
+    TestCaseLifecycleInput,
+    TestCaseVersionDraftInput,
 )
 from src.schemas.contracts.project import ProjectArchiveInput
 from src.schemas.contracts.requirements import ReviewTransitionInput
@@ -21,6 +23,7 @@ from src.schemas.contracts.design import TestCaseDraftCreate as CaseDraftCreate
 from src.schemas.contracts.design import TestCaseDraftPatch as CaseDraftPatch
 from src.schemas.contracts.design import TestCaseFreezeInput as CaseFreezeInput
 from src.modules.design.services.test_case_records import (
+    create_generated_test_case_draft_batch,
     create_test_case_draft_record,
     update_test_case_draft_record,
 )
@@ -131,6 +134,15 @@ async def create_test_case_draft(
 ):
     draft = await create_test_case_draft_record(project_id, payload, user)
     return envelope(draft, revision=1)
+
+
+@router.post("/du-an/{project_id}/ban-nhap-ca-kiem-thu/lo", status_code=201)
+async def create_generated_test_case_batch(
+    project_id: str,
+    payload: list[CaseDraftCreate],
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await create_generated_test_case_draft_batch(project_id, payload, user))
 
 
 @router.get("/du-an/{project_id}/ban-nhap-ca-kiem-thu")
@@ -296,7 +308,9 @@ async def list_test_case_versions(test_case_id: str, user: CurrentUser = Depends
 
 @router.post("/ca-kiem-thu/{test_case_id}/phien-ban/ban-nhap", status_code=201)
 async def create_test_case_version_draft(
-    test_case_id: str, payload: dict = Body(), user: CurrentUser = Depends(get_current_user)
+    test_case_id: str,
+    payload: TestCaseVersionDraftInput,
+    user: CurrentUser = Depends(get_current_user),
 ):
     value = await create_test_case_version_draft_record(test_case_id, payload, user)
     return envelope(value, revision=value["revision"])
@@ -318,14 +332,18 @@ async def diff_test_case_versions(
 
 @router.post("/ca-kiem-thu/{test_case_id}/ngung-hieu-luc")
 async def mark_test_case_obsolete(
-    test_case_id: str, payload: dict = Body(), user: CurrentUser = Depends(get_current_user)
+    test_case_id: str,
+    payload: TestCaseLifecycleInput,
+    user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(await set_test_case_obsolete(test_case_id, payload, user))
 
 
 @router.post("/ca-kiem-thu/{test_case_id}/khoi-phuc")
 async def restore_test_case(
-    test_case_id: str, payload: dict = Body(), user: CurrentUser = Depends(get_current_user)
+    test_case_id: str,
+    payload: TestCaseLifecycleInput,
+    user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(await restore_test_case_record(test_case_id, payload, user))
 
@@ -363,6 +381,8 @@ async def generate_project_test_cases(
             count_per_category=payload.count_per_category,
             max_cases=payload.max_cases,
             instruction=payload.instruction,
+            challenge_hypotheses=payload.challenge_hypotheses,
+            challenge_suite_signature=payload.challenge_suite_signature,
             preview_only=payload.preview_only,
         ),
         user,

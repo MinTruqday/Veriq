@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.agents.supervisor.graph import canonical_workflow
+from src.agents.runner.graph import canonical_workflow
 from src.core.dependency import get_current_user, oauth2_scheme
 from src.memory.long_term import long_term_memory
 from src.memory.short_term import run_store
@@ -45,7 +45,7 @@ async def decide_agent_run(
     role, permissions = await project_access(run.project_id, token)
     run.role = role
     run.permissions = permissions
-    tasks = {item["task_id"]: item for item in run.supervisor_plan}
+    tasks = {item["task_id"]: item for item in run.execution_plan}
     actions = (run.proposal or {}).get("actions", [])
     if payload.decision == "EDIT":
         if not payload.action_edits:
@@ -139,9 +139,8 @@ async def decide_agent_run(
                     "run": run.model_dump(mode="python"),
                     "token": f"Bearer {token}",
                     "evidence": [],
-                    "tasks": run.supervisor_plan,
+                    "tasks": run.execution_plan,
                     "results": run.agent_results,
-                    "task_index": len(run.supervisor_plan),
                     "success_criteria": (run.proposal or {}).get("success_criteria_met", []),
                 }
             ),

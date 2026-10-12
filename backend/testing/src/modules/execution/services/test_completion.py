@@ -15,7 +15,7 @@ from src.repositories.test_completion import (
 )
 from src.modules.execution.services.exit_criteria import quality_gate_status
 from src.modules.execution.services.test_completion_assistance import completion_ai_result
-from src.modules.execution.services.test_completion_policy import (
+from src.modules.execution.services.test_completion_readiness import (
     default_completion_recommendation,
     reevaluate_completion_exit_criteria,
     validate_completion_readiness,

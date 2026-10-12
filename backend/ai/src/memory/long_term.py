@@ -6,8 +6,8 @@ from src.schemas.agent import AgentApprovalStatus, AgentRunStatus, AgentTaskStat
 
 
 class LongTermMemory:
-    async def list(self, project_id: str, limit: int = 20):
-        return await memory_repository.list_long_term(project_id, limit)
+    async def list(self, project_id: str, requester_id: str, limit: int = 20):
+        return await memory_repository.list_long_term(project_id, requester_id, limit)
 
     async def record_verified(self, state: VeriqRunState):
         if not (
@@ -25,6 +25,7 @@ class LongTermMemory:
         value = {
             "_id": f"MEM-{uuid4().hex}",
             "project_id": state.project_id,
+            "owner_id": state.user_id,
             "run_id": state.run_id,
             "objective": state.objective,
             "intent": state.intent,

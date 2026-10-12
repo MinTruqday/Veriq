@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
-from src.schemas.contracts.design import TraceLinkCreate
+from src.schemas.contracts.design import CoverageSnapshotCreate, TraceLinkCreate
 from src.modules.quality.services.traceability import TraceabilityService
 
 router = APIRouter(prefix="/kiem-thu", tags=["Truy vết kiểm thử"])
@@ -94,7 +94,7 @@ async def list_coverage_snapshots(
 @router.post("/du-an/{project_id}/anh-chup-do-phu", status_code=201)
 async def create_coverage_snapshot(
     project_id: str,
-    payload: dict = Body(default={}),
+    payload: CoverageSnapshotCreate,
     user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(await TraceabilityService.create_snapshot(project_id, payload, user))

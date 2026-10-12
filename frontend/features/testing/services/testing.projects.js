@@ -1,4 +1,5 @@
 import {
+  agentReadRequest,
   agentRequest,
   downloadTestingFile,
   listQuery,
@@ -7,6 +8,7 @@ import {
 } from "./testing.transport";
 
 export const projectTestingApi = {
+  listAgentCapabilities: (projectId) => agentReadRequest(`/du-an/${projectId}/nang-luc`),
   runAgent: (payload) =>
     agentRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
   getAgentRun: (runId) => agentRequest(`/luot-chay/${runId}`),

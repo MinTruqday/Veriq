@@ -241,7 +241,8 @@ class HostedModelClient:
                 str(item.get("id", "")).lower() == target
                 for item in response.json().get("data", [])
             )
-            if available and self._runtime_status == "ready":
+            if available:
+                self._runtime_status = "ready"
                 checks["model"] = "ready"
         except Exception:
             self._runtime_status = "unavailable"

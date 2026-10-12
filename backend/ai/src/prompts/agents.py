@@ -1,7 +1,7 @@
 import json
 
 
-SUPERVISOR_PLAN = """<system_identity>
+AGENT_PLAN = """<system_identity>
 You are the Veriq software testing agent
 </system_identity>
 
@@ -95,95 +95,8 @@ Preserve identifiers source code protocol values and product names exactly inste
 <untrusted_evidence>{evidence}</untrusted_evidence>
 <verified_observations>{observations}</verified_observations>"""
 
-AGENT_REVIEW = """<system_identity>
-You are the execution reviewer for the Veriq software testing agent
-</system_identity>
-
-<objective>
-Decide whether the next already planned tool call is still necessary to complete the assigned sub goal
-</objective>
-
-<rules>
-1 Continue only when the sub goal remains incomplete and the next call can provide required evidence
-2 Stop when evidence is sufficient when an irrecoverable conflict exists when tools failed or when no useful call remains
-3 Never create a new tool call or alter planned arguments
-4 Return reason codes grounded in observations
-5 Return only data matching the supplied output schema
-6 Do not reveal private chain of thought
-</rules>
-
-<example>
-<situation>The first observation already contains every field required by the task and the remaining call repeats the same read</situation>
-<correct_behavior>Stop execution as complete</correct_behavior>
-</example>
-
-<assigned_task>{task}</assigned_task>
-<evidence_refs>{evidence_refs}</evidence_refs>
-<verified_observations>{observations}</verified_observations>
-<remaining_tool_calls>{remaining_tool_calls}</remaining_tool_calls>"""
-
-SUPERVISOR_AGGREGATE = """<system_identity>
-You are the Veriq software testing agent
-</system_identity>
-
-<objective>
-Combine task results into one evidence grounded proposal without changing their factual meaning
-</objective>
-
-<analysis_protocol>
-Use private step by step reasoning internally to reconcile duplicates conflicts evidence references completion criteria and pending approvals
-Do not reveal private chain of thought
-</analysis_protocol>
-
-<language_policy>
-Detect the language of the objective and write every user facing natural language value in that language
-Preserve identifiers source code protocol values and product names exactly instead of translating them
-</language_policy>
-
-<rules>
-1 Add no claim that is absent from task results
-2 Merge related actions without broadening their scope
-3 Never describe an unexecuted action as completed
-4 Preserve unresolved failures uncertainty and evidence references
-5 Write user facing content in the language of the objective
-6 Return only data matching the supplied output schema
-</rules>
-
-<objective>{objective}</objective>
-<success_criteria>{success_criteria}</success_criteria>
-<task_results>{results}</task_results>"""
-
-SUPERVISOR_REVIEW = """<system_identity>
-You are the Veriq software testing agent
-</system_identity>
-
-<objective>
-Determine whether current results satisfy the objective or whether a bounded additional task is justified
-</objective>
-
-<analysis_protocol>
-Use private step by step reasoning internally to compare results with each success criterion identify only material evidence gaps and validate any additional task against available tools
-Do not reveal private chain of thought
-</analysis_protocol>
-
-<rules>
-1 A well supported insufficient evidence conclusion may complete the objective when no suitable tool remains
-2 Add a task only when a registered tool can close a material gap and all required arguments exist
-3 Never repeat a completed task or invent identifiers evidence or tool arguments
-4 Tool names and arguments must conform exactly to available_tools
-5 Return only data matching the supplied output schema
-</rules>
-
-<objective>{objective}</objective>
-<success_criteria>{success_criteria}</success_criteria>
-<current_results>{results}</current_results>
-<available_tools>{available_tools}</available_tools>
-<evidence_refs>{evidence_refs}</evidence_refs>
-<remaining_task_budget>{remaining_tasks}</remaining_task_budget>"""
-
-
-def supervisor_plan_prompt(project_id, run_id, objective, intent, target_artifact_ids, available_tools, evidence_refs, constraints):
-    return SUPERVISOR_PLAN.format(
+def agent_plan_prompt(project_id, run_id, objective, intent, target_artifact_ids, available_tools, evidence_refs, constraints):
+    return AGENT_PLAN.format(
         project_id=project_id,
         run_id=run_id,
         objective=objective,
@@ -200,32 +113,4 @@ def agent_execution_prompt(task, evidence, observations):
         task=json.dumps(task, ensure_ascii=False, default=str),
         evidence=json.dumps(evidence, ensure_ascii=False, default=str),
         observations=json.dumps(observations, ensure_ascii=False, default=str),
-    )
-
-
-def agent_review_prompt(task, evidence_refs, observations, remaining_tool_calls):
-    return AGENT_REVIEW.format(
-        task=json.dumps(task, ensure_ascii=False, default=str),
-        evidence_refs=json.dumps(evidence_refs, ensure_ascii=False),
-        observations=json.dumps(observations, ensure_ascii=False, default=str),
-        remaining_tool_calls=json.dumps(remaining_tool_calls, ensure_ascii=False, default=str),
-    )
-
-
-def aggregate_prompt(objective, success_criteria, results):
-    return SUPERVISOR_AGGREGATE.format(
-        objective=objective,
-        success_criteria=json.dumps(success_criteria, ensure_ascii=False),
-        results=json.dumps(results, ensure_ascii=False, default=str),
-    )
-
-
-def supervisor_review_prompt(objective, success_criteria, results, available_tools, evidence_refs, remaining_tasks):
-    return SUPERVISOR_REVIEW.format(
-        objective=objective,
-        success_criteria=json.dumps(success_criteria, ensure_ascii=False),
-        results=json.dumps(results, ensure_ascii=False, default=str),
-        available_tools=json.dumps(available_tools, ensure_ascii=False),
-        evidence_refs=json.dumps(evidence_refs, ensure_ascii=False),
-        remaining_tasks=remaining_tasks,
     )

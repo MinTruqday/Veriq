@@ -1,7 +1,7 @@
 from src.core.database import database
 
 
-class ExecutionPolicyRepository:
+class ExecutionStateRepository:
     async def project_settings(self, project_id):
         return await database.value.projects.find_one({"_id": project_id}, {"settings": 1})
 
@@ -30,4 +30,4 @@ class ExecutionPolicyRepository:
         )
 
 
-execution_policy_repository = ExecutionPolicyRepository()
+execution_state_repository = ExecutionStateRepository()

@@ -34,6 +34,9 @@ Every evidence_refs value must come from allowed_evidence_refs
 Do not fabricate facts identifiers expected responses measurements limits relationships or execution outcomes
 Describe test actions at the abstraction level of the source when an interface is not specified
 Do not invent screens buttons forms notifications storage technology or API responses to make a test case look concrete
+Every step expected result must be supported by the source  If the source gives only a final outcome use one step with that final outcome instead of adding assumed intermediate outcomes
+When restating a documented outcome preserve its truth conditions and do not add a separate notification persistence or execution outcome
+When a source sentence already states a condition and outcome reuse its outcome clause verbatim in the proposed action or expected result instead of replacing it with an abstract state label or a broader paraphrase
 Leave preconditions empty when the source does not establish any prerequisite
 When evidence is insufficient represent the limitation through the schema instead of guessing
 </evidence_contract>
@@ -72,9 +75,14 @@ Write user facing prose in the language of the user instruction
 <incorrect_behavior>Assume the user is on a specific screen and clicks a named button</incorrect_behavior>
 </example>
 <example>
-<situation>Người dùng yêu cầu phân tích bằng tiếng Việt trong khi bằng chứng viết bằng tiếng Anh</situation>
-<correct_behavior>Giữ nguyên mã định danh và giá trị kỹ thuật nhưng viết toàn bộ nội dung giải thích bằng tiếng Việt</correct_behavior>
-<incorrect_behavior>Trả lời bằng tiếng Anh theo ngôn ngữ của bằng chứng</incorrect_behavior>
+<situation>A challenge hypothesis proposes a possible implementation fault while its cited source defines a distinguishing input and expected result</situation>
+<correct_behavior>Generate the source supported input and expected result and identify the matching challenge_technique without stating the possible fault as actual system behavior</correct_behavior>
+<incorrect_behavior>Put the hypothetical fault in the title objective preconditions steps expected result or coverage obligations as though it were documented behavior</incorrect_behavior>
+</example>
+<example>
+<situation>The user requests analysis in Vietnamese while the evidence is written in English</situation>
+<correct_behavior>Preserve identifiers and technical values while writing every explanatory field in Vietnamese</correct_behavior>
+<incorrect_behavior>Reply in English solely because the evidence is written in English</incorrect_behavior>
 </example>
 </few_shot_examples>
 
@@ -112,8 +120,14 @@ def build_generated_cases_grounding_prompt(evidence, cases):
             "For every case identify each expected system behavior or implementation detail not established by the source",
             "A successful operation does not establish a notification, storage technology, or failure response",
             "A citation identifier alone is not proof that its text supports the claim",
+            "Treat a paraphrase or logically necessary consequence of an explicit source statement as supported even when the wording differs",
+            "Do not flag a concise synonym or generic success failure qualifier as an unsupported behavior when it only restates an explicit source outcome",
+            "For example when a source states that an actor performs an action and the system stores a changed value then a proposed result saying that the changed value is stored after that action is supported  It does not introduce a new state or behavior",
+            "Do not treat a merely plausible behavior or implementation detail as a necessary consequence",
             "Do not treat a plausible testing hypothesis as a documented product requirement",
             "Review the title, objective, preconditions, steps, expected results, coverage obligations and cited acceptance criteria",
+            "For each unsupported_claims item copy the shortest exact unsupported phrase from the proposed case in its original language",
+            "Do not return an explanation or a paraphrase in unsupported_claims",
             "Return one review per case in input order without revising the cases",
             f"<source>{json.dumps(evidence, ensure_ascii=False)}</source>",
             f"<proposed_cases>{json.dumps(cases, ensure_ascii=False)}</proposed_cases>",

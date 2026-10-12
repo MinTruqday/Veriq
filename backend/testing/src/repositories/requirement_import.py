@@ -193,7 +193,7 @@ class RequirementImportRepository:
         user_id,
         updated_at,
     ):
-        await database.value.import_jobs.update_one(
+        result = await database.value.import_jobs.update_one(
             {"_id": job_id, "project_id": project_id, "status": source_status},
             {
                 "$set": {
@@ -208,6 +208,7 @@ class RequirementImportRepository:
                 "$inc": {"revision": 1},
             },
         )
+        return result.matched_count == 1
 
     async def confirm_document(self, document_id, project_id, status, updated_at):
         await database.value.requirement_documents.update_one(

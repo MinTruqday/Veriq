@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from src.core.auth import CurrentUser, get_current_user
+from src.schemas.contracts.design import TestImportConfirm
 from src.schemas.contracts.requirements import (
     APIArtifactArchive,
     APIArtifactConfirm,
     APIArtifactImpact,
     APIArtifactReview,
-    ImportConfirm,
     ImportCreate,
 )
 from src.modules.integrations.services import api_artifact
@@ -165,7 +165,7 @@ async def upload_test_import(
 @router.post("/nhap-ca-kiem-thu/{job_id}/xac-nhan")
 async def confirm_test_import(
     job_id: str,
-    payload: ImportConfirm,
+    payload: TestImportConfirm,
     user: CurrentUser = Depends(get_current_user),
 ):
     return await api_artifact.confirm_test_import(job_id, payload, user)
