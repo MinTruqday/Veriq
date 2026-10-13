@@ -25,6 +25,7 @@ import DataSetsPanel from "./test-design/DataSetsPanel";
 import ScenariosPanel from "./test-design/ScenariosPanel";
 import TestCaseCreateModal from "./test-design/TestCaseCreateModal";
 import TestCaseTransferPanel from "./test-design/TestCaseTransferPanel";
+import TestAdequacyPanel from "./design/TestAdequacyPanel";
 import {
   createDataSetForm,
   createScenarioForm,
@@ -627,6 +628,12 @@ export default function TestDesignPage({ project }) {
       }
     >
       {error && <ErrorState message={error} />}
+      {selectedRequirement && (
+        <TestAdequacyPanel
+          requirementVersionId={selectedRequirement}
+          canReview={project.current_membership?.project_role === "QA"}
+        />
+      )}
       {(can("ai.generate_testcase") ||
         can("ai.generate_scenario") ||
         can("testcase.duplicate_check")) && (

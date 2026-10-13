@@ -252,6 +252,10 @@ async def baseline_requirement(
         'BASELINED',
         timestamp,
     )
+    from src.modules.design.services.test_adequacy import supersede_requirement_assessments
+    await supersede_requirement_assessments(
+        version["project_id"], version["requirement_id"], version_id, user.id
+    )
     await requirement_repository.approve_acceptance_criteria(
         version_id,
         'draft',

@@ -166,6 +166,13 @@ async def create_indexes():
     await db.test_cases.create_index([("project_id", 1), ("test_case_key", 1)], unique=True)
     await db.test_case_versions.create_index([("test_case_id", 1), ("version", 1)], unique=True)
     await db.test_case_versions.create_index([("project_id", 1), ("requirement_version_ids", 1)])
+    await ensure_unique_index(
+        db.test_adequacy_assessments,
+        [("project_id", 1), ("requirement_version_id", 1)],
+    )
+    await db.test_adequacy_assessments.create_index(
+        [("project_id", 1), ("status", 1), ("updated_at", -1)]
+    )
     await db.trace_links.create_index([("project_id", 1), ("source_type", 1), ("source_id", 1)])
     await db.trace_links.create_index([("project_id", 1), ("target_type", 1), ("target_id", 1)])
     await db.trace_links.create_index(

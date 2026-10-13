@@ -303,6 +303,11 @@ async def finalize_test_case_derivatives(draft, version, user):
             }
         )
     version.update(derived_status)
+    try:
+        from src.modules.design.services.test_adequacy import invalidate_adequacy_for_test_case_version
+        await invalidate_adequacy_for_test_case_version(version)
+    except Exception:
+        pass
     return trace_ready and indexed and audit_ready
 
 
@@ -398,6 +403,7 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "data_set_version_ids": draft.get("data_set_version_ids", []),
         "requirement_version_ids": draft["requirement_version_ids"],
         "acceptance_criterion_ids": draft["acceptance_criterion_ids"],
+        "coverage_item_ids": draft.get("coverage_item_ids", []),
         "test_condition_ids": draft.get("test_condition_ids", []),
         "scenario_id": draft.get("scenario_id"),
         "source_evidence": (

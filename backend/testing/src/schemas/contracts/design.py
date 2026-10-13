@@ -97,6 +97,7 @@ class TestCaseDraftCreate(BaseModel):
     data_set_version_ids: list[str] = Field(default_factory=list, max_length=100)
     requirement_version_ids: list[str] = Field(default_factory=list, max_length=200)
     acceptance_criterion_ids: list[str] = Field(default_factory=list, max_length=500)
+    coverage_item_ids: list[str] = Field(default_factory=list, max_length=500)
     test_condition_ids: list[str] = Field(default_factory=list, max_length=500)
     scenario_id: str | None = None
     origin: Literal["manual", "ai_generated", "clone", "import", "maintenance"] = "manual"
@@ -161,6 +162,7 @@ class TestCaseDraftPatch(BaseModel):
     data_set_version_ids: list[str] | None = None
     requirement_version_ids: list[str] | None = None
     acceptance_criterion_ids: list[str] | None = None
+    coverage_item_ids: list[str] | None = None
     test_condition_ids: list[str] | None = None
     scenario_id: str | None = None
 

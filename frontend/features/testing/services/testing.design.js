@@ -7,6 +7,38 @@ import {
 } from "./testing.transport";
 
 export const designTestingApi = {
+  getTestAdequacy: (requirementVersionId) =>
+    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/do-day-du-kiem-thu`),
+  getTestAdequacyImpact: (requirementId) =>
+    testingRequest(`/yeu-cau/${requirementId}/do-day-du-kiem-thu/tac-dong`),
+  refreshTestAdequacy: (requirementVersionId, expectedRevision) =>
+    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/do-day-du-kiem-thu/lam-moi`, {
+      method: "POST",
+      body: JSON.stringify(expectedRevision ? { expected_revision: expectedRevision } : {}),
+    }),
+  submitTestAdequacy: (assessmentId, expectedRevision, note = "") =>
+    testingRequest(`/do-day-du-kiem-thu/${assessmentId}/gui-ra-soat`, {
+      method: "POST",
+      body: JSON.stringify({ expected_revision: expectedRevision, note }),
+    }),
+  approveTestAdequacy: (assessmentId, expectedRevision, note = "") =>
+    testingRequest(`/do-day-du-kiem-thu/${assessmentId}/phe-duyet`, {
+      method: "POST",
+      body: JSON.stringify({ expected_revision: expectedRevision, note }),
+    }),
+  decideTestAdequacyItem: (assessmentId, coverageItemId, payload) =>
+    testingRequest(`/do-day-du-kiem-thu/${assessmentId}/hang-muc/${coverageItemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  addTestAdequacyExecutionFeedback: (assessmentId, coverageItemId, payload) =>
+    testingRequest(
+      `/do-day-du-kiem-thu/${assessmentId}/hang-muc/${coverageItemId}/phan-hoi-thuc-thi`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
   searchProject: (id, query) =>
     testingRequest(`/du-an/${id}/tim-kiem?q=${encodeURIComponent(query)}&limit=50`),
   listRequirementPage: (id, query = "") => listPage(`/du-an/${id}/yeu-cau`, query),

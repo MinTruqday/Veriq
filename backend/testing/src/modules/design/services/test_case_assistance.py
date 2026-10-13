@@ -45,6 +45,12 @@ async def generate_test_case_draft_records(version_id, payload, user):
         raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi trong lúc AI tạo ca  Hãy nhận gợi ý mới"})
     await require_current_baselined_version(version)
     criterion_ids = {item["_id"] for item in criteria}
+    from src.modules.design.services.test_adequacy import _sources
+    coverage_by_criterion = {
+        item["source_id"]: item["coverage_item_id"]
+        for item in await _sources(version)
+        if item["source_type"] == "acceptance_criterion"
+    }
     linked_criterion_ids = criterion_ids.intersection(
         criterion_id
         for case in related
@@ -54,6 +60,13 @@ async def generate_test_case_draft_records(version_id, payload, user):
     )
     items = []
     for index, (draft, generated) in enumerate(zip(drafts, result["suggestions"])):
+        draft = draft.model_copy(update={
+            "coverage_item_ids": [
+                coverage_by_criterion[criterion_id]
+                for criterion_id in draft.acceptance_criterion_ids
+                if criterion_id in coverage_by_criterion
+            ]
+        })
         ranked = sorted(
             (
                 (score, item)

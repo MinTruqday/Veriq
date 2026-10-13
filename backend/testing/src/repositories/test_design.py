@@ -30,6 +30,9 @@ class TestDesignRepository:
             .to_list(limit)
         )
 
+    async def find_defect(self, project_id, defect_id):
+        return await database.value.defects.find_one({"_id": defect_id, "project_id": project_id})
+
     async def find_suite(self, suite_id, project_id):
         return await database.value.test_suites.find_one(
             {"_id": suite_id, "project_id": project_id}

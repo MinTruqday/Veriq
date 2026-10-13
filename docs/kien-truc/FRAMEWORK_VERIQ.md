@@ -1,485 +1,398 @@
 # Framework Veriq
 
-## Phạm vi và nguồn đối chiếu
-
-Tài liệu này mô tả hành vi đang có trong mã nguồn Veriq tại thời điểm tạo tài liệu
-
-Nó không coi ảnh tham khảo là tài liệu kiến trúc và không suy diễn thêm chức năng từ ảnh đó
-
-Các điểm được đối chiếu gồm
-
-- Định nghĩa services và route trong `docker-compose.yml`
-- Router Testing trong `backend/testing/src/main.py`
-- Router Requirements trong `backend/testing/src/modules/requirements`
-- Router AI và graph điều phối trong `backend/ai/src/api` và `backend/ai/src/agents/runner`
-- Luồng evidence trong `backend/ai/src/knowledge`
-- Worker và hàng đợi trong `backend/worker/src/main.py`
-
-## Nguyên tắc nghiệp vụ
-
-- Mọi đối tượng nghiệp vụ nằm trong một dự án và được kiểm tra quyền dự án trước khi đọc hoặc thay đổi
-- Tài liệu nguồn giữ quyền truy cập riêng và cờ cho phép AI sử dụng riêng
-- Requirement import tạo bản xem trước trước khi xác nhận nhập
-- Template chỉ hỗ trợ thu thập và chuẩn hóa Requirements Không tạo test case trong luồng template
-- Test case được xử lý tại giai đoạn Thiết kế kiểm thử sau khi Requirement đã được xác nhận
-- Thay đổi do AI đề xuất không được áp dụng khi chưa có quyết định phê duyệt
-- Kết quả AI chỉ được coi là hoàn tất khi vượt qua kiểm tra phạm vi bằng chứng và kết quả áp dụng nếu có
-
-## Luồng nghiệp vụ tổng quát
-
-Sơ đồ này dùng các điểm kiểm tra làm mốc quay lại Khi một bước không đạt điều kiện hệ thống không đi tiếp xuống bước sau và cũng không tự bỏ qua lỗi
-
-```mermaid
-flowchart TD
-    S([Bắt đầu]) --> A[Người dùng xác thực]
-    A --> B{Có quyền vào dự án}
-    B -->|Không| X1[Trả từ chối quyền truy cập] --> E1([Kết thúc không thay đổi])
-    B -->|Có| C[Chọn hoặc quản lý tài liệu nguồn]
-    C --> D[Chuẩn hóa Requirements]
-    D --> Q{Requirement đã được xác nhận}
-    Q -->|Chưa| R[Giữ bản nháp và yêu cầu người dùng hoàn thiện]
-    R --> C
-    Q -->|Có| F[Phân tích kiểm thử]
-    F --> G[Thiết kế kiểm thử]
-    G --> H[Lập kế hoạch và thực thi]
-    H --> I[Giám sát chất lượng thay đổi và truy vết]
-    I --> J{Có thay đổi hoặc finding cần xử lý}
-    J -->|Có| F
-    J -->|Không| K[Báo cáo trạng thái hoặc hoàn tất]
-    K --> E2([Kết thúc thành công])
-```
-
-### Luồng điều khiển cho một thao tác có thay đổi dữ liệu
-
-Mỗi hình thoi là một quyết định có nhánh Có và Không rõ ràng Mỗi nhánh phải đi đến một kết thúc hoặc quay về đúng checkpoint Không có nhánh lỗi nào tự rơi xuống nhánh thành công
-
-```mermaid
-flowchart TD
-    S([Bắt đầu request]) --> A[Checkpoint A<br/>Xác thực phiên quyền dự án dữ liệu đầu vào revision và idempotency]
-    A --> AD{A hợp lệ}
-
-    AD -->|Không| AERR[Backend trả lỗi trước khi ghi<br/>Frontend giữ nội dung người dùng đã nhập]
-    AERR --> ARETRY{Có thể sửa và gửi lại}
-    ARETRY -->|Có| A
-    ARETRY -->|Không| END_NO_CHANGE([Kết thúc không thay đổi dữ liệu])
-
-    AD -->|Có| B[Checkpoint B<br/>Thực hiện đúng một thay đổi nghiệp vụ]
-    B --> BD{B đã ghi đầy đủ}
-
-    BD -->|Có| C[Checkpoint C<br/>Đọc lại revision trạng thái và kết quả đã ghi]
-    C --> CD{Kết quả xác minh đúng}
-    CD -->|Có| AUDIT[Ghi audit trả dữ liệu và operation metadata]
-    AUDIT --> END_SUCCESS([Kết thúc thành công])
-    CD -->|Không| CERR[Trả trạng thái không hoàn tất<br/>Kèm trạng thái quan sát được]
-    CERR --> CRETRY{Có đường phục hồi an toàn}
-    CRETRY -->|Sửa dữ liệu đầu vào| A
-    CRETRY -->|Retry idempotent| B
-    CRETRY -->|Không| END_INTERVENTION([Kết thúc cần can thiệp])
-
-    BD -->|Lỗi trước khi có ghi bền vững| BPRE[Giữ trạng thái cũ và trả lỗi]
-    BPRE --> BPRE_RETRY{Backend đánh dấu retryable hoặc người dùng sửa dữ liệu}
-    BPRE_RETRY -->|Có| A
-    BPRE_RETRY -->|Không| END_NO_CHANGE
-
-    BD -->|Lỗi sau khi đã ghi một phần| BPARTIAL{Workflow có compensation đã định nghĩa}
-    BPARTIAL -->|Có| COMP[Chạy compensation của chính workflow<br/>Không chạy rollback toàn cục]
-    COMP --> COMP_OK{Compensation đã xác minh}
-    COMP_OK -->|Có| A
-    COMP_OK -->|Không| END_MANUAL([Kết thúc cần can thiệp thủ công])
-    BPARTIAL -->|Không| END_MANUAL
-```
-
-Không có một cơ chế compensation chung cho toàn hệ thống Mỗi workflow phải tự xác định trạng thái có thể phục hồi và thao tác đảo ngược tương ứng Mã hiện có các rollback riêng cho vòng đời Requirement phiên bản Test Case kết quả AI áp dụng vào Requirement và lệnh thực thi tự động Các workflow không có rollback riêng phải trả lỗi có cấu trúc và giữ trạng thái quan sát được thay vì tuyên bố đã hoàn tác
-
-### Luồng Requirements chi tiết
-
-```mermaid
-flowchart TD
-    S([Bắt đầu]) --> A[Người có quyền Requirement chọn dự án]
-    A --> Z{Có quyền dự án và quyền đọc nguồn}
-    Z -->|Không| Z1[Trả từ chối không tạo dữ liệu] --> E1([Kết thúc không thay đổi])
-    Z -->|Có| T{Nguồn đầu vào}
-    T -->|Mẫu khởi đầu| T1[Mẫu Web Mobile hoặc API]
-    T -->|Mẫu dự án| T2[Mẫu bản nháp có phiên bản]
-    T -->|Tài liệu| T3[User Story SRS hoặc tệp nguồn]
-    T -->|Định nghĩa API| T4[API Definition]
-    T -->|Tự tạo| T5[Biểu mẫu template và trường mở rộng]
-
-    T1 --> PRV[Xem trước template hoặc import]
-    T2 --> PRV
-    T3 --> X[Rút nội dung thành requirement ứng viên]
-    T4 --> X
-    T5 --> PRV
-    PRV --> X
-
-    X --> V[Kiểm tra nguồn dẫn và quyền đọc nguồn]
-    V --> V1{Nguồn dẫn hợp lệ}
-    V1 -->|Không| E[Giữ ở bản xem trước và nêu phần cần hoàn thiện]
-    V1 -->|Có| C[So sánh với requirement hiện có]
-    C --> D{Có trùng hoặc xung đột cần quyết định}
-    D -->|Có| R[Người dùng chọn gộp tách từ chối hoặc phân giải]
-    R --> Q[Kiểm tra lại bản xem trước]
-    D -->|Không| Q
-    Q --> K{Mỗi mục được chọn có nội dung và nguồn dẫn}
-    K -->|Không| E
-    K -->|Có| F[Xác nhận nhập]
-    F --> G[Kiểm tra khóa requirement và trạng thái đối chiếu]
-    G --> H{Hợp lệ}
-    H -->|Không| E
-    H -->|Có| I[Claim import job từ preview ready sang confirming]
-    I --> J[Tạo Requirement và phiên bản theo từng mục]
-    J --> L{Tất cả mục được tạo}
-    L -->|Có| M[Xác nhận import và ghi audit]
-    M --> N[Đưa Requirement đã xác nhận vào cơ sở phân tích kiểm thử]
-    N --> E2([Kết thúc thành công])
-    L -->|Không| O[Compensation xóa các Requirement Version và artifact version của đúng lượt xác nhận]
-    O --> RESET[Đặt import job về preview ready và ghi audit thất bại]
-    RESET --> E
-    E --> U{Người dùng tiếp tục}
-    U -->|Sửa nguồn hoặc bản xem trước| T
-    U -->|Hủy| E3([Kết thúc không thay đổi])
-
-    subgraph TP[Quản lý phát hành template]
-        M1[Mẫu riêng tư theo dự án]
-        M2[Đề nghị phát hành]
-        M3[Chủ tài liệu đồng ý]
-        M4[QA hoặc quản trị viên duyệt phát hành]
-        M5[Mẫu dùng chung]
-        M1 --> M2 --> M3 --> M4 --> M5
-    end
-```
-
-### Điểm dừng của template
-
-```mermaid
-flowchart TD
-    S([Bắt đầu template]) --> A[Template và tài liệu nguồn]
-    A --> B[Requirement ứng viên có nguồn dẫn]
-    B --> C[Người dùng rà soát]
-    C --> D{Xác nhận nhập}
-    D -->|Không| A
-    D -->|Có| E[Requirement có phiên bản]
-    E --> F[Phân tích kiểm thử]
-    F --> G[Thiết kế test case]
-    G --> E1([Kết thúc luồng template])
-
-    X[Không tạo test case trong template] -. ranh giới nghiệp vụ .-> E
-```
-
-## Luồng từ Requirement đến báo cáo
-
-```mermaid
-flowchart TD
-    S([Bắt đầu]) --> R[Requirement phiên bản đã xác nhận]
-    R --> A[Phân tích kiểm thử]
-    A --> A1[Tạo điều kiện kiểm thử]
-    A --> A2[Ghi nhận finding và phân công xử lý]
-    A1 --> A3[Gửi rà soát phê duyệt hoặc lưu trữ]
-    A2 --> A4[Giải quyết và xác minh finding]
-    A3 --> D[Thiết kế kiểm thử]
-    A4 --> D
-    D --> D1[Tạo hoặc sinh kịch bản]
-    D --> D2[Tạo bản nháp test case]
-    D2 --> D3[Kiểm tra bản nháp]
-    D3 --> D4[Gửi rà soát yêu cầu chỉnh sửa hoặc phê duyệt]
-    D4 --> P[Lập chiến lược kế hoạch suite và dữ liệu]
-    P --> E[Thực thi và ghi kết quả]
-    E --> Q[Giám sát kiểm soát chất lượng lỗi và thay đổi]
-    Q --> T[Truy vết requirement test case kết quả]
-    T --> O[Báo cáo trạng thái hoặc hoàn tất]
-    O --> E1([Kết thúc thành công])
-
-    Q -->|Thay đổi ảnh hưởng| A
-    A2 -->|Finding chưa được xác minh| A4
-    A4 -->|Cần làm rõ Requirement| R
-    D4 -->|Yêu cầu chỉnh sửa| D
-```
-
-## Luồng hoạt động AI agent
-
-AI agent hiện là một workflow điều phối duy nhất cho mỗi lượt chạy Không có cơ chế nhiều agent tự chạy song song trên cùng một lượt
-
-```mermaid
-flowchart TD
-    S([Bắt đầu lượt chạy AI]) --> U[Người dùng chọn capability và gửi mục tiêu]
-    U --> A[API kiểm tra xác thực và quyền dự án]
-    A --> A1{Được phép chạy trong dự án}
-    A1 -->|Không| E1[Trả từ chối không tạo lượt chạy] --> X1([Kết thúc không thay đổi])
-    A1 -->|Có| B[Khởi tạo Agent Run gồm project user role quyền và metadata model]
-    B --> C[Nạp ngữ cảnh]
-
-    subgraph EV[Thu thập evidence cùng project]
-        C1[Evidence do người dùng cung cấp]
-        C2[Truy hồi artifact qua Testing service]
-        C3[Vector retrieval qua Qdrant]
-        C4[Quan hệ artifact qua Neo4j]
-        C5[Bộ nhớ dài hạn đã được xác minh]
-        C1 --> C6[Đóng gói lọc trùng và giới hạn evidence]
-        C2 --> C6
-        C3 --> C6
-        C4 --> C6
-        C5 --> C6
-    end
-
-    C --> C2
-    C6 --> D{Capability được chọn có tool hợp lệ và đủ quyền}
-    D -->|Có| E[Tạo trực tiếp một task của capability]
-    D -->|Không| F[Mô hình tạo plan có cấu trúc]
-    F --> F1{Provider phản hồi hợp lệ}
-    F1 -->|Lỗi tạm thời và còn lượt thử| F
-    F1 -->|Hết lượt thử hoặc lỗi không phục hồi| Z1[Đánh dấu AI provider unavailable]
-    Z1 --> X2([Kết thúc thất bại])
-    F1 -->|Có| G[Kiểm tra task tool schema tham số quyền phạm vi project và định danh]
-    G --> H{Có task hợp lệ}
-    H -->|Không| Z[Trả kết quả không đủ bằng chứng hoặc task không hợp lệ]
-    Z --> X3([Kết thúc có kết quả hạn chế])
-    H -->|Có| E
-    E --> I[Thực thi tool theo task]
-    I --> I1{Tool thực thi được}
-    I1 -->|Không| Z2[Thu thập lỗi tool và xác minh thất bại]
-    Z2 --> X2
-    I1 -->|Có| J[Tạo kết quả đề xuất quan sát và evidence references]
-    J --> K[Tổng hợp proposal]
-    K --> L{Có hành động thay đổi cần phê duyệt}
-    L -->|Không| V[Xác minh kết quả evidence và phạm vi project]
-    L -->|Có| W[Trạng thái chờ phê duyệt]
-    W --> X{Quyết định của người dùng}
-    X -->|Sửa đề xuất| W
-    X -->|Từ chối| V
-    X -->|Duyệt| Y[Áp dụng tool thay đổi]
-    Y --> V
-    V --> N{Đạt điều kiện xác minh}
-    N -->|Có và task COMPLETED| O[Hoàn tất và ghi bộ nhớ dài hạn đã xác minh]
-    O --> X4([Kết thúc thành công])
-    N -->|Có nhưng task INSUFFICIENT EVIDENCE| Z
-    N -->|Không| Z2
-```
-
-### Các ràng buộc AI đang thực thi
-
-- Capability trả về giao diện chỉ là capability mà vai trò hiện tại có quyền dùng
-- Evidence phải cùng `project_id` với lượt chạy
-- Bằng chứng từ vector và graph chỉ được giữ khi tham chiếu khớp artifact có thẩm quyền từ nguồn dự án
-- Plan và tool call bị kiểm tra schema tham số quyền tool phạm vi dự án và định danh trước khi thực thi
-- Workflow giới hạn một task được xử lý cho một lượt chạy
-- Tool cần phê duyệt chỉ tạo đề xuất trước khi quyết định duyệt
-- Khi áp dụng có xác minh lại kết quả áp dụng
-- Kết quả hoàn tất phải có kiểm tra evidence phạm vi project và số lượng hành động được áp dụng
-- Bộ nhớ dài hạn chỉ ghi khi lượt chạy hoàn tất và xác minh thành công
-
-### Hai lớp trạng thái của lượt chạy AI
-
-`run.status` mô tả workflow có chạy đến điểm kết thúc hay không còn `agent_results[].status` mô tả chất lượng của từng kết quả
-
-```mermaid
-flowchart TD
-    A([Bắt đầu đánh giá kết quả]) --> B{Run status}
-    B -->|COMPLETED| C{Result status}
-    C -->|COMPLETED| D[Có kết quả đã hoàn tất] --> X1([Kết thúc thành công])
-    C -->|INSUFFICIENT EVIDENCE| E[Workflow xong nhưng chưa đủ bằng chứng để trả lời] --> X2([Kết thúc có kết quả hạn chế])
-    C -->|FAILED| F[Workflow xong nhưng task thất bại] --> X3([Kết thúc thất bại])
-    B -->|FAILED| G[Workflow không vượt qua kiểm tra hoặc provider không sẵn sàng] --> X3
-```
-
-Vì vậy frontend không được chỉ hiển thị `run.status` như kết luận chất lượng câu trả lời Nó cần thể hiện đồng thời result status warnings và verification để người dùng phân biệt hoàn tất xử lý với có đủ bằng chứng
-
-## Luồng kiểm soát frontend đến backend
-
-Frontend là điểm khởi tạo thao tác và hiển thị trạng thái Backend mới là nơi quyết định quyền trạng thái dữ liệu idempotency retry fallback và compensation
-
-```mermaid
-flowchart TD
-    S([Bắt đầu thao tác]) --> U[Người dùng gửi thao tác]
-    U --> F[Frontend hiển thị đang xử lý và gửi request]
-    F --> G[Traefik định tuyến]
-    G --> B[Backend xác thực kiểm tra quyền dự án và kiểm tra dữ liệu]
-    B --> A{Request hợp lệ}
-    A -->|Không| R1[Trả lỗi có code trace id và giữ nội dung nhập ở frontend]
-    R1 --> D1{Người dùng sửa và gửi lại}
-    D1 -->|Có| U
-    D1 -->|Không| E1([Kết thúc không thay đổi])
-    A -->|Có| C[Backend đọc hoặc thay đổi trạng thái nghiệp vụ]
-    C --> D{Dependency phản hồi}
-    D -->|Thành công| R2[Trả dữ liệu revision và trạng thái operation]
-    R2 --> F2[Frontend hiển thị hoàn tất]
-    F2 --> E2([Kết thúc thành công])
-    D -->|Lỗi retryable hoặc degraded| R3[Trả failure metadata]
-    R3 --> D2{Người dùng chọn thử lại}
-    D2 -->|Có| U
-    D2 -->|Không| E3([Kết thúc cần can thiệp hoặc không hoàn tất])
-    D -->|Lỗi không retryable| R4[Trả lỗi có cấu trúc]
-    R4 --> E3
-```
-
-### Expected path
-
-Đường thành công của backend phải đi qua các lớp sau trước khi thay đổi dữ liệu
-
-- Xác thực phiên và xác định người dùng
-- Kiểm tra tư cách thành viên hoặc quyền được cấp trong project
-- Kiểm tra trạng thái hiện tại của entity và dữ liệu đầu vào
-- Kiểm tra `revision` hoặc cơ chế idempotency ở các luồng có hỗ trợ
-- Thực hiện thay đổi nghiệp vụ
-- Trả dữ liệu cùng metadata operation để frontend hiển thị
-- Ghi audit khi nghiệp vụ đó có audit
-
-Frontend không được tự kết luận thao tác thành công trước response Backend Frontend chỉ chuyển trạng thái `streaming` `complete` hoặc `failed` dựa trên response hay stream nhận được
-
-### Rejection không phải rollback
-
-Các tình huống như không đủ quyền dữ liệu sai `revision` không khớp entity đã đổi trạng thái hoặc idempotency key xung đột được backend từ chối trước khi thay đổi thành công
-
-Đây là cơ chế bảo toàn trạng thái hiện có không phải rollback Sau khi nhận lỗi frontend phải giữ dữ liệu người dùng đã nhập và hiển thị error code trace id cùng khả năng retry nếu response đánh dấu retryable
-
-### Fallback và degradation hiện có
-
-```mermaid
-flowchart TD
-    S([Bắt đầu gọi dependency]) --> A[Backend cần dependency hoặc model]
-    A --> B{Loại phản hồi}
-    B -->|Thành công| C[Quay lại expected path] --> E1([Kết thúc thành công])
-    B -->|Lỗi tạm thời của model| D[Model runtime thử lần hiện tại]
-    D --> E{Có kết quả hợp lệ}
-    E -->|Có| C
-    E -->|Không còn lượt thử| F[Trả lỗi AI provider unavailable] --> E2([Kết thúc thất bại])
-    E -->|Còn lượt thử| D
-    B -->|Tri thức không sẵn sàng| G[Gắn degraded flag]
-    G --> H[Loại evidence không xác minh được]
-    H --> I[Trả kết quả thiếu evidence theo ngữ cảnh] --> E3([Kết thúc có kết quả hạn chế])
-    B -->|Worker lỗi tạm thời| J[Worker chạy handler lần hiện tại]
-    J --> K{Hoàn tất}
-    K -->|Có| C
-    K -->|Còn lượt thử tự động| J
-    K -->|Hết ba lượt thử| L[Ghi job failed]
-    L --> M{Người dùng yêu cầu retry thủ công trong giới hạn}
-    M -->|Có| N[Đặt job queued và publish lại hàng đợi]
-    N --> J
-    M -->|Không| E4([Kết thúc job failed])
-```
-
-Các fallback được xác nhận trong mã nguồn
-
-- Model runtime thử lại tối đa ba lần với backoff trước khi báo lỗi
-- Structured output có vòng sửa dữ liệu đầu ra trước khi coi là không hợp lệ
-- Retrieval ghi degraded flags khi tri thức hoặc graph không sẵn sàng và không coi evidence không xác minh được là nguồn có thẩm quyền
-- Worker thử lại handler tối đa ba lần rồi ghi job failed Người dùng có thể yêu cầu retry thủ công cho job failed trong giới hạn đã định
-- API Testing trả metadata `retryable` `state_after_failure` và `user_action_required` cho lỗi có cấu trúc
-
-Điều chưa có là fallback frontend tự gửi lại mọi request Việc tự gửi lại các thao tác ghi có thể tạo nhân bản hoặc làm sai ý người dùng Vì vậy frontend chỉ hiển thị retry theo ý người dùng và backend vẫn là nơi xác định thao tác có retry được hay không
-
-### Rollback và compensation hiện có
-
-```mermaid
-flowchart TD
-    S([Bắt đầu xác nhận import]) --> A[Xác nhận nhập Requirement]
-    A --> B[Claim import job từ preview ready sang confirming]
-    B --> C[Tạo lần lượt Requirement và phiên bản]
-    C --> D{Tất cả mục đã tạo thành công}
-    D -->|Có| E[Đánh dấu import confirmed và ghi audit]
-    E --> E1([Kết thúc thành công])
-    D -->|Không| F[Xóa Requirement và version vừa tạo trong lượt hiện tại]
-    F --> G[Xóa artifact version liên quan]
-    G --> H[Đặt import job về preview ready]
-    H --> I[Ghi audit xác nhận import thất bại]
-    I --> J[Trả người dùng về bản xem trước]
-    J --> K{Người dùng sửa và xác nhận lại}
-    K -->|Có| A
-    K -->|Không| E2([Kết thúc không thay đổi thêm])
-```
-
-Rollback thật sự đã có trong luồng xác nhận Requirement import Khi một mục tạo thất bại hệ thống xóa các Requirement và version đã được tạo trong chính lượt xác nhận đó gỡ artifact version liên quan rồi trả import job về `PREVIEW_READY`
-
-Ngoài luồng này hệ thống không có một rollback phân tán toàn cục bao phủ tất cả microservice Điều đó không được phép mô tả như đã có
-
-Các luồng còn lại chủ yếu bảo vệ bằng state machine revision idempotency immutable snapshot archive và retry Các cơ chế này ngăn thay đổi sai hoặc phục hồi thao tác có kiểm soát nhưng không tương đương transaction xuyên service
-
-### Cần được bổ sung nếu mở rộng nghiệp vụ có side effect nhiều service
-
-Khi một thao tác mới ghi dữ liệu ở nhiều service phải xác định rõ trước khi build
-
-- Expected state sau từng bước
-- Idempotency key và revision dùng để chống gửi lại
-- Side effect nào có thể retry và side effect nào phải yêu cầu người dùng xác nhận lại
-- Compensation cụ thể của từng bước khi bước sau thất bại
-- Trạng thái lỗi cuối cùng có thể quan sát được
-- Chủ thể được phép retry resume cancel hoặc discard
-
-Không được dùng rollback giả bằng cách xóa toàn bộ dữ liệu hoặc tự chạy lại thao tác ghi mà chưa xác định idempotency và compensation
-
-## Khung triển khai hệ thống
+## Mục đích và căn cứ
+
+Tài liệu này thay thế bản framework trước và chỉ mô tả hành vi đã đối chiếu trong mã nguồn Veriq
+
+Nó không suy diễn từ tên service  từ ảnh vẽ hay từ một dependency được khai báo trong Docker
+
+Các nguồn đối chiếu chính
+
+- `docker-compose.yml` và `nginx.conf`
+- `frontend/shared/services/api-client.js`
+- `backend/testing/src/main.py` và `backend/testing/src/clients`
+- `backend/ai/src/main.py`  `backend/ai/src/agents/runner/graph.py` và `backend/ai/src/knowledge/hybrid.py`
+- `backend/content/src/clients`
+- `backend/worker/src/main.py`  `backend/worker/src/services.py` và `backend/worker/src/jobs/task.py`
+- `backend/testing/src/modules/requirements/services/requirement_import_workflow.py`
+
+Tài liệu tách riêng bốn vấn đề để tránh lẫn lộn
+
+- Kiến trúc microservice
+- Vòng đời nghiệp vụ kiểm thử
+- Hoạt động AI
+- Retry  fallback  compensation và các điểm kết thúc
+
+## Quy ước sơ đồ
+
+| Ký hiệu | Ý nghĩa |
+| --- | --- |
+| Hình bo tròn | Bắt đầu hoặc kết thúc |
+| Hình chữ nhật | Hoạt động có chủ thể chịu trách nhiệm |
+| Hình thoi | Quyết định  phải có các nhánh đầy đủ |
+| Mũi tên liền | Lời gọi hoặc chuyển trạng thái được mã nguồn xác nhận |
+| Mũi tên nét đứt | Quan sát  giám sát hoặc quan hệ dữ liệu |
+| Không thay đổi | Request bị dừng trước khi có thay đổi bền vững |
+| Cần can thiệp | Không có compensation tự động cho tình huống đó |
+
+## Sự thật không được vẽ sai
+
+1  Frontend có cổng trực tiếp `3000`
+
+2  Traefik nhận API ở cổng `8000`
+
+3  Nginx chỉ reverse proxy Frontend khi đi qua route gốc của Traefik  Nginx không nằm trên mọi request API
+
+4  Testing sở hữu Projects  Requirements  Design  Execution  Quality  Integrations và Operations
+
+5  Testing gọi AI qua API nội bộ  Testing không truy cập trực tiếp Qdrant hay Neo4j
+
+6  Luồng tác vụ nền được xác nhận là Testing → Worker API → RabbitMQ → Worker consumer → Testing internal callback
+
+7  Content kích hoạt AI indexing qua HTTP webhook đến event queue trong bộ nhớ của AI  Đây không phải RabbitMQ
+
+8  Không có distributed transaction hoặc rollback chung cho toàn hệ thống
+
+9  Các service dùng cùng MongoDB deployment nhưng có database logic riêng  Không service nào tự sở hữu dữ liệu của service khác
+
+10  AI không tự baseline  approve  publish  archive hoặc áp dụng thay đổi nghiệp vụ thay người dùng
+
+## 1  Bối cảnh triển khai và điểm vào
 
 ```mermaid
 flowchart LR
-    U[Người dùng trên trình duyệt] --> FE[Next.js Frontend]
-    FE --> NG[Nginx]
-    NG --> TR[Traefik API Gateway]
+    U[Người dùng trên trình duyệt]
+    FE[Next Frontend cổng 3000]
+    GW[Traefik API Gateway cổng 8000]
+    NX[Nginx reverse proxy]
 
-    TR --> AU[Authentication]
-    TR --> TE[Testing]
-    TR --> AI[AI]
-    TR --> CO[Content]
-    TR --> CL[Cloud]
-    TR --> NO[Notification]
-    TR --> WO[Worker API]
+    U -->|Giao diện phát triển| FE
+    U -->|API theo NEXT_PUBLIC_API_URL| GW
+    U -->|Route gốc qua gateway| GW
+    GW -->|Route gốc| NX
+    NX --> FE
 
-    AU --> MO[(MongoDB)]
-    AU --> RE[(Redis)]
-    TE --> MO
-    CO --> MO
-    CL --> MO
-    NO --> MO
-    WO --> MO
-    AI --> MO
+    GW --> AU[Authentication]
+    GW --> TE[Testing]
+    GW --> AI[AI]
+    GW --> CO[Content]
+    GW --> CL[Cloud]
+    GW --> NO[Notification]
+    GW --> WO[Worker API]
+```
 
-    CO --> OS[(S3 compatible object storage)]
-    CL --> OS
+Không được vẽ đường Frontend → Nginx → Traefik → Backend như một đường bắt buộc  Frontend gọi API qua URL cấu hình và Traefik định tuyến API theo path
+
+## 2  Luồng microservice đã xác nhận
+
+```mermaid
+flowchart TB
+    subgraph Edge[Điểm vào]
+        FE[Frontend]
+        TR[Traefik]
+    end
+
+    subgraph Services[Backend services]
+        AU[Authentication]
+        TE[Testing]
+        AI[AI]
+        CO[Content]
+        CL[Cloud]
+        NO[Notification]
+        WO[Worker]
+    end
+
+    FE -->|Bearer token request| TR
+    TR --> AU
+    TR --> TE
+    TR --> AI
+    TR --> CO
+    TR --> CL
+    TR --> NO
+    TR --> WO
+
+    TE -->|X Internal Token<br/>AI assistance stream hoặc result| AI
+    TE -->|X Internal Token<br/>index search delete project artifact| AI
+    TE -->|X Internal Token<br/>requirement source read write| CL
+    TE -->|X Internal Token<br/>enqueue get retry cancel job| WO
+    TE -->|X Internal Token<br/>session and account checks| AU
+
+    CO -->|X Internal Token<br/>document indexing webhook and delete index| AI
+    CO -->|X Internal Token<br/>create in app notification| NO
+    CO -->|X Internal Token<br/>session and account checks| AU
+
+    CL -->|X Internal Token<br/>session and account checks| AU
+    AI -->|X Internal Token<br/>session checks| AU
+    AI -->|X Internal Token<br/>read permitted document exchange| CO
+    NO -->|X Internal Token<br/>session and account checks| AU
+    WO -->|X Internal Token<br/>background job callback| TE
+```
+
+Mỗi mũi tên trên là client nội bộ hoặc callback có trong mã nguồn
+
+Không thêm mũi tên giữa hai service chỉ vì chúng cùng dùng Docker network  MongoDB hoặc Redis
+
+## 3  Hai loại xác thực
+
+```mermaid
+flowchart TD
+    S([Bắt đầu request]) --> A{Nguồn request}
+    A -->|Trình duyệt| B[Bearer access token]
+    B --> C[Service xác minh token]
+    C --> D[Authentication xác minh session khi service yêu cầu]
+    D --> E{Có quyền hệ thống và quyền project}
+    A -->|Service nội bộ| F[X Internal Token]
+    F --> G{Token nội bộ hợp lệ}
+    G -->|Không| X1([403 kết thúc không thay đổi])
+    G -->|Có| H[Kiểm tra điều kiện nghiệp vụ]
+    E -->|Không| X2([Từ chối quyền kết thúc không thay đổi])
+    E -->|Có| H
+    H --> I{Dữ liệu và trạng thái hợp lệ}
+    I -->|Không| X3([Lỗi hợp lệ kết thúc không thay đổi])
+    I -->|Có| J[Thực hiện nghiệp vụ]
+    J --> X4([Trả kết quả])
+```
+
+Bearer token và X Internal Token là hai cơ chế khác nhau  Không được gộp thành một ô JWT chung
+
+## 4  Sở hữu dữ liệu và hạ tầng
+
+```mermaid
+flowchart TB
+    AU[Authentication] -. database xác thực .-> MO[(MongoDB)]
+    TE[Testing] -. database kiểm thử .-> MO
+    AI[AI] -. database AI .-> MO
+    CO[Content] -. database tài liệu .-> MO
+    CL[Cloud] -. database lưu trữ .-> MO
+    NO[Notification] -. database thông báo .-> MO
+    WO[Worker] -. database job .-> MO
+
+    AU -. cache session .-> RE[(Redis)]
+    TE -. cache hoặc rate state .-> RE
+    AI -. cache hoặc rate state .-> RE
+    CO -. cache hoặc rate state .-> RE
+    CL -. cache hoặc rate state .-> RE
+    NO -. cache hoặc rate state .-> RE
+
+    AI --> QD[(Qdrant vector store)]
+    AI --> NE[(Neo4j artifact graph)]
+    CL --> OS[(S3 compatible object storage)]
     AI --> OS
-    AI --> QD[(Qdrant)]
-    AI --> NE[(Neo4j)]
-    TE --> AI
-    TE --> CO
-    TE --> CL
-    TE --> WO
 
-    TE --> MQ[(RabbitMQ)]
-    CO --> MQ
-    AI --> MQ
-    MQ --> WO
+    TE -->|Gọi Worker API| WO
+    WO -->|Publish durable message| MQ[(RabbitMQ)]
+    MQ -->|Consumer nhận message| WO
 
-    PR[Prometheus] --> AU
-    PR --> TE
-    PR --> AI
-    PR --> CO
-    PR --> CL
-    PR --> NO
-    PR --> WO
-    PR --> TR
+    PR[Prometheus] -. scrape metrics .-> AU
+    PR -. scrape metrics .-> TE
+    PR -. scrape metrics .-> AI
+    PR -. scrape metrics .-> CO
+    PR -. scrape metrics .-> CL
+    PR -. scrape metrics .-> NO
+    PR -. scrape metrics .-> WO
+    PR -. scrape metrics .-> TR[Traefik]
     GR[Grafana] --> PR
 ```
 
-### Phân định trách nhiệm service
+Qdrant và Neo4j thuộc đường tri thức AI  Object storage giữ bytes của tệp còn Cloud quản lý thao tác và metadata file
 
-| Thành phần | Trách nhiệm đã đối chiếu |
-| --- | --- |
-| Frontend và Nginx | Hiển thị giao diện và phục vụ frontend |
-| Traefik | Cổng vào API và định tuyến theo path |
-| Authentication | Phiên xác thực khóa bảo mật Google OAuth và quản trị hệ thống |
-| Testing | Dự án Requirements thiết kế thực thi chất lượng tích hợp và vận hành kiểm thử |
-| AI | Inference agent indexing retrieval tri thức và phê duyệt agent |
-| Content | Tài liệu phiên bản metadata và cấu trúc tài liệu |
-| Cloud | Tệp thư mục tải lên tải về chia sẻ tìm kiếm và phân đoạn tệp |
-| Worker và RabbitMQ | Xếp hàng và xử lý tác vụ nền |
-| MongoDB | Dữ liệu nghiệp vụ theo database service |
-| Redis | Cache phiên và dữ liệu tạm |
-| Qdrant | Vector retrieval |
-| Neo4j | Quan hệ artifact và truy vết đồ thị |
-| Object storage | Đối tượng tệp |
-| Prometheus và Grafana | Thu thập và quan sát metrics |
+## 5  Tác vụ nền  retry và dead letter
 
-## Ranh giới không được suy diễn
+```mermaid
+flowchart TD
+    S([Bắt đầu tác vụ nền]) --> A[Testing tạo yêu cầu job]
+    A --> B[Worker API tạo job queued bằng idempotency key]
+    B --> C{Publish RabbitMQ thành công}
+    C -->|Không| C1[Đánh dấu job failed queue unavailable]
+    C1 --> X1([Kết thúc không xếp hàng])
+    C -->|Có| D[RabbitMQ durable queue]
+    D --> E[Worker consumer nhận message]
+    E --> F{Payload hợp lệ}
+    F -->|Không| G[Reject không requeue vào dead letter queue]
+    G --> X2([Kết thúc failed])
+    F -->|Có| H[Đánh dấu job running]
+    H --> I[Chạy handler]
+    I --> J{Handler thành công}
+    J -->|Có| K[Ack message và ghi completed]
+    K --> X3([Kết thúc thành công])
+    J -->|Không và lỗi vĩnh viễn| L[Ghi failed và reject không requeue]
+    J -->|Không và lỗi tạm thời| M{Còn trong ba lần thử của consumer}
+    M -->|Có| I
+    M -->|Không| L
+    L --> N{Người dùng yêu cầu retry thủ công}
+    N -->|Có và chưa vượt chín lần retry thủ công| B
+    N -->|Không| X4([Kết thúc failed cần xử lý])
+```
 
-- Sơ đồ không khẳng định tất cả capability AI đều thành công với mọi dữ liệu đầu vào
-- Sơ đồ không coi thông tin chưa được xác nhận là evidence
-- Sơ đồ không coi template là test case template
-- Sơ đồ không nói AI được quyền tự thay đổi dữ liệu nghiệp vụ
-- Sơ đồ không thay thế kiểm thử tích hợp và kiểm thử hồi quy khi có thay đổi mã nguồn
+Consumer thử handler tối đa ba lần trong một lần nhận message  Job failed có thể retry thủ công tối đa chín lần  Đây không phải cơ chế retry chung cho toàn bộ API
+
+## 6  Vòng đời Requirements và ranh giới template
+
+```mermaid
+flowchart TD
+    S([Bắt đầu Requirements]) --> A[Người dùng có quyền chọn project]
+    A --> B{Nguồn đầu vào}
+    B -->|Template starter hoặc template project| C[Chọn template và phiên bản]
+    B -->|SRS User Story hoặc tài liệu nguồn| D[Lưu hoặc đọc requirement source]
+    B -->|API definition| E[Đọc đặc tả API]
+    B -->|Nhập tay| F[Tạo requirement draft]
+    C --> G[Tạo preview requirement candidates]
+    D --> H[Trích xuất candidate có source reference]
+    E --> H
+    F --> G
+    H --> G
+    G --> I[Kiểm tra quyền đọc nguồn và source reference]
+    I --> J{Nguồn hợp lệ và candidate có nội dung}
+    J -->|Không| K[Giữ preview để người dùng sửa hoặc bổ sung]
+    K --> G
+    J -->|Có| L[So sánh requirement hiện có và candidate trong lần import]
+    L --> M{Có trùng hoặc xung đột}
+    M -->|Có| N[Người dùng gộp tách từ chối hoặc phân giải]
+    N --> G
+    M -->|Không| O[Người dùng chọn candidate để import]
+    O --> P{Xác nhận import}
+    P -->|Không| X1([Giữ preview hoặc kết thúc không thay đổi])
+    P -->|Có| Q[Claim job preview ready sang confirming]
+    Q --> R[Tạo Requirement và Requirement Version]
+    R --> T{Tất cả candidate đã chọn được tạo}
+    T -->|Có| U[Confirm import và ghi audit]
+    U --> V[Requirement sẵn sàng cho phân tích kiểm thử]
+    V --> X2([Kết thúc thành công])
+    T -->|Không| W[Compensation của import hiện tại]
+    W --> W1[Xóa record và artifact version vừa tạo]
+    W1 --> W2[Reset job về preview ready và ghi audit lỗi]
+    W2 --> K
+```
+
+Template kết thúc khi Requirement sẵn sàng cho phân tích kiểm thử  Template không tạo test case
+
+## 7  Vòng đời kiểm thử cấp nghiệp vụ
+
+```mermaid
+flowchart TD
+    S([Bắt đầu]) --> A[Requirement version đã xác nhận]
+    A --> B[Phân tích kiểm thử]
+    B --> C[Điều kiện kiểm thử và finding]
+    C --> D{Requirement cần làm rõ hoặc thay đổi}
+    D -->|Có| A
+    D -->|Không| E[Thiết kế kịch bản test case dữ liệu và chiến lược]
+    E --> F[Review và phê duyệt theo workflow]
+    F --> G{Được dùng cho thực thi}
+    G -->|Chưa| E
+    G -->|Có| H[Lập suite test run build và environment]
+    H --> I[Thực thi và ghi test result]
+    I --> J{Có defect finding hay change impact}
+    J -->|Có| K[Quản lý defect change impact regression và truy vết]
+    K --> L{Cần cập nhật Requirement hoặc Test Design}
+    L -->|Có| A
+    L -->|Không| H
+    J -->|Không| M[Báo cáo trạng thái hoặc hoàn tất kiểm thử]
+    M --> X([Kết thúc])
+```
+
+Không được vẽ mọi defect tự động sửa Requirement  Điểm quay về Requirement chỉ xảy ra khi có thay đổi ảnh hưởng hoặc cần làm rõ
+
+## 8  AI assistance của Testing
+
+```mermaid
+flowchart TD
+    S([Bắt đầu AI assistance]) --> A[Testing kiểm tra quyền project và input]
+    A --> B[Testing gọi AI internal assistance]
+    B --> C{Có yêu cầu streaming}
+    C -->|Có| D[AI gửi SSE delta result hoặc error]
+    C -->|Không| E[AI trả structured result]
+    D --> F[Testing chuyển trạng thái xử lý cho Frontend]
+    E --> F
+    F --> G{Kết quả hợp lệ và có evidence}
+    G -->|Không| H[Trả draft hoặc lỗi retryable khi phù hợp]
+    H --> X1([Kết thúc không tự thay đổi dữ liệu])
+    G -->|Có| I[Tạo hoặc cập nhật bản nháp hay proposal]
+    I --> J[Người dùng review và xác nhận theo nghiệp vụ]
+    J --> X2([Kết thúc])
+```
+
+AI assistance không tự áp dụng thay đổi vào bản chính chỉ vì model đã trả output
+
+## 9  AI agent workflow
+
+```mermaid
+flowchart TD
+    S([Bắt đầu Agent Run]) --> A[Kiểm tra token quyền project capability]
+    A --> B{Được phép chạy}
+    B -->|Không| X1([Từ chối không tạo run])
+    B -->|Có| C[Tạo run với user role project intent]
+    C --> D[Nạp ngữ cảnh]
+    D --> E[Truy hồi artifact có thẩm quyền từ Testing]
+    E --> F[Truy hồi vector Qdrant graph Neo4j và verified memory]
+    F --> G[Chỉ giữ vector graph khớp artifact có thẩm quyền]
+    G --> H{Intent có tool trực tiếp hợp lệ}
+    H -->|Có| I[Tạo một task trực tiếp]
+    H -->|Không| J[Model lập plan có cấu trúc]
+    J --> K{Plan và tool call hợp lệ}
+    K -->|Không| X2([Kết thúc failed hoặc insufficient evidence])
+    K -->|Có| I
+    I --> L[Thực thi tool trong phạm vi project]
+    L --> M{Tool cần phê duyệt trước khi thay đổi}
+    M -->|Có| N[Đặt approval required và lưu proposal]
+    N --> O{Người dùng duyệt}
+    O -->|Không| P[Xác minh kết quả không áp dụng]
+    O -->|Có| Q[Apply tool]
+    M -->|Không| P
+    Q --> P
+    P --> R{Verification thành công}
+    R -->|Có| T[Lưu run và verified long term memory khi completed]
+    T --> X3([Kết thúc completed])
+    R -->|Không| X4([Kết thúc failed hoặc insufficient evidence])
+```
+
+Agent workflow xử lý tối đa một task trong một lượt chạy theo giới hạn hiện tại  Không được vẽ nhiều agent chạy song song trong một Agent Run
+
+## 10  Evidence  fallback và compensation
+
+```mermaid
+flowchart TD
+    S([Bắt đầu dependency call]) --> A{Loại dependency}
+    A -->|Model provider| B[Retry có giới hạn theo model runtime]
+    B --> C{Có output hợp lệ}
+    C -->|Có| X1([Quay lại workflow])
+    C -->|Không| X2([Trả provider unavailable hoặc invalid output])
+    A -->|Knowledge vector graph| D[Gắn degraded flag]
+    D --> E[Chỉ dùng evidence còn xác minh được]
+    E --> F{Đủ evidence}
+    F -->|Có| X1
+    F -->|Không| X3([Trả insufficient evidence])
+    A -->|Worker task| G[Consumer thử handler tối đa ba lần]
+    G --> H{Thành công}
+    H -->|Có| X1
+    H -->|Không| I[Ghi failed và reject message không requeue]
+    I --> J{Người dùng retry thủ công trong giới hạn}
+    J -->|Có| G
+    J -->|Không| X4([Failed cần xử lý])
+    A -->|Import Requirement sau ghi một phần| K[Chạy compensation riêng của import]
+    K --> L{Compensation thành công}
+    L -->|Có| X5([Preview ready để người dùng xử lý lại])
+    L -->|Không| X6([Cần can thiệp thủ công])
+```
+
+Không có rollback toàn cục giữa MongoDB  Qdrant  Neo4j  object storage và RabbitMQ
+
+Không có fallback nào cho phép AI tự bịa dữ liệu hoặc tự bỏ qua xác nhận của người dùng
+
+## Checklist trước khi vẽ lại
+
+- Mỗi service chỉ vẽ mũi tên đến service có client hoặc callback thật
+- Mỗi request ghi dữ liệu phải có kết thúc thành công  từ chối trước ghi  lỗi sau ghi hoặc compensation
+- Mọi hình thoi có nhánh Có và Không
+- Mọi nhánh lỗi phải có kết thúc hoặc quay lại checkpoint xác định
+- Không ghi rollback nếu chỉ là validation  rejection  archive hoặc retry
+- Không ghi fallback nếu chưa có hành vi thay thế trong mã nguồn
+- Không ghi event driven cho HTTP webhook hay queue trong bộ nhớ
+- Không ghi multi agent parallel cho Agent Run hiện tại
+- Không vẽ Testing truy cập trực tiếp Qdrant hoặc Neo4j
+- Không vẽ AI tự sửa dữ liệu chính nếu chưa có approval hoặc xác nhận nghiệp vụ
+
+## Giới hạn tài liệu
+
+- Tài liệu mô tả kiến trúc và luồng từ mã nguồn hiện tại  không thay thế kiểm thử tích hợp đầy đủ cho từng endpoint
+- Một dependency trong Docker Compose không chứng minh nó được gọi trong mọi nghiệp vụ
+- Workflow mới ghi qua nhiều service phải được thiết kế idempotency  trạng thái quan sát được và compensation riêng trước khi được thêm vào framework

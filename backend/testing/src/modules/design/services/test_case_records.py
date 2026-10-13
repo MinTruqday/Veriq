@@ -168,6 +168,24 @@ async def validate_data_set_versions(project_id, data_set_version_ids):
         )
 
 
+async def validate_coverage_items(project_id, requirement_version_ids, coverage_item_ids):
+    if not coverage_item_ids:
+        return
+    from src.modules.design.services.test_adequacy import _sources
+
+    versions = await analysis_repository.list_requirement_versions(
+        project_id, list(dict.fromkeys(requirement_version_ids)), len(set(requirement_version_ids))
+    )
+    available = {
+        item["coverage_item_id"]
+        for version in versions
+        for item in await _sources(version)
+    }
+    missing = sorted(set(coverage_item_ids) - available)
+    if missing:
+        raise HTTPException(status_code=422, detail={"code": "COVERAGE_ITEM_SOURCE_INVALID", "coverage_item_ids": missing})
+
+
 async def create_test_case_draft_record(
     project_id, payload, user, parent_version_id=None, change_reason=None
 ):
@@ -207,6 +225,9 @@ async def create_test_case_draft_record(
         payload.test_condition_ids,
     )
     await validate_data_set_versions(project_id, payload.data_set_version_ids)
+    await validate_coverage_items(
+        project_id, payload.requirement_version_ids, payload.coverage_item_ids
+    )
     if payload.origin == "ai_generated":
         if not payload.requirement_version_ids or not payload.source_evidence or not payload.evidence_refs or not payload.suite_signature:
             raise HTTPException(422, detail={"code": "TEST_CASE_EVIDENCE_REQUIRED", "message": "Ca kiểm thử do AI tạo cần liên kết yêu cầu và bằng chứng nguồn"})
