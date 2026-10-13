@@ -285,7 +285,7 @@ export default function ProjectsPage() {
             {items.map((item) => (
               <article
                 key={item._id}
-                className="grid gap-4 p-5 transition hover:bg-surface-quiet md:grid-cols-[120px_minmax(0,1fr)_140px_180px_auto] md:items-center"
+                className="grid gap-4 p-5 transition hover:bg-surface-quiet md:grid-cols-[120px_minmax(0,1fr)_minmax(180px,0.7fr)_140px_180px_auto] md:items-center"
               >
                 <span className="font-mono text-[13px] font-semibold text-brand">{item.key}</span>
                 <Link href={`/du-an/${item._id}`} className="min-w-0">
@@ -294,6 +294,26 @@ export default function ProjectsPage() {
                     <small className="line-clamp-1 text-ink-muted">{item.description}</small>
                   )}
                 </Link>
+                <div className="space-y-2 text-[12px]">
+                  <div className="flex justify-between gap-2">
+                    <span>Project {item.project_completion_percent ?? 0}%</span>
+                    <span>
+                      {item.task_summary?.completion_percent === null
+                        ? "Chưa có công việc"
+                        : `Tasks ${item.task_summary?.completion_percent ?? 0}%`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-surface-quiet">
+                    <div
+                      className="h-full rounded-full bg-brand"
+                      style={{ width: `${item.project_completion_percent ?? 0}%` }}
+                    />
+                  </div>
+                  <span className="text-ink-muted">
+                    {item.task_summary?.total ?? 0} công việc · {item.task_summary?.blocked ?? 0} bị
+                    chặn
+                  </span>
+                </div>
                 <div className="flex items-center md:block">
                   <StatusPill value={String(item.status).toUpperCase()} />
                 </div>

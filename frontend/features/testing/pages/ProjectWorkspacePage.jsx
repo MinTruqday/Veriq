@@ -15,6 +15,7 @@ import TraceabilityPage from "./workspace/TraceabilityPage";
 import TestGovernancePage from "./workspace/TestGovernancePage";
 import TestAnalysisPage from "./workspace/TestAnalysisPage";
 import MonitoringPage from "./workspace/MonitoringPage";
+import ProjectTasksPage from "./workspace/ProjectTasksPage";
 import { PROJECT_SECTION_SLUGS } from "../routes";
 
 export default function ProjectWorkspacePage({ projectId, section, initialQuery = "" }) {
@@ -35,6 +36,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.governance]: "governance",
     [PROJECT_SECTION_SLUGS.testAnalysis]: "test-analysis",
     [PROJECT_SECTION_SLUGS.monitoring]: "monitoring",
+    [PROJECT_SECTION_SLUGS.projectTasks]: "project-tasks",
     [PROJECT_SECTION_SLUGS.requirements]: "requirements",
     [PROJECT_SECTION_SLUGS.testDesign]: "test-design",
     [PROJECT_SECTION_SLUGS.traceability]: "traceability",
@@ -52,6 +54,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     governance: "teststrategy.read",
     "test-analysis": "testcondition.read",
     monitoring: "testmonitor.read",
+    "project-tasks": "project.read",
     dashboard: "project.read",
     requirements: "requirement.read",
     "test-design": "testcase.read",
@@ -81,6 +84,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     governance: <TestGovernancePage {...props} />,
     "test-analysis": <TestAnalysisPage {...props} />,
     monitoring: <MonitoringPage {...props} />,
+    "project-tasks": <ProjectTasksPage {...props} />,
     requirements: <RequirementsPage {...props} />,
     "test-design": <TestDesignPage {...props} />,
     traceability: <TraceabilityPage {...props} />,

@@ -5,6 +5,7 @@ export const PROJECT_SECTION_SLUGS = Object.freeze({
   governance: "quan-tri-kiem-thu",
   testAnalysis: "phan-tich-kiem-thu",
   monitoring: "giam-sat-kiem-thu",
+  projectTasks: "cong-viec",
   requirements: "yeu-cau",
   testDesign: "thiet-ke-kiem-thu",
   traceability: "truy-vet",

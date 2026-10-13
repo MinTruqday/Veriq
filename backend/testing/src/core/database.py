@@ -118,6 +118,8 @@ async def create_indexes():
     await db.projects.create_index([("created_by", 1), ("updated_at", -1)])
     await db.project_members.create_index([("project_id", 1), ("user_id", 1)], unique=True)
     await db.project_members.create_index([("user_id", 1), ("status", 1)])
+    await db.project_tasks.create_index([("project_id", 1), ("updated_at", -1)])
+    await db.project_tasks.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
     await db.requirements.create_index([("project_id", 1), ("requirement_key", 1)], unique=True)
     await ensure_unique_index(db.requirement_documents, [("project_id", 1), ("created_by", 1), ("content_hash", 1)])
     indexes = await db.requirement_documents.list_indexes().to_list(length=1000)

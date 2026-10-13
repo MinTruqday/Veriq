@@ -22,6 +22,35 @@ class ProjectPatch(BaseModel):
     settings: dict[str, Any] | None = None
 
 
+class ProjectProgressPatch(BaseModel):
+    expected_revision: int = Field(ge=1)
+    project_completion_percent: int = Field(ge=0, le=100)
+    note: str = Field(min_length=2, max_length=2000)
+
+
+class ProjectTaskCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    weight: float = Field(gt=0, le=1_000_000)
+    assignee_id: str | None = Field(default=None, min_length=1, max_length=200)
+    due_at: str | None = Field(default=None, max_length=80)
+    status: Literal["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "CANCELLED"] = "NOT_STARTED"
+
+
+class ProjectTaskPatch(BaseModel):
+    expected_revision: int = Field(ge=1)
+    title: str | None = Field(default=None, min_length=2, max_length=300)
+    description: str | None = Field(default=None, max_length=5000)
+    weight: float | None = Field(default=None, gt=0, le=1_000_000)
+    assignee_id: str | None = Field(default=None, min_length=1, max_length=200)
+    due_at: str | None = Field(default=None, max_length=80)
+    status: Literal["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "CANCELLED"] | None = None
+
+
+class ProjectTaskDelete(BaseModel):
+    expected_revision: int = Field(ge=1)
+
+
 class ProjectArchiveInput(BaseModel):
     expected_revision: int = Field(ge=1)
     reason: str = Field(min_length=2, max_length=2000)

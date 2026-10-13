@@ -53,6 +53,24 @@ export const projectTestingApi = {
     testingRequest(`/du-an/${id}/thanh-vien/${userId}`, { method: "DELETE" }),
   updateProject: (id, payload) =>
     testingRequest(`/du-an/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  updateProjectProgress: (id, payload) =>
+    testingRequest(`/du-an/${id}/tien-do`, { method: "PATCH", body: JSON.stringify(payload) }),
+  listProjectTasks: (id, status = "") =>
+    testingRequest(
+      `/du-an/${id}/cong-viec${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ),
+  createProjectTask: (id, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec`, { method: "POST", body: JSON.stringify(payload) }),
+  updateProjectTask: (id, taskId, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteProjectTask: (id, taskId, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec/${taskId}`, {
+      method: "DELETE",
+      body: JSON.stringify(payload),
+    }),
   getProjectSettings: (id) => testingRequest(`/du-an/${id}/cai-dat`),
   updateProjectSettings: (id, payload) =>
     testingRequest(`/du-an/${id}/cai-dat`, { method: "PATCH", body: JSON.stringify(payload) }),

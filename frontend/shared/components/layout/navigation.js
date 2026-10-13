@@ -15,6 +15,7 @@ import {
   ScanSearch,
   Settings,
   TestTube2,
+  ListTodo,
 } from "lucide-react";
 import {
   OPERATIONS_ROUTE,
@@ -61,6 +62,13 @@ export function navigationGroupsFor(pathname) {
             href: `${root}/${PROJECT_SECTION_SLUGS.testDesign}`,
             icon: TestTube2,
             permission: "testcase.read",
+          },
+          {
+            id: "project-tasks",
+            label: "Công việc dự án",
+            href: `${root}/${PROJECT_SECTION_SLUGS.projectTasks}`,
+            icon: ListTodo,
+            permission: "project.read",
           },
         ],
         planning: [

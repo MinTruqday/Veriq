@@ -13,6 +13,7 @@ from src.core.common import (
     resolve_user_reference,
 )
 from src.repositories.project import project_repository
+from src.modules.projects.services.project_progress import task_summaries
 
 
 
@@ -79,6 +80,7 @@ class ProjectService:
             **payload.model_dump(),
             "created_by": user.id,
             "status": 'active',
+            "project_completion_percent": 0,
             "revision": 1,
             "created_at": timestamp,
             "updated_at": timestamp,
@@ -110,6 +112,7 @@ class ProjectService:
         )
         return {
             **project,
+            "task_summary": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "cancelled": 0, "applicable_total": 0, "completion_percent": None},
             "current_membership": membership,
             "current_permissions": sorted(
                 permissions_for_role('QA', project["settings"])
@@ -137,8 +140,13 @@ class ProjectService:
                 {"key": {"$regex": query_text, "$options": "i"}},
             ]
         projects = await project_repository.list_projects(query, limit)
+        summaries = await task_summaries([project["_id"] for project in projects])
         return [
-            project_access(project, by_project.get(project["_id"]), by_grant.get(project["_id"]))
+            {
+                **project_access(project, by_project.get(project["_id"]), by_grant.get(project["_id"])),
+                "project_completion_percent": int(project.get("project_completion_percent", 0)),
+                "task_summary": summaries.get(project["_id"]),
+            }
             for project in projects
         ]
 
@@ -166,7 +174,12 @@ class ProjectService:
         grant = await project_repository.find_active_grant(
             project_id, user.id, 'ACTIVE', now()
         )
-        return project_access(project, membership, grant)
+        summaries = await task_summaries([project_id])
+        return {
+            **project_access(project, membership, grant),
+            "project_completion_percent": int(project.get("project_completion_percent", 0)),
+            "task_summary": summaries[project_id],
+        }
 
     @staticmethod
     async def update(project_id, payload, user):

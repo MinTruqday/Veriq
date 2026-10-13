@@ -9,16 +9,35 @@ import {
   Panel,
   WorkspacePage,
   StatusPill,
+  useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
 
 export default function DashboardPage({ project }) {
+  const { ask, dialog } = useActionDialog();
   const [value, setValue] = useState(null);
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState({
+    percent: project.project_completion_percent ?? 0,
+    revision: project.revision,
+    taskSummary: project.task_summary,
+  });
+  const isQa = project.current_membership?.project_role === "QA";
   useEffect(() => {
-    Promise.all([testingApi.dashboard(project._id), testingApi.coverage(project._id)])
-      .then(([dashboard, coverage]) => setValue({ ...dashboard, ...coverage }))
+    Promise.all([
+      testingApi.dashboard(project._id),
+      testingApi.coverage(project._id),
+      testingApi.getProject(project._id),
+    ])
+      .then(([dashboard, coverage, currentProject]) => {
+        setValue({ ...dashboard, ...coverage });
+        setProgress({
+          percent: currentProject.project_completion_percent ?? 0,
+          revision: currentProject.revision,
+          taskSummary: currentProject.task_summary,
+        });
+      })
       .catch((reason) => setError(messageOf(reason)));
   }, [project._id]);
   const base = `/du-an/${project._id}`;
@@ -29,6 +48,85 @@ export default function DashboardPage({ project }) {
         <LoadingState />
       ) : (
         <>
+          <Panel
+            title="Tiến độ dự án"
+            actions={
+              isQa ? (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={async () => {
+                    const answer = await ask({
+                      title: "Cập nhật tiến độ dự án",
+                      confirmLabel: "Lưu tiến độ",
+                      fields: [
+                        {
+                          name: "project_completion_percent",
+                          label: "Project %",
+                          type: "number",
+                          initialValue: String(progress.percent),
+                          required: true,
+                        },
+                        { name: "note", label: "Ghi chú", multiline: true, required: true },
+                      ],
+                    });
+                    if (!answer) return;
+                    try {
+                      const updated = await testingApi.updateProjectProgress(project._id, {
+                        expected_revision: progress.revision,
+                        project_completion_percent: Number(answer.project_completion_percent),
+                        note: answer.note.trim(),
+                      });
+                      setProgress((current) => ({
+                        ...current,
+                        percent: updated.project_completion_percent,
+                        revision: updated.revision,
+                      }));
+                    } catch (reason) {
+                      setError(messageOf(reason));
+                    }
+                  }}
+                >
+                  Cập nhật tiến độ
+                </button>
+              ) : null
+            }
+          >
+            <div className="grid gap-5 p-5 lg:grid-cols-2">
+              <div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>Project {progress.percent}%</span>
+                  <span className="text-ink-muted">Đánh giá của QA</span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-quiet">
+                  <div
+                    className="h-full rounded-full bg-brand"
+                    style={{ width: `${progress.percent}%` }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>
+                    {progress.taskSummary?.completion_percent === null
+                      ? "Chưa có công việc"
+                      : `Tasks ${progress.taskSummary?.completion_percent ?? 0}%`}
+                  </span>
+                  <span className="text-ink-muted">
+                    {progress.taskSummary?.completed ?? 0} hoàn thành
+                  </span>
+                </div>
+                {progress.taskSummary?.completion_percent !== null && (
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-quiet">
+                    <div
+                      className="h-full rounded-full bg-brand"
+                      style={{ width: `${progress.taskSummary?.completion_percent ?? 0}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </Panel>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <Metric label="Yêu cầu" value={value.requirements} />
             <Metric label="Kiểm thử đang hoạt động" value={value.active_tests} />
@@ -144,6 +242,7 @@ export default function DashboardPage({ project }) {
           </Panel>
         </>
       )}
+      {dialog}
     </WorkspacePage>
   );
 }

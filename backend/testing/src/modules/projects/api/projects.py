@@ -8,8 +8,13 @@ from src.schemas.contracts.project import (
     ProjectMemberCreate,
     ProjectMemberPatch,
     ProjectPatch,
+    ProjectProgressPatch,
+    ProjectTaskCreate,
+    ProjectTaskDelete,
+    ProjectTaskPatch,
 )
 from src.modules.projects.services.project import ProjectService
+from src.modules.projects.services.project_progress import ProjectProgressService
 
 router = APIRouter(prefix="/kiem-thu", tags=["Dự án kiểm thử"])
 
@@ -46,6 +51,56 @@ async def update_project(
 ):
     value = await ProjectService.update(project_id, payload, user)
     return envelope(value, revision=value["revision"])
+
+
+@router.patch("/du-an/{project_id}/tien-do")
+async def update_project_progress(
+    project_id: str,
+    payload: ProjectProgressPatch,
+    user: CurrentUser = Depends(get_current_user),
+):
+    value = await ProjectProgressService.update_project_progress(project_id, payload, user)
+    return envelope(value, revision=value["revision"])
+
+
+@router.get("/du-an/{project_id}/cong-viec")
+async def list_project_tasks(
+    project_id: str,
+    status: str | None = Query(default=None, max_length=30),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await ProjectProgressService.list_tasks(project_id, user, status=status))
+
+
+@router.post("/du-an/{project_id}/cong-viec", status_code=201)
+async def create_project_task(
+    project_id: str,
+    payload: ProjectTaskCreate,
+    user: CurrentUser = Depends(get_current_user),
+):
+    value = await ProjectProgressService.create_task(project_id, payload, user)
+    return envelope(value, revision=value["revision"])
+
+
+@router.patch("/du-an/{project_id}/cong-viec/{task_id}")
+async def update_project_task(
+    project_id: str,
+    task_id: str,
+    payload: ProjectTaskPatch,
+    user: CurrentUser = Depends(get_current_user),
+):
+    value = await ProjectProgressService.update_task(project_id, task_id, payload, user)
+    return envelope(value, revision=value["revision"])
+
+
+@router.delete("/du-an/{project_id}/cong-viec/{task_id}")
+async def delete_project_task(
+    project_id: str,
+    task_id: str,
+    payload: ProjectTaskDelete,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await ProjectProgressService.delete_task(project_id, task_id, payload, user))
 
 
 @router.get(
