@@ -75,9 +75,12 @@ class ProjectService:
                 detail={"code": 'SYSTEM_PERMISSION_DENIED'},
             )
         timestamp = now()
+        initial_qa_user_id = await resolve_user_reference(payload.initial_qa_user_id)
+        if initial_qa_user_id == user.id:
+            raise HTTPException(status_code=422, detail={"code": "INITIAL_QA_MUST_DIFFER_FROM_BA"})
         project = {
             "_id": new_id('PRJ'),
-            **payload.model_dump(),
+            **payload.model_dump(exclude={"initial_qa_user_id"}),
             "created_by": user.id,
             "status": 'active',
             "project_completion_percent": 0,
@@ -85,10 +88,21 @@ class ProjectService:
             "created_at": timestamp,
             "updated_at": timestamp,
         }
-        membership = {
+        ba_membership = {
             "_id": new_id('PM'),
             "project_id": project["_id"],
             "user_id": user.id,
+            "project_role": 'BA',
+            "status": 'ACTIVE',
+            "membership_revision": 1,
+            "created_by": user.id,
+            "created_at": timestamp,
+            "updated_at": timestamp,
+        }
+        qa_membership = {
+            "_id": new_id('PM'),
+            "project_id": project["_id"],
+            "user_id": initial_qa_user_id,
             "project_role": 'QA',
             "status": 'ACTIVE',
             "membership_revision": 1,
@@ -97,7 +111,7 @@ class ProjectService:
             "updated_at": timestamp,
         }
         try:
-            await project_repository.create_with_creator(project, membership)
+            await project_repository.create_with_memberships(project, [ba_membership, qa_membership])
         except DuplicateKeyError:
             raise HTTPException(
                 status_code=409, detail={"code": 'PROJECT_KEY_EXISTS'}
@@ -108,14 +122,14 @@ class ProjectService:
             'Project',
             project["_id"],
             project["_id"],
-            {"creator_membership_id": membership["_id"]},
+            {"ba_membership_id": ba_membership["_id"], "initial_qa_membership_id": qa_membership["_id"]},
         )
         return {
             **project,
             "task_summary": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "cancelled": 0, "applicable_total": 0, "completion_percent": None},
-            "current_membership": membership,
+            "current_membership": ba_membership,
             "current_permissions": sorted(
-                permissions_for_role('QA', project["settings"])
+                permissions_for_role('BA', project["settings"])
             ),
         }
 

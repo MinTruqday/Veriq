@@ -123,6 +123,12 @@ class AutomationExecutionResultInput(BaseModel):
     context_signature: str = Field(min_length=64, max_length=64)
 
 
+class JUnitUnresolvedMappingInput(BaseModel):
+    expected_revision: int = Field(ge=1)
+    unresolved_index: int = Field(ge=0)
+    test_case_version_id: str = Field(min_length=1, max_length=200)
+
+
 class CiCdBindingCreate(BaseModel):
     name: str = Field(min_length=2, max_length=300)
     connector_id: str = Field(min_length=1, max_length=200)

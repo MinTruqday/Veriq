@@ -10,6 +10,7 @@ class ProjectCreate(BaseModel):
     locale: str = Field(default="vi-VN", min_length=2, max_length=20)
     timezone: str = Field(default="Asia/Ho_Chi_Minh", min_length=2, max_length=80)
     settings: dict[str, Any] = Field(default_factory=dict)
+    initial_qa_user_id: str = Field(min_length=1, max_length=320)
 
 
 class ProjectPatch(BaseModel):

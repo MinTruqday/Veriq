@@ -10,6 +10,8 @@ export default function TestCaseCreateModal({
   setForm,
   dataSets,
   testConditions,
+  repositoryNodes,
+  reusableSteps,
   onSubmit,
 }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
@@ -35,6 +37,15 @@ export default function TestCaseCreateModal({
           />
         </label>
         <div className="grid gap-3 sm:grid-cols-3">
+          <select
+            aria-label="Cách viết ca kiểm thử"
+            className="apple-input"
+            value={form.testStyle}
+            onChange={(event) => update({ testStyle: event.target.value })}
+          >
+            <option value="MANUAL">Manual</option>
+            <option value="BDD">BDD</option>
+          </select>
           <select
             aria-label="Loại ca kiểm thử"
             className="apple-input"
@@ -72,6 +83,78 @@ export default function TestCaseCreateModal({
             ))}
           </select>
         </div>
+        {form.testStyle === "BDD" && (
+          <div className="grid gap-3 rounded-control border border-border p-4">
+            <p className="field-label">Kịch bản BDD</p>
+            <input
+              className="apple-input"
+              value={form.feature}
+              onChange={(event) => update({ feature: event.target.value })}
+              placeholder="Feature"
+              required
+            />
+            <input
+              className="apple-input"
+              value={form.scenario}
+              onChange={(event) => update({ scenario: event.target.value })}
+              placeholder="Scenario"
+              required
+            />
+            <input
+              className="apple-input"
+              value={form.given}
+              onChange={(event) => update({ given: event.target.value })}
+              placeholder="Given"
+              required
+            />
+            <input
+              className="apple-input"
+              value={form.when}
+              onChange={(event) => update({ when: event.target.value })}
+              placeholder="When"
+              required
+            />
+            <input
+              className="apple-input"
+              value={form.then}
+              onChange={(event) => update({ then: event.target.value })}
+              placeholder="Then"
+              required
+            />
+            <label className="field-label">
+              Bước dùng lại
+              <select
+                aria-label="Bước dùng lại cho kịch bản BDD"
+                className="apple-input mt-2 min-h-24"
+                multiple
+                value={form.reusableStepVersionIds}
+                onChange={(event) => update({ reusableStepVersionIds: selectedValues(event) })}
+              >
+                {reusableSteps.map((item) => (
+                  <option key={item.current_version_id} value={item.current_version_id}>
+                    {item.name} v{item.version}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+        <label className="field-label">
+          Thư mục kho ca kiểm thử
+          <select
+            aria-label="Thư mục kho ca kiểm thử"
+            className="apple-input mt-2"
+            value={form.repositoryNodeId}
+            onChange={(event) => update({ repositoryNodeId: event.target.value })}
+          >
+            <option value="">Thư mục gốc</option>
+            {repositoryNodes.map((item) => (
+              <option key={item._id} value={item._id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <div>
           <p className="field-label mb-2">Thao tác</p>
           <DocumentEditor

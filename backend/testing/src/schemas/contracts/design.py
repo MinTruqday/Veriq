@@ -59,6 +59,44 @@ class TestStep(BaseModel):
         return value
 
 
+class BddStep(BaseModel):
+    keyword: Literal["Given", "When", "Then", "And", "But"]
+    text: str = Field(min_length=1, max_length=2000)
+    reusable_step_version_id: str | None = Field(default=None, max_length=200)
+
+
+class BddScenario(BaseModel):
+    feature: str = Field(min_length=2, max_length=300)
+    scenario: str = Field(min_length=2, max_length=300)
+    steps: list[BddStep] = Field(min_length=1, max_length=200)
+
+
+class TestRepositoryNodeCreate(BaseModel):
+    project_id: str
+    name: str = Field(min_length=1, max_length=300)
+    parent_id: str | None = Field(default=None, max_length=200)
+
+
+class TestRepositoryNodePatch(BaseModel):
+    expected_revision: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=300)
+    parent_id: str | None = Field(default=None, max_length=200)
+
+
+class ReusableStepCreate(BaseModel):
+    project_id: str
+    name: str = Field(min_length=2, max_length=300)
+    action_doc: dict[str, Any] = Field(default_factory=empty_doc)
+    expected_doc: dict[str, Any] = Field(default_factory=empty_doc)
+
+
+class ReusableStepPatch(BaseModel):
+    expected_revision: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=2, max_length=300)
+    action_doc: dict[str, Any] | None = None
+    expected_doc: dict[str, Any] | None = None
+
+
 class EvidenceQuote(BaseModel):
     evidence_ref: str = Field(min_length=1, max_length=200)
     quote: str = Field(min_length=2, max_length=1000)
@@ -100,6 +138,8 @@ class TestCaseDraftCreate(BaseModel):
     coverage_item_ids: list[str] = Field(default_factory=list, max_length=500)
     test_condition_ids: list[str] = Field(default_factory=list, max_length=500)
     scenario_id: str | None = None
+    repository_node_id: str | None = Field(default=None, max_length=200)
+    bdd: BddScenario | None = None
     origin: Literal["manual", "ai_generated", "clone", "import", "maintenance"] = "manual"
     source_evidence: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     coverage_obligations: list[str] = Field(default_factory=list, max_length=100)
@@ -165,6 +205,8 @@ class TestCaseDraftPatch(BaseModel):
     coverage_item_ids: list[str] | None = None
     test_condition_ids: list[str] | None = None
     scenario_id: str | None = None
+    repository_node_id: str | None = Field(default=None, max_length=200)
+    bdd: BddScenario | None = None
 
     @field_validator(
         "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc"

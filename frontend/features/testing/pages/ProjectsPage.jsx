@@ -21,7 +21,13 @@ export default function ProjectsPage() {
   const [invitations, setInvitations] = useState([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("active");
-  const [form, setForm] = useState({ key: "", name: "", description: "", project_type: "web" });
+  const [form, setForm] = useState({
+    key: "",
+    name: "",
+    description: "",
+    project_type: "web",
+    initial_qa_user_id: "",
+  });
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -65,7 +71,7 @@ export default function ProjectsPage() {
         key: form.key.trim().toUpperCase(),
         name: form.name.trim(),
       });
-      setForm({ key: "", name: "", description: "", project_type: "web" });
+      setForm({ key: "", name: "", description: "", project_type: "web", initial_qa_user_id: "" });
       setCreating(false);
       setQuery("");
       setStatus("active");
@@ -115,6 +121,17 @@ export default function ProjectsPage() {
               value={form.key}
               onChange={(event) => setForm({ ...form, key: event.target.value })}
               placeholder="THANHTOAN"
+            />
+          </label>
+          <label className="field-label block min-w-0">
+            Email QA đầu tiên
+            <input
+              className="apple-input mt-2 w-full"
+              type="email"
+              required
+              value={form.initial_qa_user_id}
+              onChange={(event) => setForm({ ...form, initial_qa_user_id: event.target.value })}
+              placeholder="qa@congty.vn"
             />
           </label>
           <label className="field-label block min-w-0">

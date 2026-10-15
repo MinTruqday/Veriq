@@ -168,6 +168,18 @@ async def validate_data_set_versions(project_id, data_set_version_ids):
         )
 
 
+async def validate_test_design_structure(project_id, repository_node_id, bdd):
+    if repository_node_id and not await test_design_repository.find_repository_node(
+        project_id, repository_node_id
+    ):
+        raise HTTPException(status_code=422, detail={"code": "TEST_REPOSITORY_NODE_NOT_FOUND"})
+    for item in (bdd.steps if bdd else []):
+        if item.reusable_step_version_id and not await test_design_repository.find_reusable_step_version(
+            project_id, item.reusable_step_version_id
+        ):
+            raise HTTPException(status_code=422, detail={"code": "REUSABLE_TEST_STEP_NOT_FOUND"})
+
+
 async def validate_coverage_items(project_id, requirement_version_ids, coverage_item_ids):
     if not coverage_item_ids:
         return
@@ -225,6 +237,7 @@ async def create_test_case_draft_record(
         payload.test_condition_ids,
     )
     await validate_data_set_versions(project_id, payload.data_set_version_ids)
+    await validate_test_design_structure(project_id, payload.repository_node_id, payload.bdd)
     await validate_coverage_items(
         project_id, payload.requirement_version_ids, payload.coverage_item_ids
     )
@@ -431,6 +444,13 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         payload.data_set_version_ids
         if payload.data_set_version_ids is not None
         else draft.get("data_set_version_ids", []),
+    )
+    await validate_test_design_structure(
+        draft["project_id"],
+        payload.repository_node_id
+        if payload.repository_node_id is not None
+        else draft.get("repository_node_id"),
+        payload.bdd if payload.bdd is not None else draft.get("bdd"),
     )
     changes = payload.model_dump()
     if (draft.get("evidence_refs") or draft.get("coverage_obligations") or draft.get("challenge_hypotheses")) and any(

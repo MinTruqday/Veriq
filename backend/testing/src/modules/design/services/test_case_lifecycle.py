@@ -406,6 +406,8 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "coverage_item_ids": draft.get("coverage_item_ids", []),
         "test_condition_ids": draft.get("test_condition_ids", []),
         "scenario_id": draft.get("scenario_id"),
+        "repository_node_id": draft.get("repository_node_id"),
+        "bdd": draft.get("bdd"),
         "source_evidence": (
             draft.get("source_evidence", [])
             if draft.get("origin") != "ai_generated" or draft.get("evidence_refs")

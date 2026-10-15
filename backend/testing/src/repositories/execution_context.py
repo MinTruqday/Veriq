@@ -17,6 +17,24 @@ class ExecutionContextRepository:
             )
         )
 
+    async def list_approved_test_plan_scopes(self, project_id, release_id):
+        return await database.value.test_plans.find(
+            {
+                "project_id": project_id,
+                "release_id": release_id,
+                "status": "APPROVED",
+            },
+            {"_id": 1, "approved_snapshot": 1, "requirement_version_ids": 1},
+        ).to_list(1000)
+
+    async def list_adequacy_assessments(self, project_id, requirement_version_ids):
+        return await database.value.test_adequacy_assessments.find(
+            {
+                "project_id": project_id,
+                "requirement_version_id": {"$in": requirement_version_ids},
+            }
+        ).to_list(len(requirement_version_ids))
+
     async def list_releases(self, query, limit=500):
         return await database.value.releases.find(query).sort(
             "updated_at", -1

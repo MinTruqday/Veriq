@@ -7,6 +7,19 @@ import {
 } from "./testing.transport";
 
 export const executionTestingApi = {
+  listJUnitResultImports: (projectId) =>
+    testingRequest(`/du-an/${projectId}/ket-qua-tu-dong/junit`),
+  importJUnitResult: (projectId, testRunId, file) => {
+    const body = new FormData();
+    body.append("test_run_id", testRunId);
+    body.append("file", file);
+    return testingRequest(`/du-an/${projectId}/ket-qua-tu-dong/junit`, { method: "POST", body });
+  },
+  resolveJUnitResultMapping: (importId, payload) =>
+    testingRequest(`/ket-qua-tu-dong/junit/${importId}/giai-quyet`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listPlans: (id, query = "") => {
     const value = listQuery(query);
     return testingRequest(`/du-an/${id}/ke-hoach-kiem-thu${value ? `?${value}` : ""}`);

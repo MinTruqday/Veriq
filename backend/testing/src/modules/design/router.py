@@ -7,6 +7,7 @@ from .api.test_analysis import router as test_analysis_router
 from .api.test_adequacy import router as test_adequacy_router
 from .api.test_design import router as test_design_router
 from .api.test_strategy import router as test_strategy_router
+from .api.test_repository import router as test_repository_router
 
 
 router = APIRouter()
@@ -17,3 +18,4 @@ router.include_router(test_design_router)
 router.include_router(test_strategy_router)
 router.include_router(test_analysis_router)
 router.include_router(test_adequacy_router)
+router.include_router(test_repository_router)

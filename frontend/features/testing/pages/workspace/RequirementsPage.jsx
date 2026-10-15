@@ -21,6 +21,7 @@ import RequirementSourceDocumentsPanel from "./requirements/RequirementSourceDoc
 import RequirementTracePanel from "./requirements/RequirementTracePanel";
 import RequirementsListPanel from "./requirements/RequirementsListPanel";
 import TestAdequacyPanel from "./design/TestAdequacyPanel";
+import RequirementClarificationPanel from "./requirements/RequirementClarificationPanel";
 import {
   createInitialRequirementForm,
   parseAcceptanceCriteria,
@@ -1110,6 +1111,10 @@ export default function RequirementsPage({ project, section }) {
           <TestAdequacyPanel
             requirementVersionId={current._id}
             canReview={project.current_membership?.project_role === "QA"}
+          />
+          <RequirementClarificationPanel
+            requirementVersionId={current._id}
+            role={project.current_membership?.project_role}
           />
           <RequirementQualityPanel
             lint={lint}

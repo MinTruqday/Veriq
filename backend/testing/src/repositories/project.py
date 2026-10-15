@@ -20,11 +20,12 @@ class ProjectRepository:
     def tasks(self):
         return database.value.project_tasks
 
-    async def create_with_creator(self, project, membership):
+    async def create_with_memberships(self, project, memberships):
         await self.projects.insert_one(project)
         try:
-            await self.members.insert_one(membership)
+            await self.members.insert_many(memberships)
         except Exception:
+            await self.members.delete_many({"project_id": project["_id"]})
             await self.projects.delete_one({"_id": project["_id"]})
             raise
 

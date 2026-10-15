@@ -26,6 +26,7 @@ import ScenariosPanel from "./test-design/ScenariosPanel";
 import TestCaseCreateModal from "./test-design/TestCaseCreateModal";
 import TestCaseTransferPanel from "./test-design/TestCaseTransferPanel";
 import TestAdequacyPanel from "./design/TestAdequacyPanel";
+import TestRepositoryPanel from "./test-design/TestRepositoryPanel";
 import {
   createDataSetForm,
   createScenarioForm,
@@ -71,6 +72,8 @@ export default function TestDesignPage({ project }) {
   const [drafts, setDrafts] = useState([]);
   const [tests, setTests] = useState([]);
   const [suites, setSuites] = useState([]);
+  const [repositoryNodes, setRepositoryNodes] = useState([]);
+  const [reusableSteps, setReusableSteps] = useState([]);
   const [selectedTestIds, setSelectedTestIds] = useState([]);
   const [testPage, setTestPage] = useState(1);
   const [testPageInfo, setTestPageInfo] = useState(null);
@@ -159,6 +162,8 @@ export default function TestDesignPage({ project }) {
         draftValues,
         testValues,
         suiteValues,
+        repositoryValues,
+        reusableStepValues,
         apiArtifactValues,
         operationValues,
       ] = await Promise.all([
@@ -173,6 +178,8 @@ export default function TestDesignPage({ project }) {
           page_size: 50,
         }),
         testingApi.listSuites(project._id),
+        testingApi.listTestRepository(project._id),
+        testingApi.listReusableTestSteps(project._id),
         testingApi.listApiArtifacts(project._id),
         testingApi.listApiOperations(project._id),
       ]);
@@ -184,6 +191,8 @@ export default function TestDesignPage({ project }) {
       setTests(testValues.items);
       setTestPageInfo(testValues);
       setSuites(suiteValues);
+      setRepositoryNodes(repositoryValues);
+      setReusableSteps(reusableStepValues);
       setApiArtifacts(apiArtifactValues);
       const confirmedArtifacts = apiArtifactValues.filter((item) => item.status === "CONFIRMED");
       setApiCompareFrom((current) =>
@@ -281,10 +290,36 @@ export default function TestDesignPage({ project }) {
         attachments: [],
         data_set_version_ids: form.dataSetVersionIds,
         test_condition_ids: form.testConditionIds,
+        repository_node_id: form.repositoryNodeId || null,
         requirement_version_ids: selectedRequirement ? [selectedRequirement] : [],
         acceptance_criterion_ids: [],
         origin: "manual",
         source_evidence: [],
+        bdd:
+          form.testStyle === "BDD"
+            ? {
+                feature: form.feature,
+                scenario: form.scenario || form.title,
+                steps: [
+                  { keyword: "Given", text: form.given },
+                  { keyword: "When", text: form.when },
+                  { keyword: "Then", text: form.then },
+                  ...form.reusableStepVersionIds.flatMap((versionId) => {
+                    const reusableStep = reusableSteps.find(
+                      (item) => item.current_version_id === versionId,
+                    );
+                    if (!reusableStep) return [];
+                    return [
+                      {
+                        keyword: "And",
+                        text: docText(reusableStep.action_doc),
+                        reusable_step_version_id: versionId,
+                      },
+                    ];
+                  }),
+                ].filter((item) => item.text.trim()),
+              }
+            : null,
       });
       setForm(createTestCaseForm());
       setCreatingTest(false);
@@ -2030,6 +2065,8 @@ export default function TestDesignPage({ project }) {
             setForm={setForm}
             dataSets={dataSets}
             testConditions={testConditions}
+            repositoryNodes={repositoryNodes}
+            reusableSteps={reusableSteps}
             onSubmit={create}
           />
         )}
@@ -2062,6 +2099,7 @@ export default function TestDesignPage({ project }) {
         reload={load}
         onError={setError}
       />
+      <TestRepositoryPanel project={project} can={can} onError={setError} />
       {duplicates.length > 0 && (
         <Panel title="Các ca kiểm thử có khả năng trùng">
           <DataTable

@@ -25,6 +25,13 @@ class TestAdequacyRepository:
             {"project_id": project_id, "requirement_id": requirement_id}
         ).to_list(1000)
 
+    async def list_for_versions(self, project_id, requirement_version_ids):
+        if not requirement_version_ids:
+            return []
+        return await database.value.test_adequacy_assessments.find(
+            {"project_id": project_id, "requirement_version_id": {"$in": list(requirement_version_ids)}}
+        ).to_list(len(requirement_version_ids))
+
     async def supersede_for_requirement(self, project_id, requirement_id, keep_version_id, timestamp):
         await database.value.test_adequacy_assessments.update_many(
             {

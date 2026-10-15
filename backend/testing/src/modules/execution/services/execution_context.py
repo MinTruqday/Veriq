@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
@@ -11,14 +13,6 @@ from src.repositories.execution_context import execution_context_repository
 
 
 async def ensure_release_completion_gate(project_id: str, release_id: str):
-    
-    project = await execution_context_repository.project_settings(project_id)
-    if (
-        not (project or {})
-        .get("settings", {})
-        .get('require_completion_report_before_release_close', False)
-    ):
-        return False
     if not await execution_context_repository.approved_completion_exists(
         project_id, release_id, ['APPROVED', 'CLOSED']
     ):
@@ -27,6 +21,71 @@ async def ensure_release_completion_gate(project_id: str, release_id: str):
             detail={"code": 'RELEASE_COMPLETION_GATE_FAILED'},
         )
     return True
+
+
+def _active_waiver(item, timestamp):
+    if item.get("status") != "WAIVED":
+        return False
+    value = (item.get("decision") or {}).get("waiver_expires_at")
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if not isinstance(value, datetime):
+        return False
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value > timestamp
+
+
+async def ensure_release_assurance_gate(project_id: str, release_id: str):
+    plans = await execution_context_repository.list_approved_test_plan_scopes(
+        project_id, release_id
+    )
+    if not plans:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "RELEASE_TEST_PLAN_SCOPE_REQUIRED"},
+        )
+    requirement_version_ids = sorted(
+        {
+            requirement_version_id
+            for plan in plans
+            for requirement_version_id in (plan.get("approved_snapshot") or plan).get(
+                "requirement_version_ids", []
+            )
+        }
+    )
+    if not requirement_version_ids:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "RELEASE_REQUIREMENT_SCOPE_REQUIRED"},
+        )
+    assessments = {
+        item["requirement_version_id"]: item
+        for item in await execution_context_repository.list_adequacy_assessments(
+            project_id, requirement_version_ids
+        )
+    }
+    timestamp = now()
+    invalid = []
+    for requirement_version_id in requirement_version_ids:
+        assessment = assessments.get(requirement_version_id)
+        if not assessment or assessment.get("status") not in {"ASSURED", "CONDITIONAL"}:
+            invalid.append(requirement_version_id)
+            continue
+        if any(
+            item.get("status") == "WAIVED" and not _active_waiver(item, timestamp)
+            for item in assessment.get("coverage_items", [])
+        ):
+            invalid.append(requirement_version_id)
+    if invalid:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "RELEASE_REQUIREMENT_ASSURANCE_GATE_FAILED",
+                "requirement_version_ids": invalid,
+            },
+        )
+    return len(requirement_version_ids)
 
 
 async def resolve_execution_context(
@@ -216,9 +275,13 @@ class ExecutionContextService:
                 },
             )
         completion_gate_applied = False
+        assurance_scope_size = 0
         if target == 'CLOSED':
             try:
                 completion_gate_applied = await ensure_release_completion_gate(release["project_id"], release_id)
+                assurance_scope_size = await ensure_release_assurance_gate(
+                    release["project_id"], release_id
+                )
             except HTTPException:
                 await audit(
                     user.id,
@@ -257,7 +320,7 @@ class ExecutionContextService:
             'Release',
             release_id,
             release["project_id"],
-            {"reason": payload.reason},
+            {"reason": payload.reason, "assured_requirement_count": assurance_scope_size},
         )
         return updated
 

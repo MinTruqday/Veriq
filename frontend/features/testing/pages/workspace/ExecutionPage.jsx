@@ -19,6 +19,7 @@ import { testingApi } from "../../services/testing.service";
 import { docText, messageOf, textDoc, valueLabel } from "../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import RunExecutionWorkspace from "./execution/RunExecutionWorkspace";
+import JUnitResultPanel from "../../components/JUnitResultPanel";
 
 export default function ExecutionPage({ project, section }) {
   const { ask, dialog } = useActionDialog();
@@ -51,6 +52,7 @@ export default function ExecutionPage({ project, section }) {
     sort: "-updated_at",
   });
   const [tests, setTests] = useState([]);
+  const [requirements, setRequirements] = useState([]);
   const [run, setRun] = useState(null);
   const [error, setError] = useState("");
   const [planValidation, setPlanValidation] = useState(null);
@@ -88,6 +90,7 @@ export default function ExecutionPage({ project, section }) {
         buildValues,
         environmentValues,
         strategyValues,
+        requirementValues,
       ] = await Promise.all([
         testingApi.listPlans(project._id, planFilters),
         testingApi.listSuites(project._id, suiteFilters),
@@ -97,6 +100,7 @@ export default function ExecutionPage({ project, section }) {
         testingApi.listBuilds(project._id),
         testingApi.listEnvironments(project._id),
         testingApi.listTestStrategies(project._id, { page_size: 200 }),
+        testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" }),
       ]);
       setPlans(planValues);
       setSuites(suiteValues);
@@ -107,6 +111,7 @@ export default function ExecutionPage({ project, section }) {
       setBuilds(buildValues);
       setEnvironments(environmentValues);
       setStrategies(strategyValues.items || []);
+      setRequirements(requirementValues);
       if (runId) setRun(await testingApi.getRun(runId));
     } catch (reason) {
       setError(messageOf(reason));
@@ -396,6 +401,9 @@ export default function ExecutionPage({ project, section }) {
             <TestPlanEditor
               projectId={project._id}
               strategies={strategies}
+              requirements={requirements}
+              suites={suites}
+              tests={tests}
               onCancel={() => setCreatingPlan(false)}
               onSave={async (payload) => {
                 await testingApi.createPlan(payload);
@@ -633,6 +641,7 @@ export default function ExecutionPage({ project, section }) {
           </Modal>
         )}
       </div>
+      <JUnitResultPanel project={project} runs={runs} tests={tests} can={can} onError={setError} />
       <div className="grid gap-5 xl:grid-cols-2">
         <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
         <AutomationExecutionPanel project={project} />

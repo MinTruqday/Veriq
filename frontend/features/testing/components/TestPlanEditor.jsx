@@ -38,6 +38,9 @@ const defaults = {
   environment: "staging",
   scope_in: [],
   scope_out: [],
+  requirement_version_ids: [],
+  test_suite_ids: [],
+  test_case_version_ids: [],
   entry_criteria: [],
   exit_criteria: [],
   risks: [],
@@ -61,7 +64,15 @@ const defaults = {
   communication_plan: {},
 };
 
-export default function TestPlanEditor({ projectId, strategies, onSave, onCancel }) {
+export default function TestPlanEditor({
+  projectId,
+  strategies,
+  requirements,
+  suites,
+  tests,
+  onSave,
+  onCancel,
+}) {
   const [value, setValue] = useState(defaults);
   const [error, setError] = useState("");
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
@@ -154,6 +165,66 @@ export default function TestPlanEditor({ projectId, strategies, onSave, onCancel
             value={value.test_approach}
             onChange={(event) => setField("test_approach", event.target.value)}
           />
+        </label>
+        <label className="field-label">
+          Phiên bản Requirement trong phạm vi
+          <select
+            className="apple-input mt-2 min-h-28"
+            multiple
+            value={value.requirement_version_ids}
+            onChange={(event) =>
+              setField(
+                "requirement_version_ids",
+                Array.from(event.target.selectedOptions, (item) => item.value),
+              )
+            }
+          >
+            {requirements.map((item) => (
+              <option key={item.current_version_id} value={item.current_version_id}>
+                {item.requirement_key} {item.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field-label">
+          Test Set trong phạm vi
+          <select
+            className="apple-input mt-2 min-h-28"
+            multiple
+            value={value.test_suite_ids}
+            onChange={(event) =>
+              setField(
+                "test_suite_ids",
+                Array.from(event.target.selectedOptions, (item) => item.value),
+              )
+            }
+          >
+            {suites.map((item) => (
+              <option key={item._id} value={item._id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field-label md:col-span-2">
+          Phiên bản Test Case trong phạm vi
+          <select
+            className="apple-input mt-2 min-h-36"
+            multiple
+            value={value.test_case_version_ids}
+            onChange={(event) =>
+              setField(
+                "test_case_version_ids",
+                Array.from(event.target.selectedOptions, (item) => item.value),
+              )
+            }
+          >
+            {tests.map((item) => (
+              <option key={item.current_version_id} value={item.current_version_id}>
+                {item.test_case_key} {item.title}
+              </option>
+            ))}
+          </select>
         </label>
         {listFields.map(([key, label]) => (
           <label className="field-label" key={key}>

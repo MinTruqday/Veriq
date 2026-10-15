@@ -1,9 +1,13 @@
+from datetime import datetime, timezone
 from hashlib import sha256
+import json
 
 from fastapi import HTTPException
 
-from src.core.common import audit, get_project, get_project_entity, get_project_role, new_id, now
+from src.core.common import audit, get_project, get_project_entity, get_project_role, new_id, now, plain_text, resolve_user_reference
+from src.repositories.project import project_repository
 from src.repositories.requirement import requirement_repository
+from src.repositories.requirement_clarification import requirement_clarification_repository
 from src.repositories.test_adequacy import test_adequacy_repository
 from src.repositories.test_design import test_design_repository
 
@@ -38,6 +42,20 @@ async def _sources(version):
                 "source_ref": f"business_rule:{index + 1}",
                 "source_quote": str(rule).strip(),
             })
+    for operation in (version.get("details") or {}).get("api_operations", []):
+        if not isinstance(operation, dict):
+            continue
+        method = str(operation.get("method") or "").strip().upper()
+        path = str(operation.get("path") or operation.get("url_template") or "").strip()
+        if not method or not path:
+            continue
+        identity = json.dumps(operation, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        items.append({
+            "source_type": "api_operation",
+            "source_id": sha256(identity.encode()).hexdigest(),
+            "source_ref": f"{method} {path}",
+            "source_quote": f"{method} {path}",
+        })
     if not items:
         quote = version.get("plain_text_projection") or version.get("title") or ""
         if quote.strip():
@@ -62,6 +80,19 @@ def _case_mapping(item, version):
     return item["coverage_item_id"] in version.get("coverage_item_ids", [])
 
 
+def _case_has_assurance_evidence(version):
+    has_data = bool(version.get("test_data")) or any(
+        bool(step.get("test_data")) for step in version.get("steps", [])
+    )
+    return bool(
+        version.get("techniques")
+        and version.get("evidence_refs")
+        and version.get("evidence_quotes")
+        and has_data
+        and plain_text(version.get("expected_result_doc", {})).strip()
+    )
+
+
 async def _snapshot(requirement_version):
     cases = await test_design_repository.list_case_versions(
         {"project_id": requirement_version["project_id"], "requirement_version_ids": requirement_version["_id"], "status": "ACTIVE"},
@@ -70,6 +101,7 @@ async def _snapshot(requirement_version):
     result = []
     for source in await _sources(requirement_version):
         mapped = [case for case in cases if _case_mapping(source, case)]
+        eligible = [case for case in mapped if _case_has_assurance_evidence(case)]
         result.append({
             **source,
             "test_case_versions": [
@@ -81,10 +113,12 @@ async def _snapshot(requirement_version):
                     "evidence_refs": case.get("evidence_refs", []),
                     "evidence_quotes": case.get("evidence_quotes", []),
                     "challenge_hypotheses": case.get("challenge_hypotheses", []),
+                    "assurance_evidence_complete": _case_has_assurance_evidence(case),
                 }
                 for case in mapped
             ],
-            "status": "COVERED_PENDING_REVIEW" if mapped else "UNASSESSED",
+            "status": "COVERED_PENDING_REVIEW" if eligible else "UNASSESSED",
+            "owner_id": (eligible[0].get("owner_id") if eligible else requirement_version.get("owner_id")),
         })
     return result
 
@@ -97,22 +131,93 @@ def _merge_decisions(items, existing):
             item["status"] = prior["status"]
             item["decision"] = prior.get("decision")
             item["execution_feedback"] = prior.get("execution_feedback", [])
+            item["owner_id"] = prior.get("owner_id") or item.get("owner_id")
         elif prior:
             item["execution_feedback"] = prior.get("execution_feedback", [])
     return items
 
 
-def _ratio(items):
-    applicable = [item for item in items if item["status"] not in {"NOT_APPLICABLE", "WAIVED"}]
-    verified = [item for item in applicable if item["status"] == "VERIFIED_COVERED"]
-    return {"verified_covered": len(verified), "applicable": len(applicable)}
+def _as_datetime(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return None
+
+
+def _waiver_active(item, timestamp):
+    if item.get("status") != "WAIVED":
+        return False
+    expires_at = _as_datetime((item.get("decision") or {}).get("waiver_expires_at"))
+    return bool(expires_at and expires_at > timestamp)
+
+
+def _summary(items, timestamp):
+    verified = sum(item.get("status") == "VERIFIED_COVERED" for item in items)
+    not_applicable = sum(item.get("status") == "NOT_APPLICABLE" for item in items)
+    conditional = sum(_waiver_active(item, timestamp) for item in items)
+    expired = sum(item.get("status") == "WAIVED" and not _waiver_active(item, timestamp) for item in items)
+    outstanding = len(items) - verified - not_applicable - conditional
+    return {
+        "total": len(items),
+        "verified": verified,
+        "not_applicable": not_applicable,
+        "conditional": conditional,
+        "expired_waivers": expired,
+        "outstanding": outstanding,
+    }
+
+
+def assessment_status_for_list(assessment):
+    if not assessment:
+        return "NEEDS_TEST_COVERAGE"
+    if assessment.get("status") == "SUPERSEDED":
+        return "SUPERSEDED"
+    if any(
+        item.get("status") == "WAIVED" and not _waiver_active(item, now())
+        for item in assessment.get("coverage_items", [])
+    ):
+        return "NEEDS_TEST_COVERAGE"
+    return assessment.get("status") or "NEEDS_TEST_COVERAGE"
+
+
+async def _reconcile_expired_waivers(assessment):
+    timestamp = now()
+    expired_ids = [
+        item["coverage_item_id"]
+        for item in assessment.get("coverage_items", [])
+        if item.get("status") == "WAIVED" and not _waiver_active(item, timestamp)
+    ]
+    if not expired_ids:
+        return assessment
+    items = []
+    for item in assessment["coverage_items"]:
+        value = dict(item)
+        if value["coverage_item_id"] in expired_ids:
+            value["decision"] = {**value.get("decision", {}), "waiver_expired_at": timestamp}
+        items.append(value)
+    updated = await test_adequacy_repository.replace(
+        assessment["_id"],
+        assessment["project_id"],
+        assessment["revision"],
+        {
+            "coverage_items": items,
+            "coverage_summary": _summary(items, timestamp),
+            "status": "DRAFT",
+            "updated_at": timestamp,
+        },
+    )
+    return updated or await test_adequacy_repository.find(
+        assessment["project_id"], assessment["requirement_version_id"]
+    )
 
 
 async def get_adequacy_assessment(requirement_version_id, user):
     version = await get_project_entity("requirement_versions", requirement_version_id, user, "testcase.read")
     assessment = await test_adequacy_repository.find(version["project_id"], requirement_version_id)
     if assessment:
-        return assessment
+        return await _reconcile_expired_waivers(assessment)
     return await refresh_adequacy_assessment(requirement_version_id, user, None)
 
 
@@ -124,15 +229,14 @@ async def refresh_adequacy_assessment(requirement_version_id, user, expected_rev
         raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT", "current_revision": existing["revision"]})
     items = _merge_decisions(await _snapshot(version), existing)
     timestamp = now()
-    lifecycle = "DRAFT" if not existing or existing.get("status") != "APPROVED" else "DRAFT"
     value = {
         "requirement_id": version["requirement_id"],
         "requirement_version_id": version["_id"],
         "requirement_revision": version["revision"],
         "requirement_snapshot": {"title": version["title"], "status": version["status"], "revision": version["revision"]},
         "coverage_items": items,
-        "coverage_ratio": _ratio(items),
-        "status": lifecycle,
+        "coverage_summary": _summary(items, timestamp),
+        "status": "DRAFT",
         "updated_at": timestamp,
     }
     if not existing:
@@ -160,10 +264,6 @@ async def invalidate_adequacy_for_test_case_version(version):
     await test_adequacy_repository.invalidate_for_requirement_versions(
         version["project_id"], version.get("requirement_version_ids", []), now()
     )
-    await audit(
-        user_id, "test_adequacy_assessment_superseded", "Requirement", requirement_id,
-        project_id, {"current_requirement_version_id": requirement_version_id},
-    )
 
 
 async def submit_adequacy_assessment(assessment_id, payload, user):
@@ -180,10 +280,24 @@ async def submit_adequacy_assessment(assessment_id, payload, user):
 
 async def approve_adequacy_assessment(assessment_id, payload, user):
     assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.review")
+    assessment = await _reconcile_expired_waivers(assessment)
     await _require_qa(assessment["project_id"], user)
     if assessment["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
-    unresolved = [item["coverage_item_id"] for item in assessment["coverage_items"] if item["status"] not in {"COVERED_PENDING_REVIEW", "NOT_APPLICABLE", "WAIVED"}]
+    open_clarifications = await requirement_clarification_repository.list_open_for_version(
+        assessment["project_id"], assessment["requirement_version_id"]
+    )
+    if open_clarifications:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ADEQUACY_OPEN_CLARIFICATIONS", "clarification_ids": [item["_id"] for item in open_clarifications]},
+        )
+    unresolved = [
+        item["coverage_item_id"]
+        for item in assessment["coverage_items"]
+        if item["status"] not in {"COVERED_PENDING_REVIEW", "NOT_APPLICABLE"}
+        and not _waiver_active(item, now())
+    ]
     if unresolved:
         raise HTTPException(status_code=409, detail={"code": "ADEQUACY_UNRESOLVED_ITEMS", "coverage_item_ids": unresolved})
     items = []
@@ -192,7 +306,17 @@ async def approve_adequacy_assessment(assessment_id, payload, user):
         if item["status"] == "COVERED_PENDING_REVIEW":
             item["status"] = "VERIFIED_COVERED"
         items.append(item)
-    value = {"coverage_items": items, "coverage_ratio": _ratio(items), "status": "APPROVED", "approved_by": user.id, "approved_at": now(), "review_note": payload.note, "updated_at": now()}
+    timestamp = now()
+    summary = _summary(items, timestamp)
+    value = {
+        "coverage_items": items,
+        "coverage_summary": summary,
+        "status": "CONDITIONAL" if summary["conditional"] else "ASSURED",
+        "approved_by": user.id,
+        "approved_at": timestamp,
+        "review_note": payload.note,
+        "updated_at": timestamp,
+    }
     updated = await test_adequacy_repository.replace(assessment_id, assessment["project_id"], payload.expected_revision, value)
     if not updated:
         raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
@@ -215,8 +339,29 @@ async def request_adequacy_changes(assessment_id, payload, user):
 
 async def decide_coverage_item(assessment_id, coverage_item_id, payload, user):
     assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.read")
-    if payload.status in {"NOT_APPLICABLE", "WAIVED"}:
-        await _require_qa(assessment["project_id"], user)
+    await _require_qa(assessment["project_id"], user)
+    waiver_owner_id = None
+    if payload.status == "MISSING_INFORMATION":
+        clarification = await requirement_clarification_repository.find(
+            payload.clarification_id, assessment["project_id"]
+        )
+        if (
+            not clarification
+            or clarification.get("requirement_version_id") != assessment["requirement_version_id"]
+            or clarification.get("coverage_item_id") != coverage_item_id
+            or clarification.get("status") not in {"OPEN", "ANSWERED"}
+        ):
+            raise HTTPException(status_code=422, detail={"code": "CLARIFICATION_NOT_ACTIVE_FOR_COVERAGE_ITEM"})
+    if payload.status == "WAIVED":
+        timestamp = now()
+        if payload.waiver_review_at < timestamp or payload.waiver_expires_at <= timestamp:
+            raise HTTPException(status_code=422, detail={"code": "WAIVER_SCHEDULE_INVALID"})
+        waiver_owner_id = await resolve_user_reference(payload.waiver_owner_id)
+        membership = await project_repository.find_member(
+            assessment["project_id"], waiver_owner_id, status="ACTIVE"
+        )
+        if not membership:
+            raise HTTPException(status_code=422, detail={"code": "WAIVER_OWNER_NOT_PROJECT_MEMBER"})
     items = []
     found = False
     for item in assessment["coverage_items"]:
@@ -224,11 +369,31 @@ async def decide_coverage_item(assessment_id, coverage_item_id, payload, user):
         if item["coverage_item_id"] == coverage_item_id:
             found = True
             item["status"] = payload.status
-            item["decision"] = {"reason": payload.reason, "decided_by": user.id, "decided_at": now()}
+            item["owner_id"] = waiver_owner_id or item.get("owner_id")
+            item["decision"] = {
+                "reason": payload.reason,
+                "decided_by": user.id,
+                "decided_at": now(),
+                **(
+                    {"clarification_id": payload.clarification_id}
+                    if payload.status == "MISSING_INFORMATION"
+                    else {}
+                ),
+                **(
+                    {
+                        "waiver_owner_id": waiver_owner_id,
+                        "waiver_expires_at": payload.waiver_expires_at,
+                        "waiver_review_at": payload.waiver_review_at,
+                    }
+                    if payload.status == "WAIVED"
+                    else {}
+                ),
+            }
         items.append(item)
     if not found:
         raise HTTPException(status_code=404, detail={"code": "COVERAGE_ITEM_NOT_FOUND"})
-    value = {"coverage_items": items, "coverage_ratio": _ratio(items), "status": "DRAFT", "updated_at": now()}
+    timestamp = now()
+    value = {"coverage_items": items, "coverage_summary": _summary(items, timestamp), "status": "DRAFT", "updated_at": timestamp}
     updated = await test_adequacy_repository.replace(assessment_id, assessment["project_id"], payload.expected_revision, value)
     if not updated:
         raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})

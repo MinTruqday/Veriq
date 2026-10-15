@@ -56,6 +56,8 @@ async def create_test_run_record(payload, project_id, user):
         plan = await test_run_repository.find_plan(payload.test_plan_id, payload.project_id)
         if not plan:
             raise HTTPException(status_code=422, detail={"code": 'INVALID_TEST_PLAN'})
+        if plan.get("status") != "APPROVED":
+            raise HTTPException(status_code=409, detail={"code": "TEST_PLAN_NOT_APPROVED"})
     context = await resolve_execution_context(
         payload.project_id,
         user,
@@ -76,6 +78,23 @@ async def create_test_run_record(payload, project_id, user):
         for suite in suites:
             version_ids.extend(suite.get("test_case_version_ids", []))
         version_ids = list(dict.fromkeys(version_ids))
+    if plan:
+        approved_snapshot = plan.get("approved_snapshot") or plan
+        approved_scope = set(approved_snapshot.get("test_case_version_ids", []))
+        if not approved_scope:
+            raise HTTPException(status_code=409, detail={"code": "TEST_PLAN_SCOPE_EMPTY"})
+        if not version_ids:
+            version_ids = list(approved_scope)
+        if not set(version_ids).issubset(approved_scope):
+            raise HTTPException(status_code=422, detail={"code": "TEST_RUN_OUTSIDE_PLAN_SCOPE"})
+        for field in ("release_id", "build_id", "environment_id"):
+            planned_value = approved_snapshot.get(field)
+            run_value = context.get(field)
+            if planned_value and run_value != planned_value:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE", "field": field},
+                )
     await validate_test_versions(payload.project_id, version_ids)
     timestamp = now()
     device_scope = (
@@ -200,6 +219,23 @@ async def update_test_run_record(project_id, run_id, payload, user):
                 environment=changes.get("environment", run.get("environment", "")),
             )
         )
+    if run.get("test_plan_id"):
+        plan = await test_run_repository.find_plan(run["test_plan_id"], project_id)
+        if not plan or plan.get("status") != "APPROVED":
+            raise HTTPException(status_code=409, detail={"code": "TEST_PLAN_NOT_APPROVED"})
+        approved_snapshot = plan.get("approved_snapshot") or plan
+        updated_versions = changes.get("test_case_version_ids", run.get("test_case_version_ids", []))
+        if not set(updated_versions).issubset(
+            set(approved_snapshot.get("test_case_version_ids", []))
+        ):
+            raise HTTPException(status_code=422, detail={"code": "TEST_RUN_OUTSIDE_PLAN_SCOPE"})
+        for field in ("release_id", "build_id", "environment_id"):
+            planned_value = approved_snapshot.get(field)
+            if planned_value and changes.get(field, run.get(field)) != planned_value:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE", "field": field},
+                )
     updated = await optimistic_patch(
         'test_runs', run_id, project_id, payload.expected_revision, changes
     )

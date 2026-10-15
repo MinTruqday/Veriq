@@ -27,6 +27,9 @@ def plan_snapshot(plan):
  'objective',
  'scope_in',
  'scope_out',
+ 'requirement_version_ids',
+ 'test_suite_ids',
+ 'test_case_version_ids',
  'environment',
  'environment_id',
  'entry_criteria',
@@ -82,6 +85,7 @@ def plan_completeness(plan, settings=None):
             (requirement["code"], bool(plan.get(requirement["field"])))
             for requirement in [{'code': 'TEST_PLAN_OBJECTIVE_REQUIRED', 'field': 'objective'},
  {'code': 'TEST_PLAN_SCOPE_REQUIRED', 'field': 'scope_in'},
+ {'code': 'TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED', 'field': 'requirement_version_ids'},
  {'code': 'TEST_PLAN_ENTRY_CRITERIA_REQUIRED', 'field': 'entry_criteria'},
  {'code': 'TEST_PLAN_EXIT_CRITERIA_REQUIRED', 'field': 'exit_criteria'},
  {'code': 'TEST_PLAN_TEST_TYPE_REQUIRED', 'field': 'test_types'},
@@ -111,6 +115,20 @@ def plan_completeness(plan, settings=None):
         if not passed
     ]
     return {"ready_for_approval": not findings, "findings": findings}
+
+
+async def validate_plan_scope(project_id, requirement_version_ids, test_suite_ids, test_case_version_ids):
+    requirement_ids = list(dict.fromkeys(requirement_version_ids or []))
+    if requirement_ids and await test_plan_repository.count_requirement_versions(project_id, requirement_ids) != len(requirement_ids):
+        raise HTTPException(status_code=422, detail={"code": "INVALID_BASELINED_REQUIREMENT_SCOPE"})
+    suite_ids = list(dict.fromkeys(test_suite_ids or []))
+    suites = await test_plan_repository.list_suites(project_id, suite_ids) if suite_ids else []
+    if len(suites) != len(suite_ids):
+        raise HTTPException(status_code=422, detail={"code": "INVALID_TEST_SET_SCOPE"})
+    versions = list(dict.fromkeys([*(test_case_version_ids or []), *[version_id for suite in suites for version_id in suite.get("test_case_version_ids", [])]]))
+    if versions and await test_plan_repository.count_test_case_versions(project_id, versions) != len(versions):
+        raise HTTPException(status_code=422, detail={"code": "INVALID_TEST_CASE_SCOPE"})
+    return {"requirement_version_ids": requirement_ids, "test_suite_ids": suite_ids, "test_case_version_ids": versions}
 
 
 async def resolve_strategy_binding(project_id, strategy_version_id, auto_bind=False):
@@ -174,10 +192,17 @@ async def create_test_plan_record(payload, project_id, user):
         payload.strategy_version_id,
         auto_bind=True,
     )
+    scope = await validate_plan_scope(
+        payload.project_id,
+        payload.requirement_version_ids,
+        payload.test_suite_ids,
+        payload.test_case_version_ids,
+    )
     timestamp = now()
     plan = {
         "_id": new_id('TP'),
         **payload.model_dump(),
+        **scope,
         **context,
         **strategy_binding,
         "status": 'DRAFT',
@@ -261,6 +286,14 @@ async def update_test_plan_record(plan_id, payload, user):
                 auto_bind=False,
             )
         )
+    if {"requirement_version_ids", "test_suite_ids", "test_case_version_ids"} & set(changes):
+        scope = await validate_plan_scope(
+            plan["project_id"],
+            changes.get("requirement_version_ids", plan.get("requirement_version_ids", [])),
+            changes.get("test_suite_ids", plan.get("test_suite_ids", [])),
+            changes.get("test_case_version_ids", plan.get("test_case_version_ids", [])),
+        )
+        changes.update(scope)
     if {"release_id", "build_id", "environment_id", "release", "build", "environment"} & set(
         changes
     ):
@@ -316,8 +349,13 @@ async def approve_test_plan_record(plan_id, payload, user):
     if plan.get("status") not in ['DRAFT', 'IN_REVIEW']:
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
     settings = await test_plan_repository.find_project_settings(plan["project_id"])
-    if settings.get("strict_test_plan_approval", False):
-        completeness = plan_completeness(plan, settings)
+    completeness = plan_completeness(plan, settings)
+    scope_findings = [
+        finding
+        for finding in completeness["findings"]
+        if finding["code"] == "TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED"
+    ]
+    if scope_findings or settings.get("strict_test_plan_approval", False):
         if not completeness["ready_for_approval"]:
             raise HTTPException(
                 status_code=409,

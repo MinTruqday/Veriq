@@ -170,6 +170,11 @@ export default function RequirementsListPanel({
             label: "Trạng thái",
             render: (item) => <StatusPill value={item.status} />,
           },
+          {
+            key: "assurance_status",
+            label: "Hồ sơ đảm bảo",
+            render: (item) => <StatusPill value={item.assurance_status} />,
+          },
         ]}
       />
       <Pagination value={pageInfo} onChange={setPage} />

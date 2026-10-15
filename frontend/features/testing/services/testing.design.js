@@ -7,6 +7,44 @@ import {
 } from "./testing.transport";
 
 export const designTestingApi = {
+  listTestRepository: (projectId) => testingRequest(`/du-an/${projectId}/kho-ca-kiem-thu`),
+  createTestRepositoryNode: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/kho-ca-kiem-thu`, {
+      method: "POST",
+      body: JSON.stringify({ ...payload, project_id: projectId }),
+    }),
+  updateTestRepositoryNode: (nodeId, payload) =>
+    testingRequest(`/kho-ca-kiem-thu/${nodeId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  listReusableTestSteps: (projectId) => testingRequest(`/du-an/${projectId}/buoc-dung-lai`),
+  createReusableTestStep: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/buoc-dung-lai`, {
+      method: "POST",
+      body: JSON.stringify({ ...payload, project_id: projectId }),
+    }),
+  listRequirementClarifications: (requirementVersionId) =>
+    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro`),
+  createClarificationsFromReview: (requirementVersionId) =>
+    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro/tao-tu-ra-soat`, {
+      method: "POST",
+    }),
+  answerRequirementClarification: (clarificationId, payload) =>
+    testingRequest(`/phieu-lam-ro/${clarificationId}/tra-loi`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  resolveRequirementClarification: (clarificationId, payload) =>
+    testingRequest(`/phieu-lam-ro/${clarificationId}/xac-nhan-giai-quyet`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  decideRequirementClarification: (clarificationId, payload) =>
+    testingRequest(`/phieu-lam-ro/${clarificationId}/quyet-dinh`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   getTestAdequacy: (requirementVersionId) =>
     testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/do-day-du-kiem-thu`),
   getTestAdequacyImpact: (requirementId) =>

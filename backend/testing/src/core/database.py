@@ -145,6 +145,8 @@ async def create_indexes():
         if dict(index["key"]) == {"project_id": 1, "template_id": 1, "template_version": 1}:
             await db.import_jobs.drop_index(index["name"])
     await db.requirement_versions.create_index([("requirement_id", 1), ("version", 1)], unique=True)
+    await db.requirement_clarifications.create_index([("project_id", 1), ("requirement_version_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.requirement_clarifications.create_index([("project_id", 1), ("requirement_id", 1), ("status", 1)])
     await db.acceptance_criteria.create_index(
         [("requirement_version_id", 1), ("key", 1)], unique=True
     )
@@ -156,6 +158,12 @@ async def create_indexes():
     )
     await db.requirement_duplicate_scans.create_index([("project_id", 1), ("created_at", -1)])
     await db.test_scenarios.create_index([("project_id", 1), ("scenario_key", 1)], unique=True)
+    await db.test_repository_nodes.create_index([("project_id", 1), ("parent_id", 1), ("name", 1)], unique=True)
+    await db.test_repository_nodes.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.reusable_test_steps.create_index([("project_id", 1), ("name", 1)], unique=True)
+    await db.reusable_test_steps.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.reusable_test_step_versions.create_index([("reusable_step_id", 1), ("version", 1)], unique=True)
+    await db.reusable_test_step_versions.create_index([("project_id", 1), ("created_at", -1)])
     await db.data_sets.create_index([("project_id", 1), ("name", 1)], unique=True)
     await db.data_set_versions.create_index([("data_set_id", 1), ("version", 1)], unique=True)
     await db.data_set_versions.create_index([("project_id", 1), ("created_at", -1)])
@@ -468,6 +476,7 @@ async def create_indexes():
     await db.cicd_reconciliation_jobs.create_index(
         [("project_id", 1), ("idempotency_key", 1)], unique=True
     )
+    await db.junit_result_imports.create_index([("project_id", 1), ("test_run_id", 1), ("created_at", -1)])
     await db.collaboration_sessions.create_index(
         [
             ("project_id", 1),

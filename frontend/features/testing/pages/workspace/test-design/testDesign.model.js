@@ -34,6 +34,14 @@ export function createTestCaseForm() {
     expected: emptyDoc(),
     dataSetVersionIds: [],
     testConditionIds: [],
+    repositoryNodeId: "",
+    reusableStepVersionIds: [],
+    testStyle: "MANUAL",
+    feature: "",
+    scenario: "",
+    given: "",
+    when: "",
+    then: "",
   };
 }
 

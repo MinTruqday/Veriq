@@ -4,6 +4,67 @@ from src.core.database import database
 
 
 class TestDesignRepository:
+    async def list_repository_nodes(self, project_id):
+        return await database.value.test_repository_nodes.find(
+            {"project_id": project_id, "status": "ACTIVE"}
+        ).sort("name", 1).to_list(5000)
+
+    async def find_repository_node(self, project_id, node_id):
+        return await database.value.test_repository_nodes.find_one(
+            {"_id": node_id, "project_id": project_id, "status": "ACTIVE"}
+        )
+
+    async def insert_repository_node(self, value):
+        await database.value.test_repository_nodes.insert_one(value)
+        return value
+
+    async def update_repository_node(self, node_id, project_id, revision, changes):
+        return await database.value.test_repository_nodes.find_one_and_update(
+            {"_id": node_id, "project_id": project_id, "status": "ACTIVE", "revision": revision},
+            {"$set": changes, "$inc": {"revision": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def count_repository_children(self, project_id, node_id):
+        return await database.value.test_repository_nodes.count_documents(
+            {"project_id": project_id, "parent_id": node_id, "status": "ACTIVE"}
+        )
+
+    async def count_repository_cases(self, project_id, node_id):
+        return await database.value.test_cases.count_documents(
+            {"project_id": project_id, "repository_node_id": node_id}
+        )
+
+    async def list_reusable_steps(self, project_id):
+        return await database.value.reusable_test_steps.find(
+            {"project_id": project_id, "status": "ACTIVE"}
+        ).sort("updated_at", -1).to_list(1000)
+
+    async def find_reusable_step(self, project_id, step_id):
+        return await database.value.reusable_test_steps.find_one(
+            {"_id": step_id, "project_id": project_id, "status": "ACTIVE"}
+        )
+
+    async def find_reusable_step_version(self, project_id, version_id):
+        return await database.value.reusable_test_step_versions.find_one(
+            {"_id": version_id, "project_id": project_id, "status": "ACTIVE"}
+        )
+
+    async def insert_reusable_step(self, value):
+        await database.value.reusable_test_steps.insert_one(value)
+        return value
+
+    async def insert_reusable_step_version(self, value):
+        await database.value.reusable_test_step_versions.insert_one(value)
+        return value
+
+    async def update_reusable_step(self, step_id, project_id, revision, changes):
+        return await database.value.reusable_test_steps.find_one_and_update(
+            {"_id": step_id, "project_id": project_id, "status": "ACTIVE", "revision": revision},
+            {"$set": changes, "$inc": {"revision": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+
     async def list_cases(self, project_id, status=None, limit=20000):
         query = {"project_id": project_id}
         if status:

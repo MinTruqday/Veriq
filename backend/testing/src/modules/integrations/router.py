@@ -9,6 +9,7 @@ from .api.cicd import router as cicd_router
 from .api.connectors import router as connectors_router
 from .api.webhooks import internal_router as internal_webhooks_router
 from .api.webhooks import router as webhooks_router
+from .api.junit_import import router as junit_import_router
 
 
 router = APIRouter()
@@ -21,3 +22,4 @@ router.include_router(internal_cicd_router)
 router.include_router(api_artifacts_router)
 router.include_router(webhooks_router)
 router.include_router(internal_webhooks_router)
+router.include_router(junit_import_router)
