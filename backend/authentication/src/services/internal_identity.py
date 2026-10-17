@@ -31,9 +31,9 @@ class InternalIdentityService:
         reference = value.strip()
         query = {"email": reference.lower()} if "@" in reference else {"_id": reference}
         account = await IdentityRepository.find_auth_credential(query, {"_id": 1})
-        if "@" in reference and not account:
+        if not account:
             raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
-        return {"user_id": str(account["_id"]) if account else reference}
+        return {"user_id": str(account["_id"])}
 
     @staticmethod
     async def validate_session(session_id: str, user_id: str):

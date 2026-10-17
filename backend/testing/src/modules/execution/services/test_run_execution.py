@@ -20,7 +20,7 @@ from src.clients.project_knowledge import index_artifact
 async def start_test_run_record(run_id, user):
     
     run = await get_project_entity(
-        'test_runs', run_id, user, 'testrun.start'
+        'test_runs', run_id, user, 'testrun.execute'
     )
     if run["status"] == 'IN_PROGRESS':
         return run
@@ -388,7 +388,7 @@ async def correct_test_result_record(result_id, payload, user):
 async def complete_test_run_record(run_id, user):
     
     run = await get_project_entity(
-        'test_runs', run_id, user, 'testrun.complete'
+        'test_runs', run_id, user, 'testrun.execute'
     )
     if run["status"] == 'COMPLETED':
         return run

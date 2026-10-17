@@ -11,6 +11,7 @@ import {
   Panel,
   ProjectCrumb,
   WorkspacePage,
+  WorkspaceSectionNav,
   StatusPill,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
@@ -21,7 +22,7 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import RunExecutionWorkspace from "./execution/RunExecutionWorkspace";
 import JUnitResultPanel from "../../components/JUnitResultPanel";
 
-export default function ExecutionPage({ project, section }) {
+export default function ExecutionPage({ project, section, workspaceView }) {
   const { ask, dialog } = useActionDialog();
   const runId = section[0] || "";
   const [plans, setPlans] = useState([]);
@@ -356,11 +357,19 @@ export default function ExecutionPage({ project, section }) {
     );
   return (
     <WorkspacePage
-      title="Thực thi kiểm thử"
+      title={
+        workspaceView === "test-plans"
+          ? "Kế hoạch kiểm thử"
+          : workspaceView === "test-runs"
+            ? "Lần chạy kiểm thử"
+            : workspaceView === "automation"
+              ? "Tự động hóa kiểm thử"
+              : "Thực thi kiểm thử"
+      }
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <ProjectCrumb projectId={project._id} />
-          {can("testplan.create") && (
+          {(workspaceView === "" || workspaceView === "test-plans") && can("testplan.create") && (
             <button
               className="secondary-button"
               type="button"
@@ -369,7 +378,7 @@ export default function ExecutionPage({ project, section }) {
               Tạo kế hoạch
             </button>
           )}
-          {can("testsuite.create") && (
+          {!workspaceView && can("testsuite.create") && (
             <button
               className="secondary-button"
               type="button"
@@ -378,7 +387,7 @@ export default function ExecutionPage({ project, section }) {
               Tạo bộ kiểm thử
             </button>
           )}
-          {can("testrun.create") && (
+          {(workspaceView === "" || workspaceView === "test-runs") && can("testrun.create") && (
             <button className="apple-button" type="button" onClick={() => setCreatingRun(true)}>
               Tạo lần chạy
             </button>
@@ -387,6 +396,23 @@ export default function ExecutionPage({ project, section }) {
       }
     >
       {error && <ErrorState message={error} />}
+      <WorkspaceSectionNav
+        current={workspaceView || "test-runs"}
+        items={[
+          {
+            id: "test-plans",
+            label: "Kế hoạch kiểm thử",
+            href: `/du-an/${project._id}/ke-hoach-kiem-thu`,
+          },
+          {
+            id: "test-runs",
+            label: "Lần chạy kiểm thử",
+            href: `/du-an/${project._id}/lan-chay-kiem-thu`,
+          },
+          { id: "automation", label: "Tự động hóa", href: `/du-an/${project._id}/tu-dong-hoa` },
+          { id: "defects", label: "Lỗi", href: `/du-an/${project._id}/loi` },
+        ]}
+      />
       <div className="grid gap-5 xl:grid-cols-3">
         {can("testplan.create") && (
           <Modal
@@ -641,11 +667,26 @@ export default function ExecutionPage({ project, section }) {
           </Modal>
         )}
       </div>
-      <JUnitResultPanel project={project} runs={runs} tests={tests} can={can} onError={setError} />
+      {(workspaceView === "" || workspaceView === "automation") && (
+        <JUnitResultPanel
+          project={project}
+          runs={runs}
+          tests={tests}
+          can={can}
+          onError={setError}
+        />
+      )}
       <div className="grid gap-5 xl:grid-cols-2">
-        <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
-        <AutomationExecutionPanel project={project} />
-        <Panel title="Kế hoạch kiểm thử">
+        <div className={workspaceView === "" || workspaceView === "automation" ? "" : "hidden"}>
+          <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
+        </div>
+        <div className={workspaceView === "" || workspaceView === "automation" ? "" : "hidden"}>
+          <AutomationExecutionPanel project={project} />
+        </div>
+        <Panel
+          title="Kế hoạch kiểm thử"
+          className={workspaceView === "" || workspaceView === "test-plans" ? "" : "hidden"}
+        >
           {planValidation && (
             <div className="border-b border-border p-4 text-sm">
               {planValidation.ready_for_approval
@@ -789,7 +830,7 @@ export default function ExecutionPage({ project, section }) {
             ]}
           />
         </Panel>
-        <Panel title="Bộ kiểm thử">
+        <Panel title="Bộ kiểm thử" className={workspaceView === "" ? "" : "hidden"}>
           <details className="border-b border-border p-4">
             <summary className="cursor-pointer text-sm font-medium">
               Tìm kiếm bộ lọc và sắp xếp
@@ -910,7 +951,10 @@ export default function ExecutionPage({ project, section }) {
           />
         </Panel>
       </div>
-      <Panel title="Danh sách lần chạy">
+      <Panel
+        title="Danh sách lần chạy"
+        className={workspaceView === "" || workspaceView === "test-runs" ? "" : "hidden"}
+      >
         <details className="border-b border-border p-4">
           <summary className="cursor-pointer text-sm font-medium">
             Tìm kiếm bộ lọc và sắp xếp
@@ -989,12 +1033,14 @@ export default function ExecutionPage({ project, section }) {
         />
         <Pagination value={runPageInfo} onChange={setRunPage} />
       </Panel>
-      {project.current_permissions?.includes("environmentincident.read") && (
-        <EnvironmentIncidentPanel project={project} />
-      )}
-      {project.current_permissions?.includes("nfrtest.read") && (
-        <NonFunctionalTestPanel project={project} />
-      )}
+      {(workspaceView === "" || workspaceView === "test-runs") &&
+        project.current_permissions?.includes("environmentincident.read") && (
+          <EnvironmentIncidentPanel project={project} />
+        )}
+      {(workspaceView === "" || workspaceView === "test-runs") &&
+        project.current_permissions?.includes("nfrtest.read") && (
+          <NonFunctionalTestPanel project={project} />
+        )}
       {dialog}
     </WorkspacePage>
   );

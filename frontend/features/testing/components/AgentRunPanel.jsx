@@ -5,17 +5,17 @@ import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { ErrorState, Panel, StatusPill } from "./WorkspacePrimitives";
 
+const activeStatuses = new Set(["QUEUED", "RUNNING"]);
+
 export default function AgentRunPanel({ project }) {
   const [intents, setIntents] = useState([]);
   const [intent, setIntent] = useState("");
   const [objective, setObjective] = useState("");
   const [targetIds, setTargetIds] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
-  const [actionEdits, setActionEdits] = useState([]);
   const [run, setRun] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const canRun = Boolean(intent);
 
   useEffect(() => {
     let active = true;
@@ -28,30 +28,79 @@ export default function AgentRunPanel({ project }) {
           values.some((item) => item.name === current) ? current : values[0]?.name || "",
         );
       })
-      .catch((reason) => {
-        if (active) setError(messageOf(reason));
-      });
+      .catch((reason) => active && setError(messageOf(reason)));
     return () => {
       active = false;
     };
   }, [project._id]);
+
+  useEffect(() => {
+    if (!run || !activeStatuses.has(run.status)) return undefined;
+    let active = true;
+    const timer = window.setInterval(async () => {
+      try {
+        const detail = await testingApi.getAutomationRun(run.automation_run_id);
+        if (active) setRun(detail.run);
+      } catch (reason) {
+        if (active) setError(messageOf(reason));
+      }
+    }, 2500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [run]);
 
   const execute = async () => {
     if (!objective.trim()) return;
     setBusy(true);
     setError("");
     try {
-      const nextRun = await testingApi.runAgent({
-        project_id: project._id,
-        objective: objective.trim(),
-        intent,
-        target_artifact_ids: targetIds
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-      });
-      setRun(nextRun);
-      setActionEdits(nextRun.proposal?.actions || []);
+      setRun(
+        await testingApi.runAutomation({
+          project_id: project._id,
+          objective: objective.trim(),
+          intent,
+          target_artifact_ids: targetIds
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+        }),
+      );
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retry = async () => {
+    if (!run) return;
+    setBusy(true);
+    setError("");
+    try {
+      setRun(
+        await testingApi.retryAutomationRun(run.automation_run_id, {
+          expected_revision: run.revision,
+        }),
+      );
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = async () => {
+    if (!run) return;
+    setBusy(true);
+    setError("");
+    try {
+      setRun(
+        await testingApi.cancelAutomationRun(run.automation_run_id, {
+          expected_revision: run.revision,
+        }),
+      );
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -60,28 +109,18 @@ export default function AgentRunPanel({ project }) {
   };
 
   const decide = async (decision) => {
+    if (!run || !decisionNote.trim()) return;
     setBusy(true);
     setError("");
-    if (!decisionNote.trim()) {
-      setError("Cần nhập ghi chú quyết định");
-      setBusy(false);
-      return;
-    }
     try {
-      const edits = decision === "EDIT" ? actionEdits : [];
-      if (decision === "EDIT" && edits.length === 0) {
-        setError("Cần ít nhất một hành động được chỉnh sửa");
-        setBusy(false);
-        return;
-      }
-      const nextRun = await testingApi.decideAgentRun(run.run_id, {
-        decision,
-        expected_revision: run.revision,
-        note: decisionNote.trim(),
-        action_edits: edits,
-      });
-      setRun(nextRun);
-      setActionEdits(nextRun.proposal?.actions || []);
+      setRun(
+        await testingApi.decideAutomationRun(run.automation_run_id, {
+          decision,
+          expected_revision: run.revision,
+          note: decisionNote.trim(),
+          action_edits: [],
+        }),
+      );
       setDecisionNote("");
     } catch (reason) {
       setError(messageOf(reason));
@@ -90,30 +129,19 @@ export default function AgentRunPanel({ project }) {
     }
   };
 
-  if (!canRun) {
-    return error ? (
-      <Panel title="Tác tử kiểm thử">
-        <div className="p-4">
-          <ErrorState message={error} />
-        </div>
-      </Panel>
-    ) : null;
-  }
+  if (!intents.length && !error) return null;
 
-  const updateActionArgument = (actionIndex, name, value) => {
-    setActionEdits((items) =>
-      items.map((item, index) =>
-        index === actionIndex ? { ...item, arguments: { ...item.arguments, [name]: value } } : item,
-      ),
-    );
-  };
-
-  const outcomes = Array.isArray(run?.agent_results) ? run.agent_results : [];
+  const proposal = run?.result?.proposal;
+  const busyRun = run && activeStatuses.has(run.status);
 
   return (
-    <Panel title="Tác tử kiểm thử">
+    <Panel title="AI Automation">
       <div className="grid gap-4 p-4">
         {error && <ErrorState message={error} />}
+        <p className="text-sm text-ink-muted">
+          Hệ thống tạo đề xuất có bằng chứng và chỉ chuyển sang bước quyết định của người dùng khi
+          cần
+        </p>
         <label className="grid gap-2 text-sm font-medium text-ink">
           Năng lực
           <select
@@ -146,50 +174,45 @@ export default function AgentRunPanel({ project }) {
             placeholder="REQ-105, RUN-204"
           />
         </label>
-        <div>
+        <div className="flex flex-wrap gap-2">
           <button
             className="apple-button"
             type="button"
-            disabled={busy || !objective.trim()}
+            disabled={busy || busyRun || !objective.trim()}
             onClick={execute}
           >
-            {busy ? "Đang xử lý" : "Chạy tác tử"}
+            {busy || busyRun ? "AI đang xử lý" : "Bắt đầu tự động hóa"}
           </button>
+          {busyRun && (
+            <button className="secondary-button" type="button" disabled={busy} onClick={cancel}>
+              Dừng lượt chạy
+            </button>
+          )}
+          {run?.status === "AWAITING_AUTHORIZATION" && (
+            <button className="secondary-button" type="button" disabled={busy} onClick={retry}>
+              Cấp quyền và tiếp tục
+            </button>
+          )}
         </div>
         {run && (
           <div className="grid gap-4 border-t border-border pt-4 text-sm">
             <div className="flex flex-wrap items-center gap-3">
               <StatusPill value={run.status} />
-              <span>{run.run_id}</span>
-              <span>Vai trò {valueLabel(run.role)}</span>
+              <span>{run.automation_run_id}</span>
+              <span>Vai trò {valueLabel(run.requester_role)}</span>
             </div>
-            {outcomes.length > 0 && (
+            {run.error_code && <ErrorState message={valueLabel(run.error_code)} />}
+            {proposal?.summary && (
               <div>
-                <h3 className="font-semibold text-ink">Trạng thái kết quả</h3>
-                <div className="mt-2 grid gap-2">
-                  {outcomes.map((outcome) => (
-                    <div
-                      className="flex flex-wrap items-center gap-2 rounded-control border border-border bg-surface px-3 py-2"
-                      key={outcome.task_id}
-                    >
-                      <StatusPill value={outcome.status} />
-                      {outcome.summary && <span className="text-ink-muted">{outcome.summary}</span>}
-                    </div>
-                  ))}
-                </div>
+                <h3 className="font-semibold text-ink">Kết quả đề xuất</h3>
+                <p className="mt-1 whitespace-pre-wrap text-ink-muted">{proposal.summary}</p>
               </div>
             )}
-            {run.proposal?.summary && (
+            {proposal?.evidence_refs?.length > 0 && (
               <div>
-                <h3 className="font-semibold text-ink">Kết quả</h3>
-                <p className="mt-1 whitespace-pre-wrap text-ink-muted">{run.proposal.summary}</p>
-              </div>
-            )}
-            {run.evidence_refs?.length > 0 && (
-              <div>
-                <h3 className="font-semibold text-ink">Bằng chứng</h3>
+                <h3 className="font-semibold text-ink">Bằng chứng đã dùng</h3>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {run.evidence_refs.map((item) => (
+                  {proposal.evidence_refs.map((item) => (
                     <span
                       className="rounded-full border border-border bg-surface px-3 py-1 text-xs"
                       key={item}
@@ -200,76 +223,12 @@ export default function AgentRunPanel({ project }) {
                 </div>
               </div>
             )}
-            {run.proposal?.warnings?.length > 0 && (
-              <div>
-                <h3 className="font-semibold text-ink">Cảnh báo</h3>
-                <ul className="mt-2 grid gap-1 text-ink-muted">
-                  {run.proposal.warnings.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {run.status === "APPROVAL_REQUIRED" && (
-              <div className="grid gap-3">
-                <div className="grid gap-3">
-                  <p className="font-medium text-ink">Hành động đề xuất</p>
-                  {actionEdits.map((action, actionIndex) => (
-                    <fieldset
-                      className="grid gap-3 rounded-control border border-border p-3"
-                      key={`${action.task_id}-${action.tool_name}-${actionIndex}`}
-                    >
-                      <legend className="px-1 text-sm font-medium">
-                        Hành động {actionIndex + 1}
-                      </legend>
-                      {Object.entries(action.arguments || {}).map(([name, value]) => {
-                        const editable =
-                          value === null || ["string", "number", "boolean"].includes(typeof value);
-                        if (!editable) {
-                          return (
-                            <p className="text-sm text-ink-muted" key={name}>
-                              {valueLabel(name)} sẽ được giữ nguyên vì có cấu trúc nhiều phần
-                            </p>
-                          );
-                        }
-                        if (typeof value === "boolean") {
-                          return (
-                            <label className="flex items-center gap-2 text-sm" key={name}>
-                              <input
-                                checked={value}
-                                type="checkbox"
-                                onChange={(event) =>
-                                  updateActionArgument(actionIndex, name, event.target.checked)
-                                }
-                              />
-                              {valueLabel(name)}
-                            </label>
-                          );
-                        }
-                        return (
-                          <label className="grid gap-2 text-sm" key={name}>
-                            {valueLabel(name)}
-                            <input
-                              className="apple-input"
-                              type={typeof value === "number" ? "number" : "text"}
-                              value={value ?? ""}
-                              onChange={(event) =>
-                                updateActionArgument(
-                                  actionIndex,
-                                  name,
-                                  typeof value === "number"
-                                    ? Number(event.target.value)
-                                    : event.target.value,
-                                )
-                              }
-                            />
-                          </label>
-                        );
-                      })}
-                    </fieldset>
-                  ))}
-                </div>
-                <label className="grid gap-2 font-medium text-ink">
+            {run.status === "AWAITING_HUMAN_DECISION" && (
+              <div className="grid gap-3 rounded-control border border-border p-3">
+                <p className="text-ink-muted">
+                  Đề xuất cần quyết định của người có thẩm quyền trước khi hệ thống áp dụng thay đổi
+                </p>
+                <label className="grid gap-2 text-sm font-medium text-ink">
                   Ghi chú quyết định
                   <textarea
                     className="apple-input min-h-20"
@@ -289,30 +248,12 @@ export default function AgentRunPanel({ project }) {
                   <button
                     className="secondary-button"
                     type="button"
-                    disabled={busy || !decisionNote.trim() || !actionEdits.length}
-                    onClick={() => decide("EDIT")}
-                  >
-                    Lưu chỉnh sửa
-                  </button>
-                  <button
-                    className="secondary-button"
-                    type="button"
                     disabled={busy || !decisionNote.trim()}
                     onClick={() => decide("REJECT")}
                   >
                     Từ chối
                   </button>
                 </div>
-              </div>
-            )}
-            {run.proposal?.verification && (
-              <div>
-                <h3 className="font-semibold text-ink">Xác minh</h3>
-                <p className="mt-1 text-ink-muted">
-                  {run.proposal.verification.verified
-                    ? "Đã xác minh kết quả"
-                    : "Xác minh kết quả chưa đạt"}
-                </p>
               </div>
             )}
           </div>

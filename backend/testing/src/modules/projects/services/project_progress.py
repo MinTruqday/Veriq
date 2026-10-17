@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from src.core.common import audit, get_project, get_project_role, new_id, now, optimistic_patch, resolve_user_reference
+from src.core.database import database
 from src.repositories.project import project_repository
 
 
@@ -24,10 +25,44 @@ def task_summary(tasks):
 
 
 async def task_summaries(project_ids):
-    tasks = await project_repository.list_tasks_for_projects(project_ids)
+    if not project_ids:
+        return {}
+    migrated = {
+        value["project_id"]
+        for value in await database.value.project_task_migrations.find(
+            {"project_id": {"$in": project_ids}}
+        ).to_list(len(project_ids))
+    }
+    legacy_tasks = await project_repository.list_tasks_for_projects(
+        [project_id for project_id in project_ids if project_id not in migrated]
+    )
+    work_items = await database.value.work_items.find(
+        {
+            "project_id": {"$in": project_ids},
+            "item_type": {"$in": ["TASK", "SUBTASK"]},
+        }
+    ).to_list(10_000)
+    workflows = await database.value.planning_workflows.find(
+        {"project_id": {"$in": project_ids}}
+    ).to_list(len(project_ids))
+    completed_statuses = {
+        workflow["project_id"]: {
+            value["key"] for value in workflow.get("statuses", []) if value.get("counts_as_completed")
+        }
+        for workflow in workflows
+    }
     grouped = {project_id: [] for project_id in project_ids}
-    for task in tasks:
+    for task in legacy_tasks:
         grouped.setdefault(task["project_id"], []).append(task)
+    for item in work_items:
+        grouped.setdefault(item["project_id"], []).append(
+            {
+                "status": "COMPLETED"
+                if item["status"] in completed_statuses.get(item["project_id"], {"DONE"})
+                else item["status"],
+                "weight": item.get("estimate") or 1,
+            }
+        )
     return {project_id: task_summary(items) for project_id, items in grouped.items()}
 
 

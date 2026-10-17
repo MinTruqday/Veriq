@@ -1,6 +1,7 @@
 import {
   agentReadRequest,
   agentRequest,
+  automationRequest,
   downloadTestingFile,
   listQuery,
   testingRequest,
@@ -14,6 +15,25 @@ export const projectTestingApi = {
   getAgentRun: (runId) => agentRequest(`/luot-chay/${runId}`),
   decideAgentRun: (runId, payload) =>
     agentRequest(`/luot-chay/${runId}/quyet-dinh`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  runAutomation: (payload) =>
+    automationRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
+  getAutomationRun: (runId) => automationRequest(`/luot-chay/${runId}`),
+  listAutomationRuns: (projectId) => automationRequest(`/du-an/${projectId}/luot-chay`),
+  retryAutomationRun: (runId, payload) =>
+    automationRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  cancelAutomationRun: (runId, payload) =>
+    automationRequest(`/luot-chay/${runId}/huy`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  decideAutomationRun: (runId, payload) =>
+    automationRequest(`/luot-chay/${runId}/quyet-dinh`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -55,6 +75,68 @@ export const projectTestingApi = {
     testingRequest(`/du-an/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   updateProjectProgress: (id, payload) =>
     testingRequest(`/du-an/${id}/tien-do`, { method: "PATCH", body: JSON.stringify(payload) }),
+  listWorkItems: (id, filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "" && value !== false)
+        params.set(key, String(value));
+    });
+    return testingRequest(`/du-an/${id}/cong-viec${params.size ? `?${params.toString()}` : ""}`);
+  },
+  createWorkItem: (id, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec`, { method: "POST", body: JSON.stringify(payload) }),
+  previewProjectTaskMigration: (id) =>
+    testingRequest(`/du-an/${id}/cong-viec/migrate-project-task/preview`),
+  migrateProjectTasks: (id, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec/migrate-project-task`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateWorkItem: (id, itemId, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  transitionWorkItem: (id, itemId, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec/${itemId}/chuyen-trang-thai`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  rankWorkItem: (id, itemId, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec/${itemId}/xep-hang`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createWorkItemDependency: (id, itemId, payload) =>
+    testingRequest(`/du-an/${id}/cong-viec/${itemId}/phu-thuoc`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  workBoard: (id) => testingRequest(`/du-an/${id}/bang-cong-viec`),
+  updateWorkBoard: (id, payload) =>
+    testingRequest(`/du-an/${id}/bang-cong-viec`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  updatePlanningWorkflow: (id, payload) =>
+    testingRequest(`/du-an/${id}/quy-trinh-cong-viec`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  roadmap: (id) => testingRequest(`/du-an/${id}/lo-trinh`),
+  listSprints: (id) => testingRequest(`/du-an/${id}/sprint`),
+  createSprint: (id, payload) =>
+    testingRequest(`/du-an/${id}/sprint`, { method: "POST", body: JSON.stringify(payload) }),
+  patchSprintScope: (id, sprintId, payload) =>
+    testingRequest(`/du-an/${id}/sprint/${sprintId}/pham-vi`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  transitionSprint: (id, sprintId, payload) =>
+    testingRequest(`/du-an/${id}/sprint/${sprintId}/chuyen-trang-thai`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listProjectTasks: (id, status = "") =>
     testingRequest(
       `/du-an/${id}/cong-viec${status ? `?status=${encodeURIComponent(status)}` : ""}`,

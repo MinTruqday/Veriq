@@ -77,6 +77,22 @@ async def setup_indexes():
                 IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("status", ASCENDING), ("updated_at", DESCENDING)]),
             ],
+            "automation_runs": [
+                IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
+                IndexModel([("requester_user_id", ASCENDING), ("updated_at", DESCENDING)]),
+                IndexModel([("status", ASCENDING), ("updated_at", DESCENDING)]),
+            ],
+            "automation_checkpoints": [
+                IndexModel([("automation_run_id", ASCENDING), ("created_at", ASCENDING)]),
+            ],
+            "automation_source_facts": [
+                IndexModel([("automation_run_id", ASCENDING), ("created_at", ASCENDING)]),
+                IndexModel([("project_id", ASCENDING), ("artifact_version_id", ASCENDING)]),
+            ],
+            "automation_derivation_receipts": [
+                IndexModel([("automation_run_id", ASCENDING)], unique=True),
+                IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)]),
+            ],
             "long_term_memory": [
                 IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)]),
                 IndexModel([("project_id", ASCENDING), ("trusted", ASCENDING)]),

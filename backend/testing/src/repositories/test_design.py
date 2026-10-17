@@ -50,12 +50,12 @@ class TestDesignRepository:
             {"_id": version_id, "project_id": project_id, "status": "ACTIVE"}
         )
 
-    async def insert_reusable_step(self, value):
-        await database.value.reusable_test_steps.insert_one(value)
+    async def insert_reusable_step(self, value, session=None):
+        await database.value.reusable_test_steps.insert_one(value, session=session)
         return value
 
-    async def insert_reusable_step_version(self, value):
-        await database.value.reusable_test_step_versions.insert_one(value)
+    async def insert_reusable_step_version(self, value, session=None):
+        await database.value.reusable_test_step_versions.insert_one(value, session=session)
         return value
 
     async def update_reusable_step(self, step_id, project_id, revision, changes):

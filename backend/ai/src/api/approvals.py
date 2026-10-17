@@ -22,7 +22,7 @@ from src.services.token_accounting import current_usage, start_accounting
 from src.tools.registry import authorize_tool, registered_tools
 
 
-router = APIRouter(prefix="/tac-tu", tags=["Phê duyệt tác tử"])
+router = APIRouter(prefix="/tac-tu", tags=["AI Automation approval compatibility"])
 
 
 @router.post("/luot-chay/{run_id}/quyet-dinh")

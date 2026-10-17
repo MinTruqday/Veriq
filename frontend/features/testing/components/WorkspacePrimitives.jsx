@@ -166,8 +166,8 @@ export function useActionDialog() {
 
 export function WorkspacePage({ title, description, actions, children }) {
   return (
-    <div className="mx-auto w-full max-w-[1480px] space-y-7 p-4 sm:p-6 md:p-9">
-      <header className="flex flex-col gap-5 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
+    <div className="mx-auto w-full max-w-[1600px] space-y-7 p-4 sm:p-6 md:p-9">
+      <header className="flex flex-col gap-5 border-b border-border pb-6 min-[1500px]:flex-row min-[1500px]:items-end min-[1500px]:justify-between">
         <div className="min-w-0">
           <h1 className="break-words text-[30px] font-semibold leading-[1.08] tracking-[-0.045em] md:text-[38px]">
             {title}
@@ -180,6 +180,33 @@ export function WorkspacePage({ title, description, actions, children }) {
       </header>
       {children}
     </div>
+  );
+}
+
+export function WorkspaceSectionNav({ items, current }) {
+  return (
+    <nav
+      className="flex gap-2 overflow-x-auto border-b border-border pb-4"
+      aria-label="Điều hướng khu vực"
+    >
+      {items.map((item) => {
+        const active = item.id === current;
+        return (
+          <Link
+            key={item.id}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            className={`shrink-0 rounded-control px-3 py-2 text-[13px] font-semibold transition ${
+              active
+                ? "bg-brand text-white"
+                : "bg-surface-quiet text-ink-muted hover:bg-brand-soft hover:text-brand"
+            }`}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 

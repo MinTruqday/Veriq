@@ -1,21 +1,28 @@
 import {
   Activity,
+  Archive,
   BrainCircuit,
   Bug,
   BarChart3,
   FileCheck2,
   FolderKanban,
   GitCompareArrows,
-  Gauge,
   LayoutDashboard,
   Network,
   PlayCircle,
   Search,
-  ShieldCheck,
-  ScanSearch,
   Settings,
   TestTube2,
   ListTodo,
+  Columns3,
+  Map,
+  Flag,
+  ClipboardCheck,
+  Database,
+  FolderTree,
+  History,
+  MessageSquareMore,
+  Puzzle,
 } from "lucide-react";
 import {
   OPERATIONS_ROUTE,
@@ -29,7 +36,7 @@ export function projectIdFromPath(pathname) {
   return match?.[1] || "";
 }
 
-export function navigationGroupsFor(pathname) {
+export function navigationGroupsFor(pathname, planningMethod = null) {
   const projectId = projectIdFromPath(pathname);
   const root = projectId ? projectRoute(projectId) : "";
   const projectItems = projectId
@@ -42,6 +49,49 @@ export function navigationGroupsFor(pathname) {
             icon: LayoutDashboard,
             permission: "project.read",
           },
+        ],
+        planning: [
+          {
+            id: "backlog",
+            label: "Danh sách chờ",
+            href: `${root}/${PROJECT_SECTION_SLUGS.planning}/backlog`,
+            icon: ListTodo,
+            permission: "project.read",
+          },
+          {
+            id: "work-board",
+            label: "Bảng công việc",
+            href: `${root}/${PROJECT_SECTION_SLUGS.planning}/board`,
+            icon: Columns3,
+            permission: "project.read",
+          },
+          ...(planningMethod === "SCRUM"
+            ? [
+                {
+                  id: "sprint",
+                  label: "Đợt lặp",
+                  href: `${root}/${PROJECT_SECTION_SLUGS.planning}/sprint`,
+                  icon: ListTodo,
+                  permission: "project.read",
+                },
+              ]
+            : []),
+          {
+            id: "roadmap",
+            label: "Lộ trình",
+            href: `${root}/${PROJECT_SECTION_SLUGS.planning}/roadmap`,
+            icon: Map,
+            permission: "project.read",
+          },
+          {
+            id: "releases",
+            label: "Bản phát hành",
+            href: `${root}/${PROJECT_SECTION_SLUGS.releases}`,
+            icon: Flag,
+            permission: "release.read",
+          },
+        ],
+        requirements: [
           {
             id: "requirements",
             label: "Yêu cầu",
@@ -50,71 +100,85 @@ export function navigationGroupsFor(pathname) {
             permission: "requirement.read",
           },
           {
-            id: "test-analysis",
-            label: "Phân tích kiểm thử",
-            href: `${root}/${PROJECT_SECTION_SLUGS.testAnalysis}`,
-            icon: ScanSearch,
-            permission: "testcondition.read",
+            id: "assurance",
+            label: "Hồ sơ đảm bảo",
+            href: `${root}/${PROJECT_SECTION_SLUGS.assurance}`,
+            icon: ClipboardCheck,
+            permission: "requirement.read",
           },
           {
-            id: "test-design",
-            label: "Thiết kế kiểm thử",
-            href: `${root}/${PROJECT_SECTION_SLUGS.testDesign}`,
-            icon: TestTube2,
-            permission: "testcase.read",
+            id: "clarifications",
+            label: "Phiếu làm rõ",
+            href: `${root}/${PROJECT_SECTION_SLUGS.clarifications}`,
+            icon: MessageSquareMore,
+            permission: "requirement.read",
           },
-          {
-            id: "project-tasks",
-            label: "Công việc dự án",
-            href: `${root}/${PROJECT_SECTION_SLUGS.projectTasks}`,
-            icon: ListTodo,
-            permission: "project.read",
-          },
-        ],
-        planning: [
-          {
-            id: "governance",
-            label: "Chiến lược kiểm thử",
-            href: `${root}/${PROJECT_SECTION_SLUGS.governance}`,
-            icon: ShieldCheck,
-            permission: "teststrategy.read",
-          },
-          {
-            id: "execution",
-            label: "Kế hoạch và thực thi",
-            href: `${root}/${PROJECT_SECTION_SLUGS.execution}`,
-            icon: PlayCircle,
-            permission: "testrun.read",
-          },
-          {
-            id: "monitoring",
-            label: "Giám sát và kiểm soát",
-            href: `${root}/${PROJECT_SECTION_SLUGS.monitoring}`,
-            icon: Gauge,
-            permission: "testmonitor.read",
-          },
-          {
-            id: "traceability",
-            label: "Truy vết",
-            href: `${root}/${PROJECT_SECTION_SLUGS.traceability}`,
-            icon: Network,
-            permission: "trace.read",
-          },
-        ],
-        quality: [
           {
             id: "changes",
-            label: "Phân tích thay đổi",
+            label: "Tác động thay đổi",
             href: `${root}/${PROJECT_SECTION_SLUGS.changes}`,
             icon: GitCompareArrows,
             permission: "impact.read",
           },
+        ],
+        design: [
           {
-            id: "ai-review",
-            label: "Rà soát đề xuất AI",
-            href: `${root}/${PROJECT_SECTION_SLUGS.aiReview}`,
+            id: "test-repository",
+            label: "Kho kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.testRepository}`,
+            icon: FolderTree,
+            permission: "testcase.read",
+          },
+          {
+            id: "test-cases",
+            label: "Ca kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.testCases}`,
+            icon: TestTube2,
+            permission: "testcase.read",
+          },
+          {
+            id: "reusable-steps",
+            label: "Bước dùng lại",
+            href: `${root}/${PROJECT_SECTION_SLUGS.reusableSteps}`,
+            icon: Puzzle,
+            permission: "testcase.read",
+          },
+          {
+            id: "test-data",
+            label: "Dữ liệu kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.testData}`,
+            icon: Database,
+            permission: "testcase.read",
+          },
+          {
+            id: "test-sets",
+            label: "Bộ kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.testSets}`,
+            icon: Archive,
+            permission: "testcase.read",
+          },
+        ],
+        execution: [
+          {
+            id: "test-plans",
+            label: "Kế hoạch kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.testPlans}`,
+            icon: ClipboardCheck,
+            permission: "testrun.read",
+          },
+          {
+            id: "test-runs",
+            label: "Lần chạy kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.testRuns}`,
+            icon: PlayCircle,
+            permission: "testrun.read",
+          },
+          {
+            id: "automation",
+            label: "Tự động hóa",
+            href: `${root}/${PROJECT_SECTION_SLUGS.automation}`,
             icon: BrainCircuit,
-            permission: "proposal.read",
+            permission: "testrun.read",
           },
           {
             id: "defects",
@@ -123,12 +187,28 @@ export function navigationGroupsFor(pathname) {
             icon: Bug,
             permission: "defect.read",
           },
+        ],
+        quality: [
+          {
+            id: "traceability",
+            label: "Truy vết",
+            href: `${root}/${PROJECT_SECTION_SLUGS.traceability}`,
+            icon: Network,
+            permission: "trace.read",
+          },
           {
             id: "reports",
             label: "Báo cáo",
             href: `${root}/${PROJECT_SECTION_SLUGS.reports}`,
             icon: BarChart3,
             permission: "report.read",
+          },
+          {
+            id: "audit",
+            label: "Nhật ký audit",
+            href: `${root}/${PROJECT_SECTION_SLUGS.audit}`,
+            icon: History,
+            permission: "project.settings.manage",
           },
         ],
         resources: [
@@ -141,14 +221,22 @@ export function navigationGroupsFor(pathname) {
           },
           {
             id: "project-settings",
-            label: "Cài đặt và nhật ký",
+            label: "Cài đặt dự án",
             href: `${root}/${PROJECT_SECTION_SLUGS.settings}`,
             icon: Activity,
             permission: "project.settings.manage",
           },
         ],
       }
-    : { project: [], planning: [], quality: [], resources: [] };
+    : {
+        project: [],
+        planning: [],
+        requirements: [],
+        design: [],
+        execution: [],
+        quality: [],
+        resources: [],
+      };
   return [
     {
       label: "Không gian làm việc",
@@ -164,8 +252,11 @@ export function navigationGroupsFor(pathname) {
       ],
     },
     { label: "Dự án", items: projectItems.project },
-    { label: "Lập kế hoạch và thực thi", items: projectItems.planning },
-    { label: "Chất lượng và thay đổi", items: projectItems.quality },
+    { label: "Lập kế hoạch", items: projectItems.planning },
+    { label: "Bảo đảm yêu cầu", items: projectItems.requirements },
+    { label: "Thiết kế kiểm thử", items: projectItems.design },
+    { label: "Kế hoạch và thực thi", items: projectItems.execution },
+    { label: "Theo dõi", items: projectItems.quality },
     { label: "Tri thức và cấu hình", items: projectItems.resources },
     {
       label: "Tài khoản",

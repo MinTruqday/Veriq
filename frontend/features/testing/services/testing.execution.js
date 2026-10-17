@@ -53,6 +53,21 @@ export const executionTestingApi = {
     const value = listQuery(query);
     return testingRequest(`/du-an/${id}/ban-phat-hanh${value ? `?${value}` : ""}`);
   },
+  createRelease: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/ban-phat-hanh`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  activateRelease: (releaseId, payload) =>
+    testingRequest(`/ban-phat-hanh/${releaseId}/kich-hoat`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  closeRelease: (releaseId, payload) =>
+    testingRequest(`/ban-phat-hanh/${releaseId}/dong`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listBuilds: (id, query = {}) => {
     const value = listQuery(query);
     return testingRequest(`/du-an/${id}/ban-dung${value ? `?${value}` : ""}`);

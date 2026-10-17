@@ -21,13 +21,10 @@ class ProjectRepository:
         return database.value.project_tasks
 
     async def create_with_memberships(self, project, memberships):
-        await self.projects.insert_one(project)
-        try:
-            await self.members.insert_many(memberships)
-        except Exception:
-            await self.members.delete_many({"project_id": project["_id"]})
-            await self.projects.delete_one({"_id": project["_id"]})
-            raise
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await self.projects.insert_one(project, session=session)
+                await self.members.insert_many(memberships, session=session)
 
     async def list_active_memberships(self, user_id, active_status, limit=5000):
         return await self.members.find(

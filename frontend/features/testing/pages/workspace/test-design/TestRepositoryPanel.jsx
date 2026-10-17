@@ -6,7 +6,7 @@ import { Panel } from "../../../components/WorkspacePrimitives";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, textDoc } from "../../../lib/testing";
 
-export default function TestRepositoryPanel({ project, can, onError }) {
+export default function TestRepositoryPanel({ project, can, onError, focus = "" }) {
   const [nodes, setNodes] = useState([]);
   const [steps, setSteps] = useState([]);
   const [nodeName, setNodeName] = useState("");
@@ -58,80 +58,90 @@ export default function TestRepositoryPanel({ project, can, onError }) {
     }
   };
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <Panel title="Kho ca kiểm thử">
-        {can("testcase.create") && (
-          <form className="mb-4 grid gap-2 md:grid-cols-3" onSubmit={createNode}>
-            <input
-              className="apple-input"
-              value={nodeName}
-              onChange={(event) => setNodeName(event.target.value)}
-              placeholder="Tên thư mục"
-              required
-            />
-            <select
-              className="apple-input"
-              value={parentId}
-              onChange={(event) => setParentId(event.target.value)}
-            >
-              <option value="">Thư mục gốc</option>
-              {nodes.map((node) => (
-                <option key={node._id} value={node._id}>
-                  {node.name}
-                </option>
-              ))}
-            </select>
-            <button className="primary-button" type="submit">
-              Tạo thư mục
-            </button>
-          </form>
-        )}
-        <DataTable
-          items={nodes}
-          empty="Chưa có thư mục kiểm thử"
-          columns={[
-            { key: "name", label: "Thư mục" },
-            {
-              key: "parent_id",
-              label: "Thuộc thư mục",
-              render: (item) => nodes.find((node) => node._id === item.parent_id)?.name || "Gốc",
-            },
-            { key: "updated_at", label: "Cập nhật" },
-          ]}
-        />
-      </Panel>
-      <Panel title="Bước dùng lại">
-        {can("testcase.create") && (
-          <form className="mb-4 grid gap-2" onSubmit={createStep}>
-            <input
-              className="apple-input"
-              value={stepName}
-              onChange={(event) => setStepName(event.target.value)}
-              placeholder="Tên bước"
-              required
-            />
-            <input
-              className="apple-input"
-              value={stepAction}
-              onChange={(event) => setStepAction(event.target.value)}
-              placeholder="Hành động"
-              required
-            />
-            <button className="primary-button w-fit" type="submit">
-              Tạo bước dùng lại
-            </button>
-          </form>
-        )}
-        <DataTable
-          items={steps}
-          empty="Chưa có bước dùng lại"
-          columns={[
-            { key: "name", label: "Tên bước" },
-            { key: "version", label: "Phiên bản" },
-            { key: "updated_at", label: "Cập nhật" },
-          ]}
-        />
-      </Panel>
+    <div className={`grid gap-5 ${focus ? "" : "xl:grid-cols-2"}`}>
+      {focus !== "reusable-steps" && (
+        <Panel
+          title="Kho ca kiểm thử"
+          description="Tổ chức ca theo nghiệp vụ, module hoặc bản phát hành"
+        >
+          {can("testcase.create") && (
+            <form className="mb-4 grid gap-2 md:grid-cols-3" onSubmit={createNode}>
+              <input
+                className="apple-input"
+                value={nodeName}
+                onChange={(event) => setNodeName(event.target.value)}
+                placeholder="Tên thư mục"
+                required
+              />
+              <select
+                className="apple-input"
+                value={parentId}
+                onChange={(event) => setParentId(event.target.value)}
+              >
+                <option value="">Thư mục gốc</option>
+                {nodes.map((node) => (
+                  <option key={node._id} value={node._id}>
+                    {node.name}
+                  </option>
+                ))}
+              </select>
+              <button className="primary-button" type="submit">
+                Tạo thư mục
+              </button>
+            </form>
+          )}
+          <DataTable
+            items={nodes}
+            empty="Chưa có thư mục kiểm thử"
+            columns={[
+              { key: "name", label: "Thư mục" },
+              {
+                key: "parent_id",
+                label: "Thuộc thư mục",
+                render: (item) => nodes.find((node) => node._id === item.parent_id)?.name || "Gốc",
+              },
+              { key: "updated_at", label: "Cập nhật" },
+            ]}
+          />
+        </Panel>
+      )}
+      {focus !== "repository" && (
+        <Panel
+          title="Bước dùng lại"
+          description="Một thay đổi tạo phiên bản mới để lịch sử ca đã phê duyệt không bị thay đổi"
+        >
+          {can("testcase.create") && (
+            <form className="mb-4 grid gap-2" onSubmit={createStep}>
+              <input
+                className="apple-input"
+                value={stepName}
+                onChange={(event) => setStepName(event.target.value)}
+                placeholder="Tên bước"
+                required
+              />
+              <input
+                className="apple-input"
+                value={stepAction}
+                onChange={(event) => setStepAction(event.target.value)}
+                placeholder="Hành động"
+                required
+              />
+              <button className="primary-button w-fit" type="submit">
+                Tạo bước dùng lại
+              </button>
+            </form>
+          )}
+          <DataTable
+            items={steps}
+            empty="Chưa có bước dùng lại"
+            columns={[
+              { key: "name", label: "Tên bước" },
+              { key: "version", label: "Phiên bản" },
+              { key: "updated_at", label: "Cập nhật" },
+            ]}
+          />
+        </Panel>
+      )}
     </div>
   );
 }

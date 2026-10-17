@@ -26,6 +26,7 @@ export default function ProjectsPage() {
     name: "",
     description: "",
     project_type: "web",
+    planning_method: "SCRUM",
     initial_qa_user_id: "",
   });
   const [creating, setCreating] = useState(false);
@@ -71,7 +72,14 @@ export default function ProjectsPage() {
         key: form.key.trim().toUpperCase(),
         name: form.name.trim(),
       });
-      setForm({ key: "", name: "", description: "", project_type: "web", initial_qa_user_id: "" });
+      setForm({
+        key: "",
+        name: "",
+        description: "",
+        project_type: "web",
+        planning_method: "SCRUM",
+        initial_qa_user_id: "",
+      });
       setCreating(false);
       setQuery("");
       setStatus("active");
@@ -124,14 +132,14 @@ export default function ProjectsPage() {
             />
           </label>
           <label className="field-label block min-w-0">
-            Email QA đầu tiên
+            Tài khoản QA đầu tiên
             <input
               className="apple-input mt-2 w-full"
               type="email"
               required
               value={form.initial_qa_user_id}
               onChange={(event) => setForm({ ...form, initial_qa_user_id: event.target.value })}
-              placeholder="qa@congty.vn"
+              placeholder="qa@congty.vn hoặc mã tài khoản QA"
             />
           </label>
           <label className="field-label block min-w-0">
@@ -159,6 +167,17 @@ export default function ProjectsPage() {
               <option value="desktop">Ứng dụng máy tính</option>
               <option value="embedded">Thiết bị nhúng</option>
               <option value="other">Khác</option>
+            </select>
+          </label>
+          <label className="field-label block min-w-0">
+            Phương thức làm việc
+            <select
+              className="apple-input mt-2 w-full"
+              value={form.planning_method}
+              onChange={(event) => setForm({ ...form, planning_method: event.target.value })}
+            >
+              <option value="SCRUM">Scrum</option>
+              <option value="KANBAN">Kanban</option>
             </select>
           </label>
           <label className="field-label block min-w-0 md:col-span-2">
@@ -313,11 +332,11 @@ export default function ProjectsPage() {
                 </Link>
                 <div className="space-y-2 text-[12px]">
                   <div className="flex justify-between gap-2">
-                    <span>Project {item.project_completion_percent ?? 0}%</span>
+                    <span>Tiến độ dự án {item.project_completion_percent ?? 0}%</span>
                     <span>
                       {item.task_summary?.completion_percent === null
                         ? "Chưa có công việc"
-                        : `Tasks ${item.task_summary?.completion_percent ?? 0}%`}
+                        : `Tiến độ công việc ${item.task_summary?.completion_percent ?? 0}%`}
                     </span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-surface-quiet">

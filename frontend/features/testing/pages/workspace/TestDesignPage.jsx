@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
 import FormalReviewPanel from "../../components/FormalReviewPanel";
@@ -13,6 +14,7 @@ import {
   Panel,
   ProjectCrumb,
   WorkspacePage,
+  WorkspaceSectionNav,
   StatusPill,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
@@ -63,8 +65,9 @@ function ChallengeProvenance({ challenges }) {
   );
 }
 
-export default function TestDesignPage({ project }) {
+export default function TestDesignPage({ project, workspaceView }) {
   const { ask, dialog } = useActionDialog();
+  const pathname = usePathname();
   const [requirements, setRequirements] = useState([]);
   const [testConditions, setTestConditions] = useState([]);
   const [scenarios, setScenarios] = useState([]);
@@ -151,6 +154,24 @@ export default function TestDesignPage({ project }) {
     );
   }, [selectedTechniques, maximumCases]);
   const can = (permission) => project.current_permissions?.includes(permission);
+  const caseTabFromPath = pathname.split("/ca-kiem-thu/")[1]?.split("/")[0];
+  const caseTab =
+    {
+      ai: "ai",
+      "kich-ban": "scenarios",
+      mau: "templates",
+      "tu-dong-hoa": "automation",
+      api: "api",
+      "nhap-xuat": "import",
+    }[caseTabFromPath] || "cases";
+  const isCaseWorkspace = workspaceView === "" || workspaceView === "cases";
+  const showCases = isCaseWorkspace && caseTab === "cases";
+  const showAi = isCaseWorkspace && caseTab === "ai";
+  const showScenarios = isCaseWorkspace && caseTab === "scenarios";
+  const showTemplates = isCaseWorkspace && caseTab === "templates";
+  const showAutomation = isCaseWorkspace && caseTab === "automation";
+  const showApi = isCaseWorkspace && caseTab === "api";
+  const showImport = isCaseWorkspace && caseTab === "import";
   const canReadTestData = project.current_permissions?.includes("testdata.read");
   const load = useCallback(async () => {
     try {
@@ -365,6 +386,101 @@ export default function TestDesignPage({ project }) {
       setError(
         reason instanceof SyntaxError ? "Bộ dữ liệu phải là JSON hợp lệ" : messageOf(reason),
       );
+    }
+  };
+  const createTestSet = async () => {
+    const answer = await ask({
+      title: "Tạo bộ kiểm thử",
+      description: "Bộ kiểm thử là tập ca có thể dùng lại trong nhiều kế hoạch kiểm thử",
+      confirmLabel: "Tạo bộ kiểm thử",
+      fields: [
+        { name: "name", label: "Tên bộ kiểm thử", required: true, autoFocus: true },
+        {
+          name: "suite_type",
+          label: "Loại bộ kiểm thử",
+          options: [
+            "smoke",
+            "regression",
+            "sanity",
+            "feature",
+            "api",
+            "ui",
+            "integration",
+            "custom",
+          ].map((value) => ({ value, label: valueLabel(value) })),
+        },
+        {
+          name: "test_case_version_ids",
+          label: "Ca kiểm thử",
+          multiple: true,
+          options: tests.map((item) => ({
+            value: item.current_version_id,
+            label: `${item.test_case_key} ${item.current_version?.title || ""}`,
+          })),
+        },
+      ],
+    });
+    if (!answer) return;
+    try {
+      await testingApi.createSuite({
+        project_id: project._id,
+        name: answer.name.trim(),
+        suite_type: answer.suite_type,
+        test_case_version_ids: answer.test_case_version_ids || [],
+      });
+      await load();
+    } catch (reason) {
+      setError(messageOf(reason));
+    }
+  };
+  const updateTestSet = async (suite) => {
+    const answer = await ask({
+      title: "Cập nhật bộ kiểm thử",
+      description: suite.name,
+      confirmLabel: "Lưu thay đổi",
+      fields: [
+        { name: "name", label: "Tên bộ kiểm thử", initialValue: suite.name, required: true },
+        {
+          name: "test_case_version_ids",
+          label: "Ca kiểm thử",
+          multiple: true,
+          initialValue: suite.test_case_version_ids || [],
+          options: tests.map((item) => ({
+            value: item.current_version_id,
+            label: `${item.test_case_key} ${item.current_version?.title || ""}`,
+          })),
+        },
+      ],
+    });
+    if (!answer) return;
+    try {
+      await testingApi.updateSuite(suite._id, {
+        expected_revision: suite.revision,
+        name: answer.name.trim(),
+        test_case_version_ids: answer.test_case_version_ids || [],
+      });
+      await load();
+    } catch (reason) {
+      setError(messageOf(reason));
+    }
+  };
+  const archiveTestSet = async (suite) => {
+    const answer = await ask({
+      title: "Lưu trữ bộ kiểm thử",
+      description: suite.name,
+      confirmLabel: "Lưu trữ",
+      danger: true,
+      fields: [{ name: "reason", label: "Lý do", required: true, multiline: true }],
+    });
+    if (!answer) return;
+    try {
+      await testingApi.archiveSuite(suite._id, {
+        expected_revision: suite.revision,
+        reason: answer.reason.trim(),
+      });
+      await load();
+    } catch (reason) {
+      setError(messageOf(reason));
     }
   };
   const generate = async () => {
@@ -650,11 +766,31 @@ export default function TestDesignPage({ project }) {
   };
   return (
     <WorkspacePage
-      title="Thiết kế kiểm thử"
+      title={
+        workspaceView === "repository"
+          ? "Kho kiểm thử"
+          : workspaceView === "cases"
+            ? {
+                cases: "Ca kiểm thử",
+                ai: "Hỗ trợ AI cho ca kiểm thử",
+                scenarios: "Kịch bản kiểm thử",
+                templates: "Mẫu ca kiểm thử",
+                automation: "Tự động hóa ca kiểm thử",
+                api: "Tích hợp API",
+                import: "Nhập và xuất ca kiểm thử",
+              }[caseTab]
+            : workspaceView === "reusable-steps"
+              ? "Bước dùng lại"
+              : workspaceView === "test-data"
+                ? "Dữ liệu kiểm thử"
+                : workspaceView === "test-sets"
+                  ? "Bộ kiểm thử"
+                  : "Thiết kế kiểm thử"
+      }
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
-          {can("testcase.create") && (
+          {showCases && can("testcase.create") && (
             <button className="apple-button" type="button" onClick={() => setCreatingTest(true)}>
               Tạo ca kiểm thử
             </button>
@@ -663,945 +799,1015 @@ export default function TestDesignPage({ project }) {
       }
     >
       {error && <ErrorState message={error} />}
-      {selectedRequirement && (
+      <WorkspaceSectionNav
+        current={workspaceView || "cases"}
+        items={[
+          { id: "repository", label: "Kho kiểm thử", href: `/du-an/${project._id}/kho-kiem-thu` },
+          { id: "cases", label: "Ca kiểm thử", href: `/du-an/${project._id}/ca-kiem-thu` },
+          {
+            id: "reusable-steps",
+            label: "Bước dùng lại",
+            href: `/du-an/${project._id}/buoc-dung-lai`,
+          },
+          {
+            id: "test-data",
+            label: "Dữ liệu kiểm thử",
+            href: `/du-an/${project._id}/du-lieu-kiem-thu`,
+          },
+          { id: "test-sets", label: "Bộ kiểm thử", href: `/du-an/${project._id}/bo-kiem-thu` },
+        ]}
+      />
+      {isCaseWorkspace && (
+        <WorkspaceSectionNav
+          current={caseTab}
+          items={[
+            { id: "cases", label: "Ca kiểm thử", href: `/du-an/${project._id}/ca-kiem-thu` },
+            {
+              id: "ai",
+              label: "Hỗ trợ AI",
+              href: `/du-an/${project._id}/ca-kiem-thu/ai`,
+            },
+            {
+              id: "scenarios",
+              label: "Kịch bản",
+              href: `/du-an/${project._id}/ca-kiem-thu/kich-ban`,
+            },
+            {
+              id: "templates",
+              label: "Mẫu",
+              href: `/du-an/${project._id}/ca-kiem-thu/mau`,
+            },
+            {
+              id: "automation",
+              label: "Tự động hóa",
+              href: `/du-an/${project._id}/ca-kiem-thu/tu-dong-hoa`,
+            },
+            { id: "api", label: "API", href: `/du-an/${project._id}/ca-kiem-thu/api` },
+            {
+              id: "import",
+              label: "Nhập và xuất",
+              href: `/du-an/${project._id}/ca-kiem-thu/nhap-xuat`,
+            },
+          ]}
+        />
+      )}
+      {showCases && selectedRequirement && (
         <TestAdequacyPanel
           requirementVersionId={selectedRequirement}
           canReview={project.current_membership?.project_role === "QA"}
         />
       )}
-      {(can("ai.generate_testcase") ||
-        can("ai.generate_scenario") ||
-        can("testcase.duplicate_check")) && (
-        <Panel title="Hỗ trợ thiết kế kiểm thử">
-          <div className="flex flex-wrap gap-3 p-5">
-            <select
-              aria-label="Yêu cầu nguồn"
-              className="apple-input min-w-72"
-              value={selectedRequirement}
-              disabled={Boolean(aiAction)}
-              onChange={(event) => {
-                setSelectedRequirement(event.target.value);
-                setSelectedTechniques([]);
-                setTechniqueAdvice(null);
-                setApprovedChallenges([]);
-                setGenerationPreview(null);
-                setSelectedGenerated([]);
-                setGeneratedReasons({});
-                setGeneratedVersionResolutions({});
-                setError("");
-              }}
-            >
-              <option value="">Chọn yêu cầu</option>
-              {requirements.map((item) => (
-                <option key={item._id} value={item.current_version_id}>
-                  {item.requirement_key} {item.current_version?.title}
-                </option>
-              ))}
-            </select>
-            {can("ai.generate_testcase") && (
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={Boolean(aiAction) || !selectedRequirement}
-                aria-busy={aiAction === "technique"}
-                onClick={recommendTechniques}
-              >
-                {aiAction === "technique" ? "AI đang đánh giá kỹ thuật" : "AI gợi ý kỹ thuật"}
-              </button>
-            )}
-            {can("ai.generate_testcase") && can("testcase.create") && (
-              <button
-                aria-busy={aiAction === "testcase"}
-                className="apple-button"
-                disabled={Boolean(aiAction) || !selectedRequirement || !selectedTechniques.length}
-                type="button"
-                onClick={generate}
-              >
-                {aiAction === "testcase" ? "AI đang tạo bản xem trước" : "Xem trước ca kiểm thử"}
-              </button>
-            )}
-            {can("ai.generate_scenario") && can("testscenario.create") && (
-              <button
-                className="secondary-button"
-                aria-busy={aiAction === "scenario"}
+      {showAi &&
+        (can("ai.generate_testcase") ||
+          can("ai.generate_scenario") ||
+          can("testcase.duplicate_check")) && (
+          <Panel title="Hỗ trợ thiết kế kiểm thử">
+            <div className="flex flex-wrap gap-3 p-5">
+              <select
+                aria-label="Yêu cầu nguồn"
+                className="apple-input min-w-72"
+                value={selectedRequirement}
                 disabled={Boolean(aiAction)}
-                type="button"
-                onClick={async () => {
-                  if (!selectedRequirement) return;
-                  setAiAction("scenario");
-                  try {
-                    await testingApi.generateScenarios(selectedRequirement, {
-                      categories: AI_TEST_GENERATION_CATEGORIES,
-                      count_per_category: 1,
-                    });
-                    await load();
-                  } catch (reason) {
-                    setError(messageOf(reason));
-                  } finally {
-                    setAiAction("");
-                  }
+                onChange={(event) => {
+                  setSelectedRequirement(event.target.value);
+                  setSelectedTechniques([]);
+                  setTechniqueAdvice(null);
+                  setApprovedChallenges([]);
+                  setGenerationPreview(null);
+                  setSelectedGenerated([]);
+                  setGeneratedReasons({});
+                  setGeneratedVersionResolutions({});
+                  setError("");
                 }}
               >
-                {aiAction === "scenario" ? "AI đang tạo kịch bản" : "Tạo kịch bản"}
-              </button>
-            )}
-            {can("testcase.duplicate_check") && can("ai.run_duplicate_check") && (
-              <button
-                className="secondary-button"
-                aria-busy={aiAction === "duplicates"}
-                disabled={Boolean(aiAction)}
-                type="button"
-                onClick={async () => {
-                  setAiAction("duplicates");
-                  try {
-                    setDuplicates(await testingApi.findDuplicates(project._id));
-                  } catch (reason) {
-                    setError(messageOf(reason));
-                  } finally {
-                    setAiAction("");
-                  }
-                }}
-              >
-                {aiAction === "duplicates"
-                  ? "Đang tìm ca kiểm thử trùng lặp"
-                  : "Tìm ca kiểm thử trùng lặp"}
-              </button>
-            )}
-          </div>
-          {can("ai.generate_testcase") && (
-            <div className="space-y-4 border-t border-border p-5">
-              <fieldset>
-                <legend className="mb-2 font-medium">Kỹ thuật thiết kế kiểm thử</legend>
-                <div className="flex flex-wrap gap-4">
-                  {[
-                    ["equivalence_partitioning", "Phân vùng tương đương"],
-                    ["boundary_value", "Giá trị biên"],
-                    ["decision_table", "Bảng quyết định"],
-                    ["state_transition", "Chuyển trạng thái"],
-                    ["error_guessing", "Dự đoán lỗi"],
-                  ].map(([value, label]) => (
-                    <label className="flex items-center gap-2 text-sm" key={value}>
-                      <input
-                        type="checkbox"
-                        checked={selectedTechniques.includes(value)}
-                        disabled={Boolean(aiAction)}
-                        onChange={(event) =>
-                          setSelectedTechniques((current) =>
-                            event.target.checked
-                              ? [...current, value]
-                              : current.filter((item) => item !== value),
-                          )
-                        }
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              <label className="field-label block max-w-48">
-                Số ca tối đa
-                <input
-                  className="apple-input mt-2"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={maximumCases}
+                <option value="">Chọn yêu cầu</option>
+                {requirements.map((item) => (
+                  <option key={item._id} value={item.current_version_id}>
+                    {item.requirement_key} {item.current_version?.title}
+                  </option>
+                ))}
+              </select>
+              {can("ai.generate_testcase") && (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={Boolean(aiAction) || !selectedRequirement}
+                  aria-busy={aiAction === "technique"}
+                  onClick={recommendTechniques}
+                >
+                  {aiAction === "technique" ? "AI đang đánh giá kỹ thuật" : "AI gợi ý kỹ thuật"}
+                </button>
+              )}
+              {can("ai.generate_testcase") && can("testcase.create") && (
+                <button
+                  aria-busy={aiAction === "testcase"}
+                  className="apple-button"
+                  disabled={Boolean(aiAction) || !selectedRequirement || !selectedTechniques.length}
+                  type="button"
+                  onClick={generate}
+                >
+                  {aiAction === "testcase" ? "AI đang tạo bản xem trước" : "Xem trước ca kiểm thử"}
+                </button>
+              )}
+              {can("ai.generate_scenario") && can("testscenario.create") && (
+                <button
+                  className="secondary-button"
+                  aria-busy={aiAction === "scenario"}
                   disabled={Boolean(aiAction)}
-                  onChange={(event) => setMaximumCases(Number(event.target.value))}
-                />
-              </label>
-              {techniqueAdvice?.items.some(
-                (item) =>
-                  selectedTechniques.includes(item.technique) &&
-                  approvedChallenges.includes(item.technique) &&
-                  item.challenge,
-              ) && (
-                <p className="text-sm text-ink-muted">
-                  Khi tạo ca AI sẽ thử xử lý giả thuyết lỗi đã chọn Giả thuyết không thay thế tài
-                  liệu nguồn
-                </p>
+                  type="button"
+                  onClick={async () => {
+                    if (!selectedRequirement) return;
+                    setAiAction("scenario");
+                    try {
+                      await testingApi.generateScenarios(selectedRequirement, {
+                        categories: AI_TEST_GENERATION_CATEGORIES,
+                        count_per_category: 1,
+                      });
+                      await load();
+                    } catch (reason) {
+                      setError(messageOf(reason));
+                    } finally {
+                      setAiAction("");
+                    }
+                  }}
+                >
+                  {aiAction === "scenario" ? "AI đang tạo kịch bản" : "Tạo kịch bản"}
+                </button>
               )}
-              {techniqueAdvice && (
-                <div className="space-y-3">
-                  {techniqueAdvice.items.some((item) => item.suitability === "recommended") ? (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={Boolean(aiAction)}
-                      onClick={() =>
-                        setSelectedTechniques(
-                          techniqueAdvice.items
-                            .filter((item) => item.suitability === "recommended")
-                            .map((item) => item.technique),
-                        )
-                      }
-                    >
-                      Chọn các kỹ thuật AI khuyến nghị
-                    </button>
-                  ) : (
-                    <p className="text-sm text-ink-muted">
-                      AI chưa có kỹ thuật khuyến nghị từ bằng chứng hiện có Bạn có thể tự chọn kỹ
-                      thuật được đánh dấu Có thể dùng sau khi xem phần còn thiếu
-                    </p>
-                  )}
-                  {!!techniqueAdvice.warnings?.length && (
-                    <div className="text-sm text-ink-muted">
-                      {techniqueAdvice.warnings.map((warning, index) => (
-                        <p key={index}>{warning}</p>
-                      ))}
-                    </div>
-                  )}
-                  {techniqueAdvice.items.map((item) => (
-                    <div
-                      className="rounded-control border border-border p-3 text-sm"
-                      key={item.technique}
-                    >
-                      <p className="font-medium">
-                        {valueLabel(item.technique)} {valueLabel(item.suitability)}
-                      </p>
-                      <p>{item.rationale}</p>
-                      {!!item.expected_coverage?.length && (
-                        <p>Phần bao phủ dự kiến {item.expected_coverage.join("  ")}</p>
-                      )}
-                      {!!item.existing_coverage_refs?.length && (
-                        <p>Ca đã bao phủ {item.existing_coverage_refs.join("  ")}</p>
-                      )}
-                      {!!item.incremental_coverage?.length && (
-                        <p>Phần có thể bổ sung {item.incremental_coverage.join("  ")}</p>
-                      )}
-                      {!!item.missing_information?.length && (
-                        <p>Còn thiếu {item.missing_information.join("  ")}</p>
-                      )}
-                      {item.challenge && (
-                        <div className="mt-3 space-y-1 border-t border-border pt-3">
-                          <p className="font-medium">Giả thuyết lỗi có thể lọt qua bộ ca hiện có</p>
-                          <p>Hành vi sai giả định {item.challenge.hypothetical_fault}</p>
-                          <p>Đầu vào phân biệt {item.challenge.distinguishing_input}</p>
-                          <p>
-                            Kết quả AI đề xuất cần QA đối chiếu nguồn{" "}
-                            {item.challenge.expected_result}
-                          </p>
-                          <p>Đoạn nguồn {item.challenge.source_quote}</p>
-                          {!!item.challenge.existing_case_refs?.length && (
-                            <details className="rounded-control border border-border p-3">
-                              <summary className="cursor-pointer font-medium">
-                                Đối chiếu {item.challenge.existing_case_refs.length} ca hiện có
-                              </summary>
-                              <div className="mt-2 space-y-3">
-                                {item.challenge.existing_case_refs.map((reference) => {
-                                  const citedCase = techniqueAdvice.evidence?.find(
-                                    (evidence) =>
-                                      evidence.artifact_type === "existing_test_case" &&
-                                      evidence.artifact_version_id === reference,
-                                  );
-                                  return (
-                                    <div className="border-t border-border pt-2" key={reference}>
-                                      <p className="font-medium">{reference}</p>
-                                      <p className="whitespace-pre-wrap break-words">
-                                        {citedCase?.text || "Không còn nội dung ca để đối chiếu"}
-                                      </p>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </details>
-                          )}
-                          <p className="text-ink-muted">
-                            Đây là giả thuyết cần QA xác nhận Chưa phải lỗi đã được chứng minh
-                          </p>
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={approvedChallenges.includes(item.technique)}
-                              disabled={
-                                Boolean(aiAction) || !selectedTechniques.includes(item.technique)
-                              }
-                              onChange={(event) =>
-                                setApprovedChallenges((current) =>
-                                  event.target.checked
-                                    ? [...current, item.technique]
-                                    : current.filter((technique) => technique !== item.technique),
-                                )
-                              }
-                            />
-                            Tập trung vào giả thuyết này khi tạo ca kiểm thử
-                          </label>
-                          {!selectedTechniques.includes(item.technique) && (
-                            <p className="text-ink-muted">
-                              Chọn kỹ thuật này trước khi xác nhận giả thuyết
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      <p className="text-ink-muted">Dẫn chứng {item.evidence_refs.join("  ")}</p>
-                    </div>
-                  ))}
-                </div>
+              {can("testcase.duplicate_check") && can("ai.run_duplicate_check") && (
+                <button
+                  className="secondary-button"
+                  aria-busy={aiAction === "duplicates"}
+                  disabled={Boolean(aiAction)}
+                  type="button"
+                  onClick={async () => {
+                    setAiAction("duplicates");
+                    try {
+                      setDuplicates(await testingApi.findDuplicates(project._id));
+                    } catch (reason) {
+                      setError(messageOf(reason));
+                    } finally {
+                      setAiAction("");
+                    }
+                  }}
+                >
+                  {aiAction === "duplicates"
+                    ? "Đang tìm ca kiểm thử trùng lặp"
+                    : "Tìm ca kiểm thử trùng lặp"}
+                </button>
               )}
-              {generationPreview && (
-                <div className="space-y-3 border-t border-border pt-4">
-                  <p className="font-medium">Bản xem trước chưa được lưu</p>
-                  {!!generationPreview.grounding_findings?.length && (
-                    <div className="rounded-control border border-warning bg-warning/10 p-3 text-sm">
-                      <p className="font-medium">Cần đối chiếu dẫn chứng trước khi lưu</p>
-                      {generationPreview.grounding_findings.map((finding) => (
-                        <p key={finding.case_index}>
-                          Ca {finding.case_index + 1} cần QA xem lại{" "}
-                          {finding.unsupported_claims.join("  ")}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  {!!generationPreview.challenge_hypotheses?.length && (
-                    <div className="rounded-control border border-border p-3 text-sm">
-                      {generationPreview.challenge_hypotheses.map((challenge) => (
-                        <div key={challenge.technique}>
-                          <p className="font-medium">Giả thuyết QA đã chọn để thử</p>
-                          <p>Đầu vào phân biệt {challenge.distinguishing_input}</p>
-                          <p>
-                            Kết quả AI đề xuất cần QA đối chiếu nguồn {challenge.expected_result}
-                          </p>
-                          <p className="text-ink-muted">
-                            AI được yêu cầu tập trung vào giả thuyết này QA vẫn cần xác nhận ca bên
-                            dưới thực sự phân biệt được hành vi sai
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {criterionCoverage && (
-                    <div className="rounded-control border border-border p-3 text-sm">
-                      {criterionCoverage.criterion_ids.length ? (
-                        <>
-                          <p>
-                            Tiêu chí có ca đang hiệu lực{" "}
-                            {criterionCoverage.linked_criterion_ids.length}/
-                            {criterionCoverage.criterion_ids.length}
-                          </p>
-                          <p>
-                            Nếu lưu bản nháp đã chọn sẽ có liên kết {selectedCriterionIds.size}/
-                            {criterionCoverage.criterion_ids.length}
-                          </p>
-                          {!!remainingCriterionIds.length && (
-                            <p>
-                              Còn chưa có ca liên kết{" "}
-                              {remainingCriterionIds.map(criterionLabel).join("  ")}
-                            </p>
-                          )}
-                          <p className="text-ink-muted">
-                            Liên kết của bản nháp chưa phải ca đang hiệu lực Chất lượng kiểm thử vẫn
-                            cần được rà soát
-                          </p>
-                        </>
-                      ) : (
-                        <p>Yêu cầu chưa có tiêu chí chấp nhận để đối chiếu liên kết ca kiểm thử</p>
-                      )}
-                    </div>
-                  )}
-                  {generationPreview.items.map((item, index) => (
-                    <div
-                      className="flex gap-3 rounded-control border border-border p-3 text-sm"
-                      key={index}
-                    >
-                      <input
-                        type="checkbox"
-                        aria-label={`Lưu ca kiểm thử ${item.draft.title}`}
-                        checked={selectedGenerated.includes(index)}
-                        onChange={(event) =>
-                          setSelectedGenerated((current) =>
-                            event.target.checked
-                              ? [...current, index]
-                              : current.filter((value) => value !== index),
+            </div>
+            {can("ai.generate_testcase") && (
+              <div className="space-y-4 border-t border-border p-5">
+                <fieldset>
+                  <legend className="mb-2 font-medium">Kỹ thuật thiết kế kiểm thử</legend>
+                  <div className="flex flex-wrap gap-4">
+                    {[
+                      ["equivalence_partitioning", "Phân vùng tương đương"],
+                      ["boundary_value", "Giá trị biên"],
+                      ["decision_table", "Bảng quyết định"],
+                      ["state_transition", "Chuyển trạng thái"],
+                      ["error_guessing", "Dự đoán lỗi"],
+                    ].map(([value, label]) => (
+                      <label className="flex items-center gap-2 text-sm" key={value}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTechniques.includes(value)}
+                          disabled={Boolean(aiAction)}
+                          onChange={(event) =>
+                            setSelectedTechniques((current) =>
+                              event.target.checked
+                                ? [...current, value]
+                                : current.filter((item) => item !== value),
+                            )
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <label className="field-label block max-w-48">
+                  Số ca tối đa
+                  <input
+                    className="apple-input mt-2"
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={maximumCases}
+                    disabled={Boolean(aiAction)}
+                    onChange={(event) => setMaximumCases(Number(event.target.value))}
+                  />
+                </label>
+                {techniqueAdvice?.items.some(
+                  (item) =>
+                    selectedTechniques.includes(item.technique) &&
+                    approvedChallenges.includes(item.technique) &&
+                    item.challenge,
+                ) && (
+                  <p className="text-sm text-ink-muted">
+                    Khi tạo ca AI sẽ thử xử lý giả thuyết lỗi đã chọn Giả thuyết không thay thế tài
+                    liệu nguồn
+                  </p>
+                )}
+                {techniqueAdvice && (
+                  <div className="space-y-3">
+                    {techniqueAdvice.items.some((item) => item.suitability === "recommended") ? (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={Boolean(aiAction)}
+                        onClick={() =>
+                          setSelectedTechniques(
+                            techniqueAdvice.items
+                              .filter((item) => item.suitability === "recommended")
+                              .map((item) => item.technique),
                           )
                         }
-                      />
-                      <span>
-                        <span className="block font-medium">{item.draft.title}</span>
-                        <span className="block">
-                          Kỹ thuật {item.draft.techniques.map(valueLabel).join("  ")}
-                        </span>
-                        {docText(item.draft.preconditions_doc) && (
-                          <span className="block">
-                            Điều kiện {docText(item.draft.preconditions_doc)}
-                          </span>
-                        )}
-                        {(item.draft.steps || []).map((step) => (
-                          <span className="block" key={step.id}>
-                            Bước {step.order} {docText(step.action_doc)} Kết quả{" "}
-                            {docText(step.expected_doc)}
-                          </span>
+                      >
+                        Chọn các kỹ thuật AI khuyến nghị
+                      </button>
+                    ) : (
+                      <p className="text-sm text-ink-muted">
+                        AI chưa có kỹ thuật khuyến nghị từ bằng chứng hiện có Bạn có thể tự chọn kỹ
+                        thuật được đánh dấu Có thể dùng sau khi xem phần còn thiếu
+                      </p>
+                    )}
+                    {!!techniqueAdvice.warnings?.length && (
+                      <div className="text-sm text-ink-muted">
+                        {techniqueAdvice.warnings.map((warning, index) => (
+                          <p key={index}>{warning}</p>
                         ))}
-                        <span className="block">
-                          Kết quả cuối {docText(item.draft.expected_result_doc)}
-                        </span>
-                        <span className="block">
-                          Mục cần kiểm chứng {item.coverage_obligations.join("  ")}
-                        </span>
-                        {!!item.challenge_techniques?.length && (
-                          <span className="block">
-                            AI cho rằng ca này nhắm tới giả thuyết thuộc kỹ thuật{" "}
-                            {item.challenge_techniques.map(valueLabel).join("  ")}
-                          </span>
+                      </div>
+                    )}
+                    {techniqueAdvice.items.map((item) => (
+                      <div
+                        className="rounded-control border border-border p-3 text-sm"
+                        key={item.technique}
+                      >
+                        <p className="font-medium">
+                          {valueLabel(item.technique)} {valueLabel(item.suitability)}
+                        </p>
+                        <p>{item.rationale}</p>
+                        {!!item.expected_coverage?.length && (
+                          <p>Phần bao phủ dự kiến {item.expected_coverage.join("  ")}</p>
                         )}
-                        {!!item.new_criterion_ids?.length && (
-                          <span className="block">
-                            Tiêu chí chưa có ca liên kết{" "}
-                            {item.new_criterion_ids.map(criterionLabel).join("  ")}
-                          </span>
+                        {!!item.existing_coverage_refs?.length && (
+                          <p>Ca đã bao phủ {item.existing_coverage_refs.join("  ")}</p>
                         )}
-                        {selectedGenerated.includes(index) &&
-                          !!criterionIdsLostWithout(index).length && (
-                            <span className="block">
-                              Nếu bỏ ca này sẽ thiếu liên kết cho{" "}
-                              {criterionIdsLostWithout(index).map(criterionLabel).join("  ")}
-                            </span>
-                          )}
-                        <span className="block">Dẫn chứng {item.evidence_refs.join("  ")}</span>
-                        {!!item.evidence_quotes?.length && (
-                          <span className="block">
-                            Trích dẫn {item.evidence_quotes.map((quote) => quote.quote).join("  ")}
-                          </span>
+                        {!!item.incremental_coverage?.length && (
+                          <p>Phần có thể bổ sung {item.incremental_coverage.join("  ")}</p>
                         )}
-                        {!!relevantGeneratedMatches(item, selectedGenerated).length && (
-                          <span className="block text-ink-muted">
-                            Ca hiện có gần giống{" "}
-                            {relevantGeneratedMatches(item, selectedGenerated)
-                              .map((caseItem) =>
-                                caseItem.id.startsWith("preview:")
-                                  ? `Ca ${Number(caseItem.id.slice(8)) + 1} trong bản xem trước`
-                                  : caseItem.title || caseItem.id,
-                              )
-                              .join("  ")}
-                          </span>
+                        {!!item.missing_information?.length && (
+                          <p>Còn thiếu {item.missing_information.join("  ")}</p>
                         )}
-                        {!!relevantGeneratedMatches(item, selectedGenerated).length &&
-                          selectedGenerated.includes(index) && (
-                            <span className="mt-2 block space-y-2">
-                              <select
-                                className="apple-input"
-                                aria-label={`Cách xử lý ca do AI tạo ${index + 1}`}
-                                value={generatedVersionResolutions[index]?.target_version_id || ""}
-                                onChange={(event) =>
-                                  setGeneratedVersionResolutions((current) => ({
-                                    ...current,
-                                    [index]: {
-                                      target_version_id: event.target.value,
-                                      reason: current[index]?.reason || "",
-                                    },
-                                  }))
-                                }
-                              >
-                                <option value="">Tạo ca riêng</option>
-                                {relevantGeneratedMatches(item, selectedGenerated)
-                                  .filter((match) => match.target_version_id)
-                                  .map((match) => (
-                                    <option key={match.id} value={match.target_version_id}>
-                                      Tạo phiên bản mới của {match.title || match.id}
-                                    </option>
-                                  ))}
-                              </select>
+                        {item.challenge && (
+                          <div className="mt-3 space-y-1 border-t border-border pt-3">
+                            <p className="font-medium">
+                              Giả thuyết lỗi có thể lọt qua bộ ca hiện có
+                            </p>
+                            <p>Hành vi sai giả định {item.challenge.hypothetical_fault}</p>
+                            <p>Đầu vào phân biệt {item.challenge.distinguishing_input}</p>
+                            <p>
+                              Kết quả AI đề xuất cần QA đối chiếu nguồn{" "}
+                              {item.challenge.expected_result}
+                            </p>
+                            <p>Đoạn nguồn {item.challenge.source_quote}</p>
+                            {!!item.challenge.existing_case_refs?.length && (
+                              <details className="rounded-control border border-border p-3">
+                                <summary className="cursor-pointer font-medium">
+                                  Đối chiếu {item.challenge.existing_case_refs.length} ca hiện có
+                                </summary>
+                                <div className="mt-2 space-y-3">
+                                  {item.challenge.existing_case_refs.map((reference) => {
+                                    const citedCase = techniqueAdvice.evidence?.find(
+                                      (evidence) =>
+                                        evidence.artifact_type === "existing_test_case" &&
+                                        evidence.artifact_version_id === reference,
+                                    );
+                                    return (
+                                      <div className="border-t border-border pt-2" key={reference}>
+                                        <p className="font-medium">{reference}</p>
+                                        <p className="whitespace-pre-wrap break-words">
+                                          {citedCase?.text || "Không còn nội dung ca để đối chiếu"}
+                                        </p>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </details>
+                            )}
+                            <p className="text-ink-muted">
+                              Đây là giả thuyết cần QA xác nhận Chưa phải lỗi đã được chứng minh
+                            </p>
+                            <label className="flex items-center gap-2">
                               <input
-                                className="apple-input"
-                                aria-label={`Lý do xử lý ca do AI tạo ${index + 1}`}
-                                value={
-                                  generatedVersionResolutions[index]?.target_version_id
-                                    ? generatedVersionResolutions[index]?.reason || ""
-                                    : generatedReasons[index] || ""
+                                type="checkbox"
+                                checked={approvedChallenges.includes(item.technique)}
+                                disabled={
+                                  Boolean(aiAction) || !selectedTechniques.includes(item.technique)
                                 }
                                 onChange={(event) =>
-                                  generatedVersionResolutions[index]?.target_version_id
-                                    ? setGeneratedVersionResolutions((current) => ({
-                                        ...current,
-                                        [index]: { ...current[index], reason: event.target.value },
-                                      }))
-                                    : setGeneratedReasons((current) => ({
-                                        ...current,
-                                        [index]: event.target.value,
-                                      }))
+                                  setApprovedChallenges((current) =>
+                                    event.target.checked
+                                      ? [...current, item.technique]
+                                      : current.filter((technique) => technique !== item.technique),
+                                  )
                                 }
                               />
+                              Tập trung vào giả thuyết này khi tạo ca kiểm thử
+                            </label>
+                            {!selectedTechniques.includes(item.technique) && (
+                              <p className="text-ink-muted">
+                                Chọn kỹ thuật này trước khi xác nhận giả thuyết
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-ink-muted">Dẫn chứng {item.evidence_refs.join("  ")}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {generationPreview && (
+                  <div className="space-y-3 border-t border-border pt-4">
+                    <p className="font-medium">Bản xem trước chưa được lưu</p>
+                    {!!generationPreview.grounding_findings?.length && (
+                      <div className="rounded-control border border-warning bg-warning/10 p-3 text-sm">
+                        <p className="font-medium">Cần đối chiếu dẫn chứng trước khi lưu</p>
+                        {generationPreview.grounding_findings.map((finding) => (
+                          <p key={finding.case_index}>
+                            Ca {finding.case_index + 1} cần QA xem lại{" "}
+                            {finding.unsupported_claims.join("  ")}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {!!generationPreview.challenge_hypotheses?.length && (
+                      <div className="rounded-control border border-border p-3 text-sm">
+                        {generationPreview.challenge_hypotheses.map((challenge) => (
+                          <div key={challenge.technique}>
+                            <p className="font-medium">Giả thuyết QA đã chọn để thử</p>
+                            <p>Đầu vào phân biệt {challenge.distinguishing_input}</p>
+                            <p>
+                              Kết quả AI đề xuất cần QA đối chiếu nguồn {challenge.expected_result}
+                            </p>
+                            <p className="text-ink-muted">
+                              AI được yêu cầu tập trung vào giả thuyết này QA vẫn cần xác nhận ca
+                              bên dưới thực sự phân biệt được hành vi sai
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {criterionCoverage && (
+                      <div className="rounded-control border border-border p-3 text-sm">
+                        {criterionCoverage.criterion_ids.length ? (
+                          <>
+                            <p>
+                              Tiêu chí có ca đang hiệu lực{" "}
+                              {criterionCoverage.linked_criterion_ids.length}/
+                              {criterionCoverage.criterion_ids.length}
+                            </p>
+                            <p>
+                              Nếu lưu bản nháp đã chọn sẽ có liên kết {selectedCriterionIds.size}/
+                              {criterionCoverage.criterion_ids.length}
+                            </p>
+                            {!!remainingCriterionIds.length && (
+                              <p>
+                                Còn chưa có ca liên kết{" "}
+                                {remainingCriterionIds.map(criterionLabel).join("  ")}
+                              </p>
+                            )}
+                            <p className="text-ink-muted">
+                              Liên kết của bản nháp chưa phải ca đang hiệu lực Chất lượng kiểm thử
+                              vẫn cần được rà soát
+                            </p>
+                          </>
+                        ) : (
+                          <p>
+                            Yêu cầu chưa có tiêu chí chấp nhận để đối chiếu liên kết ca kiểm thử
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {generationPreview.items.map((item, index) => (
+                      <div
+                        className="flex gap-3 rounded-control border border-border p-3 text-sm"
+                        key={index}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={`Lưu ca kiểm thử ${item.draft.title}`}
+                          checked={selectedGenerated.includes(index)}
+                          onChange={(event) =>
+                            setSelectedGenerated((current) =>
+                              event.target.checked
+                                ? [...current, index]
+                                : current.filter((value) => value !== index),
+                            )
+                          }
+                        />
+                        <span>
+                          <span className="block font-medium">{item.draft.title}</span>
+                          <span className="block">
+                            Kỹ thuật {item.draft.techniques.map(valueLabel).join("  ")}
+                          </span>
+                          {docText(item.draft.preconditions_doc) && (
+                            <span className="block">
+                              Điều kiện {docText(item.draft.preconditions_doc)}
                             </span>
                           )}
-                      </span>
-                    </div>
-                  ))}
-                  <button
-                    className="apple-button"
-                    type="button"
-                    disabled={
-                      !selectedGenerated.length ||
-                      Boolean(aiAction) ||
-                      selectedGenerated.some(
-                        (index) =>
-                          relevantGeneratedMatches(
-                            generationPreview.items[index],
-                            selectedGenerated,
-                          ).length &&
-                          (generatedVersionResolutions[index]?.target_version_id
-                            ? (generatedVersionResolutions[index]?.reason || "").trim().length < 2
-                            : (generatedReasons[index] || "").trim().length < 2),
-                      )
-                    }
-                    aria-busy={aiAction === "saving-generated"}
-                    onClick={saveGenerated}
-                  >
-                    {aiAction === "saving-generated"
-                      ? "Đang lưu ca đã chọn"
-                      : "Lưu ca kiểm thử đã chọn"}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </Panel>
+                          {(item.draft.steps || []).map((step) => (
+                            <span className="block" key={step.id}>
+                              Bước {step.order} {docText(step.action_doc)} Kết quả{" "}
+                              {docText(step.expected_doc)}
+                            </span>
+                          ))}
+                          <span className="block">
+                            Kết quả cuối {docText(item.draft.expected_result_doc)}
+                          </span>
+                          <span className="block">
+                            Mục cần kiểm chứng {item.coverage_obligations.join("  ")}
+                          </span>
+                          {!!item.challenge_techniques?.length && (
+                            <span className="block">
+                              AI cho rằng ca này nhắm tới giả thuyết thuộc kỹ thuật{" "}
+                              {item.challenge_techniques.map(valueLabel).join("  ")}
+                            </span>
+                          )}
+                          {!!item.new_criterion_ids?.length && (
+                            <span className="block">
+                              Tiêu chí chưa có ca liên kết{" "}
+                              {item.new_criterion_ids.map(criterionLabel).join("  ")}
+                            </span>
+                          )}
+                          {selectedGenerated.includes(index) &&
+                            !!criterionIdsLostWithout(index).length && (
+                              <span className="block">
+                                Nếu bỏ ca này sẽ thiếu liên kết cho{" "}
+                                {criterionIdsLostWithout(index).map(criterionLabel).join("  ")}
+                              </span>
+                            )}
+                          <span className="block">Dẫn chứng {item.evidence_refs.join("  ")}</span>
+                          {!!item.evidence_quotes?.length && (
+                            <span className="block">
+                              Trích dẫn{" "}
+                              {item.evidence_quotes.map((quote) => quote.quote).join("  ")}
+                            </span>
+                          )}
+                          {!!relevantGeneratedMatches(item, selectedGenerated).length && (
+                            <span className="block text-ink-muted">
+                              Ca hiện có gần giống{" "}
+                              {relevantGeneratedMatches(item, selectedGenerated)
+                                .map((caseItem) =>
+                                  caseItem.id.startsWith("preview:")
+                                    ? `Ca ${Number(caseItem.id.slice(8)) + 1} trong bản xem trước`
+                                    : caseItem.title || caseItem.id,
+                                )
+                                .join("  ")}
+                            </span>
+                          )}
+                          {!!relevantGeneratedMatches(item, selectedGenerated).length &&
+                            selectedGenerated.includes(index) && (
+                              <span className="mt-2 block space-y-2">
+                                <select
+                                  className="apple-input"
+                                  aria-label={`Cách xử lý ca do AI tạo ${index + 1}`}
+                                  value={
+                                    generatedVersionResolutions[index]?.target_version_id || ""
+                                  }
+                                  onChange={(event) =>
+                                    setGeneratedVersionResolutions((current) => ({
+                                      ...current,
+                                      [index]: {
+                                        target_version_id: event.target.value,
+                                        reason: current[index]?.reason || "",
+                                      },
+                                    }))
+                                  }
+                                >
+                                  <option value="">Tạo ca riêng</option>
+                                  {relevantGeneratedMatches(item, selectedGenerated)
+                                    .filter((match) => match.target_version_id)
+                                    .map((match) => (
+                                      <option key={match.id} value={match.target_version_id}>
+                                        Tạo phiên bản mới của {match.title || match.id}
+                                      </option>
+                                    ))}
+                                </select>
+                                <input
+                                  className="apple-input"
+                                  aria-label={`Lý do xử lý ca do AI tạo ${index + 1}`}
+                                  value={
+                                    generatedVersionResolutions[index]?.target_version_id
+                                      ? generatedVersionResolutions[index]?.reason || ""
+                                      : generatedReasons[index] || ""
+                                  }
+                                  onChange={(event) =>
+                                    generatedVersionResolutions[index]?.target_version_id
+                                      ? setGeneratedVersionResolutions((current) => ({
+                                          ...current,
+                                          [index]: {
+                                            ...current[index],
+                                            reason: event.target.value,
+                                          },
+                                        }))
+                                      : setGeneratedReasons((current) => ({
+                                          ...current,
+                                          [index]: event.target.value,
+                                        }))
+                                  }
+                                />
+                              </span>
+                            )}
+                        </span>
+                      </div>
+                    ))}
+                    <button
+                      className="apple-button"
+                      type="button"
+                      disabled={
+                        !selectedGenerated.length ||
+                        Boolean(aiAction) ||
+                        selectedGenerated.some(
+                          (index) =>
+                            relevantGeneratedMatches(
+                              generationPreview.items[index],
+                              selectedGenerated,
+                            ).length &&
+                            (generatedVersionResolutions[index]?.target_version_id
+                              ? (generatedVersionResolutions[index]?.reason || "").trim().length < 2
+                              : (generatedReasons[index] || "").trim().length < 2),
+                        )
+                      }
+                      aria-busy={aiAction === "saving-generated"}
+                      onClick={saveGenerated}
+                    >
+                      {aiAction === "saving-generated"
+                        ? "Đang lưu ca đã chọn"
+                        : "Lưu ca kiểm thử đã chọn"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </Panel>
+        )}
+      {showTemplates && can("testcase.template.read") && (
+        <TestCaseTemplatesPanel project={project} />
       )}
-      {can("testcase.template.read") && <TestCaseTemplatesPanel project={project} />}
-      <SpecializedDesignPanel project={project} requirements={requirements} />
-      <AutomationScriptsPanel project={project} tests={tests} />
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="Bản nháp ca kiểm thử">
-          <DataTable
-            onSelect={(item) => setSelectedDraftId(item._id)}
-            items={drafts}
-            empty="Chưa có bản nháp"
-            columns={[
-              { key: "test_case_key", label: "Mã" },
-              { key: "title", label: "Tên" },
-              { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-              {
-                key: "action",
-                label: "Duyệt",
-                render: (item) => (
-                  <span className="flex flex-wrap gap-2">
-                    {item.status === "DRAFT" && can("testcase.submit_review") && (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void reviewDraft(item, "submit");
-                        }}
-                      >
-                        Gửi rà soát
-                      </button>
-                    )}
-                    {item.status === "IN_REVIEW" && can("testcase.review") && (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void reviewDraft(item, "changes");
-                        }}
-                      >
-                        Yêu cầu sửa
-                      </button>
-                    )}
-                    {item.status === "IN_REVIEW" && can("testcase.approve") && (
-                      <button
-                        className="apple-button"
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void freeze(item);
-                        }}
-                      >
-                        Phê duyệt
-                      </button>
-                    )}
-                  </span>
-                ),
-              },
-            ]}
-          />
-        </Panel>
-        <Panel
-          title="Phiên bản ca kiểm thử"
-          actions={
-            <div className="flex flex-wrap gap-2">
-              {selectedTestIds.length > 0 && can("testcase.bulk.update") && (
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={async () => {
-                    const answer = await ask({
-                      title: "Cập nhật nhãn ca kiểm thử",
-                      description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
-                      confirmLabel: "Cập nhật",
-                      fields: [
-                        {
-                          name: "add",
-                          label: "Nhãn cần thêm phân cách bằng dấu phẩy",
-                          autoFocus: true,
-                        },
-                        { name: "remove", label: "Nhãn cần gỡ phân cách bằng dấu phẩy" },
-                      ],
-                    });
-                    if (!answer) return;
-                    const splitTags = (value) =>
-                      value
-                        .split(",")
-                        .map((item) => item.trim())
-                        .filter(Boolean);
-                    try {
-                      await testingApi.bulkTags(project._id, {
-                        artifact_type: "test_case",
-                        ids: selectedTestIds,
-                        add_tags: splitTags(answer.add),
-                        remove_tags: splitTags(answer.remove),
-                        idempotency_key: crypto.randomUUID(),
+      {showScenarios && <SpecializedDesignPanel project={project} requirements={requirements} />}
+      {showAutomation && <AutomationScriptsPanel project={project} tests={tests} />}
+      {showCases && (
+        <div className="grid gap-5 xl:grid-cols-2">
+          <Panel title="Bản nháp ca kiểm thử">
+            <DataTable
+              onSelect={(item) => setSelectedDraftId(item._id)}
+              items={drafts}
+              empty="Chưa có bản nháp"
+              columns={[
+                { key: "test_case_key", label: "Mã" },
+                { key: "title", label: "Tên" },
+                { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
+                {
+                  key: "status",
+                  label: "Trạng thái",
+                  render: (item) => <StatusPill value={item.status} />,
+                },
+                {
+                  key: "action",
+                  label: "Duyệt",
+                  render: (item) => (
+                    <span className="flex flex-wrap gap-2">
+                      {item.status === "DRAFT" && can("testcase.submit_review") && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void reviewDraft(item, "submit");
+                          }}
+                        >
+                          Gửi rà soát
+                        </button>
+                      )}
+                      {item.status === "IN_REVIEW" && can("testcase.review") && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void reviewDraft(item, "changes");
+                          }}
+                        >
+                          Yêu cầu sửa
+                        </button>
+                      )}
+                      {item.status === "IN_REVIEW" && can("testcase.approve") && (
+                        <button
+                          className="apple-button"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void freeze(item);
+                          }}
+                        >
+                          Phê duyệt
+                        </button>
+                      )}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          </Panel>
+          <Panel
+            title="Phiên bản ca kiểm thử"
+            actions={
+              <div className="flex flex-wrap gap-2">
+                {selectedTestIds.length > 0 && can("testcase.bulk.update") && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={async () => {
+                      const answer = await ask({
+                        title: "Cập nhật nhãn ca kiểm thử",
+                        description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
+                        confirmLabel: "Cập nhật",
+                        fields: [
+                          {
+                            name: "add",
+                            label: "Nhãn cần thêm phân cách bằng dấu phẩy",
+                            autoFocus: true,
+                          },
+                          { name: "remove", label: "Nhãn cần gỡ phân cách bằng dấu phẩy" },
+                        ],
                       });
-                      setSelectedTestIds([]);
-                      await load();
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
+                      if (!answer) return;
+                      const splitTags = (value) =>
+                        value
+                          .split(",")
+                          .map((item) => item.trim())
+                          .filter(Boolean);
+                      try {
+                        await testingApi.bulkTags(project._id, {
+                          artifact_type: "test_case",
+                          ids: selectedTestIds,
+                          add_tags: splitTags(answer.add),
+                          remove_tags: splitTags(answer.remove),
+                          idempotency_key: crypto.randomUUID(),
+                        });
+                        setSelectedTestIds([]);
+                        await load();
+                      } catch (reason) {
+                        setError(messageOf(reason));
+                      }
+                    }}
+                  >
+                    Cập nhật nhãn
+                  </button>
+                )}
+                {selectedTestIds.length > 0 && can("testcase.bulk.update") && (
+                  <button
+                    className="secondary-button"
+                    disabled={!suites.length}
+                    type="button"
+                    onClick={async () => {
+                      const answer = await ask({
+                        title: "Thêm vào bộ kiểm thử",
+                        description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
+                        confirmLabel: "Thêm vào bộ",
+                        fields: [
+                          {
+                            name: "suiteId",
+                            label: "Bộ kiểm thử",
+                            required: true,
+                            autoFocus: true,
+                            initialValue: suites[0]?._id || "",
+                            options: suites.map((item) => ({
+                              value: item._id,
+                              label: item.name,
+                            })),
+                          },
+                        ],
+                      });
+                      if (!answer) return;
+                      const suite = suites.find((item) => item._id === answer.suiteId);
+                      try {
+                        await testingApi.bulkAddToSuite(project._id, {
+                          suite_id: answer.suiteId,
+                          test_case_ids: selectedTestIds,
+                          expected_revision: suite?.revision || 1,
+                          idempotency_key: crypto.randomUUID(),
+                        });
+                        setSelectedTestIds([]);
+                        await load();
+                      } catch (reason) {
+                        setError(messageOf(reason));
+                      }
+                    }}
+                  >
+                    Thêm vào bộ
+                  </button>
+                )}
+                {selectedTestIds.length > 0 && can("testcase.bulk.update") && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={async () => {
+                      const answer = await ask({
+                        title: "Đánh dấu cần rà soát",
+                        description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
+                        confirmLabel: "Đánh dấu",
+                        fields: [
+                          {
+                            name: "reason",
+                            label: "Lý do",
+                            required: true,
+                            multiline: true,
+                            autoFocus: true,
+                          },
+                        ],
+                      });
+                      if (!answer) return;
+                      try {
+                        await testingApi.bulkMarkReviewRequired(project._id, {
+                          test_case_ids: selectedTestIds,
+                          reason: answer.reason,
+                          idempotency_key: crypto.randomUUID(),
+                        });
+                        setSelectedTestIds([]);
+                        await load();
+                      } catch (reason) {
+                        setError(messageOf(reason));
+                      }
+                    }}
+                  >
+                    Cần rà soát
+                  </button>
+                )}
+                {selectedTestIds.length > 0 && can("testcase.bulk.archive") && (
+                  <button
+                    className="danger-button"
+                    type="button"
+                    onClick={async () => {
+                      const answer = await ask({
+                        title: "Lưu trữ ca kiểm thử",
+                        description:
+                          "Các ca đang nằm trong lần chạy chưa kết thúc sẽ bị từ chối riêng lẻ",
+                        confirmLabel: "Lưu trữ",
+                        danger: true,
+                        fields: [
+                          {
+                            name: "reason",
+                            label: "Lý do",
+                            required: true,
+                            multiline: true,
+                            autoFocus: true,
+                          },
+                        ],
+                      });
+                      if (!answer) return;
+                      try {
+                        await testingApi.bulkArchive(project._id, {
+                          artifact_type: "test_case",
+                          ids: selectedTestIds,
+                          reason: answer.reason,
+                          idempotency_key: crypto.randomUUID(),
+                        });
+                        setSelectedTestIds([]);
+                        await load();
+                      } catch (reason) {
+                        setError(messageOf(reason));
+                      }
+                    }}
+                  >
+                    Lưu trữ
+                  </button>
+                )}
+              </div>
+            }
+          >
+            <details className="border-b border-border p-4">
+              <summary className="cursor-pointer text-sm font-medium">
+                Tìm kiếm bộ lọc và sắp xếp
+              </summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                <input
+                  aria-label="Tìm ca kiểm thử"
+                  className="apple-input xl:col-span-2"
+                  placeholder="Tìm theo mã hoặc tên"
+                  value={testFilters.q}
+                  onChange={(event) => {
+                    setTestFilters({ ...testFilters, q: event.target.value });
+                    setTestPage(1);
+                  }}
+                />
+                <select
+                  aria-label="Lọc trạng thái ca kiểm thử"
+                  className="apple-input"
+                  value={testFilters.status}
+                  onChange={(event) => {
+                    setTestFilters({ ...testFilters, status: event.target.value });
+                    setTestPage(1);
                   }}
                 >
-                  Cập nhật nhãn
-                </button>
-              )}
-              {selectedTestIds.length > 0 && can("testcase.bulk.update") && (
-                <button
-                  className="secondary-button"
-                  disabled={!suites.length}
-                  type="button"
-                  onClick={async () => {
-                    const answer = await ask({
-                      title: "Thêm vào bộ kiểm thử",
-                      description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
-                      confirmLabel: "Thêm vào bộ",
-                      fields: [
-                        {
-                          name: "suiteId",
-                          label: "Bộ kiểm thử",
-                          required: true,
-                          autoFocus: true,
-                          initialValue: suites[0]?._id || "",
-                          options: suites.map((item) => ({ value: item._id, label: item.name })),
-                        },
-                      ],
-                    });
-                    if (!answer) return;
-                    const suite = suites.find((item) => item._id === answer.suiteId);
-                    try {
-                      await testingApi.bulkAddToSuite(project._id, {
-                        suite_id: answer.suiteId,
-                        test_case_ids: selectedTestIds,
-                        expected_revision: suite?.revision || 1,
-                        idempotency_key: crypto.randomUUID(),
-                      });
-                      setSelectedTestIds([]);
-                      await load();
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
+                  <option value="">Mọi trạng thái</option>
+                  <option value="ACTIVE">Đang hoạt động</option>
+                  <option value="NEEDS_UPDATE">Cần cập nhật</option>
+                  <option value="OBSOLETE">Không còn hiệu lực</option>
+                </select>
+                <select
+                  aria-label="Lọc ưu tiên ca kiểm thử"
+                  className="apple-input"
+                  value={testFilters.priority}
+                  onChange={(event) => {
+                    setTestFilters({ ...testFilters, priority: event.target.value });
+                    setTestPage(1);
                   }}
                 >
-                  Thêm vào bộ
-                </button>
-              )}
-              {selectedTestIds.length > 0 && can("testcase.bulk.update") && (
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={async () => {
-                    const answer = await ask({
-                      title: "Đánh dấu cần rà soát",
-                      description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
-                      confirmLabel: "Đánh dấu",
-                      fields: [
-                        {
-                          name: "reason",
-                          label: "Lý do",
-                          required: true,
-                          multiline: true,
-                          autoFocus: true,
-                        },
-                      ],
-                    });
-                    if (!answer) return;
-                    try {
-                      await testingApi.bulkMarkReviewRequired(project._id, {
-                        test_case_ids: selectedTestIds,
-                        reason: answer.reason,
-                        idempotency_key: crypto.randomUUID(),
-                      });
-                      setSelectedTestIds([]);
-                      await load();
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
+                  <option value="">Mọi ưu tiên</option>
+                  <option value="critical">Nghiêm trọng</option>
+                  <option value="high">Cao</option>
+                  <option value="medium">Trung bình</option>
+                  <option value="low">Thấp</option>
+                </select>
+                <select
+                  aria-label="Lọc độ mới ca kiểm thử"
+                  className="apple-input"
+                  value={testFilters.stale_status}
+                  onChange={(event) => {
+                    setTestFilters({ ...testFilters, stale_status: event.target.value });
+                    setTestPage(1);
                   }}
                 >
-                  Cần rà soát
-                </button>
-              )}
-              {selectedTestIds.length > 0 && can("testcase.bulk.archive") && (
-                <button
-                  className="danger-button"
-                  type="button"
-                  onClick={async () => {
-                    const answer = await ask({
-                      title: "Lưu trữ ca kiểm thử",
-                      description:
-                        "Các ca đang nằm trong lần chạy chưa kết thúc sẽ bị từ chối riêng lẻ",
-                      confirmLabel: "Lưu trữ",
-                      danger: true,
-                      fields: [
-                        {
-                          name: "reason",
-                          label: "Lý do",
-                          required: true,
-                          multiline: true,
-                          autoFocus: true,
-                        },
-                      ],
-                    });
-                    if (!answer) return;
-                    try {
-                      await testingApi.bulkArchive(project._id, {
-                        artifact_type: "test_case",
-                        ids: selectedTestIds,
-                        reason: answer.reason,
-                        idempotency_key: crypto.randomUUID(),
-                      });
-                      setSelectedTestIds([]);
-                      await load();
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
+                  <option value="">Mọi độ mới</option>
+                  <option value="FRESH">Còn phù hợp</option>
+                  <option value="STALE">Đã lỗi thời</option>
+                </select>
+                <select
+                  aria-label="Sắp xếp ca kiểm thử"
+                  className="apple-input"
+                  value={testFilters.sort}
+                  onChange={(event) => {
+                    setTestFilters({ ...testFilters, sort: event.target.value });
+                    setTestPage(1);
                   }}
                 >
-                  Lưu trữ
-                </button>
-              )}
-            </div>
-          }
-        >
-          <details className="border-b border-border p-4">
-            <summary className="cursor-pointer text-sm font-medium">
-              Tìm kiếm bộ lọc và sắp xếp
-            </summary>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-              <input
-                aria-label="Tìm ca kiểm thử"
-                className="apple-input xl:col-span-2"
-                placeholder="Tìm theo mã hoặc tên"
-                value={testFilters.q}
-                onChange={(event) => {
-                  setTestFilters({ ...testFilters, q: event.target.value });
-                  setTestPage(1);
-                }}
-              />
-              <select
-                aria-label="Lọc trạng thái ca kiểm thử"
-                className="apple-input"
-                value={testFilters.status}
-                onChange={(event) => {
-                  setTestFilters({ ...testFilters, status: event.target.value });
-                  setTestPage(1);
-                }}
-              >
-                <option value="">Mọi trạng thái</option>
-                <option value="ACTIVE">Đang hoạt động</option>
-                <option value="NEEDS_UPDATE">Cần cập nhật</option>
-                <option value="OBSOLETE">Không còn hiệu lực</option>
-              </select>
-              <select
-                aria-label="Lọc ưu tiên ca kiểm thử"
-                className="apple-input"
-                value={testFilters.priority}
-                onChange={(event) => {
-                  setTestFilters({ ...testFilters, priority: event.target.value });
-                  setTestPage(1);
-                }}
-              >
-                <option value="">Mọi ưu tiên</option>
-                <option value="critical">Nghiêm trọng</option>
-                <option value="high">Cao</option>
-                <option value="medium">Trung bình</option>
-                <option value="low">Thấp</option>
-              </select>
-              <select
-                aria-label="Lọc độ mới ca kiểm thử"
-                className="apple-input"
-                value={testFilters.stale_status}
-                onChange={(event) => {
-                  setTestFilters({ ...testFilters, stale_status: event.target.value });
-                  setTestPage(1);
-                }}
-              >
-                <option value="">Mọi độ mới</option>
-                <option value="FRESH">Còn phù hợp</option>
-                <option value="STALE">Đã lỗi thời</option>
-              </select>
-              <select
-                aria-label="Sắp xếp ca kiểm thử"
-                className="apple-input"
-                value={testFilters.sort}
-                onChange={(event) => {
-                  setTestFilters({ ...testFilters, sort: event.target.value });
-                  setTestPage(1);
-                }}
-              >
-                <option value="-updated_at">Mới cập nhật</option>
-                <option value="updated_at">Cũ cập nhật</option>
-                <option value="test_case_key">Mã tăng dần</option>
-                <option value="title">Tên tăng dần</option>
-              </select>
-            </div>
-          </details>
-          <DataTable
-            onSelect={async (item) => {
-              setSelectedTestId(item._id);
-              try {
-                setTestVersions(await testingApi.listTestVersions(item._id));
-              } catch (reason) {
-                setError(messageOf(reason));
+                  <option value="-updated_at">Mới cập nhật</option>
+                  <option value="updated_at">Cũ cập nhật</option>
+                  <option value="test_case_key">Mã tăng dần</option>
+                  <option value="title">Tên tăng dần</option>
+                </select>
+              </div>
+            </details>
+            <DataTable
+              onSelect={async (item) => {
+                setSelectedTestId(item._id);
+                try {
+                  setTestVersions(await testingApi.listTestVersions(item._id));
+                } catch (reason) {
+                  setError(messageOf(reason));
+                }
+              }}
+              items={tests}
+              selectedIds={
+                can("testcase.bulk.update") || can("testcase.bulk.archive")
+                  ? selectedTestIds
+                  : undefined
               }
-            }}
-            items={tests}
-            selectedIds={
-              can("testcase.bulk.update") || can("testcase.bulk.archive")
-                ? selectedTestIds
-                : undefined
-            }
-            onSelectionChange={
-              can("testcase.bulk.update") || can("testcase.bulk.archive")
-                ? setSelectedTestIds
-                : undefined
-            }
-            selectionLabel="Chọn ca kiểm thử"
-            empty="Chưa có ca kiểm thử được phê duyệt"
-            columns={[
-              { key: "test_case_key", label: "Mã" },
-              { key: "title", label: "Tên", render: (item) => item.current_version?.title },
-              {
-                key: "version",
-                label: "Phiên bản",
-                render: (item) => `v${item.current_version?.version}`,
-              },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-              {
-                key: "lifecycle",
-                label: "Vòng đời",
-                render: (item) => (
-                  <span className="flex flex-wrap gap-2">
-                    {can("testcase.clone") && (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={async (event) => {
-                          event.stopPropagation();
-                          try {
-                            await testingApi.cloneTestCase(item._id, {
-                              expected_current_version_id: item.current_version_id,
-                              title: `${item.current_version?.title || item.test_case_key} bản sao`,
-                            });
-                            await load();
-                          } catch (reasonValue) {
-                            setError(messageOf(reasonValue));
-                          }
-                        }}
-                      >
-                        Nhân bản
-                      </button>
-                    )}
-                    {item.status !== "OBSOLETE" && can("testcase.bulk.archive") ? (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={async (event) => {
-                          event.stopPropagation();
-                          const answer = await ask({
-                            title: "Đánh dấu ca kiểm thử không còn hiệu lực",
-                            description: `${item.test_case_key} vẫn được giữ trong lịch sử phiên bản`,
-                            confirmLabel: "Đánh dấu",
-                            danger: true,
-                            fields: [
-                              {
-                                name: "reason",
-                                label: "Lý do",
-                                initialValue: "Hành vi kiểm thử không còn thuộc phạm vi",
-                                required: true,
-                                multiline: true,
-                                autoFocus: true,
-                              },
-                            ],
-                          });
-                          if (!answer) return;
-                          try {
-                            await testingApi.obsoleteTestCase(item._id, {
-                              expected_current_version_id: item.current_version_id,
-                              reason: answer.reason,
-                            });
-                            await load();
-                            if (selectedTestId === item._id) {
-                              setTestVersions(await testingApi.listTestVersions(item._id));
+              onSelectionChange={
+                can("testcase.bulk.update") || can("testcase.bulk.archive")
+                  ? setSelectedTestIds
+                  : undefined
+              }
+              selectionLabel="Chọn ca kiểm thử"
+              empty="Chưa có ca kiểm thử được phê duyệt"
+              columns={[
+                { key: "test_case_key", label: "Mã" },
+                { key: "title", label: "Tên", render: (item) => item.current_version?.title },
+                {
+                  key: "version",
+                  label: "Phiên bản",
+                  render: (item) => `v${item.current_version?.version}`,
+                },
+                {
+                  key: "status",
+                  label: "Trạng thái",
+                  render: (item) => <StatusPill value={item.status} />,
+                },
+                {
+                  key: "lifecycle",
+                  label: "Vòng đời",
+                  render: (item) => (
+                    <span className="flex flex-wrap gap-2">
+                      {can("testcase.clone") && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            try {
+                              await testingApi.cloneTestCase(item._id, {
+                                expected_current_version_id: item.current_version_id,
+                                title: `${item.current_version?.title || item.test_case_key} bản sao`,
+                              });
+                              await load();
+                            } catch (reasonValue) {
+                              setError(messageOf(reasonValue));
                             }
-                          } catch (reasonValue) {
-                            setError(messageOf(reasonValue));
-                          }
-                        }}
-                      >
-                        Đánh dấu không còn hiệu lực
-                      </button>
-                    ) : item.status === "OBSOLETE" && can("testcase.restore") ? (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={async (event) => {
-                          event.stopPropagation();
-                          const answer = await ask({
-                            title: "Khôi phục ca kiểm thử",
-                            description: `${item.test_case_key} sẽ trở lại trạng thái hoạt động`,
-                            confirmLabel: "Khôi phục",
-                            fields: [
-                              {
-                                name: "reason",
-                                label: "Lý do",
-                                required: true,
-                                multiline: true,
-                                autoFocus: true,
-                              },
-                            ],
-                          });
-                          if (!answer) return;
-                          try {
-                            await testingApi.restoreTestCase(item._id, {
-                              expected_current_version_id: item.current_version_id,
-                              reason: answer.reason,
+                          }}
+                        >
+                          Nhân bản
+                        </button>
+                      )}
+                      {item.status !== "OBSOLETE" && can("testcase.bulk.archive") ? (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            const answer = await ask({
+                              title: "Đánh dấu ca kiểm thử không còn hiệu lực",
+                              description: `${item.test_case_key} vẫn được giữ trong lịch sử phiên bản`,
+                              confirmLabel: "Đánh dấu",
+                              danger: true,
+                              fields: [
+                                {
+                                  name: "reason",
+                                  label: "Lý do",
+                                  initialValue: "Hành vi kiểm thử không còn thuộc phạm vi",
+                                  required: true,
+                                  multiline: true,
+                                  autoFocus: true,
+                                },
+                              ],
                             });
-                            await load();
-                          } catch (reasonValue) {
-                            setError(messageOf(reasonValue));
-                          }
-                        }}
-                      >
-                        Khôi phục
-                      </button>
-                    ) : item.status === "OBSOLETE" ? (
-                      <span className="text-[11px] text-ink-muted">Đã lưu lịch sử</span>
-                    ) : null}
-                  </span>
-                ),
-              },
-            ]}
-          />
-          <Pagination value={testPageInfo} onChange={setTestPage} />
-        </Panel>
-      </div>
-      {selectedTestId && (
+                            if (!answer) return;
+                            try {
+                              await testingApi.obsoleteTestCase(item._id, {
+                                expected_current_version_id: item.current_version_id,
+                                reason: answer.reason,
+                              });
+                              await load();
+                              if (selectedTestId === item._id) {
+                                setTestVersions(await testingApi.listTestVersions(item._id));
+                              }
+                            } catch (reasonValue) {
+                              setError(messageOf(reasonValue));
+                            }
+                          }}
+                        >
+                          Đánh dấu không còn hiệu lực
+                        </button>
+                      ) : item.status === "OBSOLETE" && can("testcase.restore") ? (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            const answer = await ask({
+                              title: "Khôi phục ca kiểm thử",
+                              description: `${item.test_case_key} sẽ trở lại trạng thái hoạt động`,
+                              confirmLabel: "Khôi phục",
+                              fields: [
+                                {
+                                  name: "reason",
+                                  label: "Lý do",
+                                  required: true,
+                                  multiline: true,
+                                  autoFocus: true,
+                                },
+                              ],
+                            });
+                            if (!answer) return;
+                            try {
+                              await testingApi.restoreTestCase(item._id, {
+                                expected_current_version_id: item.current_version_id,
+                                reason: answer.reason,
+                              });
+                              await load();
+                            } catch (reasonValue) {
+                              setError(messageOf(reasonValue));
+                            }
+                          }}
+                        >
+                          Khôi phục
+                        </button>
+                      ) : item.status === "OBSOLETE" ? (
+                        <span className="text-[11px] text-ink-muted">Đã lưu lịch sử</span>
+                      ) : null}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+            <Pagination value={testPageInfo} onChange={setTestPage} />
+          </Panel>
+        </div>
+      )}
+      {showCases && selectedTestId && (
         <Panel title="Lịch sử phiên bản ca kiểm thử">
           <DataTable
             items={testVersions}
@@ -1651,7 +1857,8 @@ export default function TestDesignPage({ project }) {
             ))}
         </Panel>
       )}
-      {selectedTestId &&
+      {showCases &&
+        selectedTestId &&
         testVersions[0] &&
         project.current_permissions?.includes("reviewsession.read") && (
           <FormalReviewPanel
@@ -1662,7 +1869,7 @@ export default function TestDesignPage({ project }) {
             reviewType="TEST_CASE_REVIEW"
           />
         )}
-      {selectedDraft && draftEdit && (
+      {showCases && selectedDraft && draftEdit && (
         <>
           <Panel
             title={`Biên tập ${selectedDraft.test_case_key}`}
@@ -2056,51 +2263,121 @@ export default function TestDesignPage({ project }) {
           />
         </>
       )}
-      <div className="grid gap-5 xl:grid-cols-2">
-        {can("testcase.create") && (
-          <TestCaseCreateModal
-            isOpen={creatingTest}
-            onClose={() => setCreatingTest(false)}
-            form={form}
-            setForm={setForm}
-            dataSets={dataSets}
-            testConditions={testConditions}
-            repositoryNodes={repositoryNodes}
-            reusableSteps={reusableSteps}
-            onSubmit={create}
-          />
-        )}
-        <ScenariosPanel
-          can={can}
-          scenarios={scenarios}
-          filters={scenarioFilters}
-          setFilters={setScenarioFilters}
-          isCreating={creatingScenario}
-          setCreating={setCreatingScenario}
-          form={scenarioForm}
-          setForm={setScenarioForm}
+      {showCases && can("testcase.create") && (
+        <TestCaseCreateModal
+          isOpen={creatingTest}
+          onClose={() => setCreatingTest(false)}
+          form={form}
+          setForm={setForm}
+          dataSets={dataSets}
           testConditions={testConditions}
-          onSubmit={createScenario}
+          repositoryNodes={repositoryNodes}
+          reusableSteps={reusableSteps}
+          onSubmit={create}
+        />
+      )}
+      {showScenarios && (
+        <div className="grid gap-5 xl:grid-cols-2">
+          <ScenariosPanel
+            can={can}
+            scenarios={scenarios}
+            filters={scenarioFilters}
+            setFilters={setScenarioFilters}
+            isCreating={creatingScenario}
+            setCreating={setCreatingScenario}
+            form={scenarioForm}
+            setForm={setScenarioForm}
+            testConditions={testConditions}
+            onSubmit={createScenario}
+            ask={ask}
+            reload={load}
+            onError={setError}
+          />
+        </div>
+      )}
+      {workspaceView === "test-data" && (
+        <DataSetsPanel
+          can={can}
+          canRead={canReadTestData}
+          items={dataSets}
+          isCreating={creatingDataSet}
+          setCreating={setCreatingDataSet}
+          form={dataSetForm}
+          setForm={setDataSetForm}
+          onSubmit={createDataSet}
           ask={ask}
           reload={load}
           onError={setError}
         />
-      </div>
-      <DataSetsPanel
-        can={can}
-        canRead={canReadTestData}
-        items={dataSets}
-        isCreating={creatingDataSet}
-        setCreating={setCreatingDataSet}
-        form={dataSetForm}
-        setForm={setDataSetForm}
-        onSubmit={createDataSet}
-        ask={ask}
-        reload={load}
-        onError={setError}
-      />
-      <TestRepositoryPanel project={project} can={can} onError={setError} />
-      {duplicates.length > 0 && (
+      )}
+      {(workspaceView === "" ||
+        workspaceView === "repository" ||
+        workspaceView === "reusable-steps") && (
+        <TestRepositoryPanel project={project} can={can} onError={setError} focus={workspaceView} />
+      )}
+      {workspaceView === "test-sets" && (
+        <Panel
+          title="Bộ kiểm thử"
+          description="Tập ca kiểm thử tái sử dụng giữa các kế hoạch kiểm thử"
+          actions={
+            can("testsuite.create") ? (
+              <button className="apple-button" type="button" onClick={createTestSet}>
+                Tạo bộ kiểm thử
+              </button>
+            ) : null
+          }
+        >
+          <DataTable
+            items={suites}
+            empty="Chưa có bộ kiểm thử"
+            columns={[
+              { key: "name", label: "Tên" },
+              {
+                key: "suite_type",
+                label: "Loại",
+                render: (item) => valueLabel(item.suite_type),
+              },
+              {
+                key: "test_case_version_ids",
+                label: "Số ca",
+                render: (item) => item.test_case_version_ids?.length || 0,
+              },
+              {
+                key: "status",
+                label: "Trạng thái",
+                render: (item) => <StatusPill value={item.status} />,
+              },
+              {
+                key: "actions",
+                label: "Thao tác",
+                render: (item) => (
+                  <span className="flex flex-wrap gap-2">
+                    {can("testsuite.update") && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => updateTestSet(item)}
+                      >
+                        Cập nhật
+                      </button>
+                    )}
+                    {item.status !== "ARCHIVED" && can("testsuite.archive") && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => archiveTestSet(item)}
+                      >
+                        Lưu trữ
+                      </button>
+                    )}
+                  </span>
+                ),
+              },
+            ]}
+          />
+        </Panel>
+      )}
+      {showAi && duplicates.length > 0 && (
         <Panel title="Các ca kiểm thử có khả năng trùng">
           <DataTable
             items={duplicates.map((item, index) => ({ ...item, _id: index }))}
@@ -2121,39 +2398,43 @@ export default function TestDesignPage({ project }) {
           />
         </Panel>
       )}
-      <ApiArtifactsPanel
-        projectId={project._id}
-        can={can}
-        ask={ask}
-        apiImport={apiImport}
-        setApiImport={setApiImport}
-        artifacts={apiArtifacts}
-        operations={operations}
-        compareFrom={apiCompareFrom}
-        setCompareFrom={setApiCompareFrom}
-        compareTo={apiCompareTo}
-        setCompareTo={setApiCompareTo}
-        difference={apiDifference}
-        setDifference={setApiDifference}
-        onTestImportPreview={(preview) => {
-          setTestImport(preview);
-          requestAnimationFrame(() => {
-            testImportPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          });
-        }}
-        reload={load}
-        onError={setError}
-      />
-      <div ref={testImportPanelRef}>
-        <TestCaseTransferPanel
+      {showApi && (
+        <ApiArtifactsPanel
           projectId={project._id}
           can={can}
-          preview={testImport}
-          setPreview={setTestImport}
+          ask={ask}
+          apiImport={apiImport}
+          setApiImport={setApiImport}
+          artifacts={apiArtifacts}
+          operations={operations}
+          compareFrom={apiCompareFrom}
+          setCompareFrom={setApiCompareFrom}
+          compareTo={apiCompareTo}
+          setCompareTo={setApiCompareTo}
+          difference={apiDifference}
+          setDifference={setApiDifference}
+          onTestImportPreview={(preview) => {
+            setTestImport(preview);
+            requestAnimationFrame(() => {
+              testImportPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+          }}
           reload={load}
           onError={setError}
         />
-      </div>
+      )}
+      {(showImport || (showApi && testImport)) && (
+        <div ref={testImportPanelRef}>
+          <TestCaseTransferPanel
+            projectId={project._id}
+            can={can}
+            preview={testImport}
+            setPreview={setTestImport}
+            reload={load}
+            onError={setError}
+          />
+        </div>
+      )}
       {dialog}
     </WorkspacePage>
   );

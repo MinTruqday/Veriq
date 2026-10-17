@@ -3,24 +3,27 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, Menu, Search, X } from "lucide-react";
+import { Bell, ChevronRight, Menu, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { testingApi } from "@/features/testing/services/testing.service";
 import { useAnnouncements } from "@/shared/contexts/AnnouncementContext";
 import { availableNavigation, navigationGroupsFor, projectIdFromPath } from "./navigation";
 
-function NavigationList({ onNavigate, projectPermissions }) {
+function NavigationList({ onNavigate, projectPermissions, planningMethod, collapsed = false }) {
   const pathname = usePathname();
   const { user } = useAuth();
   const groups = useMemo(
-    () => availableNavigation(navigationGroupsFor(pathname), user, projectPermissions),
-    [pathname, projectPermissions, user],
+    () =>
+      availableNavigation(navigationGroupsFor(pathname, planningMethod), user, projectPermissions),
+    [pathname, planningMethod, projectPermissions, user],
   );
   return (
-    <div className="flex flex-col gap-6">
+    <div className={collapsed ? "flex flex-col gap-4" : "flex flex-col gap-6"}>
       {groups.map((group) => (
         <div key={group.label}>
-          <p className="mb-2 px-3 text-[12px] font-semibold text-ink-faint">{group.label}</p>
+          {!collapsed && (
+            <p className="mb-2 px-3 text-[12px] font-semibold text-ink-faint">{group.label}</p>
+          )}
           <div className="space-y-1">
             {group.items.map((item) => {
               const active =
@@ -33,14 +36,18 @@ function NavigationList({ onNavigate, projectPermissions }) {
                   href={item.href}
                   onClick={onNavigate}
                   aria-current={active ? "page" : undefined}
-                  className={`flex min-h-10 items-center gap-3 rounded-control px-3 text-[14px] font-medium transition duration-150 ${
+                  aria-label={collapsed ? item.label : undefined}
+                  title={collapsed ? item.label : undefined}
+                  className={`flex min-h-10 items-center rounded-control text-[14px] font-medium transition duration-150 ${
+                    collapsed ? "justify-center px-2" : "gap-3 px-3"
+                  } ${
                     active
                       ? "bg-brand-soft text-brand"
                       : "text-ink-muted hover:bg-surface-quiet hover:text-ink"
                   }`}
                 >
                   <item.icon aria-hidden="true" size={18} strokeWidth={1.75} />
-                  <span>{item.label}</span>
+                  {!collapsed && <span>{item.label}</span>}
                 </Link>
               );
             })}
@@ -62,6 +69,9 @@ export default function AppShell({ children, requireAuth }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState(routeQuery);
   const [projectPermissions, setProjectPermissions] = useState(null);
+  const [planningMethod, setPlanningMethod] = useState(null);
+  const [projectContext, setProjectContext] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiStream, setAiStream] = useState(null);
   const aiStreamDismissal = useRef(null);
   const accountRef = useRef(null);
@@ -93,15 +103,25 @@ export default function AppShell({ children, requireAuth }) {
   useEffect(() => {
     if (!projectId || !user) {
       setProjectPermissions(null);
+      setPlanningMethod(null);
+      setProjectContext(null);
       return;
     }
     let active = true;
     testingApi
       .getProject(projectId)
-      .then((project) => project?.current_permissions || [])
-      .catch(() => [])
-      .then((permissions) => {
-        if (active) setProjectPermissions(permissions);
+      .then((project) => ({
+        permissions: project?.current_permissions || [],
+        planningMethod: project ? project.planning_method || "SCRUM" : null,
+        project,
+      }))
+      .catch(() => ({ permissions: [], planningMethod: null }))
+      .then((value) => {
+        if (active) {
+          setProjectPermissions(value.permissions);
+          setPlanningMethod(value.planningMethod);
+          setProjectContext(value.project || null);
+        }
       });
     return () => {
       active = false;
@@ -220,7 +240,9 @@ export default function AppShell({ children, requireAuth }) {
       >
         Bỏ qua điều hướng
       </a>
-      <header className="fixed inset-x-0 top-0 z-40 h-[68px] border-b border-border bg-surface/95 backdrop-blur-md lg:left-[260px]">
+      <header
+        className={`fixed inset-x-0 top-0 z-40 h-[68px] border-b border-border bg-surface/95 backdrop-blur-md transition-[left] duration-200 ${sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[260px]"}`}
+      >
         <div className="flex h-full items-center gap-3 px-4 md:px-6">
           <button
             type="button"
@@ -247,6 +269,20 @@ export default function AppShell({ children, requireAuth }) {
             />
             <span className="text-[15px] font-bold tracking-[-0.02em]">Veriq</span>
           </Link>
+          {projectId && (
+            <div className="hidden min-w-0 items-center gap-1 text-[13px] text-ink-muted xl:flex">
+              <Link href="/du-an" className="shrink-0 hover:text-ink">
+                Dự án
+              </Link>
+              <ChevronRight size={14} aria-hidden="true" />
+              <Link
+                href={`/du-an/${projectId}`}
+                className="max-w-44 truncate font-medium text-ink hover:text-brand"
+              >
+                {projectContext?.name || projectContext?.project_name || projectId}
+              </Link>
+            </div>
+          )}
           {projectId && (
             <form
               action={`/du-an/${projectId}/tim-kiem`}
@@ -374,11 +410,15 @@ export default function AppShell({ children, requireAuth }) {
         </div>
       </header>
 
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[260px] border-r border-border bg-surface lg:block">
-        <div className="flex h-[68px] items-center border-b border-border px-5">
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-[width] duration-200 lg:block ${sidebarCollapsed ? "w-[76px]" : "w-[260px]"}`}
+      >
+        <div
+          className={`flex h-[68px] items-center border-b border-border ${sidebarCollapsed ? "justify-center px-3" : "justify-between px-5"}`}
+        >
           <Link
             href="/"
-            className="flex items-center gap-3 text-[19px] font-semibold tracking-[-0.035em] text-ink"
+            className="flex min-w-0 items-center gap-3 text-[19px] font-semibold tracking-[-0.035em] text-ink"
           >
             <Image
               src="/brand/veriq-logo.png"
@@ -388,14 +428,38 @@ export default function AppShell({ children, requireAuth }) {
               className="h-9 w-9 rounded-xl object-cover"
               priority
             />
-            <span>Veriq</span>
+            {!sidebarCollapsed && <span>Veriq</span>}
           </Link>
+          {!sidebarCollapsed && (
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-control text-ink-muted hover:bg-surface-quiet hover:text-ink"
+              aria-label="Thu gọn điều hướng"
+            >
+              <PanelLeftClose size={18} aria-hidden="true" />
+            </button>
+          )}
         </div>
+        {sidebarCollapsed && (
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed(false)}
+            className="mx-auto mt-3 flex h-9 w-9 items-center justify-center rounded-control text-ink-muted hover:bg-surface-quiet hover:text-ink"
+            aria-label="Mở rộng điều hướng"
+          >
+            <PanelLeftOpen size={18} aria-hidden="true" />
+          </button>
+        )}
         <nav
-          className="h-[calc(100dvh-68px)] overflow-y-auto px-4 py-6"
+          className={`h-[calc(100dvh-68px)] overflow-y-auto ${sidebarCollapsed ? "px-2 py-4" : "px-4 py-6"}`}
           aria-label="Điều hướng chính"
         >
-          <NavigationList projectPermissions={projectPermissions} />
+          <NavigationList
+            projectPermissions={projectPermissions}
+            planningMethod={planningMethod}
+            collapsed={sidebarCollapsed}
+          />
         </nav>
       </aside>
 
@@ -443,6 +507,7 @@ export default function AppShell({ children, requireAuth }) {
             <NavigationList
               onNavigate={() => setMobileOpen(false)}
               projectPermissions={projectPermissions}
+              planningMethod={planningMethod}
             />
           </aside>
         </div>
@@ -450,7 +515,7 @@ export default function AppShell({ children, requireAuth }) {
 
       <main
         id="main-content"
-        className="min-h-[100dvh] min-w-0 overflow-x-hidden pt-[68px] lg:pl-[260px]"
+        className={`min-h-[100dvh] min-w-0 overflow-x-hidden pt-[68px] transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
       >
         <div className="page-shell">{children}</div>
       </main>

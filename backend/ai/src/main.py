@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from src.api.agents import router as agents_router
+from src.api.automation import router as automation_router
 from src.api.approvals import router as approvals_router
 from src.api.cache import router as cache_router
 from src.api.embedding import router as embedding_router
@@ -81,6 +82,7 @@ app.add_middleware(
 )
 app.include_router(inference)
 app.include_router(agents_router)
+app.include_router(automation_router)
 app.include_router(approvals_router)
 app.include_router(ingest)
 app.include_router(events)
@@ -210,6 +212,13 @@ async def startup_event():
         logger.info("Event processor started")
     except Exception:
         logger.exception("Event processor startup error")
+    try:
+        from src.runtime.automation_worker import automation_worker
+
+        await automation_worker.start()
+        logger.info("AI automation worker started")
+    except Exception:
+        logger.exception("AI automation worker startup error")
 
 
 async def initialize_retrieval_background():
@@ -265,6 +274,12 @@ async def shutdown_event():
         await event_processor.stop_worker()
     except Exception:
         logger.exception("Event processor shutdown failed")
+    try:
+        from src.runtime.automation_worker import automation_worker
+
+        await automation_worker.stop()
+    except Exception:
+        logger.exception("AI automation worker shutdown failed")
     try:
         from src.core.infrastructure.redis import redis
 

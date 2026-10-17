@@ -80,6 +80,26 @@ export async function agentReadRequest(path) {
   return body;
 }
 
+export async function automationRequest(path, options = {}) {
+  const response = await authenticatedFetch(`${API_URL}/tu-dong-hoa-ai${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = body?.detail;
+    const error = new Error(detail?.message || detail?.code || "Không thể hoàn tất tự động hóa AI");
+    error.status = response.status;
+    error.code = detail?.code;
+    error.details = detail?.latest;
+    throw error;
+  }
+  return body;
+}
+
 export async function testingStreamRequest(path, options = {}) {
   const { onDelta, ...requestOptions } = options;
   const streamId = crypto.randomUUID();

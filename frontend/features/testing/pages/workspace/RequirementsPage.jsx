@@ -7,6 +7,7 @@ import {
   ErrorState,
   ProjectCrumb,
   WorkspacePage,
+  WorkspaceSectionNav,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
@@ -29,7 +30,7 @@ import {
   splitRequirementBlocks,
 } from "./requirements/requirements.model";
 
-export default function RequirementsPage({ project, section }) {
+export default function RequirementsPage({ project, section, workspaceView }) {
   const { ask, dialog } = useActionDialog();
   const sectionKey = section[0] || "";
   const requirementId = sectionKey && !["new", "import"].includes(sectionKey) ? sectionKey : "";
@@ -1053,7 +1054,22 @@ export default function RequirementsPage({ project, section }) {
   };
   return (
     <WorkspacePage
-      title={selected ? `${selected.requirement_key} ${current?.title || ""}` : "Yêu cầu"}
+      title={
+        selected
+          ? `${selected.requirement_key} ${current?.title || ""}`
+          : workspaceView === "assurance"
+            ? "Hồ sơ đảm bảo yêu cầu"
+            : workspaceView === "clarifications"
+              ? "Phiếu làm rõ yêu cầu"
+              : "Yêu cầu"
+      }
+      description={
+        !selected && workspaceView === "assurance"
+          ? "Chọn một yêu cầu để xem nghĩa vụ kiểm thử, bằng chứng, quyết định QA và tác động thay đổi"
+          : !selected && workspaceView === "clarifications"
+            ? "Chọn một yêu cầu để xem và xử lý các phiếu làm rõ có dẫn nguồn"
+            : undefined
+      }
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
@@ -1085,6 +1101,19 @@ export default function RequirementsPage({ project, section }) {
       }
     >
       {error && !importing && <ErrorState message={error} />}
+      <WorkspaceSectionNav
+        current={workspaceView || "requirements"}
+        items={[
+          { id: "requirements", label: "Yêu cầu", href: `/du-an/${project._id}/yeu-cau` },
+          { id: "assurance", label: "Hồ sơ đảm bảo", href: `/du-an/${project._id}/ho-so-dam-bao` },
+          {
+            id: "clarifications",
+            label: "Phiếu làm rõ",
+            href: `/du-an/${project._id}/phieu-lam-ro`,
+          },
+          { id: "changes", label: "Tác động thay đổi", href: `/du-an/${project._id}/thay-doi` },
+        ]}
+      />
       {selected ? (
         <>
           <RequirementCurrentVersionPanel

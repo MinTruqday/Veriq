@@ -99,7 +99,7 @@ const settingValueLabels = {
   production: "Sản xuất",
 };
 
-export default function SettingsPage({ project, onProjectChange }) {
+export default function SettingsPage({ project, onProjectChange, workspaceView }) {
   const { ask, dialog } = useActionDialog();
   const [audit, setAudit] = useState([]);
   const [members, setMembers] = useState([]);
@@ -151,8 +151,40 @@ export default function SettingsPage({ project, onProjectChange }) {
       })
       .catch((reason) => setError(messageOf(reason)));
   }, [project._id]);
+  if (workspaceView === "audit") {
+    return (
+      <WorkspacePage title="Nhật ký audit" actions={<ProjectCrumb projectId={project._id} />}>
+        {error && <ErrorState message={error} />}
+        <Panel title="Nhật ký kiểm toán">
+          <DataTable
+            items={audit}
+            empty="Chưa có sự kiện"
+            columns={[
+              { key: "action", label: "Hành động", render: (item) => valueLabel(item.action) },
+              {
+                key: "artifact_type",
+                label: "Loại dữ liệu",
+                render: (item) => valueLabel(item.artifact_type),
+              },
+              { key: "artifact_id", label: "Mã" },
+              {
+                key: "actor_id",
+                label: "Người thực hiện",
+                render: (item) => item.actor_label || item.actor_id,
+              },
+              {
+                key: "created_at",
+                label: "Thời điểm",
+                render: (item) => formatDate(item.created_at),
+              },
+            ]}
+          />
+        </Panel>
+      </WorkspacePage>
+    );
+  }
   return (
-    <WorkspacePage title="Cài đặt và nhật ký" actions={<ProjectCrumb projectId={project._id} />}>
+    <WorkspacePage title="Cài đặt dự án" actions={<ProjectCrumb projectId={project._id} />}>
       {error && <ErrorState message={error} />}
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel title="Thông tin dự án">
@@ -549,31 +581,6 @@ export default function SettingsPage({ project, onProjectChange }) {
       <ProjectConnectorsPanel project={project} />
       <CicdPanel project={project} />
       <WebhookPanel project={project} />
-      <Panel title="Nhật ký kiểm toán">
-        <DataTable
-          items={audit}
-          empty="Chưa có sự kiện"
-          columns={[
-            { key: "action", label: "Hành động", render: (item) => valueLabel(item.action) },
-            {
-              key: "artifact_type",
-              label: "Loại dữ liệu",
-              render: (item) => valueLabel(item.artifact_type),
-            },
-            { key: "artifact_id", label: "Mã" },
-            {
-              key: "actor_id",
-              label: "Người thực hiện",
-              render: (item) => item.actor_label || item.actor_id,
-            },
-            {
-              key: "created_at",
-              label: "Thời điểm",
-              render: (item) => formatDate(item.created_at),
-            },
-          ]}
-        />
-      </Panel>
       {dialog}
     </WorkspacePage>
   );

@@ -120,6 +120,16 @@ async def create_indexes():
     await db.project_members.create_index([("user_id", 1), ("status", 1)])
     await db.project_tasks.create_index([("project_id", 1), ("updated_at", -1)])
     await db.project_tasks.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
+    await db.work_items.create_index([("project_id", 1), ("backlog_rank", 1)])
+    await db.work_items.create_index([("project_id", 1), ("parent_id", 1), ("updated_at", -1)])
+    await db.work_items.create_index([("project_id", 1), ("sprint_id", 1), ("status", 1)])
+    await db.work_item_dependencies.create_index(
+        [("project_id", 1), ("source_item_id", 1), ("target_item_id", 1), ("dependency_type", 1)], unique=True
+    )
+    await db.sprints.create_index([("project_id", 1), ("start_at", -1)])
+    await db.planning_boards.create_index("project_id", unique=True)
+    await db.planning_workflows.create_index("project_id", unique=True)
+    await db.project_task_migrations.create_index("project_id", unique=True)
     await db.requirements.create_index([("project_id", 1), ("requirement_key", 1)], unique=True)
     await ensure_unique_index(db.requirement_documents, [("project_id", 1), ("created_by", 1), ("content_hash", 1)])
     indexes = await db.requirement_documents.list_indexes().to_list(length=1000)

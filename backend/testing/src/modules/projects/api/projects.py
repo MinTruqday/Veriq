@@ -63,7 +63,7 @@ async def update_project_progress(
     return envelope(value, revision=value["revision"])
 
 
-@router.get("/du-an/{project_id}/cong-viec")
+@router.get("/du-an/{project_id}/cong-viec-cu", include_in_schema=False)
 async def list_project_tasks(
     project_id: str,
     status: str | None = Query(default=None, max_length=30),
@@ -72,7 +72,7 @@ async def list_project_tasks(
     return envelope(await ProjectProgressService.list_tasks(project_id, user, status=status))
 
 
-@router.post("/du-an/{project_id}/cong-viec", status_code=201)
+@router.post("/du-an/{project_id}/cong-viec-cu", status_code=201, include_in_schema=False)
 async def create_project_task(
     project_id: str,
     payload: ProjectTaskCreate,
@@ -82,7 +82,7 @@ async def create_project_task(
     return envelope(value, revision=value["revision"])
 
 
-@router.patch("/du-an/{project_id}/cong-viec/{task_id}")
+@router.patch("/du-an/{project_id}/cong-viec-cu/{task_id}", include_in_schema=False)
 async def update_project_task(
     project_id: str,
     task_id: str,
@@ -93,7 +93,7 @@ async def update_project_task(
     return envelope(value, revision=value["revision"])
 
 
-@router.delete("/du-an/{project_id}/cong-viec/{task_id}")
+@router.delete("/du-an/{project_id}/cong-viec-cu/{task_id}", include_in_schema=False)
 async def delete_project_task(
     project_id: str,
     task_id: str,

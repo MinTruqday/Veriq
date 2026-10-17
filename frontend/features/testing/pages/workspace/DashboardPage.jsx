@@ -62,7 +62,7 @@ export default function DashboardPage({ project }) {
                       fields: [
                         {
                           name: "project_completion_percent",
-                          label: "Project %",
+                          label: "Tiến độ dự án",
                           type: "number",
                           initialValue: String(progress.percent),
                           required: true,
@@ -95,7 +95,7 @@ export default function DashboardPage({ project }) {
             <div className="grid gap-5 p-5 lg:grid-cols-2">
               <div>
                 <div className="flex items-center justify-between text-sm">
-                  <span>Project {progress.percent}%</span>
+                  <span>Tiến độ dự án {progress.percent}%</span>
                   <span className="text-ink-muted">Đánh giá của QA</span>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-quiet">
@@ -110,7 +110,7 @@ export default function DashboardPage({ project }) {
                   <span>
                     {progress.taskSummary?.completion_percent === null
                       ? "Chưa có công việc"
-                      : `Tasks ${progress.taskSummary?.completion_percent ?? 0}%`}
+                      : `Tiến độ công việc ${progress.taskSummary?.completion_percent ?? 0}%`}
                   </span>
                   <span className="text-ink-muted">
                     {progress.taskSummary?.completed ?? 0} hoàn thành
@@ -151,32 +151,64 @@ export default function DashboardPage({ project }) {
             </div>
           </details>
           <div className="grid gap-4 lg:grid-cols-3">
-            <Panel title="Luồng công việc" className="lg:col-span-2">
+            <Panel
+              title="Đi tới công việc"
+              description="Mở đúng khu vực theo vòng đời hiện tại"
+              className="lg:col-span-2"
+            >
               <div className="grid gap-3 p-5 sm:grid-cols-2">
                 {[
-                  ["yeu-cau", "Yêu cầu"],
-                  ["thiet-ke-kiem-thu", "Thiết kế kiểm thử"],
-                  ["truy-vet", "Truy vết"],
-                  ["thay-doi", "Phân tích thay đổi"],
-                  ["ra-soat-ai", "Rà soát đề xuất AI"],
-                  ["thuc-thi", "Thực thi kiểm thử"],
-                  ["loi", "Lỗi"],
-                  ["bao-cao", "Báo cáo"],
-                ].map(([href, label]) => (
+                  [
+                    "lap-ke-hoach/backlog",
+                    "Lập kế hoạch",
+                    "Danh sách chờ, bảng công việc, đợt lặp và lộ trình",
+                  ],
+                  ["yeu-cau", "Làm rõ yêu cầu", "Nguồn, phiên bản, tiêu chí và thay đổi"],
+                  [
+                    "ho-so-dam-bao",
+                    "Hồ sơ đảm bảo",
+                    "Nghĩa vụ kiểm thử, bằng chứng và quyết định QA",
+                  ],
+                  [
+                    "ca-kiem-thu",
+                    "Thiết kế kiểm thử",
+                    "Ca kiểm thử, kỹ thuật, dữ liệu và bộ kiểm thử",
+                  ],
+                  [
+                    "ke-hoach-kiem-thu",
+                    "Lập kế hoạch kiểm thử",
+                    "Phạm vi kế hoạch, bản dựng và môi trường",
+                  ],
+                  [
+                    "lan-chay-kiem-thu",
+                    "Thực thi kiểm thử",
+                    "Kết quả bước, bằng chứng, chạy lại và kiểm thử lại",
+                  ],
+                  ["loi", "Xử lý lỗi", "Lỗi, liên kết thực thi và tác động"],
+                  [
+                    "ban-phat-hanh",
+                    "Quyết định phát hành",
+                    "Tiêu chí kết thúc, rủi ro và quyết định QA",
+                  ],
+                ].map(([href, label, detail]) => (
                   <Link
-                    className="rounded-control border border-border p-4 text-[13px] font-semibold hover:border-brand hover:text-brand"
+                    className="group rounded-control border border-border p-4 transition hover:border-brand hover:bg-brand-soft"
                     href={`${base}/${href}`}
                     key={href}
                   >
-                    {label}
+                    <p className="text-[13px] font-semibold group-hover:text-brand">{label}</p>
+                    <p className="mt-1 text-[12px] leading-5 text-ink-muted">{detail}</p>
                   </Link>
                 ))}
               </div>
             </Panel>
-            <Panel title="Tài liệu tham chiếu">
+            <Panel title="Tài liệu và nguồn">
               <div className="space-y-3 p-5">
+                <p className="text-sm leading-6 text-ink-muted">
+                  Chỉ tài liệu được cấp quyền mới được dùng làm nguồn dẫn hoặc cho phép AI đọc
+                </p>
                 <Link className="apple-button w-full" href={`${base}/tri-thuc`}>
-                  Xem tài liệu tham chiếu
+                  Mở tài liệu tham chiếu
                 </Link>
               </div>
             </Panel>

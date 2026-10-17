@@ -1,5 +1,7 @@
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
+from src.core.database import database
 from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.repositories.test_design import test_design_repository
 
@@ -20,7 +22,10 @@ async def create_repository_node(payload, user):
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    await test_design_repository.insert_repository_node(value)
+    try:
+        await test_design_repository.insert_repository_node(value)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail={"code": "TEST_REPOSITORY_NAME_EXISTS"})
     await audit(user.id, "test_repository_node_created", "TestRepositoryNode", value["_id"], payload.project_id)
     return value
 
@@ -72,21 +77,27 @@ async def create_reusable_step(payload, user):
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    await test_design_repository.insert_reusable_step(value)
-    await test_design_repository.insert_reusable_step_version(
-        {
-            "_id": version_id,
-            "project_id": payload.project_id,
-            "reusable_step_id": value["_id"],
-            "version": 1,
-            "name": value["name"],
-            "action_doc": value["action_doc"],
-            "expected_doc": value["expected_doc"],
-            "status": "ACTIVE",
-            "created_by": user.id,
-            "created_at": timestamp,
-        }
-    )
+    try:
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await test_design_repository.insert_reusable_step(value, session=session)
+                await test_design_repository.insert_reusable_step_version(
+                    {
+                        "_id": version_id,
+                        "project_id": payload.project_id,
+                        "reusable_step_id": value["_id"],
+                        "version": 1,
+                        "name": value["name"],
+                        "action_doc": value["action_doc"],
+                        "expected_doc": value["expected_doc"],
+                        "status": "ACTIVE",
+                        "created_by": user.id,
+                        "created_at": timestamp,
+                    },
+                    session=session,
+                )
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail={"code": "REUSABLE_STEP_NAME_EXISTS"})
     await audit(user.id, "reusable_test_step_created", "ReusableTestStep", value["_id"], payload.project_id)
     return value
 

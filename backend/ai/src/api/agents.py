@@ -15,7 +15,7 @@ from src.services.token_accounting import current_usage, start_accounting
 from src.tools.registry import registered_tools, tool_access
 
 
-router = APIRouter(prefix="/tac-tu", tags=["Tác tử kiểm thử"])
+router = APIRouter(prefix="/tac-tu", tags=["AI Automation compatibility"])
 
 
 @router.get("/du-an/{project_id}/nang-luc")
