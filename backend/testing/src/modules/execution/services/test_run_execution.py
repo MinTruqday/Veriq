@@ -238,6 +238,9 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
         test_run_id=run_id,
         test_case_version_id=test_case_version_id,
     )
+    from src.clients.ai_automation import emit_test_execution_recorded
+
+    await emit_test_execution_recorded(result, user)
     return result
 
 

@@ -17,6 +17,7 @@ export function Modal({
 }) {
   const dialogRef = useRef(null);
   const previousFocusRef = useRef(null);
+  const previousOverflowRef = useRef("");
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -24,19 +25,47 @@ export function Modal({
   useEffect(() => {
     if (isOpen) {
       previousFocusRef.current = document.activeElement;
+      previousOverflowRef.current = document.body.style.overflow;
       document.body.style.overflow = "hidden";
       const frame = requestAnimationFrame(() => {
-        return dialogRef.current?.focus();
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        const focusableSelector =
+          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        const firstInput = dialog.querySelector(
+          'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])',
+        );
+        const firstFocusable = dialog.querySelector(focusableSelector);
+        (dialog.querySelector("[autofocus]") || firstInput || firstFocusable || dialog).focus();
       });
       const handleKeyDown = (event) => {
-        if (event.key === "Escape") onCloseRef.current();
+        if (event.key === "Escape") {
+          if (
+            [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].at(-1) !==
+            dialogRef.current
+          ) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          onCloseRef.current();
+        }
         if (event.key !== "Tab" || !dialogRef.current) return;
         const focusable = dialogRef.current.querySelectorAll(
           'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         );
-        if (!focusable.length) return;
+        if (!focusable.length) {
+          event.preventDefault();
+          dialogRef.current.focus();
+          return;
+        }
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
+        if (!dialogRef.current.contains(document.activeElement)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+          return;
+        }
         if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
           last.focus();
@@ -49,7 +78,7 @@ export function Modal({
       return () => {
         cancelAnimationFrame(frame);
         document.removeEventListener("keydown", handleKeyDown);
-        document.body.style.overflow = "";
+        document.body.style.overflow = previousOverflowRef.current;
         previousFocusRef.current?.focus();
       };
     }
@@ -69,7 +98,7 @@ export function Modal({
         aria-label={ariaLabel}
         tabIndex={-1}
         className={cn(
-          "relative w-full max-w-md overflow-hidden rounded-panel border border-border bg-surface p-0 shadow-[0_24px_80px_rgba(32,32,30,0.18)] outline-none animate-in zoom-in-95",
+          "modal-dialog hide-scrollbar relative max-h-[90dvh] w-full max-w-md overflow-x-hidden overflow-y-auto overscroll-contain rounded-panel bg-surface p-0 shadow-[0_24px_80px_rgba(32,32,30,0.18)] outline-none animate-in zoom-in-95",
           className,
         )}
       >
@@ -111,7 +140,7 @@ export function ModalFooter({ children, className }) {
   return (
     <div
       className={cn(
-        "flex justify-end gap-3 border-t border-border bg-surface-raised p-6",
+        "sticky bottom-0 z-10 flex flex-col-reverse items-stretch gap-2 border-t border-border bg-surface-raised p-4 shadow-[0_-8px_14px_rgba(32,32,30,0.06)] [&>*]:w-full sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:p-6 sm:[&>*]:w-auto",
         className,
       )}
     >

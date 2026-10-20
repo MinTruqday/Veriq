@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.core.ai_streaming import AIStreamingMiddleware
+from src.clients.ai_automation import start_event_dispatcher, stop_event_dispatcher
 from src.core.common import failure_metadata, new_id
 from src.core.configuration import settings
 from src.core.database import close_database, connect_database, database
@@ -23,7 +24,9 @@ from src.modules.requirements.router import router as requirements_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_database()
+    await start_event_dispatcher()
     yield
+    await stop_event_dispatcher()
     await close_database()
 
 

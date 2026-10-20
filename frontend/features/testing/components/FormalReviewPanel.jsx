@@ -24,9 +24,12 @@ export default function FormalReviewPanel({
   const role = project.current_membership?.project_role;
   const load = useCallback(async () => {
     try {
+      const permissions = new Set(project.current_permissions || []);
       const [result, memberValues] = await Promise.all([
         testingApi.listReviewSessions(project._id, { artifact_type: artifactType }),
-        testingApi.listMembers(project._id),
+        permissions.has("project.members.read")
+          ? testingApi.listMembers(project._id)
+          : Promise.resolve([]),
       ]);
       const values = (result.items || []).filter(
         (item) => item.artifact_id === artifactId && item.artifact_version_id === artifactVersionId,
@@ -37,7 +40,14 @@ export default function FormalReviewPanel({
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [artifactId, artifactType, artifactVersionId, project._id, selected?._id]);
+  }, [
+    artifactId,
+    artifactType,
+    artifactVersionId,
+    project._id,
+    project.current_permissions,
+    selected?._id,
+  ]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -362,7 +372,7 @@ export default function FormalReviewPanel({
     <Panel
       title="Rà soát chính thức"
       actions={
-        can("reviewsession.create") ? (
+        can("reviewsession.create") && can("project.members.read") ? (
           <button className="apple-button" type="button" onClick={create}>
             Tạo phiên rà soát
           </button>

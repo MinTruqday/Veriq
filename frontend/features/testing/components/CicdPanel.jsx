@@ -11,12 +11,13 @@ export default function CicdPanel({ project }) {
   const [connectors, setConnectors] = useState([]);
   const [error, setError] = useState("");
   const can = (permission) => project.current_permissions?.includes(permission);
+  const canReadConnectors = project.current_permissions?.includes("project.connector.read");
   const load = useCallback(async () => {
     if (!project.current_permissions?.includes("cicd.read")) return;
     try {
       const [value, connectorValues] = await Promise.all([
         testingApi.getCicdState(project._id),
-        testingApi.listProjectConnectors(project._id),
+        canReadConnectors ? testingApi.listProjectConnectors(project._id) : Promise.resolve([]),
       ]);
       setState(value);
       setConnectors(connectorValues.filter((item) => item.status === "BOUND"));
@@ -24,7 +25,7 @@ export default function CicdPanel({ project }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [project._id, project.current_permissions]);
+  }, [canReadConnectors, project._id, project.current_permissions]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -127,7 +128,7 @@ export default function CicdPanel({ project }) {
               key: "action",
               label: "Thao tác",
               render: (item) =>
-                can("cicd.manage") ? (
+                can("cicd.manage") && canReadConnectors ? (
                   <button className="secondary-button" type="button" onClick={() => toggle(item)}>
                     {item.enabled ? "Tắt" : "Bật"}
                   </button>

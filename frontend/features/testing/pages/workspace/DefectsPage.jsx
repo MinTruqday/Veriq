@@ -1,10 +1,12 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
+import FilePicker from "../../components/FilePicker";
 import CausalAnalysisPanel from "../../components/CausalAnalysisPanel";
 import {
   ErrorState,
+  LoadingState,
   Panel,
   ProjectCrumb,
   WorkspacePage,
@@ -58,6 +60,10 @@ export default function DefectsPage({ project }) {
   const [duplicates, setDuplicates] = useState([]);
   const [traceReview, setTraceReview] = useState(null);
   const [error, setError] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const initialDataLoaded = useRef(false);
+  const loadedProjectId = useRef(project._id);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     title: "",
@@ -101,8 +107,27 @@ export default function DefectsPage({ project }) {
     if (status === "CLOSED") return can("defect.close");
     return can("defect.update");
   };
+  const hasTransitionActions = (item) =>
+    item.status === "READY_FOR_RETEST"
+      ? can("defect.retest") &&
+        results.some(
+          (result) =>
+            !item.linked_test_case_version_id ||
+            result.test_case_version_id === item.linked_test_case_version_id,
+        )
+      : (nextStates[item.status] || []).some((status) => transitionAllowed(item, status));
   const load = useCallback(async () => {
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      initialDataLoaded.current = false;
+    }
+    if (!initialDataLoaded.current) {
+      setInitialLoading(true);
+      setInitialLoadFailed(false);
+    }
+    setError("");
     try {
+      const projectPermissions = new Set(project.current_permissions || []);
       const [
         defectValues,
         resultValues,
@@ -112,10 +137,18 @@ export default function DefectsPage({ project }) {
         memberValues,
       ] = await Promise.all([
         testingApi.listDefectPage(project._id, { ...filters, page, page_size: 50 }),
-        testingApi.listResults(project._id, "PASS,FAIL"),
-        testingApi.listReleases(project._id),
-        testingApi.listBuilds(project._id),
-        testingApi.listEnvironments(project._id),
+        projectPermissions.has("testrun.read")
+          ? testingApi.listResults(project._id, "PASS,FAIL")
+          : Promise.resolve([]),
+        projectPermissions.has("release.read")
+          ? testingApi.listReleases(project._id)
+          : Promise.resolve([]),
+        projectPermissions.has("build.read") && projectPermissions.has("release.read")
+          ? testingApi.listBuilds(project._id)
+          : Promise.resolve([]),
+        projectPermissions.has("environment.read")
+          ? testingApi.listEnvironments(project._id)
+          : Promise.resolve([]),
         project.current_permissions?.includes("project.members.read")
           ? testingApi.listMembers(project._id)
           : Promise.resolve([]),
@@ -127,10 +160,15 @@ export default function DefectsPage({ project }) {
       setBuilds(buildValues);
       setEnvironments(environmentValues);
       setMembers(memberValues.filter((item) => item.status === "ACTIVE"));
+      initialDataLoaded.current = true;
+      setInitialLoadFailed(false);
     } catch (reason) {
+      if (!initialDataLoaded.current) setInitialLoadFailed(true);
       setError(messageOf(reason));
+    } finally {
+      setInitialLoading(false);
     }
-  }, [filters, page, project._id, project.current_permissions]);
+  }, [filters, initialDataLoaded, loadedProjectId, page, project._id, project.current_permissions]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -147,11 +185,11 @@ export default function DefectsPage({ project }) {
         severity: form.severity,
         priority: form.priority,
         environment: form.environment,
-        environment_id: form.environmentId || null,
+        environment_id: can("environment.read") ? form.environmentId || null : null,
         release: form.release,
-        release_id: form.releaseId || null,
+        release_id: can("release.read") ? form.releaseId || null : null,
         build: form.build,
-        build_id: form.buildId || null,
+        build_id: can("build.read") && can("release.read") ? form.buildId || null : null,
         attachments: form.attachments,
         linked_requirement_version_ids: [],
       });
@@ -179,7 +217,7 @@ export default function DefectsPage({ project }) {
   const transition = async (item, to_status) => {
     const answer = await ask({
       title: "Chuyển trạng thái lỗi",
-      description: `${item.defect_key} từ ${item.status} sang ${to_status}`,
+      description: `${item.defect_key} từ ${valueLabel(item.status)} sang ${valueLabel(to_status)}`,
       confirmLabel: "Chuyển trạng thái",
       fields: [
         {
@@ -277,11 +315,33 @@ export default function DefectsPage({ project }) {
       setError(messageOf(reason));
     }
   };
+  if (initialLoading || initialLoadFailed) {
+    return (
+      <WorkspacePage title="Lỗi" actions={<ProjectCrumb projectId={project._id} />}>
+        {initialLoading ? (
+          <LoadingState />
+        ) : (
+          <div className="space-y-3">
+            <ErrorState message={error || "Không thể tải danh sách lỗi"} />
+            <button className="secondary-button" type="button" onClick={() => void load()}>
+              Tải lại
+            </button>
+          </div>
+        )}
+      </WorkspacePage>
+    );
+  }
   return (
     <WorkspacePage
       title="Lỗi"
       actions={
         <div className="flex flex-wrap items-center gap-3">
+          <ProjectCrumb projectId={project._id} />
+          {can("defect.create") && (
+            <button className="apple-button" type="button" onClick={() => setCreating(true)}>
+              Tạo lỗi
+            </button>
+          )}
           {can("report.export") && (
             <button
               className="secondary-button"
@@ -308,12 +368,6 @@ export default function DefectsPage({ project }) {
               Tìm lỗi có thể trùng
             </button>
           )}
-          {can("defect.create") && (
-            <button className="apple-button" type="button" onClick={() => setCreating(true)}>
-              Tạo lỗi
-            </button>
-          )}
-          <ProjectCrumb projectId={project._id} />
         </div>
       }
     >
@@ -368,79 +422,108 @@ export default function DefectsPage({ project }) {
             </label>
             <label className="field-label">
               Môi trường
-              <select
-                className="apple-input mt-2"
-                value={form.environmentId}
-                onChange={(event) => {
-                  const environmentId = event.target.value;
-                  const environment = environments.find((item) => item._id === environmentId);
-                  setForm({
-                    ...form,
-                    environmentId,
-                    environment: environment?.name || "staging",
-                  });
-                }}
-              >
-                <option value="">Mặc định staging</option>
-                {environments.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name} · {item.environment_type}
-                  </option>
-                ))}
-              </select>
+              {can("environment.read") ? (
+                <select
+                  className="apple-input mt-2"
+                  value={form.environmentId}
+                  onChange={(event) => {
+                    const environmentId = event.target.value;
+                    const environment = environments.find((item) => item._id === environmentId);
+                    setForm({
+                      ...form,
+                      environmentId,
+                      environment: environment?.name || "staging",
+                    });
+                  }}
+                >
+                  <option value="">Mặc định staging</option>
+                  {environments.map((item) => (
+                    <option key={item._id} value={item._id}>
+                      {item.name} · {valueLabel(item.environment_type)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="apple-input mt-2"
+                  value={form.environment}
+                  onChange={(event) =>
+                    setForm({ ...form, environment: event.target.value, environmentId: "" })
+                  }
+                />
+              )}
             </label>
             <label className="field-label">
               Bản dựng
-              <select
-                className="apple-input mt-2"
-                value={form.buildId}
-                onChange={(event) => {
-                  const buildId = event.target.value;
-                  const build = builds.find((item) => item._id === buildId);
-                  setForm({
-                    ...form,
-                    buildId,
-                    build: build?.identifier || "",
-                    releaseId: build?.release_id || form.releaseId,
-                    release:
-                      releases.find((item) => item._id === build?.release_id)?.key || form.release,
-                  });
-                }}
-              >
-                <option value="">Không gắn bản dựng</option>
-                {builds
-                  .filter((item) => !form.releaseId || item.release_id === form.releaseId)
-                  .map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.identifier} · {item.version}
-                    </option>
-                  ))}
-              </select>
+              {can("build.read") && can("release.read") ? (
+                <select
+                  className="apple-input mt-2"
+                  value={form.buildId}
+                  onChange={(event) => {
+                    const buildId = event.target.value;
+                    const build = builds.find((item) => item._id === buildId);
+                    setForm({
+                      ...form,
+                      buildId,
+                      build: build?.identifier || "",
+                      releaseId: build?.release_id || form.releaseId,
+                      release:
+                        releases.find((item) => item._id === build?.release_id)?.key ||
+                        form.release,
+                    });
+                  }}
+                >
+                  <option value="">Không gắn bản dựng</option>
+                  {builds
+                    .filter((item) => !form.releaseId || item.release_id === form.releaseId)
+                    .map((item) => (
+                      <option key={item._id} value={item._id}>
+                        {item.identifier} · {item.version}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <input
+                  className="apple-input mt-2"
+                  value={form.build}
+                  onChange={(event) => setForm({ ...form, build: event.target.value, buildId: "" })}
+                />
+              )}
             </label>
             <label className="field-label">
               Bản phát hành
-              <select
-                className="apple-input mt-2"
-                value={form.releaseId}
-                onChange={(event) => {
-                  const releaseId = event.target.value;
-                  const release = releases.find((item) => item._id === releaseId);
-                  setForm({
-                    ...form,
-                    releaseId,
-                    release: release?.key || "",
-                    buildId: "",
-                    build: "",
-                  });
-                }}
-              >
-                <option value="">Không gắn bản phát hành</option>
-                {releases.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.key} · {item.name}
-                  </option>
-                ))}
-              </select>
+              {can("release.read") ? (
+                <select
+                  className="apple-input mt-2"
+                  value={form.releaseId}
+                  onChange={(event) => {
+                    const releaseId = event.target.value;
+                    const release = releases.find((item) => item._id === releaseId);
+                    setForm({
+                      ...form,
+                      releaseId,
+                      release: release?.key || "",
+                      buildId: "",
+                      build: "",
+                    });
+                  }}
+                >
+                  <option value="">Không gắn bản phát hành</option>
+                  {releases.map((item) => (
+                    <option key={item._id} value={item._id}>
+                      {item.key} · {item.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="apple-input mt-2"
+                  value={form.release}
+                  onChange={(event) =>
+                    setForm({ ...form, release: event.target.value, releaseId: "", buildId: "" })
+                  }
+                />
+              )}
             </label>
             <label className="field-label">
               Mô tả
@@ -466,11 +549,9 @@ export default function DefectsPage({ project }) {
                 onChange={(event) => setForm({ ...form, expected: event.target.value })}
               />
             </label>
-            <label className="field-label md:col-span-2">
-              Tệp bằng chứng
-              <input
-                className="apple-input mt-2"
-                type="file"
+            <div className="min-w-0 md:col-span-2">
+              <FilePicker
+                label="Tệp bằng chứng"
                 onChange={async (event) => {
                   const file = event.target.files?.[0];
                   if (!file) return;
@@ -490,8 +571,8 @@ export default function DefectsPage({ project }) {
                   {attachment.filename}
                 </span>
               ))}
-            </label>
-            <div className="flex justify-end gap-3 md:col-span-2">
+            </div>
+            <div className="action-dialog-footer flex justify-end gap-3 md:col-span-2">
               <button className="secondary-button" type="button" onClick={() => setCreating(false)}>
                 Hủy
               </button>
@@ -696,7 +777,7 @@ export default function DefectsPage({ project }) {
               key: "trace",
               label: "Truy vết",
               render: (item) => (
-                <span className="flex min-w-48 flex-col items-start gap-2">
+                <span className="flex min-w-0 flex-col items-start gap-2 sm:min-w-48">
                   <span className="text-[11px] text-ink-muted">
                     {item.linked_test_case_version_id || "Chưa liên kết ca kiểm thử"}
                   </span>
@@ -773,61 +854,72 @@ export default function DefectsPage({ project }) {
                   "Chưa gán"
                 ),
             },
-            {
-              key: "transition",
-              label: "Chuyển trạng thái",
-              render: (item) =>
-                item.status === "READY_FOR_RETEST" && can("defect.retest") ? (
-                  <select
-                    aria-label={`Kết quả retest ${item.defect_key}`}
-                    className="apple-input"
-                    value=""
-                    onChange={async (event) => {
-                      if (!event.target.value) return;
-                      try {
-                        await testingApi.retestDefect(project._id, item._id, {
-                          test_result_id: event.target.value,
-                          expected_revision: item.revision,
-                          note: "Kiểm thử lại từ giao diện quản lý lỗi",
-                          idempotency_key: crypto.randomUUID(),
-                        });
-                        await load();
-                      } catch (reason) {
-                        setError(messageOf(reason));
+            ...(items.some(hasTransitionActions)
+              ? [
+                  {
+                    key: "transition",
+                    label: "Chuyển trạng thái",
+                    render: (item) => {
+                      if (item.status === "READY_FOR_RETEST") {
+                        if (!can("defect.retest")) return null;
+                        const eligibleResults = results.filter(
+                          (result) =>
+                            !item.linked_test_case_version_id ||
+                            result.test_case_version_id === item.linked_test_case_version_id,
+                        );
+                        if (!eligibleResults.length) return null;
+                        return (
+                          <select
+                            aria-label={`Kết quả retest ${item.defect_key}`}
+                            className="apple-input"
+                            value=""
+                            onChange={async (event) => {
+                              if (!event.target.value) return;
+                              try {
+                                await testingApi.retestDefect(project._id, item._id, {
+                                  test_result_id: event.target.value,
+                                  expected_revision: item.revision,
+                                  note: "Kiểm thử lại từ giao diện quản lý lỗi",
+                                  idempotency_key: crypto.randomUUID(),
+                                });
+                                await load();
+                              } catch (reason) {
+                                setError(messageOf(reason));
+                              }
+                            }}
+                          >
+                            <option value="">Chọn kết quả kiểm thử lại</option>
+                            {eligibleResults.map((result) => (
+                              <option key={result._id} value={result._id}>
+                                {valueLabel(result.status)} {result.build || result._id}
+                              </option>
+                            ))}
+                          </select>
+                        );
                       }
-                    }}
-                  >
-                    <option value="">Chọn kết quả kiểm thử lại</option>
-                    {results
-                      .filter(
-                        (result) =>
-                          !item.linked_test_case_version_id ||
-                          result.test_case_version_id === item.linked_test_case_version_id,
-                      )
-                      .map((result) => (
-                        <option key={result._id} value={result._id}>
-                          {valueLabel(result.status)} {result.build || result._id}
-                        </option>
-                      ))}
-                  </select>
-                ) : (
-                  <select
-                    aria-label={`Chuyển trạng thái ${item.defect_key}`}
-                    className="apple-input"
-                    value=""
-                    onChange={(event) => transition(item, event.target.value)}
-                  >
-                    <option value="">Chọn</option>
-                    {(nextStates[item.status] || [])
-                      .filter((value) => transitionAllowed(item, value))
-                      .map((value) => (
-                        <option key={value} value={value}>
-                          {valueLabel(value)}
-                        </option>
-                      ))}
-                  </select>
-                ),
-            },
+                      const allowedTransitions = (nextStates[item.status] || []).filter((value) =>
+                        transitionAllowed(item, value),
+                      );
+                      if (!allowedTransitions.length) return null;
+                      return (
+                        <select
+                          aria-label={`Chuyển trạng thái ${item.defect_key}`}
+                          className="apple-input"
+                          value=""
+                          onChange={(event) => transition(item, event.target.value)}
+                        >
+                          <option value="">Chọn</option>
+                          {allowedTransitions.map((value) => (
+                            <option key={value} value={value}>
+                              {valueLabel(value)}
+                            </option>
+                          ))}
+                        </select>
+                      );
+                    },
+                  },
+                ]
+              : []),
           ]}
         />
         <Pagination value={pageInfo} onChange={setPage} />

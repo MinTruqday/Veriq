@@ -10,6 +10,18 @@ export function getAuthHeaders() {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+export async function fetchWithNetworkError(input, init) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("Không thể kết nối đến máy chủ Veriq. Vui lòng thử lại sau", {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+}
 let refreshPromise = null;
 function applyToken(token) {
   localStorage.setItem("veriq_token", token);
@@ -46,12 +58,12 @@ export async function authenticatedFetch(input, init = {}) {
     headers,
     credentials: init.credentials || "include",
   };
-  const response = await fetch(input, request);
+  const response = await fetchWithNetworkError(input, request);
   if (response.status !== 401) return response;
   const replacement = await refreshAccessToken();
   if (!replacement) return response;
   headers.set("Authorization", `Bearer ${replacement}`);
-  return fetch(input, {
+  return fetchWithNetworkError(input, {
     ...request,
     headers,
   });

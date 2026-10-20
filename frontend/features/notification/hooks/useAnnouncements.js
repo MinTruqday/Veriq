@@ -11,14 +11,17 @@ export function useAnnouncementsPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
+    setLoadFailed(false);
     try {
       const response = await getAnnouncementsAPI();
       const data = response?.data || response || [];
       setItems(Array.isArray(data) ? data : []);
     } catch (reason) {
+      setLoadFailed(true);
       setError(reason instanceof Error ? reason.message : "Không thể tải thông báo");
     } finally {
       setLoading(false);
@@ -82,6 +85,7 @@ export function useAnnouncementsPage() {
     loading,
     processing,
     error,
+    loadFailed,
     reload: load,
     markRead,
     markAllRead,

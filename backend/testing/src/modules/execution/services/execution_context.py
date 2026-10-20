@@ -209,6 +209,9 @@ class ExecutionContextService:
             release["_id"],
             project_id,
         )
+        from src.clients.ai_automation import emit_release_changed
+
+        await emit_release_changed(release, user)
         return release
 
     @staticmethod
@@ -239,6 +242,9 @@ class ExecutionContextService:
             release_id,
             release["project_id"],
         )
+        from src.clients.ai_automation import emit_release_changed
+
+        await emit_release_changed(updated, user)
         return updated
 
     @staticmethod
@@ -322,6 +328,9 @@ class ExecutionContextService:
             release["project_id"],
             {"reason": payload.reason, "assured_requirement_count": assurance_scope_size},
         )
+        from src.clients.ai_automation import emit_release_changed
+
+        await emit_release_changed(updated, user)
         return updated
 
     @staticmethod

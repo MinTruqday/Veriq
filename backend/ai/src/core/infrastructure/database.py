@@ -81,6 +81,24 @@ async def setup_indexes():
                 IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("requester_user_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("status", ASCENDING), ("updated_at", DESCENDING)]),
+                IndexModel(
+                    [("project_id", ASCENDING), ("source_event_id", ASCENDING)],
+                    unique=True,
+                    name="one_automation_run_per_source_event",
+                    partialFilterExpression={
+                        "source_event_id": {"$type": "string"},
+                    },
+                ),
+            ],
+            "automation_definitions": [
+                IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
+                IndexModel([("project_id", ASCENDING), ("trigger", ASCENDING), ("enabled", ASCENDING)]),
+                IndexModel(
+                    [("project_id", ASCENDING), ("trigger", ASCENDING)],
+                    unique=True,
+                    name="one_enabled_automation_definition_per_trigger",
+                    partialFilterExpression={"enabled": True},
+                ),
             ],
             "automation_checkpoints": [
                 IndexModel([("automation_run_id", ASCENDING), ("created_at", ASCENDING)]),

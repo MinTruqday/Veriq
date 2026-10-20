@@ -13,13 +13,13 @@ export default function TestControlActionPanel({
       {canCreate && (
         <div className="flex justify-end px-5 pt-5">
           <button className="apple-button" type="button" onClick={onCreate}>
-            Tạo control action
+            Tạo hành động kiểm soát
           </button>
         </div>
       )}
       <DataTable
         items={items}
-        empty="Chưa có control action"
+        empty="Chưa có hành động kiểm soát"
         columns={[
           { key: "type", label: "Loại" },
           { key: "title", label: "Nội dung" },
@@ -44,6 +44,7 @@ export default function TestControlActionPanel({
                 {
                   key: "actions",
                   label: "Thao tác",
+                  hideWhenEmpty: true,
                   render: (item) =>
                     item.status === "OPEN" ? (
                       <button

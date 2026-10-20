@@ -1,12 +1,14 @@
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 
-export default function DataSetCreateModal({ isOpen, onClose, form, setForm, onSubmit }) {
+export default function DataSetCreateModal({ isOpen, onClose, form, setForm, saving, onSubmit }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => {
+        if (!saving) onClose();
+      }}
       ariaLabel="Tạo bộ dữ liệu"
       className="max-w-2xl max-h-[90dvh] overflow-y-auto"
     >
@@ -41,12 +43,12 @@ export default function DataSetCreateModal({ isOpen, onClose, form, setForm, onS
             onChange={(event) => update({ secretRefs: event.target.value })}
           />
         </label>
-        <div className="flex justify-end gap-3">
-          <button className="secondary-button" type="button" onClick={onClose}>
+        <div className="action-dialog-footer flex justify-end gap-3">
+          <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
             Hủy
           </button>
-          <button className="apple-button" type="submit">
-            Tạo bộ dữ liệu
+          <button className="apple-button" type="submit" disabled={saving}>
+            {saving ? "Đang tạo" : "Tạo bộ dữ liệu"}
           </button>
         </div>
       </form>

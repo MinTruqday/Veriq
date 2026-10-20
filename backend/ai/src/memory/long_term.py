@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from src.repositories.memory import memory_repository
-from src.schemas.agent import AgentApprovalStatus, AgentRunStatus, AgentTaskStatus, VeriqRunState
+from src.schemas.agent import AgentRunStatus, AgentTaskStatus, VeriqRunState
 
 
 class LongTermMemory:
@@ -14,8 +14,6 @@ class LongTermMemory:
             state.status == AgentRunStatus.COMPLETED
             and state.proposal is not None
             and state.proposal.get("verification", {}).get("verified") is True
-            and state.approval_status
-            in {None, AgentApprovalStatus.APPROVED, AgentApprovalStatus.REJECTED}
             and all(
                 result.get("status") == AgentTaskStatus.COMPLETED
                 for result in state.agent_results
@@ -30,7 +28,6 @@ class LongTermMemory:
             "objective": state.objective,
             "intent": state.intent,
             "proposal": state.proposal,
-            "approval_decision": state.approval_decision,
             "evidence_refs": state.evidence_refs,
             "trusted": True,
             "created_at": datetime.now(timezone.utc),

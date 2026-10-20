@@ -3,8 +3,8 @@ export default function PageHeader({ title, showTitle = true, description, actio
     return <h1 className="sr-only">{title}</h1>;
   }
   return (
-    <header className="mb-7">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <header className="mb-6 min-w-0">
+      <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="min-w-0">
           <h1 className={showTitle ? "product-heading" : "sr-only"}>{title}</h1>
           {showTitle && description && (
@@ -15,7 +15,9 @@ export default function PageHeader({ title, showTitle = true, description, actio
           {meta && <div className="mt-2 text-[13px] text-ink-muted">{meta}</div>}
         </div>
         {actions && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{actions}</div>
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 xl:shrink-0 xl:justify-end">
+            {actions}
+          </div>
         )}
       </div>
     </header>

@@ -100,10 +100,11 @@ export default function MetricDefinitionPanel({ project }) {
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     try {
+      const canReadReleases = project.current_permissions?.includes("release.read");
       const [definitionResult, snapshotResult, releaseValues, alertResult] = await Promise.all([
         testingApi.listMeasurementDefinitions(project._id),
         testingApi.listMeasurementSnapshots(project._id),
-        testingApi.listReleases(project._id),
+        canReadReleases ? testingApi.listReleases(project._id) : Promise.resolve([]),
         testingApi.listMeasurementThresholdAlerts(project._id),
       ]);
       setDefinitions(definitionResult.items || []);
@@ -113,7 +114,7 @@ export default function MetricDefinitionPanel({ project }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [project._id]);
+  }, [project._id, project.current_permissions]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -258,6 +259,7 @@ export default function MetricDefinitionPanel({ project }) {
           {
             key: "actions",
             label: "Thao tác",
+            hideWhenEmpty: true,
             render: (item) => (
               <div className="flex flex-wrap gap-2">
                 {item.status === "DRAFT" && can("measurement.manage") && (

@@ -9,11 +9,11 @@ from src.core.security.guardrails import guardrails_engine
 from src.prompts.testing import build_generated_cases_grounding_prompt, build_testing_prompt
 from src.runtime.output import normalize_narrative_payload
 from src.schemas.inference import (
-    TestingAssistanceRequest,
+    TestingAutomationRequest,
     GeneratedCasesGroundingReview,
-    TestingAssistanceDegradedMode,
-    TestingAssistanceResult,
-    TestingAssistanceStatus,
+    TestingAutomationDegradedMode,
+    TestingAutomationResult,
+    TestingAutomationStatus,
     output_schema,
 )
 from src.services.inference import model_metadata, structured
@@ -71,7 +71,7 @@ def has_exact_evidence_quotes(case, source_text_by_ref):
     )
 
 
-async def generate_ai_assistance(req: TestingAssistanceRequest):
+async def generate_ai_automation(req: TestingAutomationRequest):
     evidence = [
         {
             "artifact_type": item.artifact_type,
@@ -103,8 +103,8 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
     )
     model = {
         **model_metadata(),
-        "prompt_version": "ai_assistance_v3_multilingual_few_shot",
-        "tool_schema_version": "ai_assistance",
+        "prompt_version": "ai_automation_v1_multilingual_few_shot",
+        "tool_schema_version": "ai_automation",
         "retrieval_version": "project_evidence",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -183,7 +183,7 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
             generated_data["suggestions"] = generated_data.pop("condition_candidates")
         generated_data.update(
             {
-                "status": TestingAssistanceStatus.SUCCESS,
+                "status": TestingAutomationStatus.SUCCESS,
                 "degraded_mode": None,
                 "provider": model["provider"],
                 "model": model,
@@ -193,10 +193,10 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
                 "created_at": model["created_at"],
             }
         )
-        result = TestingAssistanceResult(**generated_data)
+        result = TestingAutomationResult(**generated_data)
     except Exception as error:
         logger.warning(
-            "AI assistance result rejected capability={} error_type={} error={}",
+            "AI automation result rejected capability={} error_type={} error={}",
             req.capability,
             type(error).__name__,
             str(error),
@@ -212,9 +212,9 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
             else "AI_OUTPUT_INVALID" if output_invalid else "AI_PROVIDER_UNAVAILABLE"
         )
         degraded_mode = (
-            TestingAssistanceDegradedMode.OUTPUT
+            TestingAutomationDegradedMode.OUTPUT
             if output_invalid
-            else TestingAssistanceDegradedMode.PROVIDER
+            else TestingAutomationDegradedMode.PROVIDER
         )
         provider = model["provider"] if output_invalid else "unavailable"
         answer = (
@@ -222,14 +222,14 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
             if output_invalid
             else "An evidence grounded answer cannot be produced while the AI provider is unavailable"
         )
-        result = TestingAssistanceResult(
+        result = TestingAutomationResult(
             capability=req.capability,
             suggestions=[],
             findings=unsupported_details if failure_code == "AI_UNGROUNDED_OUTPUT" else [],
             evidence_refs=evidence_reference_ids(evidence),
             confidence=0,
             warnings=[failure_code, "MANUAL_REVIEW_REQUIRED"],
-            status=TestingAssistanceStatus.DEGRADED,
+            status=TestingAutomationStatus.DEGRADED,
             degraded_mode=degraded_mode,
             provider=provider,
             model={**model, "provider": provider},
@@ -264,9 +264,8 @@ async def generate_ai_assistance(req: TestingAssistanceRequest):
         "candidate_count": len(result.suggestions) + len(result.new_test_candidates),
         "confidence": result.confidence,
         "degraded_flags": (
-            result.warnings if result.status == TestingAssistanceStatus.DEGRADED else []
+            result.warnings if result.status == TestingAutomationStatus.DEGRADED else []
         ),
-        "approval_required": bool(result.suggestions or result.new_test_candidates),
         "hidden_reasoning_stored": False,
     }
     return result

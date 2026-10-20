@@ -82,10 +82,7 @@ async def create_agent_run(
         await long_term_memory.record_verified(completed)
     agentops.record_session_end(
         completed.run_id,
-        "done"
-        if completed.status
-        in {AgentRunStatus.COMPLETED, AgentRunStatus.APPROVAL_REQUIRED}
-        else "failed",
+        "done" if completed.status == AgentRunStatus.COMPLETED else "failed",
     )
     return completed
 

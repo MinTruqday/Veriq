@@ -18,6 +18,7 @@ export default function ReleaseQualityPanel({ project }) {
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     try {
+      const permissions = new Set(project.current_permissions || []);
       const [
         result,
         releaseValues,
@@ -27,11 +28,19 @@ export default function ReleaseQualityPanel({ project }) {
         memberValues,
       ] = await Promise.all([
         testingApi.listQualityEvaluations(project._id),
-        testingApi.listReleases(project._id),
-        testingApi.listBuilds(project._id),
-        testingApi.listMeasurementSnapshots(project._id),
-        testingApi.listMonitoringSnapshots(project._id),
-        testingApi.listMembers(project._id),
+        permissions.has("release.read")
+          ? testingApi.listReleases(project._id)
+          : Promise.resolve([]),
+        permissions.has("build.read") ? testingApi.listBuilds(project._id) : Promise.resolve([]),
+        permissions.has("measurement.read")
+          ? testingApi.listMeasurementSnapshots(project._id)
+          : Promise.resolve({ items: [] }),
+        permissions.has("testmonitor.read")
+          ? testingApi.listMonitoringSnapshots(project._id)
+          : Promise.resolve([]),
+        permissions.has("project.members.read")
+          ? testingApi.listMembers(project._id)
+          : Promise.resolve([]),
       ]);
       setItems(result.items || []);
       setReleases(releaseValues);
@@ -43,7 +52,7 @@ export default function ReleaseQualityPanel({ project }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [project._id, selected?._id]);
+  }, [project._id, project.current_permissions, selected?._id]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -192,7 +201,10 @@ export default function ReleaseQualityPanel({ project }) {
     <Panel
       title="Chất lượng bản phát hành"
       actions={
-        can("qualityevaluation.create") ? (
+        can("qualityevaluation.create") &&
+        can("release.read") &&
+        can("build.read") &&
+        can("testmonitor.read") ? (
           <button className="apple-button" type="button" onClick={create}>
             Tạo đánh giá
           </button>

@@ -4,6 +4,7 @@ from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
 from src.schemas.contracts.project import (
     ProjectArchiveInput,
+    ProjectCapabilities,
     ProjectCreate,
     ProjectMemberCreate,
     ProjectMemberPatch,
@@ -17,6 +18,14 @@ from src.modules.projects.services.project import ProjectService
 from src.modules.projects.services.project_progress import ProjectProgressService
 
 router = APIRouter(prefix="/kiem-thu", tags=["Dự án kiểm thử"])
+
+
+@router.get("/du-an/kha-nang", response_model=dict)
+async def project_capabilities(user: CurrentUser = Depends(get_current_user)):
+    value = ProjectCapabilities(
+        can_create_project=await ProjectService.can_create_project(user)
+    )
+    return envelope(value.model_dump())
 
 
 @router.post("/du-an", status_code=201)

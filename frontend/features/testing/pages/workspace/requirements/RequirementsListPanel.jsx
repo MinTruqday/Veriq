@@ -26,11 +26,19 @@ export default function RequirementsListPanel({
   onScanDuplicates,
   onMerge,
   onBulkArchive,
+  onSelect,
+  title = "Danh sách yêu cầu",
 }) {
   if (loading) return <LoadingState />;
   const activeFilterCount = [filters.status, filters.coverage, filters.tag, filters.owner].filter(
     Boolean,
   ).length;
+  const canSelectRows = [
+    "requirement.update",
+    "requirement.duplicate_check",
+    "requirement.merge",
+    "requirement.archive",
+  ].some(can);
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value }));
     setPage(1);
@@ -38,12 +46,12 @@ export default function RequirementsListPanel({
 
   return (
     <Panel
-      title="Danh sách yêu cầu"
+      title={title}
       actions={
-        <div className="flex flex-wrap gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <input
             aria-label="Tìm yêu cầu"
-            className="apple-input w-64"
+            className="apple-input w-full min-w-0 sm:w-64"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -52,18 +60,26 @@ export default function RequirementsListPanel({
             placeholder="Tìm yêu cầu"
           />
           {selectedIds.length > 0 && can("requirement.update") && (
-            <button className="secondary-button" type="button" onClick={onBulkTags}>
+            <button
+              className="secondary-button w-full whitespace-nowrap sm:w-auto"
+              type="button"
+              onClick={onBulkTags}
+            >
               Cập nhật nhãn
             </button>
           )}
           {can("requirement.duplicate_check") && (
-            <button className="secondary-button" type="button" onClick={onScanDuplicates}>
+            <button
+              className="secondary-button w-full whitespace-nowrap sm:w-auto"
+              type="button"
+              onClick={onScanDuplicates}
+            >
               {selectedIds.length ? "Kiểm tra các mục đã chọn" : "Kiểm tra trùng lặp"}
             </button>
           )}
           {selectedIds.length > 0 && can("requirement.merge") && (
             <button
-              className="secondary-button"
+              className="secondary-button w-full whitespace-nowrap sm:w-auto"
               disabled={selectedIds.length < 2}
               type="button"
               onClick={onMerge}
@@ -72,7 +88,11 @@ export default function RequirementsListPanel({
             </button>
           )}
           {selectedIds.length > 0 && can("requirement.archive") && (
-            <button className="danger-button" type="button" onClick={onBulkArchive}>
+            <button
+              className="danger-button w-full whitespace-nowrap sm:w-auto"
+              type="button"
+              onClick={onBulkArchive}
+            >
               Lưu trữ
             </button>
           )}
@@ -146,10 +166,13 @@ export default function RequirementsListPanel({
         </div>
       </details>
       <DataTable
-        onSelect={(item) => window.location.assign(`/du-an/${projectId}/yeu-cau/${item._id}`)}
+        minTableWidth={1180}
+        onSelect={
+          onSelect || ((item) => window.location.assign(`/du-an/${projectId}/yeu-cau/${item._id}`))
+        }
         items={items}
-        selectedIds={selectedIds}
-        onSelectionChange={setSelectedIds}
+        selectedIds={canSelectRows ? selectedIds : undefined}
+        onSelectionChange={canSelectRows ? setSelectedIds : undefined}
         selectionLabel="Chọn yêu cầu"
         empty="Chưa có yêu cầu"
         columns={[

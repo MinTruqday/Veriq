@@ -126,6 +126,7 @@ const labels = {
 };
 
 const valueLabels = {
+  Backlog: "Danh sách chờ",
   equivalence_partitioning: "Phân vùng tương đương",
   boundary_value: "Giá trị biên",
   decision_table: "Bảng quyết định",
@@ -135,7 +136,7 @@ const valueLabels = {
   possible: "Có thể dùng",
   insufficient_evidence: "Thiếu dữ liệu để áp dụng",
   not_applicable: "Không phù hợp",
-  user_story: "User Story",
+  user_story: "Câu chuyện người dùng",
   main_flow: "Luồng chính",
   exception_flow: "Luồng ngoại lệ",
   data_rules: "Dữ liệu và quy tắc",
@@ -208,6 +209,11 @@ const valueLabels = {
   SAFE_ALL: "Mọi thao tác an toàn",
   SERVICE_IDENTITY: "Danh tính dịch vụ",
   DEFECT_CREATED: "Lỗi được tạo",
+  MANUAL: "Kích hoạt thủ công",
+  DOCUMENT_INGESTED: "Tài liệu được nhập",
+  REQUIREMENT_CHANGED: "Yêu cầu thay đổi",
+  TEST_EXECUTION_RECORDED: "Kết quả kiểm thử được ghi nhận",
+  DEFECT_RECORDED: "Lỗi được ghi nhận",
   Project: "Dự án",
   ProjectSettings: "Cài đặt dự án",
   TestSuite: "Bộ kiểm thử",
@@ -215,9 +221,23 @@ const valueLabels = {
   RequirementDocument: "Tài liệu yêu cầu",
   Requirement: "Yêu cầu",
   project_permission_denied: "Từ chối quyền dự án",
+  project_membership_required: "Từ chối truy cập do chưa tham gia dự án",
   project_settings_updated: "Cập nhật cài đặt dự án",
+  test_case_draft_created: "Tạo bản nháp ca kiểm thử",
+  test_adequacy_assessment_refreshed: "Cập nhật hồ sơ đảm bảo",
+  test_adequacy_review_submitted: "Gửi rà soát hồ sơ đảm bảo",
+  test_adequacy_coverage_decided: "Cập nhật quyết định nghĩa vụ kiểm thử",
+  test_adequacy_changes_requested: "Yêu cầu chỉnh sửa hồ sơ đảm bảo",
+  project_task_created: "Tạo công việc dự án",
+  project_completion_percent_updated: "Cập nhật tiến độ dự án",
+  requirement_import_confirmed: "Xác nhận nhập yêu cầu",
   test_suite_created: "Tạo bộ kiểm thử",
   test_plan_created: "Tạo kế hoạch kiểm thử",
+  TestCaseDraft: "Bản nháp ca kiểm thử",
+  TestAdequacyAssessment: "Hồ sơ đảm bảo yêu cầu",
+  CoverageItem: "Nghĩa vụ kiểm thử",
+  ProjectTask: "Công việc dự án",
+  RequirementImport: "Lần nhập yêu cầu",
   requirement_document_reindexed: "Lập chỉ mục lại tài liệu yêu cầu",
   knowledge_source_created: "Tạo tài liệu tham chiếu",
   requirement_created: "Tạo yêu cầu",
@@ -330,6 +350,10 @@ const valueLabels = {
   manual: "Thủ công",
   candidate: "Ứng viên tự động hóa",
   automated: "Đã tự động hóa",
+  development: "Phát triển",
+  staging: "Tiền triển khai",
+  production: "Vận hành chính thức",
+  custom: "Tùy chỉnh",
 };
 
 export function statusLabel(value) {
@@ -344,6 +368,26 @@ export function formatDate(value) {
   return value ? new Date(value).toLocaleString("vi-VN") : "Chưa có";
 }
 
+export function formatCalendarDate(value) {
+  if (!value) return "Chưa có";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
 export function messageOf(reason) {
+  if (
+    [
+      "PROJECT_PERMISSION_DENIED",
+      "PROJECT_MEMBERSHIP_REQUIRED",
+      "PROJECT_MEMBERSHIP_INACTIVE",
+      "PROJECT_ARCHIVED_READ_DENIED",
+    ].includes(reason?.code)
+  )
+    return "";
   return reason instanceof Error ? reason.message : "Không thể hoàn tất thao tác";
 }

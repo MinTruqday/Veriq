@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
@@ -15,17 +15,23 @@ export default function AutomationExecutionPanel({ project }) {
   const [selected, setSelected] = useState(null);
   const [evidence, setEvidence] = useState(null);
   const [error, setError] = useState("");
-  const can = (permission) => project.current_permissions?.includes(permission);
+  const permissions = useMemo(
+    () => project.current_permissions || [],
+    [project.current_permissions],
+  );
+  const can = (permission) => permissions.includes(permission);
   const load = useCallback(async () => {
-    if (!project.current_permissions?.includes("automation.read")) return;
+    if (!permissions.includes("automation.read")) return;
     try {
       const [executionValues, artifactValues, scriptValues, environmentValues] = await Promise.all([
         testingApi.listAutomationExecutions(project._id),
-        testingApi.listApiArtifacts(project._id),
-        project.current_permissions?.includes("automation.script.export")
+        permissions.includes("apiartifact.read")
+          ? testingApi.listApiArtifacts(project._id)
+          : Promise.resolve([]),
+        permissions.includes("automation.script.export")
           ? testingApi.listAutomationScriptDrafts(project._id)
           : Promise.resolve([]),
-        project.current_permissions?.includes("environment.read")
+        permissions.includes("environment.read")
           ? testingApi.listEnvironments(project._id)
           : Promise.resolve([]),
       ]);
@@ -46,7 +52,7 @@ export default function AutomationExecutionPanel({ project }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [project._id, project.current_permissions]);
+  }, [permissions, project._id]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -154,7 +160,7 @@ export default function AutomationExecutionPanel({ project }) {
               type="button"
               onClick={create}
             >
-              Tạo lần chạy
+              Tạo lần chạy tự động
             </button>
           </div>
         ) : null

@@ -11,7 +11,11 @@ from src.modules.requirements.services.requirement_indexing import validate_requ
 from src.modules.requirements.services.requirement_records import create_requirement_record, create_requirement_version_record
 from src.modules.requirements.services.requirement_transformations import unique_source_refs
 from src.repositories.analysis import analysis_repository
-from src.clients.project_knowledge import remove_artifact
+from src.clients.project_knowledge import (
+    compare_project_text_semantics,
+    remove_artifact,
+    search_project_with_status,
+)
 from src.modules.requirements.services.requirement_workflow import (
     candidate_fingerprint,
     prepare_requirement_candidates,
@@ -62,8 +66,8 @@ async def compare_requirement_import_job(job, user):
         matches = []
         for previous_index, previous in enumerate(job.get("preview", [])[:index]):
             score, reasons = requirement_duplicate_score(
-                {**candidate, "acceptance_criteria": []},
-                {**previous, "acceptance_criteria": []},
+                candidate,
+                previous,
             )
             same_key = bool(
                 candidate.get("requirement_key")
@@ -80,23 +84,133 @@ async def compare_requirement_import_job(job, user):
                     "reasons": reasons,
                     "affected_test_cases": [],
                 })
+        lexical_candidates = []
         for requirement in requirements:
             version = versions.get(requirement.get("current_version_id"))
             if not version:
                 continue
+            version_id = version["_id"]
+            if version_id not in criteria_cache:
+                criteria_cache[version_id] = await analysis_repository.list_acceptance_criteria(
+                    version_id
+                )
             score, reasons = requirement_duplicate_score(
-                {**candidate, "acceptance_criteria": []}, version
+                candidate,
+                {**version, "acceptance_criteria": criteria_cache[version_id]},
             )
+            if (
+                candidate.get("type") == version.get("type")
+                and candidate.get("acceptance_criteria")
+                and criteria_cache[version_id]
+            ):
+                criterion_score, criterion_reasons = requirement_duplicate_score(
+                    {
+                        "type": candidate.get("type"),
+                        "acceptance_criteria": candidate["acceptance_criteria"],
+                    },
+                    {
+                        "type": version.get("type"),
+                        "acceptance_criteria": criteria_cache[version_id],
+                    },
+                )
+                if criterion_score > score:
+                    score = criterion_score
+                    reasons = [*reasons, *criterion_reasons]
             same_key = bool(
                 candidate.get("requirement_key")
                 and candidate["requirement_key"] == requirement.get("requirement_key")
             )
+            lexical_candidates.append((requirement, version, score, reasons, same_key))
+
+        semantic_scores = {}
+        if not any(score >= threshold or same_key for _, _, score, _, same_key in lexical_candidates):
+            candidate_criteria = candidate.get("acceptance_criteria", [])
+            candidate_text = " ".join(
+                [
+                    str(candidate.get("title") or ""),
+                    plain_text(candidate.get("content_doc", {})),
+                    *[str(item) for item in candidate.get("actors", [])],
+                    *[str(item) for item in candidate.get("business_rules", [])],
+                    *[
+                        item.get("plain_text")
+                        or plain_text(item.get("content_doc", {}))
+                        for item in candidate_criteria
+                    ],
+                ]
+            ).strip()
+            semantic_search = await search_project_with_status(
+                job["project_id"],
+                candidate_text,
+                ["requirement_version"],
+                100,
+                user,
+            )
+            if semantic_search.get("degraded_mode") != "NORMAL":
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "REQUIREMENT_SEMANTIC_MATCH_UNAVAILABLE"},
+                )
+            current_versions_by_id = {
+                version["_id"]: (requirement, version)
+                for requirement, version, _, _, _ in lexical_candidates
+                if requirement.get("status") not in {"OBSOLETE", "ARCHIVED"}
+            }
+            semantic_hits = {}
+            for item in semantic_search.get("items", []):
+                version_id = item.get("artifact_version_id")
+                if version_id in current_versions_by_id:
+                    semantic_hits[version_id] = current_versions_by_id[version_id]
+            if semantic_hits:
+                passages = []
+                semantic_version_ids = list(semantic_hits)
+                for version_id in semantic_version_ids:
+                    version = semantic_hits[version_id][1]
+                    if version_id not in criteria_cache:
+                        criteria_cache[version_id] = await analysis_repository.list_acceptance_criteria(
+                            version_id
+                        )
+                    passages.append(
+                        " ".join(
+                            [
+                                str(version.get("title") or ""),
+                                version.get("plain_text_projection")
+                                or plain_text(version.get("content_doc", {})),
+                                *[str(value) for value in version.get("actors", [])],
+                                *[str(value) for value in version.get("business_rules", [])],
+                                *[
+                                    criterion.get("plain_text")
+                                    or plain_text(criterion.get("content_doc", {}))
+                                    for criterion in criteria_cache[version_id]
+                                ],
+                            ]
+                        ).strip()
+                    )
+                try:
+                    semantic_values = await compare_project_text_semantics(
+                        candidate_text, passages
+                    )
+                except Exception as error:
+                    raise HTTPException(
+                        status_code=503,
+                        detail={"code": "REQUIREMENT_SEMANTIC_MATCH_UNAVAILABLE"},
+                    ) from error
+                semantic_scores = dict(zip(semantic_version_ids, semantic_values))
+
+        for requirement, version, lexical_score, reasons, same_key in lexical_candidates:
+            score = lexical_score
+            if version["_id"] in semantic_scores:
+                score = (
+                    max(0.0, lexical_score)
+                    * max(0.0, semantic_scores[version["_id"]])
+                ) ** 0.5
+                if score >= threshold and "Ngữ nghĩa nội dung, quy tắc và tiêu chí gần giống" not in reasons:
+                    reasons = [*reasons, "Ngữ nghĩa nội dung, quy tắc và tiêu chí gần giống"]
             if requirement.get("status") in {"OBSOLETE", "ARCHIVED"} and not same_key:
                 continue
             if score < threshold and not same_key:
                 continue
             exact_core = (
-                score == 1
+                lexical_score == 1
                 and candidate.get("type") == version.get("type")
                 and all(
                     not candidate.get(field) or candidate[field] == version.get(field, [])
@@ -104,8 +218,6 @@ async def compare_requirement_import_job(job, user):
                 )
             )
             if exact_core:
-                if version["_id"] not in criteria_cache:
-                    criteria_cache[version["_id"]] = await analysis_repository.list_acceptance_criteria(version["_id"])
                 existing_criteria = criteria_cache[version["_id"]]
                 exact_core = len(existing_criteria) < 500 and [
                     plain_text(item.get("content_doc") or {}).strip()
@@ -218,14 +330,55 @@ async def resolve_requirement_import_candidate(job_id, candidate_id, payload, us
         "expected_current_version_id": current["_id"],
     }
     if payload.action == "create_version":
-        values.update({
-            "title": candidate["title"],
-            "type": candidate["type"],
-            "content_doc": candidate["content_doc"],
-            "acceptance_criteria": candidate.get("acceptance_criteria", []),
-        })
-        for field in ("priority", "risk", "business_rules", "actors", "dependencies", "tags", "details", "section_states", "custom_values"):
-            values[field] = candidate.get(field, RequirementCreate.model_fields[field].get_default(call_default_factory=True))
+        values["title"] = candidate.get("title") or current.get("title")
+        values["type"] = candidate.get("type") or current.get("type")
+        values["content_doc"] = candidate.get("content_doc") or current.get("content_doc")
+        candidate_criteria = candidate.get("acceptance_criteria") or old_criteria
+        values["acceptance_criteria"] = candidate_criteria
+        for field in (
+            "priority",
+            "risk",
+            "business_rules",
+            "actors",
+            "dependencies",
+            "tags",
+            "details",
+            "section_states",
+            "custom_values",
+        ):
+            candidate_value = candidate.get(field)
+            current_value = current.get(field)
+            values[field] = (
+                candidate_value
+                if candidate_value not in (None, "", [], {})
+                else current_value
+                if current_value is not None
+                else RequirementCreate.model_fields[field].get_default(
+                    call_default_factory=True
+                )
+            )
+        section_states = dict(values.get("section_states") or {})
+        for key, state in section_states.items():
+            if key in RequirementCreate.model_fields and key not in {"details", "section_states"}:
+                section_value = values.get(key)
+            else:
+                section_value = values.get("details")
+                for part in key.split("."):
+                    section_value = (
+                        section_value.get(part)
+                        if isinstance(section_value, dict)
+                        else None
+                    )
+            has_content = (
+                any(bool(item) for item in section_value.values())
+                if isinstance(section_value, dict)
+                else bool(section_value)
+            )
+            if has_content and state != "provided":
+                section_states[key] = "provided"
+            elif not has_content and state == "provided":
+                section_states[key] = "missing"
+        values["section_states"] = section_states
     claimed = await requirement_import_repository.claim_confirmation(
         job_id, job["project_id"], "PREVIEW_READY", "RESOLVING", user.id, now(),
         payload.expected_revision,

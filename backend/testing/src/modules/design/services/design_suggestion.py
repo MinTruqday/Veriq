@@ -5,7 +5,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
 from src.repositories.test_design import test_design_repository
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.modules.design.services.generation import PerformanceScenario, SecurityCandidate, validated_suggestions
 
 
@@ -54,7 +54,7 @@ class DesignSuggestionService:
         if existing:
             return existing, {}
         versions, evidence = await requirement_evidence(project_id, payload.requirement_version_ids)
-        ai_result = await request_ai_assistance(
+        ai_result = await request_ai_automation(
             "security_test_generation",
             project_id,
             json.dumps({"categories": payload.categories}, ensure_ascii=False),
@@ -150,7 +150,7 @@ class DesignSuggestionService:
         if existing:
             return existing, {}
         versions, evidence = await requirement_evidence(project_id, payload.requirement_version_ids)
-        ai_result = await request_ai_assistance(
+        ai_result = await request_ai_automation(
             "performance_plan_generation",
             project_id,
             json.dumps(

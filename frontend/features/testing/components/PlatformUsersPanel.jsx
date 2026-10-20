@@ -180,20 +180,20 @@ export default function PlatformUsersPanel() {
               Thao tác hàng loạt
             </button>
             <form
-              className="flex gap-2"
+              className="flex min-w-0 flex-wrap gap-2 sm:flex-nowrap"
               onSubmit={(event) => {
                 event.preventDefault();
                 void loadUsers(query);
               }}
             >
               <input
-                className="apple-input w-72"
+                className="apple-input min-w-0 w-full sm:w-72"
                 aria-label="Tìm tài khoản"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Email tên hoặc tên đăng nhập"
               />
-              <button className="secondary-button" type="submit">
+              <button className="secondary-button shrink-0" type="submit">
                 Tìm
               </button>
             </form>

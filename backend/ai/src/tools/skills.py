@@ -3,8 +3,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 
 from src.schemas.agent import TestingSkillInput
-from src.schemas.inference import TestingAssistanceRequest
-from src.services.ai_assistance import generate_ai_assistance
+from src.schemas.inference import TestingAutomationRequest
+from src.services.ai_automation import generate_ai_automation
 
 
 async def execute_skill(capability, project_id, instruction, config):
@@ -17,8 +17,8 @@ async def execute_skill(capability, project_id, instruction, config):
                 "reason_codes": ["INSUFFICIENT_EVIDENCE"],
             }
         )
-    result = await generate_ai_assistance(
-        TestingAssistanceRequest(
+    result = await generate_ai_automation(
+        TestingAutomationRequest(
             capability=capability,
             project_id=project_id,
             instruction=instruction,
@@ -47,7 +47,6 @@ def testing_skill(capability, description, domains, permission, label=None, user
         "owner_domain": domains[0] if len(domains) == 1 else None,
         "action": "PROPOSE",
         "permission": permission,
-        "requires_approval": False,
         "verification": None,
         "label": label or capability,
         "user_selectable": user_selectable,

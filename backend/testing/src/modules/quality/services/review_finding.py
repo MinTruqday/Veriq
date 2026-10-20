@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 
+from src.core.auth import roles_for_membership
 from src.core.common import audit, get_project, new_id, now
 from src.repositories.review import review_repository
 from src.modules.quality.services.review_session_query import get_review, validate_members
@@ -117,7 +118,7 @@ async def resolve_finding(finding_id, payload, user):
         membership = await review_repository.find_active_member(
             finding["project_id"], user.id, 'ACTIVE'
         )
-        if (membership or {}).get("project_role") != 'QA':
+        if 'QA' not in roles_for_membership(membership):
             raise HTTPException(
                 status_code=403,
                 detail={"code": 'REVIEW_FINDING_OWNER_REQUIRED'},

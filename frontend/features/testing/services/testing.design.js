@@ -26,6 +26,11 @@ export const designTestingApi = {
     }),
   listRequirementClarifications: (requirementVersionId) =>
     testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro`),
+  createRequirementClarification: (requirementVersionId, payload) =>
+    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   createClarificationsFromReview: (requirementVersionId) =>
     testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro/tao-tu-ra-soat`, {
       method: "POST",

@@ -214,6 +214,9 @@ async def create_test_plan_record(payload, project_id, user):
     }
     await test_plan_repository.insert_plan(plan)
     await audit(user.id, "test_plan_created", "TestPlan", plan["_id"], payload.project_id)
+    from src.clients.ai_automation import emit_test_plan_changed
+
+    await emit_test_plan_changed(plan, user)
     return plan
 
 
@@ -324,6 +327,9 @@ async def update_test_plan_record(plan_id, payload, user):
         changes,
     )
     await audit(user.id, "test_plan_updated", "TestPlan", plan_id, plan["project_id"])
+    from src.clients.ai_automation import emit_test_plan_changed
+
+    await emit_test_plan_changed(updated, user)
     return updated
 
 
@@ -386,6 +392,9 @@ async def approve_test_plan_record(plan_id, payload, user):
         },
     )
     await audit(user.id, "test_plan_approved", "TestPlan", plan_id, plan["project_id"])
+    from src.clients.ai_automation import emit_test_plan_approved
+
+    await emit_test_plan_approved(updated, user)
     return updated
 
 

@@ -109,7 +109,11 @@ class ProjectRepository:
 
     async def count_members_by_role_status(self, project_id, role, status):
         return await self.members.count_documents(
-            {"project_id": project_id, "project_role": role, "status": status}
+            {
+                "project_id": project_id,
+                "status": status,
+                "$or": [{"project_role": role}, {"project_roles": role}],
+            }
         )
 
     async def update_member(self, project_id, user_id, revision, changes):
@@ -133,6 +137,7 @@ class ProjectRepository:
             {
                 "$set": {
                     "project_role": previous["project_role"],
+                    "project_roles": previous.get("project_roles", [previous["project_role"]]),
                     "status": previous["status"],
                     "updated_at": updated_at,
                 },

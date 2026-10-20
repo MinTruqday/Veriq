@@ -195,6 +195,12 @@ async def create_test_version_from_proposal(proposal, patch, user):
     base = await proposal_application_repository.find_test_version(
         proposal["base_version_id"]
     )
+    analysis = await proposal_application_repository.find_impact_analysis(
+        proposal["impact_analysis_id"]
+    )
+    change_set = await proposal_application_repository.find_change_set(
+        analysis["change_set_id"]
+    ) if analysis and analysis.get("change_set_id") else None
     allowed = set(['title',
  'type',
  'priority',
@@ -213,6 +219,83 @@ async def create_test_version_from_proposal(proposal, patch, user):
  'requirement_version_ids',
  'acceptance_criterion_ids'])
     merged = {**base, **{key: value for key, value in patch.items() if key in allowed}}
+    if change_set and change_set.get("to_version_id"):
+        current_requirement_version_id = change_set["to_version_id"]
+        current_requirement_version = await proposal_application_repository.find_requirement_version(
+            current_requirement_version_id, proposal["project_id"]
+        )
+        if not current_requirement_version:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "REQUIREMENT_VERSION_NOT_FOUND"},
+            )
+        requirement_version_ids = list(merged.get("requirement_version_ids", []))
+        versions_by_id = {
+            version_id: await proposal_application_repository.find_requirement_version(
+                version_id, proposal["project_id"]
+            )
+            for version_id in requirement_version_ids
+        }
+        replaced_requirement_version_ids = {
+            version_id
+            for version_id, version in versions_by_id.items()
+            if version
+            and current_requirement_version
+            and version.get("requirement_id") == current_requirement_version.get("requirement_id")
+        }
+        requirement_version_ids = [
+            version_id
+            for version_id in requirement_version_ids
+            if version_id not in replaced_requirement_version_ids
+        ]
+        if current_requirement_version_id not in requirement_version_ids:
+            requirement_version_ids.append(current_requirement_version_id)
+        merged["requirement_version_ids"] = requirement_version_ids
+
+        previous_criteria = await proposal_application_repository.list_acceptance_criteria_by_ids(
+            merged.get("acceptance_criterion_ids", []), proposal["project_id"]
+        )
+        current_criteria = await proposal_application_repository.list_acceptance_criteria_for_version(
+            current_requirement_version_id, proposal["project_id"]
+        )
+        current_criteria_by_key = {
+            item.get("key"): item["_id"]
+            for item in current_criteria
+            if item.get("key")
+        }
+        criterion_owner_version_ids = {
+            item.get("requirement_version_id")
+            for item in previous_criteria
+            if item.get("requirement_version_id")
+        }
+        criterion_owner_versions = {
+            version_id: await proposal_application_repository.find_requirement_version(
+                version_id, proposal["project_id"]
+            )
+            for version_id in criterion_owner_version_ids
+        }
+        previous_criterion_ids = {
+            item["_id"]
+            for item in previous_criteria
+            if current_requirement_version
+            and criterion_owner_versions.get(item.get("requirement_version_id"))
+            and criterion_owner_versions[item["requirement_version_id"]].get("requirement_id")
+            == current_requirement_version.get("requirement_id")
+        }
+        remapped_criterion_ids = [
+            current_criteria_by_key[item.get("key")]
+            for item in previous_criteria
+            if item["_id"] in previous_criterion_ids
+            and item.get("key") in current_criteria_by_key
+        ]
+        retained_criterion_ids = [
+            criterion_id
+            for criterion_id in merged.get("acceptance_criterion_ids", [])
+            if criterion_id not in previous_criterion_ids
+        ]
+        merged["acceptance_criterion_ids"] = list(
+            dict.fromkeys([*retained_criterion_ids, *remapped_criterion_ids])
+        )
     merged["plain_text_projection"] = project_test_text(merged)
     version = {
         **{
@@ -253,12 +336,6 @@ async def create_test_version_from_proposal(proposal, patch, user):
         ['CONFIRMED', 'STALE'],
         'STALE',
         now(),
-    )
-    analysis = await proposal_application_repository.find_impact_analysis(
-        proposal["impact_analysis_id"]
-    )
-    change_set = await proposal_application_repository.find_change_set(
-        analysis["change_set_id"]
     )
     await proposal_application_repository.insert_trace(
         {

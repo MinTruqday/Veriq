@@ -6,12 +6,13 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 
 from src.core.dependency import verify_internal_token
+from src.schemas.evaluation import TestabilityBenchmarkReport, TestabilityBenchmarkRequest
 from src.schemas.inference import (
     CrossDocumentExpansionRequest,
     KnowledgeChunkSafetyRequest,
     KnowledgeDocumentSummaryRequest,
-    TestingAssistanceRequest,
-    TestingAssistanceResult,
+    TestingAutomationRequest,
+    TestingAutomationResult,
 )
 from src.services.inference import (
     decompose_retrieval,
@@ -19,9 +20,23 @@ from src.services.inference import (
     stream_sink,
     summarize_document,
 )
-from src.services.ai_assistance import generate_ai_assistance
+from src.services.ai_automation import generate_ai_automation
+from src.services.testability_benchmark import testability_benchmark
 
 router = APIRouter(prefix="/suy-luan")
+
+
+@router.post(
+    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu",
+    dependencies=[Depends(verify_internal_token)],
+    response_model=TestabilityBenchmarkReport,
+    description=(
+        "Đánh giá đầu ra compiler có dẫn nguồn so với sinh test trực tiếp bằng bộ "
+        "tình huống và đáp án chuẩn do người thực hiện cung cấp"
+    ),
+)
+async def evaluate_testability_compiler(req: TestabilityBenchmarkRequest):
+    return await testability_benchmark.evaluate(req)
 
 
 @router.post(
@@ -62,17 +77,17 @@ async def summarize_knowledge_document(req: KnowledgeDocumentSummaryRequest):
 
 
 @router.post(
-    "/noi-bo/kiem-thu/ho-tro",
+    "/noi-bo/kiem-thu/tao-ket-qua",
     dependencies=[Depends(verify_internal_token)],
-    response_model=TestingAssistanceResult,
-    description="Sinh đề xuất kiểm thử có bằng chứng và không tự thực hiện quyết định dành cho con người",
+    response_model=TestingAutomationResult,
+    description="Tạo kết quả có cấu trúc cho một bước xử lý nội bộ của AI agent",
 )
-async def ai_assistance(req: TestingAssistanceRequest):
-    return await generate_ai_assistance(req)
+async def ai_automation(req: TestingAutomationRequest):
+    return await generate_ai_automation(req)
 
 
-@router.post("/noi-bo/kiem-thu/ho-tro/stream", dependencies=[Depends(verify_internal_token)])
-async def stream_ai_assistance(req: TestingAssistanceRequest):
+@router.post("/noi-bo/kiem-thu/tao-ket-qua/stream", dependencies=[Depends(verify_internal_token)])
+async def stream_ai_automation(req: TestingAutomationRequest):
     queue = asyncio.Queue()
 
     async def emit(piece):
@@ -88,7 +103,7 @@ async def stream_ai_assistance(req: TestingAssistanceRequest):
     async def run():
         token = stream_sink.set(emit)
         try:
-            result = await ai_assistance(req)
+            result = await ai_automation(req)
             await queue.put({"type": "result", "data": jsonable_encoder(result)})
         except Exception as error:
             await queue.put({"type": "error", "code": type(error).__name__})

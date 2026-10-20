@@ -6,7 +6,7 @@ from typing import Awaitable, Callable
 import httpx
 from fastapi import HTTPException
 
-from src.clients.ai_assistance import ai_assistance_client
+from src.clients.ai_automation import ai_automation_client
 from src.core.metrics import AI_GENERATION_LATENCY, AI_REQUESTS
 
 
@@ -44,7 +44,7 @@ def ai_contract_metadata(result):
     }
 
 
-async def request_ai_assistance(capability, project_id, instruction, evidence):
+async def request_ai_automation(capability, project_id, instruction, evidence):
     started_at = time.perf_counter()
     try:
         sink = stream_sink.get()
@@ -56,7 +56,7 @@ async def request_ai_assistance(capability, project_id, instruction, evidence):
                     + sum(len(str(item.get("text") or "")) for item in evidence),
                 }
             )
-        result = await ai_assistance_client.request(
+        result = await ai_automation_client.request(
             {
                 "capability": capability,
                 "project_id": project_id,

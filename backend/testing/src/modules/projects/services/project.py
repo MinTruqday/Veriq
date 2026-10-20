@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.authentication import get_project_creation_policy
-from src.core.auth import archive_read_permissions, permissions_for_role, project_permissions
+from src.core.auth import archive_read_permissions, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership
 from src.core.common import (
     audit,
     get_project,
@@ -21,11 +21,7 @@ from src.modules.projects.services.project_progress import task_summaries
 
 def project_access(project, membership, grant):
     
-    role_permissions = (
-        permissions_for_role(membership["project_role"], project.get("settings"))
-        if membership
-        else set()
-    )
+    role_permissions = permissions_for_membership(membership, project.get("settings"))
     grant_permissions = set(grant.get("permissions", [])) & project_permissions() if grant else set()
     if project.get("status", "active").lower() == "archived":
         allowed = archive_read_permissions() | {"project.restore"}
@@ -65,19 +61,19 @@ def project_settings(project):
 
 class ProjectService:
     @staticmethod
-    async def create(payload, user):
-        
-        
+    async def can_create_project(user):
         policy = await get_project_creation_policy()
-        if policy == 'ADMIN_ONLY' and not user.is_system_admin:
+        return policy != 'ADMIN_ONLY' or user.is_system_admin
+
+    @staticmethod
+    async def create(payload, user):
+        if not await ProjectService.can_create_project(user):
             raise HTTPException(
                 status_code=403,
                 detail={"code": 'SYSTEM_PERMISSION_DENIED'},
             )
         timestamp = now()
         initial_qa_user_id = await resolve_user_reference(payload.initial_qa_user_id)
-        if initial_qa_user_id == user.id:
-            raise HTTPException(status_code=422, detail={"code": "INITIAL_QA_MUST_DIFFER_FROM_BA"})
         project = {
             "_id": new_id('PRJ'),
             **payload.model_dump(exclude={"initial_qa_user_id"}),
@@ -93,6 +89,7 @@ class ProjectService:
             "project_id": project["_id"],
             "user_id": user.id,
             "project_role": 'BA',
+            "project_roles": ['BA', 'QA'] if initial_qa_user_id == user.id else ['BA'],
             "status": 'ACTIVE',
             "membership_revision": 1,
             "created_by": user.id,
@@ -104,6 +101,7 @@ class ProjectService:
             "project_id": project["_id"],
             "user_id": initial_qa_user_id,
             "project_role": 'QA',
+            "project_roles": ['QA'],
             "status": 'ACTIVE',
             "membership_revision": 1,
             "created_by": user.id,
@@ -111,7 +109,8 @@ class ProjectService:
             "updated_at": timestamp,
         }
         try:
-            await project_repository.create_with_memberships(project, [ba_membership, qa_membership])
+            memberships = [ba_membership] if initial_qa_user_id == user.id else [ba_membership, qa_membership]
+            await project_repository.create_with_memberships(project, memberships)
         except DuplicateKeyError:
             raise HTTPException(
                 status_code=409, detail={"code": 'PROJECT_KEY_EXISTS'}
@@ -122,15 +121,17 @@ class ProjectService:
             'Project',
             project["_id"],
             project["_id"],
-            {"ba_membership_id": ba_membership["_id"], "initial_qa_membership_id": qa_membership["_id"]},
+            {
+                "ba_membership_id": ba_membership["_id"],
+                "initial_qa_membership_id": ba_membership["_id"] if initial_qa_user_id == user.id else qa_membership["_id"],
+                "initial_qa_same_as_ba": initial_qa_user_id == user.id,
+            },
         )
         return {
             **project,
             "task_summary": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "cancelled": 0, "applicable_total": 0, "completion_percent": None},
             "current_membership": ba_membership,
-            "current_permissions": sorted(
-                permissions_for_role('BA', project["settings"])
-            ),
+            "current_permissions": sorted(permissions_for_membership(ba_membership, project["settings"])),
         }
 
     @staticmethod
@@ -325,6 +326,7 @@ class ProjectService:
             "project_id": project_id,
             "user_id": member_user_id,
             "project_role": payload.project_role,
+            "project_roles": [payload.project_role],
             "status": 'INVITED' if invited else 'ACTIVE',
             "membership_revision": 1,
             **({"invited_by": user.id, "invited_at": timestamp} if invited else {}),
@@ -525,11 +527,14 @@ class ProjectService:
         changes = {key: value for key, value in payload.model_dump().items() if value is not None and key != "expected_revision"}
         desired_role = changes.get("project_role", previous.get("project_role"))
         desired_status = changes.get("status", previous.get("status"))
+        if "project_role" in changes and "project_roles" not in changes:
+            changes["project_roles"] = [changes["project_role"]]
         was_active_qa = (
-            previous.get("project_role") == 'QA'
+            'QA' in roles_for_membership(previous)
             and previous.get("status") == 'ACTIVE'
         )
-        remains_active_qa = desired_role == 'QA' and desired_status == 'ACTIVE'
+        desired_roles = set(changes.get("project_roles", roles_for_membership(previous)))
+        remains_active_qa = 'QA' in desired_roles and desired_status == 'ACTIVE'
         if was_active_qa and not remains_active_qa:
             qa_count = await project_repository.count_members_by_role_status(
                 project_id, 'QA', 'ACTIVE'
@@ -558,7 +563,7 @@ class ProjectService:
                 },
             )
         remains_active_qa = (
-            membership.get("project_role") == 'QA'
+            'QA' in roles_for_membership(membership)
             and membership.get("status") == 'ACTIVE'
         )
         if was_active_qa and not remains_active_qa:
@@ -593,7 +598,7 @@ class ProjectService:
                 status_code=404, detail={"code": 'ENTITY_NOT_FOUND'}
             )
         if (
-            membership.get("project_role") == 'QA'
+            'QA' in roles_for_membership(membership)
             and membership.get("status") == 'ACTIVE'
         ):
             qa_count = await project_repository.count_members_by_role_status(

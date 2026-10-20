@@ -36,7 +36,7 @@ const sections = [
 ];
 export default function TermsPage() {
   return (
-    <div className="w-full">
+    <div className="mx-auto w-full max-w-[1480px] min-w-0">
       <PageHeader title="Điều khoản" meta="Hiệu lực từ 28 tháng 4 2026" />
 
       <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,720px)] lg:items-start">

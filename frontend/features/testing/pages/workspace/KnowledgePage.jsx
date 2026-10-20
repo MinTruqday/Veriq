@@ -1,9 +1,10 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import {
   DegradedBanner,
   ErrorState,
+  LoadingState,
   Panel,
   ProjectCrumb,
   WorkspacePage,
@@ -49,15 +50,24 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   const [answer, setAnswer] = useState(null);
   const [sources, setSources] = useState([]);
   const [error, setError] = useState("");
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesLoadFailed, setSourcesLoadFailed] = useState(false);
+  const sourcesLoaded = useRef(false);
   const [creatingSource, setCreatingSource] = useState(false);
   const [askingAi, setAskingAi] = useState(false);
   const canAsk = project.current_permissions?.includes("ai.ask_project");
   const canManage = project.current_permissions?.includes("knowledge.manage");
   const loadSources = useCallback(async () => {
+    if (!sourcesLoaded.current) setSourcesLoading(true);
     try {
       setSources(await testingApi.listKnowledgeSources(project._id));
+      sourcesLoaded.current = true;
+      setSourcesLoadFailed(false);
     } catch (reason) {
       setError(messageOf(reason));
+      if (!sourcesLoaded.current) setSourcesLoadFailed(true);
+    } finally {
+      setSourcesLoading(false);
     }
   }, [project._id]);
   useEffect(() => {
@@ -72,7 +82,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   }, [initialQuery, project._id, useGlobalSearch]);
   return (
     <WorkspacePage
-      title="Tài liệu và bằng chứng"
+      title="Tài liệu tham chiếu"
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
@@ -149,7 +159,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
       )}
       <Panel title="Tìm trong dữ liệu dự án">
         <form
-          className="flex gap-3 p-5"
+          className="flex flex-col gap-3 p-5 sm:flex-row"
           onSubmit={async (event) => {
             event.preventDefault();
             try {
@@ -354,7 +364,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                 Nội dung tài liệu
                 <textarea className="apple-input mt-2 min-h-36" name="content" required />
               </label>
-              <div className="flex justify-end gap-3 md:col-span-2">
+              <div className="action-dialog-footer flex justify-end gap-3 md:col-span-2">
                 <button
                   className="secondary-button"
                   type="button"
@@ -369,89 +379,102 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
             </form>
           </Modal>
         )}
-        <DataTable
-          items={sources}
-          empty="Chưa có tài liệu tham chiếu"
-          columns={[
-            { key: "title", label: "Tài liệu" },
-            { key: "source_type", label: "Loại", render: (item) => valueLabel(item.source_type) },
-            {
-              key: "authority",
-              label: "Độ tin cậy",
-              render: (item) => valueLabel(item.authority),
-            },
-            {
-              key: "module",
-              label: "Phạm vi",
-              render: (item) =>
-                [item.product_area, item.module, item.component].filter(Boolean).join(" · ") ||
-                "Chưa khai báo",
-            },
-            {
-              key: "index_status",
-              label: "Lập chỉ mục",
-              render: (item) => valueLabel(String(item.index_status).toUpperCase()),
-            },
-            ...(canManage
-              ? [
-                  {
-                    key: "actions",
-                    label: "Thao tác",
-                    render: (item) => (
-                      <span className="flex flex-wrap gap-2">
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await testingApi.reindexKnowledgeSource(item._id);
-                              await loadSources();
-                            } catch (reason) {
-                              setError(messageOf(reason));
-                            }
-                          }}
-                        >
-                          Lập chỉ mục lại
-                        </button>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={async () => {
-                            const answer = await ask({
-                              title: "Lưu trữ tài liệu tham chiếu",
-                              description: item.title || item.filename,
-                              confirmLabel: "Lưu trữ",
-                              danger: true,
-                              fields: [
-                                {
-                                  name: "reason",
-                                  label: "Lý do",
-                                  required: true,
-                                  multiline: true,
-                                },
-                              ],
-                            });
-                            if (!answer) return;
-                            try {
-                              await testingApi.archiveKnowledgeSource(item._id, {
-                                expected_revision: item.revision,
-                                reason: answer.reason,
+        {sourcesLoading ? (
+          <div className="p-5">
+            <LoadingState />
+          </div>
+        ) : sourcesLoadFailed ? (
+          <div className="space-y-3 p-5">
+            <ErrorState message={error || "Không thể tải tài liệu tham chiếu"} />
+            <button className="secondary-button" type="button" onClick={() => void loadSources()}>
+              Tải lại
+            </button>
+          </div>
+        ) : (
+          <DataTable
+            items={sources}
+            empty="Chưa có tài liệu tham chiếu"
+            columns={[
+              { key: "title", label: "Tài liệu" },
+              { key: "source_type", label: "Loại", render: (item) => valueLabel(item.source_type) },
+              {
+                key: "authority",
+                label: "Độ tin cậy",
+                render: (item) => valueLabel(item.authority),
+              },
+              {
+                key: "module",
+                label: "Phạm vi",
+                render: (item) =>
+                  [item.product_area, item.module, item.component].filter(Boolean).join(" · ") ||
+                  "Chưa khai báo",
+              },
+              {
+                key: "index_status",
+                label: "Lập chỉ mục",
+                render: (item) => valueLabel(String(item.index_status).toUpperCase()),
+              },
+              ...(canManage
+                ? [
+                    {
+                      key: "actions",
+                      label: "Thao tác",
+                      render: (item) => (
+                        <span className="flex flex-wrap gap-2">
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await testingApi.reindexKnowledgeSource(item._id);
+                                await loadSources();
+                              } catch (reason) {
+                                setError(messageOf(reason));
+                              }
+                            }}
+                          >
+                            Lập chỉ mục lại
+                          </button>
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={async () => {
+                              const answer = await ask({
+                                title: "Lưu trữ tài liệu tham chiếu",
+                                description: item.title || item.filename,
+                                confirmLabel: "Lưu trữ",
+                                danger: true,
+                                fields: [
+                                  {
+                                    name: "reason",
+                                    label: "Lý do",
+                                    required: true,
+                                    multiline: true,
+                                  },
+                                ],
                               });
-                              await loadSources();
-                            } catch (reason) {
-                              setError(messageOf(reason));
-                            }
-                          }}
-                        >
-                          Lưu trữ
-                        </button>
-                      </span>
-                    ),
-                  },
-                ]
-              : []),
-          ]}
-        />
+                              if (!answer) return;
+                              try {
+                                await testingApi.archiveKnowledgeSource(item._id, {
+                                  expected_revision: item.revision,
+                                  reason: answer.reason,
+                                });
+                                await loadSources();
+                              } catch (reason) {
+                                setError(messageOf(reason));
+                              }
+                            }}
+                          >
+                            Lưu trữ
+                          </button>
+                        </span>
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        )}
       </Panel>
       {dialog}
     </WorkspacePage>

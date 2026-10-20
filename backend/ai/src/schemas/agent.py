@@ -19,16 +19,9 @@ class AgentTaskStatus(str, Enum):
 class AgentRunStatus(str, Enum):
     PLANNING = "PLANNING"
     RUNNING = "RUNNING"
-    APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
-    APPLYING = "APPLYING"
     VERIFYING = "VERIFYING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
-
-
-class AgentApprovalStatus(str, Enum):
-    APPROVED = "APPROVED"
-    REJECTED = "REJECTED"
 
 
 class ToolExecutionStatus(str, Enum):
@@ -70,6 +63,7 @@ class AgentTask(BaseModel):
     task_id: str = Field(default_factory=lambda: f"TASK-{uuid4().hex}")
     run_id: str
     project_id: str
+    user_id: str = ""
     domain: CapabilityDomain
     objective: str
     evidence_refs: list[str] = Field(default_factory=list)
@@ -125,8 +119,6 @@ class VeriqRunState(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     proposal: dict[str, Any] | None = None
-    approval_status: AgentApprovalStatus | None = None
-    approval_decision: dict[str, Any] | None = None
     model_metadata: dict[str, Any] = Field(default_factory=dict)
     token_usage: dict[str, int] = Field(default_factory=dict)
     current_step: int = 0
@@ -146,19 +138,6 @@ class AgentRunRequest(BaseModel):
     constraints: dict[str, Any] = Field(default_factory=dict)
 
 
-class ApprovalActionEdit(BaseModel):
-    task_id: str = Field(min_length=1, max_length=200)
-    tool_name: str = Field(min_length=1, max_length=200)
-    arguments: dict[str, Any]
-
-
-class ApprovalDecision(BaseModel):
-    decision: Literal["APPROVE", "EDIT", "REJECT"]
-    expected_revision: int = Field(ge=1)
-    note: str = Field(default="", max_length=2000)
-    action_edits: list[ApprovalActionEdit] = Field(default_factory=list, max_length=100)
-
-
 class TestingSkillInput(BaseModel):
     project_id: str = Field(description="Testing project identifier")
     instruction: str = Field(default="", description="Runtime instruction for the current request")
@@ -176,7 +155,6 @@ class ToolAccess(BaseModel):
     owner_domain: CapabilityDomain | None = None
     action: Literal["READ", "PROPOSE", "MUTATE"]
     permission: str
-    requires_approval: bool
     verification: ToolVerification | None = None
 
 

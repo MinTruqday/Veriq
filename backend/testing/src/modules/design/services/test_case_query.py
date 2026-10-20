@@ -169,15 +169,6 @@ async def clone_test_case_record(test_case_id, payload, user):
     )
     if not version or version.get("test_case_id") != test_case_id:
         raise HTTPException(status_code=422, detail={"code": 'TEST_CASE_VERSION_NOT_FOUND'})
-    source_evidence = [
-        *version.get("source_evidence", []),
-        {
-            "artifact_type": 'test_case_version',
-            "artifact_id": test_case_id,
-            "artifact_version_id": version["_id"],
-            "relation": 'cloned_from',
-        },
-    ]
     result = await create_test_case_draft_record(
         test_case["project_id"],
         TestCaseDraftCreate(
@@ -204,7 +195,7 @@ async def clone_test_case_record(test_case_id, payload, user):
             test_condition_ids=version.get("test_condition_ids", []),
             scenario_id=version.get("scenario_id"),
             origin='clone',
-            source_evidence=source_evidence,
+            source_evidence=version.get("source_evidence", []),
             evidence_refs=version.get("evidence_refs", []),
             evidence_quotes=version.get("evidence_quotes", []),
         ),
@@ -269,15 +260,7 @@ async def create_test_case_version_draft_record(test_case_id, payload, user):
             test_condition_ids=version.get("test_condition_ids", []),
             scenario_id=version.get("scenario_id"),
             origin='manual',
-            source_evidence=[
-                *version.get("source_evidence", []),
-                {
-                    "artifact_type": 'test_case_version',
-                    "artifact_id": test_case_id,
-                    "artifact_version_id": version["_id"],
-                    "relation": 'new_version_from',
-                },
-            ],
+            source_evidence=version.get("source_evidence", []),
             evidence_refs=version.get("evidence_refs", []),
             evidence_quotes=version.get("evidence_quotes", []),
         ),

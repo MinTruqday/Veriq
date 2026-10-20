@@ -1,6 +1,7 @@
 import {
   API_URL,
   authenticatedFetch,
+  fetchWithNetworkError,
   getAuthHeaders,
   getToken,
 } from "@/shared/services/api-client";
@@ -73,7 +74,7 @@ export async function login(email, password) {
   const formData = new URLSearchParams();
   formData.append("username", email);
   formData.append("password", password);
-  const res = await fetch(`${API_URL}/xac-thuc/dang-nhap`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/dang-nhap`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -88,7 +89,7 @@ export async function login(email, password) {
   return json.data;
 }
 export async function register(email, password, full_name, slug, agreed_to_terms) {
-  const res = await fetch(`${API_URL}/xac-thuc/dang-ky`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/dang-ky`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -201,7 +202,7 @@ export function revokeMySession(sessionId) {
   );
 }
 export const forgotPasswordAPI = async (email) => {
-  const res = await fetch(`${API_URL}/xac-thuc/quen-mat-khau`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/quen-mat-khau`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
@@ -211,7 +212,7 @@ export const forgotPasswordAPI = async (email) => {
   return data?.data || data;
 };
 export const resetPasswordAPI = async (token, newPassword) => {
-  const res = await fetch(`${API_URL}/xac-thuc/dat-lai-mat-khau`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/dat-lai-mat-khau`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, new_password: newPassword }),
@@ -221,7 +222,7 @@ export const resetPasswordAPI = async (token, newPassword) => {
   return data?.data || data;
 };
 export const verifyCodeAPI = async (token) => {
-  const res = await fetch(`${API_URL}/xac-thuc/xac-nhan-ma`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/xac-nhan-ma`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token }),
@@ -231,7 +232,7 @@ export const verifyCodeAPI = async (token) => {
   return data?.data || data;
 };
 export const passkeyLoginBeginAPI = async (email) => {
-  const res = await fetch(`${API_URL}/xac-thuc/khoa-bao-mat/dang-nhap/bat-dau`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/khoa-bao-mat/dang-nhap/bat-dau`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
@@ -241,7 +242,7 @@ export const passkeyLoginBeginAPI = async (email) => {
   return data?.data || data;
 };
 export const passkeyLoginFinishAPI = async (email, credential) => {
-  const res = await fetch(`${API_URL}/xac-thuc/khoa-bao-mat/dang-nhap/hoan-tat`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/khoa-bao-mat/dang-nhap/hoan-tat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, credential }),
@@ -252,7 +253,7 @@ export const passkeyLoginFinishAPI = async (email, credential) => {
   return data?.data || data;
 };
 export const passkeyRegisterBeginAPI = async (email) => {
-  const res = await fetch(`${API_URL}/xac-thuc/khoa-bao-mat/dang-ky/bat-dau`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/khoa-bao-mat/dang-ky/bat-dau`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
@@ -262,7 +263,7 @@ export const passkeyRegisterBeginAPI = async (email) => {
   return data?.data || data;
 };
 export const passkeyRegisterFinishAPI = async (email, credential) => {
-  const res = await fetch(`${API_URL}/xac-thuc/khoa-bao-mat/dang-ky/hoan-tat`, {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/khoa-bao-mat/dang-ky/hoan-tat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, credential }),
@@ -272,14 +273,14 @@ export const passkeyRegisterFinishAPI = async (email, credential) => {
   return data?.data || data;
 };
 export const getGoogleLoginUrlAPI = async () => {
-  const res = await fetch(`${API_URL}/xac-thuc/google/dang-nhap`);
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/google/dang-nhap`);
   const data = await res.json().catch(() => null);
   if (!res.ok || !data?.data?.url)
     throw new Error("Không thể tải điểm cuối xác thực định danh Google");
   return data.data.url;
 };
 export const completeGoogleLoginAPI = async (code, state) => {
-  const res = await fetch(
+  const res = await fetchWithNetworkError(
     `${API_URL}/xac-thuc/google/chuyen-huong?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
     { credentials: "include" },
   );

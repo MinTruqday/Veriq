@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
-import { messageOf } from "../../../lib/testing";
+import { messageOf, valueLabel } from "../../../lib/testing";
 
 const statusLabel = {
   OPEN: "Đang chờ BA làm rõ",
@@ -11,26 +11,32 @@ const statusLabel = {
   SUPERSEDED: "Đã thay thế bởi phiên bản mới",
 };
 
-export default function RequirementClarificationPanel({ requirementVersionId, role }) {
+export default function RequirementClarificationPanel({
+  requirementVersionId,
+  role,
+  permissions = [],
+}) {
   const [items, setItems] = useState([]);
   const [answers, setAnswers] = useState({});
   const [evidence, setEvidence] = useState({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const canReview = role === "QA";
-  const canAnswer = role === "BA";
+  const canRead = permissions.includes("requirement.read");
+  const canReview = role === "QA" && permissions.includes("requirement.review");
+  const canAnswer = role === "BA" && permissions.includes("requirement.update");
   const load = useCallback(async () => {
-    if (!requirementVersionId) return;
+    if (!requirementVersionId || !canRead) return;
     try {
       setItems(await testingApi.listRequirementClarifications(requirementVersionId));
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [requirementVersionId]);
+  }, [canRead, requirementVersionId]);
   useEffect(() => {
+    if (!canRead) return undefined;
     void load();
-  }, [load]);
+  }, [canRead, load]);
   const perform = async (action) => {
     setBusy(true);
     setError("");
@@ -43,15 +49,14 @@ export default function RequirementClarificationPanel({ requirementVersionId, ro
       setBusy(false);
     }
   };
-  if (!requirementVersionId) return null;
+  if (!requirementVersionId || !canRead) return null;
   return (
-    <section className="workspace-panel space-y-4">
+    <section className="workspace-panel space-y-4 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">Phiếu làm rõ Requirement</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Câu trả lời không tự sửa Requirement. BA cập nhật bản nháp, QA chỉ xác nhận khi trích
-            dẫn đã xuất hiện trong phiên bản phù hợp.
+          <h2 className="text-base font-semibold text-ink">Phiếu làm rõ yêu cầu</h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            BA cập nhật yêu cầu; QA xác nhận khi phiên bản mới có dẫn chứng.
           </p>
         </div>
         {canReview && (
@@ -68,34 +73,35 @@ export default function RequirementClarificationPanel({ requirementVersionId, ro
         )}
       </div>
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <div className="rounded-control border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}
         </div>
       )}
       {items.length === 0 ? (
-        <p className="text-sm text-slate-600">Chưa có Phiếu làm rõ cho phiên bản này.</p>
+        <p className="text-sm text-ink-muted">Chưa có Phiếu làm rõ cho phiên bản này</p>
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
-            <article key={item._id} className="rounded-lg border border-slate-200 p-4">
+            <article key={item._id} className="rounded-panel border border-border p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <strong>{statusLabel[item.status] || item.status}</strong>
+                <strong>{statusLabel[item.status] || valueLabel(item.status)}</strong>
                 {item.source_ref && (
-                  <span className="text-xs text-slate-500">Nguồn: {item.source_ref}</span>
+                  <span className="text-xs text-ink-faint">Nguồn: {item.source_ref}</span>
                 )}
               </div>
-              <p className="mt-3 text-sm font-medium text-slate-900">{item.question}</p>
-              <p className="mt-1 text-sm text-slate-600">Lý do: {item.reason}</p>
+              <p className="mt-3 text-sm font-medium text-ink">{item.question}</p>
+              <p className="mt-1 text-sm text-ink-muted">Lý do: {item.reason}</p>
               {item.answer && (
-                <p className="mt-3 text-sm text-slate-700">Trả lời BA: {item.answer}</p>
+                <p className="mt-3 text-sm text-ink-muted">Trả lời BA: {item.answer}</p>
               )}
               {canAnswer && item.status === "OPEN" && (
                 <div className="mt-3 flex flex-col gap-2">
                   <textarea
+                    aria-label="Câu trả lời của BA cho phiếu làm rõ"
                     className="apple-input min-h-20 w-full"
                     value={answers[item._id] || ""}
                     onChange={(event) => setAnswers({ ...answers, [item._id]: event.target.value })}
-                    placeholder="Trả lời để làm căn cứ cập nhật bản nháp Requirement"
+                    placeholder="Trả lời để làm căn cứ cập nhật bản nháp yêu cầu"
                   />
                   <button
                     type="button"
@@ -117,12 +123,13 @@ export default function RequirementClarificationPanel({ requirementVersionId, ro
               {canReview && item.status === "ANSWERED" && (
                 <div className="mt-3 flex flex-col gap-2">
                   <textarea
+                    aria-label="Trích dẫn yêu cầu để QA xác nhận giải quyết"
                     className="apple-input min-h-16 w-full"
                     value={evidence[item._id] || ""}
                     onChange={(event) =>
                       setEvidence({ ...evidence, [item._id]: event.target.value })
                     }
-                    placeholder="Trích dẫn đã xuất hiện trong Requirement phiên bản này"
+                    placeholder="Trích dẫn đã xuất hiện trong phiên bản yêu cầu này"
                   />
                   <button
                     type="button"

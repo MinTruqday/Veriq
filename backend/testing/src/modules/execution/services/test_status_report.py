@@ -19,7 +19,7 @@ from src.repositories.test_status_report import (
     next_sequence,
     update_report,
 )
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.modules.execution.services.test_monitoring import effective_snapshot
 
 
@@ -307,7 +307,7 @@ async def generate_status_report_narrative(report_id, payload, user):
         {"user_instruction": payload.instruction},
         ensure_ascii=False,
     )
-    ai = await request_ai_assistance(
+    ai = await request_ai_automation(
         'status_report_narrative', report["project_id"], instruction, evidence
     )
     result = {

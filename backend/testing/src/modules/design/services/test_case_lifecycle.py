@@ -25,7 +25,7 @@ async def lint_test_case_draft_record(draft_id, user, project_id=None):
         "model": {
             "provider": 'deterministic',
             "model": 'test_case_quality',
-            "prompt_version": 'ai_assistance',
+            "prompt_version": 'ai_automation',
             "tool_schema_version": '1',
             "retrieval_version": 'project_evidence',
         },
@@ -177,6 +177,9 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         raise HTTPException(status_code=409, detail={"code": 'TEST_CASE_APPROVAL_IN_PROGRESS'})
     test_case, version = await persist_test_case_version(claimed, payload, user)
     ready = await finalize_test_case_derivatives(claimed, version, user)
+    from src.clients.ai_automation import emit_test_case_approved
+
+    await emit_test_case_approved(version, user)
     return {
         "data": {"test_case": {**test_case, "current_version_id": version["_id"]}, "version": version},
         "status": 'SUCCESS' if ready else 'DEGRADED',

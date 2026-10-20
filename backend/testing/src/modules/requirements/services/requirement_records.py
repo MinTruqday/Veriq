@@ -24,6 +24,7 @@ from src.modules.requirements.services.requirement_indexing import (
     validate_requirement_sources,
 )
 from src.modules.design.services.test_adequacy import assessment_status_for_list
+from src.clients.ai_automation import emit_requirement_changed
 
 
 
@@ -153,6 +154,7 @@ async def create_requirement_record(project_id, payload, user, origin="manual"):
         raise
     await index_requirement_version(version)
     await audit(user.id, "requirement_created", "Requirement", requirement_id, project_id)
+    await emit_requirement_changed(version, user)
     return {**requirement, "current_version": version}
 
 
@@ -476,6 +478,7 @@ async def create_requirement_version_record(requirement_id, payload, user):
         requirement["project_id"],
         {"parent_version_id": parent["_id"]},
     )
+    await emit_requirement_changed(version, user)
     return version
 
 
@@ -484,3 +487,11 @@ async def list_requirement_version_records(requirement_id, user):
     return await requirement_repository.list_versions(
         requirement_id, 500
     )
+
+
+async def get_requirement_version_record(version_id, user):
+    version = await get_project_entity(
+        "requirement_versions", version_id, user, "requirement.version.read"
+    )
+    criteria = await requirement_repository.list_acceptance_criteria(version_id, 500)
+    return {**version, "acceptance_criteria": criteria}

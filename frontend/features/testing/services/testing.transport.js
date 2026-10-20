@@ -14,6 +14,38 @@ function characterCount(body) {
   return 0;
 }
 
+function refreshProjectAccessAfterDenial(path, status, errorDetails = null, errorCode = "") {
+  const projectPermissionDenied =
+    errorCode === "PROJECT_PERMISSION_DENIED" && typeof errorDetails?.permission === "string";
+  const membershipDenied =
+    errorCode === "PROJECT_MEMBERSHIP_REQUIRED" ||
+    errorCode === "PROJECT_MEMBERSHIP_INACTIVE" ||
+    errorCode === "PROJECT_ARCHIVED_READ_DENIED";
+  if (
+    status !== 403 ||
+    (!projectPermissionDenied && !membershipDenied) ||
+    typeof window === "undefined"
+  )
+    return;
+  const projectIdFromPath =
+    path.match(/\/du-an\/([^/?]+)(?=\/|\?|$)/)?.[1] ||
+    window.location.pathname.match(/\/du-an\/([^/?]+)(?=\/|$)/)?.[1];
+  let projectId = projectIdFromPath;
+  if (!projectId && typeof errorDetails?.project_id === "string")
+    projectId = errorDetails.project_id;
+  if (!projectId) return;
+  window.dispatchEvent(
+    new CustomEvent("veriq-project-access-denied", {
+      detail: {
+        projectId: decodeURIComponent(projectId),
+        pagePath: window.location.pathname,
+        permission: errorDetails?.permission || null,
+        code: errorCode,
+      },
+    }),
+  );
+}
+
 export async function testingRequest(path, options = {}) {
   const response = await authenticatedFetch(`${API_URL}/kiem-thu${path}`, {
     ...options,
@@ -24,6 +56,7 @@ export async function testingRequest(path, options = {}) {
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
+    refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
     const error = new Error(body?.error?.message || "Không thể hoàn tất yêu cầu");
     error.status = response.status;
     error.code = body?.error?.code;
@@ -53,6 +86,7 @@ export async function agentRequest(path, options = {}) {
     });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
+      refreshProjectAccessAfterDenial(path, response.status, body?.detail, body?.detail?.code);
       const detail = body?.detail;
       const error = new Error(detail?.message || detail?.code || "Không thể hoàn tất yêu cầu AI");
       error.status = response.status;
@@ -71,6 +105,7 @@ export async function agentReadRequest(path) {
   const response = await authenticatedFetch(`${API_URL}/tac-tu${path}`);
   const body = await response.json().catch(() => null);
   if (!response.ok) {
+    refreshProjectAccessAfterDenial(path, response.status, body?.detail, body?.detail?.code);
     const detail = body?.detail;
     const error = new Error(detail?.message || detail?.code || "Không thể tải năng lực AI");
     error.status = response.status;
@@ -90,6 +125,7 @@ export async function automationRequest(path, options = {}) {
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
+    refreshProjectAccessAfterDenial(path, response.status, body?.detail, body?.detail?.code);
     const detail = body?.detail;
     const error = new Error(detail?.message || detail?.code || "Không thể hoàn tất tự động hóa AI");
     error.status = response.status;
@@ -128,6 +164,12 @@ export async function testingStreamRequest(path, options = {}) {
     fallback;
   if (!response.ok || !response.body) {
     const body = await response.json().catch(() => null);
+    refreshProjectAccessAfterDenial(
+      path,
+      response.status,
+      body?.error?.details || body?.detail,
+      body?.error?.code || body?.detail?.code,
+    );
     const error = new Error(messageOf(body, "Không thể hoàn tất yêu cầu AI"));
     error.status = response.status;
     error.code = body?.error?.code || body?.detail?.code;
@@ -163,6 +205,12 @@ export async function testingStreamRequest(path, options = {}) {
       error.status = event.status || response.status;
       error.code = body?.error?.code || body?.detail?.code || event.code;
       error.details = body?.error?.details || body?.detail?.details;
+      refreshProjectAccessAfterDenial(
+        path,
+        error.status,
+        body?.error?.details || body?.detail,
+        error.code,
+      );
       throw error;
     }
   };
@@ -204,6 +252,7 @@ export async function downloadTestingFile(path, filename) {
   const response = await authenticatedFetch(`${API_URL}/kiem-thu${path}`);
   if (!response.ok) {
     const body = await response.json().catch(() => null);
+    refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
     throw new Error(body?.error?.message || "Không thể tải tệp");
   }
   const url = URL.createObjectURL(await response.blob());

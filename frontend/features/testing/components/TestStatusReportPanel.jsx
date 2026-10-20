@@ -43,10 +43,13 @@ export default function TestStatusReportPanel({ project }) {
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     try {
+      const permissions = new Set(project.current_permissions || []);
       const [reportValues, snapshotValues, buildValues] = await Promise.all([
         testingApi.listTestStatusReports(project._id),
-        testingApi.listMonitoringSnapshots(project._id),
-        testingApi.listBuilds(project._id),
+        permissions.has("testmonitor.read")
+          ? testingApi.listMonitoringSnapshots(project._id)
+          : Promise.resolve([]),
+        permissions.has("build.read") ? testingApi.listBuilds(project._id) : Promise.resolve([]),
       ]);
       setReports(reportValues);
       setSnapshots(snapshotValues);
@@ -59,7 +62,7 @@ export default function TestStatusReportPanel({ project }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [project._id]);
+  }, [project._id, project.current_permissions]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -318,7 +321,7 @@ export default function TestStatusReportPanel({ project }) {
     <Panel
       title="Báo cáo trạng thái kiểm thử"
       actions={
-        can("teststatusreport.create") ? (
+        can("teststatusreport.create") && can("testmonitor.read") && can("build.read") ? (
           <button
             className="apple-button"
             type="button"

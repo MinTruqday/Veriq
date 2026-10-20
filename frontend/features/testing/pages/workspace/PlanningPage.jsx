@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { ArrowDown, ArrowLeftRight, ArrowUp, Plus } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
@@ -11,7 +11,7 @@ import {
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
-import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import { formatCalendarDate, messageOf, valueLabel } from "../../lib/testing";
 import {
   Modal,
   ModalContent,
@@ -19,6 +19,7 @@ import {
   ModalHeader,
   ModalTitle,
 } from "@/shared/components/ui/Modal";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
 
 function itemOptions(items) {
   return [
@@ -40,7 +41,32 @@ export default function PlanningPage({ project, section }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const tab = section?.[0] || "backlog";
+  const pageTitle =
+    tab === "backlog"
+      ? "Danh sách chờ"
+      : tab === "board"
+        ? "Bảng công việc"
+        : tab === "sprint"
+          ? "Đợt lặp"
+          : tab === "roadmap"
+            ? "Lộ trình"
+            : "Lập kế hoạch";
   const isBa = project.current_membership?.project_role === "BA";
+  const currentRole = project.current_membership?.project_role;
+  const currentUserId = project.current_membership?.user_id;
+  const canTransitionItem = (item, targetStatus = null) => {
+    const canActOnItem =
+      isBa || (currentRole === "DEVELOPER" && item.assignee_id === currentUserId);
+    if (!canActOnItem) return false;
+    const allowedTransitions = (boardValue?.workflow?.transitions || []).filter(
+      (transitionValue) =>
+        transitionValue.from_status === item.status &&
+        transitionValue.allowed_roles?.includes(currentRole),
+    );
+    return targetStatus
+      ? allowedTransitions.some((transitionValue) => transitionValue.to_status === targetStatus)
+      : allowedTransitions.length > 0;
+  };
   const planningMethod = project.planning_method || "SCRUM";
   const isScrum = planningMethod === "SCRUM";
   const load = useCallback(async () => {
@@ -108,6 +134,53 @@ export default function PlanningPage({ project, section }) {
       setError(messageOf(reason));
     }
   };
+  const editItem = async (item) => {
+    await ask({
+      title: `Chỉnh sửa ${valueLabel(item.item_type).toLocaleLowerCase()}`,
+      confirmLabel: "Lưu thay đổi",
+      fields: [
+        { name: "title", label: "Tên", required: true, initialValue: item.title },
+        {
+          name: "description",
+          label: "Mô tả",
+          multiline: true,
+          initialValue: item.description || "",
+        },
+        {
+          name: "priority",
+          label: "Ưu tiên",
+          initialValue: item.priority || "MEDIUM",
+          options: ["LOW", "MEDIUM", "HIGH", "HIGHEST"].map((value) => ({
+            value,
+            label: valueLabel(value),
+          })),
+        },
+        {
+          name: "estimate",
+          label: "Ước lượng",
+          type: "number",
+          initialValue: item.estimate == null ? "" : String(item.estimate),
+        },
+        {
+          name: "due_at",
+          label: "Hạn hoàn thành",
+          type: "date",
+          initialValue: item.due_at ? String(item.due_at).slice(0, 10) : "",
+        },
+      ],
+      onConfirm: async (answer) => {
+        await testingApi.updateWorkItem(project._id, item._id, {
+          expected_revision: item.revision,
+          title: answer.title.trim(),
+          description: answer.description.trim(),
+          priority: answer.priority,
+          estimate: answer.estimate === "" ? null : Number(answer.estimate),
+          due_at: answer.due_at ? new Date(`${answer.due_at}T00:00:00.000Z`).toISOString() : null,
+        });
+        await load();
+      },
+    });
+  };
   const createSprint = async () => {
     const answer = await ask({
       title: "Tạo đợt lặp",
@@ -165,6 +238,7 @@ export default function PlanningPage({ project, section }) {
     }
   };
   const transition = async (item, status) => {
+    if (!canTransitionItem(item, status)) return;
     const answer = await ask({
       title: "Chuyển trạng thái",
       confirmLabel: "Xác nhận",
@@ -315,18 +389,13 @@ export default function PlanningPage({ project, section }) {
   };
   if (loading)
     return (
-      <WorkspacePage title="Lập kế hoạch">
+      <WorkspacePage title={pageTitle}>
         <LoadingState />
       </WorkspacePage>
     );
   return (
     <WorkspacePage
-      title="Lập kế hoạch"
-      description={
-        isScrum
-          ? "Danh sách chờ và đợt lặp được quản lý theo Scrum"
-          : "Danh sách chờ và dòng công việc được quản lý theo Kanban"
-      }
+      title={pageTitle}
       actions={
         isBa ? (
           <div className="flex flex-wrap gap-2">
@@ -339,7 +408,7 @@ export default function PlanningPage({ project, section }) {
               type="button"
               onClick={() => setConfigurationMode("board")}
             >
-              Cấu hình bảng
+              {planningMethod === "KANBAN" ? "Cột bảng và giới hạn WIP" : "Cấu hình bảng"}
             </button>
             <button
               className="secondary-button"
@@ -351,15 +420,6 @@ export default function PlanningPage({ project, section }) {
             <button className="secondary-button" type="button" onClick={migrateLegacyTasks}>
               Chuyển công việc cũ
             </button>
-            {planningMethod === "KANBAN" && (
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => setConfigurationMode("board")}
-              >
-                Giới hạn đang thực hiện
-              </button>
-            )}
             {isScrum && (
               <button className="apple-button" type="button" onClick={createSprint}>
                 <Plus size={16} />
@@ -371,30 +431,14 @@ export default function PlanningPage({ project, section }) {
       }
     >
       {error && <ErrorState message={error} />}
-      <div className="flex flex-wrap gap-2 border-b border-border pb-4 text-sm">
-        {["backlog", "board", ...(isScrum ? ["sprint"] : []), "roadmap"].map((value) => (
-          <a
-            key={value}
-            className={tab === value ? "apple-button" : "secondary-button"}
-            href={`/du-an/${project._id}/lap-ke-hoach/${value}`}
-          >
-            {value === "backlog"
-              ? "Danh sách chờ"
-              : value === "board"
-                ? "Bảng công việc"
-                : value === "sprint"
-                  ? "Đợt lặp"
-                  : "Lộ trình"}
-          </a>
-        ))}
-      </div>
       {tab === "backlog" && (
-        <Panel title="Danh sách chờ" description="Công việc được sắp xếp theo ưu tiên">
+        <Panel>
           <Backlog
             items={items.filter((item) => item.status === "BACKLOG")}
             canRank={isBa}
             onRank={rank}
             onAddDependency={addDependency}
+            onEdit={editItem}
           />
         </Panel>
       )}
@@ -405,11 +449,13 @@ export default function PlanningPage({ project, section }) {
           workflow={boardValue?.workflow}
           onTransition={transition}
           role={project.current_membership?.project_role}
-          canTransition={isBa || project.current_membership?.project_role === "DEVELOPER"}
+          canTransitionItem={canTransitionItem}
+          canEdit={isBa}
+          onEdit={editItem}
         />
       )}
       {tab === "sprint" && isScrum && (
-        <Panel title="Đợt lặp">
+        <Panel>
           <DataTable
             items={sprints}
             empty="Chưa có đợt lặp"
@@ -421,8 +467,16 @@ export default function PlanningPage({ project, section }) {
                 label: "Trạng thái",
                 render: (item) => <StatusPill value={item.status} />,
               },
-              { key: "start_at", label: "Bắt đầu", render: (item) => formatDate(item.start_at) },
-              { key: "end_at", label: "Kết thúc", render: (item) => formatDate(item.end_at) },
+              {
+                key: "start_at",
+                label: "Bắt đầu",
+                render: (item) => formatCalendarDate(item.start_at),
+              },
+              {
+                key: "end_at",
+                label: "Kết thúc",
+                render: (item) => formatCalendarDate(item.end_at),
+              },
               ...(isBa
                 ? [
                     {
@@ -795,33 +849,22 @@ function PlanningConfigurationModal({
                         </option>
                       ))}
                     </select>
-                    <select
-                      className="apple-input"
-                      aria-label={`Vai trò chuyển trạng thái ${index + 1}`}
-                      multiple
+                    <MultiSelect
+                      label={`Vai trò được phép chuyển trạng thái ${index + 1}`}
+                      options={["BA", "QA", "TESTER", "DEVELOPER"].map((role) => ({
+                        value: role,
+                        label: valueLabel(role),
+                      }))}
+                      searchPlaceholder="Tìm vai trò"
                       value={transition.allowed_roles}
-                      onChange={(event) =>
+                      onChange={(allowed_roles) =>
                         setTransitions((items) =>
                           items.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? {
-                                  ...item,
-                                  allowed_roles: Array.from(
-                                    event.target.selectedOptions,
-                                    (option) => option.value,
-                                  ),
-                                }
-                              : item,
+                            itemIndex === index ? { ...item, allowed_roles } : item,
                           ),
                         )
                       }
-                    >
-                      {["BA", "QA", "TESTER", "DEVELOPER"].map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
+                    />
                     <button
                       className="secondary-button"
                       type="button"
@@ -868,7 +911,7 @@ function PlanningConfigurationModal({
   );
 }
 
-function Backlog({ items, canRank, onRank, onAddDependency }) {
+function Backlog({ items, canRank, onRank, onAddDependency, onEdit }) {
   const [draggedId, setDraggedId] = useState("");
   if (!items.length)
     return <p className="p-5 text-sm text-ink-muted">Chưa có công việc trong danh sách chờ</p>;
@@ -895,7 +938,9 @@ function Backlog({ items, canRank, onRank, onAddDependency }) {
               <StatusPill value={item.item_type} />
               <StatusPill value={item.priority} />
               {item.due_at && (
-                <span className="text-xs text-ink-muted">Hạn {formatDate(item.due_at)}</span>
+                <span className="text-xs text-ink-muted">
+                  Hạn {formatCalendarDate(item.due_at)}
+                </span>
               )}
             </div>
             <strong className="mt-2 block break-words text-sm">{item.title}</strong>
@@ -907,6 +952,29 @@ function Backlog({ items, canRank, onRank, onAddDependency }) {
           </div>
           {canRank && (
             <span className="flex flex-wrap items-center justify-end gap-2">
+              <button className="secondary-button" type="button" onClick={() => onEdit(item)}>
+                Sửa
+              </button>
+              <button
+                aria-label={`Đưa ${item.title} lên trước`}
+                className="secondary-button min-h-9 px-2.5 py-1.5 text-xs"
+                disabled={index === 0}
+                type="button"
+                onClick={() => void onRank(item, items[index - 1]?._id)}
+              >
+                <ArrowUp aria-hidden="true" size={14} />
+                Lên
+              </button>
+              <button
+                aria-label={`Đưa ${item.title} xuống sau`}
+                className="secondary-button min-h-9 px-2.5 py-1.5 text-xs"
+                disabled={index === items.length - 1}
+                type="button"
+                onClick={() => void onRank(items[index + 1], item._id)}
+              >
+                <ArrowDown aria-hidden="true" size={14} />
+                Xuống
+              </button>
               <button
                 className="secondary-button"
                 type="button"
@@ -914,7 +982,10 @@ function Backlog({ items, canRank, onRank, onAddDependency }) {
               >
                 Phụ thuộc
               </button>
-              <span className="text-xs font-medium text-ink-muted" aria-hidden="true">
+              <span
+                className="hidden text-xs font-medium text-ink-muted md:inline"
+                aria-hidden="true"
+              >
                 Kéo để sắp xếp
               </span>
             </span>
@@ -925,7 +996,7 @@ function Backlog({ items, canRank, onRank, onAddDependency }) {
   );
 }
 
-function Board({ items, board, workflow, onTransition, canTransition, role }) {
+function Board({ items, board, workflow, onTransition, canTransitionItem, role, canEdit, onEdit }) {
   const [draggedItem, setDraggedItem] = useState(null);
   const statusName = (status) =>
     (workflow?.statuses || []).find((value) => value.key === status)?.name || valueLabel(status);
@@ -944,59 +1015,94 @@ function Board({ items, board, workflow, onTransition, canTransition, role }) {
     );
   }
   return (
-    <div className="overflow-x-auto pb-2">
-      <div className="flex min-w-max items-start gap-4">
-        {groups.map((column) => (
-          <Panel
-            key={column.status}
-            className="w-[min(86vw,360px)] shrink-0"
-            title={column.name}
-            description={
-              column.wip_limit
-                ? `${column.items.length}/${column.wip_limit} công việc`
-                : `${column.items.length} công việc`
-            }
-          >
-            <div
-              className="min-h-24 space-y-3 p-4"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => {
-                if (draggedItem && draggedItem.status !== column.status) {
-                  void onTransition(draggedItem, column.status);
-                }
-                setDraggedItem(null);
-              }}
+    <div>
+      <p className="mb-2 flex items-center gap-2 text-xs text-ink-muted lg:hidden">
+        <ArrowLeftRight size={14} aria-hidden="true" />
+        Vuốt ngang để xem các cột còn lại
+      </p>
+      <div className="overflow-x-auto scroll-smooth pb-3">
+        <div className="grid min-w-0 grid-flow-col auto-cols-[minmax(260px,86vw)] items-start gap-4 sm:auto-cols-[minmax(320px,1fr)] lg:auto-cols-[minmax(140px,1fr)]">
+          {groups.map((column) => (
+            <Panel
+              key={column.status}
+              title={valueLabel(column.name)}
+              description={
+                column.wip_limit
+                  ? `${column.items.length}/${column.wip_limit} công việc`
+                  : `${column.items.length} công việc`
+              }
             >
-              {column.items.map((item) => (
-                <article
-                  className={`rounded-xl border border-border bg-surface-raised p-3 shadow-[0_4px_14px_rgba(48,47,42,0.035)] ${canTransition ? "cursor-grab active:cursor-grabbing" : ""}`}
-                  draggable={canTransition}
-                  onDragStart={() => setDraggedItem(item)}
-                  key={item._id}
-                >
-                  <strong className="block text-sm">{item.title}</strong>
-                  <p className="mt-1 text-xs text-ink-muted">
-                    {valueLabel(item.item_type)} · {valueLabel(item.priority)}
+              <div
+                className="min-h-24 space-y-3 p-4"
+                onDragOver={(event) => {
+                  if (
+                    draggedItem &&
+                    draggedItem.status !== column.status &&
+                    canTransitionItem(draggedItem, column.status)
+                  ) {
+                    event.preventDefault();
+                  }
+                }}
+                onDrop={() => {
+                  if (
+                    draggedItem &&
+                    canTransitionItem(draggedItem, column.status) &&
+                    draggedItem.status !== column.status
+                  ) {
+                    void onTransition(draggedItem, column.status);
+                  }
+                  setDraggedItem(null);
+                }}
+              >
+                {column.items.length === 0 ? (
+                  <p className="flex min-h-24 items-center justify-center px-3 text-center text-xs text-ink-faint">
+                    Chưa có công việc
                   </p>
-                  {canTransition &&
-                    (workflow?.transitions || [])
-                      .filter((value) => value.from_status === item.status)
-                      .filter((value) => value.allowed_roles?.includes(role))
-                      .map((value) => (
-                        <button
-                          className="secondary-button mt-3 mr-2"
-                          type="button"
-                          key={`${item._id}:${value.to_status}`}
-                          onClick={() => onTransition(item, value.to_status)}
-                        >
-                          Chuyển {statusName(value.to_status)}
-                        </button>
-                      ))}
-                </article>
-              ))}
-            </div>
-          </Panel>
-        ))}
+                ) : (
+                  column.items.map((item) => {
+                    const canTransition = canTransitionItem(item);
+                    return (
+                      <article
+                        className={`rounded-xl border border-border bg-surface-raised p-3 shadow-[0_4px_14px_rgba(48,47,42,0.035)] ${canTransition ? "cursor-grab active:cursor-grabbing" : ""}`}
+                        draggable={canTransition}
+                        onDragStart={() => setDraggedItem(item)}
+                        key={item._id}
+                      >
+                        <strong className="block text-sm">{item.title}</strong>
+                        <p className="mt-1 text-xs text-ink-muted">
+                          {valueLabel(item.item_type)} · {valueLabel(item.priority)}
+                        </p>
+                        {canEdit && (
+                          <button
+                            className="secondary-button mt-3"
+                            type="button"
+                            onClick={() => onEdit(item)}
+                          >
+                            Sửa công việc
+                          </button>
+                        )}
+                        {canTransition &&
+                          (workflow?.transitions || [])
+                            .filter((value) => value.from_status === item.status)
+                            .filter((value) => value.allowed_roles?.includes(role))
+                            .map((value) => (
+                              <button
+                                className="secondary-button mt-3 mr-2"
+                                type="button"
+                                key={`${item._id}:${value.to_status}`}
+                                onClick={() => onTransition(item, value.to_status)}
+                              >
+                                Chuyển {statusName(value.to_status)}
+                              </button>
+                            ))}
+                      </article>
+                    );
+                  })
+                )}
+              </div>
+            </Panel>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1005,15 +1111,12 @@ function Board({ items, board, workflow, onTransition, canTransition, role }) {
 function Roadmap({ value }) {
   const dependencies = value?.dependencies || [];
   const items = [...(value?.items || []), ...(value?.releases || [])].sort((left, right) => {
-    const leftDate = left.due_at || left.planned_start_at || left.planned_end_at || "";
-    const rightDate = right.due_at || right.planned_start_at || right.planned_end_at || "";
+    const leftDate = left.planned_start_at || left.due_at || left.planned_end_at || "";
+    const rightDate = right.planned_start_at || right.due_at || right.planned_end_at || "";
     return String(leftDate).localeCompare(String(rightDate));
   });
   return (
-    <Panel
-      title="Lộ trình"
-      description="Sáng kiến, hạng mục lớn, bản phát hành và phụ thuộc trong phạm vi dự án"
-    >
+    <Panel>
       {!items.length ? (
         <p className="p-4 text-sm text-ink-muted">
           Chưa có sáng kiến, hạng mục lớn hoặc bản phát hành
@@ -1026,15 +1129,19 @@ function Roadmap({ value }) {
               (dependency) =>
                 dependency.source_item_id === itemId || dependency.target_item_id === itemId,
             );
-            const date = item.due_at || item.planned_end_at || item.planned_start_at;
+            const hasPlannedRange = item.planned_start_at || item.planned_end_at;
+            const schedule = hasPlannedRange
+              ? `${item.planned_start_at ? formatCalendarDate(item.planned_start_at) : "Chưa đặt"} – ${item.planned_end_at ? formatCalendarDate(item.planned_end_at) : "Chưa đặt"}`
+              : item.due_at
+                ? `Hạn ${formatCalendarDate(item.due_at)}`
+                : "Chưa đặt lịch";
             return (
               <li className="border-l-2 border-accent pl-4" key={itemId}>
                 <div className="flex flex-wrap items-center gap-2">
                   <strong>{item.name || item.title}</strong>
                   <StatusPill value={item.status} />
                   <span className="text-xs text-ink-muted">
-                    {item.item_type ? valueLabel(item.item_type) : "Bản phát hành"}
-                    {date ? ` · ${formatDate(date)}` : " · Chưa đặt lịch"}
+                    {item.item_type ? valueLabel(item.item_type) : "Bản phát hành"} · {schedule}
                   </span>
                 </div>
                 {related.length > 0 && (

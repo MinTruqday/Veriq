@@ -1,17 +1,18 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import DeviceMatricesPanel from "../../components/DeviceMatricesPanel";
 import AutomationExecutionPanel from "../../components/AutomationExecutionPanel";
+import AgentRunPanel from "../../components/AgentRunPanel";
 import TestPlanEditor from "../../components/TestPlanEditor";
 import EnvironmentIncidentPanel from "../../components/EnvironmentIncidentPanel";
 import NonFunctionalTestPanel from "../../components/NonFunctionalTestPanel";
 import {
   ErrorState,
+  LoadingState,
   Panel,
   ProjectCrumb,
   WorkspacePage,
-  WorkspaceSectionNav,
   StatusPill,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
@@ -21,6 +22,8 @@ import { docText, messageOf, textDoc, valueLabel } from "../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import RunExecutionWorkspace from "./execution/RunExecutionWorkspace";
 import JUnitResultPanel from "../../components/JUnitResultPanel";
+import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
 
 export default function ExecutionPage({ project, section, workspaceView }) {
   const { ask, dialog } = useActionDialog();
@@ -56,10 +59,16 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const [requirements, setRequirements] = useState([]);
   const [run, setRun] = useState(null);
   const [error, setError] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const initialDataLoaded = useRef(false);
+  const loadedProjectId = useRef(project._id);
   const [planValidation, setPlanValidation] = useState(null);
   const [creatingPlan, setCreatingPlan] = useState(false);
   const [creatingSuite, setCreatingSuite] = useState(false);
   const [creatingRun, setCreatingRun] = useState(false);
+  const [runSubsection, setRunSubsection] = useState("runs");
+  const [automationSubsection, setAutomationSubsection] = useState("results");
   const [runForm, setRunForm] = useState({
     name: "",
     release: "",
@@ -77,10 +86,27 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const [attachments, setAttachments] = useState({});
   const [resumeContext, setResumeContext] = useState(null);
   const can = (permission) => project.current_permissions?.includes(permission);
+  const runSubsectionTabs = [
+    ...(can("testrun.read") ? [{ id: "runs", label: "Lần chạy" }] : []),
+    ...(can("environmentincident.read") ? [{ id: "incidents", label: "Sự cố môi trường" }] : []),
+    ...(can("nfrtest.read") ? [{ id: "nonfunctional", label: "Kiểm thử phi chức năng" }] : []),
+  ];
+  const permissions = useMemo(
+    () => project.current_permissions || [],
+    [project.current_permissions],
+  );
   const terminalResultStatuses = project.settings?.allow_not_applicable_results
     ? ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]
     : ["PASS", "FAIL", "BLOCKED", "SKIPPED"];
   const load = useCallback(async () => {
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      initialDataLoaded.current = false;
+    }
+    if (!initialDataLoaded.current) {
+      setInitialLoading(true);
+      setInitialLoadFailed(false);
+    }
     try {
       const [
         planValues,
@@ -93,15 +119,33 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         strategyValues,
         requirementValues,
       ] = await Promise.all([
-        testingApi.listPlans(project._id, planFilters),
-        testingApi.listSuites(project._id, suiteFilters),
-        testingApi.listRunPage(project._id, { ...runFilters, page: runPage, page_size: 50 }),
-        testingApi.listTestCases(project._id, { page_size: 500 }),
-        testingApi.listReleases(project._id),
-        testingApi.listBuilds(project._id),
-        testingApi.listEnvironments(project._id),
-        testingApi.listTestStrategies(project._id, { page_size: 200 }),
-        testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" }),
+        permissions.includes("testplan.read")
+          ? testingApi.listPlans(project._id, planFilters)
+          : Promise.resolve([]),
+        permissions.includes("testsuite.read")
+          ? testingApi.listSuites(project._id, suiteFilters)
+          : Promise.resolve([]),
+        permissions.includes("testrun.read")
+          ? testingApi.listRunPage(project._id, { ...runFilters, page: runPage, page_size: 50 })
+          : Promise.resolve({ items: [] }),
+        permissions.includes("testcase.read")
+          ? testingApi.listTestCases(project._id, { page_size: 500 })
+          : Promise.resolve([]),
+        permissions.includes("release.read")
+          ? testingApi.listReleases(project._id)
+          : Promise.resolve([]),
+        permissions.includes("build.read")
+          ? testingApi.listBuilds(project._id)
+          : Promise.resolve([]),
+        permissions.includes("environment.read")
+          ? testingApi.listEnvironments(project._id)
+          : Promise.resolve([]),
+        permissions.includes("teststrategy.read")
+          ? testingApi.listTestStrategies(project._id, { page_size: 200 })
+          : Promise.resolve({ items: [] }),
+        permissions.includes("requirement.read")
+          ? testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" })
+          : Promise.resolve([]),
       ]);
       setPlans(planValues);
       setSuites(suiteValues);
@@ -113,11 +157,26 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       setEnvironments(environmentValues);
       setStrategies(strategyValues.items || []);
       setRequirements(requirementValues);
-      if (runId) setRun(await testingApi.getRun(runId));
+      if (runId && permissions.includes("testrun.read")) setRun(await testingApi.getRun(runId));
+      initialDataLoaded.current = true;
+      setInitialLoadFailed(false);
     } catch (reason) {
+      if (!initialDataLoaded.current) setInitialLoadFailed(true);
       setError(messageOf(reason));
+    } finally {
+      setInitialLoading(false);
     }
-  }, [planFilters, project._id, runFilters, runId, runPage, suiteFilters]);
+  }, [
+    initialDataLoaded,
+    loadedProjectId,
+    planFilters,
+    project._id,
+    permissions,
+    runFilters,
+    runId,
+    runPage,
+    suiteFilters,
+  ]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -331,6 +390,30 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       setError(messageOf(reason));
     }
   };
+  const pageTitle =
+    workspaceView === "test-plans"
+      ? "Kế hoạch kiểm thử"
+      : workspaceView === "test-runs"
+        ? "Lần chạy kiểm thử"
+        : workspaceView === "automation"
+          ? "Tự động hóa kiểm thử"
+          : "Thực thi kiểm thử";
+  if (initialLoading || initialLoadFailed) {
+    return (
+      <WorkspacePage title={pageTitle} actions={<ProjectCrumb projectId={project._id} />}>
+        {initialLoading ? (
+          <LoadingState />
+        ) : (
+          <div className="space-y-3">
+            <ErrorState message={error || "Không thể tải dữ liệu thực thi kiểm thử"} />
+            <button className="secondary-button" type="button" onClick={() => void load()}>
+              Tải lại
+            </button>
+          </div>
+        )}
+      </WorkspacePage>
+    );
+  }
   if (run)
     return (
       <RunExecutionWorkspace
@@ -357,15 +440,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     );
   return (
     <WorkspacePage
-      title={
-        workspaceView === "test-plans"
-          ? "Kế hoạch kiểm thử"
-          : workspaceView === "test-runs"
-            ? "Lần chạy kiểm thử"
-            : workspaceView === "automation"
-              ? "Tự động hóa kiểm thử"
-              : "Thực thi kiểm thử"
-      }
+      title={pageTitle}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <ProjectCrumb projectId={project._id} />
@@ -396,24 +471,19 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       }
     >
       {error && <ErrorState message={error} />}
-      <WorkspaceSectionNav
-        current={workspaceView || "test-runs"}
-        items={[
-          {
-            id: "test-plans",
-            label: "Kế hoạch kiểm thử",
-            href: `/du-an/${project._id}/ke-hoach-kiem-thu`,
-          },
-          {
-            id: "test-runs",
-            label: "Lần chạy kiểm thử",
-            href: `/du-an/${project._id}/lan-chay-kiem-thu`,
-          },
-          { id: "automation", label: "Tự động hóa", href: `/du-an/${project._id}/tu-dong-hoa` },
-          { id: "defects", label: "Lỗi", href: `/du-an/${project._id}/loi` },
-        ]}
-      />
-      <div className="grid gap-5 xl:grid-cols-3">
+      {workspaceView === "test-runs" && runSubsectionTabs.length > 1 && (
+        <SegmentedTabs
+          label="Khu vực lần chạy kiểm thử"
+          value={
+            runSubsectionTabs.some((item) => item.id === runSubsection)
+              ? runSubsection
+              : runSubsectionTabs[0].id
+          }
+          onChange={setRunSubsection}
+          tabs={runSubsectionTabs}
+        />
+      )}
+      <>
         {can("testplan.create") && (
           <Modal
             isOpen={creatingPlan}
@@ -482,7 +552,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 <option value="regression">{valueLabel("regression")}</option>
                 <option value="feature">{valueLabel("feature")}</option>
               </select>
-              <div className="flex justify-end gap-3">
+              <div className="action-dialog-footer flex justify-end gap-3">
                 <button
                   className="secondary-button"
                   type="button"
@@ -584,7 +654,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   <option value="">Mặc định staging</option>
                   {environments.map((item) => (
                     <option key={item._id} value={item._id}>
-                      {item.name} · {item.environment_type}
+                      {item.name} · {valueLabel(item.environment_type)}
                     </option>
                   ))}
                 </select>
@@ -602,56 +672,28 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   </option>
                 ))}
               </select>
-              <label className="field-label block">
-                Bộ kiểm thử
-                <select
-                  aria-label="Bộ kiểm thử"
-                  className="apple-input mt-2 min-h-28"
-                  multiple
-                  value={runForm.suiteIds}
-                  onChange={(event) =>
-                    setRunForm({
-                      ...runForm,
-                      suiteIds: Array.from(event.target.selectedOptions, (option) => option.value),
-                    })
-                  }
-                >
-                  {suites.map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-label block">
-                Phiên bản ca kiểm thử
-                <select
-                  aria-label="Phiên bản ca kiểm thử"
-                  className="apple-input mt-2 min-h-36"
-                  multiple
-                  value={runForm.versionIds}
-                  onChange={(event) =>
-                    setRunForm({
-                      ...runForm,
-                      versionIds: Array.from(
-                        event.target.selectedOptions,
-                        (option) => option.value,
-                      ),
-                    })
-                  }
-                >
-                  {tests.map((item) => (
-                    <option key={item.current_version_id} value={item.current_version_id}>
-                      {item.test_case_key} {item.current_version?.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <MultiSelect
+                label="Bộ kiểm thử"
+                options={suites.map((item) => ({ value: item._id, label: item.name }))}
+                searchPlaceholder="Tìm bộ kiểm thử"
+                value={runForm.suiteIds}
+                onChange={(suiteIds) => setRunForm((current) => ({ ...current, suiteIds }))}
+              />
+              <MultiSelect
+                label="Phiên bản ca kiểm thử"
+                options={tests.map((item) => ({
+                  value: item.current_version_id,
+                  label: `${item.test_case_key} ${item.current_version?.title || ""}`,
+                }))}
+                searchPlaceholder="Tìm ca kiểm thử"
+                value={runForm.versionIds}
+                onChange={(versionIds) => setRunForm((current) => ({ ...current, versionIds }))}
+              />
               <p className="text-[12px] text-ink-muted">
                 Ảnh chụp {runForm.versionIds.length} phiên bản được chọn cùng các phiên bản trong bộ
                 kiểm thử
               </p>
-              <div className="flex justify-end gap-3">
+              <div className="action-dialog-footer flex justify-end gap-3">
                 <button
                   className="secondary-button"
                   type="button"
@@ -666,8 +708,8 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             </form>
           </Modal>
         )}
-      </div>
-      {(workspaceView === "" || workspaceView === "automation") && (
+      </>
+      {workspaceView === "" && can("automation.read") && (
         <JUnitResultPanel
           project={project}
           runs={runs}
@@ -676,17 +718,52 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           onError={setError}
         />
       )}
-      <div className="grid gap-5 xl:grid-cols-2">
-        <div className={workspaceView === "" || workspaceView === "automation" ? "" : "hidden"}>
-          <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
+      {workspaceView === "automation" && (
+        <div className="grid gap-5">
+          <SegmentedTabs
+            label="Khu vực tự động hóa"
+            value={automationSubsection}
+            onChange={setAutomationSubsection}
+            tabs={[
+              ...(can("automation.read")
+                ? [{ id: "results", label: "Kết quả kiểm thử tự động" }]
+                : []),
+              ...(can("automation.read") || can("device_matrix.read")
+                ? [{ id: "integrations", label: "Kịch bản và thiết bị" }]
+                : []),
+              { id: "ai", label: "AI tự động hóa" },
+            ]}
+          />
+          {automationSubsection === "results" && can("automation.read") && (
+            <JUnitResultPanel
+              project={project}
+              runs={runs}
+              tests={tests}
+              can={can}
+              onError={setError}
+            />
+          )}
+          {automationSubsection === "integrations" && (
+            <div className="grid gap-5 xl:grid-cols-2">
+              {can("device_matrix.read") && (
+                <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
+              )}
+              {can("automation.read") && <AutomationExecutionPanel project={project} />}
+            </div>
+          )}
+          {automationSubsection === "ai" && <AgentRunPanel project={project} />}
         </div>
-        <div className={workspaceView === "" || workspaceView === "automation" ? "" : "hidden"}>
-          <AutomationExecutionPanel project={project} />
+      )}
+      {workspaceView === "" && (can("device_matrix.read") || can("automation.read")) && (
+        <div className="grid gap-5 xl:grid-cols-2">
+          {can("device_matrix.read") && (
+            <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
+          )}
+          {can("automation.read") && <AutomationExecutionPanel project={project} />}
         </div>
-        <Panel
-          title="Kế hoạch kiểm thử"
-          className={workspaceView === "" || workspaceView === "test-plans" ? "" : "hidden"}
-        >
+      )}
+      {can("testplan.read") && (workspaceView === "" || workspaceView === "test-plans") && (
+        <Panel title="Danh sách kế hoạch kiểm thử">
           {planValidation && (
             <div className="border-b border-border p-4 text-sm">
               {planValidation.ready_for_approval
@@ -755,6 +832,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               {
                 key: "actions",
                 label: "Thao tác",
+                hideWhenEmpty: true,
                 render: (item) => (
                   <span className="flex flex-wrap gap-2">
                     {can("testplan.review") && (
@@ -830,7 +908,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             ]}
           />
         </Panel>
-        <Panel title="Bộ kiểm thử" className={workspaceView === "" ? "" : "hidden"}>
+      )}
+      {can("testsuite.read") && workspaceView === "" && (
+        <Panel title="Danh sách bộ kiểm thử">
           <details className="border-b border-border p-4">
             <summary className="cursor-pointer text-sm font-medium">
               Tìm kiếm bộ lọc và sắp xếp
@@ -908,6 +988,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               {
                 key: "actions",
                 label: "Thao tác",
+                hideWhenEmpty: true,
                 render: (item) => (
                   <span className="flex flex-wrap gap-2">
                     {can("testsuite.update") && (
@@ -950,96 +1031,103 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             ]}
           />
         </Panel>
-      </div>
-      <Panel
-        title="Danh sách lần chạy"
-        className={workspaceView === "" || workspaceView === "test-runs" ? "" : "hidden"}
-      >
-        <details className="border-b border-border p-4">
-          <summary className="cursor-pointer text-sm font-medium">
-            Tìm kiếm bộ lọc và sắp xếp
-          </summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <input
-              aria-label="Tìm lần chạy"
-              className="apple-input"
-              placeholder="Tên lần chạy"
-              value={runFilters.name}
-              onChange={(event) => {
-                setRunFilters({ ...runFilters, name: event.target.value });
-                setRunPage(1);
-              }}
+      )}
+      {can("testrun.read") && (workspaceView === "" || workspaceView === "test-runs") && (
+        <div hidden={workspaceView === "test-runs" && runSubsection !== "runs"}>
+          <Panel title="Danh sách lần chạy">
+            <details className="border-b border-border p-4">
+              <summary className="cursor-pointer text-sm font-medium">
+                Tìm kiếm bộ lọc và sắp xếp
+              </summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <input
+                  aria-label="Tìm lần chạy"
+                  className="apple-input"
+                  placeholder="Tên lần chạy"
+                  value={runFilters.name}
+                  onChange={(event) => {
+                    setRunFilters({ ...runFilters, name: event.target.value });
+                    setRunPage(1);
+                  }}
+                />
+                <select
+                  aria-label="Lọc trạng thái lần chạy"
+                  className="apple-input"
+                  value={runFilters.status}
+                  onChange={(event) => {
+                    setRunFilters({ ...runFilters, status: event.target.value });
+                    setRunPage(1);
+                  }}
+                >
+                  <option value="">Mọi trạng thái</option>
+                  {["DRAFT", "READY", "IN_PROGRESS", "COMPLETED", "ABORTED"].map((value) => (
+                    <option key={value} value={value}>
+                      {valueLabel(value)}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  aria-label="Lọc môi trường lần chạy"
+                  className="apple-input"
+                  placeholder="Môi trường"
+                  value={runFilters.environment}
+                  onChange={(event) => {
+                    setRunFilters({ ...runFilters, environment: event.target.value });
+                    setRunPage(1);
+                  }}
+                />
+                <select
+                  aria-label="Sắp xếp lần chạy"
+                  className="apple-input"
+                  value={runFilters.sort}
+                  onChange={(event) => {
+                    setRunFilters({ ...runFilters, sort: event.target.value });
+                    setRunPage(1);
+                  }}
+                >
+                  <option value="-updated_at">Mới cập nhật</option>
+                  <option value="updated_at">Cũ cập nhật</option>
+                  <option value="name">Tên tăng dần</option>
+                </select>
+              </div>
+            </details>
+            <DataTable
+              onSelect={(item) =>
+                window.location.assign(`/du-an/${project._id}/thuc-thi/${item._id}`)
+              }
+              items={runs}
+              empty="Chưa có lần chạy"
+              columns={[
+                { key: "name", label: "Tên" },
+                { key: "environment", label: "Môi trường" },
+                { key: "build", label: "Bản dựng" },
+                {
+                  key: "count",
+                  label: "Số ca kiểm thử",
+                  render: (item) => item.test_case_version_ids.length,
+                },
+                {
+                  key: "status",
+                  label: "Trạng thái",
+                  render: (item) => <StatusPill value={item.status} />,
+                },
+              ]}
             />
-            <select
-              aria-label="Lọc trạng thái lần chạy"
-              className="apple-input"
-              value={runFilters.status}
-              onChange={(event) => {
-                setRunFilters({ ...runFilters, status: event.target.value });
-                setRunPage(1);
-              }}
-            >
-              <option value="">Mọi trạng thái</option>
-              {["DRAFT", "READY", "IN_PROGRESS", "COMPLETED", "ABORTED"].map((value) => (
-                <option key={value} value={value}>
-                  {valueLabel(value)}
-                </option>
-              ))}
-            </select>
-            <input
-              aria-label="Lọc môi trường lần chạy"
-              className="apple-input"
-              placeholder="Môi trường"
-              value={runFilters.environment}
-              onChange={(event) => {
-                setRunFilters({ ...runFilters, environment: event.target.value });
-                setRunPage(1);
-              }}
-            />
-            <select
-              aria-label="Sắp xếp lần chạy"
-              className="apple-input"
-              value={runFilters.sort}
-              onChange={(event) => {
-                setRunFilters({ ...runFilters, sort: event.target.value });
-                setRunPage(1);
-              }}
-            >
-              <option value="-updated_at">Mới cập nhật</option>
-              <option value="updated_at">Cũ cập nhật</option>
-              <option value="name">Tên tăng dần</option>
-            </select>
-          </div>
-        </details>
-        <DataTable
-          onSelect={(item) => window.location.assign(`/du-an/${project._id}/thuc-thi/${item._id}`)}
-          items={runs}
-          empty="Chưa có lần chạy"
-          columns={[
-            { key: "name", label: "Tên" },
-            { key: "environment", label: "Môi trường" },
-            { key: "build", label: "Bản dựng" },
-            {
-              key: "count",
-              label: "Số ca kiểm thử",
-              render: (item) => item.test_case_version_ids.length,
-            },
-            {
-              key: "status",
-              label: "Trạng thái",
-              render: (item) => <StatusPill value={item.status} />,
-            },
-          ]}
-        />
-        <Pagination value={runPageInfo} onChange={setRunPage} />
-      </Panel>
+            <Pagination value={runPageInfo} onChange={setRunPage} />
+          </Panel>
+        </div>
+      )}
       {(workspaceView === "" || workspaceView === "test-runs") &&
         project.current_permissions?.includes("environmentincident.read") && (
-          <EnvironmentIncidentPanel project={project} />
+          <div hidden={workspaceView === "test-runs" && runSubsection !== "incidents"}>
+            <EnvironmentIncidentPanel project={project} />
+          </div>
         )}
       {(workspaceView === "" || workspaceView === "test-runs") &&
         project.current_permissions?.includes("nfrtest.read") && (
-          <NonFunctionalTestPanel project={project} />
+          <div hidden={workspaceView === "test-runs" && runSubsection !== "nonfunctional"}>
+            <NonFunctionalTestPanel project={project} />
+          </div>
         )}
       {dialog}
     </WorkspacePage>

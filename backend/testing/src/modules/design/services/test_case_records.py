@@ -58,16 +58,25 @@ def active_suite_signature(cases, requirement_version_ids):
     ).hexdigest()
 
 
-async def require_current_baselined_version(version):
+async def require_current_baselined_version(version, allow_automation_draft=False):
     requirement = await test_design_repository.find_current_requirement(
         version["project_id"], version["requirement_id"]
     )
-    if (
-        not requirement
-        or requirement.get("status") != "BASELINED"
-        or version.get("status") != "BASELINED"
-        or requirement.get("current_version_id") != version["_id"]
-    ):
+    current_version = bool(
+        requirement and requirement.get("current_version_id") == version["_id"]
+    )
+    baselined = bool(
+        current_version
+        and requirement.get("status") == "BASELINED"
+        and version.get("status") == "BASELINED"
+    )
+    automation_draft = bool(
+        allow_automation_draft
+        and current_version
+        and requirement.get("status") == "DRAFT"
+        and version.get("status") == "DRAFT"
+    )
+    if not (baselined or automation_draft):
         raise HTTPException(409, detail={"code": "TEST_DESIGN_REQUIREMENT_CHANGED", "message": "Phiên bản yêu cầu đã thay đổi hoặc chưa được duyệt  Hãy tải lại trước khi thiết kế ca kiểm thử"})
 
 
@@ -250,7 +259,9 @@ async def create_test_case_draft_record(
         if len(versions) != len(set(payload.requirement_version_ids)):
             raise HTTPException(409, detail={"code": "TEST_DESIGN_REQUIREMENT_CHANGED", "message": "Phiên bản yêu cầu đã thay đổi  Hãy tải lại trước khi lưu ca kiểm thử"})
         for version in versions:
-            await require_current_baselined_version(version)
+            await require_current_baselined_version(
+                version, allow_automation_draft=bool(user._ai_automation_run_id)
+            )
         existing, threshold = await comparison_cases(project_id)
         if payload.suite_signature != active_suite_signature(existing, payload.requirement_version_ids):
             raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi  Hãy tạo lại bản xem trước trước khi lưu"})
@@ -353,6 +364,9 @@ async def create_test_case_draft_record(
     except Exception:
         await test_design_repository.delete_created_drafts(project_id, [draft["_id"]])
         raise
+    from src.clients.ai_automation import emit_test_case_changed
+
+    await emit_test_case_changed(draft, user)
     return draft
 
 
@@ -473,4 +487,7 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         changes,
     )
     await audit(user.id, "test_case_draft_updated", "TestCaseDraft", draft_id, draft["project_id"])
+    from src.clients.ai_automation import emit_test_case_changed
+
+    await emit_test_case_changed(updated, user)
     return updated

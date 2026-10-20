@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ErrorState, Panel, StatusPill } from "./WorkspacePrimitives";
 import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
 
 export default function SpecializedDesignPanel({ project, requirements }) {
   const [securityResults, setSecurityResults] = useState([]);
@@ -118,28 +119,18 @@ export default function SpecializedDesignPanel({ project, requirements }) {
     <Panel title="Thiết kế kiểm thử chuyên sâu">
       {error && <ErrorState message={error} />}
       <div className="space-y-4 border-b border-border p-5">
-        <label className="field-label block">
-          Phiên bản yêu cầu làm bằng chứng
-          <select
-            aria-label="Phiên bản yêu cầu cho thiết kế chuyên sâu"
-            className="apple-input mt-2 min-h-28"
-            multiple
-            value={requirementVersionIds}
-            onChange={(event) =>
-              setRequirementVersionIds(
-                Array.from(event.target.selectedOptions, (option) => option.value),
-              )
-            }
-          >
-            {requirements
-              .filter((item) => item.current_version_id)
-              .map((item) => (
-                <option key={item.current_version_id} value={item.current_version_id}>
-                  {item.requirement_key} {item.current_version?.title || item.title}
-                </option>
-              ))}
-          </select>
-        </label>
+        <MultiSelect
+          label="Phiên bản yêu cầu làm bằng chứng"
+          options={requirements
+            .filter((item) => item.current_version_id)
+            .map((item) => ({
+              value: item.current_version_id,
+              label: `${item.requirement_key} ${item.current_version?.title || item.title}`,
+            }))}
+          searchPlaceholder="Tìm yêu cầu"
+          value={requirementVersionIds}
+          onChange={setRequirementVersionIds}
+        />
         <p className="text-xs text-ink-muted">
           Kết quả chỉ là bản nháp cần con người rà soát và không thực hiện quét lỗ hổng hoặc phát
           tải

@@ -168,7 +168,7 @@ export default function RequirementCurrentVersionPanel({
         </div>
         <div>
           <p className="field-label">Rủi ro</p>
-          <p className="mt-2 font-semibold">{current.risk}</p>
+          <p className="mt-2 font-semibold">{valueLabel(current.risk)}</p>
         </div>
         {current.status === "DRAFT" && draft && can("requirement.update") ? (
           <div className="space-y-4 md:col-span-3">
@@ -216,11 +216,14 @@ export default function RequirementCurrentVersionPanel({
                 ))}
               </select>
             </div>
-            <DocumentEditor
-              value={draft.content_doc}
-              onChange={(content_doc) => onDraftChange({ content_doc })}
-              label="Nội dung yêu cầu"
-            />
+            <div>
+              <p className="field-label mb-2">Nội dung yêu cầu</p>
+              <DocumentEditor
+                value={draft.content_doc}
+                onChange={(content_doc) => onDraftChange({ content_doc })}
+                label="Nội dung yêu cầu"
+              />
+            </div>
             <textarea
               aria-label="Tiêu chí chấp nhận"
               className="apple-input min-h-28"
@@ -278,9 +281,9 @@ export default function RequirementCurrentVersionPanel({
               </summary>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {[
-                  ["user_story.actor", "Vai trò trong User Story"],
-                  ["user_story.goal", "Mục tiêu trong User Story"],
-                  ["user_story.value", "Giá trị trong User Story"],
+                  ["user_story.actor", "Tác nhân trong câu chuyện người dùng"],
+                  ["user_story.goal", "Mục tiêu trong câu chuyện người dùng"],
+                  ["user_story.value", "Giá trị trong câu chuyện người dùng"],
                   ["main_flow", "Luồng chính"],
                   ["exception_flow", "Luồng ngoại lệ"],
                   ["data_rules", "Dữ liệu và quy tắc"],

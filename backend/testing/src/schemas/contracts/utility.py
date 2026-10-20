@@ -32,6 +32,7 @@ class TestDesignChallengeInput(BaseModel):
 
 class GenerateInput(BaseModel):
     categories: list[str] = Field(default_factory=list, max_length=20)
+    acceptance_criterion_ids: list[str] = Field(default_factory=list, max_length=500)
     techniques: list[Literal[
         "equivalence_partitioning", "boundary_value", "decision_table",
         "state_transition", "error_guessing",

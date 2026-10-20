@@ -16,6 +16,10 @@ class ProjectCreate(BaseModel):
     planning_method: Literal["SCRUM", "KANBAN"] = "SCRUM"
 
 
+class ProjectCapabilities(BaseModel):
+    can_create_project: bool
+
+
 class ProjectPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)

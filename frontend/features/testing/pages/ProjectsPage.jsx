@@ -21,6 +21,7 @@ export default function ProjectsPage() {
   const [invitations, setInvitations] = useState([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("active");
+  const [invitationError, setInvitationError] = useState("");
   const [form, setForm] = useState({
     key: "",
     name: "",
@@ -34,6 +35,8 @@ export default function ProjectsPage() {
   const [createError, setCreateError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [canCreateProject, setCanCreateProject] = useState(false);
+  const [capabilityError, setCapabilityError] = useState("");
   const requestSequence = useRef(0);
   const openCreateModal = () => {
     setCreateError("");
@@ -44,13 +47,23 @@ export default function ProjectsPage() {
     setLoading(true);
     setError("");
     try {
-      const [projects, pendingInvitations] = await Promise.all([
+      const [projectsResult, invitationsResult] = await Promise.allSettled([
         testingApi.listProjects(value, statusValue),
         testingApi.listInvitations(),
       ]);
       if (requestId !== requestSequence.current) return;
-      setItems(projects);
-      setInvitations(pendingInvitations);
+      if (projectsResult.status === "rejected") throw projectsResult.reason;
+      setItems(projectsResult.value);
+      if (invitationsResult.status === "fulfilled") {
+        setInvitations(invitationsResult.value);
+        setInvitationError("");
+      } else if (invitationsResult.reason?.status === 403) {
+        setInvitations([]);
+        setInvitationError("");
+      } else {
+        setInvitations([]);
+        setInvitationError(messageOf(invitationsResult.reason));
+      }
     } catch (reason) {
       if (requestId !== requestSequence.current) return;
       setError(messageOf(reason));
@@ -58,9 +71,22 @@ export default function ProjectsPage() {
       if (requestId === requestSequence.current) setLoading(false);
     }
   }, []);
+  const loadCapabilities = useCallback(async () => {
+    setCapabilityError("");
+    try {
+      const capabilities = await testingApi.getProjectCapabilities();
+      setCanCreateProject(capabilities?.can_create_project === true);
+    } catch (reason) {
+      setCanCreateProject(false);
+      setCapabilityError(reason?.status === 403 ? "" : messageOf(reason));
+    }
+  }, []);
   useEffect(() => {
     void load("", status);
   }, [load, status]);
+  useEffect(() => {
+    void loadCapabilities();
+  }, [loadCapabilities]);
   const submit = async (event) => {
     event.preventDefault();
     if (saving) return;
@@ -94,13 +120,35 @@ export default function ProjectsPage() {
     <WorkspacePage
       title="Dự án"
       actions={
-        <button type="button" className="apple-button" onClick={openCreateModal}>
-          <Plus size={16} />
-          Tạo dự án
-        </button>
+        canCreateProject ? (
+          <button type="button" className="apple-button" onClick={openCreateModal}>
+            <Plus size={16} />
+            Tạo dự án
+          </button>
+        ) : null
       }
     >
-      {error && <ErrorState message={error} />}
+      {error && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <ErrorState message={error} />
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={loading}
+            onClick={() => void load(query, status)}
+          >
+            Thử tải lại danh sách
+          </button>
+        </div>
+      )}
+      {capabilityError && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <ErrorState message={`Không thể xác định quyền tạo dự án: ${capabilityError}`} />
+          <button type="button" className="apple-button" onClick={() => void loadCapabilities()}>
+            Thử lại
+          </button>
+        </div>
+      )}
       <Modal
         isOpen={creating}
         onClose={() => {
@@ -135,7 +183,8 @@ export default function ProjectsPage() {
             Tài khoản QA đầu tiên
             <input
               className="apple-input mt-2 w-full"
-              type="email"
+              type="text"
+              autoComplete="off"
               required
               value={form.initial_qa_user_id}
               onChange={(event) => setForm({ ...form, initial_qa_user_id: event.target.value })}
@@ -189,7 +238,7 @@ export default function ProjectsPage() {
               onChange={(event) => setForm({ ...form, description: event.target.value })}
             />
           </label>
-          <div className="flex justify-end gap-3 md:col-span-2">
+          <div className="action-dialog-footer flex justify-end gap-3 md:col-span-2">
             <button
               className="secondary-button"
               type="button"
@@ -204,66 +253,76 @@ export default function ProjectsPage() {
           </div>
         </form>
       </Modal>
-      {invitations.length > 0 && (
-        <Panel
-          title="Lời mời tham gia dự án"
-          description="Chấp nhận lời mời để dự án xuất hiện trong danh sách của bạn"
-        >
-          <div className="divide-y divide-border">
-            {invitations.map((invitation) => (
-              <article
-                key={invitation._id}
-                className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between"
+      {(invitations.length > 0 || invitationError) && (
+        <Panel title="Lời mời tham gia dự án" description="Chấp nhận lời mời để mở dự án">
+          {invitationError ? (
+            <div className="space-y-3 p-5">
+              <ErrorState message={`Không thể tải lời mời: ${invitationError}`} />
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void load(query, status)}
               >
-                <div className="min-w-0">
-                  <span className="font-mono text-[12px] font-semibold text-brand">
-                    {invitation.project?.key}
-                  </span>
-                  <strong className="mt-1 block text-[14px]">{invitation.project?.name}</strong>
-                  <small className="text-ink-muted">
-                    Vai trò được mời {valueLabel(invitation.project_role)}
-                  </small>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={async () => {
-                      try {
-                        await testingApi.declineInvitation(invitation._id);
-                        await load(query, status);
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
-                    }}
-                  >
-                    Từ chối
-                  </button>
-                  <button
-                    type="button"
-                    className="apple-button"
-                    onClick={async () => {
-                      try {
-                        await testingApi.acceptInvitation(invitation._id);
-                        await load(query, status);
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
-                    }}
-                  >
-                    Chấp nhận
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
+                Thử tải lại lời mời
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {invitations.map((invitation) => (
+                <article
+                  key={invitation._id}
+                  className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="min-w-0">
+                    <span className="font-mono text-[12px] font-semibold text-brand">
+                      {invitation.project?.key}
+                    </span>
+                    <strong className="mt-1 block text-[14px]">{invitation.project?.name}</strong>
+                    <small className="text-ink-muted">
+                      Vai trò được mời {valueLabel(invitation.project_role)}
+                    </small>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={async () => {
+                        try {
+                          await testingApi.declineInvitation(invitation._id);
+                          await load(query, status);
+                        } catch (reason) {
+                          setError(messageOf(reason));
+                        }
+                      }}
+                    >
+                      Từ chối
+                    </button>
+                    <button
+                      type="button"
+                      className="apple-button"
+                      onClick={async () => {
+                        try {
+                          await testingApi.acceptInvitation(invitation._id);
+                          await load(query, status);
+                        } catch (reason) {
+                          setError(messageOf(reason));
+                        }
+                      }}
+                    >
+                      Chấp nhận
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </Panel>
       )}
       <Panel
         title="Danh sách dự án"
         actions={
           <form
-            className="flex flex-wrap items-center gap-2"
+            className="flex w-full flex-col gap-2 sm:flex-row sm:items-center"
             onSubmit={(event) => {
               event.preventDefault();
               void load(query, status);
@@ -277,7 +336,7 @@ export default function ProjectsPage() {
               />
               <input
                 aria-label="Tìm dự án"
-                className="apple-input h-10 w-64 py-0 pl-10"
+                className="apple-input h-10 w-full py-0 pl-10 sm:w-64"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={(event) => {
@@ -293,7 +352,7 @@ export default function ProjectsPage() {
             </button>
             <select
               aria-label="Trạng thái dự án"
-              className="apple-input"
+              className="apple-input w-full sm:w-auto"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
             >
@@ -321,11 +380,11 @@ export default function ProjectsPage() {
             {items.map((item) => (
               <article
                 key={item._id}
-                className="grid gap-4 p-5 transition hover:bg-surface-quiet md:grid-cols-[120px_minmax(0,1fr)_minmax(180px,0.7fr)_140px_180px_auto] md:items-center"
+                className="grid gap-4 p-5 transition hover:bg-surface-quiet xl:grid-cols-[120px_minmax(0,1fr)_minmax(180px,0.7fr)_140px_180px_auto] xl:items-center"
               >
                 <span className="font-mono text-[13px] font-semibold text-brand">{item.key}</span>
                 <Link href={`/du-an/${item._id}`} className="min-w-0">
-                  <strong className="block text-[14px]">{item.name}</strong>
+                  <strong className="block break-words text-[14px]">{item.name}</strong>
                   {item.description && (
                     <small className="line-clamp-1 text-ink-muted">{item.description}</small>
                   )}
@@ -350,11 +409,11 @@ export default function ProjectsPage() {
                     chặn
                   </span>
                 </div>
-                <div className="flex items-center md:block">
+                <div className="flex items-center xl:block">
                   <StatusPill value={String(item.status).toUpperCase()} />
                 </div>
                 <div className="text-[12px] text-ink-muted">
-                  <span className="mr-2 font-semibold text-ink md:hidden">Cập nhật</span>
+                  <span className="mr-2 font-semibold text-ink xl:hidden">Cập nhật</span>
                   {formatDate(item.updated_at)}
                 </div>
                 {item.status === "archived" &&

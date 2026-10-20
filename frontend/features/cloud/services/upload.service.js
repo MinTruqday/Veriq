@@ -20,14 +20,24 @@ async function doDirectUpload(file, isSystem, isMessageAttachment) {
       reqData.detail || reqData.message || "Lỗi cấp phát chuỗi xác thực (Presigned URL)",
     );
   const { upload_url, file_path } = reqData.data;
-  const putRes = await fetch(upload_url, {
-    method: "PUT",
-    headers: {
-      "Content-Type": file.type || "application/octet-stream",
-    },
-    body: file,
-  });
-  if (!putRes.ok) throw new Error("Lỗi đẩy luồng dữ liệu (Stream) lên máy chủ lưu trữ");
+  let putRes;
+  try {
+    putRes = await fetch(upload_url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("Không thể kết nối kho lưu trữ để tải tệp lên. Vui lòng thử lại", {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+  if (!putRes.ok) throw new Error("Kho lưu trữ không nhận được tệp. Vui lòng thử lại");
   const confirmRes = await authenticatedFetch(`${API_URL}/tai-len/xac-nhan`, {
     method: "POST",
     headers: {
@@ -64,9 +74,12 @@ export async function uploadChatAttachmentAPI(file) {
 }
 export async function getChatAttachmentBlobUrlAPI(filePath) {
   if (!filePath || /^(https?:|blob:|data:)/.test(filePath)) return filePath;
-  const response = await fetch(`${API_URL}/tai-len/noi-dung/${filePath.replace(/^\/+/, "")}`, {
-    headers: getAuthHeaders(),
-  });
+  const response = await authenticatedFetch(
+    `${API_URL}/tai-len/noi-dung/${filePath.replace(/^\/+/, "")}`,
+    {
+      headers: getAuthHeaders(),
+    },
+  );
   if (!response.ok) throw new Error("Không thể tải tệp tin nhắn");
   return URL.createObjectURL(await response.blob());
 }

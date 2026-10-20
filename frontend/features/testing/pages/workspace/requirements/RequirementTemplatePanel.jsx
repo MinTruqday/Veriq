@@ -26,7 +26,8 @@ function templateError(reason) {
     TEMPLATE_EVIDENCE_INVALID: "Trích dẫn AI trả về không khớp tài liệu nguồn",
     TEMPLATE_SOURCE_QUOTE_INVALID: "Đoạn trích AI trả về không có trong tài liệu nguồn",
     TEMPLATE_EVIDENCE_MISSING: "Yêu cầu AI đề xuất thiếu trích dẫn nguồn",
-    TEMPLATE_USER_STORY_SOURCE_REQUIRED: "Không tìm thấy nguồn chứng minh nội dung User Story",
+    TEMPLATE_USER_STORY_SOURCE_REQUIRED:
+      "Không tìm thấy nguồn chứng minh nội dung câu chuyện người dùng",
     TEMPLATE_TOO_MANY_REQUIREMENTS: "Mẫu có quá nhiều yêu cầu",
     CUSTOM_FIELD_MANAGER_REQUIRED: "Chỉ QA quản trị dự án được định nghĩa trường mở rộng",
     CUSTOM_FIELD_EXISTS: "Mã trường mở rộng đã tồn tại",
@@ -397,9 +398,6 @@ export default function RequirementTemplatePanel({
     <section className="space-y-5 border-b border-border p-5">
       <div>
         <h3 className="text-base font-semibold">Mẫu yêu cầu</h3>
-        <p className="text-sm text-ink-muted">
-          Tạo mẫu riêng của dự án hoặc tổng hợp từ mẫu và tài liệu đã cho phép AI đọc
-        </p>
         {busy && (
           <p className="mt-2 text-sm" role="status">
             AI hoặc hệ thống đang xử lý mẫu yêu cầu
@@ -723,9 +721,9 @@ export default function RequirementTemplatePanel({
               <summary className="cursor-pointer text-sm">Thông tin theo loại yêu cầu</summary>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {[
-                  ["actor", "Vai trò trong User Story"],
-                  ["goal", "Mục tiêu trong User Story"],
-                  ["value", "Giá trị trong User Story"],
+                  ["actor", "Tác nhân trong câu chuyện người dùng"],
+                  ["goal", "Mục tiêu trong câu chuyện người dùng"],
+                  ["value", "Giá trị trong câu chuyện người dùng"],
                   ["main_flow", "Luồng chính"],
                   ["exception_flow", "Luồng ngoại lệ"],
                   ["data_rules", "Dữ liệu và quy tắc"],

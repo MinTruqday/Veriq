@@ -1,14 +1,19 @@
+import hmac
+from contextvars import ContextVar
 from enum import Enum
 from functools import lru_cache
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from pymongo import MongoClient
 
 from src.clients.authentication import session_is_valid
 from src.core.configuration import settings
 from src.schemas.contracts.common import CurrentUser, SystemRole
+
+
+ai_automation_context = ContextVar("ai_automation_context", default=None)
 
 
 class ProjectRole(str, Enum):
@@ -77,10 +82,32 @@ def permissions_for_role(role: ProjectRole | str, settings_value: dict | None = 
     return permissions
 
 
+def roles_for_membership(membership: dict | None) -> set[str]:
+    if not membership:
+        return set()
+    roles = membership.get("project_roles")
+    if not isinstance(roles, list):
+        roles = []
+    primary = membership.get("project_role")
+    return {str(role).upper() for role in [*roles, primary] if role}
+
+
+def permissions_for_membership(membership: dict | None, settings_value: dict | None = None):
+    if not membership:
+        return set()
+    return set().union(
+        *(permissions_for_role(role, settings_value) for role in roles_for_membership(membership))
+    )
+
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/xac-thuc/dang-nhap", auto_error=False)
 
 
-async def get_current_user(token: str | None = Depends(oauth2_scheme)):
+async def get_current_user(
+    token: str | None = Depends(oauth2_scheme),
+    ai_automation_run_id: str | None = Header(default=None, alias="X-AI-Automation-Run"),
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+):
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"code": "AUTH_REQUIRED"})
     try:
@@ -93,7 +120,31 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)):
         session_id = payload.get("sid")
         if session_id and not await session_is_valid(str(session_id), str(user_id)):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"code": "SESSION_REVOKED"})
-        return CurrentUser(_id=str(user_id), email=str(email), system_role=SystemRole(str(role_value).upper()))
+        user = CurrentUser(
+            _id=str(user_id), email=str(email), system_role=SystemRole(str(role_value).upper())
+        )
+        user._access_token = token
+        token_run_id = str(payload.get("ai_automation_run_id") or "")
+        if token_run_id:
+            if (
+                not ai_automation_run_id
+                or ai_automation_run_id != token_run_id
+                or not x_internal_token
+                or not hmac.compare_digest(x_internal_token, settings.SECRET_KEY)
+            ):
+                raise HTTPException(status_code=403, detail={"code": "AI_AUTOMATION_IDENTITY_INVALID"})
+            user._ai_automation_run_id = token_run_id
+            user._ai_automation_initiator_id = str(payload.get("ai_automation_initiator_id") or "")
+            user._ai_automation_definition_id = str(payload.get("ai_automation_definition_id") or "")
+            ai_automation_context.set(
+                {
+                    "run_id": token_run_id,
+                    "initiator_id": user._ai_automation_initiator_id,
+                    "definition_id": user._ai_automation_definition_id,
+                    "principal_id": user.id,
+                }
+            )
+        return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"code": "TOKEN_EXPIRED"})
     except (jwt.PyJWTError, ValueError):

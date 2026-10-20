@@ -23,10 +23,15 @@ export default function NonFunctionalTestPanel({ project }) {
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     try {
+      const permissions = new Set(project.current_permissions || []);
       const [result, conditionResult, caseValues] = await Promise.all([
         testingApi.listNonFunctionalTestPlans(project._id),
-        testingApi.listTestConditions(project._id),
-        testingApi.listTestCases(project._id, { page_size: 500 }),
+        permissions.has("testcondition.read")
+          ? testingApi.listTestConditions(project._id)
+          : Promise.resolve({ items: [] }),
+        permissions.has("testcase.read")
+          ? testingApi.listTestCases(project._id, { page_size: 500 })
+          : Promise.resolve([]),
       ]);
       setItems(result.items || []);
       setConditions(conditionResult.items || []);
@@ -36,7 +41,7 @@ export default function NonFunctionalTestPanel({ project }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [project._id, selected?._id]);
+  }, [project._id, project.current_permissions, selected?._id]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -72,19 +77,27 @@ export default function NonFunctionalTestPanel({ project }) {
           name: "requirement_refs",
           label: "Mã phiên bản yêu cầu cách nhau bởi dấu phẩy",
         },
-        {
-          name: "condition_ids",
-          label: "Mã điều kiện kiểm thử cách nhau bởi dấu phẩy",
-          initialValue: conditions.map((item) => item._id).join(","),
-        },
-        {
-          name: "case_ids",
-          label: "Mã phiên bản ca kiểm thử cách nhau bởi dấu phẩy",
-          initialValue: cases
-            .map((item) => item.current_version_id)
-            .filter(Boolean)
-            .join(","),
-        },
+        ...(can("testcondition.read")
+          ? [
+              {
+                name: "condition_ids",
+                label: "Mã điều kiện kiểm thử cách nhau bởi dấu phẩy",
+                initialValue: conditions.map((item) => item._id).join(","),
+              },
+            ]
+          : []),
+        ...(can("testcase.read")
+          ? [
+              {
+                name: "case_ids",
+                label: "Mã phiên bản ca kiểm thử cách nhau bởi dấu phẩy",
+                initialValue: cases
+                  .map((item) => item.current_version_id)
+                  .filter(Boolean)
+                  .join(","),
+              },
+            ]
+          : []),
         ...(security
           ? [
               { name: "risk_refs", label: "Tham chiếu rủi ro mỗi dòng một mục", multiline: true },

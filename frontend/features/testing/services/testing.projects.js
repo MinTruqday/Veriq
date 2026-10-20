@@ -9,6 +9,7 @@ import {
 } from "./testing.transport";
 
 export const projectTestingApi = {
+  getProjectCapabilities: () => testingRequest("/du-an/kha-nang"),
   listAgentCapabilities: (projectId) => agentReadRequest(`/du-an/${projectId}/nang-luc`),
   runAgent: (payload) =>
     agentRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
@@ -21,6 +22,7 @@ export const projectTestingApi = {
   runAutomation: (payload) =>
     automationRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
   getAutomationRun: (runId) => automationRequest(`/luot-chay/${runId}`),
+  getAutomationEvidence: (runId) => automationRequest(`/luot-chay/${runId}/bang-chung`),
   listAutomationRuns: (projectId) => automationRequest(`/du-an/${projectId}/luot-chay`),
   retryAutomationRun: (runId, payload) =>
     automationRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
@@ -32,9 +34,13 @@ export const projectTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  decideAutomationRun: (runId, payload) =>
-    automationRequest(`/luot-chay/${runId}/quyet-dinh`, {
-      method: "POST",
+  listAutomationTriggers: () => automationRequest("/triggers"),
+  listAutomationDefinitions: (projectId) => automationRequest(`/du-an/${projectId}/dinh-nghia`),
+  createAutomationDefinition: (payload) =>
+    automationRequest("/dinh-nghia", { method: "POST", body: JSON.stringify(payload) }),
+  updateAutomationDefinition: (definitionId, payload) =>
+    automationRequest(`/dinh-nghia/${definitionId}`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
   listProjects: (query = "", status = "active") => {

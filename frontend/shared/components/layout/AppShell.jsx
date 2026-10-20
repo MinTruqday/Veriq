@@ -1,13 +1,40 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, ChevronRight, Menu, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
+import {
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { testingApi } from "@/features/testing/services/testing.service";
 import { useAnnouncements } from "@/shared/contexts/AnnouncementContext";
 import { availableNavigation, navigationGroupsFor, projectIdFromPath } from "./navigation";
+
+function collapsedNavigationGroups(groups, pathname) {
+  const activeGroup = groups
+    .filter(
+      (group) =>
+        group.href === pathname ||
+        (group.href && pathname.startsWith(`${group.href}/`)) ||
+        group.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)),
+    )
+    .sort(
+      (left, right) =>
+        Math.max(right.href?.length || 0, ...right.items.map((item) => item.href.length)) -
+        Math.max(left.href?.length || 0, ...left.items.map((item) => item.href.length)),
+    )[0];
+  return Object.fromEntries(
+    groups.map((group) => [group.label, group.label !== activeGroup?.label]),
+  );
+}
 
 function NavigationList({ onNavigate, projectPermissions, planningMethod, collapsed = false }) {
   const pathname = usePathname();
@@ -17,28 +44,61 @@ function NavigationList({ onNavigate, projectPermissions, planningMethod, collap
       availableNavigation(navigationGroupsFor(pathname, planningMethod), user, projectPermissions),
     [pathname, planningMethod, projectPermissions, user],
   );
+  const [collapsedGroups, setCollapsedGroups] = useState(() =>
+    collapsedNavigationGroups(groups, pathname),
+  );
+  useEffect(() => {
+    setCollapsedGroups(collapsedNavigationGroups(groups, pathname));
+  }, [groups, pathname]);
   return (
-    <div className={collapsed ? "flex flex-col gap-4" : "flex flex-col gap-6"}>
+    <div className={collapsed ? "flex flex-col gap-2" : "flex flex-col gap-3"}>
       {groups.map((group) => (
         <div key={group.label}>
           {!collapsed && (
-            <p className="mb-2 px-3 text-[12px] font-semibold text-ink-faint">{group.label}</p>
+            <button
+              type="button"
+              className="mb-1 flex min-h-8 w-full items-center justify-between gap-2 rounded-control px-3 text-left text-[12px] font-semibold text-ink-faint transition hover:bg-surface-quiet hover:text-ink-muted"
+              aria-expanded={!collapsedGroups[group.label]}
+              onClick={() =>
+                setCollapsedGroups((current) => ({
+                  ...current,
+                  [group.label]: !current[group.label],
+                }))
+              }
+            >
+              <span>{group.label}</span>
+              <ChevronDown
+                aria-hidden="true"
+                size={15}
+                className={`shrink-0 transition-transform ${collapsedGroups[group.label] ? "-rotate-90" : ""}`}
+              />
+            </button>
           )}
-          <div className="space-y-1">
+          <div
+            className={`space-y-1 ${!collapsed && collapsedGroups[group.label] ? "hidden" : ""}`}
+          >
             {group.items.map((item) => {
               const active =
                 pathname === item.href ||
                 (!["dashboard", "projects"].includes(item.id) &&
-                  pathname.startsWith(`${item.href}/`));
+                  pathname.startsWith(`${item.href}/`)) ||
+                (group.defaultActiveItemId === item.id && pathname === group.href);
               return (
                 <Link
                   key={item.id}
                   href={item.href}
                   onClick={onNavigate}
-                  aria-current={active ? "page" : undefined}
+                  aria-current={
+                    pathname === item.href ||
+                    (group.defaultActiveItemId === item.id && pathname === group.href)
+                      ? "page"
+                      : active
+                        ? "location"
+                        : undefined
+                  }
                   aria-label={collapsed ? item.label : undefined}
                   title={collapsed ? item.label : undefined}
-                  className={`flex min-h-10 items-center rounded-control text-[14px] font-medium transition duration-150 ${
+                  className={`flex min-h-9 items-center rounded-control text-[14px] font-medium transition duration-150 ${
                     collapsed ? "justify-center px-2" : "gap-3 px-3"
                   } ${
                     active
@@ -69,8 +129,11 @@ export default function AppShell({ children, requireAuth }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState(routeQuery);
   const [projectPermissions, setProjectPermissions] = useState(null);
+  const [permissionsProjectId, setPermissionsProjectId] = useState(null);
   const [planningMethod, setPlanningMethod] = useState(null);
   const [projectContext, setProjectContext] = useState(null);
+  const projectContextRequest = useRef(0);
+  const deniedProjectPermissions = useRef(new Map());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiStream, setAiStream] = useState(null);
   const aiStreamDismissal = useRef(null);
@@ -100,33 +163,69 @@ export default function AppShell({ children, requireAuth }) {
     setMobileOpen(false);
     setAccountOpen(false);
   }, [pathname]);
+  const refreshProjectContext = useCallback(async (id, hideUntilVerified = false) => {
+    const requestId = ++projectContextRequest.current;
+    if (hideUntilVerified) {
+      setProjectPermissions(null);
+      setPermissionsProjectId(null);
+    }
+    try {
+      const project = await testingApi.getProject(id);
+      if (requestId !== projectContextRequest.current) return;
+      const denied = deniedProjectPermissions.current.get(id) || new Set();
+      setProjectPermissions(
+        (project?.current_permissions || []).filter((permission) => !denied.has(permission)),
+      );
+      setPermissionsProjectId(id);
+      setPlanningMethod(project ? project.planning_method || "SCRUM" : null);
+      setProjectContext(project || null);
+    } catch {
+      if (requestId !== projectContextRequest.current) return;
+      setProjectPermissions([]);
+      setPermissionsProjectId(id);
+      setPlanningMethod(null);
+      setProjectContext(null);
+    }
+  }, []);
   useEffect(() => {
     if (!projectId || !user) {
+      projectContextRequest.current += 1;
+      if (!user) deniedProjectPermissions.current.clear();
       setProjectPermissions(null);
+      setPermissionsProjectId(null);
       setPlanningMethod(null);
       setProjectContext(null);
       return;
     }
-    let active = true;
-    testingApi
-      .getProject(projectId)
-      .then((project) => ({
-        permissions: project?.current_permissions || [],
-        planningMethod: project ? project.planning_method || "SCRUM" : null,
-        project,
-      }))
-      .catch(() => ({ permissions: [], planningMethod: null }))
-      .then((value) => {
-        if (active) {
-          setProjectPermissions(value.permissions);
-          setPlanningMethod(value.planningMethod);
-          setProjectContext(value.project || null);
-        }
-      });
+    setProjectPermissions(null);
+    setPermissionsProjectId(null);
+    setPlanningMethod(null);
+    setProjectContext(null);
+    void refreshProjectContext(projectId);
     return () => {
-      active = false;
+      projectContextRequest.current += 1;
     };
-  }, [projectId, user]);
+  }, [projectId, refreshProjectContext, user]);
+  useEffect(() => {
+    const refreshAfterDeniedAction = (event) => {
+      if (event.detail?.projectId === projectId && user) {
+        const permission = event.detail?.permission;
+        if (typeof permission === "string") {
+          const denied = deniedProjectPermissions.current.get(projectId) || new Set();
+          denied.add(permission);
+          deniedProjectPermissions.current.set(projectId, denied);
+          setProjectPermissions(
+            (current) =>
+              current?.filter((grantedPermission) => grantedPermission !== permission) ?? null,
+          );
+        }
+        void refreshProjectContext(projectId, true);
+      }
+    };
+    window.addEventListener("veriq-project-access-denied", refreshAfterDeniedAction);
+    return () =>
+      window.removeEventListener("veriq-project-access-denied", refreshAfterDeniedAction);
+  }, [projectId, refreshProjectContext, user]);
   useEffect(() => {
     if (requireAuth && !isLoading && !user) {
       const query = searchParams.toString();
@@ -188,6 +287,9 @@ export default function AppShell({ children, requireAuth }) {
       trigger?.focus();
     };
   }, [mobileOpen]);
+  const currentProjectPermissions = permissionsProjectId === projectId ? projectPermissions : null;
+  const currentPlanningMethod = permissionsProjectId === projectId ? planningMethod : null;
+  const currentProjectContext = permissionsProjectId === projectId ? projectContext : null;
   if (requireAuth && (isLoading || !user)) {
     return (
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[1280px] gap-8 px-6 py-10">
@@ -270,7 +372,7 @@ export default function AppShell({ children, requireAuth }) {
             <span className="text-[15px] font-bold tracking-[-0.02em]">Veriq</span>
           </Link>
           {projectId && (
-            <div className="hidden min-w-0 items-center gap-1 text-[13px] text-ink-muted xl:flex">
+            <div className="hidden min-w-0 items-center gap-1 text-[13px] text-ink-muted lg:flex">
               <Link href="/du-an" className="shrink-0 hover:text-ink">
                 Dự án
               </Link>
@@ -279,14 +381,14 @@ export default function AppShell({ children, requireAuth }) {
                 href={`/du-an/${projectId}`}
                 className="max-w-44 truncate font-medium text-ink hover:text-brand"
               >
-                {projectContext?.name || projectContext?.project_name || projectId}
+                {currentProjectContext?.name || currentProjectContext?.project_name || projectId}
               </Link>
             </div>
           )}
-          {projectId && (
+          {projectId && currentProjectPermissions?.includes("knowledge.read") && (
             <form
               action={`/du-an/${projectId}/tim-kiem`}
-              className="relative hidden w-full max-w-[520px] md:block"
+              className="relative hidden min-w-0 w-full max-w-[520px] flex-1 md:block"
             >
               <button
                 type="submit"
@@ -312,7 +414,7 @@ export default function AppShell({ children, requireAuth }) {
           <div className="ml-auto flex items-center gap-2">
             {user ? (
               <>
-                {projectId && (
+                {projectId && currentProjectPermissions?.includes("knowledge.read") && (
                   <Link
                     href={`/du-an/${projectId}/tim-kiem`}
                     className="flex h-11 w-11 items-center justify-center rounded-control text-ink-muted hover:bg-surface-quiet hover:text-ink md:hidden"
@@ -456,8 +558,8 @@ export default function AppShell({ children, requireAuth }) {
           aria-label="Điều hướng chính"
         >
           <NavigationList
-            projectPermissions={projectPermissions}
-            planningMethod={planningMethod}
+            projectPermissions={currentProjectPermissions}
+            planningMethod={currentPlanningMethod}
             collapsed={sidebarCollapsed}
           />
         </nav>
@@ -465,8 +567,9 @@ export default function AppShell({ children, requireAuth }) {
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            aria-hidden="true"
+          <button
+            type="button"
+            aria-label="Đóng điều hướng"
             className="absolute inset-0 bg-ink/30"
             onClick={() => setMobileOpen(false)}
           />
@@ -506,8 +609,8 @@ export default function AppShell({ children, requireAuth }) {
             </div>
             <NavigationList
               onNavigate={() => setMobileOpen(false)}
-              projectPermissions={projectPermissions}
-              planningMethod={planningMethod}
+              projectPermissions={currentProjectPermissions}
+              planningMethod={currentPlanningMethod}
             />
           </aside>
         </div>
@@ -515,7 +618,7 @@ export default function AppShell({ children, requireAuth }) {
 
       <main
         id="main-content"
-        className={`min-h-[100dvh] min-w-0 overflow-x-hidden pt-[68px] transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
+        className={`min-h-[100dvh] min-w-0 pt-[68px] transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
       >
         <div className="page-shell">{children}</div>
       </main>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import DataTable from "./DataTable";
+import FilePicker from "./FilePicker";
 import { Panel } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
@@ -10,6 +11,7 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
   const [imports, setImports] = useState([]);
   const [runId, setRunId] = useState("");
   const [file, setFile] = useState(null);
+  const [fileResetKey, setFileResetKey] = useState(0);
   const [mappings, setMappings] = useState({});
   const load = useCallback(async () => {
     try {
@@ -25,13 +27,17 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
     <Panel title="Nhập kết quả JUnit XML">
       {can("automation.create") && (
         <form
-          className="mb-4 flex flex-wrap items-end gap-3"
+          className="mb-4 grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] sm:items-end"
           onSubmit={async (event) => {
             event.preventDefault();
-            if (!file || !runId) return;
+            if (!file || !runId) {
+              onError("Chọn lần chạy kiểm thử và tệp JUnit XML trước khi nhập");
+              return;
+            }
             try {
               await testingApi.importJUnitResult(project._id, runId, file);
               setFile(null);
+              setFileResetKey((current) => current + 1);
               await load();
             } catch (reason) {
               onError(messageOf(reason));
@@ -39,14 +45,14 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
           }}
         >
           <label className="field-label">
-            Test Run
+            Lần chạy kiểm thử
             <select
               className="apple-input mt-2"
               value={runId}
               onChange={(event) => setRunId(event.target.value)}
               required
             >
-              <option value="">Chọn Test Run</option>
+              <option value="">Chọn lần chạy kiểm thử</option>
               {runs.map((run) => (
                 <option key={run._id} value={run._id}>
                   {run.name}
@@ -54,30 +60,31 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
               ))}
             </select>
           </label>
-          <label className="field-label">
-            Tệp JUnit XML
-            <input
-              className="apple-input mt-2"
-              type="file"
-              accept=".xml,text/xml,application/xml"
-              onChange={(event) => setFile(event.target.files?.[0] || null)}
-              required
-            />
-          </label>
-          <button className="primary-button" type="submit">
+          <FilePicker
+            label="Tệp JUnit XML"
+            accept=".xml,text/xml,application/xml"
+            fileName={file?.name || ""}
+            required
+            resetKey={fileResetKey}
+            onChange={(event) => setFile(event.target.files?.[0] || null)}
+          />
+          <button className="primary-button justify-self-start" type="submit">
             Nhập kết quả
           </button>
         </form>
       )}
-      <p className="mb-3 text-sm text-ink-muted">
-        Mỗi testcase cần property veriq_test_case_version_id để được liên kết an toàn với phiên bản
-        Test Case
+      <p className="mb-3 px-4 pt-4 text-sm text-ink-muted sm:px-5">
+        Thêm mã phiên bản ca kiểm thử vào từng kết quả để hệ thống liên kết chính xác{" "}
+        <code className="mx-1 rounded bg-surface-quiet px-1.5 py-0.5 font-mono text-xs text-ink">
+          veriq_test_case_version_id
+        </code>{" "}
+        trong tệp XML
       </p>
       <DataTable
         items={imports}
         empty="Chưa có kết quả JUnit"
         columns={[
-          { key: "test_run_id", label: "Test Run" },
+          { key: "test_run_id", label: "Lần chạy kiểm thử" },
           { key: "status", label: "Trạng thái" },
           {
             key: "mapped_test_case_version_ids",
@@ -113,7 +120,7 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
                           setMappings((current) => ({ ...current, [key]: event.target.value }))
                         }
                       >
-                        <option value="">Chọn phiên bản Test Case</option>
+                        <option value="">Chọn phiên bản ca kiểm thử</option>
                         {availableTests.map((test) => (
                           <option key={test.current_version_id} value={test.current_version_id}>
                             {test.test_case_key} {test.current_version?.title || test.title}

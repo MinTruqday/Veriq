@@ -18,6 +18,11 @@ class TestRunRepository:
         await database.value.test_runs.insert_one(value)
         return value
 
+    async def find_run_by_idempotency_key(self, project_id, idempotency_key):
+        return await database.value.test_runs.find_one(
+            {"project_id": project_id, "idempotency_key": idempotency_key}
+        )
+
     async def insert_results(self, values):
         if values:
             await database.value.test_results.insert_many(values)

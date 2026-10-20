@@ -6,7 +6,7 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import audit, new_id, now
 from src.repositories.causal_analysis import causal_analysis_repository
 from src.modules.quality.services.causal_analysis_query import get_analysis
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 
 
 async def generate_hypotheses(analysis_id, payload, user):
@@ -70,7 +70,7 @@ async def generate_hypotheses(analysis_id, payload, user):
         },
         ensure_ascii=False,
     )
-    ai = await request_ai_assistance(
+    ai = await request_ai_automation(
         "causal_analysis", value["project_id"], instruction, evidence
     )
     result = {

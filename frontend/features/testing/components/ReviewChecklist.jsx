@@ -1,3 +1,5 @@
+import { valueLabel } from "../lib/testing";
+
 export default function ReviewChecklist({ items = [] }) {
   return (
     <div className="space-y-2">
@@ -7,7 +9,7 @@ export default function ReviewChecklist({ items = [] }) {
             className="flex items-start gap-3 rounded-xl border border-border px-3 py-2 text-sm"
             key={item.id || index}
           >
-            <span className="font-semibold">{item.status || "PENDING"}</span>
+            <span className="font-semibold">{valueLabel(item.status || "PENDING")}</span>
             <span>{item.label || item.text || String(item)}</span>
           </div>
         ))

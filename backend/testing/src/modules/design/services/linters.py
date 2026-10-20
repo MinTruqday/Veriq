@@ -92,35 +92,75 @@ def requirement_duplicate_score(left, right):
         return 0, []
     if left_text == right_text:
         return 1, ["Nội dung yêu cầu trùng khớp hoàn toàn"]
-    lexical = SequenceMatcher(None, left_text, right_text).ratio()
-    left_terms = set(re.findall(r"[\wÀ-ỹ]+", left_text))
-    right_terms = set(re.findall(r"[\wÀ-ỹ]+", right_text))
-    semantic = len(left_terms & right_terms) / max(1, len(left_terms | right_terms))
-    left_rules = {
-        str(value).strip().lower() for value in left.get("business_rules", []) if str(value).strip()
-    }
-    right_rules = {
-        str(value).strip().lower()
-        for value in right.get("business_rules", [])
-        if str(value).strip()
-    }
-    rule_overlap = (
-        len(left_rules & right_rules) / max(1, len(left_rules | right_rules))
-        if left_rules or right_rules
-        else 0
+    content_similarity = SequenceMatcher(
+        None,
+        " ".join(
+            str(value or "")
+            for value in (
+                left.get("title"),
+                left.get("plain_text_projection") or plain_text(left.get("content_doc", {})),
+            )
+            if str(value or "").strip()
+        ).lower(),
+        " ".join(
+            str(value or "")
+            for value in (
+                right.get("title"),
+                right.get("plain_text_projection") or plain_text(right.get("content_doc", {})),
+            )
+            if str(value or "").strip()
+        ).lower(),
+    ).ratio()
+    actor_similarity = _collection_similarity(left.get("actors"), right.get("actors"))
+    rule_similarity = _collection_similarity(
+        left.get("business_rules"), right.get("business_rules")
     )
-    score = min(
-        1,
-        0.65 * lexical + 0.25 * semantic + 0.1 * rule_overlap,
+    criterion_similarity = _collection_similarity(
+        _criterion_texts(left.get("acceptance_criteria")),
+        _criterion_texts(right.get("acceptance_criteria")),
     )
+    signals = [content_similarity]
+    if actor_similarity is not None:
+        signals.append(actor_similarity)
+    if rule_similarity is not None:
+        signals.append(rule_similarity)
+    if criterion_similarity is not None:
+        signals.append(criterion_similarity)
+    score = sum(signals) / len(signals)
     reasons = []
-    if lexical >= 0.75:
+    if content_similarity >= 0.55:
         reasons.append("Tiêu đề và nội dung gần giống")
-    if semantic >= 0.55:
-        reasons.append("Có nhiều thuật ngữ nghiệp vụ chung")
-    if rule_overlap > 0:
-        reasons.append("Có quy tắc nghiệp vụ trùng nhau")
+    if actor_similarity is not None and actor_similarity > 0:
+        reasons.append("Có tác nhân nghiệp vụ chung")
+    if rule_similarity is not None and rule_similarity > 0:
+        reasons.append("Có quy tắc nghiệp vụ gần giống")
+    if criterion_similarity is not None and criterion_similarity > 0:
+        reasons.append("Có tiêu chí chấp nhận gần giống")
     return round(score, 4), reasons
+
+
+def _criterion_texts(criteria):
+    return [
+        item.get("plain_text") or plain_text(item.get("content_doc", {}))
+        for item in criteria or []
+        if isinstance(item, dict)
+    ]
+
+
+def _collection_similarity(left, right):
+    left_values = [str(value).strip().lower() for value in left or [] if str(value).strip()]
+    right_values = [str(value).strip().lower() for value in right or [] if str(value).strip()]
+    if not left_values or not right_values:
+        return None
+    left_best = [
+        max(SequenceMatcher(None, value, candidate).ratio() for candidate in right_values)
+        for value in left_values
+    ]
+    right_best = [
+        max(SequenceMatcher(None, value, candidate).ratio() for candidate in left_values)
+        for value in right_values
+    ]
+    return (sum(left_best) + sum(right_best)) / (len(left_best) + len(right_best))
 
 
 def lint_test_case(draft):
@@ -263,8 +303,12 @@ def _test_projection(value):
 def _requirement_projection(value):
     title = str(value.get("title", ""))
     content = value.get("plain_text_projection") or plain_text(value.get("content_doc", {}))
+    actors = " ".join(str(item) for item in value.get("actors", []) if str(item).strip())
+    business_rules = " ".join(
+        str(item) for item in value.get("business_rules", []) if str(item).strip()
+    )
     criteria = " ".join(
         item.get("plain_text") or plain_text(item.get("content_doc", {}))
         for item in value.get("acceptance_criteria", [])
     )
-    return " ".join(f"{title} {content} {criteria}".lower().split())
+    return " ".join(f"{title} {content} {actors} {business_rules} {criteria}".lower().split())

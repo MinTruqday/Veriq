@@ -1,8 +1,9 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
+  InitialLoadState,
   Metric,
   Panel,
   ProjectCrumb,
@@ -22,24 +23,52 @@ export default function TraceabilityPage({ project }) {
   const [linkForm, setLinkForm] = useState({ source_id: "", target_id: "" });
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
-  const can = (permission) => project.current_permissions?.includes(permission);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const initialDataLoaded = useRef(false);
+  const loadedProjectId = useRef(project._id);
+  const permissions = useMemo(
+    () => project.current_permissions || [],
+    [project.current_permissions],
+  );
+  const can = useCallback((permission) => permissions.includes(permission), [permissions]);
   const load = useCallback(async () => {
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      initialDataLoaded.current = false;
+      setInitialLoading(true);
+    }
     try {
       const [traceValue, coverageValue, snapshotValues] = await Promise.all([
         testingApi.traceability(project._id),
-        testingApi.coverage(project._id),
-        testingApi.listCoverageSnapshots(project._id),
+        can("coverage.read") ? testingApi.coverage(project._id) : Promise.resolve({}),
+        can("coverage.read") ? testingApi.listCoverageSnapshots(project._id) : Promise.resolve([]),
       ]);
       setMatrix(traceValue);
       setCoverage(coverageValue);
       setSnapshots(snapshotValues);
+      initialDataLoaded.current = true;
+      setInitialLoadFailed(false);
     } catch (reason) {
       setError(messageOf(reason));
+      if (!initialDataLoaded.current) setInitialLoadFailed(true);
+    } finally {
+      setInitialLoading(false);
     }
-  }, [project._id]);
+  }, [can, project._id]);
   useEffect(() => {
     void load();
   }, [load]);
+  if (initialLoading || initialLoadFailed)
+    return (
+      <InitialLoadState
+        title="Truy vết"
+        projectId={project._id}
+        loading={initialLoading}
+        error={error}
+        onRetry={() => void load()}
+      />
+    );
   const decision = async (item, accept) => {
     try {
       await (accept ? testingApi.confirmTrace(item._id) : testingApi.rejectTrace(item._id));
@@ -127,16 +156,18 @@ export default function TraceabilityPage({ project }) {
       }
     >
       {error && <ErrorState message={error} />}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label="Độ phủ yêu cầu" value={`${coverage.requirement_coverage || 0}%`} />
-        <Metric
-          label="Độ phủ tiêu chí chấp nhận"
-          value={`${coverage.acceptance_criterion_coverage || 0}%`}
-        />
-        <Metric label="Độ phủ còn hiệu lực" value={`${coverage.fresh_coverage || 0}%`} />
-        <Metric label="Độ phủ thực thi" value={`${coverage.execution_coverage || 0}%`} />
-        <Metric label="Ca kiểm thử chưa liên kết" value={coverage.unlinked_tests?.length || 0} />
-      </div>
+      {can("coverage.read") && (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <Metric label="Độ phủ yêu cầu" value={`${coverage.requirement_coverage || 0}%`} />
+          <Metric
+            label="Độ phủ tiêu chí chấp nhận"
+            value={`${coverage.acceptance_criterion_coverage || 0}%`}
+          />
+          <Metric label="Độ phủ còn hiệu lực" value={`${coverage.fresh_coverage || 0}%`} />
+          <Metric label="Độ phủ thực thi" value={`${coverage.execution_coverage || 0}%`} />
+          <Metric label="Ca kiểm thử chưa liên kết" value={coverage.unlinked_tests?.length || 0} />
+        </div>
+      )}
       {can("trace.create") && (
         <Modal
           isOpen={creating}
@@ -274,6 +305,7 @@ export default function TraceabilityPage({ project }) {
             {
               key: "decision",
               label: "Quyết định",
+              hideWhenEmpty: true,
               render: (item) =>
                 item.status === "SUGGESTED" && (can("trace.confirm") || can("trace.review")) ? (
                   <span className="flex flex-wrap gap-2">
@@ -318,65 +350,69 @@ export default function TraceabilityPage({ project }) {
           ]}
         />
       </Panel>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Yêu cầu chưa được phủ">
+      {can("coverage.read") && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Panel title="Yêu cầu chưa được phủ">
+            <DataTable
+              items={coverage.uncovered_requirements || []}
+              empty="Tất cả yêu cầu hiện hành đã có liên kết xác nhận"
+              columns={[
+                { key: "requirement_key", label: "Mã" },
+                {
+                  key: "status",
+                  label: "Trạng thái",
+                  render: (item) => <StatusPill value={item.status} />,
+                },
+              ]}
+            />
+          </Panel>
+          <Panel title="Ca kiểm thử chưa liên kết">
+            <DataTable
+              items={coverage.unlinked_tests || []}
+              empty="Tất cả ca kiểm thử hiện hành đã được liên kết"
+              columns={[
+                { key: "test_case_key", label: "Mã" },
+                {
+                  key: "status",
+                  label: "Trạng thái",
+                  render: (item) => <StatusPill value={item.status} />,
+                },
+              ]}
+            />
+          </Panel>
+        </div>
+      )}
+      {can("coverage.read") && (
+        <Panel title="Lịch sử ảnh chụp độ phủ">
           <DataTable
-            items={coverage.uncovered_requirements || []}
-            empty="Tất cả yêu cầu hiện hành đã có liên kết xác nhận"
+            items={snapshots}
+            empty="Chưa có ảnh chụp độ phủ"
             columns={[
-              { key: "requirement_key", label: "Mã" },
+              { key: "label", label: "Tên" },
               {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
+                key: "requirement_coverage",
+                label: "Yêu cầu",
+                render: (item) => `${item.metrics?.requirement_coverage || 0}%`,
+              },
+              {
+                key: "fresh_coverage",
+                label: "Còn hiệu lực",
+                render: (item) => `${item.metrics?.fresh_coverage || 0}%`,
+              },
+              {
+                key: "execution_coverage",
+                label: "Thực thi",
+                render: (item) => `${item.metrics?.execution_coverage || 0}%`,
+              },
+              {
+                key: "created_at",
+                label: "Thời điểm",
+                render: (item) => formatDate(item.created_at),
               },
             ]}
           />
         </Panel>
-        <Panel title="Ca kiểm thử chưa liên kết">
-          <DataTable
-            items={coverage.unlinked_tests || []}
-            empty="Tất cả ca kiểm thử hiện hành đã được liên kết"
-            columns={[
-              { key: "test_case_key", label: "Mã" },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-            ]}
-          />
-        </Panel>
-      </div>
-      <Panel title="Lịch sử ảnh chụp độ phủ">
-        <DataTable
-          items={snapshots}
-          empty="Chưa có ảnh chụp độ phủ"
-          columns={[
-            { key: "label", label: "Tên" },
-            {
-              key: "requirement_coverage",
-              label: "Yêu cầu",
-              render: (item) => `${item.metrics?.requirement_coverage || 0}%`,
-            },
-            {
-              key: "fresh_coverage",
-              label: "Còn hiệu lực",
-              render: (item) => `${item.metrics?.fresh_coverage || 0}%`,
-            },
-            {
-              key: "execution_coverage",
-              label: "Thực thi",
-              render: (item) => `${item.metrics?.execution_coverage || 0}%`,
-            },
-            {
-              key: "created_at",
-              label: "Thời điểm",
-              render: (item) => formatDate(item.created_at),
-            },
-          ]}
-        />
-      </Panel>
+      )}
       {dialog}
     </WorkspacePage>
   );

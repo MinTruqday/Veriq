@@ -1,11 +1,12 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import StrategyVersionHistory from "../../components/StrategyVersionHistory";
 import TestStrategyEditor from "../../components/TestStrategyEditor";
 import FormalReviewPanel from "../../components/FormalReviewPanel";
 import {
   ErrorState,
+  InitialLoadState,
   Panel,
   ProjectCrumb,
   StatusPill,
@@ -26,8 +27,17 @@ export default function TestGovernancePage({ project }) {
   const [error, setError] = useState("");
   const [validation, setValidation] = useState(null);
   const [comparison, setComparison] = useState(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const initialDataLoaded = useRef(false);
+  const loadedProjectId = useRef(project._id);
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      initialDataLoaded.current = false;
+      setInitialLoading(true);
+    }
     try {
       const result = await testingApi.listTestStrategies(project._id, {
         q: query,
@@ -42,13 +52,28 @@ export default function TestGovernancePage({ project }) {
           result.items?.[0] ||
           null,
       );
+      initialDataLoaded.current = true;
+      setInitialLoadFailed(false);
     } catch (reason) {
       setError(messageOf(reason));
+      if (!initialDataLoaded.current) setInitialLoadFailed(true);
+    } finally {
+      setInitialLoading(false);
     }
   }, [project._id, query, status]);
   useEffect(() => {
     void load();
   }, [load]);
+  if (initialLoading || initialLoadFailed)
+    return (
+      <InitialLoadState
+        title="Chiến lược kiểm thử"
+        projectId={project._id}
+        loading={initialLoading}
+        error={error}
+        onRetry={() => void load()}
+      />
+    );
   const transition = async (title, confirmLabel, action, field = "note") => {
     if (!selected) return;
     const answer = await ask({
@@ -89,7 +114,7 @@ export default function TestGovernancePage({ project }) {
   };
   return (
     <WorkspacePage
-      title="Quản trị kiểm thử"
+      title="Chiến lược kiểm thử"
       actions={
         <>
           <ProjectCrumb projectId={project._id} />
@@ -110,20 +135,6 @@ export default function TestGovernancePage({ project }) {
     >
       {dialog}
       {error && <ErrorState message={error} />}
-      <div className="grid gap-3 rounded-xl border border-border bg-surface p-4 text-sm md:grid-cols-3">
-        <div>
-          <p className="field-label">Soạn thảo</p>
-          <p className="mt-1">QA hoặc Tester có quyền tạo và cập nhật bản nháp</p>
-        </div>
-        <div>
-          <p className="field-label">Rà soát độc lập</p>
-          <p className="mt-1">Người được phân công rà soát không được tự rà soát bản mình tạo</p>
-        </div>
-        <div>
-          <p className="field-label">Phê duyệt</p>
-          <p className="mt-1">QA chỉ phê duyệt sau khi đã có kết quả rà soát</p>
-        </div>
-      </div>
       <Panel title="Kho chiến lược kiểm thử">
         <form
           className="grid gap-3 p-5 sm:grid-cols-[1fr_220px_auto]"

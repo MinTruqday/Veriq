@@ -7,12 +7,17 @@ const manrope = Manrope({
   display: "swap",
 });
 export const metadata = {
-  title: "Veriq",
+  title: "Quản lý yêu cầu và kiểm thử | Veriq",
   icons: {
     icon: [{ url: "/brand/veriq-logo.png", type: "image/png" }],
     shortcut: "/brand/veriq-logo.png",
     apple: "/brand/veriq-logo.png",
   },
+};
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 import { AuthProvider } from "@/features/authentication/contexts/AuthContext";
 import { ToastProvider } from "@/shared/contexts/ToastContext";

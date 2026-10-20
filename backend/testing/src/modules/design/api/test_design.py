@@ -44,7 +44,7 @@ from src.modules.design.services.test_case_lifecycle import (
     request_test_case_changes_record,
     submit_test_case_review_record,
 )
-from src.modules.design.services.test_case_assistance import (
+from src.modules.design.services.test_case_automation import (
     find_duplicate_test_case_records,
     generate_test_case_draft_records,
     recommend_test_design_techniques,
@@ -162,6 +162,12 @@ async def get_test_case_draft(draft_id: str, user: CurrentUser = Depends(get_cur
 @router.get("/ca-kiem-thu/{test_case_id}")
 async def get_test_case(test_case_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await get_test_case_record(test_case_id, user))
+
+
+@router.get("/phien-ban-ca-kiem-thu/{version_id}")
+async def get_test_case_version_by_id(version_id: str, user: CurrentUser = Depends(get_current_user)):
+    value = await get_project_entity("test_case_versions", version_id, user, "testcase.version.read")
+    return envelope(value, revision=value.get("revision"))
 
 
 @router.patch("/du-an/{project_id}/ca-kiem-thu/{draft_id}")

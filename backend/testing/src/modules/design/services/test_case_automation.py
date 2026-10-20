@@ -4,8 +4,8 @@ from src.core.common import get_project, get_project_entity, plain_text
 from src.core.rich_text import text_document
 from src.repositories.analysis import analysis_repository
 from src.repositories.test_design import test_design_repository
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
-from src.modules.design.services.generation import generate_requirement_drafts
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.modules.design.services.generation import generate_requirement_drafts, select_generation_criteria
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases, project_test_text, require_current_baselined_version
 
@@ -16,17 +16,25 @@ async def generate_test_case_draft_records(version_id, payload, user):
     version = await get_project_entity(
         "requirement_versions", version_id, user, "ai.generate_testcase"
     )
-    await require_current_baselined_version(version)
+    await require_current_baselined_version(
+        version, allow_automation_draft=bool(user._ai_automation_run_id)
+    )
     await get_project(version["project_id"], user, "testcase.create")
     criteria = await analysis_repository.list_acceptance_criteria(version_id)
+    criteria = select_generation_criteria(criteria, payload.acceptance_criterion_ids)
     drafts, result = await generate_requirement_drafts(version, criteria, payload, scenario=False)
     current_versions = await analysis_repository.list_requirement_versions(
         version["project_id"], [version_id], 1
     )
     if not current_versions:
         raise HTTPException(409, detail={"code": "TEST_DESIGN_REQUIREMENT_CHANGED", "message": "Yêu cầu đã thay đổi trong lúc AI tạo ca  Hãy tạo lại bản xem trước"})
-    await require_current_baselined_version(current_versions[0])
+    await require_current_baselined_version(
+        current_versions[0], allow_automation_draft=bool(user._ai_automation_run_id)
+    )
     current_criteria = await analysis_repository.list_acceptance_criteria(version_id)
+    current_criteria = select_generation_criteria(
+        current_criteria, payload.acceptance_criterion_ids
+    )
     if (
         (current_versions[0].get("plain_text_projection") or plain_text(current_versions[0].get("content_doc", {})))
         != (version.get("plain_text_projection") or plain_text(version.get("content_doc", {})))
@@ -43,7 +51,9 @@ async def generate_test_case_draft_records(version_id, payload, user):
     suite_signature = active_suite_signature(related, [version_id])
     if payload.challenge_hypotheses and suite_signature != payload.challenge_suite_signature:
         raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi trong lúc AI tạo ca  Hãy nhận gợi ý mới"})
-    await require_current_baselined_version(version)
+    await require_current_baselined_version(
+        version, allow_automation_draft=bool(user._ai_automation_run_id)
+    )
     criterion_ids = {item["_id"] for item in criteria}
     from src.modules.design.services.test_adequacy import _sources
     coverage_by_criterion = {
@@ -110,6 +120,7 @@ async def generate_test_case_draft_records(version_id, payload, user):
         **ai_contract_metadata(result),
         "grounding_findings": result.get("findings", []),
         "generation_status": result["status"],
+        "unapplied_categories": result.get("unapplied_categories", []),
     }
 
 
@@ -168,7 +179,7 @@ async def recommend_test_design_techniques(version_id, payload, user):
             "artifact_version_id": item["_id"],
             "text": project_test_text(item),
         })
-    result = await request_ai_assistance(
+    result = await request_ai_automation(
         "technique_recommendation", version["project_id"], payload.instruction, evidence
     )
     if result.get("status") != "SUCCESS" or result.get("degraded_mode"):

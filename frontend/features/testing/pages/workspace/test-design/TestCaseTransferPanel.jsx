@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import FilePicker from "../../../components/FilePicker";
 import { Panel } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
@@ -23,6 +24,7 @@ export default function TestCaseTransferPanel({
   const [separateReasons, setSeparateReasons] = useState({});
   const [versionResolutions, setVersionResolutions] = useState({});
   const [busy, setBusy] = useState(false);
+  const [fileResetKey, setFileResetKey] = useState(0);
   const initializedPreviewId = useRef(null);
   useEffect(() => {
     if (!preview?._id || initializedPreviewId.current === preview._id) return;
@@ -53,6 +55,7 @@ export default function TestCaseTransferPanel({
       onError(messageOf(reason));
     } finally {
       input.value = "";
+      setFileResetKey((current) => current + 1);
       setBusy(false);
     }
   };
@@ -145,17 +148,13 @@ export default function TestCaseTransferPanel({
             Tệp xuất giữ cấu trúc ca kiểm thử để có thể nhập lại thành bản nháp và đối chiếu trùng
             trước khi xác nhận
           </p>
-          <label className="secondary-button inline-flex cursor-pointer items-center">
-            Tải tệp ca kiểm thử CSV hoặc XLSX
-            <input
-              className="sr-only"
-              aria-label="Tệp ca kiểm thử CSV hoặc XLSX"
-              type="file"
-              accept=".csv,.xlsx"
-              disabled={busy}
-              onChange={upload}
-            />
-          </label>
+          <FilePicker
+            buttonLabel="Tải tệp ca kiểm thử CSV hoặc XLSX"
+            accept=".csv,.xlsx"
+            disabled={busy}
+            resetKey={fileResetKey}
+            onChange={upload}
+          />
           {preview && (
             <>
               {preview.format === "api_operation" && (

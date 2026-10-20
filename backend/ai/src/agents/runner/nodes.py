@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import datetime, timezone
 
 from src.agents.agent import execute_task
@@ -6,7 +8,6 @@ from src.knowledge.hybrid import hybrid_evidence
 from src.prompts.agents import agent_plan_prompt
 from src.runtime.limits import limits
 from src.schemas.agent import (
-    AgentApprovalStatus,
     AgentResult,
     AgentRunStatus,
     AgentTaskStatus,
@@ -23,124 +24,36 @@ from src.runtime.output import normalize_narrative, normalize_narratives
 from src.services.inference import structured
 from src.tools.registry import (
     audit_arguments,
-    invoke_tool,
     registered_tools,
     tool_access,
     verify_application,
 )
+from src.repositories.automation import automation_repository
+from src.schemas.automation import (
+    AutomationCheckpoint,
+    AutomationCheckpointPhase,
+    AutomationGraphSnapshot,
+    AutomationStatus,
+)
 
 
-def available_tools(permissions, intent="", compact=False):
-    values = []
-    tools = registered_tools()
-    intent_tool_exists = bool(intent and tool_access(tools.get(intent)))
-    for tool in tools.values():
-        access = tool_access(tool)
-        if (
-            access
-            and access.permission in permissions
-            and (not intent_tool_exists or access.name == intent)
-        ):
-            schema = tool.args_schema.model_json_schema()
-            arguments = schema
-            if compact:
-                arguments = {
-                    "required": schema.get("required", []),
-                    "properties": sorted(schema.get("properties", {})),
-                }
-            values.append(
-                {
-                    "name": access.name,
-                    "domains": sorted(access.domains),
-                    "action": access.action,
-                    "requires_approval": access.requires_approval,
-                    "arguments": arguments,
-                }
-            )
-    return values
-
-
-def direct_capability_task(run, evidence_refs):
-    tool = registered_tools().get(run.intent)
-    access = tool_access(tool)
-    if not access or access.permission not in run.permissions:
-        return None
-    domain = access.owner_domain
-    if domain is None and len(access.domains) == 1:
-        domain = next(iter(access.domains))
-    if domain is None:
-        return None
-    properties = tool.args_schema.model_json_schema().get("properties", {})
-    arguments = {"instruction": run.objective} if "instruction" in properties else {}
-    tasks = validated_tasks(
-        [
-            PlannedTask(
-                domain=domain,
-                objective=run.objective,
-                evidence_refs=evidence_refs,
-                tool_calls=[ToolCall(tool_name=access.name, arguments=arguments)],
-            )
-        ],
-        run,
-        evidence_refs,
-        known_identifiers=evidence_refs,
-    )
-    return tasks[0] if tasks and tasks[0].tool_calls else None
-
-
-def bounded_tasks(tasks, run):
-    first = next(iter(tasks), None)
-    return [first] if first else []
-
-
-def validated_tasks(tasks, run, evidence_refs, maximum=None, known_identifiers=None):
-    tool_values = registered_tools()
-    validated = []
-    task_limit = max(0, 1 - len(run.completed_tasks))
-    if maximum is not None:
-        task_limit = min(task_limit, maximum)
-    for planned in bounded_tasks(tasks, run)[:task_limit]:
-        task = planned if isinstance(planned, PlannedTask) else PlannedTask(**planned)
-        calls = []
-        for call in task.tool_calls[: limits.tool_calls_per_task]:
-            tool = tool_values.get(call.tool_name)
-            access = tool_access(tool)
-            if not access or task.domain not in access.domains:
-                continue
-            arguments = dict(call.arguments)
-            schema = tool.args_schema.model_json_schema()
-            properties = schema.get("properties", {})
-            if "project_id" in properties:
-                arguments["project_id"] = run.project_id
-            identifiers = {
-                str(value)
-                for key, value in arguments.items()
-                if key != "project_id" and key.endswith("_id") and value
-            }
-            if identifiers.difference(set(known_identifiers or evidence_refs)):
-                continue
-            required = set(schema.get("required", []))
-            if required.difference(arguments):
-                continue
-            try:
-                normalized = tool.args_schema.model_validate(arguments).model_dump(
-                    mode="python", exclude_unset=True
-                )
-            except Exception:
-                continue
-            calls.append(ToolCall(tool_name=call.tool_name, arguments=normalized))
-        validated.append(
-            AgentTask(
-                run_id=run.run_id,
-                project_id=run.project_id,
-                domain=task.domain,
-                objective=task.objective,
-                evidence_refs=task.evidence_refs or evidence_refs,
-                constraints=task.constraints,
-                tool_calls=calls,
-            )
-        )
-    return validated
+from src.agents.runner.automation_planning import (
+    available_tools,
+    bounded_tasks,
+    direct_approved_plan_task,
+    direct_capability_task,
+    direct_changed_plan_task,
+    direct_defect_event_task,
+    direct_document_ingestion_task,
+    direct_event_observation_task,
+    direct_recorded_test_execution_task,
+    direct_requirement_change_task,
+    mutation_fingerprint,
+    observed_identifiers,
+    proposal_fingerprint,
+    validated_tasks,
+    verified_tool_call_records,
+)
 
 
 def state_run(state):
@@ -149,32 +62,38 @@ def state_run(state):
 
 async def load_context(state):
     run = state_run(state)
-    if run.approval_status in {
-        AgentApprovalStatus.APPROVED,
-        AgentApprovalStatus.REJECTED,
-    } and state.get("tasks"):
-        return {}
     supplied = [EvidenceItem(**item) for item in state.get("evidence", [])]
-    retrieved = await hybrid_evidence(
-        run.project_id,
-        run.objective,
-        run.user_id,
-        state.get("token"),
-    )
-    verified_refs = {
-        item.artifact_version_id or item.artifact_id for item in retrieved.items
-    }
-    supplied = [
-        item
-        for item in supplied
-        if item.project_id == run.project_id
-        and (item.artifact_version_id or item.artifact_id) in verified_refs
-    ]
+    event_scope = state.get("source_event_verified") is True
+    supplied = [item for item in supplied if item.project_id == run.project_id]
+    if event_scope:
+        # A verified business event already carries its authoritative source. Broad
+        # project retrieval here mixes unrelated artifacts into the event's audit
+        # receipt; later planning can request related evidence explicitly.
+        evidence_items = supplied
+        degraded_flags = []
+    else:
+        retrieved = await hybrid_evidence(
+            run.project_id,
+            run.objective,
+            run.user_id,
+            state.get("token"),
+            automation_run_id=run.run_id if state.get("automatic") else None,
+        )
+        verified_refs = {
+            item.artifact_version_id or item.artifact_id for item in retrieved.items
+        }
+        supplied = [
+            item
+            for item in supplied
+            if (item.artifact_version_id or item.artifact_id) in verified_refs
+        ]
+        evidence_items = [*supplied, *retrieved.items]
+        degraded_flags = retrieved.degraded_flags
     combined = package(
         run.project_id,
         run.objective,
-        [*supplied, *retrieved.items],
-        retrieved.degraded_flags,
+        evidence_items,
+        degraded_flags,
     )
     run.evidence_refs = list(
         dict.fromkeys(item.artifact_version_id or item.artifact_id for item in combined.items)
@@ -195,11 +114,6 @@ async def load_context(state):
 
 
 def route_after_context(state):
-    run = state_run(state)
-    if run.approval_status == AgentApprovalStatus.APPROVED and state.get("tasks"):
-        return "apply"
-    if run.approval_status == AgentApprovalStatus.REJECTED and state.get("tasks"):
-        return "finalize"
     return "plan"
 
 
@@ -209,7 +123,25 @@ async def plan(state):
         item.get("artifact_version_id") or item.get("artifact_id")
         for item in state.get("evidence", [])
     ]
-    direct_task = direct_capability_task(run, evidence_refs)
+    direct_task = direct_document_ingestion_task(run, state, evidence_refs)
+    if not direct_task:
+        direct_task = direct_requirement_change_task(run, state, evidence_refs)
+    if not direct_task:
+        direct_task = direct_recorded_test_execution_task(run, state, evidence_refs)
+    if not direct_task:
+        direct_task = direct_defect_event_task(run, state, evidence_refs)
+    if not direct_task:
+        direct_task = direct_approved_plan_task(run, state, evidence_refs)
+    if not direct_task:
+        direct_task = direct_changed_plan_task(run, state, evidence_refs)
+    if not direct_task:
+        direct_task = direct_event_observation_task(run, state, evidence_refs)
+    if not direct_task:
+        direct_task = (
+            direct_capability_task(run, evidence_refs)
+            if run.intent and not run.completed_tasks
+            else None
+        )
     if direct_task:
         run.execution_plan = [direct_task.model_dump(mode="json")]
         run.status = AgentRunStatus.RUNNING
@@ -226,9 +158,22 @@ async def plan(state):
         run.objective,
         run.intent,
         state.get("target_artifact_ids", []),
-        available_tools(run.permissions, run.intent, compact=True),
+        available_tools(
+            run.permissions,
+            run.intent
+            if not state.get("automatic") or not run.completed_tasks
+            else "",
+            compact=True,
+        ),
         evidence_refs,
-        state.get("constraints", {}),
+        {
+            **state.get("constraints", {}),
+            "execution_mode": "AUTOMATIC_WITHIN_EXECUTION_PRINCIPAL_PERMISSIONS"
+            if state.get("automatic")
+            else "INTERACTIVE_AGENT",
+            "completed_tool_calls": run.tool_calls,
+            "recent_tool_observations": run.observations[-limits.agent_steps :],
+        },
     )
     try:
         generated = await structured(
@@ -240,7 +185,8 @@ async def plan(state):
     except Exception:
         run.intent = run.intent or "project_question"
         run.status = AgentRunStatus.RUNNING
-        run.current_step = 1
+        if not run.completed_tasks:
+            run.current_step = 1
         run.observations.append(
             {"phase": "PLAN", "reason_code": "AI_PROVIDER_UNAVAILABLE"}
         )
@@ -250,19 +196,20 @@ async def plan(state):
             summary="The AI provider is unavailable so a plan cannot be created",
             evidence_refs=evidence_refs,
             reason_codes=["AI_PROVIDER_UNAVAILABLE"],
-            warnings=["AI_PROVIDER_UNAVAILABLE", "MANUAL_REVIEW_REQUIRED"],
+            warnings=["AI_PROVIDER_UNAVAILABLE"],
         )
         return {
             "run": run.model_dump(mode="python"),
             "tasks": [],
             "success_criteria": [],
-            "results": [result.model_dump(mode="python")],
+            "results": [*state.get("results", []), result.model_dump(mode="python")],
         }
     allowed_identifiers = list(
         dict.fromkeys(
             [
                 *evidence_refs,
                 *state.get("target_artifact_ids", []),
+                *observed_identifiers(run.observations),
                 *[
                     item.get("artifact_id")
                     for item in state.get("evidence", [])
@@ -279,25 +226,46 @@ async def plan(state):
         known_identifiers=allowed_identifiers,
     )
     tasks = [task for task in tasks if task.tool_calls]
-    results = []
+    results = list(state.get("results", []))
     if not tasks:
-        results.append(
-            AgentResult(
-                task_id=f"PLAN-{run.run_id}",
-                status=AgentTaskStatus.FAILED,
-                summary="The plan contains no valid task",
-                evidence_refs=evidence_refs,
-                reason_codes=["VALIDATION_FAILED"],
-                warnings=["MANUAL_REVIEW_REQUIRED"],
-            ).model_dump(mode="python")
+        prior_results = [AgentResult(**item) for item in results]
+        observed_automatic_event = (
+            bool(state.get("automatic"))
+            and bool(run.completed_tasks)
+            and bool(prior_results)
+            and all(item.status == AgentTaskStatus.COMPLETED for item in prior_results)
         )
-    run.execution_plan = [task.model_dump(mode="json") for task in tasks]
+        if observed_automatic_event:
+            results.append(
+                AgentResult(
+                    task_id=f"PLAN-{run.run_id}",
+                    status=AgentTaskStatus.COMPLETED,
+                    summary="Đã hoàn tất các hành động có căn cứ; không còn hành động tiếp theo hợp lệ trong phạm vi quyền hiện tại",
+                    evidence_refs=evidence_refs,
+                    warnings=["NO_FURTHER_ACTION_SUPPORTED"],
+                ).model_dump(mode="python")
+            )
+        else:
+            results.append(
+                AgentResult(
+                    task_id=f"PLAN-{run.run_id}",
+                    status=AgentTaskStatus.FAILED,
+                    summary="The plan contains no valid task",
+                    evidence_refs=evidence_refs,
+                    reason_codes=["VALIDATION_FAILED"],
+                    warnings=["NO_VALID_AUTOMATION_ACTION"],
+                ).model_dump(mode="python")
+            )
+    run.execution_plan.extend(task.model_dump(mode="json") for task in tasks)
     run.status = AgentRunStatus.RUNNING
-    run.current_step = 1
+    if not run.completed_tasks:
+        run.current_step = 1
     return {
         "run": run.model_dump(mode="python"),
         "tasks": [task.model_dump(mode="python") for task in tasks],
-        "success_criteria": generated.success_criteria,
+        "success_criteria": list(
+            dict.fromkeys([*state.get("success_criteria", []), *generated.success_criteria])
+        ),
         "results": results,
     }
 
@@ -307,7 +275,10 @@ async def execute_agent(state):
     tasks = [AgentTask(**item) for item in state.get("tasks", [])]
     if not tasks:
         return {}
-    task = tasks[0]
+    completed_task_ids = {item.get("task_id") for item in run.completed_tasks}
+    task = next((item for item in tasks if item.task_id not in completed_task_ids), None)
+    if not task:
+        return {}
     run.active_task = task.model_dump(mode="json")
     evidence_by_ref = {
         item.get("artifact_version_id") or item.get("artifact_id"): item
@@ -320,12 +291,53 @@ async def execute_agent(state):
     ]
     if not task_evidence:
         task_evidence = [EvidenceItem(**item) for item in state.get("evidence", [])]
+    task_has_mutation = False
+    for call in task.tool_calls:
+        access = tool_access(registered_tools().get(call.tool_name))
+        if access and access.action == "MUTATE":
+            task_has_mutation = True
+            break
+
+    async def checkpoint_action(tool_name, index, action, arguments):
+        checkpoint_state = {
+            **state,
+            "run": run.model_dump(mode="python"),
+            "completed_phase": AutomationCheckpointPhase.ACTION_STARTED,
+        }
+        snapshot = {
+            key: value
+            for key, value in checkpoint_state.items()
+            if key in AutomationGraphSnapshot.model_fields
+            and key != "completed_phase"
+        }
+        snapshot["completed_phase"] = AutomationCheckpointPhase.ACTION_STARTED
+        await automation_repository.save_checkpoint(
+            AutomationCheckpoint(
+                automation_run_id=run.run_id,
+                phase=AutomationCheckpointPhase.ACTION_STARTED,
+                status=AutomationStatus.RUNNING,
+                detail={
+                    "task_id": task.task_id,
+                    "tool_name": tool_name,
+                    "tool_index": index,
+                    "action": action,
+                    "task_has_mutation": task_has_mutation,
+                    "arguments_sha256": hashlib.sha256(
+                        json.dumps(arguments, sort_keys=True, default=str).encode("utf-8")
+                    ).hexdigest(),
+                },
+                state_snapshot=AutomationGraphSnapshot.model_validate(snapshot),
+            )
+        )
+
     result, observations = await execute_task(
         task,
         task_evidence,
         run.permissions,
         state["token"],
-        run.approval_status,
+        automation_run_id=run.run_id,
+        automatic=bool(state.get("automatic")),
+        checkpoint_action=checkpoint_action if state.get("automatic") else None,
     )
     tool_evidence_refs = []
     for observation in observations:
@@ -342,14 +354,7 @@ async def execute_agent(state):
     run.completed_tasks.append(task.model_dump(mode="json"))
     run.agent_results.append(result.model_dump(mode="json"))
     run.observations.extend(observations)
-    run.tool_calls.extend(
-        {
-            "task_id": task.task_id,
-            "tool_name": item.tool_name,
-            "arguments": audit_arguments(item.arguments),
-        }
-        for item in task.tool_calls
-    )
+    run.tool_calls.extend(verified_tool_call_records(task, observations))
     run.active_task = None
     run.current_step += 1
     return {
@@ -359,6 +364,23 @@ async def execute_agent(state):
 
 
 def route_after_agent(state):
+    run = state_run(state)
+    task_ids = {item.get("task_id") for item in state.get("tasks", [])}
+    completed_task_ids = {item.get("task_id") for item in run.completed_tasks}
+    if task_ids.difference(completed_task_ids):
+        return "execute"
+    run = state_run(state)
+    if run.agent_results and run.agent_results[-1].get("status") != AgentTaskStatus.COMPLETED:
+        return "finalize"
+    latest_completed_task = run.completed_tasks[-1] if run.completed_tasks else {}
+    if (latest_completed_task.get("constraints") or {}).get("workflow_terminal") is True:
+        return "finalize"
+    if (
+        state.get("automatic")
+        and len(run.completed_tasks) < limits.agent_steps
+        and state.get("planning_round", 0) < limits.agent_steps
+    ):
+        return "replan"
     return "finalize"
 
 
@@ -371,7 +393,8 @@ async def finalize(state):
     run.observations.append(
         {
             "phase": "FINALIZE",
-            "goal_complete": True,
+            "goal_complete": bool(results)
+            and all(item.status == AgentTaskStatus.COMPLETED for item in results),
             "reason_codes": reason_codes,
             "new_task_count": 0,
         }
@@ -395,33 +418,18 @@ async def aggregate(state):
             dict.fromkeys(reference for item in results for reference in item.evidence_refs)
         ),
         actions=[action for item in results for action in item.proposals],
-        warnings=list(dict.fromkeys(warning for item in results for warning in item.warnings)),
+        warnings=list(
+            dict.fromkeys(
+                [
+                    *(warning for item in results for warning in item.warnings),
+                    *state.get("degraded_flags", []),
+                ]
+            )
+        ),
         success_criteria_met=state.get("success_criteria", [])
         if all(item.status == AgentTaskStatus.COMPLETED for item in results)
         else [],
     )
-    tasks = {item["task_id"]: AgentTask(**item) for item in state.get("tasks", [])}
-    pending_actions = []
-    if run.approval_status != AgentApprovalStatus.REJECTED:
-        for result in results:
-            task = tasks.get(result.task_id)
-            if not task:
-                continue
-            planned_calls = {item.tool_name: item for item in task.tool_calls}
-            for action in result.proposals:
-                tool_name = action.get("tool_name")
-                access = tool_access(registered_tools().get(tool_name))
-                planned = planned_calls.get(tool_name)
-                if not access or not access.requires_approval or not planned:
-                    continue
-                pending_actions.append(
-                    {
-                        "task_id": task.task_id,
-                        "tool_name": tool_name,
-                        "arguments": planned.arguments,
-                    }
-                )
-    proposal.actions = pending_actions
     proposal.summary = normalize_narrative(proposal.summary)
     proposal.warnings = normalize_narratives(proposal.warnings)
     proposal.evidence_refs = [
@@ -431,65 +439,20 @@ async def aggregate(state):
         proposal.evidence_refs = list(run.evidence_refs)
     run.proposal = proposal.model_dump(mode="json")
     run.evidence_refs = list(dict.fromkeys([*run.evidence_refs, *proposal.evidence_refs]))
-    run.status = (
-        AgentRunStatus.APPROVAL_REQUIRED if pending_actions else AgentRunStatus.VERIFYING
-    )
-    run.current_step += 1
-    return {"run": run.model_dump(mode="python")}
-
-
-def route_after_aggregate(state):
-    return (
-        "end"
-        if state_run(state).status == AgentRunStatus.APPROVAL_REQUIRED
-        else "verify"
-    )
-
-
-async def apply(state):
-    run = state_run(state)
-    tasks = {item["task_id"]: AgentTask(**item) for item in state.get("tasks", [])}
-    applied = []
-    run.status = AgentRunStatus.APPLYING
-    for action in (run.proposal or {}).get("actions", []):
-        task = tasks.get(action.get("task_id"))
-        if not task:
-            applied.append(
-                {"status": ToolExecutionStatus.FAILED, "reason_code": "TASK_NOT_FOUND"}
-            )
-            continue
-        result = await invoke_tool(
-            task,
-            action.get("tool_name", ""),
-            action.get("arguments", {}),
-            run.permissions,
-            state["token"],
-            AgentApprovalStatus.APPROVED,
-        )
-        if result.get("status") == ToolExecutionStatus.COMPLETED:
-            result["verification"] = await verify_application(
-                task,
-                action.get("tool_name", ""),
-                action.get("arguments", {}),
-                result,
-                state["token"],
-            )
-        applied.append(result)
-    run.proposal = {**(run.proposal or {}), "applied_results": applied}
     run.status = AgentRunStatus.VERIFYING
     run.current_step += 1
     return {"run": run.model_dump(mode="python")}
 
 
+def route_after_aggregate(state):
+    return "verify"
+
+
 async def verify(state):
     run = state_run(state)
     results = [AgentResult(**item) for item in state.get("results", [])]
-    applied = (run.proposal or {}).get("applied_results", [])
-    actions = (run.proposal or {}).get("actions", [])
-    rejected = run.approval_status == AgentApprovalStatus.REJECTED
     result_ok = bool(results) and all(
-        item.status in {AgentTaskStatus.COMPLETED, AgentTaskStatus.INSUFFICIENT_EVIDENCE}
-        for item in results
+        item.status == AgentTaskStatus.COMPLETED for item in results
     )
     completed_claims = any(item.status == AgentTaskStatus.COMPLETED for item in results)
     proposal_refs = set((run.proposal or {}).get("evidence_refs", []))
@@ -513,28 +476,13 @@ async def verify(state):
     project_scope_ok = all(
         item.get("project_id") == run.project_id for item in run.completed_tasks
     )
-    apply_ok = not applied or all(
-        item.get("status") == ToolExecutionStatus.COMPLETED
-        and item.get("verification", {}).get("status") == ToolExecutionStatus.COMPLETED
-        for item in applied
-    )
-    apply_count_ok = (
-        not actions
-        or rejected
-        or (run.approval_status == AgentApprovalStatus.APPROVED and len(applied) == len(actions))
-    )
-    verified = result_ok and evidence_ok and project_scope_ok and apply_ok and apply_count_ok
+    verified = result_ok and evidence_ok and project_scope_ok
     verification = {
         "verified": verified,
         "project_id": run.project_id,
         "evidence_refs_resolved": evidence_ok,
         "completed_claims_grounded": claims_grounded,
         "project_scope_valid": project_scope_ok,
-        "approval_status": run.approval_status,
-        "applied_count": len(applied),
-        "expected_apply_count": len(actions),
-        "apply_count_valid": apply_count_ok,
-        "rejected": rejected,
     }
     run.proposal = {**(run.proposal or {}), "verification": verification}
     reason_codes = {
@@ -551,6 +499,8 @@ async def verify(state):
         run.error_code = (
             "VALIDATION_FAILED"
             if "VALIDATION_FAILED" in reason_codes
+            else "INSUFFICIENT_EVIDENCE"
+            if any(item.status == AgentTaskStatus.INSUFFICIENT_EVIDENCE for item in results)
             else "VERIFICATION_FAILED"
         )
     run.current_step += 1

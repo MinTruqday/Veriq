@@ -1,3 +1,5 @@
+import math
+
 import httpx
 from fastapi.encoders import jsonable_encoder
 
@@ -90,3 +92,36 @@ async def search_project_with_status(project_id, query, artifact_types, limit, u
 async def search_project(project_id, query, artifact_types, limit, user) -> list:
     result = await search_project_with_status(project_id, query, artifact_types, limit, user)
     return result.get("items", [])
+
+
+async def compare_project_text_semantics(query: str, passages: list[str]) -> list[float]:
+    if not query.strip() or not passages:
+        return []
+    base_url = settings.AI_URL.rstrip("/")
+    headers = {"X-Internal-Token": settings.SECRET_KEY}
+    async with httpx.AsyncClient(timeout=60) as client:
+        query_response = await client.post(
+            f"{base_url}/tri-thuc/bieu-dien-vector/truy-van",
+            headers=headers,
+            json={"text": query},
+        )
+        query_response.raise_for_status()
+        query_vector = query_response.json()["data"]["embedding"]
+        passage_response = await client.post(
+            f"{base_url}/tri-thuc/bieu-dien-vector/hang-loat",
+            headers=headers,
+            json={"texts": passages},
+        )
+        passage_response.raise_for_status()
+        passage_vectors = passage_response.json()["data"]["embeddings"]
+    query_norm = math.sqrt(sum(value * value for value in query_vector))
+    scores = []
+    for vector in passage_vectors:
+        vector_norm = math.sqrt(sum(value * value for value in vector))
+        scores.append(
+            sum(left * right for left, right in zip(query_vector, vector))
+            / max(query_norm * vector_norm, 1e-12)
+        )
+    if len(scores) != len(passages):
+        raise RuntimeError("SEMANTIC_MATCH_VECTOR_COUNT_INVALID")
+    return scores

@@ -72,7 +72,7 @@ class HostedModelClient:
         timeout_seconds: float | None = None,
     ):
         payload = self._payload(model, messages, max_tokens, temperature, response_schema)
-        maximum_attempts = 1 if timeout_seconds else 3
+        maximum_attempts = 3
         for attempt in range(maximum_attempts):
             try:
                 async with httpx.AsyncClient(

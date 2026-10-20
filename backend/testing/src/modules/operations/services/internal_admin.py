@@ -128,6 +128,7 @@ class InternalAdminService:
             {
                 "user_id": 1,
                 "project_role": 1,
+                "project_roles": 1,
                 "status": 1,
                 "membership_revision": 1,
                 "created_at": 1,

@@ -9,7 +9,7 @@ from src.core.common import audit, get_project, new_id, next_key, now, page_payl
 from src.schemas.test_analysis import TestConditionCreate, condition_hash, condition_snapshot
 from src.repositories.test_condition import test_condition_repository
 from src.repositories.test_analysis import test_analysis_repository
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.modules.design.services.test_analysis_basis import (
     deterministic_testability_findings,
     list_test_basis,
@@ -315,7 +315,7 @@ async def run_ai_analysis(project_id, payload, user):
         {"user_instruction": payload.instruction},
         ensure_ascii=False,
     )
-    ai_result = await request_ai_assistance(
+    ai_result = await request_ai_automation(
         "test_condition_generation", project_id, instruction, evidence
     )
     raw_candidates = [

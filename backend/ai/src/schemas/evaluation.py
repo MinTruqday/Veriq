@@ -116,3 +116,32 @@ class JudgeScores(BaseModel):
         max_length=2000,
         description="Concise evidence for the assigned scores",
     )
+
+
+class TestabilityBenchmarkCandidate(BaseModel):
+    """One system's observable output for a benchmark case."""
+
+    source_quotes: list[str] = Field(default_factory=list, max_length=500)
+    clarification_codes: list[str] = Field(default_factory=list, max_length=500)
+    obligation_keys: list[str] = Field(default_factory=list, max_length=1000)
+
+
+class TestabilityBenchmarkCase(BaseModel):
+    case_id: str = Field(min_length=1, max_length=200)
+    source_text: str = Field(min_length=1, max_length=100_000)
+    expected_source_quotes: list[str] = Field(default_factory=list, max_length=500)
+    expected_clarification_codes: list[str] = Field(default_factory=list, max_length=500)
+    expected_obligation_keys: list[str] = Field(default_factory=list, max_length=1000)
+    compiler: TestabilityBenchmarkCandidate
+    direct_generation: TestabilityBenchmarkCandidate
+
+
+class TestabilityBenchmarkRequest(BaseModel):
+    cases: list[TestabilityBenchmarkCase] = Field(min_length=1, max_length=500)
+
+
+class TestabilityBenchmarkReport(BaseModel):
+    total_cases: int
+    compiler: dict
+    direct_generation: dict
+    cases: list[dict]

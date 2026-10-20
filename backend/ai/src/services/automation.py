@@ -1,31 +1,130 @@
-from fastapi import HTTPException
+import time
 
+import httpx
+
+import jwt
+from fastapi import HTTPException
+from loguru import logger
+from pymongo.errors import DuplicateKeyError
+
+from src.core.infrastructure.configuration import settings
+from src.tools.testing import INTERNAL_API_URL
 from src.core.infrastructure.mq import mq
-from src.core.infrastructure.redis import redis
 from src.repositories.automation import automation_repository
+from src.services.project_access import project_access
+from src.tools.registry import registered_tools, tool_access
 from src.schemas.automation import (
     AutomationCheckpoint,
     AutomationCheckpointPhase,
     AutomationRun,
     AutomationRunRequest,
     AutomationStatus,
+    AutomationDefinition,
+    AutomationDefinitionPatch,
+    AutomationDefinitionRequest,
+    AutomationEventRequest,
+    AutomationKind,
 )
+from src.runtime.limits import limits
 
 
 class AutomationService:
+    async def create_definition(
+        self,
+        payload: AutomationDefinitionRequest,
+        user_id: str,
+        role: str,
+        permissions: list[str],
+    ) -> AutomationDefinition:
+        if role not in {"BA", "QA"}:
+            raise HTTPException(status_code=403, detail={"code": "AUTOMATION_DEFINITION_DENIED"})
+        if payload.enabled and await automation_repository.list_enabled_definitions(
+            payload.project_id, payload.trigger
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AUTOMATION_TRIGGER_ALREADY_CONFIGURED"},
+            )
+        definition = AutomationDefinition(
+            project_id=payload.project_id,
+            owner_user_id=user_id,
+            owner_role=role,
+            owner_permissions=permissions,
+            name=payload.name,
+            trigger=payload.trigger,
+            objective=payload.objective,
+            intent=payload.intent,
+            enabled=payload.enabled,
+        )
+        try:
+            await automation_repository.create_definition(definition)
+        except DuplicateKeyError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AUTOMATION_TRIGGER_ALREADY_CONFIGURED"},
+            ) from exc
+        return definition
+
+    async def update_definition(
+        self,
+        definition: AutomationDefinition,
+        payload: AutomationDefinitionPatch,
+    ) -> AutomationDefinition:
+        if definition.revision != payload.expected_revision:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT", "latest": definition.model_dump(mode="json")})
+        values = payload.model_dump(exclude={"expected_revision"}, exclude_none=True)
+        if values.get("enabled") is True:
+            enabled = await automation_repository.list_enabled_definitions(
+                definition.project_id, definition.trigger
+            )
+            if any(item.definition_id != definition.definition_id for item in enabled):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "AUTOMATION_TRIGGER_ALREADY_CONFIGURED"},
+                )
+        try:
+            updated = await automation_repository.patch_definition(
+                definition.definition_id, payload.expected_revision, values
+            )
+        except DuplicateKeyError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AUTOMATION_TRIGGER_ALREADY_CONFIGURED"},
+            ) from exc
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        return updated
+
     async def create(
         self,
         payload: AutomationRunRequest,
         user_id: str,
         role: str,
         permissions: list[str],
-        token: str,
     ) -> AutomationRun:
+        if any(item.project_id != payload.project_id for item in payload.evidence):
+            raise HTTPException(status_code=422, detail={"code": "AUTOMATION_EVIDENCE_PROJECT_MISMATCH"})
+        if payload.intent:
+            capability = registered_tools().get(payload.intent)
+            access = tool_access(capability)
+            if not access:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "AUTOMATION_CAPABILITY_UNKNOWN"},
+                )
+            if access.permission not in permissions:
+                raise HTTPException(
+                    status_code=403,
+                    detail={"code": "AUTOMATION_CAPABILITY_DENIED"},
+                )
         run = AutomationRun(
             project_id=payload.project_id,
             requester_user_id=user_id,
             requester_role=role,
             requester_permissions=permissions,
+            execution_user_id=user_id,
+            execution_role=role,
+            execution_permissions=permissions,
             kind=payload.kind,
             objective=payload.objective,
             intent=payload.intent,
@@ -34,7 +133,6 @@ class AutomationService:
             constraints=payload.constraints,
         )
         await automation_repository.create_run(run)
-        await self._store_token(run.automation_run_id, token)
         await self._checkpoint(run, AutomationCheckpointPhase.QUEUED)
         if not await mq.publish("ai.automation", {"automation_run_id": run.automation_run_id}):
             updated = await automation_repository.transition(
@@ -43,27 +141,314 @@ class AutomationService:
                 {"status": AutomationStatus.DEGRADED, "error_code": "AUTOMATION_QUEUE_UNAVAILABLE"},
             )
             if updated:
+                await self._checkpoint(
+                    updated,
+                    AutomationCheckpointPhase.FINALIZED,
+                    {"reason_code": "AUTOMATION_QUEUE_UNAVAILABLE", "retryable": True},
+                )
                 return updated
         return run
 
+    async def enqueue_event(self, event: AutomationEventRequest) -> list[AutomationRun]:
+        if any(item.project_id != event.project_id for item in event.evidence):
+            raise HTTPException(status_code=422, detail={"code": "AUTOMATION_EVIDENCE_PROJECT_MISMATCH"})
+        existing = await automation_repository.find_event_run(event.project_id, event.event_id)
+        if existing:
+            if existing.status == AutomationStatus.QUEUED or (
+                existing.status == AutomationStatus.DEGRADED
+                and existing.error_code == "AUTOMATION_QUEUE_UNAVAILABLE"
+            ):
+                if existing.status == AutomationStatus.DEGRADED:
+                    queued = await automation_repository.transition(
+                        existing.automation_run_id,
+                        existing.revision,
+                        {"status": AutomationStatus.QUEUED, "error_code": None},
+                    )
+                    if not queued:
+                        latest = await automation_repository.find_event_run(
+                            event.project_id, event.event_id
+                        )
+                        return [latest or existing]
+                    existing = queued
+                    await self._checkpoint(existing, AutomationCheckpointPhase.QUEUED)
+                if not await mq.publish(
+                    "ai.automation", {"automation_run_id": existing.automation_run_id}
+                ):
+                    degraded = await automation_repository.transition(
+                        existing.automation_run_id,
+                        existing.revision,
+                        {
+                            "status": AutomationStatus.DEGRADED,
+                            "error_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                        },
+                    )
+                    if degraded:
+                        await self._checkpoint(
+                            degraded,
+                            AutomationCheckpointPhase.FINALIZED,
+                            {"reason_code": "AUTOMATION_QUEUE_UNAVAILABLE", "retryable": True},
+                        )
+                    return [degraded or existing]
+            return [existing]
+        token = self._token_for_user(event.requester_user_id)
+        role, permissions = await project_access(event.project_id, token)
+        execution_user_id, execution_role, execution_permissions = (
+            await self._default_execution_principal(event, role, permissions)
+        )
+        definitions = await automation_repository.list_definitions(event.project_id)
+        matching_definitions = [
+            item for item in definitions if item.trigger == event.trigger
+        ]
+        if matching_definitions:
+            enabled_definitions = [item for item in matching_definitions if item.enabled]
+            if not enabled_definitions:
+                return []
+            if len(enabled_definitions) > 1:
+                logger.warning(
+                    "Multiple enabled automation definitions found for project={} trigger={}; "
+                    "using the most recently updated definition only",
+                    event.project_id,
+                    event.trigger.value,
+                )
+            return await self._enqueue_event_runs(
+                event,
+                role,
+                permissions,
+                enabled_definitions[:1],
+                execution_user_id,
+                execution_role,
+                execution_permissions,
+            )
+
+        return await self._enqueue_event_runs(
+            event,
+            role,
+            permissions,
+            [None],
+            execution_user_id,
+            execution_role,
+            execution_permissions,
+        )
+
+    @staticmethod
+    def _token_for_user(user_id: str) -> str:
+        return jwt.encode(
+            {
+                "uid": user_id,
+                "sub": user_id,
+                "system_role": "USER",
+                "exp": int(time.time()) + 30,
+            },
+            settings.SECRET_KEY,
+            algorithm="HS256",
+        )
+
+    async def _default_execution_principal(self, event, role, permissions):
+        """Use the project's assigned QA as the default executor for lifecycle automation.
+
+        The original actor remains the requester. The QA identity is the project's
+        existing accountable automation principal, not a platform-wide privilege.
+        """
+        if role == "QA":
+            return event.requester_user_id, role, permissions
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(
+                f"{INTERNAL_API_URL}/kiem-thu/noi-bo/quan-tri/du-an/{event.project_id}/thanh-vien",
+                headers={"X-Internal-Token": settings.SECRET_KEY},
+            )
+        response.raise_for_status()
+        body = response.json()
+        members = body.get("data", body) if isinstance(body, dict) else body
+        if not isinstance(members, list):
+            raise HTTPException(status_code=502, detail={"code": "PROJECT_MEMBERS_INVALID"})
+        qa = next((member for member in members if self._is_active_qa(member)), None)
+        if not qa or not qa.get("user_id"):
+            return None, None, []
+        qa_token = self._token_for_user(str(qa["user_id"]))
+        qa_role, qa_permissions = await project_access(event.project_id, qa_token)
+        if qa_role != "QA":
+            raise HTTPException(status_code=403, detail={"code": "PROJECT_QA_PRINCIPAL_INVALID"})
+        return str(qa["user_id"]), qa_role, qa_permissions
+
+    @staticmethod
+    def _is_active_qa(member: dict) -> bool:
+        roles = member.get("project_roles")
+        if not isinstance(roles, list):
+            roles = []
+        roles = {str(role).upper() for role in [*roles, member.get("project_role")] if role}
+        return "QA" in roles and str(member.get("status") or "").upper() == "ACTIVE"
+
+    async def _enqueue_event_runs(
+        self,
+        event: AutomationEventRequest,
+        role: str,
+        permissions: list[str],
+        definitions: list[AutomationDefinition | None],
+        default_execution_user_id: str | None = None,
+        default_execution_role: str | None = None,
+        default_execution_permissions: list[str] | None = None,
+    ) -> list[AutomationRun]:
+        runs = []
+        for definition in definitions[:1]:
+            definition_id = definition.definition_id if definition else None
+            existing = await automation_repository.find_event_run(
+                event.project_id,
+                event.event_id,
+            )
+            if existing:
+                runs.append(existing)
+                continue
+
+            run = AutomationRun(
+                project_id=event.project_id,
+                requester_user_id=event.requester_user_id,
+                requester_role=role,
+                requester_permissions=permissions,
+                execution_user_id=default_execution_user_id,
+                execution_role=default_execution_role,
+                execution_permissions=default_execution_permissions or [],
+                kind=AutomationKind.EVENT,
+                trigger=event.trigger,
+                definition_id=definition_id,
+                source_event_id=event.event_id,
+                source_event_verified=True,
+                objective=(
+                    definition.objective
+                    if definition
+                    else (
+                        f"Tự xử lý sự kiện {event.trigger.value} trong dự án theo bằng chứng nguồn và các "
+                        "bằng chứng liên quan được phép. Hoàn tất các bước tiếp theo cần thiết trong vòng "
+                        "đời Requirement, thiết kế kiểm thử, thực thi, lỗi, planning, release hoặc báo cáo "
+                        "khi chúng có liên quan. Thực hiện trong quyền hiện hành của chủ thể thực thi dự án, không dừng để "
+                        "xin duyệt từng hành động, ghi lại thay đổi và xác minh kết quả. Không suy đoán dữ "
+                        "kiện hay tuyên bố đã thực thi nếu chưa có kết quả thực tế."
+                    )
+                ),
+                intent=definition.intent if definition else "",
+                target_artifact_ids=event.target_artifact_ids,
+                evidence=event.evidence,
+                constraints={"trigger": event.trigger.value},
+                status=(
+                    AutomationStatus.QUEUED
+                    if default_execution_user_id
+                    else AutomationStatus.AWAITING_AUTHORIZATION
+                ),
+                error_code=(
+                    None
+                    if default_execution_user_id
+                    else "PROJECT_QA_EXECUTOR_UNAVAILABLE"
+                ),
+            )
+            try:
+                await automation_repository.create_run(run)
+            except DuplicateKeyError:
+                existing = await automation_repository.find_event_run(
+                    event.project_id,
+                    event.event_id,
+                )
+                if existing:
+                    runs.append(existing)
+                    continue
+                raise
+
+            await self._checkpoint(run, AutomationCheckpointPhase.QUEUED)
+            if not default_execution_user_id:
+                await self._checkpoint(
+                    run,
+                    AutomationCheckpointPhase.FINALIZED,
+                    {"reason_code": "PROJECT_QA_EXECUTOR_UNAVAILABLE"},
+                )
+                runs.append(run)
+                continue
+            if not await mq.publish(
+                "ai.automation", {"automation_run_id": run.automation_run_id}
+            ):
+                updated = await automation_repository.transition(
+                    run.automation_run_id,
+                    run.revision,
+                    {
+                        "status": AutomationStatus.DEGRADED,
+                        "error_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                    },
+                )
+                if updated:
+                    await self._checkpoint(
+                        updated,
+                        AutomationCheckpointPhase.FINALIZED,
+                        {"reason_code": "AUTOMATION_QUEUE_UNAVAILABLE", "retryable": True},
+                    )
+                runs.append(updated or run)
+                continue
+            runs.append(run)
+        return runs
+
     async def authorize_retry(
-        self, run: AutomationRun, expected_revision: int, token: str
+        self, run: AutomationRun, expected_revision: int
     ) -> AutomationRun:
         if run.revision != expected_revision:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT", "latest": run.model_dump(mode="json")})
+        if run.error_code == "AUTOMATION_ACTION_OUTCOME_UNCERTAIN":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AUTOMATION_RETRY_REQUIRES_RECONCILIATION"},
+            )
         if run.status not in {AutomationStatus.AWAITING_AUTHORIZATION, AutomationStatus.FAILED, AutomationStatus.DEGRADED}:
             raise HTTPException(status_code=409, detail={"code": "AUTOMATION_RETRY_NOT_ALLOWED"})
-        await self._store_token(run.automation_run_id, token)
+        retry_values = {"status": AutomationStatus.QUEUED, "error_code": None}
+        if run.error_code == "PROJECT_QA_EXECUTOR_UNAVAILABLE":
+            token = self._token_for_user(run.requester_user_id)
+            role, permissions = await project_access(run.project_id, token)
+            execution_user_id, execution_role, execution_permissions = (
+                await self._default_execution_principal(
+                    AutomationEventRequest(
+                        event_id=run.source_event_id or run.automation_run_id,
+                        project_id=run.project_id,
+                        requester_user_id=run.requester_user_id,
+                        trigger=run.trigger or AutomationTrigger.MANUAL,
+                        target_artifact_ids=run.target_artifact_ids,
+                        evidence=run.evidence,
+                    ),
+                    role,
+                    permissions,
+                )
+            )
+            if not execution_user_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "PROJECT_QA_EXECUTOR_UNAVAILABLE"},
+                )
+            retry_values.update(
+                {
+                    "execution_user_id": execution_user_id,
+                    "execution_role": execution_role,
+                    "execution_permissions": execution_permissions,
+                }
+            )
         updated = await automation_repository.transition(
             run.automation_run_id,
             expected_revision,
-            {"status": AutomationStatus.QUEUED, "error_code": None},
+            retry_values,
         )
         if not updated:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
         await self._checkpoint(updated, AutomationCheckpointPhase.QUEUED)
         if not await mq.publish("ai.automation", {"automation_run_id": run.automation_run_id}):
-            raise HTTPException(status_code=503, detail={"code": "AUTOMATION_QUEUE_UNAVAILABLE"})
+            degraded = await automation_repository.transition(
+                updated.automation_run_id,
+                updated.revision,
+                {
+                    "status": AutomationStatus.DEGRADED,
+                    "error_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                },
+            )
+            if not degraded:
+                raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+            await self._checkpoint(
+                degraded,
+                AutomationCheckpointPhase.FINALIZED,
+                {"reason_code": "AUTOMATION_QUEUE_UNAVAILABLE", "retryable": True},
+            )
+            return degraded
         return updated
 
     async def cancel(self, run: AutomationRun, expected_revision: int) -> AutomationRun:
@@ -78,46 +463,27 @@ class AutomationService:
         )
         if not updated:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-        await redis.delete(self._token_key(run.automation_run_id))
-        await self._checkpoint(updated, AutomationCheckpointPhase.FINALIZED)
-        return updated
-
-    async def record_human_decision(
-        self, run: AutomationRun, expected_revision: int, agent_run: dict
-    ) -> AutomationRun:
-        if run.revision != expected_revision:
-            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT", "latest": run.model_dump(mode="json")})
-        status = (
-            AutomationStatus.COMPLETED
-            if agent_run.get("status") == "COMPLETED"
-            else AutomationStatus.DEGRADED
-            if agent_run.get("status") != "FAILED"
-            else AutomationStatus.FAILED
-        )
-        updated = await automation_repository.transition(
-            run.automation_run_id,
-            expected_revision,
-            {
-                "status": status,
-                "result": {
-                    "proposal": agent_run.get("proposal"),
-                    "evidence_refs": agent_run.get("evidence_refs", []),
-                    "observations": agent_run.get("observations", []),
-                    "error_code": agent_run.get("error_code"),
-                },
-                "error_code": agent_run.get("error_code"),
-            },
-        )
-        if not updated:
-            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
         await self._checkpoint(updated, AutomationCheckpointPhase.FINALIZED)
         return updated
 
     async def token_for(self, automation_run_id: str) -> str | None:
-        return await redis.get(self._token_key(automation_run_id))
-
-    async def _store_token(self, automation_run_id: str, token: str) -> None:
-        await redis.setex(self._token_key(automation_run_id), 1800, token)
+        run = await automation_repository.get_run(automation_run_id)
+        if not run or not run.execution_user_id or not run.execution_role:
+            return None
+        execution_user_id = run.execution_user_id
+        return jwt.encode(
+            {
+                "uid": execution_user_id,
+                "sub": execution_user_id,
+                "system_role": "USER",
+                "ai_automation_run_id": run.automation_run_id,
+                "ai_automation_initiator_id": run.requester_user_id,
+                "ai_automation_definition_id": run.definition_id,
+                "exp": int(time.time()) + limits.run_timeout_seconds,
+            },
+            settings.SECRET_KEY,
+            algorithm="HS256",
+        )
 
     async def _checkpoint(self, run: AutomationRun, phase: AutomationCheckpointPhase, detail: dict | None = None) -> None:
         await automation_repository.save_checkpoint(
@@ -128,10 +494,5 @@ class AutomationService:
                 detail=detail or {},
             )
         )
-
-    @staticmethod
-    def _token_key(automation_run_id: str) -> str:
-        return f"ai:automation:authorization:{automation_run_id}"
-
 
 automation_service = AutomationService()

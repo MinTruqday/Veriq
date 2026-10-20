@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
 
 const listFields = [
   ["scope_in", "Trong phạm vi"],
@@ -166,66 +167,35 @@ export default function TestPlanEditor({
             onChange={(event) => setField("test_approach", event.target.value)}
           />
         </label>
-        <label className="field-label">
-          Phiên bản Requirement trong phạm vi
-          <select
-            className="apple-input mt-2 min-h-28"
-            multiple
-            value={value.requirement_version_ids}
-            onChange={(event) =>
-              setField(
-                "requirement_version_ids",
-                Array.from(event.target.selectedOptions, (item) => item.value),
-              )
-            }
-          >
-            {requirements.map((item) => (
-              <option key={item.current_version_id} value={item.current_version_id}>
-                {item.requirement_key} {item.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-label">
-          Test Set trong phạm vi
-          <select
-            className="apple-input mt-2 min-h-28"
-            multiple
-            value={value.test_suite_ids}
-            onChange={(event) =>
-              setField(
-                "test_suite_ids",
-                Array.from(event.target.selectedOptions, (item) => item.value),
-              )
-            }
-          >
-            {suites.map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-label md:col-span-2">
-          Phiên bản Test Case trong phạm vi
-          <select
-            className="apple-input mt-2 min-h-36"
-            multiple
-            value={value.test_case_version_ids}
-            onChange={(event) =>
-              setField(
-                "test_case_version_ids",
-                Array.from(event.target.selectedOptions, (item) => item.value),
-              )
-            }
-          >
-            {tests.map((item) => (
-              <option key={item.current_version_id} value={item.current_version_id}>
-                {item.test_case_key} {item.title}
-              </option>
-            ))}
-          </select>
-        </label>
+        <MultiSelect
+          className="md:col-span-2"
+          label="Phiên bản yêu cầu trong phạm vi"
+          options={requirements.map((item) => ({
+            value: item.current_version_id,
+            label: `${item.requirement_key} ${item.current_version?.title || item.title || ""}`,
+          }))}
+          searchPlaceholder="Tìm yêu cầu"
+          value={value.requirement_version_ids}
+          onChange={(selected) => setField("requirement_version_ids", selected)}
+        />
+        <MultiSelect
+          label="Bộ kiểm thử trong phạm vi"
+          options={suites.map((item) => ({ value: item._id, label: item.name }))}
+          searchPlaceholder="Tìm bộ kiểm thử"
+          value={value.test_suite_ids}
+          onChange={(selected) => setField("test_suite_ids", selected)}
+        />
+        <MultiSelect
+          className="md:col-span-2"
+          label="Phiên bản ca kiểm thử trong phạm vi"
+          options={tests.map((item) => ({
+            value: item.current_version_id,
+            label: `${item.test_case_key} ${item.current_version?.title || item.title || ""}`,
+          }))}
+          searchPlaceholder="Tìm ca kiểm thử"
+          value={value.test_case_version_ids}
+          onChange={(selected) => setField("test_case_version_ids", selected)}
+        />
         {listFields.map(([key, label]) => (
           <label className="field-label" key={key}>
             {label} mỗi dòng một giá trị

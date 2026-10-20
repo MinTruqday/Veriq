@@ -1,4 +1,5 @@
 import DataTable from "../../../components/DataTable";
+import FilePicker from "../../../components/FilePicker";
 import { ErrorState } from "../../../components/WorkspacePrimitives";
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { docText, textDoc, valueLabel } from "../../../lib/testing";
@@ -169,15 +170,12 @@ export default function RequirementImportModal({
         isOpen={isOpen}
       />
       <form onSubmit={onUploadPreview} className="space-y-4 border-b border-border p-5">
-        <label className="field-label">
-          Tệp SRS BRD hoặc bảng yêu cầu
-          <input
-            className="apple-input mt-2"
-            type="file"
-            accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.json,.yaml,.yml"
-            onChange={(event) => setUpload(event.target.files?.[0] || null)}
-          />
-        </label>
+        <FilePicker
+          label="Tệp SRS, BRD hoặc bảng yêu cầu"
+          accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.json,.yaml,.yml"
+          fileName={upload?.name || ""}
+          onChange={(event) => setUpload(event.target.files?.[0] || null)}
+        />
         <label className="field-label">
           Loại tài liệu nguồn
           <select
@@ -188,14 +186,14 @@ export default function RequirementImportModal({
             }
           >
             <option value="SRS">Đặc tả yêu cầu</option>
-            <option value="USER_STORY">User Story</option>
-            <option value="API_SPEC">API Definition</option>
+            <option value="USER_STORY">Câu chuyện người dùng</option>
+            <option value="API_SPEC">Định nghĩa API</option>
             <option value="REFERENCE">Tài liệu khác</option>
           </select>
         </label>
         {uploadAccess.source_type === "API_SPEC" && (
           <label className="field-label">
-            Định dạng API Definition
+            Định dạng định nghĩa API
             <select
               className="apple-input mt-2"
               value={uploadAccess.api_format || "openapi"}
@@ -215,15 +213,17 @@ export default function RequirementImportModal({
           privateLabel="Riêng tư chỉ người tải lên"
           onChange={setUploadAccess}
         />
-        <button
-          className="secondary-button"
-          type="submit"
-          disabled={
-            !upload || (uploadAccess.visibility === "shared" && !uploadAccess.shared_with.length)
-          }
-        >
-          Tải lên và xem trước
-        </button>
+        <div className="action-dialog-footer flex justify-end">
+          <button
+            className="secondary-button"
+            type="submit"
+            disabled={
+              !upload || (uploadAccess.visibility === "shared" && !uploadAccess.shared_with.length)
+            }
+          >
+            Tải lên và xem trước
+          </button>
+        </div>
       </form>
       <form onSubmit={onImportPreview} className="space-y-4 p-5">
         <label className="field-label">
@@ -249,8 +249,8 @@ export default function RequirementImportModal({
             onChange={(event) => updateImportValue({ source_type: event.target.value })}
           >
             <option value="SRS">Đặc tả yêu cầu</option>
-            <option value="USER_STORY">User Story</option>
-            <option value="API_SPEC">API Definition</option>
+            <option value="USER_STORY">Câu chuyện người dùng</option>
+            <option value="API_SPEC">Định nghĩa API</option>
             <option value="REFERENCE">Tài liệu khác</option>
           </select>
         </label>
@@ -286,7 +286,7 @@ export default function RequirementImportModal({
             {importValue.format === "openapi" || importValue.format === "postman" ? (
               <textarea
                 className="apple-input min-h-64"
-                aria-label="Nội dung API Definition"
+                aria-label="Nội dung định nghĩa API"
                 value={importValue.content}
                 onChange={(event) => updateImportValue({ content: event.target.value })}
               />
@@ -300,18 +300,20 @@ export default function RequirementImportModal({
             )}
           </div>
         </label>
-        <button
-          className="secondary-button"
-          type="submit"
-          disabled={
-            !(typeof importValue.content === "string"
-              ? importValue.content.trim()
-              : docText(importValue.content)) ||
-            (importValue.visibility === "shared" && !importValue.shared_with.length)
-          }
-        >
-          Tạo bản xem trước
-        </button>
+        <div className="action-dialog-footer flex justify-end">
+          <button
+            className="secondary-button"
+            type="submit"
+            disabled={
+              !(typeof importValue.content === "string"
+                ? importValue.content.trim()
+                : docText(importValue.content)) ||
+              (importValue.visibility === "shared" && !importValue.shared_with.length)
+            }
+          >
+            Tạo bản xem trước
+          </button>
+        </div>
       </form>
       {preview && (
         <div className="border-t border-border p-5">
@@ -386,7 +388,7 @@ export default function RequirementImportModal({
                 render: (item) => (
                   <input
                     aria-label={`Mã ứng viên ${item.candidateIndex + 1}`}
-                    className="apple-input min-w-40"
+                    className="apple-input w-full min-w-0 xl:min-w-40"
                     value={item.requirement_key || ""}
                     disabled={preview.status !== "PREVIEW_READY"}
                     onChange={(event) =>
@@ -403,7 +405,7 @@ export default function RequirementImportModal({
                 render: (item) => (
                   <input
                     aria-label={`Tên ứng viên ${item.candidateIndex + 1}`}
-                    className="apple-input min-w-64"
+                    className="apple-input w-full min-w-0 xl:min-w-64"
                     value={item.title}
                     disabled={preview.status !== "PREVIEW_READY"}
                     onChange={(event) =>
@@ -416,7 +418,7 @@ export default function RequirementImportModal({
                 key: "content_doc",
                 label: "Nội dung",
                 render: (item) => (
-                  <div className="min-w-[36rem]">
+                  <div className="w-full min-w-0">
                     <DocumentEditor
                       label={`nội dung ứng viên ${item.candidateIndex + 1}`}
                       minHeight="min-h-40"
@@ -467,7 +469,7 @@ export default function RequirementImportModal({
                   if (!importComparison) return "Đang đối chiếu";
                   if (!matches.length) return "Chưa thấy mục tương tự";
                   return (
-                    <div className="min-w-72 space-y-2 text-sm">
+                    <div className="min-w-0 space-y-2 text-sm">
                       {matches.map((match) => (
                         <div
                           className="rounded-control border border-border p-2"
@@ -635,7 +637,7 @@ export default function RequirementImportModal({
       {sourceDocument && (
         <div className="border-t border-border p-5 text-[12px] text-ink-muted">
           <p>Nguồn {sourceDocument.filename}</p>
-          <p>Trạng thái {sourceDocument.status}</p>
+          <p>Trạng thái {valueLabel(sourceDocument.status)}</p>
           <p className="break-all">SHA256 {sourceDocument.content_hash}</p>
           {sourceDocument.status === "PARSE_FAILED" && (
             <button className="secondary-button mt-3" type="button" onClick={onRetrySource}>

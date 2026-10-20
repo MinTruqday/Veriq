@@ -12,6 +12,7 @@ export default function ScenariosPanel({
   setFilters,
   isCreating,
   setCreating,
+  saving,
   form,
   setForm,
   testConditions,
@@ -34,7 +35,10 @@ export default function ScenariosPanel({
       {can("testscenario.create") && (
         <ScenarioCreateModal
           isOpen={isCreating}
-          onClose={() => setCreating(false)}
+          onClose={() => {
+            if (!saving) setCreating(false);
+          }}
+          saving={saving}
           form={form}
           setForm={setForm}
           testConditions={testConditions}
@@ -141,6 +145,7 @@ export default function ScenariosPanel({
           {
             key: "actions",
             label: "Thao tác",
+            hideWhenEmpty: true,
             render: (item) => (
               <span className="flex flex-wrap gap-2">
                 {can("testscenario.clone") && (

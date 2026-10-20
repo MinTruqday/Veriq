@@ -70,6 +70,7 @@ from src.modules.execution.services.test_run import (
     correct_test_result_record,
     create_test_run_record,
     get_test_run_record,
+    get_test_result_record,
     list_test_result_records,
     list_test_run_records,
     record_test_result_entry,
@@ -304,6 +305,11 @@ async def list_test_results(
     user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(await list_test_result_records(project_id, user, status=status))
+
+
+@router.get("/ket-qua-kiem-thu/{result_id}")
+async def get_test_result(result_id: str, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await get_test_result_record(result_id, user))
 
 
 @router.get("/lan-chay-kiem-thu/{run_id}")

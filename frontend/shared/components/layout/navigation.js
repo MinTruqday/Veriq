@@ -31,6 +31,96 @@ import {
   projectRoute,
 } from "@/features/testing/routes";
 
+export const PROJECT_SETTINGS_PERMISSIONS = [
+  "project.settings.manage",
+  "project.update",
+  "project.archive",
+  "project.members.read",
+  "project.members.manage",
+  "analytics.read",
+  "analytics.ai.read",
+  "notification.watch.manage",
+  "notification.preferences.manage",
+  "notification.project_rule.manage",
+  "project.connector.read",
+  "cicd.read",
+  "webhook.project.read",
+];
+
+export function hasNavigationPermission(item, permissions) {
+  const granted = Array.isArray(permissions) ? permissions : [];
+  return (
+    (!item.permission || granted.includes(item.permission)) &&
+    (item.permissions || []).every((permission) => granted.includes(permission)) &&
+    (!item.anyPermission || item.anyPermission.some((permission) => granted.includes(permission)))
+  );
+}
+
+export function testCaseSubsectionItems(projectId) {
+  const root = projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases);
+  return [
+    { id: "cases", label: "Ca kiểm thử", href: root, permission: "testcase.read" },
+    {
+      id: "adequacy",
+      label: "Hồ sơ đảm bảo",
+      href: `${root}/do-day-du`,
+      permissions: ["requirement.read", "testcase.read"],
+    },
+    {
+      id: "ai",
+      label: "Tạo ca bằng AI",
+      href: `${root}/ai`,
+      anyPermission: ["ai.generate_testcase", "ai.generate_scenario", "testcase.duplicate_check"],
+      permissions: ["testcase.read"],
+    },
+    {
+      id: "scenarios",
+      label: "Kịch bản",
+      href: `${root}/kich-ban`,
+      permission: "testscenario.read",
+      permissions: ["testcase.read"],
+    },
+    {
+      id: "templates",
+      label: "Mẫu",
+      href: `${root}/mau`,
+      permission: "testcase.template.read",
+      permissions: ["testcase.read"],
+    },
+    {
+      id: "automation",
+      label: "Mã kiểm thử tự động",
+      href: `${root}/tu-dong-hoa`,
+      anyPermission: ["ai.generate_automation_script", "automation.script.export"],
+      permissions: ["testcase.read"],
+    },
+    {
+      id: "api",
+      label: "API",
+      href: `${root}/api`,
+      permission: "apiartifact.read",
+      permissions: ["testcase.read"],
+    },
+    {
+      id: "import",
+      label: "Nhập và xuất",
+      href: `${root}/nhap-xuat`,
+      anyPermission: ["testcase.import", "testcase.export"],
+      permissions: ["testcase.read"],
+    },
+  ];
+}
+
+export function testDesignSectionItems(projectId) {
+  const designItems =
+    navigationGroupsFor(projectRoute(projectId)).find((group) =>
+      group.items.some((item) => item.id === "test-repository"),
+    )?.items || [];
+  return designItems.filter((item) =>
+    ["test-repository", "test-cases", "reusable-steps", "test-data", "test-sets"].includes(item.id),
+  );
+}
+
 export function projectIdFromPath(pathname) {
   const match = pathname.match(/^\/du-an\/([^/]+)/);
   return match?.[1] || "";
@@ -105,6 +195,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             href: `${root}/${PROJECT_SECTION_SLUGS.assurance}`,
             icon: ClipboardCheck,
             permission: "requirement.read",
+            permissions: ["testcase.read"],
           },
           {
             id: "clarifications",
@@ -115,13 +206,27 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
           },
           {
             id: "changes",
-            label: "Tác động thay đổi",
+            label: "Phân tích thay đổi",
             href: `${root}/${PROJECT_SECTION_SLUGS.changes}`,
             icon: GitCompareArrows,
-            permission: "impact.read",
+            anyPermission: ["changeset.read", "proposal.read"],
           },
         ],
         design: [
+          {
+            id: "test-strategy",
+            label: "Chiến lược kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.governance}`,
+            icon: ClipboardCheck,
+            permission: "teststrategy.read",
+          },
+          {
+            id: "test-analysis",
+            label: "Phân tích kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.testAnalysis}`,
+            icon: TestTube2,
+            permission: "testcondition.read",
+          },
           {
             id: "test-repository",
             label: "Kho kiểm thử",
@@ -148,14 +253,16 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Dữ liệu kiểm thử",
             href: `${root}/${PROJECT_SECTION_SLUGS.testData}`,
             icon: Database,
-            permission: "testcase.read",
+            permission: "testdata.read",
+            permissions: ["testcase.read"],
           },
           {
             id: "test-sets",
             label: "Bộ kiểm thử",
             href: `${root}/${PROJECT_SECTION_SLUGS.testSets}`,
             icon: Archive,
-            permission: "testcase.read",
+            permission: "testsuite.read",
+            permissions: ["testcase.read"],
           },
         ],
         execution: [
@@ -164,7 +271,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Kế hoạch kiểm thử",
             href: `${root}/${PROJECT_SECTION_SLUGS.testPlans}`,
             icon: ClipboardCheck,
-            permission: "testrun.read",
+            permission: "testplan.read",
           },
           {
             id: "test-runs",
@@ -178,7 +285,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Tự động hóa",
             href: `${root}/${PROJECT_SECTION_SLUGS.automation}`,
             icon: BrainCircuit,
-            permission: "testrun.read",
+            permission: "automation.read",
           },
           {
             id: "defects",
@@ -189,6 +296,13 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
           },
         ],
         quality: [
+          {
+            id: "monitoring",
+            label: "Giám sát kiểm thử",
+            href: `${root}/${PROJECT_SECTION_SLUGS.monitoring}`,
+            icon: Activity,
+            permission: "testmonitor.read",
+          },
           {
             id: "traceability",
             label: "Truy vết",
@@ -201,14 +315,30 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Báo cáo",
             href: `${root}/${PROJECT_SECTION_SLUGS.reports}`,
             icon: BarChart3,
-            permission: "report.read",
+            anyPermission: [
+              "report.read",
+              "analytics.read",
+              "coverage.read",
+              "teststatusreport.read",
+              "testcompletion.read",
+              "qualityevaluation.read",
+              "measurement.read",
+              "processimprovement.read",
+            ],
           },
           {
             id: "audit",
-            label: "Nhật ký audit",
+            label: "Nhật ký kiểm toán",
             href: `${root}/${PROJECT_SECTION_SLUGS.audit}`,
             icon: History,
-            permission: "project.settings.manage",
+            permission: "project.audit.read",
+          },
+          {
+            id: "ai-review",
+            label: "Tự động hóa AI",
+            href: `${root}/${PROJECT_SECTION_SLUGS.aiReview}`,
+            icon: BrainCircuit,
+            permission: "proposal.read",
           },
         ],
         resources: [
@@ -224,7 +354,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Cài đặt dự án",
             href: `${root}/${PROJECT_SECTION_SLUGS.settings}`,
             icon: Activity,
-            permission: "project.settings.manage",
+            anyPermission: PROJECT_SETTINGS_PERMISSIONS,
           },
         ],
       }
@@ -252,12 +382,17 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
       ],
     },
     { label: "Dự án", items: projectItems.project },
-    { label: "Lập kế hoạch", items: projectItems.planning },
+    {
+      label: "Lập kế hoạch",
+      href: projectId ? `${root}/${PROJECT_SECTION_SLUGS.planning}` : "",
+      defaultActiveItemId: "backlog",
+      items: projectItems.planning,
+    },
     { label: "Bảo đảm yêu cầu", items: projectItems.requirements },
     { label: "Thiết kế kiểm thử", items: projectItems.design },
     { label: "Kế hoạch và thực thi", items: projectItems.execution },
     { label: "Theo dõi", items: projectItems.quality },
-    { label: "Tri thức và cấu hình", items: projectItems.resources },
+    { label: "Tài liệu và cài đặt", items: projectItems.resources },
     {
       label: "Tài khoản",
       items: [
@@ -281,7 +416,7 @@ export function availableNavigation(groups, user, permissions = null) {
         (item) =>
           (!item.requireAuth || user) &&
           (!item.requireAdmin || user?.system_role === "ADMIN") &&
-          (!item.permission || permissions?.includes(item.permission)),
+          hasNavigationPermission(item, permissions),
       ),
     }))
     .filter((group) => group.items.length > 0);

@@ -4,7 +4,6 @@ from langgraph.graph import END, StateGraph
 
 from src.agents.runner.nodes import (
     aggregate,
-    apply,
     execute_agent,
     load_context,
     plan,
@@ -35,18 +34,12 @@ workflow.add_node("plan", plan)
 workflow.add_node("execute", execute_agent)
 workflow.add_node("finalize", finalize)
 workflow.add_node("aggregate", aggregate)
-workflow.add_node("apply", apply)
 workflow.add_node("verify", verify)
 workflow.set_entry_point("load_context")
 workflow.add_conditional_edges(
     "load_context",
     route_after_context,
-    {
-        "plan": "plan",
-        "apply": "apply",
-        "verify": "verify",
-        "finalize": "finalize",
-    },
+    {"plan": "plan"},
 )
 workflow.add_edge("plan", "execute")
 workflow.add_conditional_edges(
@@ -62,8 +55,7 @@ workflow.add_conditional_edges(
 workflow.add_conditional_edges(
     "aggregate",
     route_after_aggregate,
-    {"end": END, "verify": "verify"},
+    {"verify": "verify"},
 )
-workflow.add_edge("apply", "verify")
 workflow.add_edge("verify", END)
 canonical_workflow = workflow.compile()

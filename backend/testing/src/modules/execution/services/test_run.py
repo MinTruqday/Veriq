@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from src.core.common import (
     audit,
@@ -24,6 +25,7 @@ from src.modules.execution.services.test_run_execution import (
 from src.modules.execution.services.test_run_query import (
     build_test_run_report,
     get_test_run_record,
+    get_test_result_record,
     list_test_result_records,
     list_test_run_records,
 )
@@ -37,6 +39,7 @@ __all__ = [
     "complete_test_run_record",
     "correct_test_result_record",
     "get_test_run_record",
+    "get_test_result_record",
     "list_test_result_records",
     "list_test_run_records",
     "record_test_result_entry",
@@ -96,6 +99,21 @@ async def create_test_run_record(payload, project_id, user):
                     detail={"code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE", "field": field},
                 )
     await validate_test_versions(payload.project_id, version_ids)
+    if payload.idempotency_key:
+        existing = await test_run_repository.find_run_by_idempotency_key(
+            payload.project_id, payload.idempotency_key
+        )
+        if existing:
+            expected = {
+                "test_plan_id": payload.test_plan_id,
+                "test_case_version_ids": version_ids,
+                "release_id": context.get("release_id"),
+                "build_id": context.get("build_id"),
+                "environment_id": context.get("environment_id"),
+            }
+            if any(existing.get(key) != value for key, value in expected.items()):
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            return existing
     timestamp = now()
     device_scope = (
         {
@@ -118,7 +136,25 @@ async def create_test_run_record(payload, project_id, user):
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    await test_run_repository.insert_run(run)
+    try:
+        await test_run_repository.insert_run(run)
+    except DuplicateKeyError:
+        if payload.idempotency_key:
+            existing = await test_run_repository.find_run_by_idempotency_key(
+                payload.project_id, payload.idempotency_key
+            )
+            if existing:
+                expected = {
+                    "test_plan_id": payload.test_plan_id,
+                    "test_case_version_ids": version_ids,
+                    "release_id": context.get("release_id"),
+                    "build_id": context.get("build_id"),
+                    "environment_id": context.get("environment_id"),
+                }
+                if any(existing.get(key) != value for key, value in expected.items()):
+                    raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+                return existing
+        raise
     if version_ids:
         try:
             await test_run_repository.insert_results(

@@ -4,6 +4,7 @@ import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimi
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
 
 const EMPTY_FORM = {
   name: "",
@@ -234,7 +235,7 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
                 onChange={(event) => setForm({ ...form, viewportHeight: event.target.value })}
               />
             </div>
-            <div className="flex justify-end gap-3 sm:col-span-2">
+            <div className="action-dialog-footer flex justify-end gap-3 sm:col-span-2">
               <button className="secondary-button" type="button" onClick={() => setCreating(false)}>
                 Hủy
               </button>
@@ -317,26 +318,17 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
                 </option>
               ))}
             </select>
-            <label className="field-label block">
-              Hồ sơ thiết bị
-              <select
-                aria-label="Hồ sơ thiết bị được gán"
-                className="apple-input mt-2 min-h-28"
-                multiple
-                value={profileKeys}
-                onChange={(event) =>
-                  setProfileKeys(Array.from(event.target.selectedOptions, (option) => option.value))
-                }
-              >
-                {selectedMatrix?.profiles
+            <MultiSelect
+              label="Hồ sơ thiết bị"
+              options={
+                selectedMatrix?.profiles
                   ?.filter((item) => item.enabled !== false)
-                  .map((profile) => (
-                    <option key={profile.key} value={profile.key}>
-                      {profile.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
+                  .map((profile) => ({ value: profile.key, label: profile.name })) || []
+              }
+              searchPlaceholder="Tìm hồ sơ thiết bị"
+              value={profileKeys}
+              onChange={setProfileKeys}
+            />
             <button className="apple-button" type="submit">
               Gán ma trận thiết bị
             </button>

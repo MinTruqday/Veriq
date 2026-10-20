@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import FormalReviewPanel from "../../components/FormalReviewPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
@@ -7,7 +8,6 @@ import {
   ErrorState,
   ProjectCrumb,
   WorkspacePage,
-  WorkspaceSectionNav,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
@@ -23,6 +23,8 @@ import RequirementTracePanel from "./requirements/RequirementTracePanel";
 import RequirementsListPanel from "./requirements/RequirementsListPanel";
 import TestAdequacyPanel from "./design/TestAdequacyPanel";
 import RequirementClarificationPanel from "./requirements/RequirementClarificationPanel";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
+import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
   createInitialRequirementForm,
   parseAcceptanceCriteria,
@@ -31,6 +33,7 @@ import {
 } from "./requirements/requirements.model";
 
 export default function RequirementsPage({ project, section, workspaceView }) {
+  const { user } = useAuth();
   const { ask, dialog } = useActionDialog();
   const sectionKey = section[0] || "";
   const requirementId = sectionKey && !["new", "import"].includes(sectionKey) ? sectionKey : "";
@@ -39,6 +42,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const [customFields, setCustomFields] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [detailTab, setDetailTab] = useState("requirement");
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createInitialRequirementForm);
   const [creating, setCreating] = useState(false);
@@ -160,6 +164,15 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     (permission) => project.current_permissions?.includes(permission),
     [project.current_permissions],
   );
+  useEffect(() => {
+    setDetailTab(
+      workspaceView === "assurance"
+        ? "assurance"
+        : workspaceView === "clarifications"
+          ? "clarifications"
+          : "requirement",
+    );
+  }, [selected?._id, workspaceView]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -766,7 +779,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         .filter(Boolean);
     }
     if (defaultParts.length < 2) {
-      defaultParts = [sourceText, "Nội dung yêu cầu mới cần hoàn thiện"];
+      defaultParts = [sourceText, ""];
     }
     const currentCriteria = (current.acceptance_criteria || []).map((item) =>
       docText(item.content_doc),
@@ -795,10 +808,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           name: "acceptance",
           label: "Tiêu chí từng yêu cầu phân cách bằng một dòng ---",
           initialValue: defaultParts
-            .map(
-              (_, index) =>
-                currentCriteria[index] || currentCriteria[0] || "Cần bổ sung tiêu chí chấp nhận",
-            )
+            .map((_, index) => currentCriteria[index] || currentCriteria[0] || "")
             .join("\n---\n"),
           required: true,
           multiline: true,
@@ -806,7 +816,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         {
           name: "reason",
           label: "Lý do tách",
-          initialValue: "Tách các trách nhiệm nghiệp vụ độc lập để quản lý và truy vết chính xác",
+          initialValue: "",
           required: true,
           multiline: true,
         },
@@ -1052,11 +1062,20 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       setError(messageOf(reason));
     }
   };
+  const detailTabs = [
+    { id: "requirement", label: "Yêu cầu" },
+    ...(can("testcase.read") ? [{ id: "assurance", label: "Hồ sơ đảm bảo" }] : []),
+    { id: "clarifications", label: "Phiếu làm rõ" },
+    { id: "history", label: "Lịch sử và rà soát" },
+  ];
+  const activeDetailTab = detailTabs.some((item) => item.id === detailTab)
+    ? detailTab
+    : detailTabs[0].id;
   return (
     <WorkspacePage
       title={
         selected
-          ? `${selected.requirement_key} ${current?.title || ""}`
+          ? current?.title || selected.requirement_key
           : workspaceView === "assurance"
             ? "Hồ sơ đảm bảo yêu cầu"
             : workspaceView === "clarifications"
@@ -1064,16 +1083,14 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               : "Yêu cầu"
       }
       description={
-        !selected && workspaceView === "assurance"
-          ? "Chọn một yêu cầu để xem nghĩa vụ kiểm thử, bằng chứng, quyết định QA và tác động thay đổi"
-          : !selected && workspaceView === "clarifications"
-            ? "Chọn một yêu cầu để xem và xử lý các phiếu làm rõ có dẫn nguồn"
-            : undefined
+        selected
+          ? `${selected.requirement_key}${current?.version ? ` · Phiên bản ${current.version}` : ""}`
+          : undefined
       }
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
-          {!selected && can("requirement_document.upload") && (
+          {!selected && !workspaceView && can("requirement_document.upload") && (
             <button
               type="button"
               className="secondary-button"
@@ -1085,7 +1102,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               Nhập tài liệu
             </button>
           )}
-          {!selected && can("requirement.create") && (
+          {!selected && !workspaceView && can("requirement.create") && (
             <button
               type="button"
               className="apple-button"
@@ -1100,92 +1117,109 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         </div>
       }
     >
-      {error && !importing && <ErrorState message={error} />}
-      <WorkspaceSectionNav
-        current={workspaceView || "requirements"}
-        items={[
-          { id: "requirements", label: "Yêu cầu", href: `/du-an/${project._id}/yeu-cau` },
-          { id: "assurance", label: "Hồ sơ đảm bảo", href: `/du-an/${project._id}/ho-so-dam-bao` },
-          {
-            id: "clarifications",
-            label: "Phiếu làm rõ",
-            href: `/du-an/${project._id}/phieu-lam-ro`,
-          },
-          { id: "changes", label: "Tác động thay đổi", href: `/du-an/${project._id}/thay-doi` },
-        ]}
-      />
+      {error && !importing && !creating && <ErrorState message={error} />}
       {selected ? (
         <>
-          <RequirementCurrentVersionPanel
-            current={current}
-            selected={selected}
-            draft={draft}
-            members={members}
-            customFields={customFields}
-            saveState={saveState}
-            can={can}
-            checkingWithAi={checkingWithAi}
-            onCheckingChange={setCheckingWithAi}
-            onLint={setLint}
-            onError={setError}
-            saveDraft={saveDraft}
-            onCreateVersion={createVersion}
-            onSplit={splitBaseline}
-            ask={ask}
-            reload={load}
-            onReview={review}
-            onDraftChange={changeDraft}
+          <SegmentedTabs
+            label="Nội dung yêu cầu"
+            value={activeDetailTab}
+            onChange={setDetailTab}
+            tabs={detailTabs}
           />
-          <RequirementTracePanel current={current} sourceDocuments={sourceDocuments} />
-          <TestAdequacyPanel
-            requirementVersionId={current._id}
-            canReview={project.current_membership?.project_role === "QA"}
-          />
-          <RequirementClarificationPanel
-            requirementVersionId={current._id}
-            role={project.current_membership?.project_role}
-          />
-          <RequirementQualityPanel
-            lint={lint}
-            current={current}
-            selected={selected}
-            can={can}
-            onSelectedChange={setSelected}
-            onLintChange={setLint}
-            onError={setError}
-          />
-          <RequirementHistoryPanel
-            projectId={project._id}
-            selected={selected}
-            versions={versions}
-            compareFrom={compareFrom}
-            setCompareFrom={setCompareFrom}
-            compareTo={compareTo}
-            setCompareTo={setCompareTo}
-            comparison={comparison}
-            setComparison={setComparison}
-            onError={setError}
-          />
-          <ReviewCommentsPanel
-            projectId={project._id}
-            artifactType="requirement_version"
-            artifactId={current._id}
-          />
-          {project.current_permissions?.includes("reviewsession.read") && (
-            <FormalReviewPanel
-              project={project}
-              artifactType="REQUIREMENT"
-              artifactId={selected._id}
-              artifactVersionId={current._id}
-              reviewType="REQUIREMENT_REVIEW"
+          <div className="space-y-6" hidden={activeDetailTab !== "requirement"}>
+            <RequirementCurrentVersionPanel
+              current={current}
+              selected={selected}
+              draft={draft}
+              members={members}
+              customFields={customFields}
+              saveState={saveState}
+              can={can}
+              checkingWithAi={checkingWithAi}
+              onCheckingChange={setCheckingWithAi}
+              onLint={setLint}
+              onError={setError}
+              saveDraft={saveDraft}
+              onCreateVersion={createVersion}
+              onSplit={splitBaseline}
+              ask={ask}
+              reload={load}
+              onReview={review}
+              onDraftChange={changeDraft}
             />
+            {can("requirement_document.read") && (
+              <RequirementTracePanel current={current} sourceDocuments={sourceDocuments} />
+            )}
+            <RequirementQualityPanel
+              lint={lint}
+              current={current}
+              selected={selected}
+              can={can}
+              onSelectedChange={setSelected}
+              onLintChange={setLint}
+              onError={setError}
+            />
+          </div>
+          {can("testcase.read") && (
+            <div className="space-y-6" hidden={activeDetailTab !== "assurance"}>
+              <TestAdequacyPanel
+                requirementVersionId={current._id}
+                canDecide={
+                  project.current_membership?.project_role === "QA" && can("testcase.read")
+                }
+                canCreateClarification={
+                  project.current_membership?.project_role === "QA" && can("requirement.review")
+                }
+                canApprove={
+                  project.current_membership?.project_role === "QA" && can("testcase.review")
+                }
+                canSubmit={can("testcase.submit_review")}
+              />
+            </div>
           )}
-          <CollaborationPanel
-            project={project}
-            artifactType="requirement"
-            artifactId={selected._id}
-            onResolved={load}
-          />
+          <div className="space-y-6" hidden={activeDetailTab !== "clarifications"}>
+            <RequirementClarificationPanel
+              requirementVersionId={current._id}
+              role={project.current_membership?.project_role}
+              permissions={project.current_permissions || []}
+            />
+          </div>
+          <div className="space-y-6" hidden={activeDetailTab !== "history"}>
+            <RequirementHistoryPanel
+              projectId={project._id}
+              selected={selected}
+              versions={versions}
+              compareFrom={compareFrom}
+              setCompareFrom={setCompareFrom}
+              compareTo={compareTo}
+              setCompareTo={setCompareTo}
+              comparison={comparison}
+              setComparison={setComparison}
+              onError={setError}
+            />
+            <ReviewCommentsPanel
+              projectId={project._id}
+              artifactType="requirement_version"
+              artifactId={current._id}
+              permissions={project.current_permissions || []}
+              currentUserId={project.current_membership?.user_id}
+            />
+            {project.current_permissions?.includes("reviewsession.read") && (
+              <FormalReviewPanel
+                project={project}
+                artifactType="REQUIREMENT"
+                artifactId={selected._id}
+                artifactVersionId={current._id}
+                reviewType="REQUIREMENT_REVIEW"
+              />
+            )}
+            <CollaborationPanel
+              project={project}
+              artifactType="requirement"
+              artifactId={selected._id}
+              onResolved={load}
+            />
+          </div>
         </>
       ) : (
         <>
@@ -1202,18 +1236,30 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             selectedIds={selectedIds}
             setSelectedIds={setSelectedIds}
             pageInfo={pageInfo}
-            can={can}
+            can={workspaceView ? () => false : can}
             onBulkTags={bulkUpdateTags}
             onScanDuplicates={scanDuplicates}
             onMerge={mergeBaselines}
             onBulkArchive={bulkArchiveRequirements}
+            onSelect={(item) => {
+              const sectionSlug =
+                workspaceView === "assurance"
+                  ? PROJECT_SECTION_SLUGS.assurance
+                  : workspaceView === "clarifications"
+                    ? PROJECT_SECTION_SLUGS.clarifications
+                    : PROJECT_SECTION_SLUGS.requirements;
+              window.location.assign(projectRoute(project._id, sectionSlug, item._id));
+            }}
+            title={workspaceView === "clarifications" ? "Chọn yêu cầu" : "Danh sách yêu cầu"}
           />
-          <RequirementDuplicatePanel result={duplicateScan} />
-          {can("requirement_document.read") && (
+          {!workspaceView && <RequirementDuplicatePanel result={duplicateScan} />}
+          {!workspaceView && can("requirement_document.read") && (
             <RequirementSourceDocumentsPanel
               items={sourceDocuments}
               members={members}
               can={can}
+              currentUserId={user?._id || user?.id || ""}
+              isPlatformAdmin={user?.system_role === "ADMIN"}
               ask={ask}
               reload={load}
               onError={setError}

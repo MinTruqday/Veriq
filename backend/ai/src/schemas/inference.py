@@ -4,12 +4,12 @@ from typing import Annotated, Any, List, Literal, get_args
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-class TestingAssistanceStatus(str, Enum):
+class TestingAutomationStatus(str, Enum):
     SUCCESS = "SUCCESS"
     DEGRADED = "DEGRADED"
 
 
-class TestingAssistanceDegradedMode(str, Enum):
+class TestingAutomationDegradedMode(str, Enum):
     OUTPUT = "DEGRADED_OUTPUT"
     PROVIDER = "DEGRADED_AI"
 
@@ -51,7 +51,7 @@ class TestingEvidence(BaseModel):
         return self
 
 
-class TestingAssistanceRequest(BaseModel):
+class TestingAutomationRequest(BaseModel):
     capability: str = Field(min_length=1, max_length=100, description="Testing capability to perform")
     project_id: str = Field(
         min_length=1, max_length=128, description="Project identifier that bounds the operation"
@@ -71,7 +71,7 @@ class TestingAssistanceRequest(BaseModel):
         return self
 
 
-class TestingAssistanceResult(BaseModel):
+class TestingAutomationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     capability: str = Field(description="Executed testing capability")
@@ -100,10 +100,10 @@ class TestingAssistanceResult(BaseModel):
     warnings: List[str] = Field(
         default_factory=list, max_length=50, description="Evidence limitation and conflict warnings"
     )
-    status: TestingAssistanceStatus = Field(
-        default=TestingAssistanceStatus.SUCCESS, description="AI capability operating status"
+    status: TestingAutomationStatus = Field(
+        default=TestingAutomationStatus.SUCCESS, description="AI capability operating status"
     )
-    degraded_mode: TestingAssistanceDegradedMode | None = Field(
+    degraded_mode: TestingAutomationDegradedMode | None = Field(
         default=None, description="Fallback mode when the provider or retrieval is unavailable"
     )
     provider: str = Field(min_length=1, max_length=100, description="Provider that produced the result")

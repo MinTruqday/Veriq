@@ -8,7 +8,9 @@ from pymongo.errors import DuplicateKeyError
 from src.clients.storage import storage_client
 from src.core.configuration import settings
 from src.core.common import audit, get_project, get_project_entity, new_id, now
+from src.core.auth import ai_automation_context
 from src.repositories.requirement_document import requirement_document_repository
+from src.clients.ai_automation import emit_document_ingested
 from src.repositories.common import common_repository
 from src.clients.project_knowledge import index_artifact, remove_artifact
 from src.modules.requirements.services.requirement_import import (
@@ -41,14 +43,28 @@ async def validate_document_recipients(project_id, shared_with):
 
 async def require_document_access(document, user, permission):
     await get_project(document["project_id"], user, permission)
+    if not can_read_requirement_document(document, user):
+        raise HTTPException(status_code=403, detail={"code": "DOCUMENT_ACCESS_DENIED"})
+    return document
+
+
+def can_read_requirement_document(document, user):
     if user.is_system_admin or document.get("created_by") == user.id:
-        return document
+        return True
+    automation = ai_automation_context.get()
+    if (
+        automation
+        and automation.get("principal_id") == user.id
+        and automation.get("initiator_id") == document.get("created_by")
+        and document.get("ai_enabled") is True
+    ):
+        return True
     visibility = document.get("visibility", "private")
     if visibility == "project" or (
         visibility == "shared" and user.id in set(document.get("shared_with", []))
     ):
-        return document
-    raise HTTPException(status_code=403, detail={"code": "DOCUMENT_ACCESS_DENIED"})
+        return True
+    return False
 
 
 async def require_document_owner(document, user):
@@ -126,6 +142,7 @@ async def create_requirement_document_record(project_id, payload, user):
             )
             raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
         document = await requirement_document_repository.find(document["_id"], project_id)
+        await emit_document_ingested(document, user)
     return document
 
 
@@ -314,6 +331,7 @@ async def upload_requirement_document_record(
         document = await requirement_document_repository.find(document_id, project_id)
         if not indexed:
             return RequirementDocumentResult(document, 'DEGRADED', 'KNOWLEDGE_INDEX_FAILED')
+        await emit_document_ingested(document, user)
     return RequirementDocumentResult(document)
 
 
@@ -328,13 +346,7 @@ async def list_requirement_document_records(project_id, status, query_text, limi
     return [
         document
         for document in documents
-        if user.is_system_admin
-        or document.get("created_by") == user.id
-        or document.get("visibility", "private") == "project"
-        or (
-            document.get("visibility") == "shared"
-            and user.id in set(document.get("shared_with", []))
-        )
+        if can_read_requirement_document(document, user)
     ]
 
 
@@ -466,6 +478,7 @@ async def update_requirement_document_ai_read(document_id, payload, user):
                     {"ai_enabled": False, "updated_at": now()},
                 )
             raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
+        await emit_document_ingested(updated, user)
     else:
         await remove_artifact(updated["project_id"], updated["_id"])
         await requirement_document_repository.set_index_result(

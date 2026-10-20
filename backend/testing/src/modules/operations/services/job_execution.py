@@ -8,7 +8,7 @@ from src.schemas.contracts.utility import GenerateInput
 from src.modules.quality.services.change_set import create_change_set_record
 from src.modules.quality.services.impact_analysis import create_impact_analysis_record
 from src.clients.project_knowledge import index_artifact
-from src.modules.design.services.test_case_assistance import (
+from src.modules.design.services.test_case_automation import (
     find_duplicate_test_case_records,
     generate_test_case_draft_records,
 )

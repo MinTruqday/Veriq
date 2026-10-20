@@ -14,7 +14,7 @@ export default function ExitCriteriaPanel({ snapshot, canOverride, onOverride })
       </div>
       <DataTable
         items={items}
-        empty="Kế hoạch chưa cấu hình quality target"
+        empty="Kế hoạch chưa cấu hình mục tiêu chất lượng"
         columns={[
           { key: "criterion", label: "Tiêu chí" },
           {

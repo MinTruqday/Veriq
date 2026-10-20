@@ -10,6 +10,7 @@ export default function DataSetsPanel({
   items,
   isCreating,
   setCreating,
+  saving,
   form,
   setForm,
   onSubmit,
@@ -32,7 +33,10 @@ export default function DataSetsPanel({
       {can("testcase.create") && (
         <DataSetCreateModal
           isOpen={isCreating}
-          onClose={() => setCreating(false)}
+          onClose={() => {
+            if (!saving) setCreating(false);
+          }}
+          saving={saving}
           form={form}
           setForm={setForm}
           onSubmit={onSubmit}

@@ -6,7 +6,6 @@ from typing import Any, Callable, Literal
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from src.schemas.agent import (
-    AgentApprovalStatus,
     AgentTask,
     CapabilityDomain,
     ToolAccess,
@@ -21,7 +20,6 @@ def with_tool_access(
     domains: tuple[CapabilityDomain, ...],
     action: Literal["READ", "PROPOSE", "MUTATE"],
     permission: str,
-    requires_approval: bool = False,
     verification: dict[str, Any] | None = None,
     owner_domain: CapabilityDomain | None = None,
     label: str | None = None,
@@ -34,7 +32,6 @@ def with_tool_access(
             "owner_domain": owner_domain,
             "action": action,
             "permission": permission,
-            "requires_approval": requires_approval,
             "verification": verification,
             "label": label or function.__name__,
             "user_selectable": user_selectable,
@@ -60,7 +57,7 @@ def registered_tools():
     return {item.name: item for item in tools if tool_access(item)}
 
 
-def authorize_tool(task, tool_name, permissions, approval_status=None):
+def authorize_tool(task, tool_name, permissions):
     access = tool_access(registered_tools().get(tool_name))
     if not access:
         return ToolDecision(allowed=False, reason_code="TOOL_UNAVAILABLE")
@@ -68,8 +65,6 @@ def authorize_tool(task, tool_name, permissions, approval_status=None):
         return ToolDecision(allowed=False, reason_code="TOOL_DOMAIN_DENIED", access=access)
     if access.permission not in permissions:
         return ToolDecision(allowed=False, reason_code="PERMISSION_DENIED", access=access)
-    if access.requires_approval and approval_status != AgentApprovalStatus.APPROVED:
-        return ToolDecision(allowed=False, reason_code="APPROVAL_REQUIRED", access=access)
     return ToolDecision(allowed=True, reason_code="ALLOWED", access=access)
 
 
@@ -106,12 +101,28 @@ def resolved_value(reference, task, arguments, result):
     return nested_value(values.get(source, {}), path)
 
 
-async def verify_application(task, tool_name, arguments, outcome, token):
+async def verify_application(
+    task, tool_name, arguments, outcome, token, automation_run_id=None
+):
     access = tool_access(registered_tools().get(tool_name))
     specification = access.verification if access else None
-    if not specification:
-        return {"status": ToolExecutionStatus.NOT_REQUIRED}
     result = outcome.get("result") or {}
+    if not specification:
+        composite = result.get("verification") if isinstance(result, dict) else None
+        if not isinstance(composite, dict):
+            return {"status": ToolExecutionStatus.NOT_REQUIRED}
+        verified = (
+            composite.get("status") == ToolExecutionStatus.COMPLETED
+            and composite.get("project_id") == task.project_id
+            and bool(composite.get("artifact_ids"))
+        )
+        return {
+            "status": ToolExecutionStatus.COMPLETED if verified else ToolExecutionStatus.FAILED,
+            "reason_code": "COMPOSITE_READBACK_VERIFIED" if verified else "COMPOSITE_READBACK_INVALID",
+            "project_id": composite.get("project_id"),
+            "artifact_ids": composite.get("artifact_ids", []),
+            "checks": composite.get("checks", []),
+        }
     identifier = resolved_value(specification.identifier, task, arguments, result)
     if not identifier:
         return {
@@ -120,10 +131,21 @@ async def verify_application(task, tool_name, arguments, outcome, token):
         }
     from src.tools.testing import call, parse
 
-    config = RunnableConfig(
-        configurable={"token": token, "project_id": task.project_id, "run_id": task.run_id}
+    configurable = {
+        "token": token,
+        "project_id": task.project_id,
+        "run_id": task.run_id,
+    }
+    if automation_run_id:
+        configurable["automation_run_id"] = automation_run_id
+    config = RunnableConfig(configurable=configurable)
+    readback = parse(
+        await call(
+            "GET",
+            specification.path.format(identifier=identifier, project_id=task.project_id),
+            config,
+        )
     )
-    readback = parse(await call("GET", specification.path.format(identifier=identifier), config))
     if not readback:
         return {
             "status": ToolExecutionStatus.FAILED,
@@ -153,10 +175,10 @@ async def invoke_tool(
     arguments: dict,
     permissions: list[str],
     token: str,
-    approval_status: str | None = None,
     evidence: list[dict] | None = None,
+    automation_run_id: str | None = None,
 ):
-    decision = authorize_tool(task, tool_name, permissions, approval_status)
+    decision = authorize_tool(task, tool_name, permissions)
     if not decision.allowed:
         return {
             "status": ToolExecutionStatus.DENIED,
@@ -186,14 +208,17 @@ async def invoke_tool(
             "reason_code": "TOOL_ARGUMENT_INVALID",
             "tool_name": tool_name,
         }
-    config = RunnableConfig(
-        configurable={
+    configurable = {
             "token": token,
             "project_id": task.project_id,
             "run_id": task.run_id,
+            "user_id": task.user_id,
             "evidence": evidence or [],
+            "permissions": permissions,
         }
-    )
+    if automation_run_id:
+        configurable["automation_run_id"] = automation_run_id
+    config = RunnableConfig(configurable=configurable)
     started = time.monotonic()
     try:
         result = await tool.ainvoke(arguments, config=config)
@@ -208,10 +233,20 @@ async def invoke_tool(
             "authentication_required",
             "invalid_payload",
             "qa_operation_failed",
+            "automation_blocked",
+            "automation_partial_failure",
+            "degraded",
+            "insufficient_evidence",
         }
-        if isinstance(parsed, dict) and parsed.get("status") in failed_statuses:
+        result_status = (
+            str(parsed.get("status") or "").casefold()
+            if isinstance(parsed, dict)
+            else ""
+        )
+        if isinstance(parsed, dict) and result_status in failed_statuses:
             reason_code = (
                 (parsed.get("error") or {}).get("code")
+                or parsed.get("reason_code")
                 or str(parsed.get("status")).upper()
             )
             outcome = {

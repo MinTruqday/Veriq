@@ -16,12 +16,17 @@ export default function EnvironmentIncidentPanel({ project }) {
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     try {
+      const permissions = new Set(project.current_permissions || []);
       const [result, environmentValues, buildValues, runValues, memberValues] = await Promise.all([
         testingApi.listEnvironmentIncidents(project._id),
-        testingApi.listEnvironments(project._id),
-        testingApi.listBuilds(project._id),
-        testingApi.listRuns(project._id),
-        testingApi.listMembers(project._id),
+        permissions.has("environment.read")
+          ? testingApi.listEnvironments(project._id)
+          : Promise.resolve([]),
+        permissions.has("build.read") ? testingApi.listBuilds(project._id) : Promise.resolve([]),
+        permissions.has("testrun.read") ? testingApi.listRuns(project._id) : Promise.resolve([]),
+        permissions.has("project.members.read")
+          ? testingApi.listMembers(project._id)
+          : Promise.resolve([]),
       ]);
       setItems(result.items || []);
       setEnvironments(environmentValues);
@@ -31,13 +36,13 @@ export default function EnvironmentIncidentPanel({ project }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [project._id]);
+  }, [project._id, project.current_permissions]);
   useEffect(() => {
     void load();
   }, [load]);
   const create = async () => {
     const answer = await ask({
-      title: "Ghi nhận incident môi trường",
+      title: "Ghi nhận sự cố môi trường",
       confirmLabel: "Ghi nhận",
       fields: [
         {
@@ -49,17 +54,21 @@ export default function EnvironmentIncidentPanel({ project }) {
             ...environments.map((item) => ({ value: item._id, label: item.name })),
           ],
         },
-        {
-          name: "build_id",
-          label: "Bản dựng",
-          options: [
-            { value: "", label: "Không gắn bản dựng" },
-            ...builds.map((item) => ({
-              value: item._id,
-              label: `${item.identifier} ${item.version}`,
-            })),
-          ],
-        },
+        ...(can("build.read")
+          ? [
+              {
+                name: "build_id",
+                label: "Bản dựng",
+                options: [
+                  { value: "", label: "Không gắn bản dựng" },
+                  ...builds.map((item) => ({
+                    value: item._id,
+                    label: `${item.identifier} ${item.version}`,
+                  })),
+                ],
+              },
+            ]
+          : []),
         {
           name: "severity",
           label: "Mức độ",
@@ -85,14 +94,18 @@ export default function EnvironmentIncidentPanel({ project }) {
           ].map((value) => ({ value, label: value })),
         },
         { name: "description", label: "Mô tả", required: true, multiline: true },
-        {
-          name: "affected_run_ids",
-          label: "Mã run bị ảnh hưởng cách nhau bởi dấu phẩy",
-          initialValue: runs
-            .filter((item) => item.status === "IN_PROGRESS")
-            .map((item) => item._id)
-            .join(","),
-        },
+        ...(can("testrun.read")
+          ? [
+              {
+                name: "affected_run_ids",
+                label: "Mã lần chạy bị ảnh hưởng, phân cách bằng dấu phẩy",
+                initialValue: runs
+                  .filter((item) => item.status === "IN_PROGRESS")
+                  .map((item) => item._id)
+                  .join(","),
+              },
+            ]
+          : []),
         {
           name: "owner_id",
           label: "Phụ trách",
@@ -114,7 +127,7 @@ export default function EnvironmentIncidentPanel({ project }) {
         idempotency_key: crypto.randomUUID(),
         build_id: answer.build_id || null,
         observed_at: new Date().toISOString(),
-        affected_run_ids: answer.affected_run_ids
+        affected_run_ids: String(answer.affected_run_ids || "")
           .split(",")
           .map((item) => item.trim())
           .filter(Boolean),
@@ -154,7 +167,9 @@ export default function EnvironmentIncidentPanel({ project }) {
     <Panel
       title="Sự cố môi trường"
       actions={
-        can("environmentincident.create") ? (
+        can("environmentincident.create") &&
+        can("environment.read") &&
+        can("project.members.read") ? (
           <button className="apple-button" type="button" onClick={create}>
             Ghi nhận incident
           </button>
@@ -169,7 +184,7 @@ export default function EnvironmentIncidentPanel({ project }) {
       )}
       <DataTable
         items={items}
-        empty="Chưa có incident môi trường"
+        empty="Chưa có sự cố môi trường"
         columns={[
           { key: "incident_key", label: "Mã" },
           {

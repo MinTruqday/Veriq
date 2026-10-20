@@ -1,9 +1,10 @@
 import Link from "next/link";
 import Image from "next/image";
+
 export default function AuthFrame({ title, description, children, footer, width = "sm" }) {
   return (
     <main className="min-h-[100dvh] bg-[#eef3ef] px-4 py-5 sm:px-6 md:px-10 md:py-8">
-      <div className="mx-auto flex w-full max-w-[1180px] items-center justify-between">
+      <div className="mx-auto flex min-w-0 w-full max-w-[1180px] items-center justify-between">
         <Link
           href="/"
           className="flex items-center gap-3 text-[19px] font-semibold tracking-[-0.035em] text-ink"
@@ -25,9 +26,9 @@ export default function AuthFrame({ title, description, children, footer, width 
           Về trang chủ
         </Link>
       </div>
-      <div className="mx-auto flex min-h-[calc(100dvh-104px)] w-full max-w-[1180px] items-center justify-center py-8">
+      <div className="mx-auto flex min-h-[calc(100dvh-104px)] min-w-0 w-full max-w-[1180px] items-center justify-center py-6 sm:py-8">
         <section
-          className={`w-full ${width === "md" ? "max-w-[520px]" : "max-w-[500px]"} rounded-3xl border border-border bg-surface p-6 shadow-[0_24px_70px_rgba(48,47,42,0.12)] sm:p-9`}
+          className={`min-w-0 w-full ${width === "md" ? "max-w-[520px]" : "max-w-[500px]"} rounded-3xl bg-surface p-6 shadow-[0_24px_70px_rgba(48,47,42,0.12)] sm:p-9`}
         >
           <header className="mb-6">
             <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink">

@@ -20,15 +20,25 @@ function formatDate(value) {
 }
 export default function AnnouncementsPage() {
   const [filter, setFilter] = useState("all");
-  const { items, unread, loading, processing, error, reload, markRead, markAllRead, remove } =
-    useAnnouncementsPage();
+  const {
+    items,
+    unread,
+    loading,
+    processing,
+    error,
+    loadFailed,
+    reload,
+    markRead,
+    markAllRead,
+    remove,
+  } = useAnnouncementsPage();
   const visible = useMemo(
     () => (filter === "unread" ? items.filter((item) => !item.is_read) : items),
     [filter, items],
   );
   if (loading) return <PageLoader rows={6} />;
   return (
-    <div className="w-full">
+    <div className="mx-auto w-full max-w-[1480px] min-w-0">
       <PageHeader
         title="Thông báo"
         meta={`${unread} chưa đọc`}
@@ -42,7 +52,7 @@ export default function AnnouncementsPage() {
       {error && (
         <div className="mb-6">
           <InlineState
-            title="Không thể cập nhật thông báo"
+            title={loadFailed ? "Không thể tải thông báo" : "Không thể cập nhật thông báo"}
             detail={error}
             tone="danger"
             action={
@@ -66,7 +76,7 @@ export default function AnnouncementsPage() {
         />
       </div>
 
-      {visible.length === 0 ? (
+      {loadFailed ? null : visible.length === 0 ? (
         <EmptyState
           text={filter === "unread" ? "Không có thông báo chưa đọc" : "Chưa có thông báo"}
         />

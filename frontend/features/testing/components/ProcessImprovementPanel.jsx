@@ -35,6 +35,7 @@ export default function ProcessImprovementPanel({ project }) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
+      const permissions = new Set(project.current_permissions || []);
       const [
         proposalResult,
         analysisResult,
@@ -44,11 +45,21 @@ export default function ProcessImprovementPanel({ project }) {
         completionResult,
       ] = await Promise.all([
         testingApi.listProcessImprovements(project._id),
-        testingApi.listStatisticalQualityAnalyses(project._id),
-        testingApi.listMeasurementDefinitions(project._id),
-        testingApi.listMeasurementSnapshots(project._id),
-        testingApi.listCausalAnalyses(project._id),
-        testingApi.listTestCompletionReports(project._id, { page_size: 200 }),
+        permissions.has("statisticalquality.read")
+          ? testingApi.listStatisticalQualityAnalyses(project._id)
+          : Promise.resolve({ items: [] }),
+        permissions.has("measurement.read")
+          ? testingApi.listMeasurementDefinitions(project._id)
+          : Promise.resolve({ items: [] }),
+        permissions.has("measurement.read")
+          ? testingApi.listMeasurementSnapshots(project._id)
+          : Promise.resolve({ items: [] }),
+        permissions.has("causalanalysis.read")
+          ? testingApi.listCausalAnalyses(project._id)
+          : Promise.resolve({ items: [] }),
+        permissions.has("testcompletion.read")
+          ? testingApi.listTestCompletionReports(project._id, { page_size: 200 })
+          : Promise.resolve({ items: [] }),
       ]);
       setProposals(proposalResult.items || []);
       setAnalyses(analysisResult.items || []);
@@ -72,7 +83,7 @@ export default function ProcessImprovementPanel({ project }) {
     } finally {
       setLoading(false);
     }
-  }, [project._id]);
+  }, [project._id, project.current_permissions]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -426,21 +437,21 @@ export default function ProcessImprovementPanel({ project }) {
             ]}
           />
           {selected && (
-            <div className="border-t border-slate-200 p-5">
+            <div className="border-t border-border p-5">
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-slate-500">Thay đổi đề xuất</p>
-                  <p className="mt-1 text-sm text-slate-800">{selected.proposed_change}</p>
+                  <p className="text-xs font-semibold uppercase text-ink-muted">Thay đổi đề xuất</p>
+                  <p className="mt-1 text-sm text-ink">{selected.proposed_change}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-slate-500">Hiệu quả kỳ vọng</p>
-                  <p className="mt-1 text-sm text-slate-800">{selected.expected_effect}</p>
+                  <p className="text-xs font-semibold uppercase text-ink-muted">Hiệu quả kỳ vọng</p>
+                  <p className="mt-1 text-sm text-ink">{selected.expected_effect}</p>
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {selected.status === "PROPOSED" && can("processimprovement.update") && (
                   <button className="secondary-button" type="button" onClick={linkSources}>
-                    Liên kết bài học và RCA
+                    Liên kết bài học và phân tích nguyên nhân gốc
                   </button>
                 )}
                 {selected.status === "PROPOSED" && can("processimprovement.approve") && (
@@ -545,39 +556,41 @@ export default function ProcessImprovementPanel({ project }) {
               )}
             </div>
           )}
-          <div className="border-t border-slate-200">
-            <DataTable
-              items={analyses}
-              empty="Chưa đủ dữ liệu để tạo biểu đồ kiểm soát"
-              columns={[
-                { key: "baseline_label", label: "Cửa sổ cơ sở" },
-                { key: "measurement_key", label: "Chỉ số" },
-                { key: "center_line", label: "Đường trung tâm" },
-                { key: "lower_control_limit", label: "Giới hạn dưới" },
-                { key: "upper_control_limit", label: "Giới hạn trên" },
-                {
-                  key: "process_status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.process_status} />,
-                },
-                {
-                  key: "actions",
-                  label: "Thao tác",
-                  render: (item) => (
-                    <button
-                      className="text-button"
-                      type="button"
-                      onClick={() => setSelectedAnalysis(item)}
-                    >
-                      Xem biểu đồ
-                    </button>
-                  ),
-                },
-              ]}
-            />
-          </div>
+          {can("statisticalquality.read") && (
+            <div className="border-t border-border">
+              <DataTable
+                items={analyses}
+                empty="Chưa đủ dữ liệu để tạo biểu đồ kiểm soát"
+                columns={[
+                  { key: "baseline_label", label: "Cửa sổ cơ sở" },
+                  { key: "measurement_key", label: "Chỉ số" },
+                  { key: "center_line", label: "Đường trung tâm" },
+                  { key: "lower_control_limit", label: "Giới hạn dưới" },
+                  { key: "upper_control_limit", label: "Giới hạn trên" },
+                  {
+                    key: "process_status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.process_status} />,
+                  },
+                  {
+                    key: "actions",
+                    label: "Thao tác",
+                    render: (item) => (
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() => setSelectedAnalysis(item)}
+                      >
+                        Xem biểu đồ
+                      </button>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          )}
           {selectedAnalysis && (
-            <div className="space-y-4 border-t border-slate-200 p-5">
+            <div className="space-y-4 border-t border-border p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{selectedAnalysis.baseline_label}</h3>
@@ -609,17 +622,17 @@ export default function ProcessImprovementPanel({ project }) {
             </div>
           )}
           {comparison && (
-            <div className="grid gap-3 border-t border-slate-200 p-5 sm:grid-cols-3">
+            <div className="grid gap-3 border-t border-border p-5 sm:grid-cols-3">
               <div>
-                <p className="text-xs uppercase text-slate-500">Chênh lệch trung tâm</p>
+                <p className="text-xs uppercase text-ink-muted">Chênh lệch trung tâm</p>
                 <p className="text-lg font-semibold">{comparison.center_line_delta}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-500">Ngoại lệ trước</p>
+                <p className="text-xs uppercase text-ink-muted">Ngoại lệ trước</p>
                 <p className="text-lg font-semibold">{comparison.outlier_count_before}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-500">Ngoại lệ sau</p>
+                <p className="text-xs uppercase text-ink-muted">Ngoại lệ sau</p>
                 <p className="text-lg font-semibold">{comparison.outlier_count_after}</p>
               </div>
             </div>

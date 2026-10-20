@@ -11,7 +11,7 @@ export default function PreventiveActionTable({ items = [], canManage, onAssign,
   return (
     <DataTable
       items={items}
-      empty="Chưa có hành động CAPA"
+      empty="Chưa có hành động khắc phục và phòng ngừa"
       columns={[
         { key: "action_type", label: "Loại" },
         { key: "title", label: "Hành động" },
@@ -29,6 +29,7 @@ export default function PreventiveActionTable({ items = [], canManage, onAssign,
         {
           key: "action",
           label: "Thao tác",
+          hideWhenEmpty: true,
           render: (item) =>
             canManage ? (
               <div className="flex flex-wrap gap-2">

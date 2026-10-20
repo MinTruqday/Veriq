@@ -204,6 +204,7 @@ export default function ApiArtifactsPanel({
               {
                 key: "actions",
                 label: "Xử lý",
+                hideWhenEmpty: true,
                 render: (item) => (
                   <div className="flex flex-wrap gap-2">
                     {["PREVIEW_READY", "REVIEWED"].includes(item.status) &&

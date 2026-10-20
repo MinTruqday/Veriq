@@ -30,24 +30,33 @@ export default function ProjectNotificationsPanel({ project }) {
   const [artifactId, setArtifactId] = useState("");
   const [error, setError] = useState("");
   const can = (permission) => project.current_permissions?.includes(permission);
+  const canManageWatches = can("notification.watch.manage");
+  const canManagePreferences = can("notification.preferences.manage");
   const canManageRules = project.current_permissions?.includes("notification.project_rule.manage");
   const load = useCallback(async () => {
     try {
-      const tasks = [
-        testingApi.listProjectNotificationWatches(project._id),
-        testingApi.getProjectNotificationPreferences(project._id),
-      ];
+      const tasks = [];
+      if (canManageWatches) {
+        tasks.push(testingApi.listProjectNotificationWatches(project._id));
+      }
+      if (canManagePreferences) {
+        tasks.push(testingApi.getProjectNotificationPreferences(project._id));
+      }
       if (canManageRules) {
         tasks.push(testingApi.getProjectNotificationRules(project._id));
       }
-      const [watchValues, preferenceValues, ruleValues] = await Promise.all(tasks);
-      setWatches(watchValues);
-      setPreferences({ ...DEFAULT_PREFERENCES, ...preferenceValues });
+      const values = await Promise.all(tasks);
+      let index = 0;
+      if (canManageWatches) setWatches(values[index++]);
+      if (canManagePreferences) {
+        setPreferences({ ...DEFAULT_PREFERENCES, ...values[index++] });
+      }
+      const ruleValues = canManageRules ? values[index] : null;
       if (ruleValues) setRules({ ...DEFAULT_RULES, ...ruleValues });
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [canManageRules, project._id]);
+  }, [canManagePreferences, canManageRules, canManageWatches, project._id]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -93,6 +102,9 @@ export default function ProjectNotificationsPanel({ project }) {
       setError(messageOf(reason));
     }
   };
+  if (!canManageWatches && !canManagePreferences && !canManageRules) {
+    return null;
+  }
   return (
     <Panel title="Thông báo dự án">
       {error && <ErrorState message={error} />}

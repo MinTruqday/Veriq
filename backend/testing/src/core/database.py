@@ -130,6 +130,7 @@ async def create_indexes():
     await db.planning_boards.create_index("project_id", unique=True)
     await db.planning_workflows.create_index("project_id", unique=True)
     await db.project_task_migrations.create_index("project_id", unique=True)
+    await db.ai_automation_outbox.create_index([("status", 1), ("next_attempt_at", 1)])
     await db.requirements.create_index([("project_id", 1), ("requirement_key", 1)], unique=True)
     await ensure_unique_index(db.requirement_documents, [("project_id", 1), ("created_by", 1), ("content_hash", 1)])
     indexes = await db.requirement_documents.list_indexes().to_list(length=1000)
@@ -430,6 +431,11 @@ async def create_indexes():
     )
     await db.test_suites.create_index([("project_id", 1), ("updated_at", -1)])
     await db.test_runs.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
+    await ensure_partial_unique_index(
+        db.test_runs,
+        [("project_id", 1), ("idempotency_key", 1)],
+        {"idempotency_key": {"$type": "string"}},
+    )
     await db.device_matrices.create_index([("project_id", 1), ("name", 1)], unique=True)
     await db.device_matrices.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
     await db.notification_subscriptions.create_index(

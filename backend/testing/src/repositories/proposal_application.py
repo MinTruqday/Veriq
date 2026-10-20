@@ -112,6 +112,23 @@ class ProposalApplicationRepository:
             {"_id": change_set_id}
         )
 
+    async def list_acceptance_criteria_for_version(self, version_id, project_id):
+        return await database.value.acceptance_criteria.find(
+            {"requirement_version_id": version_id, "project_id": project_id}
+        ).to_list(10000)
+
+    async def list_acceptance_criteria_by_ids(self, criterion_ids, project_id):
+        if not criterion_ids:
+            return []
+        return await database.value.acceptance_criteria.find(
+            {"_id": {"$in": criterion_ids}, "project_id": project_id}
+        ).to_list(10000)
+
+    async def find_requirement_version(self, version_id, project_id):
+        return await database.value.requirement_versions.find_one(
+            {"_id": version_id, "project_id": project_id}
+        )
+
     async def find_trace(self, query):
         return await database.value.trace_links.find_one(query)
 

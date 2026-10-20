@@ -254,7 +254,7 @@ def model_metadata(model):
     return {
         "provider": "hybrid-deterministic",
         "model": model,
-        "prompt_version": "ai_assistance",
+        "prompt_version": "ai_automation",
         "tool_schema_version": "1",
         "retrieval_version": "project_evidence",
         "created_at": now(),

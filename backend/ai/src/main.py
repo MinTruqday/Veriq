@@ -9,7 +9,6 @@ from loguru import logger
 
 from src.api.agents import router as agents_router
 from src.api.automation import router as automation_router
-from src.api.approvals import router as approvals_router
 from src.api.cache import router as cache_router
 from src.api.embedding import router as embedding_router
 from src.api.events import router as events
@@ -83,7 +82,6 @@ app.add_middleware(
 app.include_router(inference)
 app.include_router(agents_router)
 app.include_router(automation_router)
-app.include_router(approvals_router)
 app.include_router(ingest)
 app.include_router(events)
 app.include_router(retrieval_router, prefix="/tri-thuc")
@@ -176,12 +174,8 @@ async def agent_status():
                 [
                     AgentRunStatus.PLANNING,
                     AgentRunStatus.RUNNING,
-                    AgentRunStatus.APPLYING,
                     AgentRunStatus.VERIFYING,
                 ]
-            ),
-            "approval_required": await memory_repository.count_runs(
-                [AgentRunStatus.APPROVAL_REQUIRED]
             ),
         },
         "evaluation": evaluation.get_dashboard_metrics(),

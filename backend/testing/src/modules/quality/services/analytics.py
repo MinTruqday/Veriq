@@ -3,7 +3,7 @@ import re
 from src.core.common import get_project, load_user_identities, now
 from src.schemas.contracts.utility import SearchInput
 from src.repositories.analytics import analytics_repository
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.clients.project_knowledge import search_project_with_status
 
 
@@ -293,7 +293,7 @@ class AnalyticsService:
                 "reason_codes": ['PROJECT_EVIDENCE_NOT_FOUND'],
             })
             return {"answer": "Không có đủ bằng chứng trong dự án để trả lời câu hỏi này", "evidence": [], **missing}, {"status": missing["status"], "degraded_mode": missing["degraded_mode"]}
-        result = await request_ai_assistance("project_question", project_id, payload.question, evidence)
+        result = await request_ai_automation("project_question", project_id, payload.question, evidence)
         contract = ai_contract_metadata(result)
         await analytics_repository.insert_ai_audit({
             "_id": f"{'ASK-'}{trace_id}",

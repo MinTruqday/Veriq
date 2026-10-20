@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from src.core.common import audit, get_project, get_project_role, new_id, now, optimistic_patch, resolve_user_reference
+from src.core.common import audit, get_project, get_project_role, get_project_roles, new_id, now, optimistic_patch, resolve_user_reference
 from src.core.database import database
 from src.repositories.project import project_repository
 
@@ -70,7 +70,7 @@ class ProjectProgressService:
     @staticmethod
     async def _require_qa(project_id, user):
         await get_project(project_id, user, "project.read")
-        if await get_project_role(project_id, user.id) != "QA":
+        if "QA" not in await get_project_roles(project_id, user.id):
             raise HTTPException(status_code=403, detail={"code": "QA_PROJECT_PROGRESS_REQUIRED"})
 
     @staticmethod

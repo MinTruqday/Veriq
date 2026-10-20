@@ -1,18 +1,52 @@
 "use client";
+import { isValidElement } from "react";
+import HorizontalScrollCue from "@/shared/components/navigation/HorizontalScrollCue";
 import { EmptyState } from "./WorkspacePrimitives";
+
+function hasRenderableContent(value) {
+  if (value === null || value === undefined || value === false || value === "") return false;
+  if (Array.isArray(value)) return value.some(hasRenderableContent);
+  if (isValidElement(value)) {
+    if (
+      value.props["aria-label"] ||
+      value.props.title ||
+      ["a", "button", "input", "select", "textarea"].includes(value.type)
+    )
+      return true;
+    return hasRenderableContent(value.props.children);
+  }
+  return true;
+}
 
 export default function DataTable({
   columns,
   items,
   empty = "Chưa có dữ liệu",
+  emptyActionHref,
+  emptyActionLabel,
   onSelect,
+  activeRowId,
   selectedIds,
   onSelectionChange,
   selectionLabel = "Chọn mục",
   getRowKey,
+  minTableWidth = 0,
 }) {
-  if (!items?.length) return <EmptyState>{empty}</EmptyState>;
+  if (!items?.length)
+    return (
+      <EmptyState actionHref={emptyActionHref} actionLabel={emptyActionLabel}>
+        {empty}
+      </EmptyState>
+    );
   const selectable = Array.isArray(selectedIds) && typeof onSelectionChange === "function";
+  const visibleColumns = columns.filter(
+    (column) =>
+      !column.hideWhenEmpty ||
+      items.some((item) => {
+        const value = column.render ? column.render(item) : item[column.key];
+        return hasRenderableContent(value);
+      }),
+  );
   const itemId = (item) => item._id ?? item.id ?? item.key ?? item.code;
   const rowKey = (item, index) =>
     `${String(getRowKey?.(item, index) ?? itemId(item) ?? "dòng")}-${index}`;
@@ -35,6 +69,18 @@ export default function DataTable({
     column.render ? column.render(item) : String(item[column.key] ?? "");
   const renderMobileValue = (column, item) =>
     column.mobileRender ? column.mobileRender(item) : renderValue(column, item);
+  const desktopTableWidth = Math.max(
+    minTableWidth,
+    visibleColumns.length * 144 + (selectable ? 48 : 0),
+  );
+  const selectRow = (event, item) => {
+    if (
+      !onSelect ||
+      event.target.closest?.("button, a[href], input, select, textarea, [role='button']")
+    )
+      return;
+    onSelect(item);
+  };
   const openFromKeyboard = (event, item) => {
     if (!onSelect || event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
@@ -44,10 +90,15 @@ export default function DataTable({
   };
   return (
     <>
-      <div className="hidden overflow-x-auto xl:block">
+      <HorizontalScrollCue
+        ariaLabel="Bảng dữ liệu"
+        className="hidden 2xl:grid"
+        scrollLabel="bảng dữ liệu"
+        viewportClassName="min-w-0 overflow-x-auto"
+      >
         <table
           className="w-full text-left text-[13px]"
-          style={{ minWidth: `${Math.max(640, columns.length * 150 + (selectable ? 48 : 0))}px` }}
+          style={{ minWidth: `${desktopTableWidth}px` }}
         >
           <thead className="bg-surface-quiet text-[11px] uppercase tracking-wide text-ink-muted">
             <tr>
@@ -61,8 +112,8 @@ export default function DataTable({
                   />
                 </th>
               )}
-              {columns.map((column) => (
-                <th className="px-4 py-3 font-semibold" key={column.key}>
+              {visibleColumns.map((column) => (
+                <th className="whitespace-nowrap px-4 py-3 font-semibold" key={column.key}>
                   {column.label}
                 </th>
               ))}
@@ -72,8 +123,8 @@ export default function DataTable({
             {items.map((item, index) => (
               <tr
                 key={rowKey(item, index)}
-                className={onSelect ? "cursor-pointer hover:bg-surface-quiet" : ""}
-                onClick={() => onSelect?.(item)}
+                className={`${onSelect ? "cursor-pointer hover:bg-surface-quiet" : ""} ${activeRowId === itemId(item) ? "bg-brand-soft/60" : ""}`}
+                onClick={(event) => selectRow(event, item)}
                 onKeyDown={(event) => openFromKeyboard(event, item)}
                 tabIndex={onSelect ? 0 : undefined}
                 aria-label={onSelect ? `Mở ${itemId(item) ?? `dòng ${index + 1}`}` : undefined}
@@ -90,8 +141,11 @@ export default function DataTable({
                     />
                   </td>
                 )}
-                {columns.map((column) => (
-                  <td className="min-w-0 break-words px-4 py-3 align-top" key={column.key}>
+                {visibleColumns.map((column) => (
+                  <td
+                    className="min-w-0 break-words px-4 py-3 align-top [&_button]:whitespace-nowrap"
+                    key={column.key}
+                  >
                     {renderValue(column, item)}
                   </td>
                 ))}
@@ -99,11 +153,11 @@ export default function DataTable({
             ))}
           </tbody>
         </table>
-      </div>
-      <div className="space-y-3 p-4 xl:hidden">
+      </HorizontalScrollCue>
+      <div className="divide-y divide-border p-4 2xl:hidden">
         {selectable && (
           <label
-            className="flex min-h-11 items-center gap-3 rounded-control border border-border bg-surface-raised px-3 text-[12px] font-semibold"
+            className="flex min-h-11 items-center gap-3 pb-3 text-[12px] font-semibold text-ink-muted"
             onClick={(event) => event.stopPropagation()}
           >
             <input
@@ -118,8 +172,8 @@ export default function DataTable({
         {items.map((item, index) => (
           <article
             key={rowKey(item, index)}
-            className={`rounded-xl border bg-surface-raised p-4 ${selectable && selectedIds.includes(itemId(item)) ? "border-brand" : "border-border"} ${onSelect ? "cursor-pointer active:border-brand" : ""}`}
-            onClick={() => onSelect?.(item)}
+            className={`py-4 first:pt-0 last:pb-0 ${activeRowId === itemId(item) || (selectable && selectedIds.includes(itemId(item))) ? "rounded-lg bg-brand-soft/40 px-3" : ""} ${onSelect ? "cursor-pointer hover:bg-surface-quiet active:bg-brand-soft/40" : ""}`}
+            onClick={(event) => selectRow(event, item)}
             onKeyDown={(event) => openFromKeyboard(event, item)}
             tabIndex={onSelect ? 0 : undefined}
             aria-label={onSelect ? `Mở ${itemId(item) ?? `dòng ${index + 1}`}` : undefined}
@@ -141,7 +195,7 @@ export default function DataTable({
               </label>
             )}
             <dl className="space-y-3">
-              {columns.map((column) => {
+              {visibleColumns.map((column) => {
                 const value = renderMobileValue(column, item);
                 if (value === null || value === undefined || value === "") return null;
                 return (

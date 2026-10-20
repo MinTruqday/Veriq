@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from src.core.dependency import get_current_user, oauth2_scheme
+from src.core.dependency import get_current_user, oauth2_scheme, verify_internal_token
 from src.repositories.automation import automation_repository
 from src.schemas.auth import CurrentUser, SystemRole
-from src.schemas.agent import ApprovalDecision
 from src.schemas.automation import (
     AutomationCancelRequest,
+    AutomationDefinitionPatch,
+    AutomationDefinitionRequest,
+    AutomationEventRequest,
     AutomationRetryRequest,
     AutomationRunRequest,
+    AutomationStatus,
+    AutomationTrigger,
 )
 from src.services.automation import automation_service
 from src.services.project_access import project_access
@@ -34,6 +38,67 @@ async def _controllable_run(run_id: str, token: str, user: CurrentUser):
     return run
 
 
+async def _controllable_definition(definition_id: str, token: str, user: CurrentUser):
+    definition = await automation_repository.get_definition(definition_id)
+    if not definition:
+        raise HTTPException(status_code=404, detail={"code": "ENTITY_NOT_FOUND"})
+    if definition.owner_user_id != user.id and user.system_role != SystemRole.ADMIN:
+        await project_access(definition.project_id, token)
+        raise HTTPException(status_code=403, detail={"code": "AUTOMATION_DEFINITION_CONTROL_DENIED"})
+    return definition
+
+
+@router.post("/dinh-nghia", status_code=status.HTTP_201_CREATED)
+async def create_automation_definition(
+    payload: AutomationDefinitionRequest,
+    token: str = Depends(oauth2_scheme),
+    user: CurrentUser = Depends(get_current_user),
+):
+    role, permissions = await project_access(payload.project_id, token)
+    return await automation_service.create_definition(payload, user.id, role, permissions)
+
+
+@router.get("/triggers")
+async def list_automation_triggers():
+    return [trigger.value for trigger in AutomationTrigger]
+
+
+@router.get("/du-an/{project_id}/dinh-nghia")
+async def list_automation_definitions(
+    project_id: str,
+    token: str = Depends(oauth2_scheme),
+    user: CurrentUser = Depends(get_current_user),
+):
+    await project_access(project_id, token)
+    return await automation_repository.list_definitions(project_id)
+
+
+@router.patch("/dinh-nghia/{definition_id}")
+async def update_automation_definition(
+    definition_id: str,
+    payload: AutomationDefinitionPatch,
+    token: str = Depends(oauth2_scheme),
+    user: CurrentUser = Depends(get_current_user),
+):
+    definition = await _controllable_definition(definition_id, token, user)
+    return await automation_service.update_definition(definition, payload)
+
+
+@router.post("/noi-bo/su-kien", dependencies=[Depends(verify_internal_token)])
+async def receive_automation_event(payload: AutomationEventRequest):
+    runs = await automation_service.enqueue_event(payload)
+    if any(
+        run.status == AutomationStatus.DEGRADED
+        and run.error_code == "AUTOMATION_QUEUE_UNAVAILABLE"
+        for run in runs
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AUTOMATION_QUEUE_UNAVAILABLE"},
+        )
+    return {"runs": runs}
+
+
 @router.post("/luot-chay", status_code=status.HTTP_202_ACCEPTED)
 async def create_automation_run(
     payload: AutomationRunRequest,
@@ -41,7 +106,7 @@ async def create_automation_run(
     user: CurrentUser = Depends(get_current_user),
 ):
     role, permissions = await project_access(payload.project_id, token)
-    return await automation_service.create(payload, user.id, role, permissions, token)
+    return await automation_service.create(payload, user.id, role, permissions)
 
 
 @router.get("/luot-chay/{automation_run_id}")
@@ -90,7 +155,7 @@ async def retry_automation_run(
     user: CurrentUser = Depends(get_current_user),
 ):
     run = await _controllable_run(automation_run_id, token, user)
-    return await automation_service.authorize_retry(run, payload.expected_revision, token)
+    return await automation_service.authorize_retry(run, payload.expected_revision)
 
 
 @router.post("/luot-chay/{automation_run_id}/huy")
@@ -102,32 +167,3 @@ async def cancel_automation_run(
 ):
     run = await _controllable_run(automation_run_id, token, user)
     return await automation_service.cancel(run, payload.expected_revision)
-
-
-@router.post("/luot-chay/{automation_run_id}/quyet-dinh")
-async def decide_automation_run(
-    automation_run_id: str,
-    payload: ApprovalDecision,
-    token: str = Depends(oauth2_scheme),
-    user: CurrentUser = Depends(get_current_user),
-):
-    run = await _controllable_run(automation_run_id, token, user)
-    if run.status != "AWAITING_HUMAN_DECISION" or not run.agent_run_id:
-        raise HTTPException(status_code=409, detail={"code": "AUTOMATION_DECISION_NOT_REQUIRED"})
-    from src.api.approvals import decide_agent_run
-    from src.memory.short_term import run_store
-
-    agent_run = await run_store.get(run.agent_run_id)
-    if not agent_run:
-        raise HTTPException(status_code=409, detail={"code": "AUTOMATION_AGENT_RUN_MISSING"})
-    completed = await decide_agent_run(
-        run.agent_run_id,
-        payload.model_copy(update={"expected_revision": agent_run.revision}),
-        token,
-        user,
-    )
-    return await automation_service.record_human_decision(
-        run,
-        payload.expected_revision,
-        completed.model_dump(mode="python"),
-    )

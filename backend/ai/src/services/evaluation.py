@@ -6,6 +6,8 @@ from typing import Optional
 
 from loguru import logger
 
+from src.schemas.evaluation import TestabilityBenchmarkRequest, TestabilityBenchmarkReport
+
 
 @dataclass
 class EvaluationReport:
@@ -245,6 +247,13 @@ class EvaluationHarness:
         }
         logger.info("AI model evaluation complete")
         return summary
+
+    async def evaluate_testability_compiler(
+        self, request: TestabilityBenchmarkRequest
+    ) -> TestabilityBenchmarkReport:
+        from src.services.testability_benchmark import testability_benchmark
+
+        return await testability_benchmark.evaluate(request)
 
     def get_dashboard_metrics(self) -> dict:
         if not self._reports:

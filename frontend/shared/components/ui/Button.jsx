@@ -24,7 +24,7 @@ export function Button({
   return (
     <button
       type="button"
-      className={`inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control font-semibold transition duration-150 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 ${vClass[variant]} ${sClass[size]} ${className}`}
+      className={`inline-flex min-w-0 max-w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control font-semibold transition duration-150 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 ${vClass[variant]} ${sClass[size]} ${className}`}
       {...props}
     >
       {icon && <span className="shrink-0">{icon}</span>}

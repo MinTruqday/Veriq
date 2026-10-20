@@ -79,6 +79,7 @@ class TestSuitePatch(BaseModel):
 
 class TestRunCreate(BaseModel):
     project_id: str
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     name: str = Field(min_length=2, max_length=300)
     test_plan_id: str | None = None
     test_suite_ids: list[str] = Field(default_factory=list, max_length=500)

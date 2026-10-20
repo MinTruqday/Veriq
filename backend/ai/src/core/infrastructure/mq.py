@@ -15,6 +15,7 @@ class RabbitMQClient:
         self.url = settings.RABBITMQ_URI
         self.connection = None
         self.channel = None
+        self.consumer_channels = {}
         self.pending_acks = {}
 
     async def connect(self):
@@ -34,15 +35,18 @@ class RabbitMQClient:
                     raise e
                 await asyncio.sleep(3)
 
-    async def get_queue(self, queue_name: str):
-        if not self.channel:
+    async def get_queue(self, queue_name: str, channel=None):
+        if channel is None:
+            channel = self.channel
+        if channel is None:
             await self.connect()
+            channel = self.channel
 
-        dlx = await self.channel.declare_exchange("dlx", aio_pika.ExchangeType.DIRECT)
-        dlq = await self.channel.declare_queue("dlq", durable=True)
+        dlx = await channel.declare_exchange("dlx", aio_pika.ExchangeType.DIRECT)
+        dlq = await channel.declare_queue("dlq", durable=True)
         await dlq.bind(dlx, "dlq")
         queue_args = {"x-dead-letter-exchange": "dlx", "x-dead-letter-routing-key": "dlq"}
-        return await self.channel.declare_queue(queue_name, durable=True, arguments=queue_args)
+        return await channel.declare_queue(queue_name, durable=True, arguments=queue_args)
 
     async def publish(self, queue_name: str, payload: dict) -> bool:
         if not self.channel:
@@ -58,9 +62,13 @@ class RabbitMQClient:
             return False
 
     async def consume(self, queue_name: str, timeout: int = 30) -> Optional[Dict[str, Any]]:
-        if not self.channel:
+        if not self.connection or self.connection.is_closed:
             await self.connect()
-        queue = await self.get_queue(queue_name)
+        channel = self.consumer_channels.get(queue_name)
+        if not channel or channel.is_closed:
+            channel = await self.connection.channel()
+            self.consumer_channels[queue_name] = channel
+        queue = await self.get_queue(queue_name, channel)
         try:
             message = await queue.get(timeout=timeout)
             if message:
@@ -76,6 +84,8 @@ class RabbitMQClient:
                 return {"payload": payload, "delivery_tag": ack_id}
             return None
         except aio_pika.exceptions.QueueEmpty:
+            return None
+        except asyncio.TimeoutError:
             return None
         except Exception:
             logger.exception("Error fetching message from RabbitMQ")
@@ -104,6 +114,17 @@ class RabbitMQClient:
                 return False
         return False
 
+    async def reject(self, delivery_tag: str, requeue: bool = False) -> bool:
+        message = self.pending_acks.pop(delivery_tag, None)
+        if message:
+            try:
+                await message.nack(requeue=requeue)
+                return True
+            except Exception:
+                logger.exception("Error rejecting RabbitMQ message")
+                return False
+        return False
+
     async def health_check(self) -> bool:
         try:
             await self.connect()
@@ -112,6 +133,10 @@ class RabbitMQClient:
             return False
 
     async def aclose(self):
+        for channel in self.consumer_channels.values():
+            if not channel.is_closed:
+                await channel.close()
+        self.consumer_channels.clear()
         if self.connection:
             await self.connection.close()
 

@@ -14,8 +14,8 @@ from src.core.common import (
     sort_spec,
 )
 from src.repositories.test_design import test_design_repository
-from src.core.ai_assistance import ai_contract_metadata
-from src.modules.design.services.generation import generate_requirement_drafts
+from src.core.ai_automation import ai_contract_metadata
+from src.modules.design.services.generation import generate_requirement_drafts, select_generation_criteria
 from src.modules.design.services.test_case_records import validate_design_sources
 
 
@@ -168,6 +168,7 @@ async def generate_test_scenario_records(version_id, payload, user):
     )
     await get_project(version["project_id"], user, "testscenario.create")
     criteria = await test_design_repository.list_acceptance_criteria(version_id)
+    criteria = select_generation_criteria(criteria, payload.acceptance_criterion_ids)
     drafts, result = await generate_requirement_drafts(version, criteria, payload, scenario=True)
     created = [
         await create_test_scenario_record(version["project_id"], draft, user) for draft in drafts

@@ -6,7 +6,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.repositories.execution_asset import execution_asset_repository
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 
 
 
@@ -119,7 +119,7 @@ class AutomationScriptService:
                 )[: int(4000)],
             }
         ]
-        ai_result = await request_ai_assistance(
+        ai_result = await request_ai_automation(
             'automation_script_generation',
             project_id,
             json.dumps(

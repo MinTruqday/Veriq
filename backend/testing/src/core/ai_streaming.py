@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from src.core.ai_assistance import stream_sink
+from src.core.ai_automation import stream_sink
 
 
 class AIStreamingMiddleware:

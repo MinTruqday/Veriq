@@ -41,6 +41,12 @@ async def create_work_item(project_id: str, payload: WorkItemCreate, user: Curre
     return envelope(value, revision=value["revision"])
 
 
+@router.get("/du-an/{project_id}/cong-viec/{item_id}")
+async def get_work_item(project_id: str, item_id: str, user: CurrentUser = Depends(get_current_user)):
+    value = await WorkItemService.get_item(project_id, item_id, user)
+    return envelope(value, revision=value.get("revision"))
+
+
 @router.get("/du-an/{project_id}/cong-viec/migrate-project-task/preview")
 async def preview_project_task_migration(project_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await WorkItemService.preview_project_task_migration(project_id, user))

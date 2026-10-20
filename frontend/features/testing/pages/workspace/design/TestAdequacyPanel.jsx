@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
-import { messageOf } from "../../../lib/testing";
+import { messageOf, valueLabel } from "../../../lib/testing";
 import { useActionDialog } from "../../../components/WorkspacePrimitives";
 
 const labels = {
@@ -20,7 +20,13 @@ const assessmentLabels = {
   SUPERSEDED: "Đã thay thế",
 };
 
-export default function TestAdequacyPanel({ requirementVersionId, canReview = false }) {
+export default function TestAdequacyPanel({
+  requirementVersionId,
+  canDecide = false,
+  canCreateClarification = false,
+  canApprove = false,
+  canSubmit = false,
+}) {
   const { ask, dialog } = useActionDialog();
   const [assessment, setAssessment] = useState(null);
   const [filter, setFilter] = useState("");
@@ -59,7 +65,7 @@ export default function TestAdequacyPanel({ requirementVersionId, canReview = fa
       title: waiver ? "Chấp nhận có điều kiện" : "Xác nhận không áp dụng",
       description: waiver
         ? "Waiver chỉ còn hiệu lực đến hạn đã chọn và sẽ buộc Hồ sơ quay lại rà soát khi hết hạn"
-        : "QA xác nhận Nghĩa vụ này không áp dụng cho Requirement hiện tại",
+        : "QA xác nhận Nghĩa vụ này không áp dụng cho yêu cầu hiện tại",
       confirmLabel: "Xác nhận quyết định",
       fields: [
         { name: "reason", label: "Lý do", required: true, multiline: true, autoFocus: true },
@@ -136,21 +142,119 @@ export default function TestAdequacyPanel({ requirementVersionId, canReview = fa
       setBusy(false);
     }
   };
+  const source = (item) => (
+    <>
+      <div className="font-medium text-ink">{item.source_ref}</div>
+      {item.source_quote && <div className="mt-1 max-w-sm text-ink-muted">{item.source_quote}</div>}
+    </>
+  );
+  const linkedTests = (item) =>
+    item.test_case_versions?.length
+      ? item.test_case_versions.map((test) => (
+          <div key={test.id} className="mb-2 last:mb-0">
+            <div className="font-medium text-ink">
+              {test.key} {test.title}
+            </div>
+            <div className="text-ink-muted">
+              {test.techniques?.join(", ") || "Chưa chọn kỹ thuật"}
+            </div>
+            {!test.assurance_evidence_complete && (
+              <div className="mt-1 text-warning">
+                Ca này chưa đủ nguồn, dữ liệu hoặc kết quả mong đợi để chứng minh Nghĩa vụ
+              </div>
+            )}
+          </div>
+        ))
+      : "Chưa có ca kiểm thử hiệu lực";
+  const challenges = (item) => {
+    const values =
+      item.test_case_versions?.flatMap((test) => test.challenge_hypotheses || []) || [];
+    return values.length
+      ? values.map((challenge, index) => <div key={index}>{challenge.hypothetical_fault}</div>)
+      : "Chưa có giả thuyết phản chứng";
+  };
+  const decision = (item) => (
+    <>
+      {item.decision?.reason || "Chưa có quyết định"}
+      {item.decision?.clarification_id && (
+        <div className="mt-1 text-xs text-ink-muted">
+          Phiếu làm rõ {item.decision.clarification_id}
+        </div>
+      )}
+      {item.status === "WAIVED" && (
+        <div className="mt-2 text-xs leading-5 text-ink-muted">
+          <div>Phụ trách {item.decision?.waiver_owner_id || "Chưa xác định"}</div>
+          <div>
+            Rà soát lại{" "}
+            {item.decision?.waiver_review_at
+              ? new Date(item.decision.waiver_review_at).toLocaleDateString("vi-VN")
+              : "Chưa có"}
+          </div>
+          <div>
+            Hết hạn{" "}
+            {item.decision?.waiver_expires_at
+              ? new Date(item.decision.waiver_expires_at).toLocaleDateString("vi-VN")
+              : "Chưa có"}
+          </div>
+          {item.decision?.waiver_expired_at && <div>Chấp nhận có điều kiện đã hết hạn</div>}
+        </div>
+      )}
+    </>
+  );
+  const actions = (item) => {
+    const canChangeItem = canDecide || canCreateClarification;
+    if (!canChangeItem || ["ASSURED", "CONDITIONAL", "SUPERSEDED"].includes(assessment.status))
+      return null;
+    return (
+      <div className="mt-3 flex flex-wrap gap-2">
+        {canCreateClarification && (
+          <button
+            className="secondary-button text-xs"
+            disabled={busy}
+            type="button"
+            onClick={() => createClarification(item)}
+          >
+            Tạo Phiếu làm rõ
+          </button>
+        )}
+        {canDecide && (
+          <>
+            <button
+              className="secondary-button text-xs"
+              disabled={busy}
+              type="button"
+              onClick={() => decide(item, "NOT_APPLICABLE")}
+            >
+              Không áp dụng
+            </button>
+            <button
+              className="secondary-button text-xs"
+              disabled={busy}
+              type="button"
+              onClick={() => decide(item, "WAIVED")}
+            >
+              Chấp nhận rủi ro
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
   if (!requirementVersionId) return null;
   return (
     <>
-      <section className="workspace-panel space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Độ đầy đủ kiểm thử</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Hồ sơ liên kết điểm cần kiểm thử với nguồn Requirement và ca kiểm thử đang hiệu lực
-            </p>
+      <section className="space-y-5">
+        <div className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-[22px] font-semibold tracking-[-0.025em] text-ink">
+              Nghĩa vụ kiểm thử
+            </h2>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               className="secondary-button"
               disabled={busy}
+              type="button"
               onClick={() =>
                 update(() =>
                   testingApi.refreshTestAdequacy(requirementVersionId, assessment?.revision),
@@ -159,10 +263,11 @@ export default function TestAdequacyPanel({ requirementVersionId, canReview = fa
             >
               Cập nhật hồ sơ
             </button>
-            {assessment?.status === "DRAFT" && (
+            {assessment?.status === "DRAFT" && canSubmit && (
               <button
                 className="secondary-button"
                 disabled={busy}
+                type="button"
                 onClick={() =>
                   update(() => testingApi.submitTestAdequacy(assessment._id, assessment.revision))
                 }
@@ -170,10 +275,11 @@ export default function TestAdequacyPanel({ requirementVersionId, canReview = fa
                 Gửi rà soát
               </button>
             )}
-            {assessment?.status === "IN_REVIEW" && canReview && (
+            {assessment?.status === "IN_REVIEW" && canApprove && (
               <button
                 className="primary-button"
                 disabled={busy}
+                type="button"
                 onClick={() =>
                   update(() => testingApi.approveTestAdequacy(assessment._id, assessment.revision))
                 }
@@ -184,142 +290,103 @@ export default function TestAdequacyPanel({ requirementVersionId, canReview = fa
           </div>
         </div>
         {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <div className="rounded-control border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger">
             {error}
           </div>
         )}
         {assessment && (
           <>
-            <div className="flex flex-wrap gap-3 text-sm text-slate-700">
-              <span>
-                Trạng thái Hồ sơ:{" "}
-                <strong>{assessmentLabels[assessment.status] || assessment.status}</strong>
-              </span>
-              <span>Đã chứng minh: {assessment.coverage_summary?.verified || 0}</span>
-              <span>Có điều kiện: {assessment.coverage_summary?.conditional || 0}</span>
-              <span>Chưa xử lý: {assessment.coverage_summary?.outstanding || 0}</span>
-              <select
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                className="form-select"
-              >
-                <option value="">Tất cả trạng thái</option>
-                {Object.entries(labels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b text-slate-600">
-                    <th className="p-2">Nguồn và trích dẫn</th>
-                    <th className="p-2">Kỹ thuật và ca kiểm thử</th>
-                    <th className="p-2">Bằng chứng và giả thuyết</th>
-                    <th className="p-2">Trạng thái</th>
-                    <th className="p-2">Quyết định QA</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.coverage_item_id} className="border-b align-top">
-                      <td className="p-2">
-                        <div className="font-medium">{item.source_ref}</div>
-                        <div className="mt-1 max-w-sm text-slate-600">{item.source_quote}</div>
-                      </td>
-                      <td className="p-2">
-                        {item.test_case_versions?.length
-                          ? item.test_case_versions.map((test) => (
-                              <div key={test.id} className="mb-2">
-                                <div>
-                                  {test.key} {test.title}
-                                </div>
-                                <div className="text-slate-600">
-                                  {test.techniques?.join(", ") || "Chưa chọn kỹ thuật"}
-                                </div>
-                                {!test.assurance_evidence_complete && (
-                                  <div className="text-amber-700">
-                                    Ca này chưa đủ nguồn, dữ liệu hoặc kết quả mong đợi để chứng
-                                    minh Nghĩa vụ
-                                  </div>
-                                )}
-                              </div>
-                            ))
-                          : "Chưa có ca kiểm thử hiệu lực"}
-                      </td>
-                      <td className="p-2">
-                        {item.test_case_versions
-                          ?.flatMap((test) => test.challenge_hypotheses || [])
-                          .map((challenge, index) => (
-                            <div key={index}>{challenge.hypothetical_fault}</div>
-                          )) || ""}
-                      </td>
-                      <td className="p-2">
-                        <span className="status-badge">{labels[item.status]}</span>
-                      </td>
-                      <td className="p-2">
-                        {item.decision?.reason || ""}
-                        {item.decision?.clarification_id && (
-                          <div className="mt-1 text-xs text-slate-600">
-                            Phiếu làm rõ: {item.decision.clarification_id}
-                          </div>
-                        )}
-                        {item.status === "WAIVED" && (
-                          <div className="mt-1 text-xs text-slate-600">
-                            Phụ trách: {item.decision?.waiver_owner_id || "Chưa xác định"}
-                            <br />
-                            Rà soát lại:{" "}
-                            {item.decision?.waiver_review_at
-                              ? new Date(item.decision.waiver_review_at).toLocaleDateString("vi-VN")
-                              : "Chưa có"}
-                            <br />
-                            Hết hạn:{" "}
-                            {item.decision?.waiver_expires_at
-                              ? new Date(item.decision.waiver_expires_at).toLocaleDateString(
-                                  "vi-VN",
-                                )
-                              : "Chưa có"}
-                            {item.decision?.waiver_expired_at && (
-                              <>
-                                <br />
-                                Waiver đã hết hạn
-                              </>
-                            )}
-                          </div>
-                        )}
-                        {canReview &&
-                          !["ASSURED", "CONDITIONAL", "SUPERSEDED"].includes(assessment.status) && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              <button
-                                className="secondary-button text-xs"
-                                disabled={busy}
-                                onClick={() => createClarification(item)}
-                              >
-                                Tạo Phiếu làm rõ
-                              </button>
-                              <button
-                                className="secondary-button text-xs"
-                                disabled={busy}
-                                onClick={() => decide(item, "NOT_APPLICABLE")}
-                              >
-                                Không áp dụng
-                              </button>
-                              <button
-                                className="secondary-button text-xs"
-                                disabled={busy}
-                                onClick={() => decide(item, "WAIVED")}
-                              >
-                                Chấp nhận rủi ro
-                              </button>
-                            </div>
-                          )}
-                      </td>
-                    </tr>
+            <div className="grid gap-3 rounded-2xl border border-border bg-surface p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.25fr)_repeat(3,minmax(0,.65fr))_minmax(210px,.9fr)] xl:items-center">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                  Trạng thái hồ sơ
+                </p>
+                <p className="mt-1 text-[15px] font-semibold text-ink">
+                  {assessmentLabels[assessment.status] || valueLabel(assessment.status)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                  Đã chứng minh
+                </p>
+                <p className="mt-1 text-[20px] font-semibold text-ink">
+                  {assessment.coverage_summary?.verified || 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                  Có điều kiện
+                </p>
+                <p className="mt-1 text-[20px] font-semibold text-ink">
+                  {assessment.coverage_summary?.conditional || 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                  Chưa xử lý
+                </p>
+                <p className="mt-1 text-[20px] font-semibold text-ink">
+                  {assessment.coverage_summary?.outstanding || 0}
+                </p>
+              </div>
+              <label className="field-label">
+                Lọc nghĩa vụ
+                <select
+                  value={filter}
+                  onChange={(event) => setFilter(event.target.value)}
+                  className="apple-input mt-1 w-full"
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  {Object.entries(labels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
                   ))}
-                </tbody>
-              </table>
+                </select>
+              </label>
+            </div>
+            <div className="grid gap-4">
+              {items.map((item) => (
+                <article
+                  className="rounded-2xl border border-border bg-surface p-5 shadow-[0_6px_20px_rgba(48,47,42,0.035)]"
+                  key={item.coverage_item_id}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                        Nguồn và trích dẫn
+                      </p>
+                      <div className="mt-1">{source(item)}</div>
+                    </div>
+                    <span className="status-badge">
+                      {labels[item.status] || valueLabel(item.status)}
+                    </span>
+                  </div>
+                  <div className="mt-5 grid gap-5 border-y border-border py-5 lg:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                        Kỹ thuật và ca kiểm thử
+                      </p>
+                      <div className="mt-1 text-ink-muted">{linkedTests(item)}</div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                        Bằng chứng và giả thuyết
+                      </p>
+                      <div className="mt-1 text-ink-muted">{challenges(item)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                        Quyết định QA
+                      </p>
+                      <div className="mt-1 text-ink-muted">{decision(item)}</div>
+                    </div>
+                    {actions(item)}
+                  </div>
+                </article>
+              ))}
             </div>
           </>
         )}

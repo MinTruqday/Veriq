@@ -2,14 +2,14 @@ from hashlib import sha256
 
 from fastapi import HTTPException
 
-from src.core.common import audit, get_project_entity, get_project_role, new_id, now, plain_text
+from src.core.common import audit, get_project_entity, get_project_roles, new_id, now, plain_text
 from src.modules.design.services.linters import requirement_findings
 from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_clarification import requirement_clarification_repository
 
 
 async def _require_role(project_id, user, role):
-    if await get_project_role(project_id, user.id) != role:
+    if role not in await get_project_roles(project_id, user.id):
         raise HTTPException(status_code=403, detail={"code": f"{role}_ROLE_REQUIRED"})
 
 

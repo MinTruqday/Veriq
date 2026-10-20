@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.auth import permissions_for_role
+from src.core.auth import permissions_for_membership
 from src.core.common import audit, get_project, new_id, now
 from src.schemas.test_monitoring import (
     ControlActionCreate,
@@ -402,7 +402,7 @@ async def create_control_action(project_id, payload: ControlActionCreate, user):
         project_id, user.id, 'ACTIVE'
     )
     permissions = (
-        permissions_for_role(membership.get("project_role", ""), project.get("settings"))
+        permissions_for_membership(membership, project.get("settings"))
         if membership
         else set()
     )
@@ -454,7 +454,7 @@ async def update_control_action(action_id, payload: ControlActionPatch, user):
         action["project_id"], user.id, 'ACTIVE'
     )
     actor_permissions = (
-        permissions_for_role(actor_membership.get("project_role", ""), project.get("settings"))
+        permissions_for_membership(actor_membership, project.get("settings"))
         if actor_membership
         else set()
     )

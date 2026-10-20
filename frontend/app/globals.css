@@ -39,8 +39,6 @@
     --input: var(--border);
     --ring: var(--brand);
     --radius: 12px;
-    --sidebar-width: 224px;
-    --topbar-height: 60px;
   }
 
   * {
@@ -76,6 +74,16 @@
     font: inherit;
   }
 
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
   button,
   a,
   input,
@@ -108,13 +116,84 @@
 }
 
 @layer components {
+  .action-dialog-footer {
+    position: sticky;
+    z-index: 10;
+    bottom: 0;
+    margin: 0 -1.25rem;
+    padding: 0.75rem 1.25rem;
+    background: hsl(var(--surface));
+    box-shadow: 0 -8px 14px hsl(var(--ink) / 0.04);
+  }
+
   .page-shell {
-    @apply mx-auto flex min-w-0 w-full max-w-none flex-1 flex-col px-4 py-6 md:px-8 md:py-8;
+    @apply mx-auto flex min-w-0 w-full max-w-none flex-1 flex-col px-3 py-4 sm:px-5 sm:py-6 xl:px-8 xl:py-8;
+  }
+
+  .page-shell > *,
+  .workspace-page > *,
+  .workspace-panel,
+  .workspace-panel > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .workspace-page form,
+  .workspace-page form > *,
+  .workspace-page label,
+  .workspace-page fieldset {
+    min-width: 0;
+  }
+
+  .workspace-page :is(input, select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .workspace-page :is(.grid, .flex) > * {
+    min-width: 0;
+  }
+
+  .workspace-page
+    form
+    :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea) {
+    max-width: 100%;
+  }
+
+  .workspace-page form.grid > button[type="submit"] {
+    justify-self: start;
+    max-width: 100%;
+  }
+
+  .workspace-page :is(table, pre, code) {
+    max-width: 100%;
+  }
+
+  .workspace-page pre,
+  .workspace-page .overflow-x-auto {
+    overscroll-behavior-inline: contain;
   }
 
   .common-panel,
   .auth-panel {
     @apply rounded-panel border border-border bg-surface p-5 md:p-6;
+  }
+
+  .workspace-panel {
+    @apply min-w-0 overflow-hidden rounded-2xl border border-border bg-surface;
+    box-shadow: 0 6px 18px rgb(48 47 42 / 3.5%);
+  }
+
+  .primary-button {
+    @apply inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-control bg-brand px-4 py-2.5 text-[14px] font-semibold text-white transition hover:bg-brand-hover active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .form-select {
+    @apply min-h-11 rounded-control border border-border-strong bg-surface px-3.5 py-2.5 text-[14px] text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand-soft;
+  }
+
+  .status-badge {
+    @apply inline-flex max-w-full rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold leading-4 text-brand;
   }
 
   .pill-button {
@@ -126,11 +205,11 @@
   }
 
   .secondary-button {
-    @apply inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-control border border-border-strong bg-surface px-5 py-2.5 text-[15px] font-semibold text-ink transition duration-150 hover:bg-surface-quiet active:translate-y-px;
+    @apply inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-control border border-border-strong bg-surface px-3.5 py-2 text-center text-[14px] font-semibold leading-5 text-ink transition duration-150 hover:bg-surface-quiet active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .apple-input {
-    @apply min-h-11 rounded-control border border-border-strong bg-surface px-3.5 py-2.5 text-[15px] text-ink outline-none transition duration-150 placeholder:text-ink-faint focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:cursor-not-allowed disabled:bg-surface-quiet;
+    @apply block min-h-11 w-full min-w-0 max-w-full rounded-control border border-border-strong bg-surface px-3.5 py-2.5 text-[15px] text-ink outline-none transition duration-150 placeholder:text-ink-faint focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:cursor-not-allowed disabled:bg-surface-quiet;
   }
 
   .field-label {
@@ -396,6 +475,27 @@
   .testing-page-break::after {
     content: "Ngắt trang";
     @apply relative -top-3 mx-auto block w-fit bg-surface px-2 text-[11px] text-ink-faint;
+  }
+}
+
+@media (min-width: 640px) {
+  .action-dialog-footer {
+    bottom: 0;
+    margin-right: -1.5rem;
+    margin-bottom: 0;
+    margin-left: -1.5rem;
+    padding-right: 1.5rem;
+    padding-left: 1.5rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .workspace-page form.grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workspace-page form.grid > * {
+    grid-column: 1 / -1;
   }
 }
 

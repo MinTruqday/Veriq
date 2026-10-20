@@ -31,6 +31,7 @@ export default function ReviewFindingsTable({
         {
           key: "action",
           label: "Thao tác",
+          hideWhenEmpty: true,
           render: (item) => (
             <div className="flex flex-wrap gap-2">
               {["OPEN", "IN_PROGRESS"].includes(item.status) && canAssign(item) && onAssign && (

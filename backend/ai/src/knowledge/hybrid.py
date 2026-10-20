@@ -8,7 +8,9 @@ from src.runtime.limits import limits
 from src.schemas.agent import EvidenceItem
 
 
-async def hybrid_evidence(project_id, query, requester_id, token=None, limit=None):
+async def hybrid_evidence(
+    project_id, query, requester_id, token=None, limit=None, automation_run_id=None
+):
     maximum = min(limit or limits.evidence_items, limits.evidence_items)
     items = []
     degraded = []
@@ -19,7 +21,11 @@ async def hybrid_evidence(project_id, query, requester_id, token=None, limit=Non
             raw = await retrieve_project_evidence.ainvoke(
                 {"project_id": project_id, "instruction": query, "artifact_types": ""},
                 config=RunnableConfig(
-                    configurable={"token": token, "project_id": project_id}
+                configurable={
+                    "token": token,
+                    "project_id": project_id,
+                    "automation_run_id": automation_run_id,
+                }
                 ),
             )
             database_result = json.loads(raw)

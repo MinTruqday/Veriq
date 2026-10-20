@@ -89,11 +89,14 @@ export default function RequirementCreateModal({
             </select>
           </label>
         </div>
-        <DocumentEditor
-          value={form.content_doc}
-          onChange={(content_doc) => updateForm({ content_doc })}
-          label="Nội dung yêu cầu"
-        />
+        <div>
+          <p className="field-label mb-2">Nội dung yêu cầu</p>
+          <DocumentEditor
+            value={form.content_doc}
+            onChange={(content_doc) => updateForm({ content_doc })}
+            label="Nội dung yêu cầu"
+          />
+        </div>
         <label className="field-label">
           Tiêu chí chấp nhận mỗi dòng một điều kiện
           <textarea
@@ -213,7 +216,7 @@ export default function RequirementCreateModal({
               )}
             </label>
           ))}
-        <div className="flex justify-end gap-3">
+        <div className="action-dialog-footer flex justify-end gap-3">
           <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
             Hủy
           </button>

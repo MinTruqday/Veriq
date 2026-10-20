@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.core.auth import roles_for_membership
 from src.core.common import audit, get_project, new_id, now
 from src.schemas.test_completion import completion_hash, completion_snapshot
 from src.repositories.test_completion import (
@@ -14,7 +15,7 @@ from src.repositories.test_completion import (
     update_completion,
 )
 from src.modules.execution.services.exit_criteria import quality_gate_status
-from src.modules.execution.services.test_completion_assistance import completion_ai_result
+from src.modules.execution.services.test_completion_automation import completion_ai_result
 from src.modules.execution.services.test_completion_readiness import (
     default_completion_recommendation,
     reevaluate_completion_exit_criteria,
@@ -466,7 +467,7 @@ async def decide_residual_risk(report_id, risk_id, payload, user):
         raise HTTPException(status_code=404, detail={"code": 'RESIDUAL_RISK_NOT_FOUND'})
     if (
         risk.get("owner_id") != user.id
-        and (membership or {}).get("project_role") not in set(['QA', 'BA'])
+        and not roles_for_membership(membership).intersection({'QA', 'BA'})
     ):
         raise HTTPException(status_code=403, detail={"code": 'RESIDUAL_RISK_DECISION_DENIED'})
     risk.update(

@@ -1,19 +1,79 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ChevronDown, ChevronRight, Folder } from "lucide-react";
 import DataTable from "../../../components/DataTable";
-import { Panel } from "../../../components/WorkspacePrimitives";
+import { LoadingState, Panel } from "../../../components/WorkspacePrimitives";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, textDoc } from "../../../lib/testing";
+import { Modal, ModalFooter, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+
+function RepositoryBranch({ node, childrenByParent, expanded, onToggle, depth = 0 }) {
+  const children = childrenByParent.get(node._id) || [];
+  const isExpanded = expanded.has(node._id);
+  return (
+    <li>
+      <div
+        className="flex min-h-11 min-w-0 items-center gap-2 rounded-control px-2 hover:bg-surface-quiet"
+        style={{ paddingInlineStart: `${depth * 18 + 8}px` }}
+      >
+        {children.length ? (
+          <button
+            aria-expanded={isExpanded}
+            aria-label={`${isExpanded ? "Thu gọn" : "Mở"} thư mục ${node.name}`}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-ink-muted hover:bg-surface-quiet"
+            type="button"
+            onClick={() => onToggle(node._id)}
+          >
+            {isExpanded ? (
+              <ChevronDown size={16} aria-hidden="true" />
+            ) : (
+              <ChevronRight size={16} aria-hidden="true" />
+            )}
+          </button>
+        ) : (
+          <span aria-hidden="true" className="w-8 shrink-0" />
+        )}
+        <Folder size={17} aria-hidden="true" className="shrink-0 text-brand" />
+        <span className="min-w-0 break-words text-sm font-medium text-ink">{node.name}</span>
+      </div>
+      {children.length > 0 && isExpanded && (
+        <ul className="space-y-1">
+          {children.map((child) => (
+            <RepositoryBranch
+              key={child._id}
+              node={child}
+              childrenByParent={childrenByParent}
+              expanded={expanded}
+              onToggle={onToggle}
+              depth={depth + 1}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
 
 export default function TestRepositoryPanel({ project, can, onError, focus = "" }) {
   const [nodes, setNodes] = useState([]);
   const [steps, setSteps] = useState([]);
   const [nodeName, setNodeName] = useState("");
   const [parentId, setParentId] = useState("");
+  const [nodeModalOpen, setNodeModalOpen] = useState(false);
   const [stepName, setStepName] = useState("");
   const [stepAction, setStepAction] = useState("");
+  const [stepModalOpen, setStepModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [savingNode, setSavingNode] = useState(false);
+  const [savingStep, setSavingStep] = useState(false);
+  const [expandedNodeIds, setExpandedNodeIds] = useState(() => new Set());
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadFailed(false);
+    setLoadError("");
     try {
       const [repository, reusable] = await Promise.all([
         testingApi.listTestRepository(project._id),
@@ -22,14 +82,21 @@ export default function TestRepositoryPanel({ project, can, onError, focus = "" 
       setNodes(repository);
       setSteps(reusable);
     } catch (reason) {
-      onError(messageOf(reason));
+      setLoadFailed(true);
+      setLoadError(messageOf(reason));
+    } finally {
+      setLoading(false);
     }
-  }, [onError, project._id]);
+  }, [project._id]);
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    setExpandedNodeIds(new Set(nodes.filter((node) => !node.parent_id).map((node) => node._id)));
+  }, [nodes]);
   const createNode = async (event) => {
     event.preventDefault();
+    setSavingNode(true);
     try {
       await testingApi.createTestRepositoryNode(project._id, {
         name: nodeName,
@@ -37,13 +104,17 @@ export default function TestRepositoryPanel({ project, can, onError, focus = "" 
       });
       setNodeName("");
       setParentId("");
+      setNodeModalOpen(false);
       await load();
     } catch (reason) {
       onError(messageOf(reason));
+    } finally {
+      setSavingNode(false);
     }
   };
   const createStep = async (event) => {
     event.preventDefault();
+    setSavingStep(true);
     try {
       await testingApi.createReusableTestStep(project._id, {
         name: stepName,
@@ -52,96 +123,230 @@ export default function TestRepositoryPanel({ project, can, onError, focus = "" 
       });
       setStepName("");
       setStepAction("");
+      setStepModalOpen(false);
       await load();
     } catch (reason) {
       onError(messageOf(reason));
+    } finally {
+      setSavingStep(false);
     }
   };
+  const childrenByParent = new Map();
+  for (const node of nodes) {
+    const parentId =
+      node.parent_id && nodes.some((item) => item._id === node.parent_id) ? node.parent_id : "";
+    const children = childrenByParent.get(parentId) || [];
+    children.push(node);
+    childrenByParent.set(parentId, children);
+  }
+  const toggleNode = (nodeId) =>
+    setExpandedNodeIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
   return (
     <div className={`grid gap-5 ${focus ? "" : "xl:grid-cols-2"}`}>
       {focus !== "reusable-steps" && (
         <Panel
           title="Kho ca kiểm thử"
-          description="Tổ chức ca theo nghiệp vụ, module hoặc bản phát hành"
-        >
-          {can("testcase.create") && (
-            <form className="mb-4 grid gap-2 md:grid-cols-3" onSubmit={createNode}>
-              <input
-                className="apple-input"
-                value={nodeName}
-                onChange={(event) => setNodeName(event.target.value)}
-                placeholder="Tên thư mục"
-                required
-              />
-              <select
-                className="apple-input"
-                value={parentId}
-                onChange={(event) => setParentId(event.target.value)}
+          actions={
+            can("testcase.create") && !loading && !loadFailed ? (
+              <button
+                className="primary-button w-fit"
+                type="button"
+                onClick={() => setNodeModalOpen(true)}
               >
-                <option value="">Thư mục gốc</option>
-                {nodes.map((node) => (
-                  <option key={node._id} value={node._id}>
-                    {node.name}
-                  </option>
-                ))}
-              </select>
-              <button className="primary-button" type="submit">
                 Tạo thư mục
               </button>
-            </form>
+            ) : null
+          }
+          className="!shadow-none"
+        >
+          {loading ? (
+            <div className="p-5">
+              <LoadingState />
+            </div>
+          ) : loadFailed ? (
+            <div className="space-y-3 p-5">
+              <p role="alert" className="text-sm text-danger">
+                Không thể tải kho ca kiểm thử{loadError ? `: ${loadError}` : ""}
+              </p>
+              <button
+                className="secondary-button"
+                disabled={loading}
+                type="button"
+                onClick={() => void load()}
+              >
+                Thử tải lại
+              </button>
+            </div>
+          ) : nodes.length ? (
+            <ul aria-label="Cấu trúc kho kiểm thử" className="space-y-1 p-4">
+              {(childrenByParent.get("") || []).map((node) => (
+                <RepositoryBranch
+                  key={node._id}
+                  node={node}
+                  childrenByParent={childrenByParent}
+                  expanded={expandedNodeIds}
+                  onToggle={toggleNode}
+                />
+              ))}
+            </ul>
+          ) : (
+            <div className="p-4">
+              <DataTable items={[]} empty="Chưa có thư mục kiểm thử" columns={[]} />
+            </div>
           )}
-          <DataTable
-            items={nodes}
-            empty="Chưa có thư mục kiểm thử"
-            columns={[
-              { key: "name", label: "Thư mục" },
-              {
-                key: "parent_id",
-                label: "Thuộc thư mục",
-                render: (item) => nodes.find((node) => node._id === item.parent_id)?.name || "Gốc",
-              },
-              { key: "updated_at", label: "Cập nhật" },
-            ]}
-          />
         </Panel>
       )}
       {focus !== "repository" && (
         <Panel
-          title="Bước dùng lại"
-          description="Một thay đổi tạo phiên bản mới để lịch sử ca đã phê duyệt không bị thay đổi"
-        >
-          {can("testcase.create") && (
-            <form className="mb-4 grid gap-2" onSubmit={createStep}>
-              <input
-                className="apple-input"
-                value={stepName}
-                onChange={(event) => setStepName(event.target.value)}
-                placeholder="Tên bước"
-                required
-              />
-              <input
-                className="apple-input"
-                value={stepAction}
-                onChange={(event) => setStepAction(event.target.value)}
-                placeholder="Hành động"
-                required
-              />
-              <button className="primary-button w-fit" type="submit">
+          title="Danh sách bước dùng lại"
+          description="Bản đã duyệt được giữ nguyên; thay đổi sẽ tạo phiên bản mới"
+          actions={
+            can("testcase.create") && !loading && !loadFailed ? (
+              <button
+                className="primary-button w-fit"
+                type="button"
+                onClick={() => setStepModalOpen(true)}
+              >
                 Tạo bước dùng lại
               </button>
-            </form>
+            ) : null
+          }
+          className="!shadow-none"
+        >
+          {loading ? (
+            <div className="p-5">
+              <LoadingState />
+            </div>
+          ) : loadFailed ? (
+            <div className="space-y-3 p-5">
+              <p role="alert" className="text-sm text-danger">
+                Không thể tải bước dùng lại{loadError ? `: ${loadError}` : ""}
+              </p>
+              <button
+                className="secondary-button"
+                disabled={loading}
+                type="button"
+                onClick={() => void load()}
+              >
+                Thử tải lại
+              </button>
+            </div>
+          ) : (
+            <DataTable
+              items={steps}
+              empty="Chưa có bước dùng lại"
+              columns={[
+                { key: "name", label: "Tên bước" },
+                { key: "version", label: "Phiên bản" },
+                { key: "updated_at", label: "Cập nhật" },
+              ]}
+            />
           )}
-          <DataTable
-            items={steps}
-            empty="Chưa có bước dùng lại"
-            columns={[
-              { key: "name", label: "Tên bước" },
-              { key: "version", label: "Phiên bản" },
-              { key: "updated_at", label: "Cập nhật" },
-            ]}
-          />
         </Panel>
       )}
+      <Modal
+        isOpen={nodeModalOpen}
+        onClose={() => {
+          if (!savingNode) setNodeModalOpen(false);
+        }}
+        ariaLabel="Tạo thư mục kiểm thử"
+      >
+        <ModalHeader>
+          <ModalTitle>Tạo thư mục kiểm thử</ModalTitle>
+        </ModalHeader>
+        <form className="space-y-4 p-5" onSubmit={createNode}>
+          <label className="field-label" htmlFor="test-repository-node-name">
+            Tên thư mục
+            <input
+              id="test-repository-node-name"
+              className="apple-input mt-2 w-full"
+              value={nodeName}
+              onChange={(event) => setNodeName(event.target.value)}
+              required
+            />
+          </label>
+          <label className="field-label" htmlFor="test-repository-node-parent">
+            Thư mục cha
+            <select
+              id="test-repository-node-parent"
+              className="apple-input mt-2 w-full"
+              value={parentId}
+              onChange={(event) => setParentId(event.target.value)}
+            >
+              <option value="">Thư mục gốc</option>
+              {nodes.map((node) => (
+                <option key={node._id} value={node._id}>
+                  {node.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ModalFooter className="-mx-5 -mb-5">
+            <button
+              className="secondary-button"
+              disabled={savingNode}
+              onClick={() => setNodeModalOpen(false)}
+              type="button"
+            >
+              Hủy
+            </button>
+            <button className="primary-button" disabled={savingNode} type="submit">
+              {savingNode ? "Đang tạo thư mục" : "Tạo thư mục"}
+            </button>
+          </ModalFooter>
+        </form>
+      </Modal>
+      <Modal
+        isOpen={stepModalOpen}
+        onClose={() => {
+          if (!savingStep) setStepModalOpen(false);
+        }}
+        ariaLabel="Tạo bước dùng lại"
+      >
+        <ModalHeader>
+          <ModalTitle>Tạo bước dùng lại</ModalTitle>
+        </ModalHeader>
+        <form className="space-y-4 p-5" onSubmit={createStep}>
+          <label className="field-label" htmlFor="reusable-step-name">
+            Tên bước
+            <input
+              id="reusable-step-name"
+              className="apple-input mt-2 w-full"
+              value={stepName}
+              onChange={(event) => setStepName(event.target.value)}
+              required
+            />
+          </label>
+          <label className="field-label" htmlFor="reusable-step-action">
+            Hành động
+            <input
+              id="reusable-step-action"
+              className="apple-input mt-2 w-full"
+              value={stepAction}
+              onChange={(event) => setStepAction(event.target.value)}
+              required
+            />
+          </label>
+          <ModalFooter className="-mx-5 -mb-5">
+            <button
+              className="secondary-button"
+              disabled={savingStep}
+              onClick={() => setStepModalOpen(false)}
+              type="button"
+            >
+              Hủy
+            </button>
+            <button className="primary-button" disabled={savingStep} type="submit">
+              {savingStep ? "Đang tạo bước" : "Tạo bước dùng lại"}
+            </button>
+          </ModalFooter>
+        </form>
+      </Modal>
     </div>
   );
 }

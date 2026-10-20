@@ -6,8 +6,8 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
-from src.core.common import audit, get_project, get_project_role, new_id, now, plain_text
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.common import audit, get_project, get_project_role, get_project_roles, new_id, now, plain_text
 from src.modules.requirements.services.requirement_documents import require_document_access
 from src.modules.requirements.services.requirement_import import api_operation_identifiers
 from src.modules.requirements.services.requirement_import_workflow import create_requirement_preview_from_candidates
@@ -120,7 +120,7 @@ async def list_templates(project_id, user):
                 continue
             source_documents = await requirement_document_repository.list_by_ids(project_id, required_ids)
             if item.get("status") == "PENDING_PUBLICATION" and (
-                await get_project_role(project_id, user.id) == "QA"
+                "QA" in await get_project_roles(project_id, user.id)
                 or user.is_system_admin
                 or any(document.get("created_by") == user.id for document in source_documents)
             ):
@@ -180,7 +180,7 @@ async def list_custom_fields(project_id, user):
 
 async def create_custom_field(project_id, payload, user):
     await get_project(project_id, user, "project.update")
-    if await get_project_role(project_id, user.id) != "QA" and not user.is_system_admin:
+    if "QA" not in await get_project_roles(project_id, user.id) and not user.is_system_admin:
         raise HTTPException(status_code=403, detail={"code": "CUSTOM_FIELD_MANAGER_REQUIRED"})
     field = {"_id": new_id("RCF"), "project_id": project_id, **payload.model_dump(), "created_at": now(), "created_by": user.id}
     try:
@@ -452,7 +452,7 @@ async def review_template(project_id, template_id, user):
     findings = []
     results = []
     for batch in batches:
-        result = await request_ai_assistance(
+        result = await request_ai_automation(
             "requirement_template_review",
             project_id,
             "Review the supplied Requirements template  Write every user facing field in Vietnamese and never use internal field names  Report a missing item only when the permitted source proves it applies to a specific requirement and its absence blocks import  An item absent from the source is not automatically required  Report conflicts with exact quotations from permitted documents  Do not conclude the entire template is ready when the current batch is incomplete  Do not modify the template",
@@ -541,7 +541,7 @@ async def synthesize_template(project_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": "TEMPLATE_SOURCE_EMPTY"})
     results = []
     for start in range(0, len(evidence), 8):
-        result = await request_ai_assistance("requirement_template_synthesis", project_id, payload.instruction or "Synthesize a Requirements template  Write every user facing field in Vietnamese and identify missing information or conflicts", evidence[start:start + 8])
+        result = await request_ai_automation("requirement_template_synthesis", project_id, payload.instruction or "Synthesize a Requirements template  Write every user facing field in Vietnamese and identify missing information or conflicts", evidence[start:start + 8])
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
             raise HTTPException(status_code=503, detail={"code": "TEMPLATE_SYNTHESIS_UNAVAILABLE", "warnings": result.get("warnings", [])})
         results.append(result)
@@ -738,7 +738,7 @@ async def consent_publication(project_id, template_id, payload, user):
 
 async def approve_publication(project_id, template_id, user):
     await get_project(project_id, user, "project.update")
-    if await get_project_role(project_id, user.id) != "QA" and not user.is_system_admin:
+    if "QA" not in await get_project_roles(project_id, user.id) and not user.is_system_admin:
         raise HTTPException(status_code=403, detail={"code": "TEMPLATE_APPROVER_REQUIRED"})
     template = await requirement_template_repository.find(template_id)
     if not template or template.get("project_id") != project_id or template.get("status") != "PENDING_PUBLICATION" or template.get("publication_requested_by") == user.id:

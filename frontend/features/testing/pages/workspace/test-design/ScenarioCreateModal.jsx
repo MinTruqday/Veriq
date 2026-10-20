@@ -1,6 +1,7 @@
 import { valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
-import { selectedValues, TEST_SCENARIO_CATEGORIES } from "./testDesign.model";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
+import { TEST_SCENARIO_CATEGORIES } from "./testDesign.model";
 
 export default function ScenarioCreateModal({
   isOpen,
@@ -8,12 +9,20 @@ export default function ScenarioCreateModal({
   form,
   setForm,
   testConditions,
+  saving,
   onSubmit,
 }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} ariaLabel="Tạo kịch bản" className="max-w-xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={() => {
+        if (!saving) onClose();
+      }}
+      ariaLabel="Tạo kịch bản"
+      className="max-w-xl"
+    >
       <ModalHeader>
         <ModalTitle>Tạo kịch bản</ModalTitle>
       </ModalHeader>
@@ -45,28 +54,21 @@ export default function ScenarioCreateModal({
             </option>
           ))}
         </select>
-        <label className="field-label">
-          Điều kiện kiểm thử đã phê duyệt
-          <select
-            aria-label="Điều kiện kiểm thử cho kịch bản"
-            className="apple-input mt-2 min-h-28"
-            multiple
-            value={form.testConditionIds}
-            onChange={(event) => update({ testConditionIds: selectedValues(event) })}
-          >
-            {testConditions.map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.condition_key} {item.title}
-              </option>
-            ))}
-          </select>
-        </label>
+        <MultiSelect
+          label="Điều kiện kiểm thử đã phê duyệt"
+          options={testConditions.map((item) => ({
+            value: item._id,
+            label: `${item.condition_key} ${item.title}`,
+          }))}
+          value={form.testConditionIds}
+          onChange={(testConditionIds) => update({ testConditionIds })}
+        />
         <div className="flex justify-end gap-3">
-          <button className="secondary-button" type="button" onClick={onClose}>
+          <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
             Hủy
           </button>
-          <button className="apple-button" type="submit">
-            Lưu kịch bản
+          <button className="apple-button" type="submit" disabled={saving}>
+            {saving ? "Đang lưu" : "Lưu kịch bản"}
           </button>
         </div>
       </form>

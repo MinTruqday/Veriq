@@ -91,6 +91,25 @@ async def get_test_run_record(run_id, user):
     return {**run, "test_case_versions": versions, "results": results, "defects": defects}
 
 
+async def get_test_result_record(result_id, user):
+    result = await test_run_repository.find_result(result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail={"code": "ENTITY_NOT_FOUND"})
+    await get_project(result["project_id"], user, "testrun.read")
+    run = await test_run_repository.find_run(
+        result.get("test_run_id"), result["project_id"]
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail={"code": "TEST_RUN_NOT_FOUND"})
+    versions = await test_run_repository.list_versions(
+        [result.get("test_case_version_id")], 1
+    )
+    defects = await test_run_repository.list_defects_for_results(
+        result["project_id"], [result_id], 100
+    )
+    return {**result, "test_run": run, "test_case_version": versions[0] if versions else None, "defects": defects}
+
+
 async def build_test_run_report(run_id, user):
     
     run = await get_project_entity("test_runs", run_id, user, "report.export")

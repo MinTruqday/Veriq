@@ -5,7 +5,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, validate_doc
 from src.repositories.requirement_ai import requirement_ai_repository
-from src.core.ai_assistance import ai_contract_metadata, request_ai_assistance
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.modules.design.services.linters import requirement_findings
 from src.modules.requirements.services.requirement_records import persist_acceptance_criteria
 from src.modules.requirements.services.requirement_workflow import (
@@ -67,7 +67,7 @@ async def analyze_requirement_quality(version_id, payload, user):
         }
     ]
     instruction = json.dumps({"user_instruction": payload.instruction}, ensure_ascii=False)
-    ai_result = await request_ai_assistance(
+    ai_result = await request_ai_automation(
         "requirement_quality_analysis", version["project_id"], instruction, evidence
     )
     ai_findings = [

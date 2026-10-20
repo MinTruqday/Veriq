@@ -214,7 +214,7 @@ export default function TestCaseTemplatesPanel({ project }) {
 
   return (
     <Panel
-      title="Mẫu ca kiểm thử"
+      title="Danh sách mẫu ca kiểm thử"
       actions={
         <div className="flex flex-wrap gap-2">
           <select

@@ -106,6 +106,7 @@ export default function WebhookPanel({ project }) {
             {
               key: "actions",
               label: "Thao tác",
+              hideWhenEmpty: true,
               render: (item) =>
                 canManage ? (
                   <button
@@ -149,6 +150,7 @@ export default function WebhookPanel({ project }) {
             {
               key: "actions",
               label: "Thao tác",
+              hideWhenEmpty: true,
               render: (item) =>
                 canReplay && item.status === "FAILED" ? (
                   <button

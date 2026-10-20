@@ -39,6 +39,7 @@ import {
   Smile,
   Youtube as YoutubeIcon,
 } from "lucide-react";
+import { useActionDialog } from "../components/WorkspacePrimitives";
 import { createQaExtensions } from "./extensions";
 
 export default function DocumentEditor({
@@ -49,6 +50,7 @@ export default function DocumentEditor({
   readOnly = false,
 }) {
   const [tableOfContents, setTableOfContents] = useState([]);
+  const { ask, dialog } = useActionDialog();
   const editor = useEditor({
     immediatelyRender: false,
     extensions: createQaExtensions(
@@ -60,7 +62,7 @@ export default function DocumentEditor({
     editable: !readOnly,
     editorProps: {
       attributes: {
-        class: `testing-tiptap ${minHeight}`,
+        class: `testing-tiptap ${readOnly ? "min-h-0" : minHeight}`,
         role: "textbox",
         "aria-label": label,
         spellcheck: "true",
@@ -80,7 +82,7 @@ export default function DocumentEditor({
     }
   }, [editor, readOnly, value]);
 
-  if (!editor) return <div className={`${minHeight} skeleton`} />;
+  if (!editor) return <div className={`${readOnly ? "min-h-0" : minHeight} skeleton`} />;
 
   if (readOnly) {
     return (
@@ -90,67 +92,121 @@ export default function DocumentEditor({
     );
   }
 
-  const addLink = () => {
-    const href = window.prompt(
-      "Đường dẫn liên kết",
-      editor.getAttributes("link").href || "https://",
-    );
-    if (href === null) return;
-    if (!href.trim()) {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
-    }
-    try {
-      const parsed = new URL(href.trim());
-      if (!["http:", "https:", "mailto:"].includes(parsed.protocol)) throw new Error("invalid");
-      editor.chain().focus().extendMarkRange("link").setLink({ href: parsed.toString() }).run();
-    } catch {
-      window.alert("Liên kết chỉ hỗ trợ HTTP HTTPS hoặc email");
-    }
+  const addLink = async () => {
+    await ask({
+      title: "Thêm hoặc sửa liên kết",
+      description: "Nhập địa chỉ web hoặc email; để trống để bỏ liên kết hiện tại",
+      fields: [
+        {
+          name: "href",
+          label: "Địa chỉ liên kết",
+          initialValue: editor.getAttributes("link").href || "https://",
+        },
+      ],
+      confirmLabel: "Lưu liên kết",
+      onConfirm: ({ href }) => {
+        if (!href.trim()) {
+          editor.chain().focus().extendMarkRange("link").unsetLink().run();
+          return;
+        }
+        let parsed;
+        try {
+          parsed = new URL(href.trim());
+        } catch {
+          throw new Error("Nhập một địa chỉ HTTP, HTTPS hoặc email hợp lệ");
+        }
+        if (!["http:", "https:", "mailto:"].includes(parsed.protocol)) {
+          throw new Error("Chỉ hỗ trợ liên kết HTTP, HTTPS hoặc email");
+        }
+        editor.chain().focus().extendMarkRange("link").setLink({ href: parsed.toString() }).run();
+      },
+    });
   };
 
-  const addImage = () => {
-    const source = window.prompt("Đường dẫn hình ảnh");
-    if (!source?.trim()) return;
-    let src;
-    try {
-      const parsed = new URL(source.trim());
-      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("invalid");
-      src = parsed.toString();
-    } catch {
-      window.alert("Hình ảnh chỉ hỗ trợ đường dẫn HTTP hoặc HTTPS");
-      return;
-    }
-    const alt = window.prompt("Mô tả hình ảnh cho người dùng trình đọc màn hình");
-    if (alt?.trim()) editor.chain().focus().setImage({ src, alt: alt.trim() }).run();
+  const addImage = async () => {
+    await ask({
+      title: "Chèn hình ảnh",
+      fields: [
+        { name: "src", label: "Địa chỉ hình ảnh", required: true },
+        { name: "alt", label: "Mô tả hình ảnh", required: true },
+      ],
+      confirmLabel: "Chèn hình ảnh",
+      onConfirm: ({ src, alt }) => {
+        let parsed;
+        try {
+          parsed = new URL(src.trim());
+        } catch {
+          throw new Error("Nhập một địa chỉ hình ảnh HTTP hoặc HTTPS hợp lệ");
+        }
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          throw new Error("Hình ảnh chỉ hỗ trợ địa chỉ HTTP hoặc HTTPS");
+        }
+        editor.chain().focus().setImage({ src: parsed.toString(), alt: alt.trim() }).run();
+      },
+    });
   };
 
-  const addMath = () => {
-    const latex = window.prompt("Công thức LaTeX");
-    if (latex?.trim()) editor.chain().focus().insertContent(`$${latex.trim()}$`).run();
+  const addMath = async () => {
+    await ask({
+      title: "Chèn công thức",
+      fields: [{ name: "latex", label: "Công thức LaTeX", required: true, multiline: true }],
+      confirmLabel: "Chèn công thức",
+      onConfirm: ({ latex }) => {
+        editor.chain().focus().insertContent(`$${latex.trim()}$`).run();
+      },
+    });
   };
 
-  const addEmoji = () => {
-    const shortcode = window.prompt("Mã emoji không có dấu hai chấm", "smile");
-    if (shortcode?.trim()) editor.chain().focus().setEmoji(shortcode.trim()).run();
+  const addEmoji = async () => {
+    await ask({
+      title: "Chèn emoji",
+      fields: [{ name: "shortcode", label: "Mã emoji", initialValue: "smile", required: true }],
+      confirmLabel: "Chèn emoji",
+      onConfirm: ({ shortcode }) => {
+        editor.chain().focus().setEmoji(shortcode.trim()).run();
+      },
+    });
   };
 
-  const addMention = () => {
-    const label = window.prompt("Tên người dùng hoặc vai trò được nhắc đến");
-    if (label?.trim()) {
-      editor
-        .chain()
-        .focus()
-        .insertContent({ type: "mention", attrs: { id: label.trim(), label: label.trim() } })
-        .insertContent(" ")
-        .run();
-    }
+  const addMention = async () => {
+    await ask({
+      title: "Nhắc người dùng hoặc vai trò",
+      fields: [{ name: "label", label: "Tên người dùng hoặc vai trò", required: true }],
+      confirmLabel: "Chèn nhắc tên",
+      onConfirm: ({ label: mentionLabel }) => {
+        const label = mentionLabel.trim();
+        editor
+          .chain()
+          .focus()
+          .insertContent({ type: "mention", attrs: { id: label, label } })
+          .insertContent(" ")
+          .run();
+      },
+    });
   };
 
-  const addYoutube = () => {
-    const source = window.prompt("Đường dẫn video YouTube");
-    if (!source?.trim()) return;
-    editor.chain().focus().setYoutubeVideo({ src: source.trim(), width: 640, height: 360 }).run();
+  const addYoutube = async () => {
+    await ask({
+      title: "Chèn video YouTube",
+      fields: [{ name: "src", label: "Địa chỉ video YouTube", required: true }],
+      confirmLabel: "Chèn video",
+      onConfirm: ({ src }) => {
+        let parsed;
+        try {
+          parsed = new URL(src.trim());
+        } catch {
+          throw new Error("Nhập một địa chỉ video YouTube hợp lệ");
+        }
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          throw new Error("Địa chỉ video phải dùng HTTP hoặc HTTPS");
+        }
+        editor
+          .chain()
+          .focus()
+          .setYoutubeVideo({ src: parsed.toString(), width: 640, height: 360 })
+          .run();
+      },
+    });
   };
 
   const toggleBold = () => {
@@ -499,6 +555,7 @@ export default function DocumentEditor({
         </>
       )}
       <EditorContent editor={editor} />
+      {dialog}
     </div>
   );
 }

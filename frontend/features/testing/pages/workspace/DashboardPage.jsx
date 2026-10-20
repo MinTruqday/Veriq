@@ -17,6 +17,7 @@ import { formatDate, messageOf, valueLabel } from "../../lib/testing";
 export default function DashboardPage({ project }) {
   const { ask, dialog } = useActionDialog();
   const [value, setValue] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState({
     percent: project.project_completion_percent ?? 0,
@@ -24,27 +25,76 @@ export default function DashboardPage({ project }) {
     taskSummary: project.task_summary,
   });
   const isQa = project.current_membership?.project_role === "QA";
+  const permissions = project.current_permissions || [];
+  const can = (permission) => permissions.includes(permission);
+  const canReadAnalytics = can("analytics.read");
+  const canReadCoverage = can("coverage.read");
   useEffect(() => {
-    Promise.all([
-      testingApi.dashboard(project._id),
-      testingApi.coverage(project._id),
-      testingApi.getProject(project._id),
-    ])
-      .then(([dashboard, coverage, currentProject]) => {
-        setValue({ ...dashboard, ...coverage });
+    let active = true;
+    const requests = [];
+    if (canReadAnalytics) {
+      requests.push(["dashboard", testingApi.dashboard(project._id)]);
+    }
+    if (canReadCoverage) {
+      requests.push(["coverage", testingApi.coverage(project._id)]);
+    }
+    requests.push(["project", testingApi.getProject(project._id)]);
+    Promise.allSettled(requests.map(([, request]) => request))
+      .then((results) => {
+        if (!active) return;
+        const data = {};
+        results.forEach((result, index) => {
+          const [key] = requests[index];
+          if (result.status === "fulfilled") data[key] = result.value;
+          else if (result.reason?.status !== 403) setError(messageOf(result.reason));
+        });
+        const currentProject = data.project;
+        setValue({ dashboard: data.dashboard || null, coverage: data.coverage || null });
+        if (!currentProject) return;
         setProgress({
           percent: currentProject.project_completion_percent ?? 0,
           revision: currentProject.revision,
           taskSummary: currentProject.task_summary,
         });
       })
-      .catch((reason) => setError(messageOf(reason)));
-  }, [project._id]);
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canReadAnalytics, canReadCoverage, project._id]);
   const base = `/du-an/${project._id}`;
+  const navigationCards = [
+    ["lap-ke-hoach/backlog", "Lập kế hoạch", "project.read"],
+    ["yeu-cau", "Làm rõ yêu cầu", "requirement.read"],
+    ["ho-so-dam-bao", "Hồ sơ đảm bảo", "requirement.read", "testcase.read"],
+    ["ca-kiem-thu", "Thiết kế kiểm thử", "testcase.read"],
+    ["ke-hoach-kiem-thu", "Lập kế hoạch kiểm thử", "testplan.read"],
+    ["lan-chay-kiem-thu", "Thực thi kiểm thử", "testrun.read"],
+    ["loi", "Xử lý lỗi", "defect.read"],
+    ["ban-phat-hanh", "Quyết định phát hành", "release.read"],
+  ].filter(
+    ([, , permission, secondPermission]) =>
+      can(permission) && (!secondPermission || can(secondPermission)),
+  );
+  const dashboard = value?.dashboard;
+  const coverage = value?.coverage;
+  const hasOverviewMetrics =
+    can("requirement.read") ||
+    can("testcase.read") ||
+    can("defect.read") ||
+    (can("coverage.read") && Boolean(coverage));
+  const hasQualityMetrics =
+    can("testcase.read") ||
+    (can("coverage.read") && Boolean(coverage)) ||
+    can("proposal.read") ||
+    can("testrun.read") ||
+    can("impact.read");
   return (
     <WorkspacePage title={project.name}>
       {error && <ErrorState message={error} />}
-      {!value ? (
+      {loading ? (
         <LoadingState />
       ) : (
         <>
@@ -127,151 +177,150 @@ export default function DashboardPage({ project }) {
               </div>
             </div>
           </Panel>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Metric label="Yêu cầu" value={value.requirements} />
-            <Metric label="Kiểm thử đang hoạt động" value={value.active_tests} />
-            <Metric label="Lỗi đang mở" value={value.open_defects} />
-            <Metric label="Độ phủ yêu cầu" value={`${value.requirement_coverage}%`} />
-          </div>
-          <details className="rounded-panel border border-border bg-surface p-4 shadow-card">
-            <summary className="cursor-pointer text-sm font-medium">
-              Chỉ số chất lượng chi tiết
-            </summary>
-            <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <Metric label="Kiểm thử cần cập nhật" value={value.tests_needing_update} />
-              <Metric
-                label="Độ phủ tiêu chí chấp nhận"
-                value={`${value.acceptance_criterion_coverage}%`}
-              />
-              <Metric label="Độ phủ còn hiệu lực" value={`${value.fresh_coverage}%`} />
-              <Metric label="Độ phủ thực thi" value={`${value.execution_coverage}%`} />
-              <Metric label="Đề xuất chờ duyệt" value={value.pending_proposals} />
-              <Metric label="Lần chạy hiện tại" value={value.current_runs} />
-              <Metric label="Thay đổi chờ rà soát" value={value.changes_waiting_impact} />
+          {dashboard && hasOverviewMetrics && (
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              {can("requirement.read") && <Metric label="Yêu cầu" value={dashboard.requirements} />}
+              {can("testcase.read") && (
+                <Metric label="Kiểm thử đang hoạt động" value={dashboard.active_tests} />
+              )}
+              {can("defect.read") && <Metric label="Lỗi đang mở" value={dashboard.open_defects} />}
+              {can("coverage.read") && coverage && (
+                <Metric label="Độ phủ yêu cầu" value={`${coverage.requirement_coverage}%`} />
+              )}
             </div>
-          </details>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Panel
-              title="Đi tới công việc"
-              description="Mở đúng khu vực theo vòng đời hiện tại"
-              className="lg:col-span-2"
-            >
-              <div className="grid gap-3 p-5 sm:grid-cols-2">
-                {[
-                  [
-                    "lap-ke-hoach/backlog",
-                    "Lập kế hoạch",
-                    "Danh sách chờ, bảng công việc, đợt lặp và lộ trình",
-                  ],
-                  ["yeu-cau", "Làm rõ yêu cầu", "Nguồn, phiên bản, tiêu chí và thay đổi"],
-                  [
-                    "ho-so-dam-bao",
-                    "Hồ sơ đảm bảo",
-                    "Nghĩa vụ kiểm thử, bằng chứng và quyết định QA",
-                  ],
-                  [
-                    "ca-kiem-thu",
-                    "Thiết kế kiểm thử",
-                    "Ca kiểm thử, kỹ thuật, dữ liệu và bộ kiểm thử",
-                  ],
-                  [
-                    "ke-hoach-kiem-thu",
-                    "Lập kế hoạch kiểm thử",
-                    "Phạm vi kế hoạch, bản dựng và môi trường",
-                  ],
-                  [
-                    "lan-chay-kiem-thu",
-                    "Thực thi kiểm thử",
-                    "Kết quả bước, bằng chứng, chạy lại và kiểm thử lại",
-                  ],
-                  ["loi", "Xử lý lỗi", "Lỗi, liên kết thực thi và tác động"],
-                  [
-                    "ban-phat-hanh",
-                    "Quyết định phát hành",
-                    "Tiêu chí kết thúc, rủi ro và quyết định QA",
-                  ],
-                ].map(([href, label, detail]) => (
-                  <Link
-                    className="group rounded-control border border-border p-4 transition hover:border-brand hover:bg-brand-soft"
-                    href={`${base}/${href}`}
-                    key={href}
-                  >
-                    <p className="text-[13px] font-semibold group-hover:text-brand">{label}</p>
-                    <p className="mt-1 text-[12px] leading-5 text-ink-muted">{detail}</p>
-                  </Link>
-                ))}
+          )}
+          {dashboard && hasQualityMetrics && (
+            <details className="rounded-panel border border-border bg-surface p-4 shadow-card">
+              <summary className="cursor-pointer text-sm font-medium">
+                Chỉ số chất lượng chi tiết
+              </summary>
+              <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                {can("testcase.read") && (
+                  <Metric label="Kiểm thử cần cập nhật" value={dashboard.tests_needing_update} />
+                )}
+                {can("coverage.read") && coverage && (
+                  <>
+                    <Metric
+                      label="Độ phủ tiêu chí chấp nhận"
+                      value={`${coverage.acceptance_criterion_coverage}%`}
+                    />
+                    <Metric label="Độ phủ còn hiệu lực" value={`${coverage.fresh_coverage}%`} />
+                    <Metric label="Độ phủ thực thi" value={`${coverage.execution_coverage}%`} />
+                  </>
+                )}
+                {can("proposal.read") && (
+                  <Metric label="Đề xuất chờ duyệt" value={dashboard.pending_proposals} />
+                )}
+                {can("testrun.read") && (
+                  <Metric label="Lần chạy hiện tại" value={dashboard.current_runs} />
+                )}
+                {can("impact.read") && (
+                  <Metric label="Thay đổi chờ rà soát" value={dashboard.changes_waiting_impact} />
+                )}
               </div>
-            </Panel>
-            <Panel title="Tài liệu và nguồn">
-              <div className="space-y-3 p-5">
-                <p className="text-sm leading-6 text-ink-muted">
-                  Chỉ tài liệu được cấp quyền mới được dùng làm nguồn dẫn hoặc cho phép AI đọc
-                </p>
-                <Link className="apple-button w-full" href={`${base}/tri-thuc`}>
-                  Mở tài liệu tham chiếu
-                </Link>
-              </div>
-            </Panel>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title="Lỗi đang mở theo mức độ">
-              <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-5">
-                {Object.entries(value.open_defects_by_severity || {}).map(([severity, count]) => (
-                  <div className="rounded-xl border border-border p-3" key={severity}>
-                    <p className="text-[11px] text-ink-muted">{valueLabel(severity)}</p>
-                    <p className="mt-1 text-xl font-semibold">{count}</p>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-            <Panel title="Lần chạy mới nhất">
-              {value.latest_run ? (
-                <div className="space-y-3 p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <Link
-                      className="font-semibold text-brand"
-                      href={`${base}/thuc-thi/${value.latest_run._id}`}
-                    >
-                      {value.latest_run.name}
-                    </Link>
-                    <StatusPill value={value.latest_run.status} />
-                  </div>
-                  <p className="text-[12px] text-ink-muted">
-                    Bản dựng {value.latest_run.build || "Chưa đặt"} tại{" "}
-                    {value.latest_run.environment || "Chưa đặt"}
-                  </p>
-                  <div className="flex flex-wrap gap-3 text-[12px]">
-                    {Object.entries(value.latest_run.result_counts || {}).map(([status, count]) => (
-                      <span className="rounded-full border border-border px-3 py-1" key={status}>
-                        {status} {count}
-                      </span>
+            </details>
+          )}
+          {(navigationCards.length > 0 || can("knowledge.read")) && (
+            <div className="grid gap-4 lg:grid-cols-3">
+              {navigationCards.length > 0 && (
+                <Panel title="Đi tới công việc" className="lg:col-span-2">
+                  <div className="grid gap-3 p-5 sm:grid-cols-2">
+                    {navigationCards.map(([href, label]) => (
+                      <Link
+                        className="group rounded-control border border-border p-4 transition hover:border-brand hover:bg-brand-soft"
+                        href={`${base}/${href}`}
+                        key={href}
+                      >
+                        <p className="text-[13px] font-semibold group-hover:text-brand">{label}</p>
+                      </Link>
                     ))}
                   </div>
-                </div>
-              ) : (
-                <p className="p-5 text-[13px] text-ink-muted">Chưa có lần chạy</p>
+                </Panel>
               )}
+              {can("knowledge.read") && (
+                <Panel title="Tài liệu và nguồn">
+                  <div className="space-y-3 p-5">
+                    <p className="text-sm leading-6 text-ink-muted">
+                      Chỉ tài liệu được cấp quyền mới được dùng làm nguồn dẫn hoặc cho phép AI đọc
+                    </p>
+                    <Link className="apple-button w-full" href={`${base}/tri-thuc`}>
+                      Mở tài liệu tham chiếu
+                    </Link>
+                  </div>
+                </Panel>
+              )}
+            </div>
+          )}
+          {dashboard && can("defect.read") && can("testrun.read") && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Panel title="Lỗi đang mở theo mức độ">
+                <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-5">
+                  {Object.entries(dashboard.open_defects_by_severity || {}).map(
+                    ([severity, count]) => (
+                      <div className="rounded-xl border border-border p-3" key={severity}>
+                        <p className="text-[11px] text-ink-muted">{valueLabel(severity)}</p>
+                        <p className="mt-1 text-xl font-semibold">{count}</p>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </Panel>
+              <Panel title="Lần chạy mới nhất">
+                {dashboard.latest_run ? (
+                  <div className="space-y-3 p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <Link
+                        className="font-semibold text-brand"
+                        href={`${base}/thuc-thi/${dashboard.latest_run._id}`}
+                      >
+                        {dashboard.latest_run.name}
+                      </Link>
+                      <StatusPill value={dashboard.latest_run.status} />
+                    </div>
+                    <p className="text-[12px] text-ink-muted">
+                      Bản dựng {dashboard.latest_run.build || "Chưa đặt"} tại{" "}
+                      {dashboard.latest_run.environment || "Chưa đặt"}
+                    </p>
+                    <div className="flex flex-wrap gap-3 text-[12px]">
+                      {Object.entries(dashboard.latest_run.result_counts || {}).map(
+                        ([status, count]) => (
+                          <span
+                            className="rounded-full border border-border px-3 py-1"
+                            key={status}
+                          >
+                            {valueLabel(status)} {count}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="p-5 text-[13px] text-ink-muted">Chưa có lần chạy</p>
+                )}
+              </Panel>
+            </div>
+          )}
+          {dashboard && can("requirement.read") && can("impact.read") && (
+            <Panel title="Thay đổi gần đây">
+              <DataTable
+                items={dashboard.recent_changes}
+                empty="Chưa có bộ thay đổi"
+                columns={[
+                  { key: "requirement_label", label: "Yêu cầu" },
+                  {
+                    key: "status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.status} />,
+                  },
+                  {
+                    key: "created_at",
+                    label: "Tạo lúc",
+                    render: (item) => formatDate(item.created_at),
+                  },
+                ]}
+              />
             </Panel>
-          </div>
-          <Panel title="Thay đổi gần đây">
-            <DataTable
-              items={value.recent_changes}
-              empty="Chưa có bộ thay đổi"
-              columns={[
-                { key: "requirement_label", label: "Yêu cầu" },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.status} />,
-                },
-                {
-                  key: "created_at",
-                  label: "Tạo lúc",
-                  render: (item) => formatDate(item.created_at),
-                },
-              ]}
-            />
-          </Panel>
+          )}
         </>
       )}
       {dialog}

@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import DataTable from "../components/DataTable";
 import PlatformOperationsPanel from "../components/PlatformOperationsPanel";
@@ -14,6 +15,7 @@ import {
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
 
 const taskLabels = {
   impact_analysis: "Phân tích ảnh hưởng",
@@ -28,24 +30,37 @@ const modelLabels = {
 };
 
 export default function OperationsPage() {
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
   const [section, setSection] = useState("overview");
   const [value, setValue] = useState(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [auditQuery, setAuditQuery] = useState("");
   const [storagePage, setStoragePage] = useState(1);
   const [auditPage, setAuditPage] = useState(1);
   const storagePageSize = 10;
   const auditPageSize = 20;
+  const isPlatformAdmin = user?.system_role === "ADMIN";
   const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
     try {
       setValue(await testingApi.operations());
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      setLoading(false);
     }
   }, []);
   useEffect(() => {
+    if (authLoading) return;
+    if (!isPlatformAdmin) {
+      router.replace("/du-an");
+      return;
+    }
     void load();
-  }, [load]);
+  }, [authLoading, isPlatformAdmin, load, router]);
   const retryJob = async (jobId) => {
     try {
       await testingApi.retryOperationJob(jobId);
@@ -96,6 +111,13 @@ export default function OperationsPage() {
       count: value?.ai_request_metrics?.proposals || 0,
     },
   ];
+  if (authLoading)
+    return (
+      <div className="p-8">
+        <LoadingState />
+      </div>
+    );
+  if (!isPlatformAdmin) return null;
   return (
     <WorkspacePage title="Vận hành nền tảng">
       <nav
@@ -114,7 +136,10 @@ export default function OperationsPage() {
             className={`min-h-10 shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
               section === value ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
             }`}
-            onClick={() => setSection(value)}
+            onClick={() => {
+              setSection(value);
+              setError("");
+            }}
           >
             {label}
           </button>
@@ -126,7 +151,17 @@ export default function OperationsPage() {
       ) : section === "platform" ? (
         <PlatformOperationsPanel />
       ) : !value ? (
-        <LoadingState />
+        loading ? (
+          <LoadingState />
+        ) : error ? (
+          <div className="space-y-3">
+            <button className="secondary-button" type="button" onClick={() => void load()}>
+              Thử tải lại
+            </button>
+          </div>
+        ) : (
+          <LoadingState />
+        )
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

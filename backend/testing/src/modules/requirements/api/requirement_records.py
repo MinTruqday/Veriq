@@ -37,6 +37,7 @@ from src.modules.requirements.services.requirement_lifecycle import (
 from src.modules.requirements.services.requirement_records import (
     create_requirement_record,
     create_requirement_version_record,
+    get_requirement_version_record,
     get_requirement_record,
     list_requirement_records,
     list_requirement_version_records,
@@ -274,11 +275,7 @@ async def baseline_requirement_version(
 
 @router.get("/phien-ban-yeu-cau/{version_id}")
 async def get_requirement_version(version_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(
-        await get_project_entity(
-            "requirement_versions", version_id, user, "requirement.version.read"
-        )
-    )
+    return envelope(await get_requirement_version_record(version_id, user))
 
 
 @router.post("/du-an/{project_id}/yeu-cau/{requirement_id}/phe-duyet")

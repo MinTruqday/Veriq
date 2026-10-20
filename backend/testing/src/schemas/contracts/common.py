@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Literal, TypeAlias
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class SystemRole(str, Enum):
@@ -10,6 +10,10 @@ class SystemRole(str, Enum):
 
 
 class CurrentUser(BaseModel):
+    _access_token: str = PrivateAttr(default="")
+    _ai_automation_run_id: str = PrivateAttr(default="")
+    _ai_automation_initiator_id: str = PrivateAttr(default="")
+    _ai_automation_definition_id: str = PrivateAttr(default="")
     id: str = Field(alias="_id")
     email: str = ""
     system_role: SystemRole = SystemRole.USER

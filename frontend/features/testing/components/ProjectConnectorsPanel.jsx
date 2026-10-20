@@ -235,33 +235,39 @@ export default function ProjectConnectorsPanel({ project }) {
             {
               key: "actions",
               label: "Thao tác",
-              render: (item) => (
-                <span className="flex flex-wrap gap-2">
-                  {canSync && item.status === "BOUND" && (
-                    <button className="secondary-button" type="button" onClick={() => sync(item)}>
-                      Đồng bộ
-                    </button>
-                  )}
-                  {canManage && item.status === "BOUND" && (
-                    <>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => editMapping(item)}
-                      >
-                        Sửa ánh xạ
+              hideWhenEmpty: true,
+              render: (item) => {
+                const canSyncItem = canSync && item.status === "BOUND";
+                const canManageItem = canManage && item.status === "BOUND";
+                if (!canSyncItem && !canManageItem) return null;
+                return (
+                  <span className="flex flex-wrap gap-2">
+                    {canSyncItem && (
+                      <button className="secondary-button" type="button" onClick={() => sync(item)}>
+                        Đồng bộ
                       </button>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => unbind(item)}
-                      >
-                        Ngắt kết nối
-                      </button>
-                    </>
-                  )}
-                </span>
-              ),
+                    )}
+                    {canManageItem && (
+                      <>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => editMapping(item)}
+                        >
+                          Sửa ánh xạ
+                        </button>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => unbind(item)}
+                        >
+                          Ngắt kết nối
+                        </button>
+                      </>
+                    )}
+                  </span>
+                );
+              },
             },
           ]}
         />
@@ -284,6 +290,7 @@ export default function ProjectConnectorsPanel({ project }) {
               {
                 key: "action",
                 label: "Thao tác",
+                hideWhenEmpty: true,
                 render: (item) =>
                   item.status === "OPEN" ? (
                     <button

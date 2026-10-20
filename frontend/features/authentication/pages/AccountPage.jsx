@@ -20,12 +20,15 @@ export default function AccountPage() {
   });
   const [password, setPassword] = useState({ current_password: "", new_password: "" });
   const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState("");
   const [sessionPage, setSessionPage] = useState(1);
   const sessionPageSize = 10;
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [sessionAction, setSessionAction] = useState("");
 
   useEffect(() => {
     setProfile({
@@ -35,13 +38,17 @@ export default function AccountPage() {
     });
   }, [user]);
   const loadSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    setSessionsError("");
     try {
       const data = await listMySessions();
       setSessions(Array.isArray(data) ? data : []);
     } catch (reason) {
-      setError(
+      setSessionsError(
         reason instanceof Error ? reason.message : "Không thể tải danh sách phiên đăng nhập",
       );
+    } finally {
+      setSessionsLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -80,26 +87,32 @@ export default function AccountPage() {
   };
   const closeOtherSessions = async () => {
     setError("");
+    setSessionAction("close-others");
     try {
       await logoutAPI(true);
       await loadSessions();
       setStatus("Đã đóng toàn bộ phiên đăng nhập khác");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể đóng các phiên khác");
+    } finally {
+      setSessionAction("");
     }
   };
   const revokeSession = async (sessionId) => {
     setError("");
+    setSessionAction(sessionId);
     try {
       await revokeMySession(sessionId);
       await loadSessions();
       setStatus("Đã thu hồi phiên đăng nhập");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể thu hồi phiên đăng nhập");
+    } finally {
+      setSessionAction("");
     }
   };
   return (
-    <div className="mx-auto w-full max-w-[980px] space-y-7 p-4 sm:p-6 md:p-9">
+    <div className="mx-auto w-full max-w-[980px] min-w-0 space-y-6 py-5 sm:py-6 xl:py-8">
       <header className="border-b border-border pb-6">
         <h1 className="text-[32px] font-semibold tracking-[-0.04em]">Tài khoản và bảo mật</h1>
       </header>
@@ -192,12 +205,30 @@ export default function AccountPage() {
           <div>
             <h2 className="font-semibold">Phiên đăng nhập</h2>
           </div>
-          <button className="secondary-button" type="button" onClick={closeOtherSessions}>
-            Đóng các phiên khác
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={Boolean(sessionAction)}
+            onClick={closeOtherSessions}
+          >
+            {sessionAction === "close-others" ? "Đang đóng phiên" : "Đóng các phiên khác"}
           </button>
         </div>
         <div className="mt-4 divide-y divide-border border-y border-border">
-          {sessions.length ? (
+          {sessionsLoading ? (
+            <p className="py-4 text-sm text-ink-muted" role="status">
+              Đang tải danh sách phiên đăng nhập
+            </p>
+          ) : sessionsError ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <p className="text-sm text-danger" role="alert">
+                {sessionsError}
+              </p>
+              <button className="secondary-button" type="button" onClick={loadSessions}>
+                Thử lại
+              </button>
+            </div>
+          ) : sessions.length ? (
             sessions
               .slice((sessionPage - 1) * sessionPageSize, sessionPage * sessionPageSize)
               .map((session) => (
@@ -219,9 +250,10 @@ export default function AccountPage() {
                     <button
                       className="text-sm text-danger"
                       type="button"
+                      disabled={Boolean(sessionAction)}
                       onClick={() => revokeSession(session._id)}
                     >
-                      Thu hồi
+                      {sessionAction === session._id ? "Đang thu hồi" : "Thu hồi"}
                     </button>
                   )}
                 </div>

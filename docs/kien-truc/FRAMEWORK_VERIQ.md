@@ -111,7 +111,7 @@ flowchart TB
     TR --> NO
     TR --> WO
 
-    TE -->|X Internal Token<br/>AI assistance stream hoặc result| AI
+    TE -->|X Internal Token<br/>AI automation stream hoặc result| AI
     TE -->|X Internal Token<br/>index search delete project artifact| AI
     TE -->|X Internal Token<br/>requirement source read write| CL
     TE -->|X Internal Token<br/>enqueue get retry cancel job| WO
@@ -292,28 +292,49 @@ flowchart TD
 
 Không được vẽ mọi defect tự động sửa Requirement  Điểm quay về Requirement chỉ xảy ra khi có thay đổi ảnh hưởng hoặc cần làm rõ
 
-## 8  AI assistance của Testing
+## 8  Luồng AI automation xuyên suốt dự án
 
 ```mermaid
 flowchart TD
-    S([Bắt đầu AI assistance]) --> A[Testing kiểm tra quyền project và input]
-    A --> B[Testing gọi AI internal assistance]
-    B --> C{Có yêu cầu streaming}
-    C -->|Có| D[AI gửi SSE delta result hoặc error]
-    C -->|Không| E[AI trả structured result]
-    D --> F[Testing chuyển trạng thái xử lý cho Frontend]
-    E --> F
-    F --> G{Kết quả hợp lệ và có evidence}
-    G -->|Không| H[Trả draft hoặc lỗi retryable khi phù hợp]
-    H --> X1([Kết thúc không tự thay đổi dữ liệu])
-    G -->|Có| I[Tạo hoặc cập nhật bản nháp hay proposal]
-    I --> J[Người dùng review và xác nhận theo nghiệp vụ]
-    J --> X2([Kết thúc])
+    S([Bắt đầu từ thay đổi trong dự án]) --> A[Testing lưu artifact và audit]
+    A --> B{Có sự kiện được hỗ trợ}
+    B -->|Không| X0([Kết thúc nghiệp vụ không phát sinh AI run])
+    B -->|Có| C[Gửi event nội bộ kèm actor token và evidence nguồn]
+    C --> D[Xác minh actor project role permission và phạm vi evidence]
+    D --> E{Event đã có run}
+    E -->|Có| F[Trả run hiện có theo event ID]
+    F --> X1([Kết thúc không tạo run trùng])
+    E -->|Không| G[Tạo run checkpoint và publish RabbitMQ]
+    G --> H{Queue nhận event}
+    H -->|Không| X2([Ghi degraded và mã lỗi queue])
+    H -->|Có| I[Nạp nguồn và truy hồi evidence liên quan được phép]
+    I --> J{Evidence và dependency đủ dùng}
+    J -->|Không| X3([Ghi insufficient evidence hoặc degraded, không ghi thay đổi])
+    J -->|Có| K[Agent lập các task phụ thuộc và tiêu chí kiểm chứng]
+    K --> L{Plan hợp lệ trong giới hạn run}
+    L -->|Không| X4([Ghi failed hoặc insufficient evidence])
+    L -->|Có| M[Thực thi task tuần tự trong quyền actor]
+    M --> N{Permission và revision còn hợp lệ}
+    N -->|Không| O[Ghi denied hoặc revision conflict]
+    N -->|Có| P[Gọi API nghiệp vụ hiện có]
+    P --> Q[Đọc lại trạng thái và xác minh hậu điều kiện]
+    Q --> R{Xác minh thành công}
+    R -->|Không| T[Ghi action failed, không tuyên bố hoàn tất]
+    R -->|Có| U[Ghi observation source fact evidence và receipt]
+    O --> V{Còn task độc lập}
+    T --> V
+    U --> V
+    V -->|Có| M
+    V -->|Không| W[Chốt completed hoặc degraded theo kết quả]
+    W --> X5([Kết thúc có trạng thái và dấu vết])
 ```
 
-AI assistance không tự áp dụng thay đổi vào bản chính chỉ vì model đã trả output
+Các sự kiện hiện được phát ra khi tài liệu, Requirement, Test Case, Test Plan, execution result, Defect, Work Item hoặc Release thay đổi
+Sự kiện do cùng AI run tạo ra được bỏ qua để tránh tự kích hoạt lặp
+Agent tự chạy các hành động actor có quyền và không dừng để xin xác nhận từng action
+RBAC, validation nghiệp vụ và kiểm tra revision vẫn bắt buộc  Với event cần thao tác QA, executor là QA đang được gán trong chính dự án; requester và executor được lưu riêng trên Automation Run, không dùng quyền Admin hay quyền nền tảng để thay thế
 
-## 9  AI agent workflow
+## 9  AI Agent execution
 
 ```mermaid
 flowchart TD
@@ -326,26 +347,29 @@ flowchart TD
     E --> F[Truy hồi vector Qdrant graph Neo4j và verified memory]
     F --> G[Chỉ giữ vector graph khớp artifact có thẩm quyền]
     G --> H{Intent có tool trực tiếp hợp lệ}
-    H -->|Có| I[Tạo một task trực tiếp]
+    H -->|Có| I[Tạo task trực tiếp]
     H -->|Không| J[Model lập plan có cấu trúc]
     J --> K{Plan và tool call hợp lệ}
     K -->|Không| X2([Kết thúc failed hoặc insufficient evidence])
     K -->|Có| I
-    I --> L[Thực thi tool trong phạm vi project]
-    L --> M{Tool cần phê duyệt trước khi thay đổi}
-    M -->|Có| N[Đặt approval required và lưu proposal]
-    N --> O{Người dùng duyệt}
-    O -->|Không| P[Xác minh kết quả không áp dụng]
-    O -->|Có| Q[Apply tool]
-    M -->|Không| P
-    Q --> P
-    P --> R{Verification thành công}
-    R -->|Có| T[Lưu run và verified long term memory khi completed]
-    T --> X3([Kết thúc completed])
-    R -->|Không| X4([Kết thúc failed hoặc insufficient evidence])
+    I --> L[Thực thi các task tuần tự trong project]
+    L --> M{Permission và revision hợp lệ}
+    M -->|Không| N[Ghi denied hoặc conflict, không vượt quyền]
+    M -->|Có| O[Gọi tool nghiệp vụ]
+    O --> P[Đọc lại artifact và xác minh hậu điều kiện]
+    P --> Q{Xác minh thành công}
+    Q -->|Không| R[Ghi lỗi verification]
+    Q -->|Có| U[Ghi action evidence và audit receipt]
+    N --> V{Còn task độc lập}
+    R --> V
+    U --> V
+    V -->|Có| L
+    V -->|Không| W[Chốt run theo kết quả thực tế]
+    W --> X3([Kết thúc completed hoặc degraded])
 ```
 
-Agent workflow xử lý tối đa một task trong một lượt chạy theo giới hạn hiện tại  Không được vẽ nhiều agent chạy song song trong một Agent Run
+Agent Run có thể xử lý nhiều task tuần tự trong runtime limit; không có nhiều agent chạy song song trong một lượt
+AI không chờ người dùng xác nhận action; permission, validation, conflict và xác minh hậu ghi vẫn là ranh giới thực thi
 
 ## 10  Evidence  fallback và compensation
 
@@ -376,7 +400,7 @@ flowchart TD
 
 Không có rollback toàn cục giữa MongoDB  Qdrant  Neo4j  object storage và RabbitMQ
 
-Không có fallback nào cho phép AI tự bịa dữ liệu hoặc tự bỏ qua xác nhận của người dùng
+Không có fallback nào cho phép AI tự bịa dữ liệu hoặc vượt quyền của actor
 
 ## Checklist trước khi vẽ lại
 
@@ -389,7 +413,7 @@ Không có fallback nào cho phép AI tự bịa dữ liệu hoặc tự bỏ qu
 - Không ghi event driven cho HTTP webhook hay queue trong bộ nhớ
 - Không ghi multi agent parallel cho Agent Run hiện tại
 - Không vẽ Testing truy cập trực tiếp Qdrant hoặc Neo4j
-- Không vẽ AI tự sửa dữ liệu chính nếu chưa có approval hoặc xác nhận nghiệp vụ
+- Không vẽ AI sửa dữ liệu chính nếu tool, permission và postcondition không hỗ trợ
 
 ## Giới hạn tài liệu
 

@@ -42,8 +42,12 @@ export default function CausalAnalysisPanel({ project }) {
       const [result, candidateValues, defectValues, memberValues] = await Promise.all([
         testingApi.listCausalAnalyses(project._id),
         testingApi.listCausalAnalysisCandidates(project._id),
-        testingApi.listDefects(project._id),
-        testingApi.listMembers(project._id),
+        project.current_permissions?.includes("defect.read")
+          ? testingApi.listDefects(project._id)
+          : Promise.resolve([]),
+        project.current_permissions?.includes("project.members.read")
+          ? testingApi.listMembers(project._id)
+          : Promise.resolve([]),
       ]);
       setItems(result.items || []);
       setCandidates(candidateValues.items || []);
@@ -54,7 +58,7 @@ export default function CausalAnalysisPanel({ project }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [project._id, selected?._id]);
+  }, [project._id, project.current_permissions, selected?._id]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -360,7 +364,7 @@ export default function CausalAnalysisPanel({ project }) {
   };
   const reviewEffectiveness = async () => {
     const answer = await ask({
-      title: "Đánh giá hiệu lực CAPA",
+      title: "Đánh giá hiệu lực hành động khắc phục và phòng ngừa",
       confirmLabel: "Ghi nhận",
       fields: [
         {
@@ -421,9 +425,9 @@ export default function CausalAnalysisPanel({ project }) {
   };
   return (
     <Panel
-      title="Phân tích nguyên nhân và CAPA"
+      title="Phân tích nguyên nhân gốc và hành động khắc phục, phòng ngừa"
       actions={
-        can("causalanalysis.create") ? (
+        can("causalanalysis.create") && can("defect.read") && can("project.members.read") ? (
           <button className="apple-button" type="button" onClick={create}>
             Tạo phân tích
           </button>
@@ -436,48 +440,55 @@ export default function CausalAnalysisPanel({ project }) {
           <ErrorState message={error} />
         </div>
       )}
-      <DataTable
-        items={candidates}
-        empty="Không có lỗi đạt điều kiện đề xuất RCA"
-        columns={[
-          { key: "problem_statement", label: "Ứng viên RCA" },
-          { key: "defect_ids", label: "Lỗi", render: (item) => item.defect_ids.join(", ") },
-          { key: "reason_codes", label: "Lý do", render: (item) => item.reason_codes.join(", ") },
-        ]}
-      />
-      <DataTable
-        items={items}
-        empty="Chưa có phân tích nguyên nhân"
-        columns={[
-          { key: "problem_statement", label: "Vấn đề" },
-          { key: "defect_ids", label: "Lỗi", render: (item) => item.defect_ids?.length || 0 },
-          {
-            key: "status",
-            label: "Trạng thái",
-            render: (item) => <StatusPill value={item.status} />,
-          },
-          {
-            key: "action",
-            label: "Thao tác",
-            render: (item) => (
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={async () => {
-                  try {
-                    setSelected(await testingApi.getCausalAnalysis(item._id));
-                    setHypotheses([]);
-                  } catch (reason) {
-                    setError(messageOf(reason));
-                  }
-                }}
-              >
-                Mở
-              </button>
-            ),
-          },
-        ]}
-      />
+      {candidates.length > 0 && (
+        <DataTable
+          items={candidates}
+          columns={[
+            { key: "problem_statement", label: "Vấn đề cần phân tích" },
+            { key: "defect_ids", label: "Lỗi", render: (item) => item.defect_ids.join(", ") },
+            { key: "reason_codes", label: "Lý do", render: (item) => item.reason_codes.join(", ") },
+          ]}
+        />
+      )}
+      {items.length > 0 && (
+        <DataTable
+          items={items}
+          columns={[
+            { key: "problem_statement", label: "Vấn đề" },
+            { key: "defect_ids", label: "Lỗi", render: (item) => item.defect_ids?.length || 0 },
+            {
+              key: "status",
+              label: "Trạng thái",
+              render: (item) => <StatusPill value={item.status} />,
+            },
+            {
+              key: "action",
+              label: "Thao tác",
+              render: (item) => (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setSelected(await testingApi.getCausalAnalysis(item._id));
+                      setHypotheses([]);
+                    } catch (reason) {
+                      setError(messageOf(reason));
+                    }
+                  }}
+                >
+                  Mở
+                </button>
+              ),
+            },
+          ]}
+        />
+      )}
+      {candidates.length === 0 && items.length === 0 && (
+        <p className="px-5 py-8 text-center text-sm text-ink-muted">
+          Chưa có phân tích nguyên nhân
+        </p>
+      )}
       {selected && (
         <div className="space-y-4 border-t border-border p-5">
           <div className="flex flex-wrap justify-between gap-3">
@@ -493,9 +504,11 @@ export default function CausalAnalysisPanel({ project }) {
                   <button className="secondary-button" type="button" onClick={editAnalysis}>
                     Cập nhật
                   </button>
-                  <button className="secondary-button" type="button" onClick={linkDefects}>
-                    Liên kết lỗi
-                  </button>
+                  {can("defect.read") && (
+                    <button className="secondary-button" type="button" onClick={linkDefects}>
+                      Liên kết lỗi
+                    </button>
+                  )}
                   {(selected.five_whys?.length || 0) < 5 && (
                     <button className="secondary-button" type="button" onClick={addFiveWhy}>
                       Thêm năm câu hỏi tại sao

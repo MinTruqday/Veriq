@@ -1,6 +1,7 @@
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
 import { selectedValues, TEST_CASE_TYPES, TEST_LEVELS } from "./testDesign.model";
 
 export default function TestCaseCreateModal({
@@ -12,6 +13,7 @@ export default function TestCaseCreateModal({
   testConditions,
   repositoryNodes,
   reusableSteps,
+  saving,
   onSubmit,
 }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
@@ -19,7 +21,9 @@ export default function TestCaseCreateModal({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => {
+        if (!saving) onClose();
+      }}
       ariaLabel="Tạo ca kiểm thử"
       className="max-w-3xl max-h-[90dvh] overflow-y-auto"
     >
@@ -36,107 +40,117 @@ export default function TestCaseCreateModal({
             onChange={(event) => update({ title: event.target.value })}
           />
         </label>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <select
-            aria-label="Cách viết ca kiểm thử"
-            className="apple-input"
-            value={form.testStyle}
-            onChange={(event) => update({ testStyle: event.target.value })}
-          >
-            <option value="MANUAL">Manual</option>
-            <option value="BDD">BDD</option>
-          </select>
-          <select
-            aria-label="Loại ca kiểm thử"
-            className="apple-input"
-            value={form.type}
-            onChange={(event) => update({ type: event.target.value })}
-          >
-            {TEST_CASE_TYPES.map((value) => (
-              <option key={value} value={value}>
-                {valueLabel(value)}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Ưu tiên ca kiểm thử"
-            className="apple-input"
-            value={form.priority}
-            onChange={(event) => update({ priority: event.target.value })}
-          >
-            {TEST_LEVELS.map((value) => (
-              <option key={value} value={value}>
-                {valueLabel(value)}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Rủi ro ca kiểm thử"
-            className="apple-input"
-            value={form.risk}
-            onChange={(event) => update({ risk: event.target.value })}
-          >
-            {TEST_LEVELS.map((value) => (
-              <option key={value} value={value}>
-                {valueLabel(value)}
-              </option>
-            ))}
-          </select>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="field-label">
+            Cách viết ca
+            <select
+              aria-label="Cách viết ca kiểm thử"
+              className="apple-input"
+              value={form.testStyle}
+              onChange={(event) => update({ testStyle: event.target.value })}
+            >
+              <option value="MANUAL">Thủ công</option>
+              <option value="BDD">BDD</option>
+            </select>
+          </label>
+          <label className="field-label">
+            Loại
+            <select
+              aria-label="Loại ca kiểm thử"
+              className="apple-input"
+              value={form.type}
+              onChange={(event) => update({ type: event.target.value })}
+            >
+              {TEST_CASE_TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {valueLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label">
+            Ưu tiên
+            <select
+              aria-label="Ưu tiên ca kiểm thử"
+              className="apple-input"
+              value={form.priority}
+              onChange={(event) => update({ priority: event.target.value })}
+            >
+              {TEST_LEVELS.map((value) => (
+                <option key={value} value={value}>
+                  {valueLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label">
+            Rủi ro
+            <select
+              aria-label="Rủi ro ca kiểm thử"
+              className="apple-input"
+              value={form.risk}
+              onChange={(event) => update({ risk: event.target.value })}
+            >
+              {TEST_LEVELS.map((value) => (
+                <option key={value} value={value}>
+                  {valueLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         {form.testStyle === "BDD" && (
           <div className="grid gap-3 rounded-control border border-border p-4">
             <p className="field-label">Kịch bản BDD</p>
             <input
+              aria-label="Tính năng trong kịch bản BDD"
               className="apple-input"
               value={form.feature}
               onChange={(event) => update({ feature: event.target.value })}
-              placeholder="Feature"
+              placeholder="Tính năng"
               required
             />
             <input
+              aria-label="Tên kịch bản BDD"
               className="apple-input"
               value={form.scenario}
               onChange={(event) => update({ scenario: event.target.value })}
-              placeholder="Scenario"
+              placeholder="Tên kịch bản"
               required
             />
             <input
+              aria-label="Điều kiện ban đầu của kịch bản BDD"
               className="apple-input"
               value={form.given}
               onChange={(event) => update({ given: event.target.value })}
-              placeholder="Given"
+              placeholder="Điều kiện ban đầu"
               required
             />
             <input
+              aria-label="Hành động của kịch bản BDD"
               className="apple-input"
               value={form.when}
               onChange={(event) => update({ when: event.target.value })}
-              placeholder="When"
+              placeholder="Hành động"
               required
             />
             <input
+              aria-label="Kết quả mong đợi của kịch bản BDD"
               className="apple-input"
               value={form.then}
               onChange={(event) => update({ then: event.target.value })}
-              placeholder="Then"
+              placeholder="Kết quả mong đợi"
               required
             />
-            <label className="field-label">
-              Bước dùng lại
-              <select
-                aria-label="Bước dùng lại cho kịch bản BDD"
-                className="apple-input mt-2 min-h-24"
-                multiple
-                value={form.reusableStepVersionIds}
-                onChange={(event) => update({ reusableStepVersionIds: selectedValues(event) })}
-              >
-                {reusableSteps.map((item) => (
-                  <option key={item.current_version_id} value={item.current_version_id}>
-                    {item.name} v{item.version}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <MultiSelect
+              label="Bước dùng lại"
+              options={reusableSteps.map((item) => ({
+                value: item.current_version_id,
+                label: `${item.name} v${item.version}`,
+              }))}
+              value={form.reusableStepVersionIds}
+              onChange={(reusableStepVersionIds) => update({ reusableStepVersionIds })}
+            />
           </div>
         )}
         <label className="field-label">
@@ -173,44 +187,30 @@ export default function TestCaseCreateModal({
             minHeight="min-h-24"
           />
         </div>
-        <label className="field-label">
-          Bộ dữ liệu tham số
-          <select
-            aria-label="Bộ dữ liệu cho ca kiểm thử mới"
-            className="apple-input mt-2 min-h-28"
-            multiple
-            value={form.dataSetVersionIds}
-            onChange={(event) => update({ dataSetVersionIds: selectedValues(event) })}
-          >
-            {dataSets.map((item) => (
-              <option key={item.current_version_id} value={item.current_version_id}>
-                {item.name} v{item.current_version?.version}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-label">
-          Điều kiện kiểm thử đã phê duyệt
-          <select
-            aria-label="Điều kiện kiểm thử cho ca kiểm thử mới"
-            className="apple-input mt-2 min-h-28"
-            multiple
-            value={form.testConditionIds}
-            onChange={(event) => update({ testConditionIds: selectedValues(event) })}
-          >
-            {testConditions.map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.condition_key} {item.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex justify-end gap-3">
-          <button className="secondary-button" type="button" onClick={onClose}>
+        <MultiSelect
+          label="Bộ dữ liệu tham số"
+          options={dataSets.map((item) => ({
+            value: item.current_version_id,
+            label: `${item.name} v${item.current_version?.version}`,
+          }))}
+          value={form.dataSetVersionIds}
+          onChange={(dataSetVersionIds) => update({ dataSetVersionIds })}
+        />
+        <MultiSelect
+          label="Điều kiện kiểm thử đã phê duyệt"
+          options={testConditions.map((item) => ({
+            value: item._id,
+            label: `${item.condition_key} ${item.title}`,
+          }))}
+          value={form.testConditionIds}
+          onChange={(testConditionIds) => update({ testConditionIds })}
+        />
+        <div className="action-dialog-footer flex justify-end gap-3">
+          <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
             Hủy
           </button>
-          <button className="apple-button" type="submit">
-            Lưu bản nháp
+          <button className="apple-button" type="submit" disabled={saving}>
+            {saving ? "Đang lưu" : "Lưu bản nháp"}
           </button>
         </div>
       </form>

@@ -12,10 +12,10 @@ export default function TestwareHandoverPanel({ handover = [], archived = [], en
   return (
     <section className="space-y-5">
       <div>
-        <h3 className="mb-3 font-semibold text-ink">Bàn giao testware</h3>
+        <h3 className="mb-3 font-semibold text-ink">Bàn giao tài sản kiểm thử</h3>
         <DataTable
           items={groups(handover)}
-          empty="Chưa có testware bàn giao"
+          empty="Chưa có tài sản kiểm thử cần bàn giao"
           columns={[
             {
               key: "artifact_type",
@@ -65,7 +65,7 @@ export default function TestwareHandoverPanel({ handover = [], archived = [], en
               label: "Khả dụng",
               render: (item) => valueLabel(item.availability || item.status),
             },
-            { key: "revision", label: "Revision" },
+            { key: "revision", label: "Phiên bản" },
           ]}
         />
       </div>

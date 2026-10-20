@@ -4,7 +4,7 @@ import json
 
 from fastapi import HTTPException
 
-from src.core.common import audit, get_project, get_project_entity, get_project_role, new_id, now, plain_text, resolve_user_reference
+from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now, plain_text, resolve_user_reference
 from src.repositories.project import project_repository
 from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_clarification import requirement_clarification_repository
@@ -18,7 +18,7 @@ def _item_id(requirement_version_id, source_type, source_id, quote):
 
 
 async def _require_qa(project_id, user):
-    if await get_project_role(project_id, user.id) != "QA":
+    if "QA" not in await get_project_roles(project_id, user.id):
         raise HTTPException(status_code=403, detail={"code": "QA_DECISION_REQUIRED"})
 
 

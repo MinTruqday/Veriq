@@ -1,5 +1,6 @@
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../../components/DataTable";
+import FilePicker from "../../../components/FilePicker";
 import {
   ErrorState,
   Panel,
@@ -184,7 +185,7 @@ export default function RunExecutionWorkspace({
                     (defect) => defect.linked_test_result_id === result._id,
                   );
                   return (
-                    <span className="flex min-w-48 flex-col items-start gap-2">
+                    <span className="flex min-w-0 flex-col items-start gap-2">
                       <StatusPill value={result.status} />
                       {result.status === "FAIL" && !hasDefect && can("defect.create") && (
                         <button
@@ -228,7 +229,7 @@ export default function RunExecutionWorkspace({
                   );
                 }
                 return (
-                  <div className="min-w-72 space-y-3">
+                  <div className="min-w-0 space-y-3">
                     {(item.steps || []).map((step, stepIndex) => {
                       const existing = result.step_results?.find(
                         (value) => value.step_id === step.id,
@@ -317,10 +318,9 @@ export default function RunExecutionWorkspace({
                       }
                       placeholder="Kết quả thực tế và bằng chứng"
                     />
-                    <input
-                      aria-label={`Tệp bằng chứng ${item.test_case_key}`}
-                      className="apple-input"
-                      type="file"
+                    <FilePicker
+                      ariaLabel={`Tệp bằng chứng ${item.test_case_key}`}
+                      buttonLabel="Chọn tệp bằng chứng"
                       onChange={async (event) => {
                         const file = event.target.files?.[0];
                         if (!file) return;

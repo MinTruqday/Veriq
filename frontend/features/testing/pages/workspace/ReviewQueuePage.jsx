@@ -1,10 +1,11 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import AgentRunPanel from "../../components/AgentRunPanel";
 import ProposalDiffPanel from "../../components/ProposalDiffPanel";
 import {
   ErrorState,
+  InitialLoadState,
   Panel,
   ProjectCrumb,
   WorkspacePage,
@@ -25,17 +26,46 @@ export default function ReviewQueuePage({ project }) {
     sort: "-created_at",
   });
   const [error, setError] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const initialDataLoaded = useRef(false);
+  const loadedProjectId = useRef(project._id);
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      initialDataLoaded.current = false;
+      setInitialLoading(true);
+    }
     try {
       setItems(await testingApi.listProposals(project._id, filters));
+      initialDataLoaded.current = true;
+      setInitialLoadFailed(false);
     } catch (reason) {
       setError(messageOf(reason));
+      if (!initialDataLoaded.current) setInitialLoadFailed(true);
+    } finally {
+      setInitialLoading(false);
     }
   }, [filters, project._id]);
   useEffect(() => {
     void load();
   }, [load]);
+  if (initialLoading || initialLoadFailed)
+    return (
+      <>
+        <InitialLoadState
+          title="Tự động hóa AI"
+          projectId={project._id}
+          loading={initialLoading}
+          error={error}
+          onRetry={() => void load()}
+        />
+        <div className="mt-5">
+          <AgentRunPanel project={project} />
+        </div>
+      </>
+    );
   const decide = async (item, action) => {
     const fields = [
       {
@@ -117,7 +147,7 @@ export default function ReviewQueuePage({ project }) {
     }
   };
   return (
-    <WorkspacePage title="Rà soát đề xuất AI" actions={<ProjectCrumb projectId={project._id} />}>
+    <WorkspacePage title="Tự động hóa AI" actions={<ProjectCrumb projectId={project._id} />}>
       {error && <ErrorState message={error} />}
       <AgentRunPanel project={project} />
       <Panel
@@ -265,6 +295,7 @@ export default function ReviewQueuePage({ project }) {
             {
               key: "actions",
               label: "Quyết định",
+              hideWhenEmpty: true,
               render: (item) =>
                 can("proposal.approve") || can("proposal.reject") || can("ai.create_proposal") ? (
                   <span className="flex flex-wrap gap-2">

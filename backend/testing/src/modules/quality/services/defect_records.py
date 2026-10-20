@@ -19,6 +19,7 @@ from src.core.common import (
 from src.repositories.defect import defect_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
 from src.clients.project_knowledge import index_artifact
+from src.clients.ai_automation import emit_defect_recorded
 
 
 async def create_defect_record(project_id, payload, user):
@@ -72,6 +73,7 @@ async def create_defect_record(project_id, payload, user):
         linked_requirement_version_ids=defect.get("linked_requirement_version_ids", []),
     )
     await audit(user.id, "defect_created", "Defect", defect["_id"], project_id)
+    await emit_defect_recorded(defect, user)
     return defect
 
 

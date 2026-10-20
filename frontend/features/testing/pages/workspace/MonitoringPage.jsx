@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import ExitCriteriaPanel from "../../components/ExitCriteriaPanel";
 import PlanVsActualPanel from "../../components/PlanVsActualPanel";
@@ -8,6 +8,7 @@ import TestControlActionPanel from "../../components/TestControlActionPanel";
 import TestProgressBoard from "../../components/TestProgressBoard";
 import {
   ErrorState,
+  InitialLoadState,
   Metric,
   Panel,
   ProjectCrumb,
@@ -60,19 +61,39 @@ export default function MonitoringPage({ project }) {
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [error, setError] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const initialDataLoaded = useRef(false);
+  const loadedProjectId = useRef(project._id);
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      initialDataLoaded.current = false;
+      setInitialLoading(true);
+    }
     try {
+      const permissions = new Set(project.current_permissions || []);
       const [planValues, memberValues, snapshotValues, actionValues, decisionValues] =
         await Promise.all([
-          testingApi.listPlans(project._id, { status: "APPROVED" }),
-          testingApi.listMembers(project._id),
-          testingApi.listMonitoringSnapshots(
-            project._id,
-            selectedPlanId ? { test_plan_id: selectedPlanId } : {},
-          ),
-          testingApi.listControlActions(project._id),
-          testingApi.listQualityDecisions(project._id),
+          permissions.has("testplan.read")
+            ? testingApi.listPlans(project._id, { status: "APPROVED" })
+            : Promise.resolve([]),
+          permissions.has("project.members.read")
+            ? testingApi.listMembers(project._id)
+            : Promise.resolve([]),
+          permissions.has("testmonitor.read")
+            ? testingApi.listMonitoringSnapshots(
+                project._id,
+                selectedPlanId ? { test_plan_id: selectedPlanId } : {},
+              )
+            : Promise.resolve([]),
+          permissions.has("testmonitor.read")
+            ? testingApi.listControlActions(project._id)
+            : Promise.resolve([]),
+          permissions.has("qualitygate.read")
+            ? testingApi.listQualityDecisions(project._id)
+            : Promise.resolve([]),
         ]);
       setPlans(planValues);
       setMembers(memberValues);
@@ -85,15 +106,20 @@ export default function MonitoringPage({ project }) {
           snapshotValues.find((item) => item._id === current?._id) || snapshotValues[0] || null,
       );
       setError("");
+      initialDataLoaded.current = true;
+      setInitialLoadFailed(false);
     } catch (reason) {
       setError(messageOf(reason));
+      if (!initialDataLoaded.current) setInitialLoadFailed(true);
+    } finally {
+      setInitialLoading(false);
     }
-  }, [project._id, selectedPlanId]);
+  }, [project._id, project.current_permissions, selectedPlanId]);
   useEffect(() => {
     void load();
   }, [load]);
   useEffect(() => {
-    if (!selectedSnapshot?._id) {
+    if (!selectedSnapshot?._id || !project.current_permissions?.includes("qualitygate.read")) {
       setGate(null);
       return;
     }
@@ -109,7 +135,17 @@ export default function MonitoringPage({ project }) {
     return () => {
       active = false;
     };
-  }, [selectedSnapshot?._id]);
+  }, [project.current_permissions, selectedSnapshot?._id]);
+  if (initialLoading || initialLoadFailed)
+    return (
+      <InitialLoadState
+        title="Giám sát kiểm thử"
+        projectId={project._id}
+        loading={initialLoading}
+        error={error}
+        onRetry={() => void load()}
+      />
+    );
   const createSnapshot = async () => {
     if (!selectedPlanId) return;
     const answer = await ask({
@@ -259,7 +295,7 @@ export default function MonitoringPage({ project }) {
   };
   return (
     <WorkspacePage
-      title="Giám sát và điều khiển kiểm thử"
+      title="Giám sát kiểm thử"
       actions={
         <>
           <ProjectCrumb projectId={project._id} />
@@ -280,24 +316,26 @@ export default function MonitoringPage({ project }) {
       {error && <ErrorState message={error} />}
       <Panel title="Phạm vi giám sát">
         <div className="grid gap-4 p-5 md:grid-cols-2">
-          <label className="field-label">
-            Kế hoạch đã phê duyệt
-            <select
-              className="apple-input mt-2"
-              value={selectedPlanId}
-              onChange={(event) => {
-                setSelectedPlanId(event.target.value);
-                setSelectedSnapshot(null);
-              }}
-            >
-              <option value="">Chọn kế hoạch</option>
-              {plans.map((item) => (
-                <option key={item._id} value={item._id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {can("testplan.read") && (
+            <label className="field-label">
+              Kế hoạch đã phê duyệt
+              <select
+                className="apple-input mt-2"
+                value={selectedPlanId}
+                onChange={(event) => {
+                  setSelectedPlanId(event.target.value);
+                  setSelectedSnapshot(null);
+                }}
+              >
+                <option value="">Chọn kế hoạch</option>
+                {plans.map((item) => (
+                  <option key={item._id} value={item._id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="field-label">
             Ảnh chụp giám sát
             <select
@@ -357,50 +395,55 @@ export default function MonitoringPage({ project }) {
           <Panel title="Kế hoạch và thực tế">
             <PlanVsActualPanel snapshot={selectedSnapshot} />
           </Panel>
-          <Panel
-            title="Tiêu chí thoát"
-            actions={
-              <QualityGateBadge
-                status={
-                  selectedSnapshot.effective_quality_gate_status ||
-                  selectedSnapshot.quality_gate_status
-                }
-              />
-            }
-          >
-            <ExitCriteriaPanel
-              snapshot={selectedSnapshot}
-              canOverride={can("testmonitor.exit_criteria.override")}
-              onOverride={async (criterion) => {
-                const answer = await ask({
-                  title: "Ghi đè tiêu chí thoát",
-                  confirmLabel: "Ghi nhận",
-                  fields: [
-                    {
-                      name: "status",
-                      label: "Kết quả",
-                      required: true,
-                      options: ["PASS", "FAIL"].map((value) => ({ value, label: value })),
-                    },
-                    { name: "reason", label: "Lý do", required: true, multiline: true },
-                  ],
-                });
-                if (!answer) return;
-                try {
-                  const value = await testingApi.overrideMonitoringCriterion(selectedSnapshot._id, {
-                    expected_revision: selectedSnapshot.revision,
-                    criterion_id: criterion.criterion_id,
-                    ...answer,
-                    evidence_refs: [],
+          {can("qualitygate.read") && (
+            <Panel
+              title="Tiêu chí thoát"
+              actions={
+                <QualityGateBadge
+                  status={
+                    selectedSnapshot.effective_quality_gate_status ||
+                    selectedSnapshot.quality_gate_status
+                  }
+                />
+              }
+            >
+              <ExitCriteriaPanel
+                snapshot={selectedSnapshot}
+                canOverride={can("testmonitor.exit_criteria.override")}
+                onOverride={async (criterion) => {
+                  const answer = await ask({
+                    title: "Ghi đè tiêu chí thoát",
+                    confirmLabel: "Ghi nhận",
+                    fields: [
+                      {
+                        name: "status",
+                        label: "Kết quả",
+                        required: true,
+                        options: ["PASS", "FAIL"].map((value) => ({ value, label: value })),
+                      },
+                      { name: "reason", label: "Lý do", required: true, multiline: true },
+                    ],
                   });
-                  setSelectedSnapshot(value);
-                  await load();
-                } catch (reason) {
-                  setError(messageOf(reason));
-                }
-              }}
-            />
-          </Panel>
+                  if (!answer) return;
+                  try {
+                    const value = await testingApi.overrideMonitoringCriterion(
+                      selectedSnapshot._id,
+                      {
+                        expected_revision: selectedSnapshot.revision,
+                        criterion_id: criterion.criterion_id,
+                        ...answer,
+                        evidence_refs: [],
+                      },
+                    );
+                    setSelectedSnapshot(value);
+                    await load();
+                  } catch (reason) {
+                    setError(messageOf(reason));
+                  }
+                }}
+              />
+            </Panel>
+          )}
           <Panel
             title="Quyết định chất lượng"
             actions={
@@ -521,25 +564,27 @@ export default function MonitoringPage({ project }) {
               />
             </div>
           </Panel>
-          <Panel title="Hành động kiểm soát">
-            <TestControlActionPanel
-              items={actions.filter((item) => item.snapshot_id === selectedSnapshot._id)}
-              canCreate={can("testmonitor.control.create")}
-              canUpdate={can("testmonitor.control.update")}
-              onCreate={createAction}
-              onUpdate={async (item, status) => {
-                try {
-                  await testingApi.updateControlAction(item._id, {
-                    expected_revision: item.revision,
-                    status,
-                  });
-                  await load();
-                } catch (reason) {
-                  setError(messageOf(reason));
-                }
-              }}
-            />
-          </Panel>
+          {can("testmonitor.read") && (
+            <Panel title="Hành động kiểm soát">
+              <TestControlActionPanel
+                items={actions.filter((item) => item.snapshot_id === selectedSnapshot._id)}
+                canCreate={can("testmonitor.control.create")}
+                canUpdate={can("testmonitor.control.update")}
+                onCreate={createAction}
+                onUpdate={async (item, status) => {
+                  try {
+                    await testingApi.updateControlAction(item._id, {
+                      expected_revision: item.revision,
+                      status,
+                    });
+                    await load();
+                  } catch (reason) {
+                    setError(messageOf(reason));
+                  }
+                }}
+              />
+            </Panel>
+          )}
         </>
       ) : (
         <Panel title="Ảnh chụp giám sát">

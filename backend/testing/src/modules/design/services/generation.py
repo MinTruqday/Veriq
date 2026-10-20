@@ -15,9 +15,20 @@ from src.schemas.test_analysis import (
     PerformanceScenario,
     SecurityCandidate,
 )
-from src.core.ai_assistance import request_ai_assistance
+from src.core.ai_automation import request_ai_automation
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases
+
+
+def select_generation_criteria(criteria, criterion_ids):
+    if not criterion_ids:
+        return criteria
+    if len(criterion_ids) != len(set(criterion_ids)):
+        raise HTTPException(422, detail={"code": "DUPLICATE_ACCEPTANCE_CRITERIA"})
+    by_id = {item["_id"]: item for item in criteria}
+    if not set(criterion_ids) <= set(by_id):
+        raise HTTPException(422, detail={"code": "ACCEPTANCE_CRITERIA_NOT_IN_REQUIREMENT"})
+    return [by_id[identifier] for identifier in criterion_ids]
 
 
 def validated_suggestions(result, schema):
@@ -53,13 +64,18 @@ async def generate_requirement_drafts(version, criteria, payload, scenario=False
             },
         )
     technique_mode = bool(payload.techniques) and not scenario
-    categories = payload.categories or ([] if technique_mode else ['happy_path', 'negative', 'boundary', 'validation'])
+    categories = payload.categories
     allowed = (ScenarioCreate.model_fields["category"] if scenario else TestCaseDraftCreate.model_fields["type"]).annotation.__args__
     if len(set(categories)) != len(categories) or any(item not in allowed for item in categories):
         raise HTTPException(422, detail={"code": 'INVALID_GENERATION_CATEGORIES'})
     if len(payload.techniques) != len(set(payload.techniques)):
         raise HTTPException(422, detail={"code": "DUPLICATE_DESIGN_TECHNIQUE"})
-    if (len(categories) * payload.count_per_category if categories else payload.max_cases or len(payload.techniques)) > 100:
+    requested_limit = (
+        len(categories) * payload.count_per_category
+        if categories
+        else payload.max_cases or len(criteria)
+    )
+    if requested_limit > 100:
         raise HTTPException(422, detail={"code": 'GENERATION_LIMIT_EXCEEDED'})
     evidence = [
         {
@@ -111,7 +127,7 @@ async def generate_requirement_drafts(version, criteria, payload, scenario=False
         {
             "categories": categories,
             "count_per_category": payload.count_per_category,
-            "maximum_cases": payload.max_cases or len(payload.techniques) if technique_mode else None,
+            "maximum_cases": payload.max_cases or (len(payload.techniques) if technique_mode else (len(criteria) if not categories else None)),
             "selected_design_techniques": payload.techniques if not scenario else [],
             "allowed_acceptance_criterion_ids": [item["_id"] for item in criteria],
             "challenge_hypotheses": [item.model_dump() for item in payload.challenge_hypotheses],
@@ -123,7 +139,7 @@ async def generate_requirement_drafts(version, criteria, payload, scenario=False
         raise HTTPException(
             422, detail={"code": 'GENERATION_INSTRUCTION_TOO_LONG'}
         )
-    result = await request_ai_assistance(
+    result = await request_ai_automation(
         'scenario_generation'
         if scenario
         else 'test_generation',
@@ -169,10 +185,37 @@ async def generate_requirement_drafts(version, criteria, payload, scenario=False
                 raise ValueError("case count outside selected limit")
             if any(item.category not in allowed for item in generated):
                 raise ValueError("unknown test category")
-        elif Counter(item.category for item in generated) != Counter(
-            {category: payload.count_per_category for category in categories}
+        elif scenario and categories:
+            requested_counts = Counter(
+                {category: payload.count_per_category for category in categories}
+            )
+            generated_counts = Counter(item.category for item in generated)
+            if (
+                not generated_counts
+                or generated_counts - requested_counts
+                or requested_counts - generated_counts and not result.get("warnings")
+            ):
+                raise ValueError("scenario category count mismatch")
+        elif scenario:
+            if len(generated) > (payload.max_cases or len(criteria)) or any(
+                item.category not in allowed for item in generated
+            ):
+                raise ValueError("automatic scenario count or category is invalid")
+        elif categories:
+            requested_counts = Counter(
+                {category: payload.count_per_category for category in categories}
+            )
+            generated_counts = Counter(item.category for item in generated)
+            if (
+                not generated_counts
+                or generated_counts - requested_counts
+                or requested_counts - generated_counts and not result.get("warnings")
+            ):
+                raise ValueError("test case category count mismatch")
+        elif len(generated) > (payload.max_cases or len(criteria)) or any(
+            item.category not in allowed for item in generated
         ):
-            raise ValueError("category count mismatch")
+            raise ValueError("automatic test case count or category is invalid")
         criterion_ids = {item["_id"] for item in criteria}
         evidence_ids = {item["artifact_version_id"] for item in evidence}
         selected_techniques = set(payload.techniques) if not scenario else set()
@@ -303,4 +346,7 @@ async def generate_requirement_drafts(version, criteria, payload, scenario=False
             502,
             detail={"code": 'AI_GENERATION_INVALID', "message": "AI chưa tạo được bản nháp hợp lệ", "retryable": True},
         ) from error
+    requested_categories = Counter({category: payload.count_per_category for category in categories})
+    generated_categories = Counter(item.category for item in generated)
+    result["unapplied_categories"] = [category for category, requested_count in requested_categories.items() if generated_categories[category] < requested_count]
     return drafts, result

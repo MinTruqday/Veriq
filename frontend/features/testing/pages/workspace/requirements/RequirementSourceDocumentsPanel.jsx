@@ -92,6 +92,8 @@ export default function RequirementSourceDocumentsPanel({
   items,
   members,
   can,
+  currentUserId,
+  isPlatformAdmin,
   ask,
   reload,
   onError,
@@ -282,6 +284,7 @@ export default function RequirementSourceDocumentsPanel({
           {
             key: "actions",
             label: "Thao tác",
+            hideWhenEmpty: true,
             render: (item) => (
               <span className="flex flex-wrap gap-2">
                 {can("knowledge.manage") && item.status !== "ARCHIVED" && (
@@ -302,24 +305,27 @@ export default function RequirementSourceDocumentsPanel({
                     </button>
                   </>
                 )}
-                {item.status !== "ARCHIVED" && !item.ai_enabled && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => enableAiRead(item)}
-                  >
-                    Cho AI đọc
-                  </button>
-                )}
-                {item.status !== "ARCHIVED" && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => changeAccess(item)}
-                  >
-                    Quyền xem
-                  </button>
-                )}
+                {(isPlatformAdmin || item.created_by === currentUserId) &&
+                  item.status !== "ARCHIVED" &&
+                  !item.ai_enabled && (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => enableAiRead(item)}
+                    >
+                      Cho AI đọc
+                    </button>
+                  )}
+                {(isPlatformAdmin || item.created_by === currentUserId) &&
+                  item.status !== "ARCHIVED" && (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => changeAccess(item)}
+                    >
+                      Quyền xem
+                    </button>
+                  )}
                 {can("requirement_document.download") && (
                   <button className="secondary-button" type="button" onClick={() => download(item)}>
                     Tải xuống

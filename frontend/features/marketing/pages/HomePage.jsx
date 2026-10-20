@@ -6,18 +6,18 @@ const capabilities = [
   {
     icon: SearchCheck,
     title: "Liên kết truy vết",
-    description: "Liên kết yêu cầu, tiêu chí chấp nhận và ca kiểm thử theo đúng phiên bản nguồn",
+    description: "Liên kết yêu cầu, tiêu chí chấp nhận, ca kiểm thử và kết quả chạy theo phiên bản",
   },
   {
     icon: GitBranch,
     title: "Phân tích thay đổi",
-    description: "Phân tích ảnh hưởng và tạo đề xuất bảo trì mà không sửa âm thầm dữ liệu đã duyệt",
+    description:
+      "Xác định các ca kiểm thử và hồ sơ liên quan cần được rà soát khi yêu cầu thay đổi",
   },
   {
     icon: Sparkles,
-    title: "Hỗ trợ bằng AI",
-    description:
-      "AI hỗ trợ tạo và rà soát bản nháp nhưng quyết định cuối cùng luôn thuộc về con người",
+    title: "Tự động hóa AI",
+    description: "Thiết lập quy tắc, sự kiện kích hoạt và mục tiêu AI",
   },
 ];
 
@@ -57,7 +57,7 @@ export default function HomePage() {
               Đăng nhập
             </Link>
             <Link href="/dang-ky" className="apple-button">
-              Bắt đầu
+              Tạo tài khoản
               <ArrowRight size={16} />
             </Link>
           </div>
@@ -66,8 +66,8 @@ export default function HomePage() {
 
       <section className="mx-auto w-full max-w-[1200px] px-5 py-16 md:px-8 md:py-24">
         <div>
-          <h1 className="max-w-3xl text-[44px] font-semibold leading-[1.02] tracking-[-0.055em] sm:text-[58px] lg:text-[66px]">
-            Quản lý kiểm thử phần mềm
+          <h1 className="max-w-none text-balance text-[44px] font-semibold leading-[1.02] tracking-[-0.055em] sm:text-[58px] lg:text-[66px]">
+            Quản lý yêu cầu và kiểm thử
           </h1>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/dang-ky" className="apple-button px-6">
@@ -75,7 +75,7 @@ export default function HomePage() {
               <ArrowRight size={17} />
             </Link>
             <Link href="/dang-nhap" className="secondary-button px-6">
-              Vào không gian kiểm thử
+              Đăng nhập
             </Link>
           </div>
         </div>
@@ -98,7 +98,7 @@ export default function HomePage() {
                   <item.icon size={21} />
                 </span>
                 <h3 className="mt-5 text-[18px] font-semibold">{item.title}</h3>
-                <p className="mt-3 text-[14px] leading-7 text-ink-muted">{item.description}</p>
+                <p className="mt-3 text-[14px] leading-6 text-ink-muted">{item.description}</p>
               </article>
             ))}
           </div>

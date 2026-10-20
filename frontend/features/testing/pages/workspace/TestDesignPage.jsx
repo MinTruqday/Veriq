@@ -1,8 +1,9 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
+import FilePicker from "../../components/FilePicker";
 import FormalReviewPanel from "../../components/FormalReviewPanel";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import TestCaseTemplatesPanel from "../../components/TestCaseTemplatesPanel";
@@ -11,6 +12,7 @@ import AutomationScriptsPanel from "../../components/AutomationScriptsPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
 import {
   ErrorState,
+  LoadingState,
   Panel,
   ProjectCrumb,
   WorkspacePage,
@@ -19,6 +21,11 @@ import {
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
+import {
+  testCaseSubsectionItems,
+  testDesignSectionItems,
+} from "@/shared/components/layout/navigation";
 import { testingApi } from "../../services/testing.service";
 import { docText, messageOf, textDoc, valueLabel } from "../../lib/testing";
 import DocumentEditor from "../../editor/DocumentEditor";
@@ -122,9 +129,15 @@ export default function TestDesignPage({ project, workspaceView }) {
   const [dataSetForm, setDataSetForm] = useState(createDataSetForm);
   const [form, setForm] = useState(createTestCaseForm);
   const [error, setError] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const initialDataLoaded = useRef(false);
+  const loadedProjectId = useRef(project._id);
   const [creatingTest, setCreatingTest] = useState(false);
   const [creatingScenario, setCreatingScenario] = useState(false);
   const [creatingDataSet, setCreatingDataSet] = useState(false);
+  const [savingCreation, setSavingCreation] = useState(false);
+  const creationInFlight = useRef(false);
   const [aiAction, setAiAction] = useState("");
   const [selectedTechniques, setSelectedTechniques] = useState([]);
   const [maximumCases, setMaximumCases] = useState(5);
@@ -154,10 +167,16 @@ export default function TestDesignPage({ project, workspaceView }) {
     );
   }, [selectedTechniques, maximumCases]);
   const can = (permission) => project.current_permissions?.includes(permission);
+  const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
+  const permissions = useMemo(
+    () => project.current_permissions || [],
+    [project.current_permissions],
+  );
   const caseTabFromPath = pathname.split("/ca-kiem-thu/")[1]?.split("/")[0];
   const caseTab =
     {
       ai: "ai",
+      "do-day-du": "adequacy",
       "kich-ban": "scenarios",
       mau: "templates",
       "tu-dong-hoa": "automation",
@@ -166,6 +185,7 @@ export default function TestDesignPage({ project, workspaceView }) {
     }[caseTabFromPath] || "cases";
   const isCaseWorkspace = workspaceView === "" || workspaceView === "cases";
   const showCases = isCaseWorkspace && caseTab === "cases";
+  const showAdequacy = isCaseWorkspace && caseTab === "adequacy";
   const showAi = isCaseWorkspace && caseTab === "ai";
   const showScenarios = isCaseWorkspace && caseTab === "scenarios";
   const showTemplates = isCaseWorkspace && caseTab === "templates";
@@ -174,6 +194,14 @@ export default function TestDesignPage({ project, workspaceView }) {
   const showImport = isCaseWorkspace && caseTab === "import";
   const canReadTestData = project.current_permissions?.includes("testdata.read");
   const load = useCallback(async () => {
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      initialDataLoaded.current = false;
+    }
+    if (!initialDataLoaded.current) {
+      setInitialLoading(true);
+      setInitialLoadFailed(false);
+    }
     try {
       const [
         requirementValues,
@@ -188,9 +216,15 @@ export default function TestDesignPage({ project, workspaceView }) {
         apiArtifactValues,
         operationValues,
       ] = await Promise.all([
-        testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" }),
-        testingApi.listTestConditions(project._id, { status: "APPROVED", page_size: 200 }),
-        testingApi.listScenarios(project._id, scenarioFilters),
+        permissions.includes("requirement.read")
+          ? testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" })
+          : Promise.resolve([]),
+        permissions.includes("testcondition.read")
+          ? testingApi.listTestConditions(project._id, { status: "APPROVED", page_size: 200 })
+          : Promise.resolve({ items: [] }),
+        permissions.includes("testscenario.read")
+          ? testingApi.listScenarios(project._id, scenarioFilters)
+          : Promise.resolve([]),
         canReadTestData ? testingApi.listDataSets(project._id) : Promise.resolve([]),
         testingApi.listTestDrafts(project._id),
         testingApi.listTestCasePage(project._id, {
@@ -198,11 +232,17 @@ export default function TestDesignPage({ project, workspaceView }) {
           page: testPage,
           page_size: 50,
         }),
-        testingApi.listSuites(project._id),
+        permissions.includes("testsuite.read")
+          ? testingApi.listSuites(project._id)
+          : Promise.resolve([]),
         testingApi.listTestRepository(project._id),
         testingApi.listReusableTestSteps(project._id),
-        testingApi.listApiArtifacts(project._id),
-        testingApi.listApiOperations(project._id),
+        permissions.includes("apiartifact.read")
+          ? testingApi.listApiArtifacts(project._id)
+          : Promise.resolve([]),
+        permissions.includes("apiartifact.read")
+          ? testingApi.listApiOperations(project._id)
+          : Promise.resolve([]),
       ]);
       setRequirements(requirementValues);
       setTestConditions(testConditionValues.items || []);
@@ -232,14 +272,29 @@ export default function TestDesignPage({ project, workspaceView }) {
           ? current
           : requirementValues[0]?.current_version_id || "",
       );
+      initialDataLoaded.current = true;
+      setInitialLoadFailed(false);
     } catch (reason) {
+      if (!initialDataLoaded.current) setInitialLoadFailed(true);
       setError(messageOf(reason));
+    } finally {
+      setInitialLoading(false);
     }
-  }, [canReadTestData, project._id, scenarioFilters, testFilters, testPage]);
+  }, [
+    canReadTestData,
+    initialDataLoaded,
+    loadedProjectId,
+    permissions,
+    project._id,
+    scenarioFilters,
+    testFilters,
+    testPage,
+  ]);
   useEffect(() => {
     void load();
   }, [load]);
-  const selectedDraft = drafts.find((item) => item._id === selectedDraftId) || null;
+  const actionableDrafts = drafts.filter((item) => item.status !== "APPROVED");
+  const selectedDraft = actionableDrafts.find((item) => item._id === selectedDraftId) || null;
   useEffect(() => {
     if (!selectedDraft) {
       loadedDraft.current = "";
@@ -283,9 +338,25 @@ export default function TestDesignPage({ project, workspaceView }) {
     setDraftDirty(true);
     setDraftSaveState("pending");
   };
-  const create = async (event) => {
+  const submitCreation = async (event, createArtifact) => {
     event.preventDefault();
+    if (creationInFlight.current) return;
+    creationInFlight.current = true;
+    setSavingCreation(true);
     try {
+      await createArtifact();
+      await load();
+    } catch (reason) {
+      setError(
+        reason instanceof SyntaxError ? "Bộ dữ liệu phải là JSON hợp lệ" : messageOf(reason),
+      );
+    } finally {
+      creationInFlight.current = false;
+      setSavingCreation(false);
+    }
+  };
+  const create = (event) =>
+    submitCreation(event, async () => {
       await testingApi.createTestDraft(project._id, {
         title: form.title,
         type: form.type,
@@ -344,14 +415,9 @@ export default function TestDesignPage({ project, workspaceView }) {
       });
       setForm(createTestCaseForm());
       setCreatingTest(false);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
-  };
-  const createScenario = async (event) => {
-    event.preventDefault();
-    try {
+    });
+  const createScenario = (event) =>
+    submitCreation(event, async () => {
       await testingApi.createScenario(project._id, {
         title: scenarioForm.title,
         objective: scenarioForm.objective,
@@ -366,14 +432,9 @@ export default function TestDesignPage({ project, workspaceView }) {
       });
       setScenarioForm(createScenarioForm());
       setCreatingScenario(false);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
-  };
-  const createDataSet = async (event) => {
-    event.preventDefault();
-    try {
+    });
+  const createDataSet = (event) =>
+    submitCreation(event, async () => {
       await testingApi.createDataSet(project._id, {
         name: dataSetForm.name,
         variables: JSON.parse(dataSetForm.variables || "{}"),
@@ -381,13 +442,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       });
       setDataSetForm(createDataSetForm());
       setCreatingDataSet(false);
-      await load();
-    } catch (reason) {
-      setError(
-        reason instanceof SyntaxError ? "Bộ dữ liệu phải là JSON hợp lệ" : messageOf(reason),
-      );
-    }
-  };
+    });
   const createTestSet = async () => {
     const answer = await ask({
       title: "Tạo bộ kiểm thử",
@@ -764,29 +819,46 @@ export default function TestDesignPage({ project, workspaceView }) {
       (id) => !retained.has(id),
     );
   };
+  const pageTitle =
+    workspaceView === "repository"
+      ? "Kho kiểm thử"
+      : workspaceView === "" || workspaceView === "cases"
+        ? {
+            cases: "Ca kiểm thử",
+            adequacy: "Hồ sơ đảm bảo",
+            ai: "Tạo ca bằng AI",
+            scenarios: "Kịch bản kiểm thử",
+            templates: "Mẫu ca kiểm thử",
+            automation: "Mã kiểm thử tự động",
+            api: "Tích hợp API",
+            import: "Nhập và xuất ca kiểm thử",
+          }[caseTab]
+        : workspaceView === "reusable-steps"
+          ? "Bước dùng lại"
+          : workspaceView === "test-data"
+            ? "Dữ liệu kiểm thử"
+            : workspaceView === "test-sets"
+              ? "Bộ kiểm thử"
+              : "Thiết kế kiểm thử";
+  if (initialLoading || initialLoadFailed) {
+    return (
+      <WorkspacePage title={pageTitle} actions={<ProjectCrumb projectId={project._id} />}>
+        {initialLoading ? (
+          <LoadingState />
+        ) : (
+          <div className="space-y-3">
+            <ErrorState message={error || "Không thể tải dữ liệu thiết kế kiểm thử"} />
+            <button className="secondary-button" type="button" onClick={() => void load()}>
+              Tải lại
+            </button>
+          </div>
+        )}
+      </WorkspacePage>
+    );
+  }
   return (
     <WorkspacePage
-      title={
-        workspaceView === "repository"
-          ? "Kho kiểm thử"
-          : workspaceView === "cases"
-            ? {
-                cases: "Ca kiểm thử",
-                ai: "Hỗ trợ AI cho ca kiểm thử",
-                scenarios: "Kịch bản kiểm thử",
-                templates: "Mẫu ca kiểm thử",
-                automation: "Tự động hóa ca kiểm thử",
-                api: "Tích hợp API",
-                import: "Nhập và xuất ca kiểm thử",
-              }[caseTab]
-            : workspaceView === "reusable-steps"
-              ? "Bước dùng lại"
-              : workspaceView === "test-data"
-                ? "Dữ liệu kiểm thử"
-                : workspaceView === "test-sets"
-                  ? "Bộ kiểm thử"
-                  : "Thiết kế kiểm thử"
-      }
+      title={pageTitle}
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
@@ -799,73 +871,49 @@ export default function TestDesignPage({ project, workspaceView }) {
       }
     >
       {error && <ErrorState message={error} />}
-      <WorkspaceSectionNav
-        current={workspaceView || "cases"}
-        items={[
-          { id: "repository", label: "Kho kiểm thử", href: `/du-an/${project._id}/kho-kiem-thu` },
-          { id: "cases", label: "Ca kiểm thử", href: `/du-an/${project._id}/ca-kiem-thu` },
-          {
-            id: "reusable-steps",
-            label: "Bước dùng lại",
-            href: `/du-an/${project._id}/buoc-dung-lai`,
-          },
-          {
-            id: "test-data",
-            label: "Dữ liệu kiểm thử",
-            href: `/du-an/${project._id}/du-lieu-kiem-thu`,
-          },
-          { id: "test-sets", label: "Bộ kiểm thử", href: `/du-an/${project._id}/bo-kiem-thu` },
-        ]}
-      />
+      <div className="lg:hidden">
+        <WorkspaceSectionNav
+          current={
+            {
+              repository: "test-repository",
+              cases: "test-cases",
+              "reusable-steps": "reusable-steps",
+              "test-data": "test-data",
+              "test-sets": "test-sets",
+            }[workspaceView] || "test-cases"
+          }
+          items={designSectionItems}
+          permissions={permissions}
+        />
+      </div>
       {isCaseWorkspace && (
         <WorkspaceSectionNav
           current={caseTab}
-          items={[
-            { id: "cases", label: "Ca kiểm thử", href: `/du-an/${project._id}/ca-kiem-thu` },
-            {
-              id: "ai",
-              label: "Hỗ trợ AI",
-              href: `/du-an/${project._id}/ca-kiem-thu/ai`,
-            },
-            {
-              id: "scenarios",
-              label: "Kịch bản",
-              href: `/du-an/${project._id}/ca-kiem-thu/kich-ban`,
-            },
-            {
-              id: "templates",
-              label: "Mẫu",
-              href: `/du-an/${project._id}/ca-kiem-thu/mau`,
-            },
-            {
-              id: "automation",
-              label: "Tự động hóa",
-              href: `/du-an/${project._id}/ca-kiem-thu/tu-dong-hoa`,
-            },
-            { id: "api", label: "API", href: `/du-an/${project._id}/ca-kiem-thu/api` },
-            {
-              id: "import",
-              label: "Nhập và xuất",
-              href: `/du-an/${project._id}/ca-kiem-thu/nhap-xuat`,
-            },
-          ]}
+          compact
+          permissions={permissions}
+          items={testCaseSubsectionItems(project._id).filter((item) => item.id !== "cases")}
         />
       )}
-      {showCases && selectedRequirement && (
+      {showAdequacy && selectedRequirement && (
         <TestAdequacyPanel
           requirementVersionId={selectedRequirement}
-          canReview={project.current_membership?.project_role === "QA"}
+          canDecide={project.current_membership?.project_role === "QA" && can("testcase.read")}
+          canCreateClarification={
+            project.current_membership?.project_role === "QA" && can("requirement.review")
+          }
+          canApprove={project.current_membership?.project_role === "QA" && can("testcase.review")}
+          canSubmit={can("testcase.submit_review")}
         />
       )}
       {showAi &&
         (can("ai.generate_testcase") ||
           can("ai.generate_scenario") ||
           can("testcase.duplicate_check")) && (
-          <Panel title="Hỗ trợ thiết kế kiểm thử">
+          <Panel title="Đề xuất kiểm thử">
             <div className="flex flex-wrap gap-3 p-5">
               <select
                 aria-label="Yêu cầu nguồn"
-                className="apple-input min-w-72"
+                className="apple-input w-full min-w-0 sm:w-72"
                 value={selectedRequirement}
                 disabled={Boolean(aiAction)}
                 onChange={(event) => {
@@ -1006,8 +1054,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                     item.challenge,
                 ) && (
                   <p className="text-sm text-ink-muted">
-                    Khi tạo ca AI sẽ thử xử lý giả thuyết lỗi đã chọn Giả thuyết không thay thế tài
-                    liệu nguồn
+                    Ca được tạo tập trung vào giả thuyết đã chọn Tài liệu nguồn vẫn là căn cứ
                   </p>
                 )}
                 {techniqueAdvice && (
@@ -1029,8 +1076,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       </button>
                     ) : (
                       <p className="text-sm text-ink-muted">
-                        AI chưa có kỹ thuật khuyến nghị từ bằng chứng hiện có Bạn có thể tự chọn kỹ
-                        thuật được đánh dấu Có thể dùng sau khi xem phần còn thiếu
+                        Chưa có kỹ thuật được khuyến nghị từ bằng chứng hiện có
                       </p>
                     )}
                     {!!techniqueAdvice.warnings?.length && (
@@ -1068,10 +1114,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                             </p>
                             <p>Hành vi sai giả định {item.challenge.hypothetical_fault}</p>
                             <p>Đầu vào phân biệt {item.challenge.distinguishing_input}</p>
-                            <p>
-                              Kết quả AI đề xuất cần QA đối chiếu nguồn{" "}
-                              {item.challenge.expected_result}
-                            </p>
+                            <p>Kết quả mong đợi dự kiến {item.challenge.expected_result}</p>
                             <p>Đoạn nguồn {item.challenge.source_quote}</p>
                             {!!item.challenge.existing_case_refs?.length && (
                               <details className="rounded-control border border-border p-3">
@@ -1098,7 +1141,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                               </details>
                             )}
                             <p className="text-ink-muted">
-                              Đây là giả thuyết cần QA xác nhận Chưa phải lỗi đã được chứng minh
+                              Giả thuyết cần QA xác nhận chưa phải lỗi đã được chứng minh
                             </p>
                             <label className="flex items-center gap-2">
                               <input
@@ -1149,12 +1192,9 @@ export default function TestDesignPage({ project, workspaceView }) {
                           <div key={challenge.technique}>
                             <p className="font-medium">Giả thuyết QA đã chọn để thử</p>
                             <p>Đầu vào phân biệt {challenge.distinguishing_input}</p>
-                            <p>
-                              Kết quả AI đề xuất cần QA đối chiếu nguồn {challenge.expected_result}
-                            </p>
+                            <p>Kết quả mong đợi dự kiến {challenge.expected_result}</p>
                             <p className="text-ink-muted">
-                              AI được yêu cầu tập trung vào giả thuyết này QA vẫn cần xác nhận ca
-                              bên dưới thực sự phân biệt được hành vi sai
+                              QA cần xác nhận ca này phân biệt được hành vi sai giả định
                             </p>
                           </div>
                         ))}
@@ -1170,7 +1210,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                               {criterionCoverage.criterion_ids.length}
                             </p>
                             <p>
-                              Nếu lưu bản nháp đã chọn sẽ có liên kết {selectedCriterionIds.size}/
+                              Bản nháp được chọn sẽ gắn liên kết {selectedCriterionIds.size}/
                               {criterionCoverage.criterion_ids.length}
                             </p>
                             {!!remainingCriterionIds.length && (
@@ -1180,8 +1220,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                               </p>
                             )}
                             <p className="text-ink-muted">
-                              Liên kết của bản nháp chưa phải ca đang hiệu lực Chất lượng kiểm thử
-                              vẫn cần được rà soát
+                              Liên kết chỉ được tính sau khi ca kiểm thử được phê duyệt
                             </p>
                           </>
                         ) : (
@@ -1232,7 +1271,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                           </span>
                           {!!item.challenge_techniques?.length && (
                             <span className="block">
-                              AI cho rằng ca này nhắm tới giả thuyết thuộc kỹ thuật{" "}
+                              AI ghép ca này với giả thuyết thuộc kỹ thuật{" "}
                               {item.challenge_techniques.map(valueLabel).join("  ")}
                             </span>
                           )}
@@ -1360,70 +1399,72 @@ export default function TestDesignPage({ project, workspaceView }) {
       {showScenarios && <SpecializedDesignPanel project={project} requirements={requirements} />}
       {showAutomation && <AutomationScriptsPanel project={project} tests={tests} />}
       {showCases && (
-        <div className="grid gap-5 xl:grid-cols-2">
-          <Panel title="Bản nháp ca kiểm thử">
-            <DataTable
-              onSelect={(item) => setSelectedDraftId(item._id)}
-              items={drafts}
-              empty="Chưa có bản nháp"
-              columns={[
-                { key: "test_case_key", label: "Mã" },
-                { key: "title", label: "Tên" },
-                { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.status} />,
-                },
-                {
-                  key: "action",
-                  label: "Duyệt",
-                  render: (item) => (
-                    <span className="flex flex-wrap gap-2">
-                      {item.status === "DRAFT" && can("testcase.submit_review") && (
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void reviewDraft(item, "submit");
-                          }}
-                        >
-                          Gửi rà soát
-                        </button>
-                      )}
-                      {item.status === "IN_REVIEW" && can("testcase.review") && (
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void reviewDraft(item, "changes");
-                          }}
-                        >
-                          Yêu cầu sửa
-                        </button>
-                      )}
-                      {item.status === "IN_REVIEW" && can("testcase.approve") && (
-                        <button
-                          className="apple-button"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void freeze(item);
-                          }}
-                        >
-                          Phê duyệt
-                        </button>
-                      )}
-                    </span>
-                  ),
-                },
-              ]}
-            />
-          </Panel>
+        <div className="grid gap-5">
+          {actionableDrafts.length > 0 && (
+            <Panel title="Ca kiểm thử chưa phê duyệt">
+              <DataTable
+                onSelect={(item) => setSelectedDraftId(item._id)}
+                items={actionableDrafts}
+                columns={[
+                  { key: "test_case_key", label: "Mã" },
+                  { key: "title", label: "Tên" },
+                  { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
+                  {
+                    key: "status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.status} />,
+                  },
+                  {
+                    key: "action",
+                    label: "Duyệt",
+                    hideWhenEmpty: true,
+                    render: (item) => (
+                      <span className="flex flex-wrap gap-2">
+                        {item.status === "DRAFT" && can("testcase.submit_review") && (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void reviewDraft(item, "submit");
+                            }}
+                          >
+                            Gửi rà soát
+                          </button>
+                        )}
+                        {item.status === "IN_REVIEW" && can("testcase.review") && (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void reviewDraft(item, "changes");
+                            }}
+                          >
+                            Yêu cầu sửa
+                          </button>
+                        )}
+                        {item.status === "IN_REVIEW" && can("testcase.approve") && (
+                          <button
+                            className="apple-button"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void freeze(item);
+                            }}
+                          >
+                            Phê duyệt
+                          </button>
+                        )}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
+          )}
           <Panel
-            title="Phiên bản ca kiểm thử"
+            title="Danh sách ca kiểm thử"
             actions={
               <div className="flex flex-wrap gap-2">
                 {selectedTestIds.length > 0 && can("testcase.bulk.update") && (
@@ -1671,6 +1712,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                   setError(messageOf(reason));
                 }
               }}
+              activeRowId={selectedTestId}
               items={tests}
               selectedIds={
                 can("testcase.bulk.update") || can("testcase.bulk.archive")
@@ -1872,7 +1914,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       {showCases && selectedDraft && draftEdit && (
         <>
           <Panel
-            title={`Biên tập ${selectedDraft.test_case_key}`}
+            title={`${can("testcase.update") && selectedDraft.status === "DRAFT" ? "Biên tập" : "Chi tiết"} ${selectedDraft.test_case_key}`}
             actions={
               can("testcase.lint") && can("ai.run_lint") ? (
                 <button
@@ -1915,327 +1957,334 @@ export default function TestDesignPage({ project, workspaceView }) {
                   nhận nội dung hiện tại Cần rà soát lại trước khi duyệt
                 </p>
               )}
-            <div className="grid gap-4 p-5 lg:grid-cols-2">
-              <label className="field-label lg:col-span-2">
-                Tên ca kiểm thử
-                <input
-                  className="apple-input mt-2"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.title}
-                  onChange={(event) => changeDraftEdit({ title: event.target.value })}
-                />
-              </label>
-              <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
-                <select
-                  aria-label="Loại bản nháp ca kiểm thử"
-                  className="apple-input"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.type}
-                  onChange={(event) => changeDraftEdit({ type: event.target.value })}
-                >
-                  {TEST_CASE_TYPES.map((value) => (
-                    <option key={value} value={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Ưu tiên bản nháp ca kiểm thử"
-                  className="apple-input"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.priority}
-                  onChange={(event) => changeDraftEdit({ priority: event.target.value })}
-                >
-                  {TEST_LEVELS.map((value) => (
-                    <option key={value} value={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Rủi ro bản nháp ca kiểm thử"
-                  className="apple-input"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.risk}
-                  onChange={(event) => changeDraftEdit({ risk: event.target.value })}
-                >
-                  {TEST_LEVELS.map((value) => (
-                    <option key={value} value={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <label className="field-label lg:col-span-2">
-                Mục tiêu kiểm thử
-                <textarea
-                  className="apple-input mt-2 min-h-20"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.objective}
-                  onChange={(event) => changeDraftEdit({ objective: event.target.value })}
-                />
-              </label>
-              <label className="field-label">
-                Điều kiện trước
-                <textarea
-                  className="apple-input mt-2 min-h-24"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.preconditions}
-                  onChange={(event) => changeDraftEdit({ preconditions: event.target.value })}
-                />
-              </label>
-              <div className="space-y-4 lg:col-span-2">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="field-label">Các bước kiểm thử</p>
-                  {selectedDraft.status === "DRAFT" && can("testcase.update") && (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() =>
-                        changeDraftEdit({
-                          steps: [
-                            ...draftEdit.steps,
-                            { id: crypto.randomUUID(), action: "", data: "{}", expected: "" },
-                          ],
-                        })
-                      }
+            {can("testcase.update") && selectedDraft.status === "DRAFT" ? (
+              <div className="grid gap-4 p-5 lg:grid-cols-2">
+                <label className="field-label lg:col-span-2">
+                  Tên ca kiểm thử
+                  <input
+                    className="apple-input mt-2"
+                    value={draftEdit.title}
+                    onChange={(event) => changeDraftEdit({ title: event.target.value })}
+                  />
+                </label>
+                <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
+                  <select
+                    aria-label="Loại bản nháp ca kiểm thử"
+                    className="apple-input"
+                    value={draftEdit.type}
+                    onChange={(event) => changeDraftEdit({ type: event.target.value })}
+                  >
+                    {TEST_CASE_TYPES.map((value) => (
+                      <option key={value} value={value}>
+                        {valueLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Ưu tiên bản nháp ca kiểm thử"
+                    className="apple-input"
+                    value={draftEdit.priority}
+                    onChange={(event) => changeDraftEdit({ priority: event.target.value })}
+                  >
+                    {TEST_LEVELS.map((value) => (
+                      <option key={value} value={value}>
+                        {valueLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Rủi ro bản nháp ca kiểm thử"
+                    className="apple-input"
+                    value={draftEdit.risk}
+                    onChange={(event) => changeDraftEdit({ risk: event.target.value })}
+                  >
+                    {TEST_LEVELS.map((value) => (
+                      <option key={value} value={value}>
+                        {valueLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <label className="field-label lg:col-span-2">
+                  Mục tiêu kiểm thử
+                  <textarea
+                    className="apple-input mt-2 min-h-20"
+                    value={draftEdit.objective}
+                    onChange={(event) => changeDraftEdit({ objective: event.target.value })}
+                  />
+                </label>
+                <label className="field-label">
+                  Điều kiện trước
+                  <textarea
+                    className="apple-input mt-2 min-h-24"
+                    value={draftEdit.preconditions}
+                    onChange={(event) => changeDraftEdit({ preconditions: event.target.value })}
+                  />
+                </label>
+                <div className="space-y-4 lg:col-span-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="field-label">Các bước kiểm thử</p>
+                    {selectedDraft.status === "DRAFT" && can("testcase.update") && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          changeDraftEdit({
+                            steps: [
+                              ...draftEdit.steps,
+                              { id: crypto.randomUUID(), action: "", data: "{}", expected: "" },
+                            ],
+                          })
+                        }
+                      >
+                        Thêm bước
+                      </button>
+                    )}
+                  </div>
+                  {draftEdit.steps.map((step, index) => (
+                    <fieldset
+                      className="grid gap-3 rounded-xl border border-border p-4 lg:grid-cols-2"
+                      key={step.id}
                     >
-                      Thêm bước
-                    </button>
-                  )}
+                      <legend className="px-2 text-[12px] font-semibold">Bước {index + 1}</legend>
+                      <label className="field-label">
+                        Thao tác
+                        <textarea
+                          className="apple-input mt-2 min-h-24"
+                          value={step.action}
+                          onChange={(event) => {
+                            const steps = [...draftEdit.steps];
+                            steps[index] = { ...step, action: event.target.value };
+                            changeDraftEdit({ steps });
+                          }}
+                        />
+                      </label>
+                      <label className="field-label">
+                        Kết quả mong đợi
+                        <textarea
+                          className="apple-input mt-2 min-h-24"
+                          value={step.expected}
+                          onChange={(event) => {
+                            const steps = [...draftEdit.steps];
+                            steps[index] = { ...step, expected: event.target.value };
+                            changeDraftEdit({ steps });
+                          }}
+                        />
+                      </label>
+                      <label className="field-label lg:col-span-2">
+                        Dữ liệu dạng JSON
+                        <textarea
+                          className="apple-input mt-2 min-h-24 font-mono"
+                          value={step.data}
+                          onChange={(event) => {
+                            const steps = [...draftEdit.steps];
+                            steps[index] = { ...step, data: event.target.value };
+                            changeDraftEdit({ steps });
+                          }}
+                        />
+                      </label>
+                      {selectedDraft.status === "DRAFT" &&
+                        can("testcase.update") &&
+                        draftEdit.steps.length > 1 && (
+                          <button
+                            className="secondary-button w-fit"
+                            type="button"
+                            onClick={() =>
+                              changeDraftEdit({
+                                steps: draftEdit.steps.filter(
+                                  (_, stepIndex) => stepIndex !== index,
+                                ),
+                              })
+                            }
+                          >
+                            Xóa bước
+                          </button>
+                        )}
+                    </fieldset>
+                  ))}
                 </div>
-                {draftEdit.steps.map((step, index) => (
-                  <fieldset
-                    className="grid gap-3 rounded-xl border border-border p-4 lg:grid-cols-2"
-                    key={step.id}
-                  >
-                    <legend className="px-2 text-[12px] font-semibold">Bước {index + 1}</legend>
-                    <label className="field-label">
-                      Thao tác
-                      <textarea
-                        className="apple-input mt-2 min-h-24"
-                        disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                        value={step.action}
-                        onChange={(event) => {
-                          const steps = [...draftEdit.steps];
-                          steps[index] = { ...step, action: event.target.value };
-                          changeDraftEdit({ steps });
-                        }}
-                      />
-                    </label>
-                    <label className="field-label">
-                      Kết quả mong đợi
-                      <textarea
-                        className="apple-input mt-2 min-h-24"
-                        disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                        value={step.expected}
-                        onChange={(event) => {
-                          const steps = [...draftEdit.steps];
-                          steps[index] = { ...step, expected: event.target.value };
-                          changeDraftEdit({ steps });
-                        }}
-                      />
-                    </label>
-                    <label className="field-label lg:col-span-2">
-                      Dữ liệu dạng JSON
-                      <textarea
-                        className="apple-input mt-2 min-h-24 font-mono"
-                        disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                        value={step.data}
-                        onChange={(event) => {
-                          const steps = [...draftEdit.steps];
-                          steps[index] = { ...step, data: event.target.value };
-                          changeDraftEdit({ steps });
-                        }}
-                      />
-                    </label>
-                    {selectedDraft.status === "DRAFT" &&
-                      can("testcase.update") &&
-                      draftEdit.steps.length > 1 && (
-                        <button
-                          className="secondary-button w-fit"
-                          type="button"
-                          onClick={() =>
-                            changeDraftEdit({
-                              steps: draftEdit.steps.filter((_, stepIndex) => stepIndex !== index),
-                            })
-                          }
-                        >
-                          Xóa bước
-                        </button>
-                      )}
-                  </fieldset>
-                ))}
-              </div>
-              <label className="field-label">
-                Dữ liệu dùng chung dạng JSON
-                <textarea
-                  className="apple-input mt-2 min-h-28 font-mono"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.testData}
-                  onChange={(event) => changeDraftEdit({ testData: event.target.value })}
-                />
-              </label>
-              <label className="field-label">
-                Phiên bản bộ dữ liệu tham số
-                <select
-                  aria-label="Phiên bản bộ dữ liệu của bản nháp"
-                  className="apple-input mt-2 min-h-28"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  multiple
+                <label className="field-label">
+                  Dữ liệu dùng chung dạng JSON
+                  <textarea
+                    className="apple-input mt-2 min-h-28 font-mono"
+                    value={draftEdit.testData}
+                    onChange={(event) => changeDraftEdit({ testData: event.target.value })}
+                  />
+                </label>
+                <MultiSelect
+                  label="Phiên bản bộ dữ liệu tham số"
+                  options={dataSets.map((item) => ({
+                    value: item.current_version_id,
+                    label: `${item.name} v${item.current_version?.version}`,
+                  }))}
+                  searchPlaceholder="Tìm bộ dữ liệu"
                   value={draftEdit.dataSetVersionIds}
-                  onChange={(event) =>
-                    changeDraftEdit({
-                      dataSetVersionIds: Array.from(
-                        event.target.selectedOptions,
-                        (option) => option.value,
-                      ),
-                    })
-                  }
-                >
-                  {dataSets.map((item) => (
-                    <option key={item.current_version_id} value={item.current_version_id}>
-                      {item.name} v{item.current_version?.version}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-label">
-                Điều kiện kiểm thử đã phê duyệt
-                <select
-                  aria-label="Điều kiện kiểm thử của bản nháp"
-                  className="apple-input mt-2 min-h-28"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  multiple
+                  onChange={(dataSetVersionIds) => changeDraftEdit({ dataSetVersionIds })}
+                />
+                <MultiSelect
+                  label="Điều kiện kiểm thử đã phê duyệt"
+                  options={testConditions.map((item) => ({
+                    value: item._id,
+                    label: `${item.condition_key} ${item.title}`,
+                  }))}
+                  searchPlaceholder="Tìm điều kiện kiểm thử"
                   value={draftEdit.testConditionIds}
-                  onChange={(event) =>
-                    changeDraftEdit({
-                      testConditionIds: Array.from(
-                        event.target.selectedOptions,
-                        (option) => option.value,
-                      ),
-                    })
-                  }
-                >
-                  {testConditions.map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.condition_key} {item.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-label">
-                Kết quả mong đợi tổng thể
-                <textarea
-                  className="apple-input mt-2 min-h-28"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.expected}
-                  onChange={(event) => changeDraftEdit({ expected: event.target.value })}
+                  onChange={(testConditionIds) => changeDraftEdit({ testConditionIds })}
                 />
-              </label>
-              <label className="field-label lg:col-span-2">
-                Điều kiện sau
-                <textarea
-                  className="apple-input mt-2 min-h-24"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.postconditions}
-                  onChange={(event) => changeDraftEdit({ postconditions: event.target.value })}
-                />
-              </label>
-              <label className="field-label">
-                Kỹ thuật kiểm thử phân tách bằng dấu phẩy
-                <input
-                  className="apple-input mt-2"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.techniques}
-                  onChange={(event) => changeDraftEdit({ techniques: event.target.value })}
-                />
-              </label>
-              <label className="field-label">
-                Nhãn phân tách bằng dấu phẩy
-                <input
-                  className="apple-input mt-2"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.tags}
-                  onChange={(event) => changeDraftEdit({ tags: event.target.value })}
-                />
-              </label>
-              <label className="field-label">
-                Trạng thái tự động hóa
-                <select
-                  className="apple-input mt-2"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.automationStatus}
-                  onChange={(event) => changeDraftEdit({ automationStatus: event.target.value })}
-                >
-                  {["manual", "candidate", "automated"].map((value) => (
-                    <option value={value} key={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-label">
-                Mã người phụ trách
-                <input
-                  className="apple-input mt-2"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  value={draftEdit.ownerId}
-                  onChange={(event) => changeDraftEdit({ ownerId: event.target.value })}
-                />
-              </label>
-              <label className="field-label">
-                Tệp đính kèm
-                <input
-                  className="apple-input mt-2"
-                  type="file"
-                  disabled={selectedDraft.status !== "DRAFT" || !can("testcase.update")}
-                  onChange={async (event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    try {
-                      const uploaded = await uploadAssetAPI(file);
-                      changeDraftEdit({
-                        attachments: [...draftEdit.attachments, uploaded.data],
-                      });
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
-                  }}
-                />
-                {draftEdit.attachments.map((attachment) => (
-                  <span
-                    className="mt-2 block break-all text-[11px] text-ink-muted"
-                    key={attachment.url}
+                <label className="field-label">
+                  Kết quả mong đợi tổng thể
+                  <textarea
+                    className="apple-input mt-2 min-h-28"
+                    value={draftEdit.expected}
+                    onChange={(event) => changeDraftEdit({ expected: event.target.value })}
+                  />
+                </label>
+                <label className="field-label lg:col-span-2">
+                  Điều kiện sau
+                  <textarea
+                    className="apple-input mt-2 min-h-24"
+                    value={draftEdit.postconditions}
+                    onChange={(event) => changeDraftEdit({ postconditions: event.target.value })}
+                  />
+                </label>
+                <label className="field-label">
+                  Kỹ thuật kiểm thử phân tách bằng dấu phẩy
+                  <input
+                    className="apple-input mt-2"
+                    value={draftEdit.techniques}
+                    onChange={(event) => changeDraftEdit({ techniques: event.target.value })}
+                  />
+                </label>
+                <label className="field-label">
+                  Nhãn phân tách bằng dấu phẩy
+                  <input
+                    className="apple-input mt-2"
+                    value={draftEdit.tags}
+                    onChange={(event) => changeDraftEdit({ tags: event.target.value })}
+                  />
+                </label>
+                <label className="field-label">
+                  Trạng thái tự động hóa
+                  <select
+                    className="apple-input mt-2"
+                    value={draftEdit.automationStatus}
+                    onChange={(event) => changeDraftEdit({ automationStatus: event.target.value })}
                   >
-                    {attachment.filename}
-                  </span>
-                ))}
-              </label>
-              {selectedDraft.status === "DRAFT" && can("testcase.update") && (
-                <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
-                  <button
-                    className="secondary-button w-fit"
-                    type="button"
-                    disabled={draftSaveState === "saving"}
-                    onClick={saveDraft}
-                  >
-                    Lưu bản nháp
-                  </button>
-                  <span className="text-[12px] text-ink-muted" aria-live="polite">
-                    {draftSaveState === "saving"
-                      ? "Đang tự động lưu"
-                      : draftSaveState === "pending"
-                        ? "Có thay đổi chưa lưu"
-                        : draftSaveState === "invalid"
-                          ? "JSON chưa hợp lệ nên chưa tự động lưu"
-                          : draftSaveState === "error"
-                            ? "Tự động lưu thất bại"
-                            : "Đã tự động lưu"}
-                  </span>
+                    {["manual", "candidate", "automated"].map((value) => (
+                      <option value={value} key={value}>
+                        {valueLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Mã người phụ trách
+                  <input
+                    className="apple-input mt-2"
+                    value={draftEdit.ownerId}
+                    onChange={(event) => changeDraftEdit({ ownerId: event.target.value })}
+                  />
+                </label>
+                <div className="min-w-0">
+                  <FilePicker
+                    label="Tệp đính kèm"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const uploaded = await uploadAssetAPI(file);
+                        changeDraftEdit({
+                          attachments: [...draftEdit.attachments, uploaded.data],
+                        });
+                      } catch (reason) {
+                        setError(messageOf(reason));
+                      }
+                    }}
+                  />
+                  {draftEdit.attachments.map((attachment) => (
+                    <span
+                      className="mt-2 block break-all text-[11px] text-ink-muted"
+                      key={attachment.url}
+                    >
+                      {attachment.filename}
+                    </span>
+                  ))}
                 </div>
-              )}
-            </div>
+                {selectedDraft.status === "DRAFT" && can("testcase.update") && (
+                  <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
+                    <button
+                      className="secondary-button w-fit"
+                      type="button"
+                      disabled={draftSaveState === "saving"}
+                      onClick={saveDraft}
+                    >
+                      Lưu bản nháp
+                    </button>
+                    <span className="text-[12px] text-ink-muted" aria-live="polite">
+                      {draftSaveState === "saving"
+                        ? "Đang tự động lưu"
+                        : draftSaveState === "pending"
+                          ? "Có thay đổi chưa lưu"
+                          : draftSaveState === "invalid"
+                            ? "JSON chưa hợp lệ nên chưa tự động lưu"
+                            : draftSaveState === "error"
+                              ? "Tự động lưu thất bại"
+                              : "Đã tự động lưu"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <dl className="grid gap-4 p-5 sm:grid-cols-2">
+                {[
+                  ["Loại ca", valueLabel(draftEdit.type)],
+                  ["Mức ưu tiên", valueLabel(draftEdit.priority)],
+                  ["Rủi ro", valueLabel(draftEdit.risk)],
+                  ["Mục tiêu", draftEdit.objective],
+                  ["Điều kiện trước", draftEdit.preconditions],
+                  ["Kết quả mong đợi", draftEdit.expected],
+                  ["Điều kiện sau", draftEdit.postconditions],
+                  ["Kỹ thuật kiểm thử", draftEdit.techniques],
+                  ["Nhãn", draftEdit.tags],
+                  ["Mã người phụ trách", draftEdit.ownerId],
+                ].map(([label, value]) => (
+                  <div className="min-w-0 space-y-1" key={label}>
+                    <dt className="text-xs font-semibold text-ink-muted">{label}</dt>
+                    <dd className="break-words text-sm text-ink">{value || "Chưa có thông tin"}</dd>
+                  </div>
+                ))}
+                <div className="space-y-2 sm:col-span-2">
+                  <dt className="text-xs font-semibold text-ink-muted">Các bước kiểm thử</dt>
+                  {(draftEdit.steps || []).map((step, index) => (
+                    <div
+                      className="grid gap-2 rounded-control border border-border p-3 sm:grid-cols-2"
+                      key={step.id || index}
+                    >
+                      <p className="break-words text-sm">
+                        <span className="font-semibold">Bước {index + 1}</span>
+                        <br />
+                        {step.action || "Chưa có thao tác"}
+                      </p>
+                      <p className="break-words text-sm">
+                        <span className="font-semibold">Kết quả mong đợi</span>
+                        <br />
+                        {step.expected || "Chưa có kết quả mong đợi"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {(draftEdit.attachments || []).length > 0 && (
+                  <div className="space-y-1 sm:col-span-2">
+                    <dt className="text-xs font-semibold text-ink-muted">Tệp đính kèm</dt>
+                    {draftEdit.attachments.map((attachment) => (
+                      <dd className="break-all text-sm text-ink" key={attachment.url}>
+                        {attachment.filename}
+                      </dd>
+                    ))}
+                  </div>
+                )}
+              </dl>
+            )}
             {testLint && (
               <div className="border-t border-border">
                 <DataTable
@@ -2254,6 +2303,8 @@ export default function TestDesignPage({ project, workspaceView }) {
             projectId={project._id}
             artifactType="test_case_draft"
             artifactId={selectedDraft._id}
+            permissions={permissions}
+            currentUserId={project.current_membership?.user_id}
           />
           <CollaborationPanel
             project={project}
@@ -2266,7 +2317,10 @@ export default function TestDesignPage({ project, workspaceView }) {
       {showCases && can("testcase.create") && (
         <TestCaseCreateModal
           isOpen={creatingTest}
-          onClose={() => setCreatingTest(false)}
+          onClose={() => {
+            if (!savingCreation) setCreatingTest(false);
+          }}
+          saving={savingCreation}
           form={form}
           setForm={setForm}
           dataSets={dataSets}
@@ -2285,6 +2339,7 @@ export default function TestDesignPage({ project, workspaceView }) {
             setFilters={setScenarioFilters}
             isCreating={creatingScenario}
             setCreating={setCreatingScenario}
+            saving={savingCreation}
             form={scenarioForm}
             setForm={setScenarioForm}
             testConditions={testConditions}
@@ -2302,6 +2357,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           items={dataSets}
           isCreating={creatingDataSet}
           setCreating={setCreatingDataSet}
+          saving={savingCreation}
           form={dataSetForm}
           setForm={setDataSetForm}
           onSubmit={createDataSet}
@@ -2317,8 +2373,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       )}
       {workspaceView === "test-sets" && (
         <Panel
-          title="Bộ kiểm thử"
-          description="Tập ca kiểm thử tái sử dụng giữa các kế hoạch kiểm thử"
+          title="Danh sách bộ kiểm thử"
           actions={
             can("testsuite.create") ? (
               <button className="apple-button" type="button" onClick={createTestSet}>
@@ -2350,6 +2405,7 @@ export default function TestDesignPage({ project, workspaceView }) {
               {
                 key: "actions",
                 label: "Thao tác",
+                hideWhenEmpty: true,
                 render: (item) => (
                   <span className="flex flex-wrap gap-2">
                     {can("testsuite.update") && (

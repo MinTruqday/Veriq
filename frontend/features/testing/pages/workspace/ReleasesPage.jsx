@@ -19,7 +19,7 @@ export default function ReleasesPage({ project }) {
   const [releases, setReleases] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const isQa = project.current_membership?.project_role === "QA";
+  const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -46,22 +46,19 @@ export default function ReleasesPage({ project }) {
         { name: "planned_end_at", label: "Kết thúc dự kiến", type: "date" },
         { name: "notes", label: "Ghi chú", multiline: true },
       ],
+      onConfirm: async (value) => {
+        await testingApi.createRelease(project._id, {
+          ...value,
+          key: value.key.trim(),
+          name: value.name.trim(),
+          version: value.version.trim(),
+          planned_start_at: value.planned_start_at || null,
+          planned_end_at: value.planned_end_at || null,
+          notes: value.notes.trim(),
+        });
+        await load();
+      },
     });
-    if (!value) return;
-    try {
-      await testingApi.createRelease(project._id, {
-        ...value,
-        key: value.key.trim(),
-        name: value.name.trim(),
-        version: value.version.trim(),
-        planned_start_at: value.planned_start_at || null,
-        planned_end_at: value.planned_end_at || null,
-        notes: value.notes.trim(),
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const transition = async (release, action) => {
     const value = await ask({
@@ -88,9 +85,8 @@ export default function ReleasesPage({ project }) {
   return (
     <WorkspacePage
       title="Bản phát hành"
-      description="Phạm vi phát hành được kiểm soát trước khi QA chốt quyết định"
       actions={
-        isQa ? (
+        can("release.create") ? (
           <button className="apple-button" type="button" onClick={createRelease}>
             <Plus size={16} />
             Tạo bản phát hành
@@ -99,54 +95,66 @@ export default function ReleasesPage({ project }) {
       }
     >
       {error && <ErrorState message={error} />}
-      <Panel title="Danh sách bản phát hành">
-        <DataTable
-          items={releases}
-          empty="Chưa có bản phát hành"
-          columns={[
-            { key: "key", label: "Mã" },
-            { key: "name", label: "Tên" },
-            { key: "version", label: "Phiên bản" },
-            {
-              key: "status",
-              label: "Trạng thái",
-              render: (item) => <StatusPill value={item.status} />,
-            },
-            {
-              key: "planned_end_at",
-              label: "Kết thúc dự kiến",
-              render: (item) =>
-                item.planned_end_at ? formatDate(item.planned_end_at) : "Chưa đặt",
-            },
-            ...(isQa
-              ? [
-                  {
-                    key: "actions",
-                    label: "Thao tác",
-                    render: (item) =>
-                      item.status === "PLANNED" ? (
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() => transition(item, "activate")}
-                        >
-                          Kích hoạt
-                        </button>
-                      ) : item.status === "ACTIVE" ? (
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() => transition(item, "close")}
-                        >
-                          Đóng phát hành
-                        </button>
-                      ) : null,
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </Panel>
+      {error && releases.length === 0 ? (
+        <Panel title="Danh sách bản phát hành">
+          <div className="space-y-3 p-5">
+            <p className="text-sm text-ink-muted">Chưa thể xác định danh sách bản phát hành</p>
+            <button className="secondary-button" type="button" onClick={() => void load()}>
+              Tải lại
+            </button>
+          </div>
+        </Panel>
+      ) : (
+        <Panel title="Danh sách bản phát hành">
+          <DataTable
+            items={releases}
+            empty="Chưa có bản phát hành"
+            columns={[
+              { key: "key", label: "Mã" },
+              { key: "name", label: "Tên" },
+              { key: "version", label: "Phiên bản" },
+              {
+                key: "status",
+                label: "Trạng thái",
+                render: (item) => <StatusPill value={item.status} />,
+              },
+              {
+                key: "planned_end_at",
+                label: "Kết thúc dự kiến",
+                render: (item) =>
+                  item.planned_end_at ? formatDate(item.planned_end_at) : "Chưa đặt",
+              },
+              ...(can("release.manage") || can("release.close")
+                ? [
+                    {
+                      key: "actions",
+                      label: "Thao tác",
+                      hideWhenEmpty: true,
+                      render: (item) =>
+                        item.status === "PLANNED" && can("release.manage") ? (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() => transition(item, "activate")}
+                          >
+                            Kích hoạt
+                          </button>
+                        ) : item.status === "ACTIVE" && can("release.close") ? (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() => transition(item, "close")}
+                          >
+                            Đóng phát hành
+                          </button>
+                        ) : null,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        </Panel>
+      )}
       {dialog}
     </WorkspacePage>
   );

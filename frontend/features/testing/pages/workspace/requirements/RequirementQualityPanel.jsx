@@ -76,6 +76,7 @@ export default function RequirementQualityPanel({
             {
               key: "actions",
               label: "Thao tác",
+              hideWhenEmpty: true,
               render: (item) =>
                 current.status === "DRAFT" && can("requirement.update") ? (
                   <button

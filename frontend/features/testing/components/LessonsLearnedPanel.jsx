@@ -66,6 +66,7 @@ export default function LessonsLearnedPanel({
               key={`lesson-${index}`}
             >
               <select
+                aria-label={`Loại bài học ${index + 1}`}
                 className="apple-input"
                 value={item.category || "WORKED"}
                 onChange={(event) => updateLesson(index, "category", event.target.value)}

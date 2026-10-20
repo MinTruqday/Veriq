@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import ProjectNotificationsPanel from "../../components/ProjectNotificationsPanel";
 import WebhookPanel from "../../components/WebhookPanel";
@@ -7,6 +7,7 @@ import ProjectConnectorsPanel from "../../components/ProjectConnectorsPanel";
 import CicdPanel from "../../components/CicdPanel";
 import {
   ErrorState,
+  LoadingState,
   Panel,
   ProjectCrumb,
   WorkspacePage,
@@ -14,6 +15,7 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 
 const toggleSettings = [
   ["requirement_lint_blocking", "Chặn duyệt yêu cầu khi còn lỗi kiểm tra"],
@@ -68,8 +70,8 @@ const numberSettings = [
     1000,
     1,
   ],
-  ["rca_reopen_threshold", "Số lần mở lại lỗi để đề xuất RCA", 1, 100, 1],
-  ["rca_duplicate_threshold", "Số lỗi cùng cụm để đề xuất RCA", 2, 100, 1],
+  ["rca_reopen_threshold", "Số lần mở lại lỗi để đề xuất phân tích nguyên nhân gốc", 1, 100, 1],
+  ["rca_duplicate_threshold", "Số lỗi cùng cụm để đề xuất phân tích nguyên nhân gốc", 2, 100, 1],
 ];
 
 const selectSettings = [
@@ -77,6 +79,18 @@ const selectSettings = [
   ["read_after_archive_policy", "Quyền đọc sau khi lưu trữ", ["ALLOW_READ", "DENY_READ"]],
   ["default_environment", "Môi trường mặc định", ["development", "staging", "production"]],
 ];
+
+function memberDisplayName(member) {
+  return (
+    [member.user_label, member.user?.full_name, member.user?.email].find(
+      (value) =>
+        value &&
+        value !== member.user_id &&
+        !/^[0-9a-f]{24}$/i.test(value) &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),
+    ) || "Tài khoản không xác định"
+  );
+}
 
 const projectTypeLabels = {
   web: "Ứng dụng web",
@@ -104,6 +118,11 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const [audit, setAudit] = useState([]);
   const [members, setMembers] = useState([]);
   const [analytics, setAnalytics] = useState(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState({});
+  const [activeSettingsSection, setActiveSettingsSection] = useState("project");
+  const loadedProjectId = useRef(project._id);
+  const settingsLoadRevision = useRef(0);
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description || "");
   const [projectType, setProjectType] = useState(project.project_type || "web");
@@ -132,53 +151,136 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
     ),
   });
   const [error, setError] = useState("");
+  const can = (permission) => project.current_permissions?.includes(permission);
+  const settingsSections = [
+    {
+      id: "project",
+      label: "Dự án",
+      permissions: ["project.update", "project.settings.manage", "project.archive"],
+    },
+    {
+      id: "members",
+      label: "Thành viên",
+      permissions: ["project.members.read", "project.members.manage"],
+    },
+    {
+      id: "notifications",
+      label: "Thông báo",
+      permissions: [
+        "notification.watch.manage",
+        "notification.preferences.manage",
+        "notification.project_rule.manage",
+      ],
+    },
+    {
+      id: "integrations",
+      label: "Tích hợp",
+      permissions: ["project.connector.read", "cicd.read", "webhook.project.read"],
+    },
+    {
+      id: "analytics",
+      label: "Phân tích",
+      permissions: ["analytics.read", "analytics.ai.read"],
+    },
+  ].filter((section) => section.permissions.some(can));
+  const visibleSettingsSection = settingsSections.some(
+    (section) => section.id === activeSettingsSection,
+  )
+    ? activeSettingsSection
+    : settingsSections[0]?.id;
   const activeQaCount = members.filter(
     (item) => item.project_role === "QA" && item.status === "ACTIVE",
   ).length;
   const isOnlyActiveQa = (item) =>
     item.project_role === "QA" && item.status === "ACTIVE" && activeQaCount === 1;
+  const loadSettingsData = useCallback(async () => {
+    const requestRevision = ++settingsLoadRevision.current;
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      setAudit([]);
+      setMembers([]);
+      setAnalytics(null);
+      setLoadErrors({});
+    }
+    setDataLoading(true);
+    const permissions = new Set(project.current_permissions || []);
+    setLoadErrors({});
+    const results = await Promise.allSettled([
+      workspaceView === "audit" && permissions.has("project.audit.read")
+        ? testingApi.audit(project._id)
+        : Promise.resolve([]),
+      visibleSettingsSection === "analytics" && permissions.has("analytics.read")
+        ? testingApi.maintenanceAnalytics(project._id)
+        : Promise.resolve({}),
+      visibleSettingsSection === "analytics" && permissions.has("analytics.ai.read")
+        ? testingApi.aiAnalytics(project._id)
+        : Promise.resolve({}),
+      visibleSettingsSection === "members" && permissions.has("project.members.read")
+        ? testingApi.listMembers(project._id)
+        : Promise.resolve([]),
+    ]);
+    if (requestRevision !== settingsLoadRevision.current) return;
+    const nextErrors = {};
+    const valueAt = (index, key, fallback) => {
+      const result = results[index];
+      if (result.status === "fulfilled") return result.value;
+      nextErrors[key] = [nextErrors[key], messageOf(result.reason)].filter(Boolean).join(" · ");
+      return fallback;
+    };
+    setAudit(valueAt(0, "audit", []));
+    setAnalytics({ ...valueAt(1, "analytics", {}), ...valueAt(2, "analytics", {}) });
+    setMembers(valueAt(3, "members", []));
+    setLoadErrors(nextErrors);
+    setDataLoading(false);
+  }, [project._id, project.current_permissions, visibleSettingsSection, workspaceView]);
   useEffect(() => {
-    Promise.all([
-      testingApi.audit(project._id),
-      testingApi.maintenanceAnalytics(project._id),
-      testingApi.aiAnalytics(project._id),
-      testingApi.listMembers(project._id),
-    ])
-      .then(([events, value, aiValue, memberValues]) => {
-        setAudit(events);
-        setAnalytics({ ...value, ...aiValue });
-        setMembers(memberValues);
-      })
-      .catch((reason) => setError(messageOf(reason)));
-  }, [project._id]);
+    void loadSettingsData();
+  }, [loadSettingsData]);
   if (workspaceView === "audit") {
     return (
-      <WorkspacePage title="Nhật ký audit" actions={<ProjectCrumb projectId={project._id} />}>
+      <WorkspacePage title="Nhật ký kiểm toán" actions={<ProjectCrumb projectId={project._id} />}>
         {error && <ErrorState message={error} />}
         <Panel title="Nhật ký kiểm toán">
-          <DataTable
-            items={audit}
-            empty="Chưa có sự kiện"
-            columns={[
-              { key: "action", label: "Hành động", render: (item) => valueLabel(item.action) },
-              {
-                key: "artifact_type",
-                label: "Loại dữ liệu",
-                render: (item) => valueLabel(item.artifact_type),
-              },
-              { key: "artifact_id", label: "Mã" },
-              {
-                key: "actor_id",
-                label: "Người thực hiện",
-                render: (item) => item.actor_label || item.actor_id,
-              },
-              {
-                key: "created_at",
-                label: "Thời điểm",
-                render: (item) => formatDate(item.created_at),
-              },
-            ]}
-          />
+          {dataLoading ? (
+            <div className="p-5">
+              <LoadingState />
+            </div>
+          ) : loadErrors.audit ? (
+            <div className="space-y-3 p-5">
+              <ErrorState message={loadErrors.audit} />
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void loadSettingsData()}
+              >
+                Tải lại
+              </button>
+            </div>
+          ) : (
+            <DataTable
+              items={audit}
+              empty="Chưa có sự kiện"
+              columns={[
+                { key: "action", label: "Hành động", render: (item) => valueLabel(item.action) },
+                {
+                  key: "artifact_type",
+                  label: "Loại dữ liệu",
+                  render: (item) => valueLabel(item.artifact_type),
+                },
+                { key: "artifact_id", label: "Mã" },
+                {
+                  key: "actor_id",
+                  label: "Người thực hiện",
+                  render: (item) => item.actor_label || item.actor_id,
+                },
+                {
+                  key: "created_at",
+                  label: "Thời điểm",
+                  render: (item) => formatDate(item.created_at),
+                },
+              ]}
+            />
+          )}
         </Panel>
       </WorkspacePage>
     );
@@ -186,401 +288,513 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   return (
     <WorkspacePage title="Cài đặt dự án" actions={<ProjectCrumb projectId={project._id} />}>
       {error && <ErrorState message={error} />}
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="Thông tin dự án">
-          <form
-            className="space-y-4 p-5"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              try {
-                await testingApi.updateProjectSettings(project._id, {
-                  expected_revision: project.revision,
-                  name,
-                  description,
-                  project_type: projectType,
-                  locale,
-                  timezone,
-                  settings: {
-                    ...(project.settings || {}),
-                    ...settings,
-                    action_policies: {
-                      ...(project.settings?.action_policies || {}),
-                      "defect.rejected": settings.tester_can_reject_defect
-                        ? ["QA", "TESTER"]
-                        : ["QA"],
-                      "defect.duplicate": settings.tester_can_mark_duplicate_defect
-                        ? ["QA", "TESTER"]
-                        : ["QA"],
-                      "testplan.assignments": settings.tester_can_assign_testplans
-                        ? ["QA", "TESTER"]
-                        : ["QA"],
-                      "testcase.template.archive": settings.tester_can_archive_testcase_templates
-                        ? ["QA", "TESTER"]
-                        : ["QA"],
-                    },
-                  },
-                });
-                await onProjectChange();
-              } catch (reason) {
-                setError(messageOf(reason));
-              }
-            }}
-          >
-            <label className="field-label">
-              Tên
-              <input
-                className="apple-input mt-2"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </label>
-            <div className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-2">
-              <label className="field-label">
-                Loại dự án
-                <select
-                  className="apple-input mt-2"
-                  value={projectType}
-                  onChange={(event) => setProjectType(event.target.value)}
-                >
-                  {["web", "mobile", "api", "desktop", "embedded", "other"].map((value) => (
-                    <option value={value} key={value}>
-                      {projectTypeLabels[value]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field-label">
-                Ngôn ngữ và vùng
-                <input
-                  className="apple-input mt-2"
-                  value={locale}
-                  onChange={(event) => setLocale(event.target.value)}
-                />
-              </label>
-              <label className="field-label sm:col-span-2">
-                Múi giờ
-                <input
-                  className="apple-input mt-2"
-                  value={timezone}
-                  onChange={(event) => setTimezone(event.target.value)}
-                />
-              </label>
-            </div>
-            <details className="rounded-xl border border-border p-4">
-              <summary className="cursor-pointer text-[13px] font-semibold">
-                Chính sách dự án
-              </summary>
-              <div className="mt-4 space-y-3">
-                {toggleSettings.map(([key, label]) => (
-                  <label className="flex items-center gap-3 text-[13px]" key={key}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(settings[key])}
-                      onChange={(event) =>
-                        setSettings((current) => ({ ...current, [key]: event.target.checked }))
-                      }
-                    />
-                    {label}
-                  </label>
-                ))}
-                {numberSettings.map(([key, label, min, max, step]) => (
-                  <label className="field-label" key={key}>
-                    {label}
-                    <input
-                      className="apple-input mt-2"
-                      type="number"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={settings[key]}
-                      onChange={(event) =>
-                        setSettings((current) => ({
-                          ...current,
-                          [key]: Number(event.target.value),
-                        }))
-                      }
-                    />
-                  </label>
-                ))}
-                {selectSettings.map(([key, label, values]) => (
-                  <label className="field-label" key={key}>
-                    {label}
-                    <select
-                      className="apple-input mt-2"
-                      value={settings[key]}
-                      onChange={(event) =>
-                        setSettings((current) => ({ ...current, [key]: event.target.value }))
-                      }
-                    >
-                      {values.map((value) => (
-                        <option value={value} key={value}>
-                          {settingValueLabels[value] || valueLabel(value)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-            </details>
-            <label className="field-label">
-              Mô tả
-              <textarea
-                className="apple-input mt-2 min-h-28"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </label>
-            <button className="apple-button" type="submit">
-              Lưu với phiên bản {project.revision}
-            </button>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={async () => {
-                const answer = await ask({
-                  title: "Lưu trữ dự án",
-                  description: `${project.key} sẽ ngừng nhận thay đổi mới nhưng vẫn giữ lịch sử và bằng chứng`,
-                  confirmLabel: "Lưu trữ",
-                  danger: true,
-                  fields: [
-                    {
-                      name: "reason",
-                      label: "Lý do lưu trữ",
-                      initialValue: "Dự án đã kết thúc vòng đời hoạt động",
-                      required: true,
-                      multiline: true,
-                      autoFocus: true,
-                    },
-                  ],
-                });
-                if (!answer) return;
-                try {
-                  await testingApi.archiveProject(project._id, {
-                    expected_revision: project.revision,
-                    reason: answer.reason,
-                  });
-                  window.location.assign("/du-an");
-                } catch (value) {
-                  setError(messageOf(value));
-                }
-              }}
-            >
-              Lưu trữ dự án
-            </button>
-          </form>
-        </Panel>
-        <Panel title="Thành viên dự án">
-          <div className="space-y-3 p-5">
+      <SegmentedTabs
+        tabs={settingsSections}
+        value={visibleSettingsSection}
+        onChange={setActiveSettingsSection}
+        label="Nhóm cài đặt dự án"
+      />
+      <div className="min-w-0" role="tabpanel" aria-label="Cài đặt dự án">
+        {visibleSettingsSection === "project" && (
+          <Panel title="Thông tin dự án">
             <form
-              className="grid gap-2 sm:grid-cols-[1fr_150px_auto]"
+              className="space-y-4 p-5"
               onSubmit={async (event) => {
                 event.preventDefault();
-                const form = event.currentTarget;
-                const value = new FormData(form);
                 try {
-                  await testingApi.inviteMember(project._id, {
-                    user_id: value.get("user_id"),
-                    project_role: value.get("project_role"),
-                  });
-                  form.reset();
-                  setMembers(await testingApi.listMembers(project._id));
+                  const payload = can("project.settings.manage")
+                    ? {
+                        expected_revision: project.revision,
+                        settings: {
+                          ...(project.settings || {}),
+                          ...settings,
+                          action_policies: {
+                            ...(project.settings?.action_policies || {}),
+                            "defect.rejected": settings.tester_can_reject_defect
+                              ? ["QA", "TESTER"]
+                              : ["QA"],
+                            "defect.duplicate": settings.tester_can_mark_duplicate_defect
+                              ? ["QA", "TESTER"]
+                              : ["QA"],
+                            "testplan.assignments": settings.tester_can_assign_testplans
+                              ? ["QA", "TESTER"]
+                              : ["QA"],
+                            "testcase.template.archive":
+                              settings.tester_can_archive_testcase_templates
+                                ? ["QA", "TESTER"]
+                                : ["QA"],
+                          },
+                        },
+                      }
+                    : {
+                        expected_revision: project.revision,
+                        name,
+                        description,
+                        project_type: projectType,
+                        locale,
+                        timezone,
+                      };
+                  if (can("project.settings.manage")) {
+                    await testingApi.updateProjectSettings(project._id, payload);
+                  } else {
+                    await testingApi.updateProject(project._id, payload);
+                  }
+                  await onProjectChange();
                 } catch (reason) {
                   setError(messageOf(reason));
                 }
               }}
             >
-              <input
-                className="apple-input"
-                name="user_id"
-                required
-                placeholder="Email hoặc mã người dùng"
-                aria-label="Email hoặc mã người dùng"
-              />
-              <select className="apple-input" name="project_role" aria-label="Vai trò dự án">
-                <option value="TESTER">Kiểm thử viên</option>
-                <option value="BA">Phân tích nghiệp vụ</option>
-                <option value="DEVELOPER">Lập trình viên</option>
-                <option value="VIEWER">Người xem</option>
-                <option value="QA">QA</option>
-              </select>
-              <button className="secondary-button" type="submit">
-                Gửi lời mời
-              </button>
+              <label className="field-label">
+                Tên
+                <input
+                  className="apple-input mt-2"
+                  readOnly={!can("project.update")}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <div className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-2">
+                <label className="field-label">
+                  Loại dự án
+                  <select
+                    className="apple-input mt-2"
+                    disabled={!can("project.update")}
+                    value={projectType}
+                    onChange={(event) => setProjectType(event.target.value)}
+                  >
+                    {["web", "mobile", "api", "desktop", "embedded", "other"].map((value) => (
+                      <option value={value} key={value}>
+                        {projectTypeLabels[value]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Ngôn ngữ và vùng
+                  <input
+                    className="apple-input mt-2"
+                    readOnly={!can("project.update")}
+                    value={locale}
+                    onChange={(event) => setLocale(event.target.value)}
+                  />
+                </label>
+                <label className="field-label sm:col-span-2">
+                  Múi giờ
+                  <input
+                    className="apple-input mt-2"
+                    readOnly={!can("project.update")}
+                    value={timezone}
+                    onChange={(event) => setTimezone(event.target.value)}
+                  />
+                </label>
+              </div>
+              {can("project.settings.manage") && (
+                <details className="rounded-xl border border-border p-4">
+                  <summary className="cursor-pointer text-[13px] font-semibold">
+                    Chính sách dự án
+                  </summary>
+                  <div className="mt-4 space-y-3">
+                    {toggleSettings.map(([key, label]) => (
+                      <label className="flex items-center gap-3 text-[13px]" key={key}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settings[key])}
+                          onChange={(event) =>
+                            setSettings((current) => ({ ...current, [key]: event.target.checked }))
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    {numberSettings.map(([key, label, min, max, step]) => (
+                      <label className="field-label" key={key}>
+                        {label}
+                        <input
+                          className="apple-input mt-2"
+                          type="number"
+                          min={min}
+                          max={max}
+                          step={step}
+                          value={settings[key]}
+                          onChange={(event) =>
+                            setSettings((current) => ({
+                              ...current,
+                              [key]: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                    ))}
+                    {selectSettings.map(([key, label, values]) => (
+                      <label className="field-label" key={key}>
+                        {label}
+                        <select
+                          className="apple-input mt-2"
+                          value={settings[key]}
+                          onChange={(event) =>
+                            setSettings((current) => ({ ...current, [key]: event.target.value }))
+                          }
+                        >
+                          {values.map((value) => (
+                            <option value={value} key={value}>
+                              {settingValueLabels[value] || valueLabel(value)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              )}
+              <label className="field-label">
+                Mô tả
+                <textarea
+                  className="apple-input mt-2 min-h-28"
+                  readOnly={!can("project.update")}
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+              </label>
+              <div className="flex flex-wrap gap-3">
+                {(can("project.update") || can("project.settings.manage")) && (
+                  <button className="apple-button" type="submit">
+                    Lưu thay đổi
+                  </button>
+                )}
+                {can("project.archive") && (
+                  <button
+                    className="danger-button"
+                    type="button"
+                    onClick={async () => {
+                      const answer = await ask({
+                        title: "Lưu trữ dự án",
+                        description: `${project.key} sẽ ngừng nhận thay đổi mới nhưng vẫn giữ lịch sử và bằng chứng`,
+                        confirmLabel: "Lưu trữ",
+                        danger: true,
+                        fields: [
+                          {
+                            name: "reason",
+                            label: "Lý do lưu trữ",
+                            initialValue: "Dự án đã kết thúc vòng đời hoạt động",
+                            required: true,
+                            multiline: true,
+                            autoFocus: true,
+                          },
+                        ],
+                      });
+                      if (!answer) return;
+                      try {
+                        await testingApi.archiveProject(project._id, {
+                          expected_revision: project.revision,
+                          reason: answer.reason,
+                        });
+                        window.location.assign("/du-an");
+                      } catch (value) {
+                        setError(messageOf(value));
+                      }
+                    }}
+                  >
+                    Lưu trữ dự án
+                  </button>
+                )}
+              </div>
             </form>
-            <DataTable
-              items={members}
-              empty="Chưa có thành viên"
-              columns={[
-                {
-                  key: "user_id",
-                  label: "Người dùng",
-                  render: (item) => (
-                    <span className="flex flex-col">
-                      <span className="font-semibold text-ink">
-                        {item.user_label || item.user_id}
-                      </span>
-                      {item.user?.email && item.user.email !== item.user_label && (
-                        <span className="text-[12px] text-ink-muted">{item.user.email}</span>
-                      )}
-                    </span>
-                  ),
-                },
-                {
-                  key: "project_role",
-                  label: "Vai trò",
-                  render: (item) => (
-                    <select
-                      aria-label={`Vai trò ${item.user_label || item.user_id}`}
-                      className="apple-input"
-                      value={item.project_role}
-                      disabled={item.status !== "ACTIVE" || isOnlyActiveQa(item)}
-                      onChange={async (event) => {
+          </Panel>
+        )}
+        {visibleSettingsSection === "members" && (
+          <Panel title={can("project.members.read") ? "Thành viên dự án" : "Lời mời thành viên"}>
+            <div className="space-y-3 p-5">
+              {dataLoading ? (
+                <LoadingState />
+              ) : loadErrors.members ? (
+                <div className="space-y-3">
+                  <ErrorState message={loadErrors.members} />
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void loadSettingsData()}
+                  >
+                    Tải lại
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {can("project.members.manage") && (
+                    <form
+                      className="grid gap-2 sm:grid-cols-[1fr_150px_auto]"
+                      onSubmit={async (event) => {
+                        event.preventDefault();
+                        const form = event.currentTarget;
+                        const value = new FormData(form);
                         try {
-                          await testingApi.updateMember(project._id, item.user_id, {
-                            expected_revision: item.membership_revision,
-                            project_role: event.target.value,
+                          await testingApi.inviteMember(project._id, {
+                            user_id: value.get("user_id"),
+                            project_role: value.get("project_role"),
                           });
-                          setMembers(await testingApi.listMembers(project._id));
+                          form.reset();
+                          if (can("project.members.read")) {
+                            setMembers(await testingApi.listMembers(project._id));
+                          }
                         } catch (reason) {
                           setError(messageOf(reason));
                         }
                       }}
                     >
-                      {["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"].map((role) => (
-                        <option key={role} value={role}>
-                          {
-                            {
-                              QA: "QA",
-                              TESTER: "Kiểm thử viên",
-                              BA: "Phân tích nghiệp vụ",
-                              DEVELOPER: "Lập trình viên",
-                              VIEWER: "Người xem",
-                            }[role]
-                          }
-                        </option>
-                      ))}
-                    </select>
-                  ),
-                },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => valueLabel(item.status),
-                },
-                { key: "membership_revision", label: "Lần sửa đổi" },
-                {
-                  key: "actions",
-                  label: "Thao tác",
-                  render: (item) =>
-                    isOnlyActiveQa(item) ? (
-                      <span className="text-[12px] text-ink-muted">
-                        Bổ nhiệm thêm trưởng nhóm trước khi thay đổi hoặc xóa
-                      </span>
-                    ) : (
-                      <span className="flex flex-wrap gap-2">
-                        {item.status === "INVITED" ? (
-                          <>
-                            <button
-                              className="secondary-button"
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  await testingApi.resendMemberInvite(project._id, item.user_id);
-                                  setMembers(await testingApi.listMembers(project._id));
-                                } catch (reason) {
-                                  setError(messageOf(reason));
-                                }
-                              }}
-                            >
-                              Gửi lại lời mời
-                            </button>
-                            <button
-                              className="secondary-button"
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  await testingApi.cancelMemberInvite(project._id, item.user_id);
-                                  setMembers(await testingApi.listMembers(project._id));
-                                } catch (reason) {
-                                  setError(messageOf(reason));
-                                }
-                              }}
-                            >
-                              Hủy lời mời
-                            </button>
-                          </>
-                        ) : item.status !== "CANCELLED" ? (
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await testingApi.updateMember(project._id, item.user_id, {
-                                  expected_revision: item.membership_revision,
-                                  status: item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
-                                });
-                                setMembers(await testingApi.listMembers(project._id));
-                              } catch (reason) {
-                                setError(messageOf(reason));
-                              }
-                            }}
-                          >
-                            {item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"}
-                          </button>
-                        ) : null}
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={async () => {
-                            const answer = await ask({
-                              title: "Xóa thành viên khỏi dự án",
-                              description: `${item.user_label || item.user_id} sẽ mất toàn bộ quyền truy cập dự án này`,
-                              confirmLabel: "Xóa thành viên",
-                              danger: true,
-                            });
-                            if (!answer) return;
-                            try {
-                              await testingApi.removeMember(project._id, item.user_id);
-                              setMembers(await testingApi.listMembers(project._id));
-                            } catch (reason) {
-                              setError(messageOf(reason));
-                            }
-                          }}
-                        >
-                          Xóa
-                        </button>
-                      </span>
-                    ),
-                },
-              ]}
-            />
-          </div>
-        </Panel>
-        <Panel title="Phân tích bảo trì">
-          <div className="grid grid-cols-2 gap-4 p-5">
-            <div>
-              <p className="text-3xl font-semibold">{analytics?.impact_analysis_count || 0}</p>
-              <p className="field-label mt-2">Phân tích ảnh hưởng</p>
+                      <input
+                        className="apple-input"
+                        name="user_id"
+                        required
+                        placeholder="Email hoặc mã người dùng"
+                        aria-label="Email hoặc mã người dùng"
+                      />
+                      <select
+                        className="apple-input"
+                        name="project_role"
+                        aria-label="Vai trò dự án"
+                      >
+                        <option value="TESTER">Kiểm thử viên</option>
+                        <option value="BA">Phân tích nghiệp vụ</option>
+                        <option value="DEVELOPER">Lập trình viên</option>
+                        <option value="VIEWER">Người xem</option>
+                        <option value="QA">QA</option>
+                      </select>
+                      <button className="secondary-button" type="submit">
+                        Gửi lời mời
+                      </button>
+                    </form>
+                  )}
+                  {can("project.members.read") ? (
+                    <DataTable
+                      items={members}
+                      empty="Chưa có thành viên"
+                      columns={[
+                        {
+                          key: "user_id",
+                          label: "Người dùng",
+                          render: (item) => (
+                            <span className="flex flex-col">
+                              <span className="font-semibold text-ink">
+                                {memberDisplayName(item)}
+                              </span>
+                              {item.user?.email && item.user.email !== memberDisplayName(item) && (
+                                <span className="text-[12px] text-ink-muted">
+                                  {item.user.email}
+                                </span>
+                              )}
+                              {memberDisplayName(item) === "Tài khoản không xác định" && (
+                                <span className="text-[12px] text-ink-muted">
+                                  Mã người dùng {item.user_id}
+                                </span>
+                              )}
+                            </span>
+                          ),
+                        },
+                        {
+                          key: "project_role",
+                          label: "Vai trò",
+                          render: (item) =>
+                            can("project.members.manage") ? (
+                              <select
+                                aria-label={`Vai trò ${memberDisplayName(item)}`}
+                                className="apple-input"
+                                value={item.project_role}
+                                disabled={item.status !== "ACTIVE" || isOnlyActiveQa(item)}
+                                onChange={async (event) => {
+                                  try {
+                                    await testingApi.updateMember(project._id, item.user_id, {
+                                      expected_revision: item.membership_revision,
+                                      project_role: event.target.value,
+                                    });
+                                    setMembers(await testingApi.listMembers(project._id));
+                                  } catch (reason) {
+                                    setError(messageOf(reason));
+                                  }
+                                }}
+                              >
+                                {["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"].map((role) => (
+                                  <option key={role} value={role}>
+                                    {
+                                      {
+                                        QA: "QA",
+                                        TESTER: "Kiểm thử viên",
+                                        BA: "Phân tích nghiệp vụ",
+                                        DEVELOPER: "Lập trình viên",
+                                        VIEWER: "Người xem",
+                                      }[role]
+                                    }
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span>
+                                {settingValueLabels[item.project_role] || item.project_role}
+                              </span>
+                            ),
+                        },
+                        {
+                          key: "status",
+                          label: "Trạng thái",
+                          render: (item) => valueLabel(item.status),
+                        },
+                        { key: "membership_revision", label: "Lần sửa đổi" },
+                        {
+                          key: "actions",
+                          label: "Thao tác",
+                          hideWhenEmpty: true,
+                          render: (item) =>
+                            !can("project.members.manage") ? null : isOnlyActiveQa(item) ? (
+                              <span className="text-[12px] text-ink-muted">
+                                Bổ nhiệm thêm trưởng nhóm trước khi thay đổi hoặc xóa
+                              </span>
+                            ) : (
+                              <span className="flex flex-wrap gap-2">
+                                {item.status === "INVITED" ? (
+                                  <>
+                                    <button
+                                      className="secondary-button"
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await testingApi.resendMemberInvite(
+                                            project._id,
+                                            item.user_id,
+                                          );
+                                          setMembers(await testingApi.listMembers(project._id));
+                                        } catch (reason) {
+                                          setError(messageOf(reason));
+                                        }
+                                      }}
+                                    >
+                                      Gửi lại lời mời
+                                    </button>
+                                    <button
+                                      className="secondary-button"
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await testingApi.cancelMemberInvite(
+                                            project._id,
+                                            item.user_id,
+                                          );
+                                          setMembers(await testingApi.listMembers(project._id));
+                                        } catch (reason) {
+                                          setError(messageOf(reason));
+                                        }
+                                      }}
+                                    >
+                                      Hủy lời mời
+                                    </button>
+                                  </>
+                                ) : item.status !== "CANCELLED" ? (
+                                  <button
+                                    className="secondary-button"
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        await testingApi.updateMember(project._id, item.user_id, {
+                                          expected_revision: item.membership_revision,
+                                          status: item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
+                                        });
+                                        setMembers(await testingApi.listMembers(project._id));
+                                      } catch (reason) {
+                                        setError(messageOf(reason));
+                                      }
+                                    }}
+                                  >
+                                    {item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"}
+                                  </button>
+                                ) : null}
+                                <button
+                                  className="secondary-button"
+                                  type="button"
+                                  onClick={async () => {
+                                    const answer = await ask({
+                                      title: "Xóa thành viên khỏi dự án",
+                                      description: `${memberDisplayName(item)} sẽ mất toàn bộ quyền truy cập dự án này`,
+                                      confirmLabel: "Xóa thành viên",
+                                      danger: true,
+                                    });
+                                    if (!answer) return;
+                                    try {
+                                      await testingApi.removeMember(project._id, item.user_id);
+                                      setMembers(await testingApi.listMembers(project._id));
+                                    } catch (reason) {
+                                      setError(messageOf(reason));
+                                    }
+                                  }}
+                                >
+                                  Xóa
+                                </button>
+                              </span>
+                            ),
+                        },
+                      ]}
+                    />
+                  ) : null}
+                </>
+              )}
             </div>
-            <div>
-              <p className="text-3xl font-semibold">{analytics?.tests_stale || 0}</p>
-              <p className="field-label mt-2">Ca kiểm thử cũ</p>
-            </div>
-            <div>
-              <p className="text-3xl font-semibold">
-                {analytics?.proposal_acceptance_rate == null
-                  ? "Chưa có dữ liệu"
-                  : `${Math.round(analytics.proposal_acceptance_rate * 100)}%`}
-              </p>
-              <p className="field-label mt-2">Tỷ lệ chấp nhận đề xuất</p>
-            </div>
-          </div>
-        </Panel>
+          </Panel>
+        )}
+        {visibleSettingsSection === "analytics" && (
+          <Panel title="Phân tích bảo trì">
+            {dataLoading ? (
+              <div className="p-5">
+                <LoadingState />
+              </div>
+            ) : loadErrors.analytics ? (
+              <div className="space-y-3 p-5">
+                <ErrorState message={loadErrors.analytics} />
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void loadSettingsData()}
+                >
+                  Tải lại
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 p-5">
+                {can("analytics.read") && (
+                  <>
+                    <div>
+                      <p className="text-3xl font-semibold">
+                        {analytics?.impact_analysis_count || 0}
+                      </p>
+                      <p className="field-label mt-2">Phân tích ảnh hưởng</p>
+                    </div>
+                    <div>
+                      <p className="text-3xl font-semibold">{analytics?.tests_stale || 0}</p>
+                      <p className="field-label mt-2">Ca kiểm thử cũ</p>
+                    </div>
+                  </>
+                )}
+                {can("analytics.ai.read") && (
+                  <div>
+                    <p className="text-3xl font-semibold">
+                      {analytics?.proposal_acceptance_rate == null
+                        ? "Chưa có dữ liệu"
+                        : `${Math.round(analytics.proposal_acceptance_rate * 100)}%`}
+                    </p>
+                    <p className="field-label mt-2">Tỷ lệ chấp nhận đề xuất</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </Panel>
+        )}
       </div>
-      <ProjectNotificationsPanel project={project} />
-      <ProjectConnectorsPanel project={project} />
-      <CicdPanel project={project} />
-      <WebhookPanel project={project} />
+      {visibleSettingsSection === "notifications" && (
+        <ProjectNotificationsPanel project={project} />
+      )}
+      {visibleSettingsSection === "integrations" && (
+        <div className="grid min-w-0 gap-5 2xl:grid-cols-2">
+          <ProjectConnectorsPanel project={project} />
+          <CicdPanel project={project} />
+          <WebhookPanel project={project} />
+        </div>
+      )}
       {dialog}
     </WorkspacePage>
   );

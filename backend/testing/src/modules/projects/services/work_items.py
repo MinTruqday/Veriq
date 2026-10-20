@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from pymongo import UpdateOne
 
-from src.core.common import audit, get_project, get_project_role, new_id, now, resolve_user_reference
+from src.core.common import audit, get_project, get_project_role, get_project_roles, new_id, now, resolve_user_reference
 from src.core.database import database
 from src.repositories.project import project_repository
 from src.repositories.work_item import work_item_repository
@@ -17,7 +17,7 @@ async def _project_planning(project_id, user):
 
 async def _require_ba(project_id, user):
     await _project_planning(project_id, user)
-    if await get_project_role(project_id, user.id) != "BA":
+    if "BA" not in await get_project_roles(project_id, user.id):
         raise HTTPException(status_code=403, detail={"code": "BA_PLANNING_REQUIRED"})
 
 
@@ -154,6 +154,14 @@ async def _validate_dependency_cycle(project_id, source_id, target_id):
 
 class WorkItemService:
     @staticmethod
+    async def get_item(project_id, item_id, user):
+        await _project_planning(project_id, user)
+        item = await work_item_repository.find_item(project_id, item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail={"code": "ENTITY_NOT_FOUND"})
+        return item
+
+    @staticmethod
     async def list_items(project_id, filters, user):
         await _project_planning(project_id, user)
         query = {"project_id": project_id}
@@ -179,6 +187,9 @@ class WorkItemService:
         }
         await work_item_repository.create_item(item)
         await audit(user.id, "work_item_created", "WorkItem", item["_id"], project_id)
+        from src.clients.ai_automation import emit_work_item_changed
+
+        await emit_work_item_changed(item, user)
         return item
 
     @staticmethod
@@ -200,6 +211,9 @@ class WorkItemService:
                 raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
             _conflict(existing)
         await audit(user.id, "work_item_updated", "WorkItem", item_id, project_id, {"changed": sorted(changes)})
+        from src.clients.ai_automation import emit_work_item_changed
+
+        await emit_work_item_changed(updated, user)
         return updated
 
     @staticmethod
@@ -208,8 +222,8 @@ class WorkItemService:
         item = await work_item_repository.find_item(project_id, item_id)
         if not item:
             raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
-        role = await get_project_role(project_id, user.id)
-        if role != "BA" and not (role == "DEVELOPER" and item.get("assignee_id") == user.id):
+        roles = await get_project_roles(project_id, user.id)
+        if "BA" not in roles and not ("DEVELOPER" in roles and item.get("assignee_id") == user.id):
             raise HTTPException(status_code=403, detail={"code": "WORK_ITEM_TRANSITION_DENIED"})
         workflow = await _workflow(project_id)
         transition = next(
@@ -220,7 +234,7 @@ class WorkItemService:
             ),
             None,
         )
-        if not transition or role not in transition["allowed_roles"]:
+        if not transition or not roles.intersection(transition["allowed_roles"]):
             raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_WORKFLOW_TRANSITION_INVALID"})
         if payload.status == "IN_PROGRESS" and item.get("sprint_id") is None and project.get("planning_method") == "SCRUM":
             raise HTTPException(status_code=422, detail={"code": "SCRUM_SPRINT_SCOPE_REQUIRED"})
@@ -240,6 +254,9 @@ class WorkItemService:
         if not updated:
             _conflict(await work_item_repository.find_item(project_id, item_id))
         await audit(user.id, "work_item_transitioned", "WorkItem", item_id, project_id, {"status": payload.status, "reason": payload.reason})
+        from src.clients.ai_automation import emit_work_item_changed
+
+        await emit_work_item_changed(updated, user)
         return updated
 
     @staticmethod
