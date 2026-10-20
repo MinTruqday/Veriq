@@ -25,6 +25,7 @@ from src.schemas.automation import (
     AutomationEventRequest,
     AutomationKind,
 )
+from src.prompts.automation_events import generic_event_objective
 from src.runtime.limits import limits
 
 
@@ -315,14 +316,7 @@ class AutomationService:
                 objective=(
                     definition.objective
                     if definition
-                    else (
-                        f"Tự xử lý sự kiện {event.trigger.value} trong dự án theo bằng chứng nguồn và các "
-                        "bằng chứng liên quan được phép. Hoàn tất các bước tiếp theo cần thiết trong vòng "
-                        "đời Requirement, thiết kế kiểm thử, thực thi, lỗi, planning, release hoặc báo cáo "
-                        "khi chúng có liên quan. Thực hiện trong quyền hiện hành của chủ thể thực thi dự án, không dừng để "
-                        "xin duyệt từng hành động, ghi lại thay đổi và xác minh kết quả. Không suy đoán dữ "
-                        "kiện hay tuyên bố đã thực thi nếu chưa có kết quả thực tế."
-                    )
+                    else generic_event_objective(event.trigger.value)
                 ),
                 intent=definition.intent if definition else "",
                 target_artifact_ids=event.target_artifact_ids,

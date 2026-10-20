@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TaskEvaluation(BaseModel):
@@ -143,6 +143,21 @@ class TestabilityBenchmarkCase(BaseModel):
     )
     compiler: TestabilityBenchmarkCandidate
     direct_generation: TestabilityBenchmarkCandidate
+
+    @model_validator(mode="after")
+    def validate_clarification_answer_key(self):
+        clarification_codes = set(self.expected_clarification_codes)
+        obligation_keys = set(self.expected_obligation_keys)
+        if not set(self.expected_clarification_priorities).issubset(clarification_codes):
+            raise ValueError("benchmark_priority_must_reference_expected_clarifications")
+        if not set(self.expected_clarification_unlocks).issubset(clarification_codes):
+            raise ValueError("benchmark_unlocks_must_reference_expected_clarifications")
+        if any(
+            not set(unlocked).issubset(obligation_keys)
+            for unlocked in self.expected_clarification_unlocks.values()
+        ):
+            raise ValueError("benchmark_unlocks_must_reference_expected_obligations")
+        return self
 
 
 class TestabilityBenchmarkRequest(BaseModel):

@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from uuid import UUID, uuid4
 
 from loguru import logger
 
@@ -199,6 +200,15 @@ class AutomationWorker:
         )
         if not running:
             return
+        trace_id = str(uuid4())
+        traced = await automation_repository.transition(
+            automation_run_id,
+            running.revision,
+            {"trace_id": trace_id},
+        )
+        if not traced:
+            return
+        running = traced
         latest_checkpoint = await automation_repository.latest_checkpoint(automation_run_id)
         snapshot = latest_checkpoint.state_snapshot if latest_checkpoint else None
         resume_phase = snapshot.completed_phase.value if snapshot else None
@@ -251,6 +261,7 @@ class AutomationWorker:
                 automation_workflow.ainvoke(
                     graph_state,
                     config={
+                        "run_id": UUID(trace_id),
                         "run_name": "veriq-ai-automation",
                         "tags": ["veriq", "automation", running.kind.value],
                         "metadata": {

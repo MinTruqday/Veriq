@@ -5,6 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
+from src.prompts.defect_analysis import causal_hypothesis_instruction
 from src.tools.registry import with_tool_access
 from src.tools.testing import AutomationOperationError, call, parse, require_operation
 
@@ -61,7 +62,7 @@ async def process_recorded_defect(
         config,
         {
             "idempotency_key": idempotency_key,
-            "instruction": "Tạo giả thuyết nguyên nhân chỉ từ bằng chứng dự án; phân biệt dữ kiện với giả thuyết và không xác nhận nguyên nhân gốc.",
+            "instruction": causal_hypothesis_instruction(),
         },
         timeout=settings.MODEL_TIMEOUT_SECONDS,
     ))

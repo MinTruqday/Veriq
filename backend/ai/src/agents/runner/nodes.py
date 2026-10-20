@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from src.agents.agent import execute_task
 from src.knowledge.evidence import package
 from src.knowledge.hybrid import hybrid_evidence
-from src.prompts.agent_planning import agent_plan_prompt
+from src.prompts.agent_planning import (
+    agent_plan_prompt,
+    change_simulation_instruction,
+    verified_source_fact_instruction,
+)
 from src.runtime.limits import limits
 from src.schemas.agent import (
     AgentResult,
@@ -188,18 +192,9 @@ async def plan(state):
         {
             **state.get("constraints", {}),
             "verified_source_facts": verified_source_facts,
-            "source_fact_use": (
-                "Build the plan and downstream artifact proposals from these exact verified quotes. "
-                "Every generated requirement, test obligation, or test case must retain the source "
-                "artifact/version reference. Do not generate an artifact from an uncited fact."
-            ),
+            "source_fact_use": verified_source_fact_instruction(),
             "change_simulation": simulation,
-            "simulation_rule": (
-                "This is a non-mutating change simulation. Read current evidence and produce an "
-                "impact plan only. Do not call any create, update, approve, execute, or delete tool."
-                if simulation
-                else None
-            ),
+            "simulation_rule": change_simulation_instruction() if simulation else None,
             "execution_mode": "AUTOMATIC_WITHIN_EXECUTION_PRINCIPAL_PERMISSIONS"
             if state.get("automatic")
             else "INTERACTIVE_AGENT",

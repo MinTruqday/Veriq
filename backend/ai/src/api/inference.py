@@ -10,7 +10,6 @@ from src.schemas.evaluation import (
     TestabilityBenchmarkDatasetCreate,
     TestabilityBenchmarkReport,
     TestabilityBenchmarkRequest,
-    TestabilityBenchmarkRequest,
 )
 from src.schemas.inference import (
     CrossDocumentExpansionRequest,

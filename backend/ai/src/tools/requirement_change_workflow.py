@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
+from src.prompts.test_generation import uncovered_obligation_test_generation_instruction
 from src.tools.registry import with_tool_access
 from src.tools.testing import (
     AutomationOperationError,
@@ -239,7 +240,7 @@ async def process_changed_requirement_version(
     request = {
         "categories": [], "max_cases": len(missing_before_generation), "preview_only": True,
         "acceptance_criterion_ids": sorted(missing_before_generation),
-        "instruction": "Tạo ca kiểm thử mới chỉ cho nghĩa vụ chưa được ca hiện có bao phủ. Loại ca trùng, giữ liên kết phiên bản Requirement mới và chỉ dùng bằng chứng đã trích dẫn.",
+        "instruction": uncovered_obligation_test_generation_instruction(),
     }
     preview = {"items": [], "warnings": []}
     if missing_before_generation:

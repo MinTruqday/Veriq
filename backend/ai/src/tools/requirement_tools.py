@@ -6,6 +6,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
+from src.prompts.requirement_analysis import requirement_quality_analysis_instruction
 from src.tools.registry import with_tool_access
 from src.tools.testing_api import call, parse
 
@@ -200,7 +201,7 @@ async def lint_requirement(
         config,
         {
             "idempotency_key": f"agent-requirement-analysis-{uuid4().hex}",
-            "instruction": "Analyze requirement quality and propose evidence grounded revisions",
+        "instruction": requirement_quality_analysis_instruction(),
         },
         timeout=settings.MODEL_TIMEOUT_SECONDS,
     )

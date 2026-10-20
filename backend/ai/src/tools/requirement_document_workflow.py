@@ -6,6 +6,11 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
+from src.prompts.requirement_templates import requirement_document_synthesis_instruction
+from src.prompts.test_generation import (
+    focused_requirement_test_generation_instruction,
+    requirement_test_generation_instruction,
+)
 from src.schemas.automation import AutomationFact
 from src.tools.registry import with_tool_access
 from src.tools.testing import (
@@ -124,10 +129,7 @@ async def process_ingested_requirement_document(
                 "product_types": [project["project_type"]],
                 "source_document_ids": source_document_ids,
                 "source_template_ids": [],
-                "instruction": "Tổng hợp thành blueprint kiểm thử phù hợp riêng với dự án từ toàn bộ nguồn được chọn. Giữ nguyên nguồn và trích dẫn cho từng đề xuất. Phân biệt dữ kiện, thông tin còn thiếu, mơ hồ và mâu thuẫn giữa các nguồn. Không tự chọn cách giải quyết mâu thuẫn; thể hiện rõ các quyết định cần BA hoặc QA làm rõ. Không suy đoán actor, quy tắc, tiêu chí chấp nhận, dữ liệu, mã phản hồi hoặc giới hạn không có trong nguồn. Dùng các facts đã trích xuất và kiểm chứng dưới đây làm đầu vào cấu trúc; mỗi fact chỉ được áp dụng nếu trích dẫn và nguồn vẫn khớp tài liệu hiện hành. Không bỏ qua hoặc mở rộng ý nghĩa trích dẫn.\n\nFACTS ĐÃ KIỂM CHỨNG:\n" + "\n".join(
-                    f"[{fact.artifact_type}:{fact.artifact_id}:{fact.artifact_version_id or ''} | {fact.fact_kind}] {fact.quote}"
-                    for fact in verified_facts
-                ),
+                "instruction": requirement_document_synthesis_instruction(verified_facts),
             },
             timeout=settings.MODEL_TIMEOUT_SECONDS,
         )
@@ -389,7 +391,7 @@ async def process_ingested_requirement_document(
             "categories": [],
             "max_cases": len(criterion_ids),
             "preview_only": True,
-            "instruction": "Tạo ca kiểm thử cụ thể từ tiêu chí và nguồn của Requirement. Không tạo hành vi hoặc giới hạn không có căn cứ.",
+            "instruction": requirement_test_generation_instruction(),
         }
         preview = await require_operation(
             "POST",
@@ -425,11 +427,7 @@ async def process_ingested_requirement_document(
                 **generation_request,
                 "acceptance_criterion_ids": sorted(missing_criteria),
                 "max_cases": len(missing_criteria),
-                "instruction": (
-                    "Tập trung tạo ca kiểm thử cho đúng các acceptance criterion được chọn trong yêu cầu này. "
-                    "Không lặp lại nội dung đã được ca kiểm thử hiện có bao phủ. Chỉ dùng hành vi có dẫn chứng; "
-                    "nếu thiếu bằng chứng thì để trống thay vì tự suy diễn."
-                ),
+                "instruction": focused_requirement_test_generation_instruction(),
             }
             focused_preview = await require_operation(
                 "POST",

@@ -8,6 +8,19 @@ from src.schemas.agent import (
     ToolExecutionStatus,
     ToolCall,
 )
+from src.prompts.automation_events import (
+    defect_recorded_objective,
+    document_ingested_objective,
+    release_changed_observation_objective,
+    requirement_changed_objective,
+    test_case_approved_observation_objective,
+    test_case_changed_observation_objective,
+    test_execution_observation_objective,
+    test_execution_recorded_objective,
+    test_plan_approved_objective,
+    test_plan_changed_objective,
+    work_item_changed_observation_objective,
+)
 from src.tools.registry import audit_arguments, registered_tools, tool_access
 from src.agents.runner.automation_validation import validated_tasks
 
@@ -81,7 +94,7 @@ def direct_document_ingestion_task(run, state, evidence_refs):
         [
             PlannedTask(
                 domain="requirement",
-                objective="Tự động xử lý tài liệu mới theo luồng Requirements, tạo mẫu có nguồn, tránh Requirement và Test Case trùng, kiểm tra chất lượng, hoàn tất vòng đời khi được quyền và xác minh mọi thay đổi",
+                objective=document_ingested_objective(),
                 evidence_refs=evidence_refs,
                 constraints={"workflow_terminal": True},
                 tool_calls=[
@@ -131,7 +144,7 @@ def direct_requirement_change_task(run, state, evidence_refs):
         [
             PlannedTask(
                 domain="requirement",
-                objective="Tự động rà soát phiên bản Requirement vừa đổi, chốt theo cổng chất lượng, tạo các ca còn thiếu, loại trùng, đóng băng ca đạt chuẩn và xác minh dữ liệu đã lưu",
+                objective=requirement_changed_objective(),
                 evidence_refs=evidence_refs,
                 constraints={"workflow_terminal": True},
                 tool_calls=[
@@ -182,7 +195,7 @@ def direct_defect_event_task(run, state, evidence_refs):
         [
             PlannedTask(
                 domain="analysis",
-                objective="Tạo hồ sơ phân tích cho defect mới bằng nội dung nguồn đã xác thực, tự sinh giả thuyết có căn cứ và đọc lại hồ sơ; không biến giả thuyết thành nguyên nhân đã xác nhận",
+                objective=defect_recorded_objective(),
                 evidence_refs=evidence_refs,
                 constraints={"workflow_terminal": True},
                 tool_calls=[
@@ -233,7 +246,7 @@ def direct_recorded_test_execution_task(run, state, evidence_refs):
         [
             PlannedTask(
                 domain="execution",
-                objective="Đối chiếu kết quả FAIL đã lưu với defect liên kết và các Nghĩa vụ kiểm thử có chứa đúng phiên bản Test Case; chỉ ghi feedback khi quan hệ đã được xác minh, không suy diễn từ kết quả PASS",
+                objective=test_execution_recorded_objective(),
                 evidence_refs=evidence_refs,
                 constraints={"workflow_terminal": True},
                 tool_calls=[
@@ -276,7 +289,7 @@ def direct_approved_plan_task(run, state, evidence_refs):
         [
             PlannedTask(
                 domain="execution",
-                objective="Từ Test Plan vừa được duyệt, tạo Test Run idempotent đúng snapshot đã duyệt, khởi chạy nếu quyền và môi trường cho phép, rồi đọc lại để xác minh phạm vi; không giả lập kết quả thực thi",
+                objective=test_plan_approved_objective(),
                 evidence_refs=evidence_refs,
                 constraints={"workflow_terminal": True},
                 tool_calls=[
@@ -319,7 +332,7 @@ def direct_changed_plan_task(run, state, evidence_refs):
         [
             PlannedTask(
                 domain="execution",
-                objective="Kiểm tra Test Plan vừa thay đổi; nếu scope đủ điều kiện thì tự duyệt bằng quyền QA của dự án, tạo và khởi chạy Test Run theo snapshot, rồi đọc lại xác minh. Nếu thiếu điều kiện thì ghi rõ khoảng thiếu và không duyệt",
+                objective=test_plan_changed_objective(),
                 evidence_refs=evidence_refs,
                 constraints={"workflow_terminal": True},
                 tool_calls=[
@@ -351,23 +364,23 @@ def direct_event_observation_task(run, state, evidence_refs):
     if trigger == "TEST_EXECUTION_RECORDED":
         source = next((item for item in evidence if item.get("artifact_type") == "test_result" and item.get("artifact_id")), None)
         tool_name, domain, permission = "get_test_result", "execution", "testrun.read"
-        objective, identifier_name = "Đối chiếu kết quả thực thi vừa ghi với Test Run, phiên bản Test Case và defect đã liên kết; chỉ ghi nhận trạng thái có bằng chứng, không tự kết luận nguyên nhân hoặc tạo defect từ một kết quả thất bại", "result_id"
+        objective, identifier_name = test_execution_observation_objective(), "result_id"
     elif trigger == "WORK_ITEM_CHANGED":
         source = next((item for item in evidence if item.get("artifact_type") == "work_item" and item.get("artifact_id")), None)
         tool_name, domain, permission = "get_work_item", "analysis", "project.read"
-        objective, identifier_name = "Đọc lại Work Item vừa thay đổi trong phạm vi dự án rồi đánh giá tác động có bằng chứng trước mọi đề xuất tiếp theo", "work_item_id"
+        objective, identifier_name = work_item_changed_observation_objective(), "work_item_id"
     elif trigger == "TEST_CASE_CHANGED":
         source = next((item for item in evidence if item.get("artifact_type") == "test_case_draft" and item.get("artifact_id")), None)
         tool_name, domain, permission = "lint_testcase", "test_design", "testcase.lint"
-        objective, identifier_name = "Tự động kiểm tra chất lượng bản nháp Test Case vừa thay đổi bằng bộ kiểm tra dự án, lưu kết quả kiểm tra và báo rõ các phát hiện; không tự sửa nội dung bản nháp", "test_case_draft_id"
+        objective, identifier_name = test_case_changed_observation_objective(), "test_case_draft_id"
     elif trigger == "TEST_CASE_APPROVED":
         source = next((item for item in evidence if item.get("artifact_type") == "test_case_version" and item.get("artifact_id")), None)
         tool_name, domain, permission = "get_test_case_version_by_id", "test_design", "testcase.version.read"
-        objective, identifier_name = "Đọc lại phiên bản Test Case đã đóng băng, xác minh trạng thái và các liên kết nguồn đang lưu; chỉ ghi nhận kết quả đọc lại, không sửa snapshot đã duyệt", "version_id"
+        objective, identifier_name = test_case_approved_observation_objective(), "version_id"
     elif trigger == "RELEASE_CHANGED":
         source = next((item for item in evidence if item.get("artifact_type") == "release" and item.get("artifact_id")), None)
         tool_name, domain, permission = "get_release", "execution", "release.read"
-        objective, identifier_name = "Đọc lại Release sau thay đổi, đối chiếu trạng thái và bằng chứng kiểm thử liên quan trước khi đề xuất bước tiếp theo", "release_id"
+        objective, identifier_name = release_changed_observation_objective(), "release_id"
     else:
         return None
     if not source or not tool_access(registered_tools().get(tool_name)) or permission not in run.permissions:

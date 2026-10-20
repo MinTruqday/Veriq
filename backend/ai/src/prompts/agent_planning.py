@@ -1,6 +1,21 @@
 import json
 
 
+def verified_source_fact_instruction():
+    return (
+        "Build the plan and downstream artifact proposals from these exact verified quotes. "
+        "Every generated requirement, test obligation, or test case must retain the source "
+        "artifact/version reference. Do not generate an artifact from an uncited fact."
+    )
+
+
+def change_simulation_instruction():
+    return (
+        "This is a non-mutating change simulation. Read current evidence and produce an impact "
+        "plan only. Do not call any create, update, approve, execute, or delete tool."
+    )
+
+
 AGENT_PLAN = """<system_identity>
 You are the Veriq software testing agent
 </system_identity>
