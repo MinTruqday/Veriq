@@ -66,7 +66,7 @@ def _compute_rouge_l(reference: str, hypothesis: str) -> float:
 async def _llm_judge(instruction: str, expected: str, actual: str) -> dict:
     from langchain_core.messages import HumanMessage, SystemMessage
 
-    from src.prompts.catalog import eval_judge
+    from src.prompts.evaluation import eval_judge
     from src.schemas.evaluation import JudgeScores
     from src.utils.huggingface import create_chat_model
 
@@ -174,7 +174,7 @@ class EvaluationHarness:
             instruction = sample.get("instruction", "")
             inp = sample.get("input", "")
             expected = sample.get("output", "")
-            from src.prompts.catalog import evaluation_harness_prompt
+            from src.prompts.evaluation import evaluation_harness_prompt
 
             prompt = evaluation_harness_prompt(instruction, inp).strip()
             try:

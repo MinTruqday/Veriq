@@ -1,0 +1,200 @@
+import hashlib
+import json
+
+from src.runtime.limits import limits
+from src.schemas.agent import AgentTask, PlannedTask, ToolCall
+from src.tools.registry import audit_arguments, registered_tools, tool_access
+
+
+def observed_identifiers(value):
+    identifiers = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if (key == "_id" or key.endswith("_id")) and isinstance(item, str):
+                identifiers.add(item)
+            identifiers.update(observed_identifiers(item))
+    elif isinstance(value, list):
+        for item in value:
+            identifiers.update(observed_identifiers(item))
+    return identifiers
+
+def bounded_tasks(tasks, run):
+    remaining = max(0, limits.agent_steps - len(run.completed_tasks))
+    return list(tasks)[:remaining]
+
+def mutation_fingerprint(tool_name, arguments):
+    encoded = json.dumps(
+        {"tool_name": tool_name, "arguments": arguments},
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+def proposal_fingerprint(tool_name, arguments):
+    scoped_arguments = {
+        key: value
+        for key, value in arguments.items()
+        if key not in {"instruction", "objective"}
+    }
+    return mutation_fingerprint(tool_name, scoped_arguments or arguments)
+
+def verified_tool_call_records(task, observations):
+    records = []
+    for call, observation in zip(task.tool_calls, observations):
+        access = tool_access(registered_tools().get(call.tool_name))
+        if observation.get("status") != ToolExecutionStatus.COMPLETED or not access:
+            continue
+        if access.action == "MUTATE" and (
+            observation.get("verification") or {}
+        ).get("status") != ToolExecutionStatus.COMPLETED:
+            continue
+        record = {
+            "task_id": task.task_id,
+            "tool_name": call.tool_name,
+            "arguments": audit_arguments(call.arguments),
+        }
+        if access.action == "MUTATE":
+            record["mutation_fingerprint"] = mutation_fingerprint(
+                call.tool_name, call.arguments
+            )
+        elif access.action == "READ":
+            record["read_fingerprint"] = mutation_fingerprint(
+                call.tool_name, call.arguments
+            )
+        elif access.action == "PROPOSE":
+            record["proposal_fingerprint"] = proposal_fingerprint(
+                call.tool_name, call.arguments
+            )
+        records.append(record)
+    return records
+
+def validated_tasks(
+    tasks,
+    run,
+    evidence_refs,
+    maximum=None,
+    known_identifiers=None,
+):
+    tool_values = registered_tools()
+    validated = []
+    completed_mutations = set()
+    completed_proposals = set()
+    legacy_mutations = set()
+    completed_reads = set()
+    for record in run.tool_calls:
+        recorded_tool = record.get("tool_name")
+        recorded_access = tool_access(tool_values.get(recorded_tool))
+        if not recorded_access:
+            continue
+        if recorded_access.action == "READ":
+            read_fingerprint = record.get("read_fingerprint")
+            if read_fingerprint:
+                completed_reads.add(read_fingerprint)
+            continue
+        if recorded_access.action == "PROPOSE":
+            recorded_proposal_fingerprint = record.get("proposal_fingerprint")
+            if recorded_proposal_fingerprint:
+                completed_proposals.add(recorded_proposal_fingerprint)
+            continue
+        if recorded_access.action != "MUTATE":
+            continue
+        completed_reads.clear()
+        recorded_fingerprint = record.get("mutation_fingerprint")
+        if recorded_fingerprint:
+            completed_mutations.add(recorded_fingerprint)
+        recorded_ids = tuple(
+            sorted(
+                (key, str(value))
+                for key, value in (record.get("arguments") or {}).items()
+                if key.endswith("_id") and key != "project_id" and isinstance(value, str)
+            )
+        )
+        if not recorded_fingerprint:
+            legacy_mutations.add((recorded_tool, recorded_ids))
+    task_limit = max(0, limits.agent_steps - len(run.completed_tasks))
+    if maximum is not None:
+        task_limit = min(task_limit, maximum)
+    for planned in bounded_tasks(tasks, run)[:task_limit]:
+        task = planned if isinstance(planned, PlannedTask) else PlannedTask(**planned)
+        calls = []
+        for call in task.tool_calls[: limits.tool_calls_per_task]:
+            tool = tool_values.get(call.tool_name)
+            access = tool_access(tool)
+            if (
+                not access
+                or task.domain not in access.domains
+            ):
+                continue
+            arguments = dict(call.arguments)
+            schema = tool.args_schema.model_json_schema()
+            properties = schema.get("properties", {})
+            if "project_id" in properties:
+                arguments["project_id"] = run.project_id
+            if any(
+                key.endswith("_id")
+                and key != "project_id"
+                and (not isinstance(value, str) or not value.strip())
+                for key, value in arguments.items()
+            ):
+                continue
+            identifiers = {
+                str(value)
+                for key, value in arguments.items()
+                if key != "project_id" and key.endswith("_id") and value
+            }
+            if identifiers.difference(set(known_identifiers or evidence_refs)):
+                continue
+            required = set(schema.get("required", []))
+            if required.difference(arguments):
+                continue
+            try:
+                normalized = tool.args_schema.model_validate(arguments).model_dump(
+                    mode="python", exclude_unset=True
+                )
+            except Exception:
+                continue
+            if access.action == "MUTATE":
+                fingerprint = mutation_fingerprint(access.name, normalized)
+                mutation_ids = tuple(
+                    sorted(
+                        (key, str(value))
+                        for key, value in normalized.items()
+                        if key.endswith("_id")
+                        and key != "project_id"
+                        and isinstance(value, str)
+                    )
+                )
+                if fingerprint in completed_mutations or (
+                    access.name,
+                    mutation_ids,
+                ) in legacy_mutations:
+                    continue
+            elif access.action == "READ":
+                fingerprint = mutation_fingerprint(access.name, normalized)
+                if fingerprint in completed_reads:
+                    continue
+                completed_reads.add(fingerprint)
+            elif access.action == "PROPOSE":
+                fingerprint = proposal_fingerprint(access.name, normalized)
+                if fingerprint in completed_proposals:
+                    continue
+                completed_proposals.add(fingerprint)
+            calls.append(ToolCall(tool_name=call.tool_name, arguments=normalized))
+            if access.action == "MUTATE":
+                completed_mutations.add(fingerprint)
+        validated.append(
+            AgentTask(
+                run_id=run.run_id,
+                project_id=run.project_id,
+                user_id=run.user_id,
+                domain=task.domain,
+                objective=task.objective,
+                evidence_refs=task.evidence_refs or evidence_refs,
+                constraints=task.constraints,
+                tool_calls=calls,
+            )
+        )
+    return validated
+

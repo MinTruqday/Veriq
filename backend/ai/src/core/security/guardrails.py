@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
 from src.core.infrastructure.configuration import settings
-from src.prompts.catalog import prompt_injection_detector
+from src.prompts.security import prompt_injection_detector
 from src.schemas.guardrails import SecurityAssessment
 from src.utils.huggingface import create_chat_model
 

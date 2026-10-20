@@ -55,6 +55,7 @@ from src.tools.testing import (
     suggest_regression_scope,
 )
 from src.tools.automation_execution import process_recorded_test_execution
+from src.tools.mcp_gateway import call_mcp_read_tool
 from src.tools.skills import structured_skills
 
 tools = [
@@ -114,4 +115,5 @@ tools = [
     get_bug_history,
     link_bug_candidates,
     *structured_skills,
+    call_mcp_read_tool,
 ]

@@ -10,7 +10,7 @@ from src.memory.short_term import run_store
 from src.repositories.automation import automation_repository
 from src.runtime.limits import limits
 from src.schemas.agent import AgentRunStatus, VeriqRunState
-from src.schemas.automation import AutomationCheckpointPhase, AutomationStatus
+from src.schemas.automation import AutomationCheckpointPhase, AutomationKind, AutomationStatus
 from src.schemas.automation import DerivationReceipt, SourceFact
 from src.tools.registry import registered_tools, tool_access
 from src.services.agent_metrics import agentops
@@ -242,9 +242,24 @@ class AutomationWorker:
             )
             graph_state["token"] = f"Bearer {token}"
             graph_state["automatic"] = True
+            graph_state["constraints"] = {
+                **graph_state.get("constraints", {}),
+                "change_simulation": running.kind == AutomationKind.CHANGE_SIMULATION,
+            }
             graph_state["resume_after_phase"] = resume_phase
             result = await asyncio.wait_for(
-                automation_workflow.ainvoke(graph_state),
+                automation_workflow.ainvoke(
+                    graph_state,
+                    config={
+                        "run_name": "veriq-ai-automation",
+                        "tags": ["veriq", "automation", running.kind.value],
+                        "metadata": {
+                            "automation_run_id": automation_run_id,
+                            "project_id": running.project_id,
+                            "trigger": running.trigger.value if running.trigger else "ON_DEMAND",
+                        },
+                    },
+                ),
                 timeout=limits.run_timeout_seconds,
             )
             completed = VeriqRunState(**result["run"])

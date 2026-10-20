@@ -6,7 +6,8 @@ from loguru import logger
 
 from src.core.infrastructure.configuration import settings
 from src.core.security.guardrails import guardrails_engine
-from src.prompts.testing import build_generated_cases_grounding_prompt, build_testing_prompt
+from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
+from src.prompts.testing import build_testing_prompt
 from src.runtime.output import normalize_narrative_payload
 from src.schemas.inference import (
     TestingAutomationRequest,

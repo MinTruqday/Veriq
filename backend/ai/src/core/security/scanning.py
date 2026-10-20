@@ -64,7 +64,7 @@ class SecurityHarness:
         await self._ensure_pii_engine()
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from src.prompts.catalog import security_scan
+        from src.prompts.security import security_scan
         from src.schemas.security import SecurityEvaluation
         from src.utils.huggingface import create_chat_model
 

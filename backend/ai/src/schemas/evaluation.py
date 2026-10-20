@@ -131,7 +131,16 @@ class TestabilityBenchmarkCase(BaseModel):
     source_text: str = Field(min_length=1, max_length=100_000)
     expected_source_quotes: list[str] = Field(default_factory=list, max_length=500)
     expected_clarification_codes: list[str] = Field(default_factory=list, max_length=500)
+    expected_clarification_priorities: list[str] = Field(
+        default_factory=list,
+        max_length=500,
+        description="Gold clarification codes from highest to lowest priority",
+    )
     expected_obligation_keys: list[str] = Field(default_factory=list, max_length=1000)
+    expected_clarification_unlocks: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Gold mapping from a clarification code to the obligations it can unlock",
+    )
     compiler: TestabilityBenchmarkCandidate
     direct_generation: TestabilityBenchmarkCandidate
 
@@ -145,3 +154,19 @@ class TestabilityBenchmarkReport(BaseModel):
     compiler: dict
     direct_generation: dict
     cases: list[dict]
+
+
+class TestabilityBenchmarkDatasetCreate(BaseModel):
+    dataset_id: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=300)
+    created_by: str = Field(min_length=1, max_length=200)
+    cases: list[TestabilityBenchmarkCase] = Field(min_length=1, max_length=500)
+
+
+class TestabilityBenchmarkDataset(BaseModel):
+    dataset_id: str
+    title: str
+    revision: int = 1
+    created_at: str
+    created_by: str
+    cases: list[TestabilityBenchmarkCase]

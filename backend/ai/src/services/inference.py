@@ -4,10 +4,10 @@ from typing import Awaitable, Callable, List
 
 from src.core.infrastructure.configuration import settings
 from src.core.model_runtime import run_chat_completion
-from src.prompts.catalog import cross_document_query, document_global_summary
+from src.prompts.retrieval import cross_document_query, document_global_summary
 from src.core.security.guardrails import guardrails_engine
 from src.core.security.scanning import security
-from src.prompts.structured import correction_instruction, schema_instruction
+from src.prompts.model_output import correction_instruction, schema_instruction
 from src.schemas.routing import CrossDocumentQueries
 from src.utils.model_provider import model_client
 from src.utils.structured_output import validate_structured_output

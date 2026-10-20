@@ -17,9 +17,8 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from src.core.infrastructure.configuration import settings
 from src.core.model_runtime import run_chat_completion
-from src.prompts.structured import (
-    correction_instruction,
-    schema_instruction,
+from src.prompts.model_output import correction_instruction, schema_instruction
+from src.prompts.tool_selection import (
     tool_selection_correction_instruction,
     tool_selection_instruction,
 )

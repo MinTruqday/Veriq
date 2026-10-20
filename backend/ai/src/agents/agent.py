@@ -2,7 +2,7 @@ import asyncio
 import re
 from fastapi import HTTPException
 
-from src.prompts.agents import agent_execution_prompt
+from src.prompts.agent_execution import agent_execution_prompt
 from src.runtime.limits import limits
 from src.schemas.agent import AgentResult, AgentTaskStatus, ToolExecutionStatus
 from src.runtime.output import normalize_narrative, normalize_narratives

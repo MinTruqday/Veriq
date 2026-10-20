@@ -6,7 +6,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 
 from src.core.dependency import verify_internal_token
-from src.schemas.evaluation import TestabilityBenchmarkReport, TestabilityBenchmarkRequest
+from src.schemas.evaluation import (
+    TestabilityBenchmarkDatasetCreate,
+    TestabilityBenchmarkReport,
+    TestabilityBenchmarkRequest,
+    TestabilityBenchmarkRequest,
+)
 from src.schemas.inference import (
     CrossDocumentExpansionRequest,
     KnowledgeChunkSafetyRequest,
@@ -22,6 +27,8 @@ from src.services.inference import (
 )
 from src.services.ai_automation import generate_ai_automation
 from src.services.testability_benchmark import testability_benchmark
+from src.repositories.testability_benchmark import testability_benchmark_repository
+from pymongo.errors import DuplicateKeyError
 
 router = APIRouter(prefix="/suy-luan")
 
@@ -37,6 +44,42 @@ router = APIRouter(prefix="/suy-luan")
 )
 async def evaluate_testability_compiler(req: TestabilityBenchmarkRequest):
     return await testability_benchmark.evaluate(req)
+
+
+@router.post(
+    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu",
+    dependencies=[Depends(verify_internal_token)],
+    status_code=201,
+)
+async def create_testability_benchmark_dataset(
+    req: TestabilityBenchmarkDatasetCreate,
+):
+    try:
+        return await testability_benchmark_repository.create(req)
+    except DuplicateKeyError as error:
+        raise HTTPException(status_code=409, detail={"code": "BENCHMARK_DATASET_EXISTS"}) from error
+
+
+@router.get(
+    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu",
+    dependencies=[Depends(verify_internal_token)],
+)
+async def list_testability_benchmark_datasets(limit: int = 100):
+    return await testability_benchmark_repository.list(max(1, min(limit, 100)))
+
+
+@router.post(
+    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/chay",
+    dependencies=[Depends(verify_internal_token)],
+    response_model=TestabilityBenchmarkReport,
+)
+async def evaluate_testability_benchmark_dataset(dataset_id: str):
+    dataset = await testability_benchmark_repository.get(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
+    return await testability_benchmark.evaluate(
+        TestabilityBenchmarkRequest(cases=dataset.cases)
+    )
 
 
 @router.post(

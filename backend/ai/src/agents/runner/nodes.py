@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from src.agents.agent import execute_task
 from src.knowledge.evidence import package
 from src.knowledge.hybrid import hybrid_evidence
-from src.prompts.agents import agent_plan_prompt
+from src.prompts.agent_planning import agent_plan_prompt
 from src.runtime.limits import limits
 from src.schemas.agent import (
     AgentResult,
@@ -28,6 +28,7 @@ from src.tools.registry import (
     tool_access,
     verify_application,
 )
+from src.tools.mcp_gateway import discover_project_tools
 from src.repositories.automation import automation_repository
 from src.schemas.automation import (
     AutomationCheckpoint,
@@ -119,24 +120,27 @@ def route_after_context(state):
 
 async def plan(state):
     run = state_run(state)
+    simulation = bool((state.get("constraints") or {}).get("change_simulation"))
     evidence_refs = [
         item.get("artifact_version_id") or item.get("artifact_id")
         for item in state.get("evidence", [])
     ]
-    direct_task = direct_document_ingestion_task(run, state, evidence_refs)
-    if not direct_task:
+    direct_task = None
+    if not simulation:
+        direct_task = direct_document_ingestion_task(run, state, evidence_refs)
+    if not simulation and not direct_task:
         direct_task = direct_requirement_change_task(run, state, evidence_refs)
-    if not direct_task:
+    if not simulation and not direct_task:
         direct_task = direct_recorded_test_execution_task(run, state, evidence_refs)
-    if not direct_task:
+    if not simulation and not direct_task:
         direct_task = direct_defect_event_task(run, state, evidence_refs)
-    if not direct_task:
+    if not simulation and not direct_task:
         direct_task = direct_approved_plan_task(run, state, evidence_refs)
-    if not direct_task:
+    if not simulation and not direct_task:
         direct_task = direct_changed_plan_task(run, state, evidence_refs)
-    if not direct_task:
+    if not simulation and not direct_task:
         direct_task = direct_event_observation_task(run, state, evidence_refs)
-    if not direct_task:
+    if not simulation and not direct_task:
         direct_task = (
             direct_capability_task(run, evidence_refs)
             if run.intent and not run.completed_tasks
@@ -152,6 +156,20 @@ async def plan(state):
             "success_criteria": [run.objective],
             "results": [],
         }
+    verified_source_facts = [
+        {
+            "artifact_type": item.get("artifact_type"),
+            "artifact_id": item.get("artifact_id"),
+            "artifact_version_id": item.get("artifact_version_id"),
+            "quote": item.get("quote"),
+            "fact_kind": item.get("fact_kind"),
+            "source_start": item.get("source_start"),
+            "source_end": item.get("source_end"),
+        }
+        for item in state.get("source_facts", [])
+        if item.get("quote")
+        and (item.get("artifact_version_id") or item.get("artifact_id")) in evidence_refs
+    ]
     prompt = agent_plan_prompt(
         run.project_id,
         run.run_id,
@@ -161,18 +179,33 @@ async def plan(state):
         available_tools(
             run.permissions,
             run.intent
-            if not state.get("automatic") or not run.completed_tasks
+            if not simulation and (not state.get("automatic") or not run.completed_tasks)
             else "",
             compact=True,
+            actions={"READ"} if simulation else None,
         ),
         evidence_refs,
         {
             **state.get("constraints", {}),
+            "verified_source_facts": verified_source_facts,
+            "source_fact_use": (
+                "Build the plan and downstream artifact proposals from these exact verified quotes. "
+                "Every generated requirement, test obligation, or test case must retain the source "
+                "artifact/version reference. Do not generate an artifact from an uncited fact."
+            ),
+            "change_simulation": simulation,
+            "simulation_rule": (
+                "This is a non-mutating change simulation. Read current evidence and produce an "
+                "impact plan only. Do not call any create, update, approve, execute, or delete tool."
+                if simulation
+                else None
+            ),
             "execution_mode": "AUTOMATIC_WITHIN_EXECUTION_PRINCIPAL_PERMISSIONS"
             if state.get("automatic")
             else "INTERACTIVE_AGENT",
             "completed_tool_calls": run.tool_calls,
             "recent_tool_observations": run.observations[-limits.agent_steps :],
+            "mcp_read_tools": await discover_project_tools(run.project_id, run.permissions),
         },
     )
     try:
@@ -280,6 +313,33 @@ async def execute_agent(state):
     if not task:
         return {}
     run.active_task = task.model_dump(mode="json")
+    simulation = bool((state.get("constraints") or {}).get("change_simulation"))
+    if simulation and any(
+        (access := tool_access(registered_tools().get(call.tool_name))) is None
+        or access.action != "READ"
+        for call in task.tool_calls
+    ):
+        result = AgentResult(
+            task_id=task.task_id,
+            status=AgentTaskStatus.FAILED,
+            summary="Mô phỏng thay đổi chỉ cho phép đọc bằng chứng, không thực hiện thao tác ghi",
+            evidence_refs=list(task.evidence_refs),
+            reason_codes=["CHANGE_SIMULATION_MUTATION_BLOCKED"],
+        )
+        run.completed_tasks.append(task.model_dump(mode="json"))
+        run.agent_results.append(result.model_dump(mode="json"))
+        run.observations.append(
+            {
+                "tool_name": "change_simulation_guard",
+                "status": ToolExecutionStatus.DENIED,
+                "reason_code": "CHANGE_SIMULATION_MUTATION_BLOCKED",
+            }
+        )
+        run.active_task = None
+        return {
+            "run": run.model_dump(mode="python"),
+            "results": [*state.get("results", []), result.model_dump(mode="python")],
+        }
     evidence_by_ref = {
         item.get("artifact_version_id") or item.get("artifact_id"): item
         for item in state.get("evidence", [])

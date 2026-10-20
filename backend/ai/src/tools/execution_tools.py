@@ -81,17 +81,6 @@ async def create_regression_recommendation(
     return await call("POST", f"/bo-thay-doi/{change_set_id}/de-xuat-hoi-quy", config)
 
 
-@with_tool_access(
-    ("analysis",),
-    "MUTATE",
-    "trace.confirm",
-    {
-        "path": "/lien-ket-truy-vet/{identifier}",
-        "identifier": "$arguments.trace_link_id",
-        "expected": {"_id": "$arguments.trace_link_id", "project_id": "$project.id", "status": "CONFIRMED", "revision": "$result.revision"},
-    },
-)
-
 @with_tool_access(("analysis",), "PROPOSE", "impact.execute")
 async def analyze_change_impact(
     change_set_id: Annotated[str, Field(description="Change set identifier")], config: RunnableConfig = None
