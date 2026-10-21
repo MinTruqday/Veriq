@@ -83,7 +83,7 @@ async def call_read_tool(connection: MCPConnection, tool_name: str, arguments: d
     output = _result_text(result)
     if not output:
         return {"status": "failed", "reason_code": "MCP_TOOL_EMPTY_OUTPUT"}
-    inspected = await guardrails_engine.async_inspect_input(output)
+    inspected = await guardrails_engine.async_inspect_tool_output(output)
     if not inspected.get("is_safe", False):
         return {"status": "blocked", "reason_code": "MCP_OUTPUT_REJECTED"}
     return {
@@ -147,7 +147,7 @@ async def discover_project_tools(project_id: str, permissions: list[str]):
             description = str(getattr(tool_info, "description", "") or "")
             schema = getattr(tool_info, "input_schema", None) or {}
             untrusted_metadata = f"{description}\n{json.dumps(schema, ensure_ascii=False, default=str)}"
-            inspection = await guardrails_engine.async_inspect_input(
+            inspection = await guardrails_engine.async_inspect_tool_output(
                 untrusted_metadata
             )
             if (

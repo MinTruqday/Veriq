@@ -60,18 +60,6 @@ def nested_values(value, key_name):
     return values
 
 
-def has_exact_evidence_quotes(case, source_text_by_ref):
-    quotes = case.get("evidence_quotes") if isinstance(case, dict) else None
-    return bool(quotes) and all(
-        isinstance(item, dict)
-        and isinstance(item.get("evidence_ref"), str)
-        and isinstance(item.get("quote"), str)
-        and item["quote"].strip()
-        and item["quote"].strip() in source_text_by_ref.get(item["evidence_ref"], "")
-        for item in quotes
-    )
-
-
 async def generate_ai_automation(req: TestingAutomationRequest):
     evidence = [
         {
@@ -129,16 +117,6 @@ async def generate_ai_automation(req: TestingAutomationRequest):
             raise ValueError("AI_EVIDENCE_REF_UNKNOWN")
         if req.capability == "test_generation" and generated_data.get("suggestions"):
             cases = generated_data["suggestions"]
-            source_text_by_ref = {
-                str(item.get("artifact_version_id") or item.get("artifact_id")): str(item.get("text") or "")
-                for item in evidence
-                if item.get("artifact_version_id") or item.get("artifact_id")
-            }
-            quote_supported_indexes = {
-                index
-                for index, case in enumerate(cases)
-                if has_exact_evidence_quotes(case, source_text_by_ref)
-            }
             review = await structured(
                 build_generated_cases_grounding_prompt(evidence, cases),
                 GeneratedCasesGroundingReview,
@@ -162,9 +140,7 @@ async def generate_ai_automation(req: TestingAutomationRequest):
                     len(unsupported),
                     [item.index for item in unsupported],
                 )
-                rejected = {
-                    item.index for item in unsupported if item.index not in quote_supported_indexes
-                }
+                rejected = {item.index for item in unsupported}
                 generated_data["suggestions"] = [
                     case for index, case in enumerate(cases) if index not in rejected
                 ]
@@ -173,12 +149,7 @@ async def generate_ai_automation(req: TestingAutomationRequest):
                 generated_data["findings"] = unsupported_details
                 generated_data["warnings"] = [
                     *generated_data.get("warnings", []),
-                    *(
-                        ["AI_GROUNDING_REVIEW_REQUIRED"]
-                        if len(rejected) != len(unsupported)
-                        else []
-                    ),
-                    *( ["AI_UNGROUNDED_CANDIDATES_REJECTED"] if rejected else []),
+                    "AI_UNGROUNDED_CANDIDATES_REJECTED",
                 ]
         if req.capability == "test_condition_generation":
             generated_data["suggestions"] = generated_data.pop("condition_candidates")

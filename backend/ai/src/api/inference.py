@@ -37,8 +37,8 @@ router = APIRouter(prefix="/suy-luan")
     dependencies=[Depends(verify_internal_token)],
     response_model=TestabilityBenchmarkReport,
     description=(
-        "Đánh giá đầu ra compiler có dẫn nguồn so với sinh test trực tiếp bằng bộ "
-        "tình huống và đáp án chuẩn do người thực hiện cung cấp"
+        "Chỉ chấm các đầu ra đã cung cấp; không gọi model. Dùng endpoint chạy bộ dữ liệu "
+        "để thực thi các pipeline AI thật"
     ),
 )
 async def evaluate_testability_compiler(req: TestabilityBenchmarkRequest):
@@ -76,8 +76,22 @@ async def evaluate_testability_benchmark_dataset(dataset_id: str):
     dataset = await testability_benchmark_repository.get(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
-    return await testability_benchmark.evaluate(
-        TestabilityBenchmarkRequest(cases=dataset.cases)
+    report = await testability_benchmark.run_dataset(dataset_id, dataset.cases)
+    serialized = report.model_dump(mode="json")
+    await testability_benchmark_repository.save_run(serialized)
+    return report
+
+
+@router.get(
+    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/lan-chay",
+    dependencies=[Depends(verify_internal_token)],
+)
+async def list_testability_benchmark_runs(dataset_id: str, limit: int = 20):
+    dataset = await testability_benchmark_repository.get(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
+    return await testability_benchmark_repository.list_runs(
+        dataset_id, max(1, min(limit, 100))
     )
 
 

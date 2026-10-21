@@ -85,6 +85,16 @@ class TestingAutomationResult(BaseModel):
         max_length=100,
         description="Analysis findings pending acknowledgement",
     )
+    obligations: List[dict[str, Any]] = Field(
+        default_factory=list,
+        max_length=300,
+        description="Source-grounded testability obligations produced by the compiler capability",
+    )
+    clarifications: List[dict[str, Any]] = Field(
+        default_factory=list,
+        max_length=100,
+        description="Evidence-grounded clarification questions produced by AI capabilities",
+    )
     readiness: str | None = None
     conflicts: List[dict[str, Any]] = Field(default_factory=list, max_length=100)
     context: dict[str, Any] = Field(default_factory=dict)

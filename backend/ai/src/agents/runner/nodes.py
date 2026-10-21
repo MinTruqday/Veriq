@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone
 
 from src.agents.agent import execute_task
+from src.core.security.guardrails import guardrails_engine
 from src.knowledge.evidence import package
 from src.knowledge.hybrid import hybrid_evidence
 from src.prompts.agent_planning import (
@@ -47,6 +48,7 @@ from src.agents.runner.automation_planning import (
     bounded_tasks,
     direct_approved_plan_task,
     direct_capability_task,
+    direct_change_simulation_task,
     direct_changed_plan_task,
     direct_defect_event_task,
     direct_document_ingestion_task,
@@ -55,6 +57,7 @@ from src.agents.runner.automation_planning import (
     direct_requirement_change_task,
     mutation_fingerprint,
     observed_identifiers,
+    observed_draft_identifiers,
     proposal_fingerprint,
     validated_tasks,
     verified_tool_call_records,
@@ -130,6 +133,8 @@ async def plan(state):
         for item in state.get("evidence", [])
     ]
     direct_task = None
+    if simulation:
+        direct_task = direct_change_simulation_task(run, state, evidence_refs)
     if not simulation:
         direct_task = direct_document_ingestion_task(run, state, evidence_refs)
     if not simulation and not direct_task:
@@ -174,6 +179,16 @@ async def plan(state):
         if item.get("quote")
         and (item.get("artifact_version_id") or item.get("artifact_id")) in evidence_refs
     ]
+    verified_tool_evidence = [
+        item
+        for item in state.get("evidence", [])
+        if item.get("source") == "tool"
+        and item.get("artifact_id") in run.evidence_refs
+    ]
+    prior_verified_tool_refs = [
+        item.get("artifact_id") for item in verified_tool_evidence[:-1]
+        if item.get("artifact_id")
+    ]
     prompt = agent_plan_prompt(
         run.project_id,
         run.run_id,
@@ -192,6 +207,15 @@ async def plan(state):
         {
             **state.get("constraints", {}),
             "verified_source_facts": verified_source_facts,
+            "verified_tool_results": [
+                {
+                    "evidence_ref": item.get("artifact_id"),
+                    "authority": item.get("authority"),
+                    "content": item.get("text"),
+                }
+                for item in verified_tool_evidence[-limits.agent_steps :]
+            ],
+            "prior_verified_tool_refs": prior_verified_tool_refs,
             "source_fact_use": verified_source_fact_instruction(),
             "change_simulation": simulation,
             "simulation_rule": change_simulation_instruction() if simulation else None,
@@ -199,7 +223,14 @@ async def plan(state):
             if state.get("automatic")
             else "INTERACTIVE_AGENT",
             "completed_tool_calls": run.tool_calls,
-            "recent_tool_observations": run.observations[-limits.agent_steps :],
+            "recent_tool_observations": [
+                {
+                    key: item.get(key)
+                    for key in ("phase", "status", "tool_name", "reason_code", "evidence_ref")
+                    if item.get(key) is not None
+                }
+                for item in run.observations[-limits.agent_steps :]
+            ],
             "mcp_read_tools": await discover_project_tools(run.project_id, run.permissions),
         },
     )
@@ -252,6 +283,9 @@ async def plan(state):
         run,
         evidence_refs,
         known_identifiers=allowed_identifiers,
+        known_draft_identifiers=observed_draft_identifiers(
+            [state.get("evidence", []), run.observations]
+        ),
     )
     tasks = [task for task in tasks if task.tool_calls]
     results = list(state.get("results", []))
@@ -394,18 +428,107 @@ async def execute_agent(state):
         automatic=bool(state.get("automatic")),
         checkpoint_action=checkpoint_action if state.get("automatic") else None,
     )
-    tool_evidence_refs = []
+    if (
+        (task.constraints or {}).get("continue_after_observation") is True
+        and task.tool_calls
+        and len(observations) == len(task.tool_calls)
+        and all(item.get("status") == ToolExecutionStatus.COMPLETED for item in observations)
+        and all(
+            (access := tool_access(registered_tools().get(call.tool_name))) is not None
+            and access.action != "MUTATE"
+            for call in task.tool_calls
+        )
+    ):
+        result.status = AgentTaskStatus.COMPLETED
+        result.summary = "Đã quan sát nguồn; tiếp tục lần theo bằng chứng liên quan"
+        result.reason_codes = []
+        result.warnings = []
     for observation in observations:
         if observation.get("status") != ToolExecutionStatus.COMPLETED:
             continue
         evidence_ref = f"{task.task_id}:{observation.get('tool_name', 'tool')}"
         observation["evidence_ref"] = evidence_ref
-        tool_evidence_refs.append(evidence_ref)
-    if tool_evidence_refs:
-        run.evidence_refs = list(dict.fromkeys([*run.evidence_refs, *tool_evidence_refs]))
-        result.evidence_refs = list(
-            dict.fromkeys([*result.evidence_refs, *tool_evidence_refs])
+    tool_evidence = []
+    tool_output_rejected = False
+    for observation in observations:
+        if observation.get("status") != ToolExecutionStatus.COMPLETED:
+            continue
+        tool_name = str(observation.get("tool_name") or "")
+        access = tool_access(registered_tools().get(tool_name))
+        if not access:
+            continue
+        if access.action == "MUTATE" and (
+            observation.get("verification") or {}
+        ).get("status") != ToolExecutionStatus.COMPLETED:
+            continue
+        evidence_ref = observation.get("evidence_ref")
+        if not evidence_ref:
+            continue
+        observed_text = json.dumps(
+            {"tool_name": tool_name, "result": observation.get("result")},
+            ensure_ascii=False,
+            default=str,
         )
+        try:
+            inspection = await guardrails_engine.async_inspect_tool_output(observed_text)
+        except Exception:
+            tool_output_rejected = True
+            observation["output_security"] = {
+                "status": "UNAVAILABLE",
+                "reason_code": "TOOL_OUTPUT_INSPECTION_FAILED",
+            }
+            observation.pop("result", None)
+            continue
+        if not inspection.get("is_safe", False):
+            tool_output_rejected = True
+            observation["output_security"] = {
+                "status": "REJECTED",
+                "reason_code": str(inspection.get("threat_category") or "UNSAFE_TOOL_OUTPUT"),
+            }
+            observation.pop("result", None)
+            continue
+        tool_evidence.append(
+            EvidenceItem(
+                artifact_type="tool_result",
+                artifact_id=str(evidence_ref),
+                source="tool",
+                authority=f"verified_tool:{tool_name}",
+                text=inspection.get("sanitized_text") or observed_text,
+                project_id=run.project_id,
+            ).model_dump(mode="python")
+        )
+    # Only publish a tool reference into the agent's usable evidence set after
+    # the output has passed the trust-boundary inspection above. Otherwise a
+    # later planning round could cite a ref whose content was deliberately
+    # withheld, creating unsupported impact claims.
+    verified_tool_refs = [item["artifact_id"] for item in tool_evidence]
+    if verified_tool_refs:
+        run.evidence_refs = list(dict.fromkeys([*run.evidence_refs, *verified_tool_refs]))
+    if tool_output_rejected:
+        # The task summary was produced before this trust-boundary check. It may
+        # therefore contain claims derived from a quarantined tool result. Never
+        # let that summary satisfy the automation objective or reach final output.
+        result.status = AgentTaskStatus.INSUFFICIENT_EVIDENCE
+        result.summary = "Kết quả công cụ chưa vượt qua kiểm tra an toàn nên agent không dùng nội dung đó làm căn cứ"
+        result.evidence_refs = list(verified_tool_refs)
+        result.reason_codes = list(
+            dict.fromkeys([*result.reason_codes, "TOOL_OUTPUT_REJECTED"])
+        )
+        result.warnings = list(
+            dict.fromkeys([*result.warnings, "TOOL_OUTPUT_REJECTED"])
+        )
+    allowed_evidence_refs = {
+        str(item.artifact_version_id or item.artifact_id)
+        for item in task_evidence
+        if item.artifact_version_id or item.artifact_id
+    } | set(verified_tool_refs)
+    result.evidence_refs = list(
+        dict.fromkeys(
+            reference
+            for reference in [*result.evidence_refs, *verified_tool_refs]
+            if reference in allowed_evidence_refs
+        )
+    )
     run.completed_tasks.append(task.model_dump(mode="json"))
     run.agent_results.append(result.model_dump(mode="json"))
     run.observations.extend(observations)
@@ -414,6 +537,15 @@ async def execute_agent(state):
     run.current_step += 1
     return {
         "run": run.model_dump(mode="python"),
+        "evidence": [*state.get("evidence", []), *tool_evidence],
+        "degraded_flags": list(
+            dict.fromkeys(
+                [
+                    *state.get("degraded_flags", []),
+                    *(["TOOL_OUTPUT_REJECTED"] if tool_output_rejected else []),
+                ]
+            )
+        ),
         "results": [*state.get("results", []), result.model_dump(mode="python")],
     }
 
@@ -467,20 +599,101 @@ def route_after_finalize(state):
 async def aggregate(state):
     run = state_run(state)
     results = [AgentResult(**item) for item in state.get("results", [])]
+    summary = " ".join(item.summary for item in results)
+    warnings = list(
+        dict.fromkeys(
+            [
+                *(warning for item in results for warning in item.warnings),
+                *state.get("degraded_flags", []),
+            ]
+        )
+    )
+    trigger = str((state.get("constraints") or {}).get("trigger") or "")
+    if trigger == "TEST_CASE_CHANGED":
+        tool_results = {
+            observation.get("tool_name"): observation.get("result") or {}
+            for observation in run.observations
+            if observation.get("status") == ToolExecutionStatus.COMPLETED
+            and observation.get("tool_name")
+        }
+        draft = tool_results.get("get_test_case_draft", {})
+        lint = tool_results.get("lint_testcase", {})
+        traceability = tool_results.get("get_traceability_links", {})
+        impact = tool_results.get("impact_analysis", {})
+        parts = []
+        if lint:
+            parts.append(
+                "Kiểm tra bản nháp: "
+                + ("hợp lệ" if lint.get("valid") is True else "còn phát hiện cần xử lý")
+                + f" ({len(lint.get('findings') or [])} phát hiện)"
+            )
+        if draft:
+            parts.append(f"Trạng thái Test Case đọc lại: {draft.get('status') or 'không có'}")
+        links = traceability.get("trace_links") or []
+        if traceability:
+            confirmed = sum(link.get("status") == "CONFIRMED" for link in links)
+            suggested = sum(link.get("status") == "SUGGESTED" for link in links)
+            parts.append(
+                f"Liên kết truy vết đọc được: {confirmed} đã xác nhận, {suggested} đang đề xuất"
+            )
+        if impact:
+            parts.append(f"Phân tích ảnh hưởng: {impact.get('status') or 'đã chạy'}")
+            warnings.extend(impact.get("warnings") or [])
+        if parts:
+            summary = ". ".join(parts) + "."
+    coverage = next(
+        (
+            observation.get("result") or {}
+            for observation in run.observations
+            if observation.get("tool_name") == "calculate_coverage"
+            and observation.get("status") == ToolExecutionStatus.COMPLETED
+        ),
+        None,
+    )
+    if coverage is not None:
+        metric_labels = (
+            ("requirement_coverage", "Requirement"),
+            ("acceptance_criterion_coverage", "tiêu chí chấp nhận"),
+            ("test_condition_coverage", "điều kiện kiểm thử"),
+            ("execution_coverage", "thực thi"),
+        )
+        reported_metrics = [
+            f"{label}: {coverage[field]}%"
+            for field, label in metric_labels
+            if coverage.get(field) is not None
+        ]
+        if reported_metrics:
+            summary = "Số liệu truy vết được công cụ trả về: " + "; ".join(reported_metrics) + "."
+            warnings.append("COVERAGE_METRICS_ARE_SCOPE_SNAPSHOT_NOT_QUALITY_CLAIMS")
+    if (state.get("constraints") or {}).get("change_simulation"):
+        trace_links = [
+            link
+            for observation in run.observations
+            if observation.get("tool_name") == "get_traceability_links"
+            and observation.get("status") == ToolExecutionStatus.COMPLETED
+            for link in (observation.get("result") or {}).get("trace_links", [])
+        ]
+        suggested_count = sum(link.get("status") == "SUGGESTED" for link in trace_links)
+        confirmed_count = sum(link.get("status") == "CONFIRMED" for link in trace_links)
+        if suggested_count:
+            coverage_text = (
+                f" Chỉ số độ phủ của dự án là {coverage.get('requirement_coverage')}% theo dữ liệu trả về."
+                if coverage and coverage.get("requirement_coverage") is not None
+                else " Chưa có số liệu độ phủ hợp lệ trong lượt chạy này."
+            )
+            summary = (
+                f"Mô phỏng đã đọc {len(trace_links)} liên kết truy vết: "
+                f"{confirmed_count} liên kết đã xác nhận và {suggested_count} liên kết đang ở trạng thái đề xuất, "
+                f"chưa được xác nhận nên không được xem là độ phủ đã kiểm chứng.{coverage_text}"
+            )
+            warnings.append("SUGGESTED_TRACE_LINKS_NOT_CONFIRMED")
     proposal = AgentProposal(
-        summary=" ".join(item.summary for item in results),
+        summary=summary,
         evidence_refs=list(
             dict.fromkeys(reference for item in results for reference in item.evidence_refs)
         ),
         actions=[action for item in results for action in item.proposals],
-        warnings=list(
-            dict.fromkeys(
-                [
-                    *(warning for item in results for warning in item.warnings),
-                    *state.get("degraded_flags", []),
-                ]
-            )
-        ),
+        warnings=warnings,
         success_criteria_met=state.get("success_criteria", [])
         if all(item.status == AgentTaskStatus.COMPLETED for item in results)
         else [],

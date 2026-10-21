@@ -7,7 +7,7 @@ from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import call, parse
+from src.tools.testing_api import call, parse, require_operation
 
 
 @with_tool_access(("execution", "analysis", "reporting"), "READ", "testrun.read")
@@ -49,6 +49,78 @@ async def get_work_item(
 ) -> str:
     """Read a project Work Item and its current planning state"""
     return await call("GET", f"/du-an/{project_id}/cong-viec/{work_item_id}", config)
+
+
+@with_tool_access(("analysis",), "READ", "project.read")
+async def get_work_item_impact_context(
+    project_id: Annotated[str, Field(description="Testing project identifier")],
+    work_item_id: Annotated[str, Field(description="Project Work Item identifier")],
+    config: RunnableConfig = None,
+) -> str:
+    """Read a Work Item and the project-scoped Requirement versions and Test Cases explicitly linked to it"""
+    configurable = (config or {}).get("configurable", {})
+    permissions = set(configurable.get("permissions", []))
+    required_permissions = {"project.read", "requirement.read", "requirement.version.read", "testcase.read"}
+    if not required_permissions.issubset(permissions):
+        return json.dumps(
+            {"status": "denied", "reason_code": "LINKED_IMPACT_CONTEXT_PERMISSION_MISSING"},
+            ensure_ascii=False,
+        )
+    work_item = await require_operation(
+        "GET", f"/du-an/{project_id}/cong-viec/{work_item_id}", config
+    )
+    if work_item.get("_id") != work_item_id or work_item.get("project_id") != project_id:
+        return json.dumps(
+            {"status": "denied", "reason_code": "WORK_ITEM_SCOPE_MISMATCH"},
+            ensure_ascii=False,
+        )
+
+    requirements = []
+    test_cases = []
+    for requirement_id in dict.fromkeys(str(value) for value in work_item.get("requirement_ids", []) if value):
+        requirement = await require_operation("GET", f"/yeu-cau/{requirement_id}", config)
+        if requirement.get("_id") != requirement_id or requirement.get("project_id") != project_id:
+            continue
+        version = requirement.get("current_version")
+        version_id = requirement.get("current_version_id") or (version or {}).get("_id")
+        if version_id and not version:
+            version = await require_operation("GET", f"/phien-ban-yeu-cau/{version_id}", config)
+        if version and (
+            version.get("project_id") != project_id
+            or version.get("requirement_id") != requirement_id
+        ):
+            version = None
+        requirements.append(
+            {"requirement": requirement, "current_version": version}
+        )
+        if not version_id:
+            continue
+        cases = await require_operation(
+            "GET",
+            f"/du-an/{project_id}/ca-kiem-thu?requirement_id={requirement_id}&page_size=500",
+            config,
+        )
+        items = cases if isinstance(cases, list) else cases.get("items", [])
+        for case in items:
+            current = case.get("current_version") or {}
+            linked_versions = set(current.get("requirement_version_ids", []))
+            if (
+                case.get("project_id") == project_id
+                and version_id in linked_versions
+            ):
+                test_cases.append(case)
+
+    return json.dumps(
+        {
+            "status": "completed",
+            "project_id": project_id,
+            "work_item": work_item,
+            "linked_requirements": requirements,
+            "linked_test_cases": test_cases,
+        },
+        ensure_ascii=False,
+        default=str,
+    )
 
 @with_tool_access(("analysis", "execution", "reporting"), "READ", "defect.read")
 async def get_historical_defects(

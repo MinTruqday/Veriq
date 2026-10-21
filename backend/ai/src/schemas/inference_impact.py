@@ -75,11 +75,11 @@ class NewTestCandidateOutput(BaseModel):
 ImpactClassificationSuggestionOutput.model_rebuild()
 
 class ImpactClassificationOutput(BaseModel):
-    """Classify every test case version in evidence. A needs-update result contains only evidence grounded maintenance changes, missing coverage becomes a new test candidate, and no change is applied automatically."""
+    """Classify each test case version present in the supplied evidence. A needs-update result contains only evidence grounded maintenance changes, missing coverage becomes a new test candidate, and no change is applied automatically. When the evidence contains no test case version or cannot support a classification, return empty suggestions and new_test_candidates with a concise warning describing the evidence limitation; do not infer that unobserved test cases do not exist."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["impact_analysis"]
-    suggestions: List[ImpactClassificationSuggestionOutput] = Field(min_length=1, max_length=100)
+    suggestions: List[ImpactClassificationSuggestionOutput] = Field(default_factory=list, max_length=100)
     new_test_candidates: List[NewTestCandidateOutput] = Field(default_factory=list, max_length=100)
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)

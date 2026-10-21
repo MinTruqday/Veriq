@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.schemas.agent import AgentResult, EvidenceItem, PlannedTask, VeriqRunState
 
@@ -99,6 +99,21 @@ class AutomationGraphSnapshot(BaseModel):
     planning_round: int = 0
 
 
+class ChangeSimulationInput(BaseModel):
+    """Uncommitted proposed source text compared with one authoritative baseline."""
+
+    base_requirement_version_id: str = Field(min_length=1, max_length=200)
+    proposed_source_text: str = Field(min_length=1, max_length=100_000)
+
+    @field_validator("base_requirement_version_id", "proposed_source_text")
+    @classmethod
+    def reject_blank_simulation_input(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("change_simulation_input_must_not_be_blank")
+        return normalized
+
+
 class AutomationRunRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=200)
     objective: str = Field(min_length=3, max_length=4000)
@@ -107,6 +122,23 @@ class AutomationRunRequest(BaseModel):
     target_artifact_ids: list[str] = Field(default_factory=list, max_length=100)
     evidence: list[EvidenceItem] = Field(default_factory=list, max_length=100)
     constraints: dict[str, Any] = Field(default_factory=dict)
+    change_simulation: ChangeSimulationInput | None = None
+
+    @model_validator(mode="after")
+    def validate_change_simulation(self):
+        if self.kind == AutomationKind.CHANGE_SIMULATION:
+            if self.change_simulation is None:
+                raise ValueError("change_simulation_input_required")
+            if self.change_simulation.base_requirement_version_id not in self.target_artifact_ids:
+                raise ValueError("change_simulation_baseline_must_be_targeted")
+            source_refs = {
+                item.artifact_version_id or item.artifact_id for item in self.evidence
+            }
+            if self.change_simulation.base_requirement_version_id not in source_refs:
+                raise ValueError("change_simulation_baseline_evidence_required")
+        elif self.change_simulation is not None:
+            raise ValueError("change_simulation_input_only_allowed_for_simulation")
+        return self
 
 
 class AutomationDefinitionRequest(BaseModel):
@@ -181,7 +213,10 @@ class SourceFact(BaseModel):
 class DerivationStep(BaseModel):
     name: str
     source_fact_ids: list[str] = Field(default_factory=list)
+    input_artifact_refs: list[str] = Field(default_factory=list)
+    input_artifact_version_ids: list[str] = Field(default_factory=list)
     output_evidence_refs: list[str] = Field(default_factory=list)
+    output_artifact_version_ids: list[str] = Field(default_factory=list)
     tool_name: str | None = None
     verification_status: str
     reason_code: str | None = None
@@ -220,6 +255,7 @@ class AutomationRun(BaseModel):
     target_artifact_ids: list[str] = Field(default_factory=list)
     evidence: list[EvidenceItem] = Field(default_factory=list)
     constraints: dict[str, Any] = Field(default_factory=dict)
+    change_simulation: ChangeSimulationInput | None = None
     status: AutomationStatus = AutomationStatus.QUEUED
     agent_run_id: str | None = None
     trace_id: str | None = None

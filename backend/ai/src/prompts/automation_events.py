@@ -68,8 +68,10 @@ def test_execution_observation_objective():
 
 def work_item_changed_observation_objective():
     return (
-        "Đọc lại Work Item vừa thay đổi trong phạm vi dự án rồi đánh giá tác động có bằng chứng "
-        "trước mọi đề xuất tiếp theo"
+        "Đọc lại Work Item vừa thay đổi trong phạm vi dự án, lần theo các liên kết Requirement và "
+        "Test Case hiện hành bằng công cụ đọc được cấp quyền, rồi đánh giá tác động bằng chứng cứ "
+        "đã đọc. Không kết luận không ảnh hưởng chỉ từ nội dung Work Item; nếu liên kết không đọc "
+        "được hoặc thiếu phiên bản cần thiết, nêu rõ giới hạn thay vì đoán"
     )
 
 

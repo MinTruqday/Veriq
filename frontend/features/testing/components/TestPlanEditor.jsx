@@ -225,7 +225,7 @@ export default function TestPlanEditor({
           </label>
         ))}
       </div>
-      <div className="flex justify-end gap-3">
+      <div className="action-dialog-footer flex items-center justify-end gap-3">
         <button className="secondary-button" type="button" onClick={onCancel}>
           Hủy
         </button>

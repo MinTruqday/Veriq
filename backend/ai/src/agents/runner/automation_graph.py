@@ -1,3 +1,4 @@
+import re
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -23,7 +24,8 @@ from src.schemas.automation import (
     AutomationGraphSnapshot,
     AutomationStatus,
 )
-from src.services.inference import structured
+from src.services.inference import chat
+from src.utils.structured_output import extract_json_values
 from src.repositories.automation import automation_repository
 
 
@@ -122,15 +124,24 @@ async def observe_sources(state: AutomationGraphState):
 def bind_extracted_facts(extraction, evidence):
     facts = []
     for fact in extraction.facts:
-        source = next(
-            (
-                item for item in evidence
-                if str(item.get("artifact_id")) == fact.artifact_id
-                and str(item.get("artifact_version_id") or "")
-                == str(fact.artifact_version_id or "")
-            ),
-            None,
-        )
+        candidates = [
+            item
+            for item in evidence
+            if str(item.get("artifact_id")) == fact.artifact_id
+            and (
+                not fact.artifact_version_id
+                or str(item.get("artifact_version_id") or "")
+                == str(fact.artifact_version_id)
+            )
+        ]
+        # The model may omit a version identifier even though it correctly
+        # identifies the source artifact. Bind that fact only when the supplied
+        # evidence has one unambiguous version; never guess between revisions.
+        source_versions = {
+            str(item.get("artifact_version_id") or item.get("artifact_id"))
+            for item in candidates
+        }
+        source = candidates[0] if candidates and len(source_versions) == 1 else None
         quote = fact.quote.strip()
         source_text = str(source.get("text") or "") if source else ""
         if not source or not quote or quote not in source_text:
@@ -152,6 +163,71 @@ def bind_extracted_facts(extraction, evidence):
     return facts
 
 
+def normalize_fact_extraction(raw, schema):
+    """Normalize list-shaped provider responses, then validate the typed contract."""
+    failures = []
+    for value in extract_json_values(raw):
+        if isinstance(value, list):
+            normalized_facts = []
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                fact = dict(item)
+                if "quote" not in fact:
+                    fact["quote"] = fact.pop("fact", fact.pop("statement", ""))
+                normalized_facts.append(fact)
+            value = {"facts": normalized_facts, "uncertainties": []}
+        elif isinstance(value, dict) and "facts" not in value and "fact" in value:
+            fact = dict(value)
+            fact["quote"] = fact.pop("quote", fact.pop("fact", fact.pop("statement", "")))
+            value = {"facts": [fact], "uncertainties": []}
+        try:
+            return schema.model_validate(value)
+        except Exception as error:
+            failures.append(error)
+    if failures:
+        raise ValueError(f"Fact extraction output did not match its contract: {failures[0]}")
+    raise ValueError("Fact extraction returned no structured value")
+
+
+def complete_source_segments(facts, evidence):
+    """Retain exact source sentences even when a model omits explicit statements."""
+    output = list(facts)
+    seen = {
+        (str(item.get("artifact_id") or ""), str(item.get("quote") or ""))
+        for item in output
+    }
+    for source in evidence:
+        text = str(source.get("text") or "")
+        cursor = 0
+        for line in text.splitlines() or [text]:
+            for segment in re.split(r"(?<=[.!?。！？])\s+", line):
+                quote = segment.strip()
+                if not quote or (str(source.get("artifact_id") or ""), quote) in seen:
+                    continue
+                start = text.find(quote, cursor)
+                if start < 0:
+                    start = text.find(quote)
+                if start < 0:
+                    continue
+                output.append(
+                    {
+                        "artifact_type": str(source.get("artifact_type") or "artifact"),
+                        "artifact_id": str(source["artifact_id"]),
+                        "artifact_version_id": source.get("artifact_version_id"),
+                        "source": str(source.get("source") or "database"),
+                        "authority": str(source.get("authority") or "project"),
+                        "quote": quote,
+                        "fact_kind": "source_text_segment",
+                        "source_start": start,
+                        "source_end": start + len(quote),
+                    }
+                )
+                cursor = start + len(quote)
+                seen.add((str(source.get("artifact_id") or ""), quote))
+    return output
+
+
 async def extract_source_facts(state: AutomationGraphState):
     evidence = [
         item for item in state.get("evidence", [])
@@ -166,13 +242,21 @@ async def extract_source_facts(state: AutomationGraphState):
             )
             if not inspected.get("is_safe", False):
                 raise ValueError("AUTOMATION_SOURCE_REJECTED_BY_GUARDRAILS")
-            extraction = await structured(
-                automation_fact_extraction_prompt(evidence),
-                AutomationFactExtraction,
+            extraction_prompt = automation_fact_extraction_prompt(evidence)
+            extraction_raw = await chat(
+                [
+                    {"role": "system", "content": extraction_prompt},
+                    {"role": "user", "content": "Extract all source-backed facts from the supplied evidence."},
+                ],
                 max_tokens=1200,
+                temperature=0,
+                attempts=2,
                 timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
             )
-            facts = bind_extracted_facts(extraction, evidence)
+            extraction = normalize_fact_extraction(extraction_raw, AutomationFactExtraction)
+            facts = complete_source_segments(
+                bind_extracted_facts(extraction, evidence), evidence
+            )
             uncertainties = [
                 {**item.model_dump(mode="python"), "blocking": False}
                 for item in extraction.uncertainties

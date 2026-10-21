@@ -1,4 +1,5 @@
 import math
+import json
 import re
 from collections import Counter
 from typing import Any, Dict
@@ -59,6 +60,80 @@ class GuardrailsEngine:
 
         sanitized = re.sub(r"(?<![\w])[^\s]{20,}(?![\w])", redact, text)
         return sanitized, found
+
+    def _inspect_tool_payload(self, value: Any) -> tuple[Any, bool]:
+        """Inspect values while keeping ordinary IDs, hashes, and provenance metadata intact."""
+        sensitive = False
+        if isinstance(value, dict):
+            sanitized = {}
+            for key, item in value.items():
+                normalized_key = str(key).casefold()
+                metadata = normalized_key.endswith(
+                    ("_id", "_ref", "_hash", "_version", "_trace_id", "_run_id")
+                )
+                if metadata and isinstance(item, str):
+                    sanitized[key] = item
+                    continue
+                sanitized[key], item_sensitive = self._inspect_tool_payload(item)
+                sensitive = sensitive or item_sensitive
+            return sanitized, sensitive
+        if isinstance(value, list):
+            sanitized = []
+            for item in value:
+                safe_item, item_sensitive = self._inspect_tool_payload(item)
+                sanitized.append(safe_item)
+                sensitive = sensitive or item_sensitive
+            return sanitized, sensitive
+        if isinstance(value, str):
+            sanitized, found = self._redact_structural_secrets(value)
+            return sanitized, found
+        return value, False
+
+    @staticmethod
+    def _tool_payload_text(value: Any) -> list[str]:
+        """Collect human-readable tool content without feeding opaque metadata to the classifier."""
+        if isinstance(value, dict):
+            values = []
+            for key, item in value.items():
+                normalized_key = str(key).casefold()
+                if normalized_key.endswith(
+                    ("_id", "_ref", "_hash", "_version", "_trace_id", "_run_id")
+                ):
+                    continue
+                values.extend(GuardrailsEngine._tool_payload_text(item))
+            return values
+        if isinstance(value, list):
+            return [
+                text
+                for item in value
+                for text in GuardrailsEngine._tool_payload_text(item)
+            ]
+        if isinstance(value, str):
+            return [value]
+        return []
+
+    async def async_inspect_tool_output(self, output: str) -> Dict[str, Any]:
+        """Security-check JSON tool output without classifying project IDs as credentials."""
+        try:
+            payload = json.loads(output)
+        except (TypeError, ValueError):
+            return await self.async_inspect_input(output)
+        sanitized_payload, sensitive = self._inspect_tool_payload(payload)
+        sanitized_text = json.dumps(sanitized_payload, ensure_ascii=False, default=str)
+        classifier_text = "\n".join(self._tool_payload_text(sanitized_payload))
+        if not classifier_text.strip():
+            return {
+                "is_safe": True,
+                "risk_score": 0.0,
+                "threat_category": "sensitive_content" if sensitive else "none",
+                "reason": "Sensitive values were redacted" if sensitive else "Tool output contains only structured metadata",
+                "sanitized_text": sanitized_text,
+                "redactions_applied": sensitive,
+            }
+        inspected = await self.async_inspect_input(classifier_text)
+        inspected["sanitized_text"] = sanitized_text
+        inspected["redactions_applied"] = sensitive
+        return inspected
 
     def _deterministic_assessment(self, text: str) -> Dict[str, Any]:
         sanitized, credential_found = self._redact_structural_secrets(text)

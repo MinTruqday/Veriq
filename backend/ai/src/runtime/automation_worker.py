@@ -11,8 +11,14 @@ from src.memory.short_term import run_store
 from src.repositories.automation import automation_repository
 from src.runtime.limits import limits
 from src.schemas.agent import AgentRunStatus, VeriqRunState
-from src.schemas.automation import AutomationCheckpointPhase, AutomationKind, AutomationStatus
-from src.schemas.automation import DerivationReceipt, SourceFact
+from src.schemas.automation import (
+    AutomationCheckpointPhase,
+    AutomationKind,
+    AutomationStatus,
+    DerivationReceipt,
+    DerivationStep,
+    SourceFact,
+)
 from src.tools.registry import registered_tools, tool_access
 from src.services.agent_metrics import agentops
 from src.services.automation import automation_service
@@ -55,7 +61,23 @@ class AutomationWorker:
                     run.automation_run_id,
                     run.error_code,
                 )
-        self._task = create_background_task(self._consume(), "ai-automation-worker")
+        self._task = create_background_task(
+            self._supervise_consumer(), "ai-automation-worker"
+        )
+
+    async def _supervise_consumer(self) -> None:
+        """Keep the durable queue consumer alive after an unexpected exit."""
+        while not self._stopping:
+            try:
+                await self._consume()
+            except asyncio.CancelledError:
+                if self._stopping:
+                    raise
+                logger.warning("AI automation consumer was cancelled unexpectedly; restarting")
+            except Exception:
+                logger.exception("AI automation consumer exited unexpectedly; restarting")
+            if not self._stopping:
+                await asyncio.sleep(1)
 
     async def stop(self) -> None:
         self._stopping = True
@@ -255,6 +277,11 @@ class AutomationWorker:
             graph_state["constraints"] = {
                 **graph_state.get("constraints", {}),
                 "change_simulation": running.kind == AutomationKind.CHANGE_SIMULATION,
+                **(
+                    {"change_simulation_input": running.change_simulation.model_dump(mode="json")}
+                    if running.change_simulation
+                    else {}
+                ),
             }
             graph_state["resume_after_phase"] = resume_phase
             result = await asyncio.wait_for(
@@ -372,11 +399,152 @@ class AutomationWorker:
                         )
                     )
             verified_outputs = self._verified_output_refs(completed)
+            all_verified_refs = set(completed.evidence_refs)
+            verified_outputs = list(
+                dict.fromkeys(
+                    [
+                        *verified_outputs,
+                        *[
+                            str(item.get("evidence_ref"))
+                            for item in completed.observations
+                            if item.get("evidence_ref") in all_verified_refs
+                        ],
+                    ]
+                )
+            )
+            facts_by_ref = {}
+            for fact in source_facts:
+                facts_by_ref.setdefault(fact.artifact_id, []).append(fact)
+                if fact.artifact_version_id:
+                    facts_by_ref.setdefault(fact.artifact_version_id, []).append(fact)
+            derivation_steps = []
+            if source_facts:
+                derivation_steps.append(
+                    DerivationStep(
+                        name="SOURCE_FACT_EXTRACTION",
+                        source_fact_ids=[fact.source_fact_id for fact in source_facts],
+                        input_artifact_refs=list(
+                            dict.fromkeys(
+                                fact.artifact_version_id or fact.artifact_id
+                                for fact in source_facts
+                            )
+                        ),
+                        input_artifact_version_ids=list(
+                            dict.fromkeys(
+                                fact.artifact_version_id
+                                for fact in source_facts
+                                if fact.artifact_version_id
+                            )
+                        ),
+                        output_evidence_refs=list(
+                            dict.fromkeys(
+                                fact.artifact_version_id or fact.artifact_id
+                                for fact in source_facts
+                            )
+                        ),
+                        output_artifact_version_ids=list(
+                            dict.fromkeys(
+                                fact.artifact_version_id
+                                for fact in source_facts
+                                if fact.artifact_version_id
+                            )
+                        ),
+                        verification_status="VERIFIED_EXACT_SOURCE_QUOTE",
+                    )
+                )
+            records_by_tool = {}
+            for record in completed.tool_calls:
+                records_by_tool.setdefault(record.get("tool_name"), []).append(record)
+            for observation in completed.observations:
+                tool_name = observation.get("tool_name")
+                if not tool_name:
+                    continue
+                records = records_by_tool.get(tool_name) or []
+                record = records.pop(0) if records else {}
+                task = next(
+                    (
+                        item for item in completed.completed_tasks
+                        if item.get("task_id") == record.get("task_id")
+                    ),
+                    {},
+                )
+                input_refs = list(
+                    dict.fromkeys(
+                        [
+                            *(task.get("evidence_refs") or []),
+                            *[
+                                str(value)
+                                for key, value in (record.get("arguments") or {}).items()
+                                if key.endswith("_id") and value
+                            ],
+                        ]
+                    )
+                )
+                input_fact_ids = list(
+                    dict.fromkeys(
+                        fact.source_fact_id
+                        for reference in input_refs
+                        for fact in facts_by_ref.get(reference, [])
+                    )
+                )
+                verification = observation.get("verification") or {}
+                verified_mutation = (
+                    record.get("mutation_fingerprint") is not None
+                    and verification.get("status") == "COMPLETED"
+                )
+                evidence_ref = observation.get("evidence_ref")
+                output_refs = []
+                if evidence_ref and evidence_ref in all_verified_refs:
+                    output_refs.append(str(evidence_ref))
+                if verified_mutation:
+                    output_refs.extend(
+                        str(value)
+                        for value in verification.get("artifact_ids", [])
+                        if value
+                    )
+                    if verification.get("artifact_id"):
+                        output_refs.append(str(verification["artifact_id"]))
+                output_refs = list(dict.fromkeys(output_refs))
+                output_versions = list(
+                    dict.fromkeys(
+                        fact.artifact_version_id
+                        for output_ref in output_refs
+                        for fact in facts_by_ref.get(output_ref, [])
+                        if fact.artifact_version_id
+                    )
+                )
+                derivation_steps.append(
+                    DerivationStep(
+                        name="TOOL_TRANSFORMATION",
+                        source_fact_ids=input_fact_ids,
+                        input_artifact_refs=input_refs,
+                        input_artifact_version_ids=list(
+                            dict.fromkeys(
+                                fact.artifact_version_id
+                                for reference in input_refs
+                                for fact in facts_by_ref.get(reference, [])
+                                if fact.artifact_version_id
+                            )
+                        ),
+                        output_evidence_refs=output_refs,
+                        output_artifact_version_ids=output_versions,
+                        tool_name=str(tool_name),
+                        verification_status=(
+                            "VERIFIED_POSTCONDITION"
+                            if verified_mutation
+                            else "OBSERVED_AND_EVIDENCE_CHECKED"
+                            if evidence_ref in all_verified_refs
+                            else str(observation.get("status") or "UNVERIFIED")
+                        ),
+                        reason_code=observation.get("reason_code"),
+                    )
+                )
             transformation_steps = list(
                 dict.fromkeys(
-                    str(item.get("tool_name"))
-                    for item in completed.tool_calls
-                    if item.get("tool_name")
+                    [
+                        *(step.name for step in derivation_steps[:1]),
+                        *(str(item.get("tool_name")) for item in completed.tool_calls if item.get("tool_name")),
+                    ]
                 )
             )
             try:
@@ -389,6 +557,7 @@ class AutomationWorker:
                         agent_run_id=completed.run_id,
                         source_fact_ids=[item.source_fact_id for item in source_facts],
                         transformation_steps=transformation_steps,
+                        steps=derivation_steps,
                         output_evidence_refs=verified_outputs,
                         model_metadata=completed.model_metadata,
                         outcome=terminal_status.value,

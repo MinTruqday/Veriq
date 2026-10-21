@@ -1,15 +1,13 @@
 import time
 
-import httpx
-
 import jwt
 from fastapi import HTTPException
 from loguru import logger
 from pymongo.errors import DuplicateKeyError
 
 from src.core.infrastructure.configuration import settings
-from src.tools.testing import INTERNAL_API_URL
 from src.core.infrastructure.mq import mq
+from src.core.security.guardrails import guardrails_engine
 from src.repositories.automation import automation_repository
 from src.services.project_access import project_access
 from src.tools.registry import registered_tools, tool_access
@@ -105,6 +103,15 @@ class AutomationService:
     ) -> AutomationRun:
         if any(item.project_id != payload.project_id for item in payload.evidence):
             raise HTTPException(status_code=422, detail={"code": "AUTOMATION_EVIDENCE_PROJECT_MISMATCH"})
+        if payload.change_simulation:
+            inspection = await guardrails_engine.async_inspect_input(
+                payload.change_simulation.proposed_source_text
+            )
+            if not inspection.get("is_safe", False):
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "CHANGE_SIMULATION_SOURCE_REJECTED"},
+                )
         if payload.intent:
             capability = registered_tools().get(payload.intent)
             access = tool_access(capability)
@@ -132,6 +139,7 @@ class AutomationService:
             target_artifact_ids=payload.target_artifact_ids,
             evidence=payload.evidence,
             constraints=payload.constraints,
+            change_simulation=payload.change_simulation,
         )
         await automation_repository.create_run(run)
         await self._checkpoint(run, AutomationCheckpointPhase.QUEUED)
@@ -245,39 +253,14 @@ class AutomationService:
         )
 
     async def _default_execution_principal(self, event, role, permissions):
-        """Use the project's assigned QA as the default executor for lifecycle automation.
+        """Run project automation as the event actor, without borrowing a project role.
 
-        The original actor remains the requester. The QA identity is the project's
-        existing accountable automation principal, not a platform-wide privilege.
+        Tool and service authorization still validate the actor's current project
+        permissions at execution time. This lets one person own the whole workflow
+        when their role grants the requested operation, while preventing implicit
+        QA elevation or cross-user execution.
         """
-        if role == "QA":
-            return event.requester_user_id, role, permissions
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.get(
-                f"{INTERNAL_API_URL}/kiem-thu/noi-bo/quan-tri/du-an/{event.project_id}/thanh-vien",
-                headers={"X-Internal-Token": settings.SECRET_KEY},
-            )
-        response.raise_for_status()
-        body = response.json()
-        members = body.get("data", body) if isinstance(body, dict) else body
-        if not isinstance(members, list):
-            raise HTTPException(status_code=502, detail={"code": "PROJECT_MEMBERS_INVALID"})
-        qa = next((member for member in members if self._is_active_qa(member)), None)
-        if not qa or not qa.get("user_id"):
-            return None, None, []
-        qa_token = self._token_for_user(str(qa["user_id"]))
-        qa_role, qa_permissions = await project_access(event.project_id, qa_token)
-        if qa_role != "QA":
-            raise HTTPException(status_code=403, detail={"code": "PROJECT_QA_PRINCIPAL_INVALID"})
-        return str(qa["user_id"]), qa_role, qa_permissions
-
-    @staticmethod
-    def _is_active_qa(member: dict) -> bool:
-        roles = member.get("project_roles")
-        if not isinstance(roles, list):
-            roles = []
-        roles = {str(role).upper() for role in [*roles, member.get("project_role")] if role}
-        return "QA" in roles and str(member.get("status") or "").upper() == "ACTIVE"
+        return event.requester_user_id, role, permissions
 
     async def _enqueue_event_runs(
         self,

@@ -21,10 +21,18 @@ async def compare_requirement_versions(requirement_id, from_version_id, to_versi
     by_id = {item["_id"]: item for item in versions}
     if set(by_id) != {from_version_id, to_version_id}:
         raise HTTPException(status_code=404, detail="Không tìm thấy đủ hai phiên bản")
+    before = by_id[from_version_id]
+    after = by_id[to_version_id]
+    before["acceptance_criteria"] = await requirement_analysis_repository.list_acceptance_criteria(
+        {"requirement_version_id": from_version_id}
+    )
+    after["acceptance_criteria"] = await requirement_analysis_repository.list_acceptance_criteria(
+        {"requirement_version_id": to_version_id}
+    )
     return {
         "from_version": by_id[from_version_id],
         "to_version": by_id[to_version_id],
-        "changes": semantic_changes(by_id[from_version_id], by_id[to_version_id]),
+        "changes": semantic_changes(before, after),
         "comparison_algorithm_version": 'semantic_diff',
     }
 

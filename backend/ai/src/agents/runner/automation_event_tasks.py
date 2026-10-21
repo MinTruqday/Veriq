@@ -52,6 +52,62 @@ def direct_capability_task(run, evidence_refs):
     )
     return tasks[0] if tasks and tasks[0].tool_calls else None
 
+
+def direct_change_simulation_task(run, state, evidence_refs):
+    if not (state.get("constraints") or {}).get("change_simulation"):
+        return None
+    simulation = (state.get("constraints") or {}).get("change_simulation_input") or {}
+    baseline_version_id = str(simulation.get("base_requirement_version_id") or "")
+    proposed_source_text = str(simulation.get("proposed_source_text") or "").strip()
+    if not baseline_version_id or not proposed_source_text:
+        return None
+    source = next(
+        (
+            item
+            for item in state.get("evidence", [])
+            if item.get("artifact_type") == "requirement_version"
+            and item.get("artifact_version_id") == baseline_version_id
+            and item.get("artifact_version_id") in evidence_refs
+        ),
+        None,
+    )
+    version_id = str(source.get("artifact_version_id")) if source else None
+    if not version_id:
+        return None
+    planned = [
+        PlannedTask(
+            domain="analysis",
+            objective=(
+                "Mô phỏng thay đổi Requirement dựa trên phiên bản chuẩn đã chỉ định; so sánh nội dung đề xuất "
+                "với baseline, lần theo đúng liên kết truy vết, phân loại artifact bị ảnh hưởng và không ghi dữ liệu"
+            ),
+            evidence_refs=evidence_refs,
+            constraints={
+                "change_simulation": True,
+                "change_simulation_input": simulation,
+                "continue_after_observation": True,
+            },
+            tool_calls=[
+                ToolCall(
+                    tool_name="get_requirement_version",
+                    arguments={"requirement_version_id": version_id},
+                ),
+                ToolCall(tool_name="get_traceability_links", arguments={"project_id": run.project_id}),
+                ToolCall(tool_name="calculate_coverage", arguments={"project_id": run.project_id}),
+            ],
+        )
+    ]
+    tasks = validated_tasks(
+        planned,
+        run,
+        evidence_refs,
+        maximum=1,
+        known_identifiers=[version_id, *evidence_refs],
+    )
+    if not tasks or not tasks[0].tool_calls:
+        return None
+    return tasks[0]
+
 def direct_document_ingestion_task(run, state, evidence_refs):
     if (
         not state.get("automatic")
@@ -367,7 +423,7 @@ def direct_event_observation_task(run, state, evidence_refs):
         objective, identifier_name = test_execution_observation_objective(), "result_id"
     elif trigger == "WORK_ITEM_CHANGED":
         source = next((item for item in evidence if item.get("artifact_type") == "work_item" and item.get("artifact_id")), None)
-        tool_name, domain, permission = "get_work_item", "analysis", "project.read"
+        tool_name, domain, permission = "get_work_item_impact_context", "analysis", "project.read"
         objective, identifier_name = work_item_changed_observation_objective(), "work_item_id"
     elif trigger == "TEST_CASE_CHANGED":
         source = next((item for item in evidence if item.get("artifact_type") == "test_case_draft" and item.get("artifact_id")), None)

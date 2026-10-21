@@ -209,7 +209,7 @@ export default function DashboardPage({ project }) {
                   </>
                 )}
                 {can("proposal.read") && (
-                  <Metric label="Đề xuất chờ duyệt" value={dashboard.pending_proposals} />
+                  <Metric label="Đề xuất đang chờ xử lý" value={dashboard.pending_proposals} />
                 )}
                 {can("testrun.read") && (
                   <Metric label="Lần chạy hiện tại" value={dashboard.current_runs} />

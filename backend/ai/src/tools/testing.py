@@ -315,6 +315,7 @@ from src.tools.execution_tools import (
     get_test_plan,
     get_release,
     get_work_item,
+    get_work_item_impact_context,
     get_historical_defects,
     create_impact_analysis,
     create_maintenance_proposal,

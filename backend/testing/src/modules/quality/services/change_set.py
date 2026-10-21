@@ -54,13 +54,31 @@ async def enrich_change_set_records(items, project_id):
 
 
 async def mark_previous_traces_stale(change_set):
-    
     criteria = await analysis_repository.list_acceptance_criteria(
         change_set["from_version_id"], 10000
     )
+    affected_ids = [change_set["from_version_id"]]
+    for change in change_set.get("changes", []):
+        before_criteria = change.get("before", {}).get("fields", {}).get("acceptance_criteria") or []
+        after_criteria = change.get("after", {}).get("fields", {}).get("acceptance_criteria") or []
+        if not before_criteria and not after_criteria:
+            continue
+        before_by_key = {
+            item.get("key"): (item.get("text"), item.get("source_span"))
+            for item in before_criteria
+        }
+        after_by_key = {
+            item.get("key"): (item.get("text"), item.get("source_span"))
+            for item in after_criteria
+        }
+        affected_keys = {
+            key for key in before_by_key.keys() | after_by_key.keys()
+            if before_by_key.get(key) != after_by_key.get(key)
+        }
+        affected_ids.extend(item["_id"] for item in criteria if item.get("key") in affected_keys)
     await analysis_repository.mark_traces_stale(
         change_set["project_id"],
-        [change_set["from_version_id"], *[item["_id"] for item in criteria]],
+        affected_ids,
         'CONFIRMED',
         'STALE',
         now(),
@@ -80,9 +98,38 @@ async def create_change_set_record(requirement_id, payload, user):
     existing = await analysis_repository.find_change_set_for_target(
         requirement_id, payload.to_version_id
     )
-    if existing:
+    if existing and existing.get("changes"):
         return existing
-    changes = semantic_changes(by_id[payload.from_version_id], by_id[payload.to_version_id])
+    before = by_id[payload.from_version_id]
+    after = by_id[payload.to_version_id]
+    before["acceptance_criteria"] = await analysis_repository.list_acceptance_criteria(
+        payload.from_version_id, 10000
+    )
+    after["acceptance_criteria"] = await analysis_repository.list_acceptance_criteria(
+        payload.to_version_id, 10000
+    )
+    changes = semantic_changes(before, after)
+    if existing:
+        if not changes:
+            return existing
+        refreshed = await analysis_repository.refresh_empty_change_set(
+            existing["_id"], requirement["project_id"], existing.get("revision", 1), changes
+        )
+        if not refreshed:
+            latest = await analysis_repository.find_change_set_for_target(
+                requirement_id, payload.to_version_id
+            )
+            return latest or existing
+        await mark_previous_traces_stale(refreshed)
+        await audit(
+            user.id,
+            "requirement_change_set_repaired",
+            "RequirementChangeSet",
+            refreshed["_id"],
+            requirement["project_id"],
+            {"change_count": len(changes)},
+        )
+        return refreshed
     change_set = {
         "_id": new_id('CHG'),
         "project_id": requirement["project_id"],
@@ -97,7 +144,8 @@ async def create_change_set_record(requirement_id, payload, user):
         "created_at": now(),
     }
     await analysis_repository.insert_change_set(change_set)
-    await mark_previous_traces_stale(change_set)
+    if changes:
+        await mark_previous_traces_stale(change_set)
     await audit(
         user.id,
         "requirement_change_set_created",

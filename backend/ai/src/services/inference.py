@@ -66,6 +66,7 @@ async def structured(
     max_tokens=1200,
     timeout_seconds=90,
     provider_schema=True,
+    initial_temperature=0.1,
 ):
     response_schema = schema.model_json_schema()
     constrained_prompt = f"{prompt}\n{schema_instruction(response_schema)}"
@@ -79,7 +80,7 @@ async def structured(
         raw = await chat(
             messages,
             max_tokens=max_tokens,
-            temperature=0.1 if attempt == 0 else 0,
+            temperature=initial_temperature if attempt == 0 else 0,
             attempts=1,
             timeout_seconds=timeout_seconds,
             response_schema=response_schema if provider_schema else None,

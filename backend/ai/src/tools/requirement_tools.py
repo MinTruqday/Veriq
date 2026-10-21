@@ -1,5 +1,5 @@
 import json
-from typing import Annotated
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -117,20 +117,41 @@ async def create_requirement_draft(
 
 @with_tool_access(("analysis", "test_design"), "PROPOSE", "trace.create")
 async def create_trace_link_suggestion(
-    trace_json: Annotated[
-        str, Field(description="Trace link JSON with evidence confidence and project identifier")
+    project_id: Annotated[str, Field(description="Project that owns both linked artifacts")],
+    source_type: Annotated[
+        Literal["requirement_version", "acceptance_criterion", "test_scenario"],
+        Field(description="Authoritative source artifact type")
     ],
+    source_id: Annotated[str, Field(description="Existing source artifact identifier")],
+    target_id: Annotated[str, Field(description="Existing test case version identifier")],
+    link_type: Annotated[
+        Literal["verifies", "covers", "derived_from", "relates_to"],
+        Field(description="Semantic relationship supported by the supplied evidence")
+    ] = "verifies",
+    confidence: Annotated[float, Field(ge=0, le=1)] = 1,
+    evidence: Annotated[
+        list[dict[str, Any]], Field(description="Evidence objects grounding this relationship")
+    ] = Field(default_factory=list),
     config: RunnableConfig = None,
 ) -> str:
     """Create an unconfirmed trace link suggestion"""
-    payload = parse(trace_json)
-    if payload:
-        payload["origin"] = "ai_suggested"
-    return (
-        await call("POST", "/lien-ket-truy-vet", config, payload)
-        if payload
-        else json.dumps({"status": "invalid_payload"})
-    )
+    if not evidence:
+        return json.dumps(
+            {"status": "insufficient_evidence", "reason_code": "TRACE_EVIDENCE_REQUIRED"},
+            ensure_ascii=False,
+        )
+    payload = {
+        "project_id": project_id,
+        "source_type": source_type,
+        "source_id": source_id,
+        "target_type": "test_case_version",
+        "target_id": target_id,
+        "link_type": link_type,
+        "confidence": confidence,
+        "origin": "ai_suggested",
+        "evidence": evidence,
+    }
+    return await call("POST", "/lien-ket-truy-vet", config, payload)
 
 @with_tool_access(
     ("analysis",),

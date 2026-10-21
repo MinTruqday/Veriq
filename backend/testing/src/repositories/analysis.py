@@ -31,6 +31,24 @@ class AnalysisRepository:
         await database.value.requirement_change_sets.insert_one(value)
         return value
 
+    async def refresh_empty_change_set(
+        self, change_set_id, project_id, revision, changes
+    ):
+        return await database.value.requirement_change_sets.find_one_and_update(
+            {
+                "_id": change_set_id,
+                "project_id": project_id,
+                "revision": revision,
+                "changes": [],
+                "status": "READY",
+            },
+            {
+                "$set": {"changes": changes, "model_version": "semantic_diff"},
+                "$inc": {"revision": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
     async def mark_traces_stale(self, project_id, source_ids, confirmed_status, stale_status, updated_at):
         await database.value.trace_links.update_many(
             {

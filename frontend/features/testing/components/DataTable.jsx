@@ -31,6 +31,7 @@ export default function DataTable({
   selectionLabel = "Chọn mục",
   getRowKey,
   minTableWidth = 0,
+  layout = "table",
 }) {
   if (!items?.length)
     return (
@@ -89,72 +90,75 @@ export default function DataTable({
     }
   };
   return (
-    <>
-      <HorizontalScrollCue
-        ariaLabel="Bảng dữ liệu"
-        className="hidden 2xl:grid"
-        scrollLabel="bảng dữ liệu"
-        viewportClassName="min-w-0 overflow-x-auto"
-      >
-        <table
-          className="w-full text-left text-[13px]"
-          style={{ minWidth: `${desktopTableWidth}px` }}
+    <div
+      className={`data-table-responsive min-w-0 ${layout === "wide-table" ? "data-table-responsive-wide" : ""}`}
+    >
+      <div className="data-table-desktop">
+        <HorizontalScrollCue
+          ariaLabel="Bảng dữ liệu"
+          scrollLabel="bảng dữ liệu"
+          viewportClassName="min-w-0 overflow-x-auto"
         >
-          <thead className="bg-surface-quiet text-[11px] uppercase tracking-wide text-ink-muted">
-            <tr>
-              {selectable && (
-                <th className="w-12 px-4 py-3">
-                  <input
-                    aria-label="Chọn tất cả mục trên trang"
-                    checked={allSelected}
-                    type="checkbox"
-                    onChange={toggleAll}
-                  />
-                </th>
-              )}
-              {visibleColumns.map((column) => (
-                <th className="whitespace-nowrap px-4 py-3 font-semibold" key={column.key}>
-                  {column.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {items.map((item, index) => (
-              <tr
-                key={rowKey(item, index)}
-                className={`${onSelect ? "cursor-pointer hover:bg-surface-quiet" : ""} ${activeRowId === itemId(item) ? "bg-brand-soft/60" : ""}`}
-                onClick={(event) => selectRow(event, item)}
-                onKeyDown={(event) => openFromKeyboard(event, item)}
-                tabIndex={onSelect ? 0 : undefined}
-                aria-label={onSelect ? `Mở ${itemId(item) ?? `dòng ${index + 1}`}` : undefined}
-              >
+          <table
+            className="w-full text-left text-[13px]"
+            style={{ minWidth: `${desktopTableWidth}px` }}
+          >
+            <thead className="bg-surface-quiet text-[11px] uppercase tracking-wide text-ink-muted">
+              <tr>
                 {selectable && (
-                  <td className="w-12 px-4 py-3 align-top">
+                  <th className="w-12 px-4 py-3">
                     <input
-                      aria-label={`${selectionLabel} ${itemId(item)}`}
-                      checked={selectedIds.includes(itemId(item))}
-                      disabled={itemId(item) === undefined || itemId(item) === null}
+                      aria-label="Chọn tất cả mục trên trang"
+                      checked={allSelected}
                       type="checkbox"
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={() => toggle(itemId(item))}
+                      onChange={toggleAll}
                     />
-                  </td>
+                  </th>
                 )}
                 {visibleColumns.map((column) => (
-                  <td
-                    className="min-w-0 break-words px-4 py-3 align-top [&_button]:whitespace-nowrap"
-                    key={column.key}
-                  >
-                    {renderValue(column, item)}
-                  </td>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold" key={column.key}>
+                    {column.label}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </HorizontalScrollCue>
-      <div className="divide-y divide-border p-4 2xl:hidden">
+            </thead>
+            <tbody className="divide-y divide-border">
+              {items.map((item, index) => (
+                <tr
+                  key={rowKey(item, index)}
+                  className={`${onSelect ? "cursor-pointer hover:bg-surface-quiet" : ""} ${activeRowId === itemId(item) ? "bg-brand-soft/60" : ""}`}
+                  onClick={(event) => selectRow(event, item)}
+                  onKeyDown={(event) => openFromKeyboard(event, item)}
+                  tabIndex={onSelect ? 0 : undefined}
+                  aria-label={onSelect ? `Mở ${itemId(item) ?? `dòng ${index + 1}`}` : undefined}
+                >
+                  {selectable && (
+                    <td className="w-12 px-4 py-3 align-top">
+                      <input
+                        aria-label={`${selectionLabel} ${itemId(item)}`}
+                        checked={selectedIds.includes(itemId(item))}
+                        disabled={itemId(item) === undefined || itemId(item) === null}
+                        type="checkbox"
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={() => toggle(itemId(item))}
+                      />
+                    </td>
+                  )}
+                  {visibleColumns.map((column) => (
+                    <td
+                      className="min-w-0 break-words px-4 py-3 align-top [&_button]:whitespace-nowrap"
+                      key={column.key}
+                    >
+                      {renderValue(column, item)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </HorizontalScrollCue>
+      </div>
+      <div className="data-table-mobile divide-y divide-border p-4">
         {selectable && (
           <label
             className="flex min-h-11 items-center gap-3 pb-3 text-[12px] font-semibold text-ink-muted"
@@ -211,6 +215,6 @@ export default function DataTable({
           </article>
         ))}
       </div>
-    </>
+    </div>
   );
 }

@@ -257,7 +257,9 @@ export function WorkspacePage({ title, description, actions, children }) {
 
   return (
     <div className="workspace-page mx-auto w-full max-w-[1480px] min-w-0 space-y-6 py-5 sm:py-6 xl:py-8">
-      <header className="grid min-w-0 grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(0,auto)] 2xl:items-end">
+      <header
+        className={`workspace-page-header min-w-0 gap-4 ${actions ? "workspace-page-header-with-actions" : ""}`}
+      >
         <div className="min-w-0">
           <h1 className="break-words text-[28px] font-semibold leading-[1.12] tracking-[-0.04em] sm:text-[32px] xl:text-[36px]">
             {title}
@@ -267,7 +269,7 @@ export function WorkspacePage({ title, description, actions, children }) {
           )}
         </div>
         {actions && (
-          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 2xl:max-w-[52rem] 2xl:justify-end">
+          <div className="workspace-page-actions flex min-w-0 max-w-full flex-wrap items-center gap-2">
             {actions}
           </div>
         )}
@@ -312,20 +314,26 @@ export function Panel({ title, description, actions, children, className = "" })
   return (
     <section className={`workspace-panel min-w-0 ${className}`}>
       {(title || actions) && (
-        <div className="flex min-w-0 flex-col gap-3 border-b border-border bg-surface-raised/50 px-4 py-4 sm:px-5">
-          <div className="w-full min-w-0">
+        <div
+          className={`workspace-panel-header min-w-0 gap-3 border-b border-border bg-surface-raised/50 px-4 py-4 sm:px-5 ${actions ? "workspace-panel-header-with-actions" : ""}`}
+        >
+          <div className="workspace-panel-heading min-w-0">
             {title && (
-              <h2 className="w-full min-w-0 whitespace-normal break-words font-semibold leading-6">
+              <h2 className="min-w-0 whitespace-normal break-normal font-semibold leading-6">
                 {title}
               </h2>
             )}
             {description && (
-              <p className="mt-1 w-full min-w-0 break-words text-[12px] leading-5 text-ink-muted">
+              <p className="mt-1 max-w-2xl break-words text-[12px] leading-5 text-ink-muted">
                 {description}
               </p>
             )}
           </div>
-          {actions && <div className="w-full min-w-0 max-w-full">{actions}</div>}
+          {actions && (
+            <div className="workspace-panel-actions flex w-full min-w-0 max-w-full flex-wrap items-center gap-2">
+              {actions}
+            </div>
+          )}
         </div>
       )}
       {children}

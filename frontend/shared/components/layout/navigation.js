@@ -335,7 +335,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
           },
           {
             id: "ai-review",
-            label: "Tự động hóa AI",
+            label: "Đề xuất AI",
             href: `${root}/${PROJECT_SECTION_SLUGS.aiReview}`,
             icon: BrainCircuit,
             permission: "proposal.read",

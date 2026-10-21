@@ -166,7 +166,7 @@ export default function RequirementsListPanel({
         </div>
       </details>
       <DataTable
-        minTableWidth={1180}
+        minTableWidth={960}
         onSelect={
           onSelect || ((item) => window.location.assign(`/du-an/${projectId}/yeu-cau/${item._id}`))
         }

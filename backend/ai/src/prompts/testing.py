@@ -2,6 +2,10 @@ import json
 
 from src.prompts.requirement_templates import REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS
 from src.prompts.testing_contract import STRUCTURED_TESTING_TEMPLATE
+from src.prompts.testability_benchmark import (
+    CLARIFICATION_BASELINE,
+    TESTABILITY_BLUEPRINT_COMPILATION,
+)
 
 
 def build_testing_prompt(capability, project_id, instruction, evidence, evidence_refs, schema):
@@ -15,4 +19,8 @@ def build_testing_prompt(capability, project_id, instruction, evidence, evidence
     contract = (schema.__doc__ or "").strip()
     if capability == "requirement_template_synthesis":
         contract = f"{contract}\n{REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS}"
+    elif capability == "testability_blueprint_compilation":
+        contract = f"{contract}\n{TESTABILITY_BLUEPRINT_COMPILATION}"
+    elif capability == "clarification_baseline":
+        contract = f"{contract}\n{CLARIFICATION_BASELINE}"
     return f"{prompt}\n<capability_contract>{contract}</capability_contract>" if contract else prompt

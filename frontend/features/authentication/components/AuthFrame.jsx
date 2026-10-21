@@ -28,7 +28,7 @@ export default function AuthFrame({ title, description, children, footer, width 
       </div>
       <div className="mx-auto flex min-h-[calc(100dvh-104px)] min-w-0 w-full max-w-[1180px] items-center justify-center py-6 sm:py-8">
         <section
-          className={`min-w-0 w-full ${width === "md" ? "max-w-[520px]" : "max-w-[500px]"} rounded-3xl bg-surface p-6 shadow-[0_24px_70px_rgba(48,47,42,0.12)] sm:p-9`}
+          className={`min-w-0 w-full max-w-full ${width === "md" ? "sm:max-w-[520px]" : "sm:max-w-[500px]"} rounded-3xl bg-surface p-6 shadow-[0_24px_70px_rgba(48,47,42,0.12)] sm:p-9`}
         >
           <header className="mb-6">
             <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink">

@@ -1,6 +1,7 @@
 from src.agents.runner.automation_event_tasks import (
     direct_approved_plan_task,
     direct_capability_task,
+    direct_change_simulation_task,
     direct_changed_plan_task,
     direct_defect_event_task,
     direct_document_ingestion_task,
@@ -11,11 +12,13 @@ from src.agents.runner.automation_event_tasks import (
 from src.agents.runner.automation_validation import (
     bounded_tasks,
     mutation_fingerprint,
+    observed_draft_identifiers,
     observed_identifiers,
     proposal_fingerprint,
     validated_tasks,
     verified_tool_call_records,
 )
+from src.tools.registry import registered_tools, tool_access
 
 def available_tools(permissions, intent="", compact=False, actions=None):
     values = []

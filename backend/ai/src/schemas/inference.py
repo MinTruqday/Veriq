@@ -26,6 +26,11 @@ from src.schemas.inference_requirements import (
     RequirementTemplateSynthesisOutput,
     RequirementTemplateReviewFindingOutput,
     RequirementTemplateReviewOutput,
+    TestabilityBlueprintObligationOutput,
+    TestabilityBlueprintClarificationOutput,
+    TestabilityBlueprintCompilationOutput,
+    ClarificationBaselineQuestionOutput,
+    ClarificationBaselineOutput,
 )
 from src.schemas.inference_test_design import (
     GeneratedStepOutput,

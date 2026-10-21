@@ -1,6 +1,17 @@
 import re
 from difflib import SequenceMatcher
 
+from src.core.common import plain_text
+
+def _criterion_snapshot(items):
+    return [
+        {
+            "key": str(item.get("key") or ""),
+            "text": plain_text(item.get("content_doc") or {}).strip(),
+            "source_span": item.get("source_span"),
+        }
+        for item in items or []
+    ]
 
 
 def semantic_candidate_score(requirement_text, test_text):
@@ -16,25 +27,67 @@ def semantic_changes(before, after):
     
     before_text = before.get("plain_text_projection", "")
     after_text = after.get("plain_text_projection", "")
-    
-    changed_fields = [field for field in ['title', 'actors', 'business_rules', 'dependencies'] if before.get(field) != after.get(field)]
+
+    before_criteria = _criterion_snapshot(before.get("acceptance_criteria"))
+    after_criteria = _criterion_snapshot(after.get("acceptance_criteria"))
+    changed_fields = [
+        field
+        for field in [
+            "title",
+            "actors",
+            "business_rules",
+            "dependencies",
+        ]
+        if before.get(field) != after.get(field)
+    ]
+    criteria_changed = before_criteria != after_criteria
+    if criteria_changed:
+        changed_fields.append("acceptance_criteria")
     content_changed = before_text.strip() != after_text.strip()
     if not content_changed and not changed_fields:
         return []
     ratio = SequenceMatcher(None, before_text.lower(), after_text.lower()).ratio()
+    source_changed = content_changed or bool(changed_fields)
+    evidence = [
+        {
+            "artifact_version_id": before["_id"],
+            "text": before_text[:500],
+        },
+        {
+            "artifact_version_id": after["_id"],
+            "text": after_text[:500],
+        },
+    ]
+    if criteria_changed:
+        evidence = [
+            {
+                "artifact_version_id": before["_id"],
+                "text": "\n".join(item["text"] for item in before_criteria if item["text"]),
+                "acceptance_criteria": before_criteria,
+            },
+            {
+                "artifact_version_id": after["_id"],
+                "text": "\n".join(item["text"] for item in after_criteria if item["text"]),
+                "acceptance_criteria": after_criteria,
+            },
+        ]
     return [
         {
-            "type": 'MODIFIED_INPUT'
-            if content_changed
-            else 'TEXT_ONLY',
+            "type": "MODIFIED_INPUT" if source_changed else "TEXT_ONLY",
             "subject": "content" if content_changed else ",".join(changed_fields),
             "before": {
                 "text": before_text[: 500],
-                "fields": {field: before.get(field) for field in changed_fields},
+                "fields": {
+                    field: before_criteria if field == "acceptance_criteria" else before.get(field)
+                    for field in changed_fields
+                },
             },
             "after": {
                 "text": after_text[: 500],
-                "fields": {field: after.get(field) for field in changed_fields},
+                "fields": {
+                    field: after_criteria if field == "acceptance_criteria" else after.get(field)
+                    for field in changed_fields
+                },
             },
             "confidence": round(
                 max(
@@ -43,16 +96,7 @@ def semantic_changes(before, after):
                 ),
                 4,
             ),
-            "evidence": [
-                {
-                    "artifact_version_id": before["_id"],
-                    "text": before_text[: 500],
-                },
-                {
-                    "artifact_version_id": after["_id"],
-                    "text": after_text[: 500],
-                },
-            ],
+            "evidence": evidence,
         }
     ]
 

@@ -3,24 +3,18 @@ from typing import Annotated, Any, List, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+RequirementQualityCategory = Literal[
+    "AMBIGUITY", "OMISSION", "INCONSISTENCY", "CONTRADICTION", "UNTESTABLE",
+    "MISSING_ACCEPTANCE_CRITERIA", "MISSING_ERROR_BEHAVIOR",
+    "MISSING_PERMISSION_RULE", "MISSING_BOUNDARY", "MISSING_STATE_RULE",
+    "MISSING_DATA_RULE", "MISSING_NON_FUNCTIONAL_CRITERIA", "OTHER",
+]
+
+
 class RequirementQualityFindingOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    category: Literal[
-        "AMBIGUITY",
-        "OMISSION",
-        "INCONSISTENCY",
-        "CONTRADICTION",
-        "UNTESTABLE",
-        "MISSING_ACCEPTANCE_CRITERIA",
-        "MISSING_ERROR_BEHAVIOR",
-        "MISSING_PERMISSION_RULE",
-        "MISSING_BOUNDARY",
-        "MISSING_STATE_RULE",
-        "MISSING_DATA_RULE",
-        "MISSING_NON_FUNCTIONAL_CRITERIA",
-        "OTHER",
-    ]
+    category: RequirementQualityCategory
     severity: Literal["error", "warning", "info"]
     message: str = Field(min_length=2, max_length=5000)
     suggestion: str = Field(min_length=2, max_length=5000)
@@ -171,4 +165,76 @@ class RequirementTemplateReviewOutput(BaseModel):
     evidence_refs: List[str] = Field(min_length=1, max_length=100)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=20)
+
+
+class TestabilityBlueprintObligationOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(min_length=1, max_length=160)
+    obligation: str = Field(min_length=2, max_length=2000)
+    source_ref: str = Field(min_length=1, max_length=200)
+    source_quote: str = Field(min_length=2, max_length=2000)
+
+
+class TestabilityBlueprintClarificationOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=160)
+    category: RequirementQualityCategory
+    question: str = Field(min_length=2, max_length=1000)
+    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    evidence_refs: List[str] = Field(min_length=1, max_length=20)
+    source_quote: str = Field(min_length=2, max_length=2000)
+    unlocks_obligation_keys: List[str] = Field(default_factory=list, max_length=100)
+
+
+class TestabilityBlueprintCompilationOutput(BaseModel):
+    """Compile verified source facts into uniquely keyed test obligations and actionable clarifications. Each obligation needs one allowed exact source quote that directly entails it. Do not invent behavior, expected results, actors, limits, or rules. Ask a clarification only when missing or conflicting source information blocks a specific obligation. Use stable concise keys and do not repeat equivalent obligations. Do not generate test cases."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    capability: Literal["testability_blueprint_compilation"] = "testability_blueprint_compilation"
+    obligations: List[TestabilityBlueprintObligationOutput] = Field(default_factory=list, max_length=300)
+    clarifications: List[TestabilityBlueprintClarificationOutput] = Field(default_factory=list, max_length=100)
+    evidence_refs: List[str] = Field(min_length=1, max_length=200)
+    confidence: float = Field(ge=0, le=1)
+    warnings: List[str] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_blueprint_links(self):
+        obligation_keys = [item.key for item in self.obligations]
+        clarification_codes = [item.code for item in self.clarifications]
+        if len(set(obligation_keys)) != len(obligation_keys):
+            raise ValueError("benchmark_obligation_keys_must_be_unique")
+        if len(set(clarification_codes)) != len(clarification_codes):
+            raise ValueError("benchmark_clarification_codes_must_be_unique")
+        if any(
+            not set(item.unlocks_obligation_keys).issubset(obligation_keys)
+            for item in self.clarifications
+        ):
+            raise ValueError("benchmark_clarification_unlocks_unknown_obligation")
+        return self
+
+
+class ClarificationBaselineQuestionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=160)
+    category: RequirementQualityCategory
+    question: str = Field(min_length=2, max_length=1000)
+    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    evidence_refs: List[str] = Field(min_length=1, max_length=20)
+    source_quote: str = Field(min_length=2, max_length=2000)
+
+
+class ClarificationBaselineOutput(BaseModel):
+    """Ask the smallest set of source-grounded questions needed to make a requirement testable, without first decomposing it into test obligations. Return no question for details that are not needed to test stated behavior. Never invent missing behavior or treat absence alone as a defect."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    capability: Literal["clarification_baseline"] = "clarification_baseline"
+    clarifications: List[ClarificationBaselineQuestionOutput] = Field(default_factory=list, max_length=100)
+    evidence_refs: List[str] = Field(min_length=1, max_length=200)
+    confidence: float = Field(ge=0, le=1)
+    warnings: List[str] = Field(default_factory=list, max_length=50)
 

@@ -4,7 +4,9 @@ export default function PageHeader({ title, showTitle = true, description, actio
   }
   return (
     <header className="mb-6 min-w-0">
-      <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div
+        className={`workspace-page-header min-w-0 gap-4 ${actions ? "workspace-page-header-with-actions" : ""}`}
+      >
         <div className="min-w-0">
           <h1 className={showTitle ? "product-heading" : "sr-only"}>{title}</h1>
           {showTitle && description && (
@@ -15,7 +17,7 @@ export default function PageHeader({ title, showTitle = true, description, actio
           {meta && <div className="mt-2 text-[13px] text-ink-muted">{meta}</div>}
         </div>
         {actions && (
-          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 xl:shrink-0 xl:justify-end">
+          <div className="workspace-page-actions flex min-w-0 max-w-full flex-wrap items-center gap-2">
             {actions}
           </div>
         )}

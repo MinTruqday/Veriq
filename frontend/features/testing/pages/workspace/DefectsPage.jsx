@@ -761,6 +761,7 @@ export default function DefectsPage({ project }) {
           </div>
         </details>
         <DataTable
+          layout="wide-table"
           items={items}
           empty="Chưa có lỗi"
           columns={[

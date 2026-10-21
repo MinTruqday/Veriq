@@ -12,6 +12,7 @@
 | `automation_events.py` | `services/automation.py`, `agents/runner/automation_event_tasks.py` | Mục tiêu riêng cho từng sự kiện nghiệp vụ và fallback mục tiêu event |
 | `requirement_templates.py` | `tools/requirement_document_workflow.py` | Chỉ dẫn tổng hợp blueprint, kèm facts đã kiểm chứng |
 | `test_generation.py` | Requirement ingestion/change workflows | Chỉ dẫn tạo test theo phạm vi còn thiếu, có bằng chứng và tránh trùng |
+| `testability_benchmark.py` | `services/testability_benchmark.py` qua `services/ai_automation.py` | Compiler dùng facts đã xác minh để lập nghĩa vụ và câu hỏi; baseline hỏi làm rõ không lập nghĩa vụ trước |
 | `defect_analysis.py` | `tools/execution_workflows.py` | Chỉ dẫn tạo giả thuyết defect, không biến giả thuyết thành nguyên nhân xác nhận |
 | `requirement_analysis.py` | `tools/requirement_tools.py` | Chỉ dẫn rà chất lượng Requirement |
 
@@ -23,7 +24,7 @@
 | `testing_analysis.py` | `testing_contract.py` | Các bước phân tích nội bộ và kiểm tra tính nhất quán |
 | `testing_language.py` | `testing_contract.py` | Ngôn ngữ đầu ra và bảo toàn định danh kỹ thuật |
 | `testing_evidence.py` | `testing_contract.py` | Ranh giới bằng chứng, trích dẫn và giới hạn suy diễn |
-| `testing_governance.py` | `testing_contract.py` | Giới hạn hành động và quy trình phê duyệt |
+| `testing_governance.py` | `testing_contract.py` | Tách capability gợi ý khỏi workflow tự động đã được phân quyền; nền tảng vẫn kiểm soát quyền, audit và xác minh |
 | `testing_examples.py` | `testing_contract.py` | Các ví dụ hành vi đúng/sai của hợp đồng kiểm thử |
 | `testing_contract.py` | `testing.py` | Ghép các phần thành hợp đồng dùng chung, không sở hữu nội dung nghiệp vụ riêng |
 | `testing.py` | `services/ai_automation.py` | Ghép yêu cầu người dùng, bằng chứng và schema đầu ra thành prompt của capability |
@@ -43,7 +44,7 @@
 
 `api/automation.py` → `services/automation.py` → `runtime/automation_worker.py` → `agents/runner/automation_graph.py` → planner, tool, xác minh và tổng hợp. Worker truyền `run_name`, tag và metadata cho LangGraph để LangSmith có thể gắn trace khi tracing đã được cấu hình.
 
-Sự kiện tài liệu mới đi qua trích xuất fact đã xác minh trước khi workflow Requirements nhận chúng. Planner nhận lại chính các fact có quote thuộc evidence của run, cùng reference của artifact và phiên bản; fact không được xác minh không trở thành căn cứ sinh artifact. Thay đổi nguồn dùng run `CHANGE_SIMULATION` chỉ cho phép công cụ `READ`; nó không ghi Requirement, Test Case, waiver hay quyết định Release.
+Sự kiện tài liệu mới đi qua trích xuất fact đã xác minh trước khi workflow Requirements nhận chúng. Planner nhận lại chính các fact có quote thuộc evidence của run, cùng reference của artifact và phiên bản; fact không được xác minh không trở thành căn cứ sinh artifact. Mô phỏng thay đổi yêu cầu baseline đúng phiên bản Requirement và nội dung đề xuất chưa được chấp nhận; sau khi đọc baseline, liên kết và dữ liệu scope, graph quay lại planner để so sánh và tạo kế hoạch biên dịch tăng dần. Nội dung đề xuất không được coi là bằng chứng chuẩn. Run `CHANGE_SIMULATION` chỉ cho phép công cụ `READ`; nó không ghi Requirement, Test Case, waiver hay quyết định Release.
 
 MCP chỉ là cổng công cụ ngoài theo kết nối dự án, danh sách tool đọc được cấp rõ ràng và quyền đọc của project. Output MCP được kiểm tra an toàn trước khi trở lại agent. Service Veriq tiếp tục sở hữu dữ liệu, quyền, workflow, version và audit nghiệp vụ.
 

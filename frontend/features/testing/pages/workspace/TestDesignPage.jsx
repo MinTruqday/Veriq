@@ -216,31 +216,34 @@ export default function TestDesignPage({ project, workspaceView }) {
         apiArtifactValues,
         operationValues,
       ] = await Promise.all([
+        (showCases || showAi || showScenarios || showAdequacy) &&
         permissions.includes("requirement.read")
           ? testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" })
           : Promise.resolve([]),
-        permissions.includes("testcondition.read")
+        (showCases || showAi || showScenarios) && permissions.includes("testcondition.read")
           ? testingApi.listTestConditions(project._id, { status: "APPROVED", page_size: 200 })
           : Promise.resolve({ items: [] }),
-        permissions.includes("testscenario.read")
+        showScenarios && permissions.includes("testscenario.read")
           ? testingApi.listScenarios(project._id, scenarioFilters)
           : Promise.resolve([]),
-        canReadTestData ? testingApi.listDataSets(project._id) : Promise.resolve([]),
-        testingApi.listTestDrafts(project._id),
-        testingApi.listTestCasePage(project._id, {
-          ...testFilters,
-          page: testPage,
-          page_size: 50,
-        }),
-        permissions.includes("testsuite.read")
+        showCases && canReadTestData ? testingApi.listDataSets(project._id) : Promise.resolve([]),
+        showCases || showImport ? testingApi.listTestDrafts(project._id) : Promise.resolve([]),
+        showCases || showAutomation || showImport
+          ? testingApi.listTestCasePage(project._id, {
+              ...testFilters,
+              page: testPage,
+              page_size: 50,
+            })
+          : Promise.resolve({ items: [], total: 0 }),
+        (showCases || workspaceView === "test-sets") && permissions.includes("testsuite.read")
           ? testingApi.listSuites(project._id)
           : Promise.resolve([]),
-        testingApi.listTestRepository(project._id),
-        testingApi.listReusableTestSteps(project._id),
-        permissions.includes("apiartifact.read")
+        showCases ? testingApi.listTestRepository(project._id) : Promise.resolve([]),
+        showCases ? testingApi.listReusableTestSteps(project._id) : Promise.resolve([]),
+        showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiArtifacts(project._id)
           : Promise.resolve([]),
-        permissions.includes("apiartifact.read")
+        showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiOperations(project._id)
           : Promise.resolve([]),
       ]);
@@ -287,8 +290,16 @@ export default function TestDesignPage({ project, workspaceView }) {
     permissions,
     project._id,
     scenarioFilters,
+    showAdequacy,
+    showAi,
+    showApi,
+    showAutomation,
+    showCases,
+    showImport,
+    showScenarios,
     testFilters,
     testPage,
+    workspaceView,
   ]);
   useEffect(() => {
     void load();

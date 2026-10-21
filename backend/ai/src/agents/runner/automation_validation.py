@@ -2,7 +2,7 @@ import hashlib
 import json
 
 from src.runtime.limits import limits
-from src.schemas.agent import AgentTask, PlannedTask, ToolCall
+from src.schemas.agent import AgentTask, PlannedTask, ToolCall, ToolExecutionStatus
 from src.tools.registry import audit_arguments, registered_tools, tool_access
 
 
@@ -16,6 +16,25 @@ def observed_identifiers(value):
     elif isinstance(value, list):
         for item in value:
             identifiers.update(observed_identifiers(item))
+    return identifiers
+
+
+def observed_draft_identifiers(value):
+    """Return only identifiers explicitly typed as drafts in source or tool payloads."""
+    identifiers = set()
+    if isinstance(value, dict):
+        artifact_type = str(value.get("artifact_type") or "").casefold()
+        if artifact_type.endswith("_draft") and value.get("artifact_id"):
+            identifiers.add(str(value["artifact_id"]))
+        for key, item in value.items():
+            if key.endswith("_draft_id") and isinstance(item, str):
+                identifiers.add(item)
+            elif key == "_id" and artifact_type.endswith("_draft") and isinstance(item, str):
+                identifiers.add(item)
+            identifiers.update(observed_draft_identifiers(item))
+    elif isinstance(value, list):
+        for item in value:
+            identifiers.update(observed_draft_identifiers(item))
     return identifiers
 
 def bounded_tasks(tasks, run):
@@ -76,6 +95,7 @@ def validated_tasks(
     evidence_refs,
     maximum=None,
     known_identifiers=None,
+    known_draft_identifiers=None,
 ):
     tool_values = registered_tools()
     validated = []
@@ -145,6 +165,15 @@ def validated_tasks(
                 if key != "project_id" and key.endswith("_id") and value
             }
             if identifiers.difference(set(known_identifiers or evidence_refs)):
+                continue
+            draft_arguments = {
+                str(value)
+                for key, value in arguments.items()
+                if key.endswith("_draft_id") and value
+            }
+            if known_draft_identifiers is not None and draft_arguments.difference(
+                known_draft_identifiers
+            ):
                 continue
             required = set(schema.get("required", []))
             if required.difference(arguments):
