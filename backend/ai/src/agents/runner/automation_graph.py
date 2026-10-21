@@ -24,8 +24,7 @@ from src.schemas.automation import (
     AutomationGraphSnapshot,
     AutomationStatus,
 )
-from src.services.inference import chat
-from src.utils.structured_output import extract_json_values
+from src.services.inference import structured
 from src.repositories.automation import automation_repository
 
 
@@ -163,33 +162,6 @@ def bind_extracted_facts(extraction, evidence):
     return facts
 
 
-def normalize_fact_extraction(raw, schema):
-    """Normalize list-shaped provider responses, then validate the typed contract."""
-    failures = []
-    for value in extract_json_values(raw):
-        if isinstance(value, list):
-            normalized_facts = []
-            for item in value:
-                if not isinstance(item, dict):
-                    continue
-                fact = dict(item)
-                if "quote" not in fact:
-                    fact["quote"] = fact.pop("fact", fact.pop("statement", ""))
-                normalized_facts.append(fact)
-            value = {"facts": normalized_facts, "uncertainties": []}
-        elif isinstance(value, dict) and "facts" not in value and "fact" in value:
-            fact = dict(value)
-            fact["quote"] = fact.pop("quote", fact.pop("fact", fact.pop("statement", "")))
-            value = {"facts": [fact], "uncertainties": []}
-        try:
-            return schema.model_validate(value)
-        except Exception as error:
-            failures.append(error)
-    if failures:
-        raise ValueError(f"Fact extraction output did not match its contract: {failures[0]}")
-    raise ValueError("Fact extraction returned no structured value")
-
-
 def complete_source_segments(facts, evidence):
     """Retain exact source sentences even when a model omits explicit statements."""
     output = list(facts)
@@ -243,17 +215,14 @@ async def extract_source_facts(state: AutomationGraphState):
             if not inspected.get("is_safe", False):
                 raise ValueError("AUTOMATION_SOURCE_REJECTED_BY_GUARDRAILS")
             extraction_prompt = automation_fact_extraction_prompt(evidence)
-            extraction_raw = await chat(
-                [
-                    {"role": "system", "content": extraction_prompt},
-                    {"role": "user", "content": "Extract all source-backed facts from the supplied evidence."},
-                ],
+            extraction = await structured(
+                extraction_prompt,
+                AutomationFactExtraction,
                 max_tokens=1200,
-                temperature=0,
-                attempts=2,
                 timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                provider_schema=False,
+                initial_temperature=0,
             )
-            extraction = normalize_fact_extraction(extraction_raw, AutomationFactExtraction)
             facts = complete_source_segments(
                 bind_extracted_facts(extraction, evidence), evidence
             )

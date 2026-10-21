@@ -9,7 +9,12 @@ def utc_now() -> datetime:
 
 
 class MCPConnectionCreate(BaseModel):
-    project_id: str = Field(min_length=1, max_length=128)
+    project_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Leave empty to make this MCP connection available to every project",
+    )
     name: str = Field(min_length=1, max_length=120)
     endpoint: AnyHttpUrl
     credential_environment_variable: str | None = Field(default=None, max_length=120)
@@ -85,7 +90,7 @@ class MCPConnectionPatch(BaseModel):
 
 class MCPConnection(BaseModel):
     connection_id: str = Field(default_factory=lambda: str(uuid4()))
-    project_id: str
+    project_id: str | None = None
     name: str
     endpoint: str
     credential_environment_variable: str | None = None

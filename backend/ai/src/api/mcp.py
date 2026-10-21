@@ -5,6 +5,7 @@ from src.core.dependency import get_current_user, oauth2_scheme, require_system_
 from src.repositories.mcp import mcp_repository
 from src.schemas.auth import CurrentUser
 from src.schemas.mcp import MCPConnection, MCPConnectionCreate, MCPConnectionPatch
+from src.tools.mcp_gateway import probe_connection
 
 
 router = APIRouter(prefix="/mcp", tags=["MCP Gateway"])
@@ -68,3 +69,19 @@ async def update_mcp_connection(
             detail={"code": "REVISION_CONFLICT", "latest": latest.model_dump(mode="json") if latest else None},
         )
     return updated.model_dump(mode="json", exclude={"credential_environment_variable"})
+
+
+@router.post("/ket-noi/{connection_id}/kiem-tra")
+async def test_mcp_connection(
+    connection_id: str,
+    user: CurrentUser = Depends(require_system_admin),
+):
+    connection = await mcp_repository.get(connection_id)
+    if not connection:
+        raise HTTPException(status_code=404, detail={"code": "MCP_CONNECTION_NOT_FOUND"})
+    result = await probe_connection(connection)
+    return {
+        "connection_id": connection.connection_id,
+        "name": connection.name,
+        **result,
+    }

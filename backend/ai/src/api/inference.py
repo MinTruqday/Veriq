@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from src.core.dependency import verify_internal_token
 from src.schemas.evaluation import (
     TestabilityBenchmarkDatasetCreate,
+    TestabilityBenchmarkDataset,
     TestabilityBenchmarkReport,
     TestabilityBenchmarkRequest,
 )
@@ -67,6 +68,18 @@ async def list_testability_benchmark_datasets(limit: int = 100):
     return await testability_benchmark_repository.list(max(1, min(limit, 100)))
 
 
+@router.get(
+    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}",
+    dependencies=[Depends(verify_internal_token)],
+    response_model=TestabilityBenchmarkDataset,
+)
+async def get_testability_benchmark_dataset(dataset_id: str):
+    dataset = await testability_benchmark_repository.get(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
+    return dataset
+
+
 @router.post(
     "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/chay",
     dependencies=[Depends(verify_internal_token)],
@@ -93,6 +106,18 @@ async def list_testability_benchmark_runs(dataset_id: str, limit: int = 20):
     return await testability_benchmark_repository.list_runs(
         dataset_id, max(1, min(limit, 100))
     )
+
+
+@router.get(
+    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/lan-chay/{run_id}",
+    dependencies=[Depends(verify_internal_token)],
+    response_model=TestabilityBenchmarkReport,
+)
+async def get_testability_benchmark_run(dataset_id: str, run_id: str):
+    report = await testability_benchmark_repository.get_run(dataset_id, run_id)
+    if not report:
+        raise HTTPException(status_code=404, detail={"code": "BENCHMARK_RUN_NOT_FOUND"})
+    return report
 
 
 @router.post(

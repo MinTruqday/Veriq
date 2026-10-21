@@ -26,7 +26,9 @@ class MCPRepository:
         return MCPConnection.model_validate(value)
 
     async def list_project(self, project_id: str, limit: int = 100) -> list[MCPConnection]:
-        values = await self._collection.find({"project_id": project_id}).sort(
+        values = await self._collection.find(
+            {"$or": [{"project_id": project_id}, {"project_id": None}]}
+        ).sort(
             [("updated_at", DESCENDING), ("_id", 1)]
         ).to_list(length=limit)
         for value in values:

@@ -213,7 +213,7 @@ services:
       - 38470-38479:38470-38479
     labels:
       - traefik.enable=true
-      - traefik.http.routers.ai.rule=PathPrefix(`/suy-luan`) || PathPrefix(`/su-kien`) || PathPrefix(`/tiep-nap`) || PathPrefix(`/tri-thuc`) || PathPrefix(`/danh-gia`) || PathPrefix(`/tac-tu`) || PathPrefix(`/tu-dong-hoa-ai`)
+      - traefik.http.routers.ai.rule=PathPrefix(`/suy-luan`) || PathPrefix(`/su-kien`) || PathPrefix(`/tiep-nap`) || PathPrefix(`/tri-thuc`) || PathPrefix(`/danh-gia`) || PathPrefix(`/tac-tu`) || PathPrefix(`/tu-dong-hoa-ai`) || PathPrefix(`/mcp`)
       - traefik.http.services.ai.loadbalancer.server.port=8000
     environment:
       <<: [*service-environment, *object-storage-environment]
@@ -240,6 +240,9 @@ services:
       LANGSMITH_ENDPOINT: ${LANGSMITH_ENDPOINT:?LANGSMITH_ENDPOINT is required}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:?LANGSMITH_API_KEY is required}
       LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:?LANGSMITH_PROJECT is required}
+      MCP_GITHUB_TOKEN: ${MCP_GITHUB_TOKEN:-}
+      MCP_POSTMAN_API_KEY: ${MCP_POSTMAN_API_KEY:-}
+      MCP_PLAYWRIGHT_TOKEN: ${MCP_PLAYWRIGHT_TOKEN:-}
     depends_on:
       mongodb:
         condition: service_started

@@ -128,11 +128,22 @@ class TestabilityBenchmarkCandidate(BaseModel):
     obligation_evidence: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class TestabilityBenchmarkSource(BaseModel):
+    """One independently versioned source document in a benchmark scenario."""
+
+    source_id: str = Field(min_length=1, max_length=200)
+    artifact_type: str = Field(default="benchmark_source", min_length=1, max_length=100)
+    artifact_version_id: str = Field(min_length=1, max_length=200)
+    authority: str = Field(default="benchmark_answer_key_dataset", min_length=1, max_length=100)
+    text: str = Field(min_length=1, max_length=100_000)
+
+
 class TestabilityBenchmarkGoldCase(BaseModel):
     """A benchmark scenario contains only its source and human-authored answer key."""
 
     case_id: str = Field(min_length=1, max_length=200)
-    source_text: str = Field(min_length=1, max_length=100_000)
+    source_text: str = Field(default="", max_length=100_000)
+    sources: list[TestabilityBenchmarkSource] = Field(default_factory=list, max_length=20)
     task_instruction: str = Field(default="", max_length=5000)
     expected_source_quotes: list[str] = Field(default_factory=list, max_length=500)
     expected_clarification_codes: list[str] = Field(
@@ -162,14 +173,19 @@ class TestabilityBenchmarkGoldCase(BaseModel):
 
     @model_validator(mode="after")
     def validate_clarification_answer_key(self):
-        if any(quote not in self.source_text for quote in self.expected_source_quotes):
+        source_text = "\n".join(
+            [self.source_text, *(source.text for source in self.sources)]
+        )
+        if not source_text.strip():
+            raise ValueError("benchmark_case_requires_source_text_or_documents")
+        if any(quote not in source_text for quote in self.expected_source_quotes):
             raise ValueError("benchmark_expected_quote_must_appear_in_source")
         if self.expected_obligation_sources:
             if not self.expected_obligation_keys:
                 self.expected_obligation_keys = list(self.expected_obligation_sources)
             if set(self.expected_obligation_sources) != set(self.expected_obligation_keys):
                 raise ValueError("benchmark_obligation_sources_must_match_expected_obligations")
-            if any(quote not in self.source_text for quote in self.expected_obligation_sources.values()):
+            if any(quote not in source_text for quote in self.expected_obligation_sources.values()):
                 raise ValueError("benchmark_obligation_quote_must_appear_in_source")
         clarification_codes = set(
             self.expected_clarification_categories or self.expected_clarification_codes
@@ -211,7 +227,9 @@ class TestabilityBenchmarkReport(BaseModel):
     dataset_id: str | None = None
     pipeline_metadata: dict = Field(default_factory=dict)
     pipeline_failures: list[dict] = Field(default_factory=list)
+    pipeline_rejections: list[dict] = Field(default_factory=list)
     duration_ms: int | None = None
+    clarification_savings_vs_baseline: float | None = None
     execution_status: Literal["COMPLETE", "PARTIAL"] = "COMPLETE"
     created_at: str | None = None
 

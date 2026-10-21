@@ -559,8 +559,18 @@
 
 @media (min-width: 1024px) {
   .workspace-panel-header-with-actions {
-    grid-template-columns: minmax(13rem, 0.32fr) minmax(0, 1fr);
-    align-items: center;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .workspace-panel-header-with-actions .workspace-panel-heading,
+  .workspace-panel-header-with-actions .workspace-panel-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .workspace-panel-header-with-actions .workspace-panel-actions {
+    justify-content: flex-start;
   }
 }
 

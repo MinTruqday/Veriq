@@ -3,6 +3,7 @@ import json
 import os
 from typing import Annotated
 
+import httpx
 from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
@@ -20,11 +21,10 @@ async def _client_call(endpoint, token, tool_name, arguments):
         async with Client(endpoint) as client:
             return await client.call_tool(tool_name, arguments)
 
-    import httpx2
     from mcp.client.streamable_http import streamable_http_client
 
-    timeout = httpx2.Timeout(limits.task_timeout_seconds, read=limits.task_timeout_seconds)
-    async with httpx2.AsyncClient(
+    timeout = httpx.Timeout(limits.task_timeout_seconds, read=limits.task_timeout_seconds)
+    async with httpx.AsyncClient(
         headers={"Authorization": f"Bearer {token}"}, timeout=timeout
     ) as http_client:
         transport = streamable_http_client(endpoint, http_client=http_client)
@@ -39,17 +39,65 @@ async def _client_tools(endpoint, token):
         async with Client(endpoint) as client:
             return await client.list_tools()
 
-    import httpx2
     from mcp.client.streamable_http import streamable_http_client
 
-    timeout = httpx2.Timeout(limits.task_timeout_seconds, read=limits.task_timeout_seconds)
-    async with httpx2.AsyncClient(
+    timeout = httpx.Timeout(limits.task_timeout_seconds, read=limits.task_timeout_seconds)
+    async with httpx.AsyncClient(
         headers={"Authorization": f"Bearer {token}"}, timeout=timeout
     ) as http_client:
         transport = streamable_http_client(endpoint, http_client=http_client)
         async with Client(transport) as client:
             return await client.list_tools()
 
+
+async def probe_connection(connection: MCPConnection):
+    """Verify an MCP endpoint and its configured read-only tool allowlist."""
+    if not connection.enabled:
+        return {"status": "disabled", "reason_code": "MCP_CONNECTION_DISABLED"}
+    token = None
+    if connection.credential_environment_variable:
+        token = os.environ.get(connection.credential_environment_variable)
+        if not token:
+            return {
+                "status": "degraded",
+                "reason_code": "MCP_CREDENTIAL_UNAVAILABLE",
+                "available_tools": [],
+                "missing_allowed_tools": list(connection.allowed_read_tools),
+            }
+    try:
+        async with asyncio.timeout(limits.task_timeout_seconds):
+            result = await _client_tools(str(connection.endpoint), token)
+    except TimeoutError:
+        return {
+            "status": "degraded",
+            "reason_code": "MCP_TOOL_TIMEOUT",
+            "available_tools": [],
+            "missing_allowed_tools": list(connection.allowed_read_tools),
+        }
+    except Exception:
+        return {
+            "status": "degraded",
+            "reason_code": "MCP_SERVER_UNAVAILABLE",
+            "available_tools": [],
+            "missing_allowed_tools": list(connection.allowed_read_tools),
+        }
+
+    available = sorted(
+        {
+            str(getattr(tool, "name", "")).strip()
+            for tool in getattr(result, "tools", [])
+            if str(getattr(tool, "name", "")).strip()
+        }
+    )
+    allowed = sorted(set(connection.allowed_read_tools))
+    missing = sorted(set(allowed) - set(available))
+    return {
+        "status": "connected" if not missing else "incomplete",
+        "reason_code": None if not missing else "MCP_ALLOWED_TOOLS_NOT_FOUND",
+        "available_tools": available,
+        "allowed_tools": allowed,
+        "missing_allowed_tools": missing,
+    }
 
 def _result_text(result):
     blocks = []
@@ -114,7 +162,7 @@ async def call_mcp_read_tool(
     if "project.read" not in configurable.get("permissions", []):
         return json.dumps({"status": "denied", "reason_code": "PERMISSION_DENIED"})
     connection = await mcp_repository.get(connection_id)
-    if not connection or connection.project_id != project_id:
+    if not connection or connection.project_id not in {None, project_id}:
         return json.dumps({"status": "denied", "reason_code": "MCP_CONNECTION_SCOPE_DENIED"})
     return json.dumps(
         await call_read_tool(connection, tool_name, arguments or {}), ensure_ascii=False

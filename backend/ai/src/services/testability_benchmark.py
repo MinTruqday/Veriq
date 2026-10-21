@@ -42,19 +42,31 @@ class TestabilityBenchmarkService:
         }
 
     @classmethod
-    def _candidate_scores(cls, case, candidate) -> dict:
+    def _candidate_scores(
+        cls, case, candidate, *, score_obligations=True, score_clarifications=True
+    ) -> dict:
+        source_text = "\n".join(
+            [case.source_text, *(source.text for source in case.sources)]
+        )
         quote_scores = cls._set_scores(case.expected_source_quotes, candidate.source_quotes)
-        grounded_quotes = [quote for quote in candidate.source_quotes if quote and quote in case.source_text]
+        grounded_quotes = [
+            quote for quote in candidate.source_quotes if quote and quote in source_text
+        ]
         expected_clarifications = (
             case.expected_clarification_categories or case.expected_clarification_codes
         )
         actual_clarifications = (
             candidate.clarification_categories or candidate.clarification_codes
         )
-        clarification_scores = cls._set_scores(
-            expected_clarifications, actual_clarifications
+        clarification_scores = (
+            cls._set_scores(expected_clarifications, actual_clarifications)
+            if score_clarifications else {"precision": None, "recall": None, "matched": [], "unexpected": [], "missing": []}
         )
-        if case.expected_obligation_sources:
+        if not score_obligations:
+            obligation_scores = {
+                "precision": None, "recall": None, "matched": [], "unexpected": [], "missing": []
+            }
+        elif case.expected_obligation_sources:
             predicted_obligations = candidate.obligation_evidence
             remaining_predictions = set(predicted_obligations)
             matched_obligations = []
@@ -83,9 +95,12 @@ class TestabilityBenchmarkService:
             }
         else:
             obligation_scores = cls._set_scores(case.expected_obligation_keys, candidate.obligation_keys)
-        priority_scores = cls._clarification_priority_scores(
-            case.expected_clarification_priorities or expected_clarifications,
-            actual_clarifications,
+        priority_scores = (
+            cls._clarification_priority_scores(
+                case.expected_clarification_priorities or expected_clarifications,
+                actual_clarifications,
+            )
+            if score_clarifications else {"ndcg": None, "first_relevant_rank": None}
         )
         clarified = {
             obligation
@@ -93,7 +108,10 @@ class TestabilityBenchmarkService:
             if code in expected_clarifications
             for obligation in case.expected_clarification_unlocks.get(code, [])
         }
-        clarification_count = len(set(candidate.clarification_codes or actual_clarifications))
+        clarification_count = (
+            len(set(candidate.clarification_codes or actual_clarifications))
+            if score_clarifications else None
+        )
         return {
             "source_quote_validity": (
                 round(len(grounded_quotes) / len(candidate.source_quotes), 4)
@@ -143,10 +161,14 @@ class TestabilityBenchmarkService:
         direct_scores = []
         for case in request.cases:
             clarification = self._candidate_scores(
-                case, case.clarification_without_obligation_planning
+                case,
+                case.clarification_without_obligation_planning,
+                score_obligations=False,
             )
             compiler = self._candidate_scores(case, case.compiler)
-            direct = self._candidate_scores(case, case.direct_generation)
+            direct = self._candidate_scores(
+                case, case.direct_generation, score_clarifications=False
+            )
             clarification_scores.append(clarification)
             compiler_scores.append(compiler)
             direct_scores.append(direct)
@@ -166,20 +188,33 @@ class TestabilityBenchmarkService:
         def aggregate(values):
             return {
                 "source_quote_validity": average_metric(values, "source_quote_validity"),
+                "source_quote_precision": average_metric(
+                    [{"metric": value["source_quote"]["precision"]} for value in values],
+                    "metric",
+                ),
                 "source_quote_recall": average_metric(
                     [{"metric": value["source_quote"]["recall"]} for value in values],
+                    "metric",
+                ),
+                "clarification_precision": average_metric(
+                    [{"metric": value["clarification"]["precision"]} for value in values],
                     "metric",
                 ),
                 "clarification_recall": average_metric(
                     [{"metric": value["clarification"]["recall"]} for value in values],
                     "metric",
                 ),
+                "obligation_precision": average_metric(
+                    [{"metric": value["obligation"]["precision"]} for value in values],
+                    "metric",
+                ),
                 "obligation_recall": average_metric(
                     [{"metric": value["obligation"]["recall"]} for value in values],
                     "metric",
                 ),
-                "average_clarification_count": round(
-                    sum(value["clarification_count"] for value in values) / len(values), 4
+                "average_clarification_count": average_metric(
+                    [{"metric": value["clarification_count"]} for value in values],
+                    "metric",
                 ),
                 "clarification_priority_ndcg": average_metric(
                     [{"metric": value["clarification_priority"]["ndcg"]} for value in values],
@@ -197,12 +232,34 @@ class TestabilityBenchmarkService:
             compiler=aggregate(compiler_scores),
             direct_generation=aggregate(direct_scores),
             cases=cases,
+            clarification_savings_vs_baseline=(
+                round(
+                    sum(
+                        baseline["clarification_count"] - compiler["clarification_count"]
+                        for baseline, compiler in zip(clarification_scores, compiler_scores)
+                    ) / len(cases),
+                    4,
+                )
+                if cases else None
+            ),
         )
         logger.info("Testability compiler benchmark completed cases={}", report.total_cases)
         return report
 
     @staticmethod
     def _source_evidence(case, dataset_id):
+        if case.sources:
+            return [
+                {
+                    "artifact_type": source.artifact_type,
+                    "artifact_id": f"{dataset_id}:{case.case_id}:{source.source_id}",
+                    "artifact_version_id": source.artifact_version_id,
+                    "source": "document",
+                    "authority": source.authority,
+                    "text": source.text,
+                }
+                for source in case.sources
+            ]
         return [{
             "artifact_type": "benchmark_source",
             "artifact_id": f"{dataset_id}:{case.case_id}",
@@ -272,12 +329,7 @@ class TestabilityBenchmarkService:
             evidence=[TestingEvidence.model_validate(item) for item in evidence],
         )
         result = await generate_ai_automation(request)
-        data = result.model_dump(mode="json")
-        if data.get("status") != "SUCCESS":
-            raise RuntimeError(
-                ";".join(data.get("reason_codes") or data.get("warnings") or ["AI_PIPELINE_DEGRADED"])
-            )
-        return data
+        return result.model_dump(mode="json")
 
     @staticmethod
     def _verified_fact_evidence(facts):
@@ -307,6 +359,7 @@ class TestabilityBenchmarkService:
         run_id = f"TBR-{uuid4().hex}"
         scored_cases = []
         failures = []
+        rejections = []
         raw_outputs = {}
         model_metadata_by_capability = {}
 
@@ -342,9 +395,16 @@ class TestabilityBenchmarkService:
                     "testability_blueprint_compilation", dataset_id, gold_case,
                     verified, instruction,
                 )
-                compiler_candidate = self._candidate_from_blueprint(output)
                 raw_outputs[gold_case.case_id]["compiler"] = output
                 model_metadata_by_capability["compiler"] = output.get("model", {})
+                if output.get("status") == "SUCCESS":
+                    compiler_candidate = self._candidate_from_blueprint(output)
+                else:
+                    rejections.append({
+                        "case_id": gold_case.case_id,
+                        "pipeline": "compiler",
+                        "reason_codes": output.get("reason_codes", []),
+                    })
             except Exception as error:
                 failures.append({
                     "case_id": gold_case.case_id,
@@ -361,9 +421,16 @@ class TestabilityBenchmarkService:
                     "clarification_baseline", dataset_id, gold_case,
                     source_evidence, clarification_instruction,
                 )
-                clarification_candidate = self._candidate_from_clarification(output)
                 raw_outputs[gold_case.case_id]["clarification_without_obligation_planning"] = output
                 model_metadata_by_capability["clarification_baseline"] = output.get("model", {})
+                if output.get("status") == "SUCCESS":
+                    clarification_candidate = self._candidate_from_clarification(output)
+                else:
+                    rejections.append({
+                        "case_id": gold_case.case_id,
+                        "pipeline": "clarification_without_obligation_planning",
+                        "reason_codes": output.get("reason_codes", []),
+                    })
             except Exception as error:
                 failures.append({
                     "case_id": gold_case.case_id,
@@ -381,9 +448,16 @@ class TestabilityBenchmarkService:
                     "test_generation", dataset_id, gold_case,
                     source_evidence, direct_instruction,
                 )
-                direct_candidate = self._candidate_from_direct_generation(output)
                 raw_outputs[gold_case.case_id]["direct_generation"] = output
                 model_metadata_by_capability["test_generation"] = output.get("model", {})
+                if output.get("status") == "SUCCESS":
+                    direct_candidate = self._candidate_from_direct_generation(output)
+                else:
+                    rejections.append({
+                        "case_id": gold_case.case_id,
+                        "pipeline": "direct_generation",
+                        "reason_codes": output.get("reason_codes", []),
+                    })
             except Exception as error:
                 failures.append({
                     "case_id": gold_case.case_id,
@@ -413,6 +487,7 @@ class TestabilityBenchmarkService:
             "model_metadata_by_capability": model_metadata_by_capability,
         }
         report.pipeline_failures = failures
+        report.pipeline_rejections = rejections
         report.duration_ms = round((time.perf_counter() - started) * 1000)
         report.execution_status = "PARTIAL" if failures else "COMPLETE"
         report.created_at = datetime.now(timezone.utc).isoformat()

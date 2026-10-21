@@ -1021,7 +1021,7 @@ function Board({ items, board, workflow, onTransition, canTransitionItem, role, 
         Vuốt ngang để xem các cột còn lại
       </p>
       <div className="overflow-x-auto scroll-smooth pb-3">
-        <div className="grid min-w-0 grid-flow-col auto-cols-[minmax(260px,86vw)] items-start gap-4 sm:auto-cols-[minmax(320px,1fr)] lg:auto-cols-[minmax(140px,1fr)]">
+        <div className="grid min-w-0 grid-flow-col auto-cols-[minmax(260px,86vw)] items-start gap-4 sm:auto-cols-[minmax(320px,1fr)] lg:auto-cols-[minmax(240px,1fr)]">
           {groups.map((column) => (
             <Panel
               key={column.status}

@@ -61,11 +61,18 @@ class TestabilityBenchmarkRepository:
     async def save_run(self, report: dict) -> None:
         await self._runs.insert_one({"_id": report["run_id"], **report})
 
+    async def get_run(self, dataset_id: str, run_id: str) -> dict | None:
+        document = await self._runs.find_one({"_id": run_id, "dataset_id": dataset_id})
+        if not document:
+            return None
+        document["run_id"] = str(document.pop("_id"))
+        return document
+
     async def list_runs(self, dataset_id: str, limit: int = 20) -> List[dict]:
         documents = await self._runs.find(
             {"dataset_id": dataset_id},
             {"_id": 1, "total_cases": 1, "duration_ms": 1,
-             "pipeline_failures": 1, "created_at": 1,
+             "pipeline_failures": 1, "pipeline_rejections": 1, "created_at": 1,
              "compiler": 1, "direct_generation": 1,
              "clarification_without_obligation_planning": 1},
         ).sort("created_at", -1).to_list(length=limit)
