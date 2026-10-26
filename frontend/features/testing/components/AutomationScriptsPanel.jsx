@@ -5,24 +5,14 @@ import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimi
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
 
-const frameworkLanguages = {
-  playwright: ["typescript", "javascript"],
-  cypress: ["typescript", "javascript"],
-  selenium: ["python"],
-};
-
-export default function AutomationScriptsPanel({ project, tests }) {
+export default function AutomationScriptsPanel({ project }) {
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [testCaseVersionId, setTestCaseVersionId] = useState("");
-  const [framework, setFramework] = useState("playwright");
-  const [language, setLanguage] = useState("typescript");
   const [filename, setFilename] = useState("");
   const [source, setSource] = useState("");
   const [error, setError] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const canGenerate = project.current_permissions?.includes("ai.generate_automation_script");
+  const [draftDirty, setDraftDirty] = useState(false);
   const canUpdate = project.current_permissions?.includes("automation.script.update");
   const canApprove = project.current_permissions?.includes("automation.script.approve");
   const canExport = project.current_permissions?.includes("automation.script.export");
@@ -34,7 +24,7 @@ export default function AutomationScriptsPanel({ project, tests }) {
       setItems(values);
       setSelected((current) => {
         const next = values.find((item) => item._id === current?._id) || null;
-        if (next) {
+        if (next && !draftDirty) {
           setFilename(next.filename);
           setSource(next.source);
         }
@@ -43,22 +33,11 @@ export default function AutomationScriptsPanel({ project, tests }) {
     } catch (reason) {
       setError(messageOf(reason));
     }
-  }, [canExport, project._id]);
+  }, [canExport, draftDirty, project._id]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    const allowed = frameworkLanguages[framework];
-    if (!allowed.includes(language)) setLanguage(allowed[0]);
-  }, [framework, language]);
-
-  useEffect(() => {
-    if (!testCaseVersionId && tests[0]?.current_version_id) {
-      setTestCaseVersionId(tests[0].current_version_id);
-    }
-  }, [testCaseVersionId, tests]);
 
   const openDraft = async (item) => {
     try {
@@ -66,35 +45,10 @@ export default function AutomationScriptsPanel({ project, tests }) {
       setSelected(value);
       setFilename(value.filename);
       setSource(value.source);
+      setDraftDirty(false);
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
-    }
-  };
-
-  const generate = async () => {
-    if (!testCaseVersionId) {
-      setError("Phải chọn một phiên bản ca kiểm thử đã phê duyệt");
-      return;
-    }
-    setGenerating(true);
-    try {
-      const value = await testingApi.generateAutomationScriptDraft(project._id, {
-        framework,
-        language,
-        test_case_version_id: testCaseVersionId,
-        context: "",
-        idempotency_key: crypto.randomUUID(),
-      });
-      await load();
-      setSelected(value);
-      setFilename(value.filename);
-      setSource(value.source);
-      setError("");
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setGenerating(false);
     }
   };
 
@@ -110,6 +64,7 @@ export default function AutomationScriptsPanel({ project, tests }) {
       setSelected(value);
       setFilename(value.filename);
       setSource(value.source);
+      setDraftDirty(false);
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
@@ -142,72 +97,24 @@ export default function AutomationScriptsPanel({ project, tests }) {
       setSelected(value);
       setFilename(value.filename);
       setSource(value.source);
+      setDraftDirty(false);
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
     }
   };
 
-  if (!canGenerate && !canExport) return null;
+  if (!canExport) return null;
 
   return (
-    <Panel title="Kịch bản kiểm thử tự động hóa">
+    <Panel title="Kịch bản tự động hóa">
+      <p className="px-5 pt-4 text-sm text-ink-muted">
+        Khi phiên bản ca kiểm thử được phê duyệt, đánh dấu tự động hóa và dự án đã cấu hình công cụ,
+        AI sẽ tạo kịch bản theo sự kiện. Ca thủ công hoặc dự án chưa cấu hình sẽ không bị tự chọn
+        công cụ.
+      </p>
       <div className="space-y-5 p-5">
         {error && <ErrorState message={error} />}
-        {canGenerate && (
-          <div className="grid gap-3 xl:grid-cols-[minmax(260px,1fr)_180px_180px_auto]">
-            <select
-              aria-label="Phiên bản ca kiểm thử cho kịch bản tự động hóa"
-              className="apple-input"
-              value={testCaseVersionId}
-              onChange={(event) => setTestCaseVersionId(event.target.value)}
-            >
-              <option value="">Chọn ca kiểm thử đã phê duyệt</option>
-              {tests
-                .filter((item) => item.current_version_id)
-                .map((item) => (
-                  <option key={item.current_version_id} value={item.current_version_id}>
-                    {item.test_case_key} {item.current_version?.title}
-                  </option>
-                ))}
-            </select>
-            <select
-              aria-label="Công cụ tự động hóa"
-              className="apple-input"
-              value={framework}
-              onChange={(event) => setFramework(event.target.value)}
-            >
-              <option value="playwright">Playwright</option>
-              <option value="cypress">Cypress</option>
-              <option value="selenium">Selenium</option>
-            </select>
-            <select
-              aria-label="Ngôn ngữ kịch bản tự động hóa"
-              className="apple-input"
-              value={language}
-              onChange={(event) => setLanguage(event.target.value)}
-            >
-              {frameworkLanguages[framework].map((value) => (
-                <option key={value} value={value}>
-                  {value === "typescript"
-                    ? "TypeScript"
-                    : value === "javascript"
-                      ? "JavaScript"
-                      : "Python"}
-                </option>
-              ))}
-            </select>
-            <button
-              aria-busy={generating}
-              className="apple-button"
-              disabled={generating}
-              type="button"
-              onClick={generate}
-            >
-              {generating ? "AI đang tạo kịch bản" : "Tạo bản nháp"}
-            </button>
-          </div>
-        )}
         {canExport && (
           <div className="grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
             <div className="overflow-hidden rounded-xl border border-border">
@@ -248,7 +155,10 @@ export default function AutomationScriptsPanel({ project, tests }) {
                         <input
                           className="apple-input mt-2"
                           value={filename}
-                          onChange={(event) => setFilename(event.target.value)}
+                          onChange={(event) => {
+                            setFilename(event.target.value);
+                            setDraftDirty(true);
+                          }}
                         />
                       </label>
                       <label className="field-label block">
@@ -257,7 +167,10 @@ export default function AutomationScriptsPanel({ project, tests }) {
                           aria-label="Mã nguồn kịch bản tự động hóa"
                           className="apple-input mt-2 min-h-80 font-mono text-xs"
                           value={source}
-                          onChange={(event) => setSource(event.target.value)}
+                          onChange={(event) => {
+                            setSource(event.target.value);
+                            setDraftDirty(true);
+                          }}
                         />
                       </label>
                     </>

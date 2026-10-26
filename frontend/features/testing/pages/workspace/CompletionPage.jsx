@@ -8,6 +8,7 @@ import LessonsLearnedPanel from "../../components/LessonsLearnedPanel";
 import QualityGateBadge from "../../components/QualityGateBadge";
 import ResidualRiskPanel from "../../components/ResidualRiskPanel";
 import TestwareHandoverPanel from "../../components/TestwareHandoverPanel";
+import { StructuredValueView } from "../../components/StructuredValueEditor";
 import {
   ErrorState,
   LoadingState,
@@ -46,7 +47,8 @@ export default function CompletionPage({ project }) {
   const [narrativeDraft, setNarrativeDraft] = useState(null);
   const [lessonClusters, setLessonClusters] = useState(null);
   const [error, setError] = useState("");
-  const [aiAction, setAiAction] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiTimedOut, setAiTimedOut] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
@@ -87,21 +89,81 @@ export default function CompletionPage({ project }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!selected?._id) {
+      setNarrativeDraft(null);
+      setLessonClusters(null);
+      setAiLoading(false);
+      setAiTimedOut(false);
+      return undefined;
+    }
+    let active = true;
+    let timer;
+    let attempts = 0;
+    const lessonsExpected = Boolean(selected.lessons_learned?.length);
+    setNarrativeDraft(null);
+    setLessonClusters(null);
+    setAiLoading(selected.status === "DRAFT");
+    setAiTimedOut(false);
+    const refresh = async () => {
+      try {
+        const [narrative, lessons] = await Promise.all([
+          testingApi.getTestCompletionNarrative(selected._id),
+          lessonsExpected
+            ? testingApi.getTestCompletionLessonClusters(selected._id)
+            : Promise.resolve(null),
+        ]);
+        if (!active) return;
+        setNarrativeDraft(narrative);
+        setLessonClusters(lessons);
+        const narrativeReady = Boolean(narrative);
+        const lessonsReady = !lessonsExpected || Boolean(lessons);
+        if (narrativeReady && lessonsReady) {
+          setAiLoading(false);
+          return;
+        }
+      } catch (reason) {
+        if (active) setError(messageOf(reason));
+      }
+      attempts += 1;
+      if (active && selected.status === "DRAFT" && attempts < 20) {
+        timer = setTimeout(refresh, 3000);
+      } else if (active) {
+        setAiLoading(false);
+        setAiTimedOut(selected.status === "DRAFT");
+      }
+    };
+    void refresh();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [selected?._id, selected?.revision, selected?.status, selected?.lessons_learned]);
+
   const run = async (operation) => {
     try {
       const value = await operation();
       await load();
       if (value?._id) setSelected(value);
       setEditing(false);
-      setNarrativeDraft(null);
-      setLessonClusters(null);
     } catch (reason) {
       setError(messageOf(reason));
     }
   };
 
+  const runFromDialog = async (operation) => {
+    try {
+      const value = await operation();
+      await load();
+      if (value?._id) setSelected(value);
+      setEditing(false);
+    } catch (reason) {
+      throw new Error(messageOf(reason));
+    }
+  };
+
   const create = async () => {
-    const answer = await ask({
+    await ask({
       title: "Tạo báo cáo hoàn tất kiểm thử",
       description:
         "Báo cáo khóa chính xác kế hoạch bản phát hành bản dựng và các lần chạy trong ảnh chụp",
@@ -129,70 +191,36 @@ export default function CompletionPage({ project }) {
         { name: "failed", label: "Điều chưa hiệu quả mỗi dòng một nội dung", multiline: true },
         { name: "blockers", label: "Trở ngại lặp lại mỗi dòng một nội dung", multiline: true },
       ],
+      onConfirm: (answer) =>
+        runFromDialog(() =>
+          testingApi.createTestCompletionReport(project._id, {
+            idempotency_key: crypto.randomUUID(),
+            snapshot_id: answer.snapshot_id,
+            build_id: answer.build_id,
+            lessons_learned: [
+              ...lines(answer.worked, "WORKED"),
+              ...lines(answer.failed, "FAILED"),
+              ...lines(answer.blockers, "BLOCKER"),
+            ],
+          }),
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi.createTestCompletionReport(project._id, {
-        idempotency_key: crypto.randomUUID(),
-        snapshot_id: answer.snapshot_id,
-        build_id: answer.build_id,
-        lessons_learned: [
-          ...lines(answer.worked, "WORKED"),
-          ...lines(answer.failed, "FAILED"),
-          ...lines(answer.blockers, "BLOCKER"),
-        ],
-      }),
-    );
   };
 
   const transition = async (method, title, extraFields = []) => {
-    const answer = await ask({
+    await ask({
       title,
       confirmLabel: title,
       fields: [...extraFields, { name: "note", label: "Ghi chú", required: true, multiline: true }],
+      onConfirm: (answer) =>
+        runFromDialog(() =>
+          testingApi[method](selected._id, { expected_revision: selected.revision, ...answer }),
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi[method](selected._id, { expected_revision: selected.revision, ...answer }),
-    );
-  };
-
-  const draftNarrative = async () => {
-    setAiAction("narrative");
-    try {
-      const value = await testingApi.draftTestCompletionNarrative(selected._id, {
-        idempotency_key: crypto.randomUUID(),
-        instruction: "Diễn giải ngắn gọn đúng số liệu và nêu rõ căn cứ khuyến nghị",
-      });
-      const ready = value.status === "SUCCESS" && value.suggestions?.[0]?.executive_summary;
-      setNarrativeDraft(ready ? value : null);
-      setError(ready ? "" : "AI chưa sẵn sàng và chưa tạo được bản nháp");
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setAiAction("");
-    }
-  };
-
-  const clusterLessons = async () => {
-    setAiAction("lessons");
-    try {
-      const value = await testingApi.clusterTestCompletionLessons(selected._id, {
-        idempotency_key: crypto.randomUUID(),
-        instruction: "Gom nhóm theo chủ đề và giữ liên kết về các bài học nguồn",
-      });
-      const ready = value.status === "SUCCESS" && value.suggestions?.[0]?.summary;
-      setLessonClusters(ready ? value : null);
-      setError(ready ? "" : "AI chưa sẵn sàng và chưa gom nhóm được bài học");
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setAiAction("");
-    }
   };
 
   const addResidualRisk = async () => {
-    const answer = await ask({
+    await ask({
       title: "Thêm rủi ro còn lại",
       confirmLabel: "Thêm rủi ro",
       fields: [
@@ -239,30 +267,30 @@ export default function CompletionPage({ project }) {
         },
         { name: "expiry_at", label: "Ngày hết hạn", type: "datetime-local" },
       ],
+      onConfirm: (answer) =>
+        runFromDialog(() =>
+          testingApi.addTestCompletionResidualRisk(selected._id, {
+            expected_revision: selected.revision,
+            risk: {
+              risk_id: `RISK-${crypto.randomUUID()}`,
+              title: answer.title,
+              description: answer.description || "",
+              severity: answer.severity,
+              probability: answer.probability,
+              impact: answer.impact,
+              source_refs: [],
+              owner_id: answer.owner_id,
+              treatment: "PENDING",
+              expiry_at: answer.expiry_at || null,
+              status: "OPEN",
+            },
+          }),
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi.addTestCompletionResidualRisk(selected._id, {
-        expected_revision: selected.revision,
-        risk: {
-          risk_id: `RISK-${crypto.randomUUID()}`,
-          title: answer.title,
-          description: answer.description || "",
-          severity: answer.severity,
-          probability: answer.probability,
-          impact: answer.impact,
-          source_refs: [],
-          owner_id: answer.owner_id,
-          treatment: "PENDING",
-          expiry_at: answer.expiry_at || null,
-          status: "OPEN",
-        },
-      }),
-    );
   };
 
   const addLesson = async () => {
-    const answer = await ask({
+    await ask({
       title: "Thêm bài học kinh nghiệm",
       confirmLabel: "Thêm bài học",
       fields: [
@@ -291,26 +319,26 @@ export default function CompletionPage({ project }) {
           ],
         },
       ],
+      onConfirm: (answer) =>
+        runFromDialog(() =>
+          testingApi.addTestCompletionLesson(selected._id, {
+            expected_revision: selected.revision,
+            lesson: {
+              category: answer.category,
+              observation: answer.observation,
+              impact: answer.impact || "",
+              recommendation: answer.recommendation || "",
+              evidence_refs: [],
+              owner_id: answer.owner_id || null,
+              convert_to_improvement: false,
+            },
+          }),
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi.addTestCompletionLesson(selected._id, {
-        expected_revision: selected.revision,
-        lesson: {
-          category: answer.category,
-          observation: answer.observation,
-          impact: answer.impact || "",
-          recommendation: answer.recommendation || "",
-          evidence_refs: [],
-          owner_id: answer.owner_id || null,
-          convert_to_improvement: false,
-        },
-      }),
-    );
   };
 
   const manageHandover = async () => {
-    const answer = await ask({
+    await ask({
       title: "Quản lý bàn giao tài sản kiểm thử",
       confirmLabel: "Lưu bàn giao",
       fields: [
@@ -331,18 +359,18 @@ export default function CompletionPage({ project }) {
         },
         { name: "note", label: "Ghi chú", multiline: true },
       ],
+      onConfirm: (answer) =>
+        runFromDialog(() =>
+          testingApi.manageTestCompletionHandover(selected._id, {
+            expected_revision: selected.revision,
+            item: {
+              ...answer,
+              artifact_version_id: answer.artifact_version_id || null,
+              note: answer.note || "",
+            },
+          }),
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi.manageTestCompletionHandover(selected._id, {
-        expected_revision: selected.revision,
-        item: {
-          ...answer,
-          artifact_version_id: answer.artifact_version_id || null,
-          note: answer.note || "",
-        },
-      }),
-    );
   };
 
   const exportReport = async (format) => {
@@ -388,8 +416,8 @@ export default function CompletionPage({ project }) {
           </button>
         </div>
       ) : (
-        <div className="grid border-t border-border-subtle xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="border-r border-border-subtle">
+        <div className="grid border-t border-border/70 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="border-r border-border/70">
             <DataTable
               items={reports}
               empty="Chưa có báo cáo hoàn tất"
@@ -404,8 +432,6 @@ export default function CompletionPage({ project }) {
                       type="button"
                       onClick={() => {
                         setSelected(item);
-                        setNarrativeDraft(null);
-                        setLessonClusters(null);
                       }}
                     >
                       {formatDate(item.created_at)}
@@ -437,30 +463,6 @@ export default function CompletionPage({ project }) {
                       Chỉnh sửa
                     </button>
                   )}
-                  {selected.status === "DRAFT" && can("testcompletion.update") && (
-                    <button
-                      aria-busy={aiAction === "narrative"}
-                      className="secondary-button"
-                      disabled={Boolean(aiAction)}
-                      type="button"
-                      onClick={draftNarrative}
-                    >
-                      {aiAction === "narrative" ? "AI đang soạn báo cáo" : "AI soạn bản nháp"}
-                    </button>
-                  )}
-                  {selected.status === "DRAFT" &&
-                    selected.lessons_learned?.length > 0 &&
-                    can("testcompletion.update") && (
-                      <button
-                        aria-busy={aiAction === "lessons"}
-                        className="secondary-button"
-                        disabled={Boolean(aiAction)}
-                        type="button"
-                        onClick={clusterLessons}
-                      >
-                        {aiAction === "lessons" ? "AI đang gom bài học" : "AI gom bài học"}
-                      </button>
-                    )}
                   {selected.status === "DRAFT" && can("testcompletion.risk.manage") && (
                     <button className="secondary-button" type="button" onClick={addResidualRisk}>
                       Thêm rủi ro
@@ -561,8 +563,19 @@ export default function CompletionPage({ project }) {
                     </>
                   )}
                 </div>
+                {aiLoading && !narrativeDraft && (
+                  <p className="text-sm text-ink-muted" role="status">
+                    Báo cáo vừa tạo; đang chờ lượt AI tự động xử lý.
+                  </p>
+                )}
+                {aiTimedOut && !narrativeDraft && (
+                  <p className="text-sm text-ink-muted" role="status">
+                    Chưa nhận được kết quả tự động. Báo cáo gốc vẫn được giữ nguyên; xem trạng thái
+                    lượt chạy trong Lịch sử AI.
+                  </p>
+                )}
                 {narrativeDraft?.suggestions?.[0] && (
-                  <Panel title="Bản nháp diễn giải do AI đề xuất">
+                  <Panel title="Diễn giải AI cho báo cáo hoàn tất">
                     <div className="space-y-4 text-sm">
                       {[
                         ["Tóm tắt điều hành", "executive_summary"],
@@ -578,30 +591,16 @@ export default function CompletionPage({ project }) {
                         </div>
                       ))}
                       <p className="text-xs text-ink-muted">
-                        Đây là ứng viên và chỉ được ghi vào báo cáo sau khi người dùng xác nhận
+                        Nội dung AI được lưu riêng, không sửa số liệu, quyết định hoặc báo cáo
+                        nguồn. Kết quả của phiên bản cũ sẽ được đánh dấu khi báo cáo thay đổi.
                       </p>
-                      <button
-                        className="apple-button"
-                        type="button"
-                        onClick={() =>
-                          run(() =>
-                            testingApi.updateTestCompletionReport(selected._id, {
-                              expected_revision: selected.revision,
-                              executive_summary:
-                                narrativeDraft.suggestions[0].executive_summary || "",
-                              closure_summary: narrativeDraft.suggestions[0].closure_summary || "",
-                              residual_risk_summary:
-                                narrativeDraft.suggestions[0].residual_risk_summary || "",
-                              recommendation_rationale:
-                                narrativeDraft.suggestions[0].recommendation_rationale || "",
-                            }),
-                          )
-                        }
-                      >
-                        Dùng làm bản nháp
-                      </button>
                     </div>
                   </Panel>
+                )}
+                {narrativeDraft?.stale && (
+                  <p className="text-sm text-amber-700" role="status">
+                    Diễn giải thuộc phiên bản báo cáo trước; không dùng như nội dung hiện hành.
+                  </p>
                 )}
                 {lessonClusters?.suggestions?.length > 0 && (
                   <Panel title="Nhóm bài học do AI đề xuất">
@@ -722,10 +721,7 @@ export default function CompletionPage({ project }) {
                       {
                         key: "actual",
                         label: "Thực tế",
-                        render: (item) =>
-                          typeof item.actual === "object"
-                            ? JSON.stringify(item.actual)
-                            : String(item.actual ?? ""),
+                        render: (item) => <StructuredValueView value={item.actual} />,
                       },
                       {
                         key: "status",
@@ -765,7 +761,7 @@ export default function CompletionPage({ project }) {
                   onDecide={
                     can("testcompletion.review") && ["DRAFT", "IN_REVIEW"].includes(selected.status)
                       ? async (risk) => {
-                          const answer = await ask({
+                          await ask({
                             title: "Ghi nhận xử lý rủi ro",
                             description: risk.title,
                             confirmLabel: "Ghi nhận",
@@ -783,15 +779,15 @@ export default function CompletionPage({ project }) {
                               },
                               { name: "reason", label: "Lý do", required: true, multiline: true },
                             ],
-                          });
-                          if (answer)
-                            await run(() =>
-                              testingApi.decideTestCompletionResidualRisk(
-                                selected._id,
-                                risk.risk_id,
-                                { expected_revision: selected.revision, ...answer },
+                            onConfirm: (answer) =>
+                              runFromDialog(() =>
+                                testingApi.decideTestCompletionResidualRisk(
+                                  selected._id,
+                                  risk.risk_id,
+                                  { expected_revision: selected.revision, ...answer },
+                                ),
                               ),
-                            );
+                          });
                         }
                       : null
                   }

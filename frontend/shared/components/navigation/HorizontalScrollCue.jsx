@@ -59,7 +59,7 @@ export default function HorizontalScrollCue({
       {edges.overflow && !edges.start && (
         <button
           aria-label={`Cuộn ${scrollLabel} sang trái`}
-          className="flex h-8 w-8 items-center justify-center rounded-control bg-surface text-ink-muted shadow-card"
+          className="flex h-8 w-8 items-center justify-center rounded-control bg-surface text-ink-muted shadow-sm"
           onClick={() => scroll(-1)}
           type="button"
         >
@@ -77,7 +77,7 @@ export default function HorizontalScrollCue({
       {edges.overflow && !edges.end && (
         <button
           aria-label={`Cuộn ${scrollLabel} sang phải`}
-          className="flex h-8 w-8 items-center justify-center rounded-control bg-surface text-ink-muted shadow-card"
+          className="flex h-8 w-8 items-center justify-center rounded-control bg-surface text-ink-muted shadow-sm"
           onClick={() => scroll(1)}
           type="button"
         >

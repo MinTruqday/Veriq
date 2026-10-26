@@ -1,23 +1,17 @@
 import json
 from collections import Counter
+
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from src.core.ai_automation import request_ai_automation
 from src.core.common import plain_text
 from src.core.rich_text import text_document
-from src.schemas.contracts.design import (
-    ScenarioCreate,
-    TestCaseDraftCreate,
-)
-from src.schemas.test_analysis import (
-    GeneratedCase,
-    GeneratedStep,
-    PerformanceScenario,
-    SecurityCandidate,
-)
-from src.core.ai_automation import request_ai_automation
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases
+from src.modules.design.services.test_evidence import requirement_test_evidence_text
+from src.schemas.contracts.design import ScenarioCreate, TestCaseDraftCreate
+from src.schemas.test_analysis import GeneratedCase
 
 
 def select_generation_criteria(criteria, criterion_ids):
@@ -31,7 +25,7 @@ def select_generation_criteria(criteria, criterion_ids):
     return [by_id[identifier] for identifier in criterion_ids]
 
 
-def validated_suggestions(result, schema):
+def validated_suggestions(result, schema, *, allow_empty=False):
     if result.get("status") != 'SUCCESS' or result.get(
         "degraded_mode"
     ):
@@ -43,7 +37,7 @@ def validated_suggestions(result, schema):
         items = result.get("suggestions")
         if (
             not isinstance(items, list)
-            or not 1 <= len(items) <= 100
+            or not (0 if allow_empty else 1) <= len(items) <= 100
         ):
             raise ValueError("invalid suggestion count")
         return [schema.model_validate(item).model_dump() for item in items]
@@ -54,7 +48,9 @@ def validated_suggestions(result, schema):
         ) from error
 
 
-async def generate_requirement_drafts(version, criteria, payload, scenario=False):
+async def generate_requirement_drafts(
+    version, criteria, payload, scenario=False, acceptance_criteria_snapshot_ids=None
+):
     if len(criteria) > 99:
         raise HTTPException(
             422,
@@ -81,7 +77,7 @@ async def generate_requirement_drafts(version, criteria, payload, scenario=False
         {
             "artifact_type": 'requirement_version',
             "artifact_version_id": version["_id"],
-            "text": version["plain_text_projection"],
+            "text": requirement_test_evidence_text(version),
         }
     ]
     evidence.extend(
@@ -282,15 +278,19 @@ async def generate_requirement_drafts(version, criteria, payload, scenario=False
                 raise ValueError("challenge source not cited by generated case")
             common = {
                 "title": item.title,
-                "priority": version.get("priority", 'medium'),
-                "risk": version.get("risk", 'medium'),
                 "requirement_version_ids": [version["_id"]],
                 "acceptance_criterion_ids": item.acceptance_criterion_ids,
                 "origin": 'ai_generated',
             }
             if scenario:
                 drafts.append(
-                    ScenarioCreate(**common, category=item.category, objective=item.objective)
+                    ScenarioCreate(
+                        **common,
+                        priority=version.get("priority") or "medium",
+                        risk=version.get("risk") or "medium",
+                        category=item.category,
+                        objective=item.objective,
+                    )
                 )
             else:
                 steps = [
@@ -306,14 +306,25 @@ async def generate_requirement_drafts(version, criteria, payload, scenario=False
                 drafts.append(
                     TestCaseDraftCreate(
                         **common,
+                        priority="unassessed",
+                        risk="unassessed",
                         type=item.category,
                         objective_doc=text_document(item.objective),
                         preconditions_doc=text_document(item.preconditions),
                         steps=steps,
                         expected_result_doc=text_document(item.expected),
                         source_evidence=evidence,
+                        acceptance_criteria_snapshot_ids=(
+                            list(dict.fromkeys(acceptance_criteria_snapshot_ids))
+                            if acceptance_criteria_snapshot_ids is not None
+                            else None
+                        ),
                         techniques=item.techniques,
                         coverage_obligations=item.coverage_obligations,
+                        obligation_evidence=[
+                            evidence.model_dump()
+                            for evidence in item.obligation_evidence
+                        ],
                         evidence_refs=item.evidence_refs,
                         evidence_quotes=[quote.model_dump() for quote in item.evidence_quotes],
                         challenge_hypotheses=[

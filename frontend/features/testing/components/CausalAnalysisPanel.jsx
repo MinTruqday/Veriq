@@ -25,6 +25,10 @@ const lines = (value) =>
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
+const EVENT_TRIGGER_LABELS = {
+  DEFECT_RECORDED: "Khi ghi nhận lỗi",
+  DEFECT_CHANGED: "Khi cập nhật nội dung lỗi",
+};
 
 export default function CausalAnalysisPanel({ project }) {
   const [items, setItems] = useState([]);
@@ -32,9 +36,8 @@ export default function CausalAnalysisPanel({ project }) {
   const [members, setMembers] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [hypotheses, setHypotheses] = useState([]);
+  const [hypothesisResult, setHypothesisResult] = useState(null);
   const [error, setError] = useState("");
-  const [generatingHypotheses, setGeneratingHypotheses] = useState(false);
   const { ask, dialog } = useActionDialog();
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
@@ -53,7 +56,14 @@ export default function CausalAnalysisPanel({ project }) {
       setCandidates(candidateValues.items || []);
       setDefects(defectValues);
       setMembers(memberValues.filter((item) => item.status === "ACTIVE"));
-      if (selected?._id) setSelected(await testingApi.getCausalAnalysis(selected._id));
+      if (selected?._id) {
+        const [analysis, resultValue] = await Promise.all([
+          testingApi.getCausalAnalysis(selected._id),
+          testingApi.getLatestCausalHypothesisResult(selected._id),
+        ]);
+        setSelected(analysis);
+        setHypothesisResult(resultValue || null);
+      }
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
@@ -66,7 +76,40 @@ export default function CausalAnalysisPanel({ project }) {
     value: item.user_id,
     label: item.user_label || item.email || item.user_id,
   }));
-  const refreshSelected = async () => setSelected(await testingApi.getCausalAnalysis(selected._id));
+  const refreshSelected = async () => {
+    const [analysis, resultValue] = await Promise.all([
+      testingApi.getCausalAnalysis(selected._id),
+      testingApi.getLatestCausalHypothesisResult(selected._id),
+    ]);
+    setSelected(analysis);
+    setHypothesisResult(resultValue || null);
+  };
+  const hypotheses = hypothesisResult?.suggestions || [];
+  useEffect(() => {
+    if (!selected?._id || hypothesisResult?._id) return undefined;
+    let active = true;
+    let attempts = 0;
+    const timer = window.setInterval(async () => {
+      attempts += 1;
+      if (attempts > 12) {
+        window.clearInterval(timer);
+        return;
+      }
+      try {
+        const value = await testingApi.getLatestCausalHypothesisResult(selected._id);
+        if (active && value?._id) {
+          setHypothesisResult(value);
+          window.clearInterval(timer);
+        }
+      } catch (reason) {
+        if (active) setError(messageOf(reason));
+      }
+    }, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [hypothesisResult?._id, selected?._id]);
   const create = async () => {
     const eligible = defects.filter(
       (item) => ["blocker", "critical"].includes(item.severity) || item.status === "REOPENED",
@@ -103,6 +146,7 @@ export default function CausalAnalysisPanel({ project }) {
         evidence_refs: [answer.evidence],
         owner_id: answer.owner_id,
       });
+      setHypothesisResult(null);
       setSelected(value);
       await load();
     } catch (reason) {
@@ -254,41 +298,6 @@ export default function CausalAnalysisPanel({ project }) {
       setError(messageOf(reason));
     }
   };
-  const generateHypotheses = async () => {
-    setGeneratingHypotheses(true);
-    try {
-      const value = await testingApi.generateCausalHypotheses(selected._id, {
-        idempotency_key: crypto.randomUUID(),
-        instruction: "Đề xuất dựa trên bằng chứng dự án",
-      });
-      setHypotheses(value.suggestions || []);
-      setError(value.status === "SUCCESS" ? "" : "AI chưa sẵn sàng và không tạo được giả thuyết");
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setGeneratingHypotheses(false);
-    }
-  };
-  const applyHypothesis = async (item) => {
-    try {
-      let value = await testingApi.recordCausalRootCause(selected._id, {
-        expected_revision: selected.revision,
-        category: item.root_cause_category,
-        detail: item.hypothesis,
-        contributing_factors: item.contributing_factors || [],
-        evidence_refs: item.evidence_refs?.length ? item.evidence_refs : selected.evidence_refs,
-      });
-      for (const why of (item.five_whys || []).slice(0, 5 - (value.five_whys?.length || 0)))
-        value = await testingApi.addCausalFiveWhy(selected._id, {
-          expected_revision: value.revision,
-          why,
-        });
-      setSelected(value);
-      setError("");
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
-  };
   const addAction = async (actionType) => {
     const answer = await ask({
       title: actionType === "CORRECTIVE" ? "Thêm hành động khắc phục" : "Thêm hành động phòng ngừa",
@@ -425,7 +434,7 @@ export default function CausalAnalysisPanel({ project }) {
   };
   return (
     <Panel
-      title="Phân tích nguyên nhân gốc và hành động khắc phục, phòng ngừa"
+      title="Phân tích nguyên nhân và hành động khắc phục"
       actions={
         can("causalanalysis.create") && can("defect.read") && can("project.members.read") ? (
           <button className="apple-button" type="button" onClick={create}>
@@ -435,6 +444,10 @@ export default function CausalAnalysisPanel({ project }) {
       }
     >
       {dialog}
+      <p className="px-5 pt-4 text-sm text-ink-muted">
+        Khi lỗi được ghi nhận, luồng AI tự động có thể tạo giả thuyết dựa trên bằng chứng. Màn hình
+        này chỉ đọc kết quả; giả thuyết không tự trở thành nguyên nhân gốc đã xác nhận.
+      </p>
       {error && (
         <div className="p-4">
           <ErrorState message={error} />
@@ -471,7 +484,9 @@ export default function CausalAnalysisPanel({ project }) {
                   onClick={async () => {
                     try {
                       setSelected(await testingApi.getCausalAnalysis(item._id));
-                      setHypotheses([]);
+                      setHypothesisResult(
+                        await testingApi.getLatestCausalHypothesisResult(item._id),
+                      );
                     } catch (reason) {
                       setError(messageOf(reason));
                     }
@@ -517,17 +532,6 @@ export default function CausalAnalysisPanel({ project }) {
                   <button className="secondary-button" type="button" onClick={recordRootCause}>
                     Ghi nhận nguyên nhân
                   </button>
-                  <button
-                    aria-busy={generatingHypotheses}
-                    className="secondary-button"
-                    disabled={generatingHypotheses}
-                    type="button"
-                    onClick={generateHypotheses}
-                  >
-                    {generatingHypotheses
-                      ? "AI đang phân tích nguyên nhân"
-                      : "AI đề xuất giả thuyết"}
-                  </button>
                   <button className="apple-button" type="button" onClick={submitReview}>
                     Gửi rà soát
                   </button>
@@ -569,6 +573,23 @@ export default function CausalAnalysisPanel({ project }) {
               )}
             </div>
           </div>
+          {selected.source_event_id && (
+            <section className="grid gap-1 rounded-control border border-border bg-surface-quiet p-3 text-sm">
+              <p className="font-medium text-ink">Nguồn tự động hóa</p>
+              <p className="text-ink-muted">
+                {EVENT_TRIGGER_LABELS[selected.source_event_trigger] || "Sự kiện dự án"} · phiên bản
+                lỗi {selected.source_event_revision}
+              </p>
+              <p className="break-all text-xs text-ink-muted">
+                Mã sự kiện: {selected.source_event_id}
+              </p>
+              {selected.source_automation_run_id && (
+                <p className="break-all text-xs text-ink-muted">
+                  Mã lượt AI: {selected.source_automation_run_id}
+                </p>
+              )}
+            </section>
+          )}
           <DataTable
             items={(selected.five_whys || []).map((why, index) => ({ sequence: index + 1, why }))}
             empty="Chưa ghi nhận năm câu hỏi tại sao"
@@ -593,22 +614,14 @@ export default function CausalAnalysisPanel({ project }) {
                 { key: "root_cause_category", label: "Nhóm" },
                 { key: "hypothesis", label: "Giả thuyết" },
                 { key: "confidence", label: "Tin cậy" },
-                {
-                  key: "action",
-                  label: "Thao tác",
-                  render: (item) =>
-                    can("causalanalysis.update") ? (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => applyHypothesis(item)}
-                      >
-                        Dùng làm bản nháp
-                      </button>
-                    ) : null,
-                },
               ]}
             />
+          )}
+          {selected.status === "DRAFT" && !hypothesisResult && (
+            <p className="text-sm text-ink-muted" role="status">
+              Chưa có kết quả giả thuyết tự động cho phân tích này. Kết quả sẽ xuất hiện nếu một
+              lượt AI theo sự kiện tạo được.
+            </p>
           )}
           <PreventiveActionTable
             items={selected.actions}

@@ -9,6 +9,7 @@ import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import TestCaseTemplatesPanel from "../../components/TestCaseTemplatesPanel";
 import SpecializedDesignPanel from "../../components/SpecializedDesignPanel";
 import AutomationScriptsPanel from "../../components/AutomationScriptsPanel";
+import AgentRunPanel from "../../components/AgentRunPanel";
 import CollaborationPanel from "../../components/CollaborationPanel";
 import {
   ErrorState,
@@ -27,32 +28,37 @@ import {
   testDesignSectionItems,
 } from "@/shared/components/layout/navigation";
 import { testingApi } from "../../services/testing.service";
-import { docText, messageOf, textDoc, valueLabel } from "../../lib/testing";
+import { docText, messageOf, valueLabel } from "../../lib/testing";
 import DocumentEditor from "../../editor/DocumentEditor";
 import ApiArtifactsPanel from "./test-design/ApiArtifactsPanel";
 import DataSetsPanel from "./test-design/DataSetsPanel";
 import ScenariosPanel from "./test-design/ScenariosPanel";
 import TestCaseCreateModal from "./test-design/TestCaseCreateModal";
+import TestSetEditorModal from "./test-design/TestSetEditorModal";
+import TestCaseCustomValues from "./test-design/TestCaseCustomValues";
+import TestCaseCustomFieldManager from "./test-design/TestCaseCustomFieldManager";
+import TestCaseCompareWorkspace from "./test-design/TestCaseCompareWorkspace";
+import StructuredValueEditor from "../../components/StructuredValueEditor";
+import {
+  isGroupApprovalComparisonCurrent,
+  recordAiComparison,
+  requiresAiComparison,
+  unreviewedAiDrafts,
+} from "./test-design/testCaseApproval.logic.mjs";
 import TestCaseTransferPanel from "./test-design/TestCaseTransferPanel";
+import { testDesignAccess } from "./test-design/testDesignAccess.logic.mjs";
 import TestAdequacyPanel from "./design/TestAdequacyPanel";
 import TestRepositoryPanel from "./test-design/TestRepositoryPanel";
 import {
   createDataSetForm,
   createScenarioForm,
   createTestCaseForm,
-  AI_TEST_GENERATION_CATEGORIES,
+  testDataEntriesToObject,
   TEST_CASE_TYPES,
-  TEST_LEVELS,
+  TEST_CASE_ASSESSMENT_LEVELS,
   TEST_SCENARIO_CATEGORIES,
   buildTestCaseDraftChanges,
 } from "./test-design/testDesign.model";
-
-const relevantGeneratedMatches = (item, selectedIndexes) =>
-  (item.similar_cases || []).filter(
-    (match) =>
-      !match.id.startsWith("preview:") ||
-      selectedIndexes.includes(Number(match.id.slice("preview:".length))),
-  );
 
 function ChallengeProvenance({ challenges }) {
   return (
@@ -82,7 +88,12 @@ export default function TestDesignPage({ project, workspaceView }) {
   const [drafts, setDrafts] = useState([]);
   const [tests, setTests] = useState([]);
   const [suites, setSuites] = useState([]);
+  const [testSetDialog, setTestSetDialog] = useState(null);
   const [repositoryNodes, setRepositoryNodes] = useState([]);
+  const [testCaseCustomFields, setTestCaseCustomFields] = useState([]);
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [projectMembersUnavailable, setProjectMembersUnavailable] = useState(false);
+  const [customFieldManagerOpen, setCustomFieldManagerOpen] = useState(false);
   const [reusableSteps, setReusableSteps] = useState([]);
   const [selectedTestIds, setSelectedTestIds] = useState([]);
   const [testPage, setTestPage] = useState(1);
@@ -102,7 +113,9 @@ export default function TestDesignPage({ project, workspaceView }) {
     status: "",
     sort: "-updated_at",
   });
-  const [duplicates, setDuplicates] = useState([]);
+  const [automationRuns, setAutomationRuns] = useState([]);
+  const [automationRunsError, setAutomationRunsError] = useState("");
+  const [automationRunsLoading, setAutomationRunsLoading] = useState(false);
   const [operations, setOperations] = useState([]);
   const [apiArtifacts, setApiArtifacts] = useState([]);
   const [apiCompareFrom, setApiCompareFrom] = useState("");
@@ -116,6 +129,11 @@ export default function TestDesignPage({ project, workspaceView }) {
   });
   const [selectedRequirement, setSelectedRequirement] = useState("");
   const [selectedDraftId, setSelectedDraftId] = useState("");
+  const [selectedApprovalDraftIds, setSelectedApprovalDraftIds] = useState([]);
+  const [comparedApprovalDraftRevisions, setComparedApprovalDraftRevisions] = useState({});
+  const [approvingDraftGroup, setApprovingDraftGroup] = useState(false);
+  const pendingGroupRequest = useRef(null);
+  const [comparisonDraftId, setComparisonDraftId] = useState("");
   const [selectedTestId, setSelectedTestId] = useState("");
   const [testVersions, setTestVersions] = useState([]);
   const [draftEdit, setDraftEdit] = useState(null);
@@ -138,44 +156,23 @@ export default function TestDesignPage({ project, workspaceView }) {
   const [creatingDataSet, setCreatingDataSet] = useState(false);
   const [savingCreation, setSavingCreation] = useState(false);
   const creationInFlight = useRef(false);
-  const [aiAction, setAiAction] = useState("");
-  const [selectedTechniques, setSelectedTechniques] = useState([]);
-  const [maximumCases, setMaximumCases] = useState(5);
-  const [techniqueAdvice, setTechniqueAdvice] = useState(null);
-  const [approvedChallenges, setApprovedChallenges] = useState([]);
-  const [generationPreview, setGenerationPreview] = useState(null);
   const testImportPanelRef = useRef(null);
-  const [selectedGenerated, setSelectedGenerated] = useState([]);
-  const [generatedReasons, setGeneratedReasons] = useState({});
-  const [generatedVersionResolutions, setGeneratedVersionResolutions] = useState({});
-  useEffect(() => {
-    setTechniqueAdvice(null);
-    setApprovedChallenges([]);
-    setGenerationPreview(null);
-    setSelectedGenerated([]);
-    setGeneratedReasons({});
-    setGeneratedVersionResolutions({});
-    setSelectedTechniques([]);
-  }, [selectedRequirement]);
-  useEffect(() => {
-    setGenerationPreview(null);
-    setSelectedGenerated([]);
-    setGeneratedReasons({});
-    setGeneratedVersionResolutions({});
-    setApprovedChallenges((current) =>
-      current.filter((technique) => selectedTechniques.includes(technique)),
-    );
-  }, [selectedTechniques, maximumCases]);
   const can = (permission) => project.current_permissions?.includes(permission);
+  const membershipRoles = project.current_membership?.project_roles;
+  const memberRoles =
+    Array.isArray(membershipRoles) && membershipRoles.length
+      ? membershipRoles
+      : [project.current_membership?.project_role].filter(Boolean);
+  const canManageTestCaseFields = can("project.update") && memberRoles.includes("QA");
   const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
   const permissions = useMemo(
     () => project.current_permissions || [],
     [project.current_permissions],
   );
   const caseTabFromPath = pathname.split("/ca-kiem-thu/")[1]?.split("/")[0];
-  const caseTab =
+  const requestedCaseTab =
     {
-      ai: "ai",
+      ai: "agent-runs",
       "do-day-du": "adequacy",
       "kich-ban": "scenarios",
       mau: "templates",
@@ -183,20 +180,25 @@ export default function TestDesignPage({ project, workspaceView }) {
       api: "api",
       "nhap-xuat": "import",
     }[caseTabFromPath] || "cases";
+  const caseTab = requestedCaseTab;
+  const access = testDesignAccess({ workspaceView, caseTab, permissions });
   const isCaseWorkspace = workspaceView === "" || workspaceView === "cases";
-  const showCases = isCaseWorkspace && caseTab === "cases";
+  const showCases = access.showCases;
   const showAdequacy = isCaseWorkspace && caseTab === "adequacy";
-  const showAi = isCaseWorkspace && caseTab === "ai";
+  const showAgentRuns = isCaseWorkspace && caseTab === "agent-runs";
   const showScenarios = isCaseWorkspace && caseTab === "scenarios";
   const showTemplates = isCaseWorkspace && caseTab === "templates";
   const showAutomation = isCaseWorkspace && caseTab === "automation";
   const showApi = isCaseWorkspace && caseTab === "api";
-  const showImport = isCaseWorkspace && caseTab === "import";
+  const showImport = access.showImport;
+  const canReadTestCases = access.canReadTestCases;
   const canReadTestData = project.current_permissions?.includes("testdata.read");
   const load = useCallback(async () => {
     if (loadedProjectId.current !== project._id) {
       loadedProjectId.current = project._id;
       initialDataLoaded.current = false;
+      setTestImport(null);
+      setTestSetDialog(null);
     }
     if (!initialDataLoaded.current) {
       setInitialLoading(true);
@@ -213,22 +215,30 @@ export default function TestDesignPage({ project, workspaceView }) {
         suiteValues,
         repositoryValues,
         reusableStepValues,
+        customFieldValues,
         apiArtifactValues,
         operationValues,
+        memberResult,
       ] = await Promise.all([
-        (showCases || showAi || showScenarios || showAdequacy) &&
+        (showCases || showAgentRuns || showScenarios || showAdequacy) &&
         permissions.includes("requirement.read")
-          ? testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" })
+          ? testingApi.listRequirements(project._id, {
+              page_size: 500,
+              status: "BASELINED",
+              include_acceptance_criteria: true,
+            })
           : Promise.resolve([]),
-        (showCases || showAi || showScenarios) && permissions.includes("testcondition.read")
+        (showCases || showScenarios) && permissions.includes("testcondition.read")
           ? testingApi.listTestConditions(project._id, { status: "APPROVED", page_size: 200 })
           : Promise.resolve({ items: [] }),
         showScenarios && permissions.includes("testscenario.read")
           ? testingApi.listScenarios(project._id, scenarioFilters)
           : Promise.resolve([]),
-        showCases && canReadTestData ? testingApi.listDataSets(project._id) : Promise.resolve([]),
-        showCases || showImport ? testingApi.listTestDrafts(project._id) : Promise.resolve([]),
-        showCases || showAutomation || showImport
+        (showCases || workspaceView === "test-data") && canReadTestData
+          ? testingApi.listDataSets(project._id)
+          : Promise.resolve([]),
+        access.canLoadDrafts ? testingApi.listTestDrafts(project._id) : Promise.resolve([]),
+        access.canLoadTestCases
           ? testingApi.listTestCasePage(project._id, {
               ...testFilters,
               page: testPage,
@@ -238,25 +248,45 @@ export default function TestDesignPage({ project, workspaceView }) {
         (showCases || workspaceView === "test-sets") && permissions.includes("testsuite.read")
           ? testingApi.listSuites(project._id)
           : Promise.resolve([]),
-        showCases ? testingApi.listTestRepository(project._id) : Promise.resolve([]),
-        showCases ? testingApi.listReusableTestSteps(project._id) : Promise.resolve([]),
+        access.canLoadRepository ? testingApi.listTestRepository(project._id) : Promise.resolve([]),
+        access.canLoadRepository
+          ? testingApi.listReusableTestSteps(project._id)
+          : Promise.resolve([]),
+        showCases && permissions.includes("testcase.read")
+          ? testingApi.listTestCaseCustomFields(project._id)
+          : Promise.resolve([]),
         showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiArtifacts(project._id)
           : Promise.resolve([]),
         showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiOperations(project._id)
           : Promise.resolve([]),
+        showCases && permissions.includes("project.members.read")
+          ? testingApi
+              .listMembers(project._id)
+              .then((items) => ({ items: items || [], unavailable: false }))
+              .catch(() => ({ items: [], unavailable: true }))
+          : Promise.resolve({ items: [], unavailable: false }),
       ]);
       setRequirements(requirementValues);
       setTestConditions(testConditionValues.items || []);
       setScenarios(scenarioValues);
       setDataSets(dataSetValues);
       setDrafts(draftValues);
+      setSelectedApprovalDraftIds((current) => {
+        const eligible = new Set(
+          draftValues.filter((draft) => draft.status === "IN_REVIEW").map((draft) => draft._id),
+        );
+        return current.filter((id) => eligible.has(id));
+      });
       setTests(testValues.items);
       setTestPageInfo(testValues);
       setSuites(suiteValues);
       setRepositoryNodes(repositoryValues);
       setReusableSteps(reusableStepValues);
+      setTestCaseCustomFields(customFieldValues);
+      setProjectMembers((memberResult.items || []).filter((item) => item.status === "ACTIVE"));
+      setProjectMembersUnavailable(memberResult.unavailable);
       setApiArtifacts(apiArtifactValues);
       const confirmedArtifacts = apiArtifactValues.filter((item) => item.status === "CONFIRMED");
       setApiCompareFrom((current) =>
@@ -277,13 +307,18 @@ export default function TestDesignPage({ project, workspaceView }) {
       );
       initialDataLoaded.current = true;
       setInitialLoadFailed(false);
+      return true;
     } catch (reason) {
       if (!initialDataLoaded.current) setInitialLoadFailed(true);
       setError(messageOf(reason));
+      return false;
     } finally {
       setInitialLoading(false);
     }
   }, [
+    access.canLoadDrafts,
+    access.canLoadRepository,
+    access.canLoadTestCases,
     canReadTestData,
     initialDataLoaded,
     loadedProjectId,
@@ -291,11 +326,9 @@ export default function TestDesignPage({ project, workspaceView }) {
     project._id,
     scenarioFilters,
     showAdequacy,
-    showAi,
+    showAgentRuns,
     showApi,
-    showAutomation,
     showCases,
-    showImport,
     showScenarios,
     testFilters,
     testPage,
@@ -304,8 +337,68 @@ export default function TestDesignPage({ project, workspaceView }) {
   useEffect(() => {
     void load();
   }, [load]);
+  const canReadAutomationRuns =
+    permissions.includes("automation.read") || permissions.includes("proposal.read");
+  useEffect(() => {
+    if (!showAgentRuns || !canReadAutomationRuns) {
+      setAutomationRuns([]);
+      setAutomationRunsError("");
+      setAutomationRunsLoading(false);
+      return undefined;
+    }
+    let active = true;
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      setAutomationRunsLoading(true);
+      try {
+        const values = await testingApi.listAutomationRuns(project._id);
+        if (active) {
+          setAutomationRuns(values || []);
+          setAutomationRunsError("");
+        }
+      } catch (reason) {
+        if (active) setAutomationRunsError(messageOf(reason));
+      } finally {
+        pending = false;
+        if (active) setAutomationRunsLoading(false);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [canReadAutomationRuns, project._id, showAgentRuns]);
+  const selectedRequirementRecord = requirements.find(
+    (item) => item.current_version_id === selectedRequirement,
+  );
+  const selectedRequirementVersion = selectedRequirementRecord?.current_version;
+  const requirementEventId =
+    selectedRequirement && Number.isInteger(selectedRequirementVersion?.revision)
+      ? `requirement-version:${selectedRequirement}:${selectedRequirementVersion.revision}:${selectedRequirementVersion.status || "DRAFT"}`
+      : "";
+  const requirementAutomationRun = requirementEventId
+    ? automationRuns.find(
+        (run) =>
+          run.trigger === "REQUIREMENT_CHANGED" &&
+          run.source_event_id === requirementEventId &&
+          run.evidence?.some(
+            (item) =>
+              item.artifact_type === "requirement_version" &&
+              item.artifact_version_id === selectedRequirement &&
+              item.artifact_revision === selectedRequirementVersion?.revision,
+          ),
+      ) || null
+    : null;
   const actionableDrafts = drafts.filter((item) => item.status !== "APPROVED");
   const selectedDraft = actionableDrafts.find((item) => item._id === selectedDraftId) || null;
+  const lintDraftId = selectedDraft?._id;
+  const lintDraftRevision = selectedDraft?.revision;
   useEffect(() => {
     if (!selectedDraft) {
       loadedDraft.current = "";
@@ -321,15 +414,37 @@ export default function TestDesignPage({ project, workspaceView }) {
       type: selectedDraft.type,
       priority: selectedDraft.priority,
       risk: selectedDraft.risk,
+      test_level: selectedDraft.test_level || "",
+      test_kind: selectedDraft.test_kind || "",
+      expected_impact: selectedDraft.expected_impact || "unassessed",
+      assessment_reason: selectedDraft.assessment_reason || "",
+      requirementVersionIds: selectedDraft.requirement_version_ids || [],
+      acceptanceCriterionIds: selectedDraft.acceptance_criterion_ids || [],
+      repositoryNodeId: selectedDraft.repository_node_id || "",
+      bdd: selectedDraft.bdd
+        ? {
+            feature: selectedDraft.bdd.feature || "",
+            scenario: selectedDraft.bdd.scenario || "",
+            steps: (selectedDraft.bdd.steps || []).map((step) => ({
+              id: step.id,
+              keyword: step.keyword,
+              text: step.text || "",
+              ...(step.reusable_step_version_id
+                ? { reusable_step_version_id: step.reusable_step_version_id }
+                : {}),
+            })),
+          }
+        : null,
+      requiredSkills: (selectedDraft.required_skills || []).join(", "),
       objective: docText(selectedDraft.objective_doc),
       preconditions: docText(selectedDraft.preconditions_doc),
       steps: (selectedDraft.steps || []).map((step) => ({
         id: step.id,
         action: docText(step.action_doc),
-        data: JSON.stringify(step.test_data || {}, null, 2),
+        data: step.test_data || {},
         expected: docText(step.expected_doc),
       })),
-      testData: JSON.stringify(selectedDraft.test_data || {}, null, 2),
+      testData: selectedDraft.test_data || {},
       expected: docText(selectedDraft.expected_result_doc),
       postconditions: docText(selectedDraft.postconditions_doc),
       techniques: (selectedDraft.techniques || []).join(", "),
@@ -339,10 +454,29 @@ export default function TestDesignPage({ project, workspaceView }) {
       attachments: selectedDraft.attachments || [],
       dataSetVersionIds: selectedDraft.data_set_version_ids || [],
       testConditionIds: selectedDraft.test_condition_ids || [],
+      customValues: selectedDraft.custom_values || {},
     });
     setDraftDirty(false);
     setDraftSaveState("saved");
   }, [selectedDraft]);
+  useEffect(() => {
+    if (!lintDraftId || !permissions.includes("testcase.read")) {
+      setTestLint(null);
+      return undefined;
+    }
+    let active = true;
+    testingApi.getLatestTestDraftLint(lintDraftId).then(
+      (result) => {
+        if (active) setTestLint(result || null);
+      },
+      (reason) => {
+        if (active && reason?.status !== 404) setError(messageOf(reason));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [lintDraftId, lintDraftRevision, permissions]);
   const changeDraftEdit = (next) => {
     draftSequence.current += 1;
     setDraftEdit((value) => (typeof next === "function" ? next(value) : { ...value, ...next }));
@@ -358,9 +492,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       await createArtifact();
       await load();
     } catch (reason) {
-      setError(
-        reason instanceof SyntaxError ? "Bộ dữ liệu phải là JSON hợp lệ" : messageOf(reason),
-      );
+      setError(messageOf(reason));
     } finally {
       creationInFlight.current = false;
       setSavingCreation(false);
@@ -373,29 +505,49 @@ export default function TestDesignPage({ project, workspaceView }) {
         type: form.type,
         priority: form.priority,
         risk: form.risk,
-        objective_doc: textDoc(form.title),
-        preconditions_doc: textDoc(""),
-        steps: [
-          {
-            id: crypto.randomUUID(),
-            order: 1,
-            action_doc: form.action,
-            test_data: {},
-            expected_doc: form.expected,
-          },
-        ],
-        test_data: {},
-        expected_result_doc: form.expected,
-        postconditions_doc: textDoc(""),
-        tags: [],
-        techniques: [],
-        automation_status: "manual",
+        test_level: form.testLevel || null,
+        test_kind: form.testKind || null,
+        expected_impact: form.expectedImpact,
+        assessment_reason: form.assessmentReason,
+        required_skills: form.requiredSkills
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+        owner_id:
+          permissions.includes("project.members.read") && !projectMembersUnavailable
+            ? form.ownerId || null
+            : null,
+        custom_values: form.customValues || {},
+        objective_doc: form.objective,
+        preconditions_doc: form.preconditions,
+        steps:
+          form.testStyle === "BDD"
+            ? []
+            : form.steps.map((step, index) => ({
+                id: step.id,
+                order: index + 1,
+                action_doc: step.action,
+                test_data: testDataEntriesToObject(step.data),
+                expected_doc: step.expected,
+              })),
+        test_data: testDataEntriesToObject(form.testData),
+        expected_result_doc: form.expectedResult,
+        postconditions_doc: form.postconditions,
+        tags: form.tags
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+        techniques: form.techniques
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+        automation_status: form.automationStatus,
         attachments: [],
         data_set_version_ids: form.dataSetVersionIds,
         test_condition_ids: form.testConditionIds,
         repository_node_id: form.repositoryNodeId || null,
-        requirement_version_ids: selectedRequirement ? [selectedRequirement] : [],
-        acceptance_criterion_ids: [],
+        requirement_version_ids: form.requirementVersionIds,
+        acceptance_criterion_ids: form.acceptanceCriterionIds,
         origin: "manual",
         source_evidence: [],
         bdd:
@@ -448,275 +600,249 @@ export default function TestDesignPage({ project, workspaceView }) {
     submitCreation(event, async () => {
       await testingApi.createDataSet(project._id, {
         name: dataSetForm.name,
-        variables: JSON.parse(dataSetForm.variables || "{}"),
-        secret_refs: JSON.parse(dataSetForm.secretRefs || "{}"),
+        variables: dataSetForm.variables || {},
+        secret_refs: dataSetForm.secretRefs || {},
       });
       setDataSetForm(createDataSetForm());
       setCreatingDataSet(false);
     });
-  const createTestSet = async () => {
-    const answer = await ask({
-      title: "Tạo bộ kiểm thử",
-      description: "Bộ kiểm thử là tập ca có thể dùng lại trong nhiều kế hoạch kiểm thử",
-      confirmLabel: "Tạo bộ kiểm thử",
+  const configureTestCaseField = async () => {
+    await ask({
+      title: "Thêm trường mở rộng cho ca kiểm thử",
+      description: "Trường được lưu có kiểu dữ liệu và áp dụng cho các ca trong dự án này.",
+      confirmLabel: "Tạo trường",
       fields: [
-        { name: "name", label: "Tên bộ kiểm thử", required: true, autoFocus: true },
+        { name: "key", label: "Mã trường (chữ thường, số, gạch dưới)", required: true },
+        { name: "label", label: "Tên hiển thị", required: true },
         {
-          name: "suite_type",
-          label: "Loại bộ kiểm thử",
+          name: "value_type",
+          label: "Kiểu dữ liệu",
           options: [
-            "smoke",
-            "regression",
-            "sanity",
-            "feature",
-            "api",
-            "ui",
-            "integration",
-            "custom",
-          ].map((value) => ({ value, label: valueLabel(value) })),
+            { value: "text", label: "Văn bản" },
+            { value: "number", label: "Số" },
+            { value: "boolean", label: "Có / Không" },
+            { value: "date", label: "Ngày" },
+            { value: "choice", label: "Danh sách lựa chọn" },
+          ],
         },
         {
-          name: "test_case_version_ids",
-          label: "Ca kiểm thử",
-          multiple: true,
-          options: tests.map((item) => ({
-            value: item.current_version_id,
-            label: `${item.test_case_key} ${item.current_version?.title || ""}`,
-          })),
+          name: "required",
+          label: "Bắt buộc khi QA duyệt",
+          options: [
+            { value: "false", label: "Không" },
+            { value: "true", label: "Có" },
+          ],
+        },
+        {
+          name: "choices",
+          label: "Các lựa chọn (mỗi dòng một giá trị, chỉ dùng cho kiểu danh sách)",
+          multiline: true,
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          const choices = (answer.choices || "")
+            .split("\n")
+            .map((value) => value.trim())
+            .filter(Boolean);
+          await testingApi.createTestCaseCustomField(project._id, {
+            key: answer.key.trim(),
+            label: answer.label.trim(),
+            value_type: answer.value_type,
+            required: answer.required === "true",
+            choices,
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.createSuite({
-        project_id: project._id,
-        name: answer.name.trim(),
-        suite_type: answer.suite_type,
-        test_case_version_ids: answer.test_case_version_ids || [],
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
+  };
+  const createTestSet = async () => {
+    setTestSetDialog({ mode: "create", suite: null });
   };
   const updateTestSet = async (suite) => {
-    const answer = await ask({
-      title: "Cập nhật bộ kiểm thử",
-      description: suite.name,
-      confirmLabel: "Lưu thay đổi",
-      fields: [
-        { name: "name", label: "Tên bộ kiểm thử", initialValue: suite.name, required: true },
-        {
-          name: "test_case_version_ids",
-          label: "Ca kiểm thử",
-          multiple: true,
-          initialValue: suite.test_case_version_ids || [],
-          options: tests.map((item) => ({
-            value: item.current_version_id,
-            label: `${item.test_case_key} ${item.current_version?.title || ""}`,
-          })),
-        },
-      ],
-    });
-    if (!answer) return;
-    try {
+    setTestSetDialog({ mode: "edit", suite });
+  };
+  const saveTestSet = async ({ name, suiteType, versionIds }) => {
+    if (testSetDialog?.mode === "edit" && testSetDialog.suite) {
+      const suite = testSetDialog.suite;
       await testingApi.updateSuite(suite._id, {
         expected_revision: suite.revision,
-        name: answer.name.trim(),
-        test_case_version_ids: answer.test_case_version_ids || [],
+        name: name.trim(),
+        suite_type: suiteType,
+        test_case_version_ids: versionIds,
       });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
+    } else {
+      await testingApi.createSuite({
+        project_id: project._id,
+        name: name.trim(),
+        suite_type: suiteType,
+        test_case_version_ids: versionIds,
+      });
     }
+    setTestSetDialog(null);
+    await load();
   };
   const archiveTestSet = async (suite) => {
-    const answer = await ask({
+    await ask({
       title: "Lưu trữ bộ kiểm thử",
       description: suite.name,
       confirmLabel: "Lưu trữ",
       danger: true,
       fields: [{ name: "reason", label: "Lý do", required: true, multiline: true }],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.archiveSuite(suite._id, {
+            expected_revision: suite.revision,
+            reason: answer.reason.trim(),
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.archiveSuite(suite._id, {
-        expected_revision: suite.revision,
-        reason: answer.reason.trim(),
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
-  };
-  const generate = async () => {
-    if (!selectedRequirement) return setError("Cần chọn yêu cầu trước khi tạo ca kiểm thử");
-    if (!selectedTechniques.length) return setError("Chọn ít nhất một kỹ thuật thiết kế kiểm thử");
-    if (!Number.isInteger(maximumCases) || maximumCases < 1 || maximumCases > 100) {
-      return setError("Số ca tối đa phải là số nguyên từ 1 đến 100");
-    }
-    setError("");
-    setGenerationPreview(null);
-    setSelectedGenerated([]);
-    setGeneratedReasons({});
-    setGeneratedVersionResolutions({});
-    setAiAction("testcase");
-    try {
-      const result = await testingApi.generateTestCases(selectedRequirement, {
-        categories: [],
-        techniques: selectedTechniques,
-        challenge_suite_signature: approvedChallenges.length
-          ? techniqueAdvice?.suite_signature
-          : null,
-        challenge_hypotheses: (techniqueAdvice?.items || [])
-          .filter(
-            (item) =>
-              selectedTechniques.includes(item.technique) &&
-              approvedChallenges.includes(item.technique) &&
-              item.challenge,
-          )
-          .map((item) => ({
-            technique: item.technique,
-            source_ref: item.challenge.source_ref,
-            source_quote: item.challenge.source_quote,
-            hypothetical_fault: item.challenge.hypothetical_fault,
-            distinguishing_input: item.challenge.distinguishing_input,
-            expected_result: item.challenge.expected_result,
-            existing_case_refs: item.challenge.existing_case_refs,
-          })),
-        max_cases: maximumCases,
-        preview_only: true,
-        instruction:
-          "Generate test cases in Vietnamese with verifiable inputs and results using only the selected design techniques",
-      });
-      setGenerationPreview(result);
-      setSelectedGenerated(
-        result.items.reduce(
-          (selected, item, index) =>
-            relevantGeneratedMatches(item, selected).length ? selected : [...selected, index],
-          [],
-        ),
-      );
-      setGeneratedReasons({});
-      setGeneratedVersionResolutions({});
-    } catch (reason) {
-      const missing = reason.details?.unapplied_techniques;
-      const unaddressed = reason.details?.unaddressed_challenges;
-      const unsupported = reason.details?.unsupported_claims;
-      const limitations = reason.details?.warnings;
-      setError(
-        Array.isArray(missing) && missing.length
-          ? `${messageOf(reason)}  Thiếu bằng chứng cho ${missing.map(valueLabel).join("  ")}${Array.isArray(limitations) && limitations.length ? `  ${limitations.slice(0, 3).join("  ")}` : ""}`
-          : Array.isArray(unaddressed) && unaddressed.length
-            ? `${messageOf(reason)}  Chưa xử lý ${unaddressed.map(valueLabel).join("  ")}`
-            : Array.isArray(unsupported) && unsupported.length
-              ? `${messageOf(reason)}  Cần kiểm tra nội dung ${unsupported.slice(0, 3).join("  ")}`
-              : messageOf(reason),
-      );
-    } finally {
-      setAiAction("");
-    }
-  };
-  const recommendTechniques = async () => {
-    if (!selectedRequirement) return setError("Cần chọn yêu cầu trước khi nhận gợi ý");
-    setError("");
-    setAiAction("technique");
-    try {
-      const result = await testingApi.recommendTestTechniques(selectedRequirement, {
-        instruction:
-          "Recommend suitable test design techniques in Vietnamese and provide evidence plus expected coverage against existing cases",
-      });
-      setTechniqueAdvice(result);
-      setApprovedChallenges([]);
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setAiAction("");
-    }
-  };
-  const saveGenerated = async () => {
-    if (!selectedGenerated.length || !generationPreview) return;
-    if (
-      selectedGenerated.some(
-        (index) =>
-          relevantGeneratedMatches(generationPreview.items[index], selectedGenerated).length &&
-          !generatedVersionResolutions[index]?.target_version_id &&
-          (generatedReasons[index] || "").trim().length < 2,
-      )
-    ) {
-      setError("Cần ghi lý do tạo riêng cho từng ca gần giống");
-      return;
-    }
-    if (
-      selectedGenerated.some(
-        (index) =>
-          generatedVersionResolutions[index]?.target_version_id &&
-          (generatedVersionResolutions[index]?.reason || "").trim().length < 2,
-      )
-    ) {
-      setError("Cần ghi lý do tạo phiên bản mới cho từng ca được cập nhật");
-      return;
-    }
-    setAiAction("saving-generated");
-    try {
-      await testingApi.createGeneratedTestDrafts(
-        project._id,
-        [...selectedGenerated]
-          .sort((left, right) => left - right)
-          .map((index) => ({
-            ...generationPreview.items[index].draft,
-            duplicate_reason: generatedVersionResolutions[index]?.target_version_id
-              ? null
-              : generatedReasons[index]?.trim() || null,
-            target_version_id: generatedVersionResolutions[index]?.target_version_id || null,
-            version_reason: generatedVersionResolutions[index]?.target_version_id
-              ? generatedVersionResolutions[index]?.reason?.trim()
-              : null,
-          })),
-      );
-      setGenerationPreview(null);
-      setSelectedGenerated([]);
-      setGeneratedVersionResolutions({});
-      await load();
-    } catch (reason) {
-      const failedIndex = [...selectedGenerated].sort((left, right) => left - right)[
-        reason.details?.index
-      ];
-      if (reason.code === "TEST_CASE_DUPLICATE_REVIEW_REQUIRED" && failedIndex !== undefined) {
-        setGenerationPreview((current) => ({
-          ...current,
-          items: current.items.map((item, index) =>
-            index === failedIndex
-              ? { ...item, similar_cases: reason.details?.matches || [] }
-              : item,
-          ),
-        }));
-      }
-      setError(messageOf(reason));
-    } finally {
-      setAiAction("");
-    }
   };
   const freeze = async (draft) => {
-    const answer = await ask({
+    if (unreviewedAiDrafts([draft], comparedApprovalDraftRevisions).length) {
+      setError("Cần đối chiếu bản gốc và đề xuất AI ở revision hiện tại trước khi duyệt ca này.");
+      setComparisonDraftId(draft._id);
+      return;
+    }
+    await ask({
       title: "Phê duyệt ca kiểm thử",
       description: `${draft.test_case_key} sẽ trở thành phiên bản bất biến và được dùng trong lần chạy`,
       confirmLabel: "Phê duyệt",
+      onConfirm: async () => {
+        try {
+          await testingApi.freezeTestDraft(
+            draft._id,
+            draft.revision,
+            "Phê duyệt sau rà soát của con người",
+          );
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.freezeTestDraft(
-        draft._id,
-        draft.revision,
-        "Phê duyệt sau rà soát của con người",
-      );
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
+  };
+  const approveDraftGroup = async () => {
+    const selected = actionableDrafts.filter(
+      (draft) => selectedApprovalDraftIds.includes(draft._id) && draft.status === "IN_REVIEW",
+    );
+    if (!selected.length || selected.length !== selectedApprovalDraftIds.length) {
+      setError("Chọn các ca đang ở trạng thái chờ duyệt; nhóm không được tự bỏ qua ca khác.");
+      return;
     }
+    const unreviewed = unreviewedAiDrafts(selected, comparedApprovalDraftRevisions);
+    if (unreviewed.length) {
+      setError(
+        `Mở và đối chiếu bản gốc với đề xuất AI cho ${unreviewed.length} ca được đánh dấu trước khi duyệt nhóm.`,
+      );
+      return;
+    }
+    await ask({
+      title: `Duyệt nhóm ${selected.length} ca kiểm thử`,
+      description:
+        "Toàn bộ nhóm được ghi trong một giao dịch. Nếu một ca không hợp lệ hoặc phiên bản đã đổi, không ca nào được duyệt.",
+      confirmLabel: "Đối chiếu và duyệt nhóm",
+      fields: [
+        {
+          name: "note",
+          label: "Ghi chú duyệt",
+          required: true,
+          minLength: 2,
+          multiline: true,
+          autoFocus: true,
+        },
+      ],
+      onConfirm: async (answer) => {
+        setApprovingDraftGroup(true);
+        try {
+          const selectionKey = selected
+            .map((draft) => `${draft._id}:${draft.revision}`)
+            .sort()
+            .join("|");
+          if (
+            !pendingGroupRequest.current ||
+            pendingGroupRequest.current.selectionKey !== selectionKey ||
+            pendingGroupRequest.current.reviewNote !== answer.note.trim()
+          ) {
+            const comparisons = await Promise.all(
+              selected.map(async (draft) => ({
+                draft,
+                comparison: await testingApi.compareTestDraft(draft._id),
+              })),
+            );
+            const changedComparison = comparisons.find(
+              ({ draft, comparison }) =>
+                !isGroupApprovalComparisonCurrent(
+                  draft,
+                  comparison,
+                  comparedApprovalDraftRevisions,
+                ),
+            );
+            if (changedComparison) {
+              pendingGroupRequest.current = null;
+              setComparedApprovalDraftRevisions((current) => {
+                const next = { ...current };
+                for (const item of comparisons) delete next[item.draft._id];
+                return next;
+              });
+              await load();
+              throw new Error(
+                "Có ca đã đổi phiên bản hoặc nguồn sau lần đối chiếu. Nhóm chưa được duyệt; hãy mở lại từng ca để xem bản mới nhất.",
+              );
+            }
+            const items = comparisons.map(({ draft, comparison }) => ({
+              draft_id: draft._id,
+              expected_revision: comparison.draft.revision,
+              comparison_token: comparison.comparison_token,
+            }));
+            pendingGroupRequest.current = {
+              selectionKey,
+              reviewNote: answer.note.trim(),
+              payload: {
+                items,
+                operation_id: crypto.randomUUID(),
+                review_note: answer.note.trim(),
+              },
+            };
+          }
+          const response = await testingApi.acceptTestDraftGroup(
+            project._id,
+            pendingGroupRequest.current.payload,
+          );
+          pendingGroupRequest.current = null;
+          const approvedDraftIds = new Set(selected.map((draft) => draft._id));
+          setDrafts((current) => current.filter((draft) => !approvedDraftIds.has(draft._id)));
+          setSelectedApprovalDraftIds([]);
+          const refreshed = await load();
+          if (!refreshed) {
+            setError(
+              `Nhóm ${response.count} ca đã được duyệt và lưu nguyên tử, nhưng chưa tải lại được danh sách. Hãy tải lại trang; không gửi lại thao tác duyệt.`,
+            );
+            return;
+          }
+          if (response.derived_pending_version_ids?.length) {
+            setError(
+              `Đã duyệt ${response.count} ca trong giao dịch; ${response.derived_pending_version_ids.length} phiên bản đang chờ đồng bộ truy vết hoặc tìm kiếm.`,
+            );
+          }
+        } catch (reason) {
+          if (reason?.status >= 400 && reason.status < 500) pendingGroupRequest.current = null;
+          throw new Error(messageOf(reason));
+        } finally {
+          setApprovingDraftGroup(false);
+        }
+      },
+    });
   };
   const reviewDraft = async (draft, action) => {
-    const answer = await ask({
+    await ask({
       title: action === "changes" ? "Yêu cầu chỉnh sửa ca kiểm thử" : "Gửi ca kiểm thử để rà soát",
       description: draft.test_case_key,
       confirmLabel: action === "changes" ? "Yêu cầu chỉnh sửa" : "Gửi rà soát",
@@ -731,19 +857,20 @@ export default function TestDesignPage({ project, workspaceView }) {
           autoFocus: true,
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          const payload = { expected_revision: draft.revision, review_note: answer.note };
+          if (action === "submit") {
+            await testingApi.submitTestCaseReview(project._id, draft._id, payload);
+          } else {
+            await testingApi.requestTestCaseChanges(project._id, draft._id, payload);
+          }
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      const payload = { expected_revision: draft.revision, review_note: answer.note };
-      if (action === "submit") {
-        await testingApi.submitTestCaseReview(project._id, draft._id, payload);
-      } else {
-        await testingApi.requestTestCaseChanges(project._id, draft._id, payload);
-      }
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const persistDraft = useCallback(
     async (snapshot, sequence) => {
@@ -776,12 +903,8 @@ export default function TestDesignPage({ project, workspaceView }) {
           setDraftSaveState("pending");
         }
       } catch (reason) {
-        setDraftSaveState(reason instanceof SyntaxError ? "invalid" : "error");
-        setError(
-          reason instanceof SyntaxError
-            ? "Dữ liệu kiểm thử phải là JSON hợp lệ"
-            : messageOf(reason),
-        );
+        setDraftSaveState("error");
+        setError(messageOf(reason));
       } finally {
         draftSavesInFlight.current.delete(selectedDraft._id);
       }
@@ -794,6 +917,7 @@ export default function TestDesignPage({ project, workspaceView }) {
   useEffect(() => {
     if (
       !draftDirty ||
+      comparisonDraftId ||
       selectedDraft?.status !== "DRAFT" ||
       !draftEdit ||
       !project.current_permissions?.includes("testcase.update")
@@ -804,32 +928,14 @@ export default function TestDesignPage({ project, workspaceView }) {
       void persistDraft(draftEdit, sequence);
     }, 1500);
     return () => window.clearTimeout(timer);
-  }, [draftDirty, draftEdit, persistDraft, project.current_permissions, selectedDraft?.status]);
-  const criterionCoverage = generationPreview?.criterion_coverage;
-  const selectedCriterionIds = new Set([
-    ...(criterionCoverage?.linked_criterion_ids || []),
-    ...selectedGenerated.flatMap(
-      (index) => generationPreview?.items[index]?.draft.acceptance_criterion_ids || [],
-    ),
+  }, [
+    draftDirty,
+    draftEdit,
+    persistDraft,
+    project.current_permissions,
+    selectedDraft?.status,
+    comparisonDraftId,
   ]);
-  const remainingCriterionIds = (criterionCoverage?.criterion_ids || []).filter(
-    (id) => !selectedCriterionIds.has(id),
-  );
-  const criterionLabel = (id) => {
-    const criterion = generationPreview?.evidence?.find((item) => item._id === id);
-    return criterion?.key || criterion?.plain_text || id;
-  };
-  const criterionIdsLostWithout = (excludedIndex) => {
-    const retained = new Set([
-      ...(criterionCoverage?.linked_criterion_ids || []),
-      ...selectedGenerated
-        .filter((index) => index !== excludedIndex)
-        .flatMap((index) => generationPreview?.items[index]?.draft.acceptance_criterion_ids || []),
-    ]);
-    return (generationPreview?.items[excludedIndex]?.draft.acceptance_criterion_ids || []).filter(
-      (id) => !retained.has(id),
-    );
-  };
   const pageTitle =
     workspaceView === "repository"
       ? "Kho kiểm thử"
@@ -837,7 +943,7 @@ export default function TestDesignPage({ project, workspaceView }) {
         ? {
             cases: "Ca kiểm thử",
             adequacy: "Hồ sơ đảm bảo",
-            ai: "Tạo ca bằng AI",
+            "agent-runs": "Lượt chạy AI",
             scenarios: "Kịch bản kiểm thử",
             templates: "Mẫu ca kiểm thử",
             automation: "Mã kiểm thử tự động",
@@ -878,6 +984,21 @@ export default function TestDesignPage({ project, workspaceView }) {
               Tạo ca kiểm thử
             </button>
           )}
+          {showCases && canManageTestCaseFields && (
+            <>
+              <button className="secondary-button" type="button" onClick={configureTestCaseField}>
+                Thêm trường cho ca
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                aria-expanded={customFieldManagerOpen}
+                onClick={() => setCustomFieldManagerOpen((open) => !open)}
+              >
+                {customFieldManagerOpen ? "Đóng quản lý trường" : "Quản lý trường"}
+              </button>
+            </>
+          )}
         </div>
       }
     >
@@ -899,520 +1020,179 @@ export default function TestDesignPage({ project, workspaceView }) {
       </div>
       {isCaseWorkspace && (
         <WorkspaceSectionNav
-          current={caseTab}
+          current={caseTab === "agent-runs" ? "ai" : caseTab}
           compact
           permissions={permissions}
           items={testCaseSubsectionItems(project._id).filter((item) => item.id !== "cases")}
         />
       )}
+      {showCases && canManageTestCaseFields && customFieldManagerOpen && (
+        <TestCaseCustomFieldManager
+          projectId={project._id}
+          onUpdated={(updatedField) =>
+            setTestCaseCustomFields((current) =>
+              updatedField.status === "ACTIVE"
+                ? current.some((field) => field._id === updatedField._id)
+                  ? current.map((field) => (field._id === updatedField._id ? updatedField : field))
+                  : [...current, updatedField]
+                : current.filter((field) => field._id !== updatedField._id),
+            )
+          }
+        />
+      )}
       {showAdequacy && selectedRequirement && (
         <TestAdequacyPanel
           requirementVersionId={selectedRequirement}
-          canDecide={project.current_membership?.project_role === "QA" && can("testcase.read")}
-          canCreateClarification={
-            project.current_membership?.project_role === "QA" && can("requirement.review")
-          }
-          canApprove={project.current_membership?.project_role === "QA" && can("testcase.review")}
+          canDecide={memberRoles.includes("QA") && can("testcase.read")}
+          canCreateClarification={memberRoles.includes("QA") && can("requirement.review")}
+          canApprove={memberRoles.includes("QA") && can("testcase.review")}
           canSubmit={can("testcase.submit_review")}
         />
       )}
-      {showAi &&
-        (can("ai.generate_testcase") ||
-          can("ai.generate_scenario") ||
-          can("testcase.duplicate_check")) && (
-          <Panel title="Đề xuất kiểm thử">
-            <div className="flex flex-wrap gap-3 p-5">
+      {showAgentRuns && permissions.includes("requirement.read") && canReadAutomationRuns && (
+        <Panel title="Tự động hóa khi Requirement thay đổi">
+          <div className="grid gap-4 p-5">
+            <p className="text-sm text-ink-muted">
+              Kết quả được ghép theo mã sự kiện, phiên bản và revision chính xác; màn hình không suy
+              đoán theo tên Requirement.
+            </p>
+            <label className="field-label block max-w-2xl">
+              Requirement đã duyệt
               <select
-                aria-label="Yêu cầu nguồn"
-                className="apple-input w-full min-w-0 sm:w-72"
+                aria-label="Requirement cần xem trạng thái tự động hóa"
+                className="apple-input mt-2 w-full min-w-0"
                 value={selectedRequirement}
-                disabled={Boolean(aiAction)}
-                onChange={(event) => {
-                  setSelectedRequirement(event.target.value);
-                  setSelectedTechniques([]);
-                  setTechniqueAdvice(null);
-                  setApprovedChallenges([]);
-                  setGenerationPreview(null);
-                  setSelectedGenerated([]);
-                  setGeneratedReasons({});
-                  setGeneratedVersionResolutions({});
-                  setError("");
-                }}
+                onChange={(event) => setSelectedRequirement(event.target.value)}
               >
-                <option value="">Chọn yêu cầu</option>
+                <option value="">Chọn Requirement</option>
                 {requirements.map((item) => (
                   <option key={item._id} value={item.current_version_id}>
-                    {item.requirement_key} {item.current_version?.title}
+                    {item.requirement_key} · {item.current_version?.title}
                   </option>
                 ))}
               </select>
-              {can("ai.generate_testcase") && (
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={Boolean(aiAction) || !selectedRequirement}
-                  aria-busy={aiAction === "technique"}
-                  onClick={recommendTechniques}
-                >
-                  {aiAction === "technique" ? "AI đang đánh giá kỹ thuật" : "AI gợi ý kỹ thuật"}
-                </button>
-              )}
-              {can("ai.generate_testcase") && can("testcase.create") && (
-                <button
-                  aria-busy={aiAction === "testcase"}
-                  className="apple-button"
-                  disabled={Boolean(aiAction) || !selectedRequirement || !selectedTechniques.length}
-                  type="button"
-                  onClick={generate}
-                >
-                  {aiAction === "testcase" ? "AI đang tạo bản xem trước" : "Xem trước ca kiểm thử"}
-                </button>
-              )}
-              {can("ai.generate_scenario") && can("testscenario.create") && (
-                <button
-                  className="secondary-button"
-                  aria-busy={aiAction === "scenario"}
-                  disabled={Boolean(aiAction)}
-                  type="button"
-                  onClick={async () => {
-                    if (!selectedRequirement) return;
-                    setAiAction("scenario");
-                    try {
-                      await testingApi.generateScenarios(selectedRequirement, {
-                        categories: AI_TEST_GENERATION_CATEGORIES,
-                        count_per_category: 1,
-                      });
-                      await load();
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    } finally {
-                      setAiAction("");
-                    }
-                  }}
-                >
-                  {aiAction === "scenario" ? "AI đang tạo kịch bản" : "Tạo kịch bản"}
-                </button>
-              )}
-              {can("testcase.duplicate_check") && can("ai.run_duplicate_check") && (
-                <button
-                  className="secondary-button"
-                  aria-busy={aiAction === "duplicates"}
-                  disabled={Boolean(aiAction)}
-                  type="button"
-                  onClick={async () => {
-                    setAiAction("duplicates");
-                    try {
-                      setDuplicates(await testingApi.findDuplicates(project._id));
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    } finally {
-                      setAiAction("");
-                    }
-                  }}
-                >
-                  {aiAction === "duplicates"
-                    ? "Đang tìm ca kiểm thử trùng lặp"
-                    : "Tìm ca kiểm thử trùng lặp"}
-                </button>
-              )}
-            </div>
-            {can("ai.generate_testcase") && (
-              <div className="space-y-4 border-t border-border p-5">
-                <fieldset>
-                  <legend className="mb-2 font-medium">Kỹ thuật thiết kế kiểm thử</legend>
-                  <div className="flex flex-wrap gap-4">
-                    {[
-                      ["equivalence_partitioning", "Phân vùng tương đương"],
-                      ["boundary_value", "Giá trị biên"],
-                      ["decision_table", "Bảng quyết định"],
-                      ["state_transition", "Chuyển trạng thái"],
-                      ["error_guessing", "Dự đoán lỗi"],
-                    ].map(([value, label]) => (
-                      <label className="flex items-center gap-2 text-sm" key={value}>
-                        <input
-                          type="checkbox"
-                          checked={selectedTechniques.includes(value)}
-                          disabled={Boolean(aiAction)}
-                          onChange={(event) =>
-                            setSelectedTechniques((current) =>
-                              event.target.checked
-                                ? [...current, value]
-                                : current.filter((item) => item !== value),
-                            )
-                          }
-                        />
-                        {label}
-                      </label>
-                    ))}
+            </label>
+            {automationRunsLoading && <LoadingState />}
+            {automationRunsError && <ErrorState message={automationRunsError} />}
+            {!automationRunsLoading &&
+              !automationRunsError &&
+              selectedRequirement &&
+              (requirementAutomationRun ? (
+                <div className="grid gap-2 rounded-control border border-border p-4 text-sm">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <strong>{requirementAutomationRun.automation_run_id}</strong>
+                    <StatusPill status={requirementAutomationRun.status} />
+                    <span className="text-ink-muted">
+                      Sự kiện {requirementAutomationRun.source_event_id}
+                    </span>
                   </div>
-                </fieldset>
-                <label className="field-label block max-w-48">
-                  Số ca tối đa
-                  <input
-                    className="apple-input mt-2"
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={maximumCases}
-                    disabled={Boolean(aiAction)}
-                    onChange={(event) => setMaximumCases(Number(event.target.value))}
-                  />
-                </label>
-                {techniqueAdvice?.items.some(
-                  (item) =>
-                    selectedTechniques.includes(item.technique) &&
-                    approvedChallenges.includes(item.technique) &&
-                    item.challenge,
-                ) && (
-                  <p className="text-sm text-ink-muted">
-                    Ca được tạo tập trung vào giả thuyết đã chọn Tài liệu nguồn vẫn là căn cứ
+                  {requirementAutomationRun.error_code && (
+                    <p>Lượt chạy có lỗi: {valueLabel(requirementAutomationRun.error_code)}</p>
+                  )}
+                  <p className="whitespace-pre-wrap break-words">
+                    {requirementAutomationRun.result?.summary ||
+                      requirementAutomationRun.result?.proposal?.summary ||
+                      "Chưa có phần tóm tắt kết quả trong lượt chạy."}
                   </p>
-                )}
-                {techniqueAdvice && (
-                  <div className="space-y-3">
-                    {techniqueAdvice.items.some((item) => item.suitability === "recommended") ? (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={Boolean(aiAction)}
-                        onClick={() =>
-                          setSelectedTechniques(
-                            techniqueAdvice.items
-                              .filter((item) => item.suitability === "recommended")
-                              .map((item) => item.technique),
-                          )
-                        }
-                      >
-                        Chọn các kỹ thuật AI khuyến nghị
-                      </button>
-                    ) : (
-                      <p className="text-sm text-ink-muted">
-                        Chưa có kỹ thuật được khuyến nghị từ bằng chứng hiện có
-                      </p>
-                    )}
-                    {!!techniqueAdvice.warnings?.length && (
-                      <div className="text-sm text-ink-muted">
-                        {techniqueAdvice.warnings.map((warning, index) => (
-                          <p key={index}>{warning}</p>
-                        ))}
-                      </div>
-                    )}
-                    {techniqueAdvice.items.map((item) => (
-                      <div
-                        className="rounded-control border border-border p-3 text-sm"
-                        key={item.technique}
-                      >
-                        <p className="font-medium">
-                          {valueLabel(item.technique)} {valueLabel(item.suitability)}
-                        </p>
-                        <p>{item.rationale}</p>
-                        {!!item.expected_coverage?.length && (
-                          <p>Phần bao phủ dự kiến {item.expected_coverage.join("  ")}</p>
-                        )}
-                        {!!item.existing_coverage_refs?.length && (
-                          <p>Ca đã bao phủ {item.existing_coverage_refs.join("  ")}</p>
-                        )}
-                        {!!item.incremental_coverage?.length && (
-                          <p>Phần có thể bổ sung {item.incremental_coverage.join("  ")}</p>
-                        )}
-                        {!!item.missing_information?.length && (
-                          <p>Còn thiếu {item.missing_information.join("  ")}</p>
-                        )}
-                        {item.challenge && (
-                          <div className="mt-3 space-y-1 border-t border-border pt-3">
-                            <p className="font-medium">
-                              Giả thuyết lỗi có thể lọt qua bộ ca hiện có
-                            </p>
-                            <p>Hành vi sai giả định {item.challenge.hypothetical_fault}</p>
-                            <p>Đầu vào phân biệt {item.challenge.distinguishing_input}</p>
-                            <p>Kết quả mong đợi dự kiến {item.challenge.expected_result}</p>
-                            <p>Đoạn nguồn {item.challenge.source_quote}</p>
-                            {!!item.challenge.existing_case_refs?.length && (
-                              <details className="rounded-control border border-border p-3">
-                                <summary className="cursor-pointer font-medium">
-                                  Đối chiếu {item.challenge.existing_case_refs.length} ca hiện có
-                                </summary>
-                                <div className="mt-2 space-y-3">
-                                  {item.challenge.existing_case_refs.map((reference) => {
-                                    const citedCase = techniqueAdvice.evidence?.find(
-                                      (evidence) =>
-                                        evidence.artifact_type === "existing_test_case" &&
-                                        evidence.artifact_version_id === reference,
-                                    );
-                                    return (
-                                      <div className="border-t border-border pt-2" key={reference}>
-                                        <p className="font-medium">{reference}</p>
-                                        <p className="whitespace-pre-wrap break-words">
-                                          {citedCase?.text || "Không còn nội dung ca để đối chiếu"}
-                                        </p>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </details>
-                            )}
-                            <p className="text-ink-muted">
-                              Giả thuyết cần QA xác nhận chưa phải lỗi đã được chứng minh
-                            </p>
-                            <label className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={approvedChallenges.includes(item.technique)}
-                                disabled={
-                                  Boolean(aiAction) || !selectedTechniques.includes(item.technique)
-                                }
-                                onChange={(event) =>
-                                  setApprovedChallenges((current) =>
-                                    event.target.checked
-                                      ? [...current, item.technique]
-                                      : current.filter((technique) => technique !== item.technique),
-                                  )
-                                }
-                              />
-                              Tập trung vào giả thuyết này khi tạo ca kiểm thử
-                            </label>
-                            {!selectedTechniques.includes(item.technique) && (
-                              <p className="text-ink-muted">
-                                Chọn kỹ thuật này trước khi xác nhận giả thuyết
-                              </p>
-                            )}
-                          </div>
-                        )}
-                        <p className="text-ink-muted">Dẫn chứng {item.evidence_refs.join("  ")}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {generationPreview && (
-                  <div className="space-y-3 border-t border-border pt-4">
-                    <p className="font-medium">Bản xem trước chưa được lưu</p>
-                    {!!generationPreview.grounding_findings?.length && (
-                      <div className="rounded-control border border-warning bg-warning/10 p-3 text-sm">
-                        <p className="font-medium">Cần đối chiếu dẫn chứng trước khi lưu</p>
-                        {generationPreview.grounding_findings.map((finding) => (
-                          <p key={finding.case_index}>
-                            Ca {finding.case_index + 1} cần QA xem lại{" "}
-                            {finding.unsupported_claims.join("  ")}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                    {!!generationPreview.challenge_hypotheses?.length && (
-                      <div className="rounded-control border border-border p-3 text-sm">
-                        {generationPreview.challenge_hypotheses.map((challenge) => (
-                          <div key={challenge.technique}>
-                            <p className="font-medium">Giả thuyết QA đã chọn để thử</p>
-                            <p>Đầu vào phân biệt {challenge.distinguishing_input}</p>
-                            <p>Kết quả mong đợi dự kiến {challenge.expected_result}</p>
-                            <p className="text-ink-muted">
-                              QA cần xác nhận ca này phân biệt được hành vi sai giả định
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {criterionCoverage && (
-                      <div className="rounded-control border border-border p-3 text-sm">
-                        {criterionCoverage.criterion_ids.length ? (
-                          <>
-                            <p>
-                              Tiêu chí có ca đang hiệu lực{" "}
-                              {criterionCoverage.linked_criterion_ids.length}/
-                              {criterionCoverage.criterion_ids.length}
-                            </p>
-                            <p>
-                              Bản nháp được chọn sẽ gắn liên kết {selectedCriterionIds.size}/
-                              {criterionCoverage.criterion_ids.length}
-                            </p>
-                            {!!remainingCriterionIds.length && (
-                              <p>
-                                Còn chưa có ca liên kết{" "}
-                                {remainingCriterionIds.map(criterionLabel).join("  ")}
-                              </p>
-                            )}
-                            <p className="text-ink-muted">
-                              Liên kết chỉ được tính sau khi ca kiểm thử được phê duyệt
-                            </p>
-                          </>
-                        ) : (
-                          <p>
-                            Yêu cầu chưa có tiêu chí chấp nhận để đối chiếu liên kết ca kiểm thử
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {generationPreview.items.map((item, index) => (
-                      <div
-                        className="flex gap-3 rounded-control border border-border p-3 text-sm"
-                        key={index}
-                      >
-                        <input
-                          type="checkbox"
-                          aria-label={`Lưu ca kiểm thử ${item.draft.title}`}
-                          checked={selectedGenerated.includes(index)}
-                          onChange={(event) =>
-                            setSelectedGenerated((current) =>
-                              event.target.checked
-                                ? [...current, index]
-                                : current.filter((value) => value !== index),
-                            )
-                          }
-                        />
-                        <span>
-                          <span className="block font-medium">{item.draft.title}</span>
-                          <span className="block">
-                            Kỹ thuật {item.draft.techniques.map(valueLabel).join("  ")}
-                          </span>
-                          {docText(item.draft.preconditions_doc) && (
-                            <span className="block">
-                              Điều kiện {docText(item.draft.preconditions_doc)}
-                            </span>
-                          )}
-                          {(item.draft.steps || []).map((step) => (
-                            <span className="block" key={step.id}>
-                              Bước {step.order} {docText(step.action_doc)} Kết quả{" "}
-                              {docText(step.expected_doc)}
-                            </span>
-                          ))}
-                          <span className="block">
-                            Kết quả cuối {docText(item.draft.expected_result_doc)}
-                          </span>
-                          <span className="block">
-                            Mục cần kiểm chứng {item.coverage_obligations.join("  ")}
-                          </span>
-                          {!!item.challenge_techniques?.length && (
-                            <span className="block">
-                              AI ghép ca này với giả thuyết thuộc kỹ thuật{" "}
-                              {item.challenge_techniques.map(valueLabel).join("  ")}
-                            </span>
-                          )}
-                          {!!item.new_criterion_ids?.length && (
-                            <span className="block">
-                              Tiêu chí chưa có ca liên kết{" "}
-                              {item.new_criterion_ids.map(criterionLabel).join("  ")}
-                            </span>
-                          )}
-                          {selectedGenerated.includes(index) &&
-                            !!criterionIdsLostWithout(index).length && (
-                              <span className="block">
-                                Nếu bỏ ca này sẽ thiếu liên kết cho{" "}
-                                {criterionIdsLostWithout(index).map(criterionLabel).join("  ")}
-                              </span>
-                            )}
-                          <span className="block">Dẫn chứng {item.evidence_refs.join("  ")}</span>
-                          {!!item.evidence_quotes?.length && (
-                            <span className="block">
-                              Trích dẫn{" "}
-                              {item.evidence_quotes.map((quote) => quote.quote).join("  ")}
-                            </span>
-                          )}
-                          {!!relevantGeneratedMatches(item, selectedGenerated).length && (
-                            <span className="block text-ink-muted">
-                              Ca hiện có gần giống{" "}
-                              {relevantGeneratedMatches(item, selectedGenerated)
-                                .map((caseItem) =>
-                                  caseItem.id.startsWith("preview:")
-                                    ? `Ca ${Number(caseItem.id.slice(8)) + 1} trong bản xem trước`
-                                    : caseItem.title || caseItem.id,
-                                )
-                                .join("  ")}
-                            </span>
-                          )}
-                          {!!relevantGeneratedMatches(item, selectedGenerated).length &&
-                            selectedGenerated.includes(index) && (
-                              <span className="mt-2 block space-y-2">
-                                <select
-                                  className="apple-input"
-                                  aria-label={`Cách xử lý ca do AI tạo ${index + 1}`}
-                                  value={
-                                    generatedVersionResolutions[index]?.target_version_id || ""
-                                  }
-                                  onChange={(event) =>
-                                    setGeneratedVersionResolutions((current) => ({
-                                      ...current,
-                                      [index]: {
-                                        target_version_id: event.target.value,
-                                        reason: current[index]?.reason || "",
-                                      },
-                                    }))
-                                  }
-                                >
-                                  <option value="">Tạo ca riêng</option>
-                                  {relevantGeneratedMatches(item, selectedGenerated)
-                                    .filter((match) => match.target_version_id)
-                                    .map((match) => (
-                                      <option key={match.id} value={match.target_version_id}>
-                                        Tạo phiên bản mới của {match.title || match.id}
-                                      </option>
-                                    ))}
-                                </select>
-                                <input
-                                  className="apple-input"
-                                  aria-label={`Lý do xử lý ca do AI tạo ${index + 1}`}
-                                  value={
-                                    generatedVersionResolutions[index]?.target_version_id
-                                      ? generatedVersionResolutions[index]?.reason || ""
-                                      : generatedReasons[index] || ""
-                                  }
-                                  onChange={(event) =>
-                                    generatedVersionResolutions[index]?.target_version_id
-                                      ? setGeneratedVersionResolutions((current) => ({
-                                          ...current,
-                                          [index]: {
-                                            ...current[index],
-                                            reason: event.target.value,
-                                          },
-                                        }))
-                                      : setGeneratedReasons((current) => ({
-                                          ...current,
-                                          [index]: event.target.value,
-                                        }))
-                                  }
-                                />
-                              </span>
-                            )}
-                        </span>
-                      </div>
-                    ))}
-                    <button
-                      className="apple-button"
-                      type="button"
-                      disabled={
-                        !selectedGenerated.length ||
-                        Boolean(aiAction) ||
-                        selectedGenerated.some(
-                          (index) =>
-                            relevantGeneratedMatches(
-                              generationPreview.items[index],
-                              selectedGenerated,
-                            ).length &&
-                            (generatedVersionResolutions[index]?.target_version_id
-                              ? (generatedVersionResolutions[index]?.reason || "").trim().length < 2
-                              : (generatedReasons[index] || "").trim().length < 2),
-                        )
-                      }
-                      aria-busy={aiAction === "saving-generated"}
-                      onClick={saveGenerated}
-                    >
-                      {aiAction === "saving-generated"
-                        ? "Đang lưu ca đã chọn"
-                        : "Lưu ca kiểm thử đã chọn"}
-                    </button>
-                  </div>
-                )}
-              </div>
+                  <a className="text-accent underline" href="#automation-run-details">
+                    Đến lịch sử lượt chạy
+                  </a>
+                </div>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  Chưa tìm thấy lượt chạy khớp chính xác trong danh sách gần đây. Điều này không
+                  khẳng định sự kiện đã thất bại.
+                </p>
+              ))}
+            {!automationRunsLoading && !automationRunsError && !selectedRequirement && (
+              <p className="text-sm text-ink-muted">Chọn Requirement để tra lượt chạy tương ứng.</p>
             )}
-          </Panel>
-        )}
+          </div>
+        </Panel>
+      )}
+      {showAgentRuns && canReadAutomationRuns && (
+        <div id="automation-run-details">
+          <AgentRunPanel project={project} showDefinitions={false} />
+        </div>
+      )}
       {showTemplates && can("testcase.template.read") && (
         <TestCaseTemplatesPanel project={project} />
       )}
-      {showScenarios && <SpecializedDesignPanel project={project} requirements={requirements} />}
-      {showAutomation && <AutomationScriptsPanel project={project} tests={tests} />}
+      {showScenarios && <SpecializedDesignPanel project={project} />}
+      {showAutomation && <AutomationScriptsPanel project={project} />}
       {showCases && (
         <div className="grid gap-5">
           {actionableDrafts.length > 0 && (
             <Panel title="Ca kiểm thử chưa phê duyệt">
+              {can("testcase.approve") &&
+                actionableDrafts.some((item) => item.status === "IN_REVIEW") && (
+                  <div className="mb-4 space-y-3">
+                    <p className="text-sm text-ink-muted">
+                      Chọn ca đang chờ duyệt. Nhóm chỉ được công bố toàn bộ khi mọi nguồn, phiên bản
+                      và kiểm tra đều hợp lệ.
+                    </p>
+                    <DataTable
+                      items={actionableDrafts.filter((item) => item.status === "IN_REVIEW")}
+                      selectedIds={selectedApprovalDraftIds}
+                      onSelectionChange={setSelectedApprovalDraftIds}
+                      selectionLabel="Chọn ca chờ duyệt"
+                      columns={[
+                        { key: "test_case_key", label: "Mã" },
+                        { key: "title", label: "Tên" },
+                        {
+                          key: "origin",
+                          label: "Nguồn",
+                          render: (item) => valueLabel(item.origin || "manual"),
+                        },
+                        { key: "revision", label: "Lần sửa" },
+                        {
+                          key: "comparison",
+                          label: "Đối chiếu",
+                          minWidth: 180,
+                          render: (item) => {
+                            const requiresComparison = requiresAiComparison(item);
+                            if (!requiresComparison) return "Không áp dụng";
+                            const reviewed = !unreviewedAiDrafts(
+                              [item],
+                              comparedApprovalDraftRevisions,
+                            ).length;
+                            return (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => setComparisonDraftId(item._id)}
+                              >
+                                {reviewed ? "Đối chiếu lại" : "Đối chiếu gốc và AI"}
+                              </button>
+                            );
+                          },
+                        },
+                      ]}
+                    />
+                    {selectedApprovalDraftIds.some((id) => {
+                      const draft = actionableDrafts.find((item) => item._id === id);
+                      return (
+                        draft &&
+                        unreviewedAiDrafts([draft], comparedApprovalDraftRevisions).length > 0
+                      );
+                    }) && (
+                      <p role="status" className="text-sm text-amber-800">
+                        Mỗi ca do AI đề xuất phải được mở đối chiếu ở revision hiện tại trước khi
+                        đưa vào nhóm duyệt.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      className="apple-button"
+                      disabled={!selectedApprovalDraftIds.length || approvingDraftGroup}
+                      onClick={approveDraftGroup}
+                    >
+                      {approvingDraftGroup
+                        ? "Đang đối chiếu và duyệt…"
+                        : `Duyệt nhóm${selectedApprovalDraftIds.length ? ` (${selectedApprovalDraftIds.length})` : ""}`}
+                    </button>
+                  </div>
+                )}
               <DataTable
                 onSelect={(item) => setSelectedDraftId(item._id)}
                 items={actionableDrafts}
@@ -1461,10 +1241,19 @@ export default function TestDesignPage({ project, workspaceView }) {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              void freeze(item);
+                              if (
+                                unreviewedAiDrafts([item], comparedApprovalDraftRevisions).length
+                              ) {
+                                setError("");
+                                setComparisonDraftId(item._id);
+                              } else {
+                                void freeze(item);
+                              }
                             }}
                           >
-                            Phê duyệt
+                            {unreviewedAiDrafts([item], comparedApprovalDraftRevisions).length
+                              ? "Đối chiếu trước khi duyệt"
+                              : "Phê duyệt"}
                           </button>
                         )}
                       </span>
@@ -1483,7 +1272,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                     className="secondary-button"
                     type="button"
                     onClick={async () => {
-                      const answer = await ask({
+                      await ask({
                         title: "Cập nhật nhãn ca kiểm thử",
                         description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
                         confirmLabel: "Cập nhật",
@@ -1495,26 +1284,27 @@ export default function TestDesignPage({ project, workspaceView }) {
                           },
                           { name: "remove", label: "Nhãn cần gỡ phân cách bằng dấu phẩy" },
                         ],
+                        onConfirm: async (answer) => {
+                          const splitTags = (value) =>
+                            value
+                              .split(",")
+                              .map((item) => item.trim())
+                              .filter(Boolean);
+                          try {
+                            await testingApi.bulkTags(project._id, {
+                              artifact_type: "test_case",
+                              ids: selectedTestIds,
+                              add_tags: splitTags(answer.add),
+                              remove_tags: splitTags(answer.remove),
+                              idempotency_key: crypto.randomUUID(),
+                            });
+                            setSelectedTestIds([]);
+                            await load();
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
                       });
-                      if (!answer) return;
-                      const splitTags = (value) =>
-                        value
-                          .split(",")
-                          .map((item) => item.trim())
-                          .filter(Boolean);
-                      try {
-                        await testingApi.bulkTags(project._id, {
-                          artifact_type: "test_case",
-                          ids: selectedTestIds,
-                          add_tags: splitTags(answer.add),
-                          remove_tags: splitTags(answer.remove),
-                          idempotency_key: crypto.randomUUID(),
-                        });
-                        setSelectedTestIds([]);
-                        await load();
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
                     }}
                   >
                     Cập nhật nhãn
@@ -1526,7 +1316,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                     disabled={!suites.length}
                     type="button"
                     onClick={async () => {
-                      const answer = await ask({
+                      await ask({
                         title: "Thêm vào bộ kiểm thử",
                         description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
                         confirmLabel: "Thêm vào bộ",
@@ -1543,21 +1333,22 @@ export default function TestDesignPage({ project, workspaceView }) {
                             })),
                           },
                         ],
+                        onConfirm: async (answer) => {
+                          const suite = suites.find((item) => item._id === answer.suiteId);
+                          try {
+                            await testingApi.bulkAddToSuite(project._id, {
+                              suite_id: answer.suiteId,
+                              test_case_ids: selectedTestIds,
+                              expected_revision: suite?.revision || 1,
+                              idempotency_key: crypto.randomUUID(),
+                            });
+                            setSelectedTestIds([]);
+                            await load();
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
                       });
-                      if (!answer) return;
-                      const suite = suites.find((item) => item._id === answer.suiteId);
-                      try {
-                        await testingApi.bulkAddToSuite(project._id, {
-                          suite_id: answer.suiteId,
-                          test_case_ids: selectedTestIds,
-                          expected_revision: suite?.revision || 1,
-                          idempotency_key: crypto.randomUUID(),
-                        });
-                        setSelectedTestIds([]);
-                        await load();
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
                     }}
                   >
                     Thêm vào bộ
@@ -1568,7 +1359,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                     className="secondary-button"
                     type="button"
                     onClick={async () => {
-                      const answer = await ask({
+                      await ask({
                         title: "Đánh dấu cần rà soát",
                         description: `${selectedTestIds.length} ca kiểm thử đã chọn`,
                         confirmLabel: "Đánh dấu",
@@ -1581,19 +1372,20 @@ export default function TestDesignPage({ project, workspaceView }) {
                             autoFocus: true,
                           },
                         ],
+                        onConfirm: async (answer) => {
+                          try {
+                            await testingApi.bulkMarkReviewRequired(project._id, {
+                              test_case_ids: selectedTestIds,
+                              reason: answer.reason,
+                              idempotency_key: crypto.randomUUID(),
+                            });
+                            setSelectedTestIds([]);
+                            await load();
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
                       });
-                      if (!answer) return;
-                      try {
-                        await testingApi.bulkMarkReviewRequired(project._id, {
-                          test_case_ids: selectedTestIds,
-                          reason: answer.reason,
-                          idempotency_key: crypto.randomUUID(),
-                        });
-                        setSelectedTestIds([]);
-                        await load();
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
                     }}
                   >
                     Cần rà soát
@@ -1604,7 +1396,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                     className="danger-button"
                     type="button"
                     onClick={async () => {
-                      const answer = await ask({
+                      await ask({
                         title: "Lưu trữ ca kiểm thử",
                         description:
                           "Các ca đang nằm trong lần chạy chưa kết thúc sẽ bị từ chối riêng lẻ",
@@ -1619,20 +1411,21 @@ export default function TestDesignPage({ project, workspaceView }) {
                             autoFocus: true,
                           },
                         ],
+                        onConfirm: async (answer) => {
+                          try {
+                            await testingApi.bulkArchive(project._id, {
+                              artifact_type: "test_case",
+                              ids: selectedTestIds,
+                              reason: answer.reason,
+                              idempotency_key: crypto.randomUUID(),
+                            });
+                            setSelectedTestIds([]);
+                            await load();
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
                       });
-                      if (!answer) return;
-                      try {
-                        await testingApi.bulkArchive(project._id, {
-                          artifact_type: "test_case",
-                          ids: selectedTestIds,
-                          reason: answer.reason,
-                          idempotency_key: crypto.randomUUID(),
-                        });
-                        setSelectedTestIds([]);
-                        await load();
-                      } catch (reason) {
-                        setError(messageOf(reason));
-                      }
                     }}
                   >
                     Lưu trữ
@@ -1920,29 +1713,26 @@ export default function TestDesignPage({ project, workspaceView }) {
             artifactId={selectedTestId}
             artifactVersionId={testVersions[0]._id}
             reviewType="TEST_CASE_REVIEW"
+            readOnly
           />
         )}
       {showCases && selectedDraft && draftEdit && (
         <>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={draftDirty || draftSaveState === "saving"}
+              onClick={() => setComparisonDraftId(selectedDraft._id)}
+            >
+              So sánh / ghép bản gốc và AI
+            </button>
+            {draftDirty && (
+              <p className="text-sm text-ink-muted">Lưu phần đang biên tập trước khi mở so sánh.</p>
+            )}
+          </div>
           <Panel
             title={`${can("testcase.update") && selectedDraft.status === "DRAFT" ? "Biên tập" : "Chi tiết"} ${selectedDraft.test_case_key}`}
-            actions={
-              can("testcase.lint") && can("ai.run_lint") ? (
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      setTestLint(await testingApi.lintTestDraft(selectedDraft._id));
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
-                  }}
-                >
-                  Kiểm tra chất lượng
-                </button>
-              ) : null
-            }
           >
             {!!selectedDraft.challenge_hypotheses?.length && (
               <div className="space-y-2 border-b border-border p-5 text-sm">
@@ -1978,6 +1768,15 @@ export default function TestDesignPage({ project, workspaceView }) {
                     onChange={(event) => changeDraftEdit({ title: event.target.value })}
                   />
                 </label>
+                <label className="field-label lg:col-span-2">
+                  Kỹ năng cần có để thực hiện ca (phân cách bằng dấu phẩy)
+                  <input
+                    className="apple-input mt-2"
+                    value={draftEdit.requiredSkills}
+                    onChange={(event) => changeDraftEdit({ requiredSkills: event.target.value })}
+                    placeholder="Ví dụ: kiểm thử API, bảo mật"
+                  />
+                </label>
                 <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
                   <select
                     aria-label="Loại bản nháp ca kiểm thử"
@@ -1997,7 +1796,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                     value={draftEdit.priority}
                     onChange={(event) => changeDraftEdit({ priority: event.target.value })}
                   >
-                    {TEST_LEVELS.map((value) => (
+                    {TEST_CASE_ASSESSMENT_LEVELS.map((value) => (
                       <option key={value} value={value}>
                         {valueLabel(value)}
                       </option>
@@ -2009,13 +1808,199 @@ export default function TestDesignPage({ project, workspaceView }) {
                     value={draftEdit.risk}
                     onChange={(event) => changeDraftEdit({ risk: event.target.value })}
                   >
-                    {TEST_LEVELS.map((value) => (
+                    {TEST_CASE_ASSESSMENT_LEVELS.map((value) => (
                       <option key={value} value={value}>
                         {valueLabel(value)}
                       </option>
                     ))}
                   </select>
                 </div>
+                <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
+                  <label className="field-label">
+                    Cấp kiểm thử
+                    <select
+                      aria-label="Cấp kiểm thử bản nháp"
+                      className="apple-input mt-2"
+                      value={draftEdit.test_level}
+                      onChange={(event) => changeDraftEdit({ test_level: event.target.value })}
+                    >
+                      <option value="">Chưa phân loại</option>
+                      {["UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"].map((value) => (
+                        <option value={value} key={value}>
+                          {valueLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Loại kiểm thử
+                    <select
+                      aria-label="Loại kiểm thử bản nháp"
+                      className="apple-input mt-2"
+                      value={draftEdit.test_kind}
+                      onChange={(event) => changeDraftEdit({ test_kind: event.target.value })}
+                    >
+                      <option value="">Chưa phân loại</option>
+                      {[
+                        "functional",
+                        "performance",
+                        "security",
+                        "usability",
+                        "compatibility",
+                        "reliability",
+                        "accessibility",
+                      ].map((value) => (
+                        <option value={value} key={value}>
+                          {valueLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Ảnh hưởng dự kiến
+                    <select
+                      aria-label="Ảnh hưởng dự kiến bản nháp"
+                      className="apple-input mt-2"
+                      value={draftEdit.expected_impact}
+                      onChange={(event) => changeDraftEdit({ expected_impact: event.target.value })}
+                    >
+                      {["unassessed", "low", "medium", "high", "critical"].map((value) => (
+                        <option value={value} key={value}>
+                          {valueLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="field-label lg:col-span-2">
+                  Lý do đánh giá ảnh hưởng
+                  <textarea
+                    className="apple-input mt-2 min-h-20"
+                    maxLength={2000}
+                    value={draftEdit.assessment_reason}
+                    onChange={(event) => changeDraftEdit({ assessment_reason: event.target.value })}
+                  />
+                </label>
+                <div className="grid gap-4 lg:col-span-2">
+                  <MultiSelect
+                    label="Phiên bản Requirement liên quan"
+                    searchPlaceholder="Tìm Requirement"
+                    options={[
+                      ...requirements.map((item) => ({
+                        value: item.current_version_id,
+                        label: `${item.requirement_key} · ${item.current_version?.title || "Không có tiêu đề"}`,
+                      })),
+                      ...draftEdit.requirementVersionIds
+                        .filter(
+                          (id) => !requirements.some((item) => item.current_version_id === id),
+                        )
+                        .map((id) => ({ value: id, label: `Phiên bản Requirement ${id}` })),
+                    ]}
+                    value={draftEdit.requirementVersionIds}
+                    onChange={(requirementVersionIds) => {
+                      const allowed = new Set(
+                        requirements
+                          .filter((item) => requirementVersionIds.includes(item.current_version_id))
+                          .flatMap((item) =>
+                            (item.current_version?.acceptance_criteria || []).map(
+                              (criterion) => criterion._id,
+                            ),
+                          ),
+                      );
+                      changeDraftEdit({
+                        requirementVersionIds,
+                        acceptanceCriterionIds: draftEdit.acceptanceCriterionIds.filter((id) =>
+                          allowed.has(id),
+                        ),
+                      });
+                    }}
+                  />
+                  <MultiSelect
+                    label="Tiêu chí chấp nhận liên kết"
+                    searchPlaceholder="Tìm tiêu chí chấp nhận"
+                    emptyMessage="Requirement đã chọn chưa có tiêu chí chấp nhận khả dụng"
+                    options={[
+                      ...requirements
+                        .filter((item) =>
+                          draftEdit.requirementVersionIds.includes(item.current_version_id),
+                        )
+                        .flatMap((item) =>
+                          (item.current_version?.acceptance_criteria || []).map((criterion) => ({
+                            value: criterion._id,
+                            label: `${item.requirement_key} · ${criterion.key || "Tiêu chí"}`,
+                            description: criterion.plain_text || docText(criterion.content_doc),
+                          })),
+                        ),
+                      ...draftEdit.acceptanceCriterionIds
+                        .filter(
+                          (id) =>
+                            !requirements.some((item) =>
+                              (item.current_version?.acceptance_criteria || []).some(
+                                (criterion) => criterion._id === id,
+                              ),
+                            ),
+                        )
+                        .map((id) => ({ value: id, label: `Tiêu chí chấp nhận ${id}` })),
+                    ]}
+                    value={draftEdit.acceptanceCriterionIds}
+                    onChange={(acceptanceCriterionIds) =>
+                      changeDraftEdit({ acceptanceCriterionIds })
+                    }
+                  />
+                </div>
+                {draftEdit.bdd && (
+                  <section
+                    className="space-y-3 rounded-control border border-border p-4 lg:col-span-2"
+                    aria-label="Kịch bản BDD"
+                  >
+                    <h3 className="font-semibold">Kịch bản BDD</h3>
+                    <label className="field-label">
+                      Tính năng
+                      <input
+                        className="apple-input mt-2"
+                        value={draftEdit.bdd.feature}
+                        onChange={(event) =>
+                          changeDraftEdit({
+                            bdd: { ...draftEdit.bdd, feature: event.target.value },
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="field-label">
+                      Kịch bản
+                      <input
+                        className="apple-input mt-2"
+                        value={draftEdit.bdd.scenario}
+                        onChange={(event) =>
+                          changeDraftEdit({
+                            bdd: { ...draftEdit.bdd, scenario: event.target.value },
+                          })
+                        }
+                      />
+                    </label>
+                    {draftEdit.bdd.steps.map((step, index) => (
+                      <label className="field-label" key={step.id || index}>
+                        {valueLabel(step.keyword)}
+                        <textarea
+                          className="apple-input mt-2 min-h-16"
+                          value={step.text}
+                          onChange={(event) =>
+                            changeDraftEdit({
+                              bdd: {
+                                ...draftEdit.bdd,
+                                steps: draftEdit.bdd.steps.map((item, stepIndex) =>
+                                  stepIndex === index
+                                    ? { ...item, text: event.target.value }
+                                    : item,
+                                ),
+                              },
+                            })
+                          }
+                        />
+                      </label>
+                    ))}
+                  </section>
+                )}
                 <label className="field-label lg:col-span-2">
                   Mục tiêu kiểm thử
                   <textarea
@@ -2043,7 +2028,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                           changeDraftEdit({
                             steps: [
                               ...draftEdit.steps,
-                              { id: crypto.randomUUID(), action: "", data: "{}", expected: "" },
+                              { id: crypto.randomUUID(), action: "", data: {}, expected: "" },
                             ],
                           })
                         }
@@ -2082,18 +2067,19 @@ export default function TestDesignPage({ project, workspaceView }) {
                           }}
                         />
                       </label>
-                      <label className="field-label lg:col-span-2">
-                        Dữ liệu dạng JSON
-                        <textarea
-                          className="apple-input mt-2 min-h-24 font-mono"
-                          value={step.data}
-                          onChange={(event) => {
+                      <div className="min-w-0 space-y-2 lg:col-span-2">
+                        <p className="field-label">Dữ liệu của bước</p>
+                        <StructuredValueEditor
+                          label={`Dữ liệu bước ${index + 1}`}
+                          value={step.data || {}}
+                          fixedType="object"
+                          onChange={(data) => {
                             const steps = [...draftEdit.steps];
-                            steps[index] = { ...step, data: event.target.value };
+                            steps[index] = { ...step, data };
                             changeDraftEdit({ steps });
                           }}
                         />
-                      </label>
+                      </div>
                       {selectedDraft.status === "DRAFT" &&
                         can("testcase.update") &&
                         draftEdit.steps.length > 1 && (
@@ -2114,14 +2100,15 @@ export default function TestDesignPage({ project, workspaceView }) {
                     </fieldset>
                   ))}
                 </div>
-                <label className="field-label">
-                  Dữ liệu dùng chung dạng JSON
-                  <textarea
-                    className="apple-input mt-2 min-h-28 font-mono"
-                    value={draftEdit.testData}
-                    onChange={(event) => changeDraftEdit({ testData: event.target.value })}
+                <div className="min-w-0 space-y-2">
+                  <p className="field-label">Dữ liệu dùng chung</p>
+                  <StructuredValueEditor
+                    label="Dữ liệu dùng chung"
+                    value={draftEdit.testData || {}}
+                    fixedType="object"
+                    onChange={(testData) => changeDraftEdit({ testData })}
                   />
-                </label>
+                </div>
                 <MultiSelect
                   label="Phiên bản bộ dữ liệu tham số"
                   options={dataSets.map((item) => ({
@@ -2132,6 +2119,29 @@ export default function TestDesignPage({ project, workspaceView }) {
                   value={draftEdit.dataSetVersionIds}
                   onChange={(dataSetVersionIds) => changeDraftEdit({ dataSetVersionIds })}
                 />
+                <label className="field-label">
+                  Thư mục kho ca kiểm thử
+                  <select
+                    className="apple-input mt-2"
+                    aria-label="Thư mục kho ca kiểm thử của bản nháp"
+                    value={draftEdit.repositoryNodeId || ""}
+                    onChange={(event) => changeDraftEdit({ repositoryNodeId: event.target.value })}
+                  >
+                    <option value="">
+                      {selectedDraft.repository_node_id
+                        ? "Giữ nguyên thư mục hiện tại"
+                        : "Thư mục gốc (hiện tại)"}
+                    </option>
+                    {repositoryNodes.map((node) => (
+                      <option key={node._id} value={node._id}>
+                        {node.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-sm text-ink-muted">
+                    Chọn thư mục để phân loại bản nháp; để trống giữ nguyên vị trí hiện tại.
+                  </span>
+                </label>
                 <MultiSelect
                   label="Điều kiện kiểm thử đã phê duyệt"
                   options={testConditions.map((item) => ({
@@ -2189,13 +2199,54 @@ export default function TestDesignPage({ project, workspaceView }) {
                   </select>
                 </label>
                 <label className="field-label">
-                  Mã người phụ trách
-                  <input
-                    className="apple-input mt-2"
-                    value={draftEdit.ownerId}
-                    onChange={(event) => changeDraftEdit({ ownerId: event.target.value })}
-                  />
+                  Người phụ trách
+                  {permissions.includes("project.members.read") ? (
+                    <>
+                      <select
+                        aria-label="Người phụ trách ca kiểm thử"
+                        className="apple-input mt-2"
+                        value={draftEdit.ownerId}
+                        disabled={projectMembersUnavailable}
+                        onChange={(event) => changeDraftEdit({ ownerId: event.target.value })}
+                      >
+                        <option value="">Chưa phân công</option>
+                        {draftEdit.ownerId &&
+                          !projectMembers.some(
+                            (member) => member.user_id === draftEdit.ownerId,
+                          ) && (
+                            <option value={draftEdit.ownerId}>
+                              Người phụ trách hiện tại không còn hoạt động trong dự án
+                            </option>
+                          )}
+                        {projectMembers.map((member) => (
+                          <option key={member.user_id} value={member.user_id}>
+                            {member.user_label ||
+                              member.user?.full_name ||
+                              member.user?.email ||
+                              member.user_id}
+                            {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {projectMembersUnavailable && (
+                        <span role="status" className="text-sm text-amber-800">
+                          Không tải được thành viên dự án; người phụ trách hiện tại được giữ nguyên.
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <p className="mt-2 text-sm text-ink-muted">
+                      {draftEdit.ownerId || "Chưa phân công"}
+                    </p>
+                  )}
                 </label>
+                <div className="lg:col-span-2">
+                  <TestCaseCustomValues
+                    fields={testCaseCustomFields}
+                    values={draftEdit.customValues || {}}
+                    onChange={(customValues) => changeDraftEdit({ customValues })}
+                  />
+                </div>
                 <div className="min-w-0">
                   <FilePicker
                     label="Tệp đính kèm"
@@ -2236,11 +2287,9 @@ export default function TestDesignPage({ project, workspaceView }) {
                         ? "Đang tự động lưu"
                         : draftSaveState === "pending"
                           ? "Có thay đổi chưa lưu"
-                          : draftSaveState === "invalid"
-                            ? "JSON chưa hợp lệ nên chưa tự động lưu"
-                            : draftSaveState === "error"
-                              ? "Tự động lưu thất bại"
-                              : "Đã tự động lưu"}
+                          : draftSaveState === "error"
+                            ? "Tự động lưu thất bại"
+                            : "Đã tự động lưu"}
                     </span>
                   </div>
                 )}
@@ -2257,11 +2306,23 @@ export default function TestDesignPage({ project, workspaceView }) {
                   ["Điều kiện sau", draftEdit.postconditions],
                   ["Kỹ thuật kiểm thử", draftEdit.techniques],
                   ["Nhãn", draftEdit.tags],
-                  ["Mã người phụ trách", draftEdit.ownerId],
+                  [
+                    "Người phụ trách",
+                    projectMembers.find((member) => member.user_id === draftEdit.ownerId)
+                      ?.user_label || draftEdit.ownerId,
+                  ],
                 ].map(([label, value]) => (
                   <div className="min-w-0 space-y-1" key={label}>
                     <dt className="text-xs font-semibold text-ink-muted">{label}</dt>
                     <dd className="break-words text-sm text-ink">{value || "Chưa có thông tin"}</dd>
+                  </div>
+                ))}
+                {testCaseCustomFields.map((field) => (
+                  <div className="min-w-0 space-y-1" key={field._id}>
+                    <dt className="text-xs font-semibold text-ink-muted">{field.label}</dt>
+                    <dd className="break-words text-sm text-ink">
+                      {String(draftEdit.customValues?.[field.key] ?? "Chưa có thông tin")}
+                    </dd>
                   </div>
                 ))}
                 <div className="space-y-2 sm:col-span-2">
@@ -2298,6 +2359,17 @@ export default function TestDesignPage({ project, workspaceView }) {
             )}
             {testLint && (
               <div className="border-t border-border">
+                {(testLint.is_stale || draftDirty) && (
+                  <p className="px-5 pt-4 text-sm text-warning" role="status">
+                    Kết quả tự động thuộc revision trước; thay đổi hiện tại chưa có kết quả rà soát
+                    mới.
+                  </p>
+                )}
+                {testLint.artifact_revision && (
+                  <p className="px-5 pt-3 text-sm text-ink-muted">
+                    Kết quả tự động cho revision {testLint.artifact_revision}
+                  </p>
+                )}
                 <DataTable
                   items={testLint.findings}
                   empty="Không có vấn đề chất lượng"
@@ -2325,6 +2397,28 @@ export default function TestDesignPage({ project, workspaceView }) {
           />
         </>
       )}
+      {comparisonDraftId && (
+        <TestCaseCompareWorkspace
+          key={`${comparisonDraftId}:${project.current_membership?.user_id || "unknown"}`}
+          draftId={comparisonDraftId}
+          recoveryIdentity={project.current_membership?.user_id}
+          projectId={project._id}
+          canEdit={can("testcase.update")}
+          canReadMembers={can("project.members.read")}
+          canManageAttachments={can("attachment.manage")}
+          onClose={() => setComparisonDraftId("")}
+          onCompared={(draft, { current: comparisonIsCurrent }) =>
+            setComparedApprovalDraftRevisions((previous) =>
+              recordAiComparison(previous, draft, comparisonIsCurrent),
+            )
+          }
+          onSaved={(draft) => {
+            loadedDraft.current = "";
+            setDrafts((values) => values.map((item) => (item._id === draft._id ? draft : item)));
+            setTestLint(null);
+          }}
+        />
+      )}
       {showCases && can("testcase.create") && (
         <TestCaseCreateModal
           isOpen={creatingTest}
@@ -2338,7 +2432,22 @@ export default function TestDesignPage({ project, workspaceView }) {
           testConditions={testConditions}
           repositoryNodes={repositoryNodes}
           reusableSteps={reusableSteps}
+          customFields={testCaseCustomFields}
+          requirements={requirements}
+          members={projectMembers}
+          canReadMembers={permissions.includes("project.members.read")}
+          membersUnavailable={projectMembersUnavailable}
           onSubmit={create}
+        />
+      )}
+      {testSetDialog && (
+        <TestSetEditorModal
+          key={`${project._id}:${testSetDialog.suite?._id || testSetDialog.mode}`}
+          projectId={project._id}
+          mode={testSetDialog.mode}
+          suite={testSetDialog.suite}
+          onClose={() => setTestSetDialog(null)}
+          onSubmit={saveTestSet}
         />
       )}
       {showScenarios && (
@@ -2363,6 +2472,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       )}
       {workspaceView === "test-data" && (
         <DataSetsPanel
+          projectId={project._id}
           can={can}
           canRead={canReadTestData}
           items={dataSets}
@@ -2377,12 +2487,16 @@ export default function TestDesignPage({ project, workspaceView }) {
           onError={setError}
         />
       )}
-      {(workspaceView === "" ||
-        workspaceView === "repository" ||
-        workspaceView === "reusable-steps") && (
-        <TestRepositoryPanel project={project} can={can} onError={setError} focus={workspaceView} />
+      {access.canRenderRepository && (
+        <TestRepositoryPanel
+          project={project}
+          can={can}
+          ask={ask}
+          onError={setError}
+          focus={workspaceView}
+        />
       )}
-      {workspaceView === "test-sets" && (
+      {workspaceView === "test-sets" && access.canReadTestSets && (
         <Panel
           title="Danh sách bộ kiểm thử"
           actions={
@@ -2444,27 +2558,6 @@ export default function TestDesignPage({ project, workspaceView }) {
           />
         </Panel>
       )}
-      {showAi && duplicates.length > 0 && (
-        <Panel title="Các ca kiểm thử có khả năng trùng">
-          <DataTable
-            items={duplicates.map((item, index) => ({ ...item, _id: index }))}
-            columns={[
-              {
-                key: "left",
-                label: "Ca kiểm thử bên trái",
-                render: (item) => item.left.test_case_key,
-              },
-              {
-                key: "right",
-                label: "Ca kiểm thử bên phải",
-                render: (item) => item.right.test_case_key,
-              },
-              { key: "similarity", label: "Độ tương đồng" },
-              { key: "reasons", label: "Bằng chứng", render: (item) => item.reasons.join(", ") },
-            ]}
-          />
-        </Panel>
-      )}
       {showApi && (
         <ApiArtifactsPanel
           projectId={project._id}
@@ -2490,7 +2583,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           onError={setError}
         />
       )}
-      {(showImport || (showApi && testImport)) && (
+      {access.canRenderImport && (showImport || (showApi && testImport)) && (
         <div ref={testImportPanelRef}>
           <TestCaseTransferPanel
             projectId={project._id}

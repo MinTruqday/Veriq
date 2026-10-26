@@ -80,6 +80,14 @@ async def list_api_operations(
     return await api_artifact.list_api_operations(project_id, user)
 
 
+@router.get("/dac-ta-giao-dien/thao-tac/{operation_id}")
+async def get_api_operation(
+    operation_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await api_artifact.get_api_operation(operation_id, user)
+
+
 @router.post(
     "/dac-ta-giao-dien/thao-tac/{operation_id}/sinh-ca-kiem-thu",
     status_code=201,
@@ -90,6 +98,14 @@ async def generate_api_tests(
     user: CurrentUser = Depends(get_current_user),
 ):
     return await api_artifact.generate_api_tests(operation_id, user)
+
+
+@router.get("/nhap-ca-kiem-thu/{job_id}")
+async def get_test_import_preview(
+    job_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await api_artifact.get_test_import_preview(job_id, user)
 
 
 @router.get(

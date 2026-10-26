@@ -16,7 +16,9 @@ import {
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { testingApi } from "../../services/testing.service";
 import { messageOf, textDoc, valueLabel } from "../../lib/testing";
+import { shouldReloadAfterAmbiguousMutation } from "../../lib/executionRecovery.logic.mjs";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import { eligibleRetestResults } from "./defectRetest.logic.mjs";
 
 const nextStates = {
   NEW: ["CONFIRMED", "REJECTED", "DUPLICATE"],
@@ -58,12 +60,14 @@ export default function DefectsPage({ project }) {
   });
   const [results, setResults] = useState([]);
   const [duplicates, setDuplicates] = useState([]);
+  const [traceSuggestions, setTraceSuggestions] = useState({});
   const [traceReview, setTraceReview] = useState(null);
   const [error, setError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
   const loadedProjectId = useRef(project._id);
+  const loadGeneration = useRef(0);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     title: "",
@@ -81,26 +85,35 @@ export default function DefectsPage({ project }) {
     attachments: [],
   });
   const can = (permission) => project.current_permissions?.includes(permission);
-  const role = project.current_membership?.project_role;
+  const membershipRoles = project.current_membership?.project_roles;
+  const memberRoles =
+    Array.isArray(membershipRoles) && membershipRoles.length
+      ? membershipRoles
+      : [project.current_membership?.project_role].filter(Boolean);
   const userId = project.current_membership?.user_id;
   const canManageTrace = (item) =>
-    can("defect.trace.manage") || (role === "DEVELOPER" && item.assignee === userId);
+    can("defect.trace.manage") || (memberRoles.includes("DEVELOPER") && item.assignee === userId);
   const transitionAllowed = (item, status) => {
     if (["CONFIRMED", "REJECTED", "DUPLICATE"].includes(status)) {
       if (!can("defect.triage")) return false;
       if (status === "REJECTED") {
         const configured = project.settings?.action_policies?.["defect.rejected"];
-        return Array.isArray(configured) ? configured.includes(role) : role === "QA";
+        return Array.isArray(configured)
+          ? configured.some((role) => memberRoles.includes(role))
+          : memberRoles.includes("QA");
       }
       if (status === "DUPLICATE") {
         const configured = project.settings?.action_policies?.["defect.duplicate"];
-        return Array.isArray(configured) ? configured.includes(role) : role === "QA";
+        return Array.isArray(configured)
+          ? configured.some((role) => memberRoles.includes(role))
+          : memberRoles.includes("QA");
       }
       return true;
     }
     if (["IN_PROGRESS", "RESOLVED"].includes(status)) {
       return (
-        can("defect.transition.developer") || (role === "DEVELOPER" && item.assignee === userId)
+        can("defect.transition.developer") ||
+        (memberRoles.includes("DEVELOPER") && item.assignee === userId)
       );
     }
     if (["READY_FOR_RETEST", "REOPENED"].includes(status)) return can("defect.retest");
@@ -109,17 +122,21 @@ export default function DefectsPage({ project }) {
   };
   const hasTransitionActions = (item) =>
     item.status === "READY_FOR_RETEST"
-      ? can("defect.retest") &&
-        results.some(
-          (result) =>
-            !item.linked_test_case_version_id ||
-            result.test_case_version_id === item.linked_test_case_version_id,
-        )
+      ? can("defect.retest") && eligibleRetestResults(item, results).length > 0
       : (nextStates[item.status] || []).some((status) => transitionAllowed(item, status));
   const load = useCallback(async () => {
+    const requestGeneration = ++loadGeneration.current;
     if (loadedProjectId.current !== project._id) {
       loadedProjectId.current = project._id;
       initialDataLoaded.current = false;
+      setItems([]);
+      setResults([]);
+      setReleases([]);
+      setBuilds([]);
+      setEnvironments([]);
+      setMembers([]);
+      setTraceSuggestions({});
+      setPageInfo(null);
     }
     if (!initialDataLoaded.current) {
       setInitialLoading(true);
@@ -153,9 +170,36 @@ export default function DefectsPage({ project }) {
           ? testingApi.listMembers(project._id)
           : Promise.resolve([]),
       ]);
+      const traceSuggestionValues = projectPermissions.has("ai.suggest_bug_trace")
+        ? await testingApi.listAutomatedDefectTraceSuggestions(
+            project._id,
+            defectValues.items.map((item) => item._id),
+          )
+        : [];
+      if (requestGeneration !== loadGeneration.current) return;
+      const visibleResultIds = new Set(resultValues.map((item) => item._id));
+      const originalResultIds = projectPermissions.has("testrun.read")
+        ? [
+            ...new Set(
+              defectValues.items
+                .map((item) => item.linked_test_result_id)
+                .filter((resultId) => resultId && !visibleResultIds.has(resultId)),
+            ),
+          ]
+        : [];
+      const originalResults = await Promise.all(
+        originalResultIds.map((resultId) => testingApi.getTestResult(resultId).catch(() => null)),
+      );
+      if (requestGeneration !== loadGeneration.current) return;
       setItems(defectValues.items);
+      setTraceSuggestions(
+        Object.fromEntries(traceSuggestionValues.map((item) => [item.subject_id, item])),
+      );
       setPageInfo(defectValues);
-      setResults(resultValues);
+      setResults([
+        ...resultValues,
+        ...originalResults.filter((result) => result && !visibleResultIds.has(result._id)),
+      ]);
       setReleases(releaseValues);
       setBuilds(buildValues);
       setEnvironments(environmentValues);
@@ -163,15 +207,44 @@ export default function DefectsPage({ project }) {
       initialDataLoaded.current = true;
       setInitialLoadFailed(false);
     } catch (reason) {
+      if (requestGeneration !== loadGeneration.current) return;
       if (!initialDataLoaded.current) setInitialLoadFailed(true);
       setError(messageOf(reason));
     } finally {
-      setInitialLoading(false);
+      if (requestGeneration === loadGeneration.current) setInitialLoading(false);
     }
   }, [filters, initialDataLoaded, loadedProjectId, page, project._id, project.current_permissions]);
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (!project.current_permissions?.includes("ai.suggest_bug_trace") || !items.length) {
+      return undefined;
+    }
+    let active = true;
+    let pending = false;
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== "visible" || pending) return;
+      pending = true;
+      try {
+        const values = await testingApi.listAutomatedDefectTraceSuggestions(
+          project._id,
+          items.map((item) => item._id),
+        );
+        if (active) {
+          setTraceSuggestions(Object.fromEntries(values.map((item) => [item.subject_id, item])));
+        }
+      } catch (reason) {
+        if (active) setError(messageOf(reason));
+      } finally {
+        pending = false;
+      }
+    }, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [items, project._id, project.current_permissions]);
   const create = async (event) => {
     event.preventDefault();
     try {
@@ -215,7 +288,7 @@ export default function DefectsPage({ project }) {
     }
   };
   const transition = async (item, to_status) => {
-    const answer = await ask({
+    await ask({
       title: "Chuyển trạng thái lỗi",
       description: `${item.defect_key} từ ${valueLabel(item.status)} sang ${valueLabel(to_status)}`,
       confirmLabel: "Chuyển trạng thái",
@@ -229,21 +302,22 @@ export default function DefectsPage({ project }) {
           autoFocus: true,
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.transitionDefect(item._id, {
+            expected_revision: item.revision,
+            to_status,
+            reason: answer.reason,
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.transitionDefect(item._id, {
-        expected_revision: item.revision,
-        to_status,
-        reason: answer.reason,
-      });
-      await load();
-    } catch (value) {
-      setError(messageOf(value));
-    }
   };
   const assignDefect = async (item) => {
-    const answer = await ask({
+    await ask({
       title: "Gán người xử lý lỗi",
       description: item.defect_key,
       confirmLabel: "Lưu người xử lý",
@@ -262,20 +336,21 @@ export default function DefectsPage({ project }) {
           ],
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.updateDefect(item._id, {
+            expected_revision: item.revision,
+            assignee: answer.assignee.trim() || null,
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.updateDefect(item._id, {
-        expected_revision: item.revision,
-        assignee: answer.assignee.trim() || null,
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const confirmTraceCandidate = async (candidate) => {
-    const answer = await ask({
+    await ask({
       title: "Xác nhận liên kết truy vết",
       description: `${traceReview.defect.defect_key} với ${candidate.requirement_key || candidate.test_case_key}`,
       confirmLabel: "Xác nhận liên kết",
@@ -289,31 +364,32 @@ export default function DefectsPage({ project }) {
           autoFocus: true,
         },
       ],
+      onConfirm: async (answer) => {
+        const payload = {
+          expected_revision: traceReview.defect.revision,
+          reason: answer.reason,
+          ai_result_id: traceReview.result._id,
+          accepted_candidate_ids: [candidate.candidate_id],
+        };
+        if (candidate.artifact_type === "requirement_version") {
+          payload.linked_requirement_version_ids = [
+            ...new Set([
+              ...(traceReview.defect.linked_requirement_version_ids || []),
+              candidate.artifact_id,
+            ]),
+          ];
+        } else {
+          payload.linked_test_case_version_id = candidate.artifact_id;
+        }
+        try {
+          await testingApi.updateDefectTrace(project._id, traceReview.defect._id, payload);
+          setTraceReview(null);
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    const payload = {
-      expected_revision: traceReview.defect.revision,
-      reason: answer.reason,
-      ai_result_id: traceReview.result._id,
-      accepted_candidate_ids: [candidate.candidate_id],
-    };
-    if (candidate.artifact_type === "requirement_version") {
-      payload.linked_requirement_version_ids = [
-        ...new Set([
-          ...(traceReview.defect.linked_requirement_version_ids || []),
-          candidate.artifact_id,
-        ]),
-      ];
-    } else {
-      payload.linked_test_case_version_id = candidate.artifact_id;
-    }
-    try {
-      await testingApi.updateDefectTrace(project._id, traceReview.defect._id, payload);
-      setTraceReview(null);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   if (initialLoading || initialLoadFailed) {
     return (
@@ -783,49 +859,47 @@ export default function DefectsPage({ project }) {
                     {item.linked_test_case_version_id || "Chưa liên kết ca kiểm thử"}
                   </span>
                   <span className="flex flex-wrap gap-2">
-                    {can("ai.suggest_bug_trace") && (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            setTraceReview({
-                              defect: item,
-                              result: await testingApi.suggestDefectTrace(project._id, item._id, {
-                                idempotency_key: crypto.randomUUID(),
-                              }),
-                            });
-                          } catch (reason) {
-                            setError(messageOf(reason));
+                    {can("ai.suggest_bug_trace") &&
+                      traceSuggestions[item._id]?.source_event_revision === item.revision && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() =>
+                            setTraceReview({ defect: item, result: traceSuggestions[item._id] })
                           }
-                        }}
-                      >
-                        Gợi ý liên kết
-                      </button>
-                    )}
+                        >
+                          Xem gợi ý tự động
+                        </button>
+                      )}
+                    {can("ai.suggest_bug_trace") &&
+                      (!traceSuggestions[item._id] ||
+                        traceSuggestions[item._id].source_event_revision !== item.revision) && (
+                        <span className="text-xs text-ink-muted">Chưa có đề xuất tự động</span>
+                      )}
                     {item.linked_test_case_version_id && canManageTrace(item) && (
                       <button
                         className="secondary-button"
                         type="button"
                         onClick={async () => {
-                          const answer = await ask({
+                          await ask({
                             title: "Thu hồi liên kết lỗi",
                             description: `${item.defect_key} sẽ không còn liên kết với ca kiểm thử hiện tại`,
                             confirmLabel: "Thu hồi liên kết",
                             danger: true,
+                            onConfirm: async () => {
+                              try {
+                                await testingApi.updateDefectTrace(project._id, item._id, {
+                                  expected_revision: item.revision,
+                                  reason: "Người dùng xác nhận thu hồi liên kết truy vết hiện tại",
+                                  linked_test_case_version_id: null,
+                                  linked_requirement_version_ids: [],
+                                });
+                                await load();
+                              } catch (reason) {
+                                throw new Error(messageOf(reason));
+                              }
+                            },
                           });
-                          if (!answer) return;
-                          try {
-                            await testingApi.updateDefectTrace(project._id, item._id, {
-                              expected_revision: item.revision,
-                              reason: "Người dùng xác nhận thu hồi liên kết truy vết hiện tại",
-                              linked_test_case_version_id: null,
-                              linked_requirement_version_ids: [],
-                            });
-                            await load();
-                          } catch (reason) {
-                            setError(messageOf(reason));
-                          }
                         }}
                       >
                         Thu hồi
@@ -863,11 +937,7 @@ export default function DefectsPage({ project }) {
                     render: (item) => {
                       if (item.status === "READY_FOR_RETEST") {
                         if (!can("defect.retest")) return null;
-                        const eligibleResults = results.filter(
-                          (result) =>
-                            !item.linked_test_case_version_id ||
-                            result.test_case_version_id === item.linked_test_case_version_id,
-                        );
+                        const eligibleResults = eligibleRetestResults(item, results);
                         if (!eligibleResults.length) return null;
                         return (
                           <select
@@ -885,6 +955,7 @@ export default function DefectsPage({ project }) {
                                 });
                                 await load();
                               } catch (reason) {
+                                if (shouldReloadAfterAmbiguousMutation(reason)) await load();
                                 setError(messageOf(reason));
                               }
                             }}

@@ -47,6 +47,7 @@ export default function RequirementsListPanel({
   return (
     <Panel
       title={title}
+      className="requirements-list-panel"
       actions={
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <input
@@ -74,7 +75,7 @@ export default function RequirementsListPanel({
               type="button"
               onClick={onScanDuplicates}
             >
-              {selectedIds.length ? "Kiểm tra các mục đã chọn" : "Kiểm tra trùng lặp"}
+              {selectedIds.length ? "Tìm yêu cầu trùng đã chọn" : "Kiểm tra trùng lặp"}
             </button>
           )}
           {selectedIds.length > 0 && can("requirement.merge") && (
@@ -166,7 +167,6 @@ export default function RequirementsListPanel({
         </div>
       </details>
       <DataTable
-        minTableWidth={960}
         onSelect={
           onSelect || ((item) => window.location.assign(`/du-an/${projectId}/yeu-cau/${item._id}`))
         }

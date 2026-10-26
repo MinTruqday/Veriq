@@ -1,4 +1,5 @@
 import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.agents.runner.graph import canonical_workflow
@@ -13,7 +14,6 @@ from src.services.inference import model_metadata
 from src.services.project_access import project_access
 from src.services.token_accounting import current_usage, start_accounting
 from src.tools.registry import registered_tools, tool_access
-
 
 router = APIRouter(prefix="/tac-tu", tags=["AI Automation compatibility"])
 

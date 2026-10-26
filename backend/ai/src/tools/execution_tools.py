@@ -1,13 +1,13 @@
 import json
+import math
 from typing import Annotated
-from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.core.infrastructure.configuration import settings
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import call, parse, require_operation
+from src.tools.testing_api import AutomationOperationError, call, require_operation
 
 
 @with_tool_access(("execution", "analysis", "reporting"), "READ", "testrun.read")
@@ -55,6 +55,7 @@ async def get_work_item(
 async def get_work_item_impact_context(
     project_id: Annotated[str, Field(description="Testing project identifier")],
     work_item_id: Annotated[str, Field(description="Project Work Item identifier")],
+    expected_revision: Annotated[int, Field(ge=1, description="Revision recorded by the verified Work Item event")],
     config: RunnableConfig = None,
 ) -> str:
     """Read a Work Item and the project-scoped Requirement versions and Test Cases explicitly linked to it"""
@@ -74,41 +75,82 @@ async def get_work_item_impact_context(
             {"status": "denied", "reason_code": "WORK_ITEM_SCOPE_MISMATCH"},
             ensure_ascii=False,
         )
+    if type(work_item.get("revision")) is not int or work_item["revision"] != expected_revision:
+        return json.dumps(
+            {
+                "status": "superseded",
+                "reason_code": "WORK_ITEM_EVENT_REVISION_SUPERSEDED",
+                "project_id": project_id,
+                "work_item_id": work_item_id,
+                "expected_revision": expected_revision,
+                "current_revision": work_item.get("revision"),
+            },
+            ensure_ascii=False,
+        )
 
     requirements = []
     test_cases = []
     for requirement_id in dict.fromkeys(str(value) for value in work_item.get("requirement_ids", []) if value):
         requirement = await require_operation("GET", f"/yeu-cau/{requirement_id}", config)
         if requirement.get("_id") != requirement_id or requirement.get("project_id") != project_id:
-            continue
+            return json.dumps(
+                {
+                    "status": "incomplete",
+                    "reason_code": "WORK_ITEM_REQUIREMENT_SCOPE_MISMATCH",
+                    "work_item_id": work_item_id,
+                    "requirement_id": requirement_id,
+                },
+                ensure_ascii=False,
+            )
         version = requirement.get("current_version")
-        version_id = requirement.get("current_version_id") or (version or {}).get("_id")
-        if version_id and not version:
+        version_id = requirement.get("current_version_id") or (
+            version.get("_id") if isinstance(version, dict) else None
+        )
+        if version_id and (
+            not isinstance(version, dict) or version.get("_id") != version_id
+        ):
             version = await require_operation("GET", f"/phien-ban-yeu-cau/{version_id}", config)
         if version and (
-            version.get("project_id") != project_id
+            version.get("_id") != version_id
+            or version.get("project_id") != project_id
             or version.get("requirement_id") != requirement_id
         ):
-            version = None
+            return json.dumps(
+                {
+                    "status": "incomplete",
+                    "reason_code": "WORK_ITEM_REQUIREMENT_VERSION_SCOPE_MISMATCH",
+                    "work_item_id": work_item_id,
+                    "requirement_id": requirement_id,
+                    "requirement_version_id": version_id,
+                },
+                ensure_ascii=False,
+            )
+        if not version_id or not version:
+            return json.dumps(
+                {
+                    "status": "incomplete",
+                    "reason_code": "WORK_ITEM_REQUIREMENT_VERSION_UNAVAILABLE",
+                    "work_item_id": work_item_id,
+                    "requirement_id": requirement_id,
+                },
+                ensure_ascii=False,
+            )
         requirements.append(
             {"requirement": requirement, "current_version": version}
         )
-        if not version_id:
-            continue
-        cases = await require_operation(
-            "GET",
-            f"/du-an/{project_id}/ca-kiem-thu?requirement_id={requirement_id}&page_size=500",
-            config,
+        cases = await list_all_requirement_test_cases(
+            project_id, requirement_id, config
         )
-        items = cases if isinstance(cases, list) else cases.get("items", [])
-        for case in items:
+        for case in cases:
             current = case.get("current_version") or {}
-            linked_versions = set(current.get("requirement_version_ids", []))
+            linked_versions = set(current.get("requirement_version_ids") or [])
             if (
                 case.get("project_id") == project_id
                 and version_id in linked_versions
             ):
                 test_cases.append(case)
+
+    test_cases = list({str(item["_id"]): item for item in test_cases}.values())
 
     return json.dumps(
         {
@@ -121,6 +163,66 @@ async def get_work_item_impact_context(
         ensure_ascii=False,
         default=str,
     )
+
+
+async def list_all_requirement_test_cases(project_id, requirement_id, config):
+    page_size = 500
+    max_items = 20000
+    first = await require_operation(
+        "GET",
+        f"/du-an/{project_id}/ca-kiem-thu?requirement_id={requirement_id}&page=1&page_size={page_size}",
+        config,
+    )
+    if not isinstance(first, dict):
+        raise AutomationOperationError("WORK_ITEM_IMPACT_PAGINATION_INVALID")
+
+    total = first.get("total")
+    total_pages = first.get("total_pages")
+    if isinstance(total, int) and not isinstance(total, bool) and total >= max_items:
+        raise AutomationOperationError("WORK_ITEM_IMPACT_RESULT_LIMIT_REACHED")
+    if (
+        not isinstance(total, int)
+        or isinstance(total, bool)
+        or total < 0
+        or total > max_items
+        or not isinstance(total_pages, int)
+        or isinstance(total_pages, bool)
+        or total_pages < 0
+        or total_pages != math.ceil(total / page_size)
+        or first.get("page") != 1
+        or first.get("page_size") != page_size
+        or not isinstance(first.get("items"), list)
+    ):
+        raise AutomationOperationError("WORK_ITEM_IMPACT_PAGINATION_INVALID")
+
+    items = list(first["items"])
+    for page in range(2, total_pages + 1):
+        result = await require_operation(
+            "GET",
+            f"/du-an/{project_id}/ca-kiem-thu?requirement_id={requirement_id}&page={page}&page_size={page_size}",
+            config,
+        )
+        if (
+            not isinstance(result, dict)
+            or result.get("page") != page
+            or result.get("page_size") != page_size
+            or result.get("total") != total
+            or result.get("total_pages") != total_pages
+            or not isinstance(result.get("items"), list)
+        ):
+            raise AutomationOperationError("WORK_ITEM_IMPACT_PAGINATION_CHANGED")
+        items.extend(result["items"])
+
+    identifiers = [str(item.get("_id") or "") for item in items if isinstance(item, dict)]
+    if (
+        len(items) != total
+        or len(identifiers) != len(items)
+        or any(not identifier for identifier in identifiers)
+        or len(set(identifiers)) != len(identifiers)
+        or any(item.get("project_id") != project_id for item in items)
+    ):
+        raise AutomationOperationError("WORK_ITEM_IMPACT_PAGINATION_INCOMPLETE")
+    return items
 
 @with_tool_access(("analysis", "execution", "reporting"), "READ", "defect.read")
 async def get_historical_defects(
@@ -202,14 +304,4 @@ async def link_bug_candidates(
 ) -> str:
     """Find trace candidates for a defect"""
     return await call("GET", f"/loi/{defect_id}/ung-vien-truy-vet", config)
-
-from src.tools.requirement_workflows import (
-    process_changed_requirement_version,
-    process_ingested_requirement_document,
-)
-from src.tools.execution_workflows import (
-    process_approved_test_plan,
-    process_changed_test_plan,
-    process_recorded_defect,
-)
 

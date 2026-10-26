@@ -2,12 +2,16 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, validate_doc
+from src.core.database import database
 from src.schemas.contracts.requirements import RequirementCreate, RequirementExtractionInput, RequirementVersionCreate
 from src.repositories.requirement_import import requirement_import_repository
 from src.repositories.requirement import requirement_repository
 from src.modules.requirements.services.requirement_import import atomic_requirement_candidates
 from src.modules.requirements.services.requirement_documents import create_requirement_document_record, require_document_access
-from src.modules.requirements.services.requirement_indexing import validate_requirement_sources
+from src.modules.requirements.services.requirement_indexing import (
+    index_requirement_version,
+    validate_requirement_sources,
+)
 from src.modules.requirements.services.requirement_records import create_requirement_record, create_requirement_version_record
 from src.modules.requirements.services.requirement_transformations import unique_source_refs
 from src.repositories.analysis import analysis_repository
@@ -123,7 +127,14 @@ async def compare_requirement_import_job(job, user):
             lexical_candidates.append((requirement, version, score, reasons, same_key))
 
         semantic_scores = {}
-        if not any(score >= threshold or same_key for _, _, score, _, same_key in lexical_candidates):
+        has_semantic_scope = any(
+            requirement.get("status") not in {"OBSOLETE", "ARCHIVED"}
+            for requirement, _, _, _, _ in lexical_candidates
+        )
+        if has_semantic_scope and not any(
+            score >= threshold or same_key
+            for _, _, score, _, same_key in lexical_candidates
+        ):
             candidate_criteria = candidate.get("acceptance_criteria", [])
             candidate_text = " ".join(
                 [
@@ -859,14 +870,15 @@ async def reject_requirement_import_candidate(job_id, candidate_id, payload, use
     return updated
 
 
-async def confirm_requirement_import_job(job_id, payload, user):
+async def apply_requirement_import_job(job_id, payload, user):
     
     job = await get_project_entity(
-        'import_jobs', job_id, user, 'requirement_document.confirm_extraction'
+        'import_jobs', job_id, user, 'requirement.create'
     )
     await authorize_requirement_import_job(job, user)
     await get_project(job["project_id"], user, 'requirement.create')
     if job["status"] == 'CONFIRMED':
+        await recover_confirmed_import_index(job)
         return {"job": job, "requirements": None}
     indexes = payload.selected_indexes
     if not indexes:
@@ -935,6 +947,7 @@ async def confirm_requirement_import_job(job_id, payload, user):
     if not claimed:
         current = await requirement_import_repository.find(job_id, job["project_id"])
         if current and current.get("status") == 'CONFIRMED':
+            await recover_confirmed_import_index(current)
             return {"job": current, "requirements": None}
         raise HTTPException(
             status_code=409,
@@ -942,24 +955,66 @@ async def confirm_requirement_import_job(job_id, payload, user):
         )
     created = []
     try:
-        for index in indexes:
-            item = job["preview"][index]
-            created.append(
-                await create_requirement_record(
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                for index in indexes:
+                    item = job["preview"][index]
+                    created.append(
+                        await create_requirement_record(
+                            job["project_id"],
+                            RequirementCreate(**item),
+                            user,
+                            origin='import',
+                            session=session,
+                        )
+                    )
+                rejected_indexes = [
+                    index for index in range(len(job["preview"])) if index not in indexes
+                ]
+                confirmed = await requirement_import_repository.confirm(
+                    job_id,
                     job["project_id"],
-                    RequirementCreate(**item),
-                    user,
-                    origin='import',
+                    'CONFIRMING',
+                    'CONFIRMED',
+                    [item["_id"] for item in created],
+                    indexes,
+                    rejected_indexes,
+                    [item["current_version"]["_id"] for item in created],
+                    user.id,
+                    now(),
+                    session=session,
                 )
-            )
+                if not confirmed:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "IMPORT_CONFIRMATION_CONFLICT"},
+                    )
+                if job.get("source_document_id"):
+                    await requirement_import_repository.confirm_document(
+                        job["source_document_id"],
+                        job["project_id"],
+                        'CONFIRMED',
+                        now(),
+                        session=session,
+                    )
+                await audit(
+                    user.id,
+                    'requirement_import_confirmed',
+                    'RequirementImport',
+                    job_id,
+                    job["project_id"],
+                    {
+                        "created_requirement_ids": [item["_id"] for item in created],
+                        "selected_indexes": indexes,
+                        "separate_reasons": {
+                            str(index): payload.separate_reasons[index].strip()
+                            for index in payload.separate_indexes
+                        },
+                        "rejected_indexes": rejected_indexes,
+                    },
+                    session=session,
+                )
     except Exception:
-        requirement_ids = [item["_id"] for item in created]
-        version_ids = [item["current_version"]["_id"] for item in created]
-        for version_id in version_ids:
-            await remove_artifact(job["project_id"], version_id)
-        await requirement_import_repository.delete_created_requirements(
-            requirement_ids, version_ids
-        )
         await requirement_import_repository.reset_confirmation(
             job_id,
             job["project_id"],
@@ -975,58 +1030,29 @@ async def confirm_requirement_import_job(job_id, payload, user):
             job["project_id"],
         )
         raise
-    rejected_indexes = [index for index in range(len(job["preview"])) if index not in indexes]
-    confirmed = await requirement_import_repository.confirm(
-        job_id,
-        job["project_id"],
-        'CONFIRMING',
-        'CONFIRMED',
-        [item["_id"] for item in created],
-        indexes,
-        rejected_indexes,
-        user.id,
-        now(),
-    )
-    if not confirmed:
-        current = await requirement_import_repository.find(job_id, job["project_id"])
-        if current and current.get("status") == "CONFIRMED":
-            return {"job": current, "requirements": None}
-        requirement_ids = [item["_id"] for item in created]
-        version_ids = [item["current_version"]["_id"] for item in created]
-        for version_id in version_ids:
-            await remove_artifact(job["project_id"], version_id)
-        await requirement_import_repository.delete_created_requirements(
-            requirement_ids, version_ids
-        )
-        await requirement_import_repository.reset_confirmation(
-            job_id,
-            job["project_id"],
-            "CONFIRMING",
-            "PREVIEW_READY",
-            now(),
-        )
-        raise HTTPException(status_code=409, detail={"code": "IMPORT_CONFIRMATION_COMPENSATED"})
-    if job.get("source_document_id"):
-        await requirement_import_repository.confirm_document(
-            job["source_document_id"],
-            job["project_id"],
-            'CONFIRMED',
-            now(),
-        )
-    await audit(
-        user.id,
-        'requirement_import_confirmed',
-        'RequirementImport',
-        job_id,
-        job["project_id"],
-        {
-            "created_requirement_ids": [item["_id"] for item in created],
-            "selected_indexes": indexes,
-            "separate_reasons": {
-                str(index): payload.separate_reasons[index].strip()
-                for index in payload.separate_indexes
-            },
-            "rejected_indexes": rejected_indexes,
-        },
-    )
+    for item in created:
+        await index_requirement_version(item["current_version"])
     return {"job": None, "requirements": created}
+
+
+async def confirm_requirement_import_job(job_id, payload, user):
+    return await apply_requirement_import_job(job_id, payload, user)
+
+
+async def recover_confirmed_import_index(job):
+    version_ids = list(job.get("created_requirement_version_ids") or [])
+    if not version_ids:
+        return
+    versions = await requirement_repository.list_versions_by_ids(
+        job["project_id"], version_ids, len(version_ids)
+    )
+    versions_by_id = {item["_id"]: item for item in versions}
+    if set(versions_by_id) != set(version_ids):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IMPORT_CONFIRMED_VERSION_MISSING"},
+        )
+    for version_id in version_ids:
+        version = versions_by_id[version_id]
+        if version.get("index_status") != "READY":
+            await index_requirement_version(version)

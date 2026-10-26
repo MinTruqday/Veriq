@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { docText, messageOf, textDoc, valueLabel } from "../../../lib/testing";
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { REQUIREMENT_LEVELS, REQUIREMENT_TYPES } from "./requirements.model";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
+import { StatusPill } from "../../../components/WorkspacePrimitives";
 
 function templateError(reason) {
   const messages = {
@@ -17,10 +19,10 @@ function templateError(reason) {
     TEMPLATE_REQUIREMENT_INCOMPLETE: "Yêu cầu còn thiếu thông tin tối thiểu hoặc nguồn dẫn",
     TEMPLATE_SOURCE_TOO_LARGE: "Tài liệu nguồn vượt giới hạn xử lý",
     TEMPLATE_SOURCE_EMPTY: "Tài liệu nguồn không có nội dung phù hợp",
-    TEMPLATE_SYNTHESIS_UNAVAILABLE: "AI chưa thể tổng hợp mẫu  Hãy thử lại",
+    TEMPLATE_SYNTHESIS_UNAVAILABLE: "AI chưa thể tổng hợp mẫu. Hãy thử lại.",
     TEMPLATE_AI_NO_REQUIREMENTS: "AI chưa rút được yêu cầu có nguồn dẫn hợp lệ",
     TEMPLATE_AI_UNSUPPORTED_CONTEXT: "Bối cảnh AI đề xuất không có trong nguồn đã chọn",
-    TEMPLATE_REVIEW_UNAVAILABLE: "AI chưa thể kiểm tra mẫu  Hãy thử lại",
+    TEMPLATE_REVIEW_UNAVAILABLE: "AI chưa thể kiểm tra mẫu. Hãy thử lại.",
     TEMPLATE_REVIEW_INVALID: "Kết quả kiểm tra mẫu không hợp lệ",
     TEMPLATE_REVIEW_UNSUPPORTED_SUGGESTION: "Đề xuất của AI không khớp tài liệu được phép đọc",
     TEMPLATE_EVIDENCE_INVALID: "Trích dẫn AI trả về không khớp tài liệu nguồn",
@@ -172,6 +174,7 @@ function toStored(item, fields) {
 
 export default function RequirementTemplatePanel({
   project,
+  isPlatformAdmin = false,
   members,
   sourceDocuments,
   onPreview,
@@ -203,7 +206,10 @@ export default function RequirementTemplatePanel({
     { title: "", type: "functional", content: "", acceptance: "" },
   ]);
   const [busy, setBusy] = useState(false);
-  const [review, setReview] = useState(null);
+  const [automationRuns, setAutomationRuns] = useState([]);
+  const [automationRunsError, setAutomationRunsError] = useState("");
+  const [templateReadbackError, setTemplateReadbackError] = useState("");
+  const seenTerminalRunIds = useRef(new Set());
   const [fieldDraft, setFieldDraft] = useState({
     key: "",
     label: "",
@@ -214,19 +220,104 @@ export default function RequirementTemplatePanel({
 
   useEffect(() => {
     if (!isOpen) return;
+    let active = true;
+    setTemplates([]);
+    setFields([]);
     Promise.all([
       testingApi.listRequirementTemplates(project._id),
       testingApi.listRequirementFields(project._id),
     ])
       .then(([values, definitions]) => {
+        if (!active) return;
         setTemplates(values);
         setFields(definitions);
       })
-      .catch((reason) => onError(templateError(reason)));
+      .catch((reason) => {
+        if (active) onError(templateError(reason));
+      });
+    return () => {
+      active = false;
+    };
   }, [isOpen, project._id, onError]);
 
+  const canReadAutomationRuns =
+    project.current_permissions?.includes("proposal.read") ||
+    project.current_permissions?.includes("automation.read");
+  const membershipRoles = project.current_membership?.project_roles;
+  const projectRoles =
+    Array.isArray(membershipRoles) && membershipRoles.length
+      ? membershipRoles
+      : [project.current_membership?.project_role].filter(Boolean);
+  const canApprovePublication =
+    project.current_permissions?.includes("project.update") &&
+    (projectRoles.includes("QA") || isPlatformAdmin);
+  const canManageRequirementFields = canApprovePublication;
+  const documentEventKey = sourceDocuments
+    .filter((document) => document.ai_enabled)
+    .map((document) => `${document._id}:${document.revision || 1}`)
+    .sort()
+    .join("|");
+
+  useEffect(() => {
+    if (!isOpen || !canReadAutomationRuns) {
+      setAutomationRuns([]);
+      setAutomationRunsError("");
+      return undefined;
+    }
+
+    let active = true;
+    let pending = false;
+    const refreshEventRuns = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const runs = await testingApi.listAutomationRuns(project._id);
+        if (!active) return;
+        setAutomationRuns(runs);
+        setAutomationRunsError("");
+        const terminalRunIds = runs
+          .filter(
+            (run) =>
+              run.source_event_id?.startsWith("requirement-document:") &&
+              ["COMPLETED", "DEGRADED", "FAILED", "CANCELLED"].includes(run.status),
+          )
+          .map((run) => run.automation_run_id);
+        const unseenTerminalRunIds = terminalRunIds.filter(
+          (runId) => !seenTerminalRunIds.current.has(runId),
+        );
+        terminalRunIds.forEach((runId) => seenTerminalRunIds.current.add(runId));
+        if (unseenTerminalRunIds.length) {
+          try {
+            const templates = await testingApi.listRequirementTemplates(project._id);
+            if (active) {
+              setTemplates(templates);
+              setTemplateReadbackError("");
+            }
+          } catch (reason) {
+            if (active) setTemplateReadbackError(messageOf(reason));
+          }
+        }
+      } catch (reason) {
+        if (active) {
+          setAutomationRuns([]);
+          setAutomationRunsError(messageOf(reason));
+        }
+      } finally {
+        pending = false;
+      }
+    };
+
+    void refreshEventRuns();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshEventRuns();
+    }, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [canReadAutomationRuns, documentEventKey, isOpen, project._id]);
+
   const loadTemplate = (template) => {
-    setReview(null);
     setActive(template);
     setName(template.name);
     setProductTypes(template.product_types || [project.project_type || "web"]);
@@ -254,18 +345,6 @@ export default function RequirementTemplatePanel({
       setBusy(false);
     }
   };
-
-  const synthesize = () =>
-    run(async () => {
-      const template = await testingApi.synthesizeRequirementTemplate(project._id, {
-        name: name.trim() || "Mẫu yêu cầu tổng hợp",
-        product_types: productTypes,
-        source_document_ids: selectedDocumentIds,
-        source_template_ids: selectedTemplateIds,
-      });
-      setTemplates((items) => [template, ...items]);
-      loadTemplate(template);
-    });
 
   const save = () =>
     run(async () => {
@@ -312,11 +391,22 @@ export default function RequirementTemplatePanel({
       onPreview(job);
     });
 
-  const reviewSaved = () =>
-    run(async () => {
-      setReview(null);
-      setReview(await testingApi.reviewRequirementTemplate(project._id, active._id));
-    });
+  const eventRunFor = (sourceDocument) => {
+    const eventId = `requirement-document:${sourceDocument._id}:${sourceDocument.revision || 1}`;
+    return automationRuns.find((item) => item.source_event_id === eventId) || null;
+  };
+
+  const templateIdsForRun = (run) => {
+    const artifactIds = new Set(
+      (run?.result?.observations || [])
+        .filter((observation) => observation?.verification?.status === "COMPLETED")
+        .flatMap((observation) => observation.verification?.artifact_ids || [])
+        .map(String),
+    );
+    return templates.filter(
+      (template) => artifactIds.has(String(template._id)) && template.project_id === project._id,
+    );
+  };
 
   const addField = () =>
     run(async () => {
@@ -400,7 +490,7 @@ export default function RequirementTemplatePanel({
         <h3 className="text-base font-semibold">Mẫu yêu cầu</h3>
         {busy && (
           <p className="mt-2 text-sm" role="status">
-            AI hoặc hệ thống đang xử lý mẫu yêu cầu
+            Đang thực hiện thao tác…
           </p>
         )}
       </div>
@@ -430,6 +520,65 @@ export default function RequirementTemplatePanel({
         </div>
         <div className="space-y-2 rounded-control border border-border p-3">
           <p className="text-sm font-medium">Tài liệu nguồn cho AI</p>
+          {canReadAutomationRuns && (
+            <div className="space-y-2 border-b border-border pb-3" aria-live="polite">
+              <div>
+                <p className="text-sm font-medium">Tự động hóa theo tài liệu</p>
+              </div>
+              {automationRunsError && (
+                <p className="text-sm text-danger" role="alert">
+                  Chưa tải được trạng thái lượt chạy AI: {automationRunsError}
+                </p>
+              )}
+              {templateReadbackError && (
+                <p className="text-sm text-danger" role="alert">
+                  Lượt chạy đã kết thúc nhưng chưa đọc lại được danh sách mẫu:{" "}
+                  {templateReadbackError}
+                </p>
+              )}
+              {sourceDocuments
+                .filter((document) => document.ai_enabled)
+                .map((document) => {
+                  const eventRun = eventRunFor(document);
+                  const outputTemplates = templateIdsForRun(eventRun);
+                  return (
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border p-2"
+                      key={`${document._id}:${document.revision || 1}`}
+                    >
+                      <span className="min-w-0 truncate text-sm">{document.filename}</span>
+                      {eventRun ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusPill value={eventRun.status} />
+                          {outputTemplates.map((template) => (
+                            <button
+                              className="text-accent underline"
+                              type="button"
+                              key={template._id}
+                              onClick={() => loadTemplate(template)}
+                            >
+                              Mở mẫu đã đọc lại
+                            </button>
+                          ))}
+                          <a
+                            className="text-accent underline"
+                            href={projectRoute(project._id, PROJECT_SECTION_SLUGS.automation)}
+                          >
+                            Xem lượt chạy
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-ink-muted">
+                          {document.status === "READY"
+                            ? "Chưa tìm thấy lượt chạy tương ứng trong các lượt gần đây mà tài khoản được phép xem."
+                            : "Sự kiện AI chỉ được đưa vào xử lý sau khi phân tích tài liệu hoàn tất."}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
           {sourceDocuments
             .filter((document) => document.ai_enabled)
             .map((document) => (
@@ -470,14 +619,6 @@ export default function RequirementTemplatePanel({
             ))}
           </select>
         </label>
-        <button
-          className="secondary-button"
-          type="button"
-          disabled={busy || !(selectedTemplateIds.length || selectedDocumentIds.length)}
-          onClick={synthesize}
-        >
-          AI tổng hợp bản nháp
-        </button>
         <button
           className="secondary-button"
           type="button"
@@ -550,11 +691,11 @@ export default function RequirementTemplatePanel({
           {active.synthesis.warnings.map((warning, index) => (
             <p className="mt-1" key={index}>
               {warning === "SOURCE_TEMPLATES_HAVE_NO_REQUIREMENTS"
-                ? "Các mẫu nguồn chỉ có cấu trúc  Cần bổ sung yêu cầu trước khi nhập"
+                ? "Các mẫu nguồn chỉ có cấu trúc. Cần bổ sung yêu cầu trước khi nhập."
                 : warning === "TEMPLATE_CONTEXT_FIELD_IGNORED"
-                  ? "AI đề xuất một trường bối cảnh ngoài cấu trúc mẫu  Trường đó đã bị bỏ qua"
+                  ? "AI đề xuất một trường bối cảnh ngoài cấu trúc mẫu. Trường đó đã bị bỏ qua."
                   : warning === "TEMPLATE_CONTEXT_NOT_IN_SOURCE"
-                    ? "AI đề xuất bối cảnh không có trong tài liệu nguồn  Nội dung đó đã bị bỏ qua"
+                    ? "AI đề xuất bối cảnh không có trong tài liệu nguồn. Nội dung đó đã bị bỏ qua."
                     : warning}
             </p>
           ))}
@@ -912,53 +1053,7 @@ export default function RequirementTemplatePanel({
             Xem trước yêu cầu để nhập
           </button>
         )}
-        {active?.project_id === project._id && (
-          <button className="secondary-button" type="button" disabled={busy} onClick={reviewSaved}>
-            AI kiểm tra mẫu đã lưu
-          </button>
-        )}
       </div>
-      {review && (
-        <section className="space-y-2 rounded-control border border-border p-3" aria-live="polite">
-          <p className="text-sm font-medium">
-            {review.readiness === "ready_for_import"
-              ? "Mẫu đủ điều kiện xem trước để nhập"
-              : review.readiness === "conflict"
-                ? "Mẫu còn mâu thuẫn cần quyết định"
-                : "Mẫu còn thông tin cần làm rõ"}
-          </p>
-          <p className="text-xs text-ink-muted">Kết quả áp dụng cho phiên bản mẫu đã lưu</p>
-          {review.warnings?.includes("BATCHED_REVIEW_REQUIRES_HUMAN_RECONCILIATION") && (
-            <p className="text-sm text-ink-muted">
-              AI đã rà {review.reviewed_parts} phần của mẫu lớn Cần người dùng đối chiếu mâu thuẫn
-              giữa các phần trước khi nhập
-            </p>
-          )}
-          {(review.findings || []).map((finding, index) => (
-            <div
-              className="rounded-control border border-border p-2 text-sm"
-              key={`${index}-${finding.field}`}
-            >
-              <p>
-                {finding.requirement_index === null || finding.requirement_index === undefined
-                  ? "Bối cảnh mẫu"
-                  : `Yêu cầu ${finding.requirement_index + 1}`}{" "}
-                ·{" "}
-                {valueLabel(finding.field) === finding.field && !finding.field.includes(" ")
-                  ? "Thông tin cần làm rõ"
-                  : valueLabel(finding.field)}
-              </p>
-              <p>{finding.issue}</p>
-              {finding.suggested_source_quote && (
-                <p className="text-ink-muted">Nguồn gợi ý {finding.suggested_source_quote}</p>
-              )}
-              <p className="text-xs text-ink-muted">
-                Nguồn dẫn {(finding.evidence_refs || []).join(", ")}
-              </p>
-            </div>
-          ))}
-        </section>
-      )}
       {active?.project_id === project._id && active.status === "DRAFT" && (
         <details className="rounded-control border border-border p-3">
           <summary className="cursor-pointer text-sm font-medium">
@@ -1141,7 +1236,7 @@ export default function RequirementTemplatePanel({
               );
             },
           )}
-          {project.current_permissions?.includes("project.update") && (
+          {canApprovePublication && (
             <button
               className="apple-button"
               type="button"
@@ -1155,7 +1250,7 @@ export default function RequirementTemplatePanel({
           )}
         </div>
       )}
-      {project.current_permissions?.includes("project.update") && (
+      {canManageRequirementFields && (
         <details className="rounded-control border border-border p-3">
           <summary className="cursor-pointer text-sm font-medium">Trường mở rộng của dự án</summary>
           <div className="mt-3 grid gap-3 md:grid-cols-2">

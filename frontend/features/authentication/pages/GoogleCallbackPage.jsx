@@ -24,7 +24,7 @@ function GoogleCallbackContent() {
       </AuthFrame>
     );
   }
-  return <AuthLoading />;
+  return <AuthLoading label="Đang xác thực tài khoản Google" />;
 }
 export default function GoogleCallbackPage() {
   return (

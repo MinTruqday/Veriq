@@ -4,6 +4,7 @@ import DataTable from "../../components/DataTable";
 import ProjectNotificationsPanel from "../../components/ProjectNotificationsPanel";
 import WebhookPanel from "../../components/WebhookPanel";
 import ProjectConnectorsPanel from "../../components/ProjectConnectorsPanel";
+import MemberSkillProfilePanel from "../../components/MemberSkillProfilePanel";
 import CicdPanel from "../../components/CicdPanel";
 import {
   ErrorState,
@@ -15,12 +16,15 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import {
+  invalidProjectDateRange,
+  minimumProjectEndDate,
+} from "../../lib/projectSchedule.logic.mjs";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 
 const toggleSettings = [
   ["requirement_lint_blocking", "Chặn duyệt yêu cầu khi còn lỗi kiểm tra"],
   ["trace_before_baseline", "Bắt buộc truy vết trước khi đặt phiên bản chuẩn cho yêu cầu"],
-  ["ba_can_approve_requirements", "Cho phép chuyên viên phân tích duyệt yêu cầu"],
   ["testcase_lint_blocking", "Chặn duyệt ca kiểm thử khi còn lỗi kiểm tra"],
   ["trace_before_testcase_approve", "Bắt buộc truy vết trước khi duyệt ca kiểm thử"],
   ["tester_can_create_run", "Cho phép kiểm thử viên tạo lần chạy kiểm thử"],
@@ -52,7 +56,6 @@ const toggleSettings = [
   ["tester_can_archive_testcase_templates", "Cho phép kiểm thử viên lưu trữ mẫu ca kiểm thử"],
   ["viewer_can_export", "Cho phép người xem xuất báo cáo"],
   ["developer_can_export", "Cho phép lập trình viên xuất báo cáo"],
-  ["ai_auto_draft", "Cho phép AI tạo bản nháp"],
   [
     "require_completion_report_before_release_close",
     "Yêu cầu báo cáo hoàn tất đã phê duyệt trước khi đóng bản phát hành",
@@ -128,16 +131,40 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const [projectType, setProjectType] = useState(project.project_type || "web");
   const [locale, setLocale] = useState(project.locale || "vi-VN");
   const [timezone, setTimezone] = useState(project.timezone || "Asia/Ho_Chi_Minh");
+  const [automationFramework, setAutomationFramework] = useState(
+    project.automation_framework || "",
+  );
+  const [automationLanguage, setAutomationLanguage] = useState(project.automation_language || "");
+  const [plannedStartAt, setPlannedStartAt] = useState(
+    project.planned_start_at ? String(project.planned_start_at).slice(0, 10) : "",
+  );
+  const [plannedEndAt, setPlannedEndAt] = useState(
+    project.planned_end_at ? String(project.planned_end_at).slice(0, 10) : "",
+  );
+  const plannedDateRangeInvalid = invalidProjectDateRange(plannedStartAt, plannedEndAt);
+  const minimumPlannedEndAt = minimumProjectEndDate(plannedStartAt);
+  useEffect(() => {
+    setPlannedStartAt(
+      project.planned_start_at ? String(project.planned_start_at).slice(0, 10) : "",
+    );
+    setPlannedEndAt(project.planned_end_at ? String(project.planned_end_at).slice(0, 10) : "");
+    setAutomationFramework(project.automation_framework || "");
+    setAutomationLanguage(project.automation_language || "");
+  }, [
+    project._id,
+    project.revision,
+    project.planned_end_at,
+    project.planned_start_at,
+    project.automation_framework,
+    project.automation_language,
+  ]);
   const [settings, setSettings] = useState({
-    requirement_approval_required: project.settings?.requirement_approval_required ?? true,
-    testcase_approval_required: project.settings?.testcase_approval_required ?? true,
-    ai_auto_draft: project.settings?.ai_auto_draft ?? true,
     impact_confidence_threshold: project.settings?.impact_confidence_threshold ?? 0.75,
     ...Object.fromEntries(
       toggleSettings.map(([key]) => [
         key,
         project.settings?.[key] ??
-          ["ai_auto_draft", "ba_can_create_defect", "developer_can_create_defect"].includes(key),
+          ["ba_can_create_defect", "developer_can_create_defect"].includes(key),
       ]),
     ),
     ...Object.fromEntries(
@@ -162,6 +189,11 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       id: "members",
       label: "Thành viên",
       permissions: ["project.members.read", "project.members.manage"],
+    },
+    {
+      id: "my-profile",
+      label: "Năng lực của tôi",
+      permissions: ["project.read"],
     },
     {
       id: "notifications",
@@ -295,6 +327,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
         label="Nhóm cài đặt dự án"
       />
       <div className="min-w-0" role="tabpanel" aria-label="Cài đặt dự án">
+        {visibleSettingsSection === "my-profile" && (
+          <MemberSkillProfilePanel projectId={project._id} />
+        )}
         {visibleSettingsSection === "project" && (
           <Panel title="Thông tin dự án">
             <form
@@ -325,6 +360,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                 : ["QA"],
                           },
                         },
+                        automation_framework: automationFramework || null,
+                        automation_language: automationLanguage || null,
                       }
                     : {
                         expected_revision: project.revision,
@@ -333,6 +370,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         project_type: projectType,
                         locale,
                         timezone,
+                        automation_framework: automationFramework || null,
+                        automation_language: automationLanguage || null,
                       };
                   if (can("project.settings.manage")) {
                     await testingApi.updateProjectSettings(project._id, payload);
@@ -389,6 +428,121 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   />
                 </label>
               </div>
+              <section className="space-y-3 rounded-xl border border-border p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-ink">Tự động hóa kiểm thử</h3>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    AI chỉ sinh kịch bản khi ca được đánh dấu tự động hóa và dự án có cấu hình công
+                    cụ. Để trống cả hai trường nếu dự án chưa dùng sinh kịch bản.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="field-label">
+                    Công cụ
+                    <select
+                      className="apple-input mt-2"
+                      disabled={!can("project.update") && !can("project.settings.manage")}
+                      value={automationFramework}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setAutomationFramework(value);
+                        if (!value) setAutomationLanguage("");
+                        else if (value === "selenium") setAutomationLanguage("python");
+                        else if (automationLanguage === "python") setAutomationLanguage("");
+                      }}
+                    >
+                      <option value="">Chưa cấu hình</option>
+                      <option value="playwright">Playwright</option>
+                      <option value="cypress">Cypress</option>
+                      <option value="selenium">Selenium</option>
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Ngôn ngữ
+                    <select
+                      className="apple-input mt-2"
+                      disabled={
+                        (!can("project.update") && !can("project.settings.manage")) ||
+                        !automationFramework ||
+                        automationFramework === "selenium"
+                      }
+                      value={automationLanguage}
+                      onChange={(event) => setAutomationLanguage(event.target.value)}
+                    >
+                      <option value="">Chưa cấu hình</option>
+                      {automationFramework === "selenium" ? (
+                        <option value="python">Python</option>
+                      ) : (
+                        <>
+                          <option value="typescript">TypeScript</option>
+                          <option value="javascript">JavaScript</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                </div>
+              </section>
+              {can("project.update") && (
+                <Panel
+                  title="Thời gian dự án"
+                  description="Các mốc này giúp theo dõi lộ trình; chúng không tự quyết định tiến độ hoàn thành."
+                >
+                  <div className="grid gap-3 p-4 sm:grid-cols-2">
+                    <label className="field-label">
+                      Bắt đầu dự kiến
+                      <input
+                        className="apple-input mt-2 w-full"
+                        type="date"
+                        disabled={!can("project.update")}
+                        value={plannedStartAt}
+                        onChange={(event) => setPlannedStartAt(event.target.value)}
+                      />
+                    </label>
+                    <label className="field-label">
+                      Kết thúc dự kiến
+                      <input
+                        className="apple-input mt-2 w-full"
+                        type="date"
+                        min={minimumPlannedEndAt}
+                        disabled={!can("project.update")}
+                        value={plannedEndAt}
+                        onChange={(event) => setPlannedEndAt(event.target.value)}
+                      />
+                    </label>
+                    {plannedDateRangeInvalid && (
+                      <p className="sm:col-span-2 text-sm text-danger" role="alert">
+                        Ngày kết thúc phải sau ngày bắt đầu.
+                      </p>
+                    )}
+                    <div className="sm:col-span-2">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={!can("project.update") || plannedDateRangeInvalid}
+                        onClick={async () => {
+                          setError("");
+                          try {
+                            await testingApi.updateProject(project._id, {
+                              expected_revision: project.revision,
+                              planned_start_at: plannedStartAt
+                                ? new Date(`${plannedStartAt}T00:00:00.000Z`).toISOString()
+                                : null,
+                              planned_end_at: plannedEndAt
+                                ? new Date(`${plannedEndAt}T00:00:00.000Z`).toISOString()
+                                : null,
+                            });
+                            await onProjectChange();
+                          } catch (reason) {
+                            setError(messageOf(reason));
+                          }
+                        }}
+                      >
+                        Lưu thời gian dự án
+                      </button>
+                    </div>
+                  </div>
+                </Panel>
+              )}
               {can("project.settings.manage") && (
                 <details className="rounded-xl border border-border p-4">
                   <summary className="cursor-pointer text-[13px] font-semibold">
@@ -467,7 +621,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                     className="danger-button"
                     type="button"
                     onClick={async () => {
-                      const answer = await ask({
+                      await ask({
                         title: "Lưu trữ dự án",
                         description: `${project.key} sẽ ngừng nhận thay đổi mới nhưng vẫn giữ lịch sử và bằng chứng`,
                         confirmLabel: "Lưu trữ",
@@ -482,17 +636,18 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                             autoFocus: true,
                           },
                         ],
+                        onConfirm: async (answer) => {
+                          try {
+                            await testingApi.archiveProject(project._id, {
+                              expected_revision: project.revision,
+                              reason: answer.reason,
+                            });
+                            window.location.assign("/du-an");
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
                       });
-                      if (!answer) return;
-                      try {
-                        await testingApi.archiveProject(project._id, {
-                          expected_revision: project.revision,
-                          reason: answer.reason,
-                        });
-                        window.location.assign("/du-an");
-                      } catch (value) {
-                        setError(messageOf(value));
-                      }
                     }}
                   >
                     Lưu trữ dự án
@@ -755,7 +910,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4 p-5">
+              <div className="grid gap-5 p-5 sm:grid-cols-2">
                 {can("analytics.read") && (
                   <>
                     <div>
@@ -771,14 +926,22 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   </>
                 )}
                 {can("analytics.ai.read") && (
-                  <div>
-                    <p className="text-3xl font-semibold">
-                      {analytics?.proposal_acceptance_rate == null
-                        ? "Chưa có dữ liệu"
-                        : `${Math.round(analytics.proposal_acceptance_rate * 100)}%`}
-                    </p>
-                    <p className="field-label mt-2">Tỷ lệ chấp nhận đề xuất</p>
-                  </div>
+                  <>
+                    <div>
+                      <p className="text-3xl font-semibold">{analytics?.degraded_count || 0}</p>
+                      <p className="field-label mt-2">
+                        Lượt phân tích ảnh hưởng bị suy giảm hoặc không thành công
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-3xl font-semibold">
+                        {Math.round(analytics?.average_latency_ms || 0)} ms
+                      </p>
+                      <p className="field-label mt-2">
+                        Thời gian phản hồi trung bình của phân tích ảnh hưởng
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
             )}

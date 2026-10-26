@@ -1,3 +1,5 @@
+import hashlib
+import json
 import re
 from typing import Any, TypedDict
 
@@ -16,16 +18,20 @@ from src.agents.runner.nodes import (
 from src.core.infrastructure.configuration import settings
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.automation import automation_fact_extraction_prompt
+from src.repositories.automation import automation_repository
 from src.schemas.agent import AgentResult, AgentTaskStatus
 from src.schemas.automation import (
-    AutomationFactExtraction,
     AutomationCheckpoint,
     AutomationCheckpointPhase,
+    AutomationFactExtraction,
     AutomationGraphSnapshot,
     AutomationStatus,
 )
+from src.services.automation_provenance import (
+    source_location_metadata,
+    verified_source_offset_basis,
+)
 from src.services.inference import structured
-from src.repositories.automation import automation_repository
 
 
 class AutomationGraphState(TypedDict, total=False):
@@ -45,10 +51,56 @@ class AutomationGraphState(TypedDict, total=False):
     source_event_verified: bool
     planning_round: int
     resume_after_phase: str
+    worker_revision: int
 
 
 def phase(state: AutomationGraphState, name: str) -> list[str]:
     return [*state.get("automation_phases", []), name]
+
+
+def distinct_uncertainty_codes(uncertainties):
+    output = []
+    fingerprints_by_code = {}
+    used_codes = set()
+    for uncertainty in uncertainties:
+        value = (
+            uncertainty.model_dump(mode="python")
+            if hasattr(uncertainty, "model_dump")
+            else dict(uncertainty)
+        )
+        base_code = str(value.get("code") or "").strip()
+        if len(base_code) > 140:
+            base_code = (
+                f"{base_code[:120]}#"
+                f"{hashlib.sha256(base_code.encode('utf-8')).hexdigest()[:16]}"
+            )
+        fingerprint_value = {
+            key: child
+            for key, child in value.items()
+            if key not in {"code", "evidence_refs"}
+        }
+        fingerprint_value["evidence_refs"] = sorted(
+            set(value.get("evidence_refs") or [])
+        )
+        fingerprint = json.dumps(
+            fingerprint_value, ensure_ascii=False, sort_keys=True, default=str
+        )
+        fingerprints = fingerprints_by_code.setdefault(base_code, set())
+        if fingerprint in fingerprints:
+            continue
+        code = base_code
+        if fingerprints or code in used_codes:
+            suffix = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:12]
+            code = f"{base_code}#{suffix}"
+            suffix_index = 1
+            while code in used_codes:
+                code = f"{base_code}#{suffix}-{suffix_index}"
+                suffix_index += 1
+        value["code"] = code
+        fingerprints.add(fingerprint)
+        used_codes.add(code)
+        output.append(value)
+    return output
 
 
 async def resume_dispatch(state: AutomationGraphState):
@@ -92,15 +144,18 @@ async def record_phase(state: AutomationGraphState, name: str, detail=None, stat
         }
         | {"completed_phase": name}
     )
-    await automation_repository.save_checkpoint(
+    checkpoint_saved = await automation_repository.save_checkpoint(
         AutomationCheckpoint(
             automation_run_id=run["run_id"],
             phase=AutomationCheckpointPhase(name),
             status=status or AutomationStatus.RUNNING,
             detail=detail or {},
             state_snapshot=snapshot,
-        )
+        ),
+        expected_worker_revision=state.get("worker_revision"),
     )
+    if not checkpoint_saved:
+        raise RuntimeError("AUTOMATION_WORKER_FENCE_LOST")
 
 
 async def observe_sources(state: AutomationGraphState):
@@ -128,22 +183,28 @@ def bind_extracted_facts(extraction, evidence):
             for item in evidence
             if str(item.get("artifact_id")) == fact.artifact_id
             and (
+                not item.get("artifact_type")
+                or str(item.get("artifact_type")) == fact.artifact_type
+            )
+            and (
                 not fact.artifact_version_id
                 or str(item.get("artifact_version_id") or "")
                 == str(fact.artifact_version_id)
             )
         ]
-        # The model may omit a version identifier even though it correctly
-        # identifies the source artifact. Bind that fact only when the supplied
-        # evidence has one unambiguous version; never guess between revisions.
         source_versions = {
             str(item.get("artifact_version_id") or item.get("artifact_id"))
             for item in candidates
         }
-        source = candidates[0] if candidates and len(source_versions) == 1 else None
         quote = fact.quote.strip()
+        source = None
+        if candidates and len(source_versions) == 1 and quote:
+            source = next(
+                (item for item in candidates if quote in str(item.get("text") or "")),
+                None,
+            )
         source_text = str(source.get("text") or "") if source else ""
-        if not source or not quote or quote not in source_text:
+        if not source:
             continue
         source_start = source_text.index(quote)
         facts.append(
@@ -153,10 +214,13 @@ def bind_extracted_facts(extraction, evidence):
                 "artifact_version_id": source.get("artifact_version_id"),
                 "source": str(source.get("source") or fact.source),
                 "authority": str(source.get("authority") or fact.authority),
+                "relationship_path": list(source.get("relationship_path") or []),
                 "quote": quote,
                 "fact_kind": fact.fact_kind,
                 "source_start": source_start,
                 "source_end": source_start + len(quote),
+                **source_location_metadata(source),
+                "source_offset_basis": verified_source_offset_basis(source),
             }
         )
     return facts
@@ -166,16 +230,25 @@ def complete_source_segments(facts, evidence):
     """Retain exact source sentences even when a model omits explicit statements."""
     output = list(facts)
     seen = {
-        (str(item.get("artifact_id") or ""), str(item.get("quote") or ""))
+        (
+            str(item.get("artifact_id") or ""),
+            str(item.get("artifact_version_id") or item.get("artifact_id") or ""),
+            str(item.get("quote") or ""),
+        )
         for item in output
     }
     for source in evidence:
         text = str(source.get("text") or "")
+        source_id = str(source.get("artifact_id") or "")
+        source_version_id = str(
+            source.get("artifact_version_id") or source.get("artifact_id") or ""
+        )
         cursor = 0
         for line in text.splitlines() or [text]:
             for segment in re.split(r"(?<=[.!?。！？])\s+", line):
                 quote = segment.strip()
-                if not quote or (str(source.get("artifact_id") or ""), quote) in seen:
+                identity = (source_id, source_version_id, quote)
+                if not quote or identity in seen:
                     continue
                 start = text.find(quote, cursor)
                 if start < 0:
@@ -189,14 +262,17 @@ def complete_source_segments(facts, evidence):
                         "artifact_version_id": source.get("artifact_version_id"),
                         "source": str(source.get("source") or "database"),
                         "authority": str(source.get("authority") or "project"),
+                        "relationship_path": list(source.get("relationship_path") or []),
                         "quote": quote,
                         "fact_kind": "source_text_segment",
                         "source_start": start,
                         "source_end": start + len(quote),
+                        **source_location_metadata(source),
+                        "source_offset_basis": verified_source_offset_basis(source),
                     }
                 )
                 cursor = start + len(quote)
-                seen.add((str(source.get("artifact_id") or ""), quote))
+                seen.add(identity)
     return output
 
 
@@ -207,64 +283,86 @@ async def extract_source_facts(state: AutomationGraphState):
     ]
     facts = []
     uncertainties = []
+    degraded_flags = list(state.get("degraded_flags", []))
     if evidence:
         try:
             inspected = await guardrails_engine.async_inspect_input(
                 "\n".join(str(item.get("text") or "") for item in evidence)
             )
-            if not inspected.get("is_safe", False):
-                raise ValueError("AUTOMATION_SOURCE_REJECTED_BY_GUARDRAILS")
-            extraction_prompt = automation_fact_extraction_prompt(evidence)
-            extraction = await structured(
-                extraction_prompt,
-                AutomationFactExtraction,
-                max_tokens=1200,
-                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                provider_schema=False,
-                initial_temperature=0,
+        except Exception:
+            inspected = None
+            uncertainties.append(
+                {
+                    "code": "SOURCE_SAFETY_CHECK_UNAVAILABLE",
+                    "question": "Có thể tiếp tục sau khi dịch vụ kiểm tra an toàn nguồn hoạt động lại không?",
+                    "reason": "Không xác minh được độ an toàn của nguồn nên không thể chuyển nguồn cho AI",
+                    "evidence_refs": [],
+                    "blocking": True,
+                    "response_allowed": False,
+                }
             )
-            facts = complete_source_segments(
-                bind_extracted_facts(extraction, evidence), evidence
+        if inspected is not None and not inspected.get("is_safe", False):
+            uncertainties.append(
+                {
+                    "code": "SOURCE_INJECTION_REJECTED",
+                    "question": "Có thể rà soát tài liệu nguồn và gửi lại sau khi loại bỏ chỉ dẫn không liên quan không?",
+                    "reason": "Nguồn bị chặn bởi cơ chế kiểm tra an toàn",
+                    "evidence_refs": [],
+                    "blocking": True,
+                    "response_allowed": False,
+                }
             )
-            uncertainties = [
-                {**item.model_dump(mode="python"), "blocking": False}
-                for item in extraction.uncertainties
-                if set(item.evidence_refs).issubset(
-                    {
-                        str(value.get("artifact_version_id") or value.get("artifact_id"))
-                        for value in evidence
-                    }
+        elif inspected is not None:
+            try:
+                extraction_prompt = automation_fact_extraction_prompt(evidence)
+                extraction = await structured(
+                    extraction_prompt,
+                    AutomationFactExtraction,
+                    max_tokens=1200,
+                    timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                    provider_schema=False,
+                    initial_temperature=0,
                 )
-            ]
-            if not facts:
+                facts = complete_source_segments(
+                    bind_extracted_facts(extraction, evidence), evidence
+                )
+                uncertainties = distinct_uncertainty_codes(
+                    [
+                        item.model_copy(update={"blocking": False})
+                        for item in extraction.uncertainties
+                        if set(item.evidence_refs).issubset(
+                            {
+                                str(value.get("artifact_version_id") or value.get("artifact_id"))
+                                for value in evidence
+                            }
+                        )
+                    ]
+                )
+            except Exception:
+                facts = complete_source_segments([], evidence)
+                if facts:
+                    degraded_flags.append("FACT_EXTRACTION_FALLBACK_USED")
+                else:
+                    uncertainties.append(
+                        {
+                            "code": "FACT_EXTRACTION_UNAVAILABLE",
+                            "question": "Có thể tiếp tục sau khi dịch vụ phân tích nguồn hoạt động lại không?",
+                            "reason": "Không trích xuất được facts và cũng không có đoạn nguồn đủ điều kiện làm căn cứ",
+                            "evidence_refs": [],
+                            "blocking": True,
+                            "response_allowed": False,
+                        }
+                    )
+            if not facts and not any(item.get("blocking") for item in uncertainties):
                 uncertainties.append(
                     {
                         "code": "NO_VERIFIABLE_SOURCE_FACTS",
                         "question": "Có thể cung cấp hoặc xác nhận đoạn nguồn làm căn cứ cho yêu cầu này không?",
-                        "reason": "Mô hình không trả về trích dẫn khớp nguyên văn với tài liệu được phép đọc",
+                        "reason": "Không có trích dẫn khớp nguyên văn với tài liệu được phép đọc",
                         "evidence_refs": [],
                         "blocking": True,
                     }
                 )
-        except Exception as error:
-            rejected = str(error) == "AUTOMATION_SOURCE_REJECTED_BY_GUARDRAILS"
-            uncertainties.append(
-                {
-                    "code": "SOURCE_INJECTION_REJECTED" if rejected else "FACT_EXTRACTION_UNAVAILABLE",
-                    "question": (
-                        "Có thể rà soát tài liệu nguồn và gửi lại sau khi loại bỏ chỉ dẫn không liên quan không?"
-                        if rejected
-                        else "Có thể tiếp tục sau khi dịch vụ phân tích nguồn hoạt động lại không?"
-                    ),
-                    "reason": (
-                        "Nguồn bị chặn bởi cơ chế kiểm tra an toàn"
-                        if rejected
-                        else "Không thể trích xuất và kiểm chứng facts trong lượt chạy này"
-                    ),
-                    "evidence_refs": [],
-                    "blocking": True,
-                }
-            )
     else:
         uncertainties.append(
             {
@@ -273,10 +371,12 @@ async def extract_source_facts(state: AutomationGraphState):
                 "reason": "Không có nguồn dự án được phép đọc trong sự kiện này",
                 "evidence_refs": [],
                 "blocking": True,
+                "response_allowed": False,
             }
         )
     checkpoint_state = {
         **state,
+        "degraded_flags": degraded_flags,
         "source_facts": facts,
         "uncertainties": uncertainties,
         "automation_phases": phase(state, "FACTS_EXTRACTED"),
@@ -287,6 +387,7 @@ async def extract_source_facts(state: AutomationGraphState):
         {"source_fact_count": len(facts)},
     )
     return {
+        "degraded_flags": degraded_flags,
         "source_facts": facts,
         "uncertainties": uncertainties,
         "automation_phases": phase(state, "FACTS_EXTRACTED"),
@@ -295,6 +396,26 @@ async def extract_source_facts(state: AutomationGraphState):
 
 async def assess_uncertainty(state: AutomationGraphState):
     uncertainties = list(state.get("uncertainties", []))
+    clarification_responses = {
+        str(item.get("uncertainty_code") or ""): item
+        for item in (state.get("constraints") or {}).get("clarification_responses", [])
+        if isinstance(item, dict) and item.get("uncertainty_code")
+    }
+    uncertainties = [
+        {
+            **item,
+            "resolution_status": (
+                "USER_ANSWERED" if not item.get("blocking") else "OPEN"
+            ),
+            "answer": clarification_responses[str(item.get("code"))].get("answer"),
+            "answered_by": clarification_responses[str(item.get("code"))].get("answered_by"),
+            "answered_at": clarification_responses[str(item.get("code"))].get("answered_at"),
+        }
+        if item.get("response_allowed", True)
+        and str(item.get("code") or "") in clarification_responses
+        else item
+        for item in uncertainties
+    ]
     if not state.get("source_facts") and not any(
         item.get("blocking") for item in uncertainties
     ):
@@ -312,11 +433,12 @@ async def assess_uncertainty(state: AutomationGraphState):
             {
                 "code": str(flag),
                 "question": "Có thể bổ sung hoặc xác nhận nguồn còn thiếu để hoàn tất đối chiếu không?",
-                "reason": "Evidence retrieval was partial; available authoritative sources remain usable",
+                "reason": "Việc truy xuất bằng chứng chưa đầy đủ; các nguồn có thẩm quyền đã lấy được vẫn có thể sử dụng",
                 "evidence_refs": [],
                 "blocking": False,
             }
         )
+    uncertainties = distinct_uncertainty_codes(uncertainties)
     checkpoint_state = {**state, "uncertainties": uncertainties, "automation_phases": phase(state, "UNCERTAINTY_ASSESSED")}
     await record_phase(
         {**state, "checkpoint_state": checkpoint_state},
@@ -341,7 +463,7 @@ async def create_action_plan(state: AutomationGraphState):
         result = AgentResult(
             task_id=f"AUTOMATION-PLAN-{run['run_id']}",
             status=AgentTaskStatus.INSUFFICIENT_EVIDENCE,
-            summary="Automation cannot continue until the missing or degraded source evidence is resolved",
+            summary="Chưa thể tiếp tục tự động xử lý vì bằng chứng nguồn đang thiếu hoặc chưa đầy đủ",
             evidence_refs=run.get("evidence_refs", []),
             reason_codes=[item["code"] for item in blocking_uncertainties],
             warnings=["SOURCE_EVIDENCE_REQUIRED"],

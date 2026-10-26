@@ -2,9 +2,10 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.authentication import get_project_creation_policy
-from src.core.auth import archive_read_permissions, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership
+from src.core.auth import archive_read_permissions, business_role_allows, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership
 from src.core.common import (
     audit,
+    build_audit_event,
     get_project,
     load_user_identities,
     new_id,
@@ -19,10 +20,27 @@ from src.modules.projects.services.project_progress import task_summaries
 
 
 
+def _validate_project_dates(planned_start_at, planned_end_at):
+    if planned_start_at and planned_end_at:
+        try:
+            valid_range = planned_end_at > planned_start_at
+        except TypeError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "PROJECT_SCHEDULE_TIMEZONE_MISMATCH"},
+            ) from exc
+        if not valid_range:
+            raise HTTPException(
+                status_code=422, detail={"code": "PROJECT_SCHEDULE_INVALID"}
+            )
+
+
 def project_access(project, membership, grant):
     
     role_permissions = permissions_for_membership(membership, project.get("settings"))
     grant_permissions = set(grant.get("permissions", [])) & project_permissions() if grant else set()
+    active_roles = roles_for_membership(membership) if membership and membership.get("status") == "ACTIVE" else set()
+    grant_permissions = {item for item in grant_permissions if business_role_allows(item, active_roles)}
     if project.get("status", "active").lower() == "archived":
         allowed = archive_read_permissions() | {"project.restore"}
         if (project.get("settings") or {}).get("read_after_archive_policy", "ALLOW_READ") == "DENY_READ":
@@ -55,6 +73,8 @@ def project_settings(project):
         "project_type": project.get("project_type"),
         "locale": project.get("locale"),
         "timezone": project.get("timezone"),
+        "automation_framework": project.get("automation_framework"),
+        "automation_language": project.get("automation_language"),
         "settings": project.get("settings", {}),
     }
 
@@ -73,10 +93,12 @@ class ProjectService:
                 detail={"code": 'SYSTEM_PERMISSION_DENIED'},
             )
         timestamp = now()
+        _validate_project_dates(payload.planned_start_at, payload.planned_end_at)
         initial_qa_user_id = await resolve_user_reference(payload.initial_qa_user_id)
         project = {
             "_id": new_id('PRJ'),
             **payload.model_dump(exclude={"initial_qa_user_id"}),
+            "initial_qa_user_id": initial_qa_user_id,
             "created_by": user.id,
             "status": 'active',
             "project_completion_percent": 0,
@@ -110,23 +132,25 @@ class ProjectService:
         }
         try:
             memberships = [ba_membership] if initial_qa_user_id == user.id else [ba_membership, qa_membership]
-            await project_repository.create_with_memberships(project, memberships)
+            project_created_event = build_audit_event(
+                user.id,
+                'project_created',
+                'Project',
+                project["_id"],
+                project["_id"],
+                {
+                    "ba_membership_id": ba_membership["_id"],
+                    "initial_qa_membership_id": ba_membership["_id"] if initial_qa_user_id == user.id else qa_membership["_id"],
+                    "initial_qa_same_as_ba": initial_qa_user_id == user.id,
+                },
+            )
+            await project_repository.create_with_memberships(
+                project, memberships, project_created_event
+            )
         except DuplicateKeyError:
             raise HTTPException(
                 status_code=409, detail={"code": 'PROJECT_KEY_EXISTS'}
             )
-        await audit(
-            user.id,
-            'project_created',
-            'Project',
-            project["_id"],
-            project["_id"],
-            {
-                "ba_membership_id": ba_membership["_id"],
-                "initial_qa_membership_id": ba_membership["_id"] if initial_qa_user_id == user.id else qa_membership["_id"],
-                "initial_qa_same_as_ba": initial_qa_user_id == user.id,
-            },
-        )
         return {
             **project,
             "task_summary": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "cancelled": 0, "applicable_total": 0, "completion_percent": None},
@@ -198,12 +222,18 @@ class ProjectService:
 
     @staticmethod
     async def update(project_id, payload, user):
-        
-        await get_project(project_id, user, 'project.update')
+        current = await get_project(project_id, user, 'project.update')
         if payload.settings is not None:
             await get_project(project_id, user, 'project.settings.manage')
+        changes = payload.model_dump(exclude_unset=True)
+        changes.pop("expected_revision", None)
+        if {"planned_start_at", "planned_end_at"} & set(changes):
+            _validate_project_dates(
+                changes.get("planned_start_at", current.get("planned_start_at")),
+                changes.get("planned_end_at", current.get("planned_end_at")),
+            )
         updated = await optimistic_patch(
-            "projects", project_id, project_id, payload.expected_revision, payload.model_dump()
+            "projects", project_id, project_id, payload.expected_revision, changes
         )
         await audit(
             user.id,
@@ -226,7 +256,7 @@ class ProjectService:
     async def update_settings(project_id, payload, user):
         
         await get_project(project_id, user, 'project.settings.manage')
-        changes = payload.model_dump(exclude_none=True)
+        changes = payload.model_dump(exclude_unset=True)
         changes.pop("expected_revision", None)
         if not changes:
             raise HTTPException(

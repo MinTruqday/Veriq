@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ErrorState, Panel } from "./WorkspacePrimitives";
 import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+import { toggleNotificationSelection } from "./notificationSelection.mjs";
 
 const DEFAULT_PREFERENCES = {
   revision: 0,
@@ -226,6 +227,60 @@ export default function ProjectNotificationsPanel({ project }) {
         {can("notification.project_rule.manage") && (
           <form className="space-y-3" onSubmit={saveRules}>
             <h3 className="font-medium text-ink">Quy tắc dự án</h3>
+            <fieldset className="space-y-2">
+              <legend className="field-label">Kênh gửi</legend>
+              {[
+                ["in_app", "Trong ứng dụng"],
+                ["email", "Thư điện tử"],
+                ["webhook", "Webhook"],
+              ].map(([channel, label]) => (
+                <label className="flex items-center gap-2 text-sm" key={channel}>
+                  <input
+                    type="checkbox"
+                    checked={rules.channels.includes(channel)}
+                    onChange={(event) =>
+                      setRules((current) => ({
+                        ...current,
+                        channels: toggleNotificationSelection(
+                          current.channels,
+                          channel,
+                          event.target.checked,
+                        ),
+                      }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
+            <fieldset className="space-y-2">
+              <legend className="field-label">Vai trò nhận thông báo</legend>
+              {[
+                ["QA", "QA"],
+                ["TESTER", "Kiểm thử viên"],
+                ["BA", "Phân tích nghiệp vụ"],
+                ["DEVELOPER", "Lập trình viên"],
+                ["VIEWER", "Người xem"],
+              ].map(([role, label]) => (
+                <label className="flex items-center gap-2 text-sm" key={role}>
+                  <input
+                    type="checkbox"
+                    checked={rules.target_roles.includes(role)}
+                    onChange={(event) =>
+                      setRules((current) => ({
+                        ...current,
+                        target_roles: toggleNotificationSelection(
+                          current.target_roles,
+                          role,
+                          event.target.checked,
+                        ),
+                      }))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
             <textarea
               aria-label="Sự kiện thông báo"
               className="apple-input min-h-24"

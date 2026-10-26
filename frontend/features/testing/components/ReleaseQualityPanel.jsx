@@ -4,6 +4,7 @@ import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+import { runReleaseQualityAction } from "./releaseQualityActions.mjs";
 
 export default function ReleaseQualityPanel({ project }) {
   const [items, setItems] = useState([]);
@@ -16,6 +17,15 @@ export default function ReleaseQualityPanel({ project }) {
   const [error, setError] = useState("");
   const { ask, dialog } = useActionDialog();
   const can = (permission) => project.current_permissions?.includes(permission);
+  const runAction = async (operation, onSuccess) => {
+    setError("");
+    const result = await runReleaseQualityAction(operation);
+    if (!result.ok) {
+      setError(messageOf(result.error));
+      return;
+    }
+    await onSuccess?.(result.value);
+  };
   const load = useCallback(async () => {
     try {
       const permissions = new Set(project.current_permissions || []);
@@ -57,7 +67,7 @@ export default function ReleaseQualityPanel({ project }) {
     void load();
   }, [load]);
   const create = async () => {
-    const answer = await ask({
+    await ask({
       title: "Tạo đánh giá chất lượng bản phát hành",
       confirmLabel: "Tạo đánh giá",
       fields: [
@@ -106,47 +116,49 @@ export default function ReleaseQualityPanel({ project }) {
           multiline: true,
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          const value = await testingApi.createQualityEvaluation(project._id, {
+            ...answer,
+            idempotency_key: crypto.randomUUID(),
+            measurement_snapshot_refs: answer.measurement_snapshot_refs
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean),
+            critical_risks: [],
+            evidence_refs: [],
+          });
+          setSelected(value);
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      const value = await testingApi.createQualityEvaluation(project._id, {
-        ...answer,
-        idempotency_key: crypto.randomUUID(),
-        measurement_snapshot_refs: answer.measurement_snapshot_refs
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-        critical_risks: [],
-        evidence_refs: [],
-      });
-      setSelected(value);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const act = async (action, extra = {}) => {
-    const answer = await ask({
+    await ask({
       title: extra.title || "Xác nhận đánh giá",
       confirmLabel: extra.confirmLabel || "Xác nhận",
       fields: extra.fields || [{ name: "note", label: "Ghi chú", multiline: true }],
+      onConfirm: async (answer) => {
+        try {
+          setSelected(
+            await action(selected._id, {
+              expected_revision: selected.revision,
+              ...answer,
+              ...extra.payload,
+            }),
+          );
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      setSelected(
-        await action(selected._id, {
-          expected_revision: selected.revision,
-          ...answer,
-          ...extra.payload,
-        }),
-      );
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const createWaiver = async () => {
-    const answer = await ask({
+    await ask({
       title: "Tạo miễn trừ có thời hạn",
       confirmLabel: "Tạo miễn trừ",
       fields: [
@@ -174,28 +186,29 @@ export default function ReleaseQualityPanel({ project }) {
           required: true,
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          setSelected(
+            await testingApi.createQualityWaiver(selected._id, {
+              ...answer,
+              expected_revision: selected.revision,
+              actual: Number.isNaN(Number(answer.actual)) ? answer.actual : Number(answer.actual),
+              threshold: Number.isNaN(Number(answer.threshold))
+                ? answer.threshold
+                : Number(answer.threshold),
+              expiry_at: new Date(answer.expiry_at).toISOString(),
+              evidence_refs: answer.evidence_refs
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
+            }),
+          );
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      setSelected(
-        await testingApi.createQualityWaiver(selected._id, {
-          ...answer,
-          expected_revision: selected.revision,
-          actual: Number.isNaN(Number(answer.actual)) ? answer.actual : Number(answer.actual),
-          threshold: Number.isNaN(Number(answer.threshold))
-            ? answer.threshold
-            : Number(answer.threshold),
-          expiry_at: new Date(answer.expiry_at).toISOString(),
-          evidence_refs: answer.evidence_refs
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
-        }),
-      );
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   return (
     <Panel
@@ -247,7 +260,12 @@ export default function ReleaseQualityPanel({ project }) {
               <button
                 className="secondary-button"
                 type="button"
-                onClick={async () => setSelected(await testingApi.getQualityEvaluation(item._id))}
+                onClick={() =>
+                  runAction(
+                    () => testingApi.getQualityEvaluation(item._id),
+                    (evaluation) => setSelected(evaluation),
+                  )
+                }
               >
                 Mở
               </button>
@@ -354,16 +372,20 @@ export default function ReleaseQualityPanel({ project }) {
                       <button
                         className="secondary-button"
                         type="button"
-                        onClick={async () => {
-                          setSelected(
-                            await testingApi.decideQualityWaiver(selected._id, item.waiver_id, {
-                              expected_revision: selected.revision,
-                              decision: "APPROVE",
-                              note: "Đã đánh giá rủi ro",
-                            }),
-                          );
-                          await load();
-                        }}
+                        onClick={() =>
+                          runAction(
+                            () =>
+                              testingApi.decideQualityWaiver(selected._id, item.waiver_id, {
+                                expected_revision: selected.revision,
+                                decision: "APPROVE",
+                                note: "Đã đánh giá rủi ro",
+                              }),
+                            async (evaluation) => {
+                              setSelected(evaluation);
+                              await load();
+                            },
+                          )
+                        }
                       >
                         Duyệt
                       </button>
@@ -371,23 +393,31 @@ export default function ReleaseQualityPanel({ project }) {
                         className="secondary-button"
                         type="button"
                         onClick={async () => {
-                          const answer = await ask({
+                          await ask({
                             title: "Từ chối miễn trừ",
                             confirmLabel: "Từ chối",
                             fields: [
                               { name: "note", label: "Lý do", required: true, multiline: true },
                             ],
+                            onConfirm: async (answer) => {
+                              try {
+                                setSelected(
+                                  await testingApi.decideQualityWaiver(
+                                    selected._id,
+                                    item.waiver_id,
+                                    {
+                                      expected_revision: selected.revision,
+                                      decision: "REJECT",
+                                      note: answer.note,
+                                    },
+                                  ),
+                                );
+                                await load();
+                              } catch (reason) {
+                                throw new Error(messageOf(reason));
+                              }
+                            },
                           });
-                          if (answer) {
-                            setSelected(
-                              await testingApi.decideQualityWaiver(selected._id, item.waiver_id, {
-                                expected_revision: selected.revision,
-                                decision: "REJECT",
-                                note: answer.note,
-                              }),
-                            );
-                            await load();
-                          }
                         }}
                       >
                         Từ chối

@@ -1,11 +1,14 @@
 import asyncio
 import re
+import traceback
+
 from fastapi import HTTPException
+from loguru import logger
 
 from src.prompts.agent_execution import agent_execution_prompt
 from src.runtime.limits import limits
-from src.schemas.agent import AgentResult, AgentTaskStatus, ToolExecutionStatus
 from src.runtime.output import normalize_narrative, normalize_narratives
+from src.schemas.agent import AgentResult, AgentTaskStatus, ToolExecutionStatus
 from src.services.inference import structured
 from src.tools.registry import authorize_tool, invoke_tool
 
@@ -55,6 +58,19 @@ async def execute_task(
                 timeout=limits.task_timeout_seconds,
             )
         except Exception as error:
+            if str(error) == "AUTOMATION_WORKER_FENCE_LOST":
+                raise
+            frames = traceback.extract_tb(error.__traceback__)
+            frame = frames[-1] if frames else None
+            logger.error(
+                "Automation tool invocation failed run_id={} tool={} error_type={} source={} line={} function={}",
+                automation_run_id or "",
+                tool_call.tool_name,
+                type(error).__name__,
+                frame.filename if frame else "",
+                frame.lineno if frame else 0,
+                frame.name if frame else "",
+            )
             observation = {
                 "status": ToolExecutionStatus.FAILED,
                 "tool_name": tool_call.tool_name,
@@ -90,6 +106,13 @@ async def execute_task(
                 )
         if observation.get("status") in {ToolExecutionStatus.FAILED, ToolExecutionStatus.DENIED}:
             errors += 1
+        result_payload = observation.get("result")
+        if (
+            isinstance(result_payload, dict)
+            and result_payload.get("status")
+            in {"automation_partial_failure", "automation_blocked"}
+        ):
+            break
         if errors >= limits.tool_errors:
             break
     try:
@@ -117,7 +140,11 @@ async def execute_task(
                 if completed
                 else AgentTaskStatus.INSUFFICIENT_EVIDENCE
             ),
-            summary="Tool observations collected" if completed else "Insufficient evidence",
+            summary=(
+                "Đã thu thập kết quả từ công cụ"
+                if completed
+                else "Chưa có đủ bằng chứng để kết luận"
+            ),
             evidence_refs=[item.artifact_version_id or item.artifact_id for item in evidence],
             reason_codes=[item.get("reason_code", "TOOL_RESULT") for item in observations],
             warnings=["AI_PROVIDER_UNAVAILABLE"],
@@ -143,6 +170,65 @@ async def execute_task(
                 ]
             )
         )
+    decision_outcomes = [
+        item.get("result") or {}
+        for item in completed_observations
+        if (item.get("result") or {}).get("status") in {
+            "automation_waiting_for_decision",
+            "automation_waiting_for_input",
+        }
+    ]
+    if decision_outcomes:
+        decision_codes = [
+            str(item.get("reason_code") or "BUSINESS_DECISION_REQUIRED")
+            for item in decision_outcomes
+        ]
+        result.status = AgentTaskStatus.INSUFFICIENT_EVIDENCE
+        result.reason_codes = list(dict.fromkeys([*result.reason_codes, *decision_codes]))
+        awaiting_input = any(
+            item.get("status") == "automation_waiting_for_input"
+            for item in decision_outcomes
+        )
+        warning = "CLARIFICATION_REQUIRED" if awaiting_input else "USER_DECISION_REQUIRED"
+        result.warnings = list(dict.fromkeys([*result.warnings, warning]))
+        result.summary = (
+            "Đã lưu kết quả có căn cứ và các câu hỏi làm rõ; luồng sẽ tiếp tục khi thông tin nguồn được cập nhật"
+            if awaiting_input
+            else "Đã giữ nguyên dữ liệu hiện có và lưu các mâu thuẫn nguồn để người dùng quyết định trước khi tiếp tục"
+        )
+    partial_failure_outcomes = [
+        item.get("result") or {}
+        for item in completed_observations
+        if (item.get("result") or {}).get("status") == "automation_partial_failure"
+    ]
+    if partial_failure_outcomes and not decision_outcomes:
+        partial_codes = [
+            str(item.get("reason_code") or "AUTOMATION_PARTIAL_FAILURE")
+            for item in partial_failure_outcomes
+        ]
+        result.status = AgentTaskStatus.INSUFFICIENT_EVIDENCE
+        result.reason_codes = list(dict.fromkeys([*result.reason_codes, *partial_codes]))
+        result.warnings = list(
+            dict.fromkeys([*result.warnings, "AUTOMATION_PARTIAL_FAILURE"])
+        )
+        result.summary = (
+            "Tự động hóa đã dừng an toàn vì chưa đủ căn cứ để hoàn tất; "
+            "không công bố kết quả như một lượt thành công."
+        )
+    blocked_outcomes = [
+        item.get("result") or {}
+        for item in completed_observations
+        if (item.get("result") or {}).get("status") == "automation_blocked"
+    ]
+    if blocked_outcomes and not decision_outcomes and not partial_failure_outcomes:
+        blocked_codes = [
+            str(item.get("reason_code") or "AUTOMATION_BLOCKED")
+            for item in blocked_outcomes
+        ]
+        result.status = AgentTaskStatus.FAILED
+        result.reason_codes = list(dict.fromkeys([*result.reason_codes, *blocked_codes]))
+        result.warnings = list(dict.fromkeys([*result.warnings, "AUTOMATION_BLOCKED"]))
+        result.summary = "Tự động hóa bị chặn bởi điều kiện nghiệp vụ hoặc quyền; không ghi nhận hoàn tất."
     allowed_refs = {item.artifact_version_id or item.artifact_id for item in evidence}
     result.evidence_refs = [reference for reference in result.evidence_refs if reference in allowed_refs]
     if evidence and not result.evidence_refs:

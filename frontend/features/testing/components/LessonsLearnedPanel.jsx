@@ -1,6 +1,7 @@
 "use client";
 
 import { valueLabel } from "../lib/testing";
+import { StructuredValueView } from "./StructuredValueEditor";
 
 export default function LessonsLearnedPanel({
   lessons = [],
@@ -101,7 +102,9 @@ export default function LessonsLearnedPanel({
             >
               <p className="field-label">{valueLabel(item.category || "LESSON")}</p>
               <p className="mt-1">
-                {item.observation || item.text || item.lesson || JSON.stringify(item)}
+                {item.observation || item.text || item.lesson || (
+                  <StructuredValueView value={item} />
+                )}
               </p>
               {item.impact && (
                 <p className="mt-2">

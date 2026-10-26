@@ -1,4 +1,3 @@
-import Link from "next/link";
 import PageHeader from "@/shared/components/layout/PageHeader";
 const sections = [
   {
@@ -21,8 +20,7 @@ const sections = [
     id: "du-lieu",
     title: "Dữ liệu cá nhân",
     paragraphs: [
-      "Veriq sử dụng dữ liệu tài khoản để vận hành xác thực bảo vệ dữ liệu dự án và cung cấp các chức năng mà bạn lựa chọn",
-      "Bạn có thể thay đổi quyền riêng tư tải dữ liệu liên quan hoặc yêu cầu xóa tài khoản trong phần cài đặt",
+      "Veriq xử lý thông tin tài khoản để xác thực, quản lý phiên đăng nhập và vận hành các chức năng của dịch vụ. Dữ liệu dự án được truy cập theo quyền được cấp cho tài khoản.",
     ],
   },
   {
@@ -77,13 +75,6 @@ export default function TermsPage() {
             </section>
           ))}
         </article>
-      </div>
-
-      <div className="mt-10 border-t border-border pt-5 text-[13px] text-ink-muted">
-        Cần xem lại thông tin tài khoản
-        <Link href="/cai-dat" className="ml-2 font-semibold text-brand">
-          Mở cài đặt
-        </Link>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 from pymongo import ReturnDocument
 
 from src.core.database import database
+from src.repositories.common import common_repository
 
 
 class RequirementRepository:
@@ -33,6 +34,17 @@ class RequirementRepository:
         return await database.value.requirements.find(
             {"_id": {"$in": requirement_ids}, "project_id": project_id}
         ).to_list(limit)
+
+    async def list_versions_by_source_documents(self, project_id, document_ids):
+        if not document_ids:
+            return []
+        return await database.value.requirement_versions.find(
+            {
+                "project_id": project_id,
+                "source_refs.requirement_document_id": {"$in": document_ids},
+            },
+            {"_id": 1, "requirement_id": 1, "version": 1, "status": 1, "source_refs": 1},
+        ).sort([("requirement_id", 1), ("version", 1), ("_id", 1)]).to_list(None)
 
     async def insert_outputs(self, requirements, versions, criteria):
         await database.value.requirements.insert_many(requirements)
@@ -188,21 +200,28 @@ class RequirementRepository:
             },
         )
 
-    async def insert_acceptance_criteria(self, criteria):
+    async def insert_acceptance_criteria(self, criteria, session=None):
         if criteria:
-            await database.value.acceptance_criteria.insert_many(criteria)
+            await database.value.acceptance_criteria.insert_many(
+                criteria, **({"session": session} if session is not None else {})
+            )
 
-    async def set_acceptance_criterion_ids(self, version_id, criterion_ids):
+    async def set_acceptance_criterion_ids(self, version_id, criterion_ids, session=None):
         await database.value.requirement_versions.update_one(
             {"_id": version_id},
             {"$set": {"acceptance_criterion_ids": criterion_ids}},
+            **({"session": session} if session is not None else {}),
         )
 
-    async def insert_requirement(self, requirement):
-        await database.value.requirements.insert_one(requirement)
+    async def insert_requirement(self, requirement, session=None):
+        await database.value.requirements.insert_one(
+            requirement, **({"session": session} if session is not None else {})
+        )
 
-    async def insert_version(self, version):
-        await database.value.requirement_versions.insert_one(version)
+    async def insert_version(self, version, session=None):
+        await database.value.requirement_versions.insert_one(
+            version, **({"session": session} if session is not None else {})
+        )
 
     async def delete_requirement(self, requirement_id, project_id=None):
         query = {"_id": requirement_id}
@@ -266,7 +285,9 @@ class RequirementRepository:
             }
         )
 
-    async def update_draft(self, version_id, project_id, revision, draft_status, changes):
+    async def update_draft(
+        self, version_id, project_id, revision, draft_status, changes, session=None
+    ):
         return await database.value.requirement_versions.find_one_and_update(
             {
                 "_id": version_id,
@@ -276,20 +297,29 @@ class RequirementRepository:
             },
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def update_requirement_identity(
-        self, requirement_id, project_id, changes, version_id=None
+        self, requirement_id, project_id, changes, version_id=None, session=None
     ):
         query = {"_id": requirement_id, "project_id": project_id}
         if version_id:
             query["current_version_id"] = version_id
-        await database.value.requirements.update_one(query, {"$set": changes})
+        result = await database.value.requirements.update_one(
+            query,
+            {"$set": changes},
+            **({"session": session} if session is not None else {}),
+        )
+        return result.matched_count == 1
 
-    async def replace_acceptance_criteria(self, version_id, criteria, criterion_ids):
-        await self.delete_acceptance_criteria(version_id)
-        await self.insert_acceptance_criteria(criteria)
-        await self.set_acceptance_criterion_ids(version_id, criterion_ids)
+    async def replace_acceptance_criteria(self, version_id, criteria, criterion_ids, session=None):
+        await database.value.acceptance_criteria.delete_many(
+            {"requirement_version_id": version_id},
+            **({"session": session} if session is not None else {}),
+        )
+        await self.insert_acceptance_criteria(criteria, session=session)
+        await self.set_acceptance_criterion_ids(version_id, criterion_ids, session=session)
 
     async def find_latest_version(self, requirement_id):
         return await database.value.requirement_versions.find_one(
@@ -297,7 +327,15 @@ class RequirementRepository:
         )
 
     async def activate_version(
-        self, requirement_id, version_id, status, tags, owner_id, updated_at, expected_current_version_id
+        self,
+        requirement_id,
+        version_id,
+        status,
+        tags,
+        owner_id,
+        updated_at,
+        expected_current_version_id,
+        session=None,
     ):
         result = await database.value.requirements.update_one(
             {"_id": requirement_id, "current_version_id": expected_current_version_id},
@@ -310,6 +348,7 @@ class RequirementRepository:
                     "updated_at": updated_at,
                 }
             },
+            **({"session": session} if session is not None else {}),
         )
         return result.modified_count == 1
 
@@ -362,15 +401,27 @@ class RequirementRepository:
         return await database.value.requirement_versions.find_one(query)
 
     async def list_acceptance_criteria(self, version_id, limit):
+        query = {"requirement_version_id": version_id}
+        if limit is not None:
+            return await database.value.acceptance_criteria.find(query).to_list(limit)
+        return await common_repository.list_all_acceptance_criteria(version_id)
+
+    async def list_acceptance_criteria_for_versions(self, project_id, version_ids, limit):
+        if not version_ids:
+            return []
         return await database.value.acceptance_criteria.find(
-            {"requirement_version_id": version_id}
-        ).to_list(limit)
+            {
+                "project_id": project_id,
+                "requirement_version_id": {"$in": version_ids},
+            }
+        ).sort([("requirement_version_id", 1), ("key", 1), ("_id", 1)]).to_list(limit)
 
     async def find_project_settings(self, project_id):
         return await database.value.projects.find_one({"_id": project_id}, {"settings": 1})
 
     async def transition_version(
-        self, version_id, project_id, revision, source_status, target_status, changes
+        self, version_id, project_id, revision, source_status, target_status, changes,
+        session=None,
     ):
         result = await database.value.requirement_versions.update_one(
             {
@@ -380,16 +431,44 @@ class RequirementRepository:
                 "status": source_status,
             },
             {"$set": {**changes, "status": target_status}, "$inc": {"revision": 1}},
+            **({"session": session} if session is not None else {}),
         )
         return result.matched_count == 1
 
-    async def set_requirement_status(self, requirement_id, project_id, status, updated_at):
-        await database.value.requirements.update_one(
-            {"_id": requirement_id, "project_id": project_id},
+    async def set_requirement_status(
+        self,
+        requirement_id,
+        project_id,
+        expected_current_version_id,
+        status,
+        updated_at,
+        session=None,
+    ):
+        result = await database.value.requirements.update_one(
+            {
+                "_id": requirement_id,
+                "project_id": project_id,
+                "current_version_id": expected_current_version_id,
+            },
             {"$set": {"status": status, "updated_at": updated_at}},
+            **({"session": session} if session is not None else {}),
         )
+        return result.matched_count == 1
 
-    async def baseline_version(self, version_id, project_id, revision, source_status, changes):
+    async def bump_clarification_gate_revision(
+        self, version_id, project_id, session=None, expected_revision=None
+    ):
+        query = {"_id": version_id, "project_id": project_id}
+        if expected_revision is not None:
+            query["revision"] = expected_revision
+        result = await database.value.requirement_versions.update_one(
+            query,
+            {"$inc": {"clarification_gate_revision": 1}},
+            **({"session": session} if session is not None else {}),
+        )
+        return result.matched_count == 1
+
+    async def baseline_version(self, version_id, project_id, revision, source_status, changes, session=None):
         return await database.value.requirement_versions.find_one_and_update(
             {
                 "_id": version_id,
@@ -399,13 +478,18 @@ class RequirementRepository:
             },
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def set_current_baseline(
-        self, requirement_id, version_id, status, updated_at
+        self, requirement_id, project_id, version_id, status, updated_at, session=None
     ):
-        await database.value.requirements.update_one(
-            {"_id": requirement_id},
+        result = await database.value.requirements.update_one(
+            {
+                "_id": requirement_id,
+                "project_id": project_id,
+                "current_version_id": version_id,
+            },
             {
                 "$set": {
                     "current_version_id": version_id,
@@ -413,10 +497,12 @@ class RequirementRepository:
                     "updated_at": updated_at,
                 }
             },
+            **({"session": session} if session is not None else {}),
         )
+        return result.matched_count == 1
 
     async def approve_acceptance_criteria(
-        self, version_id, source_status, target_status, approved_at, approved_by
+        self, version_id, source_status, target_status, approved_at, approved_by, session=None
     ):
         await database.value.acceptance_criteria.update_many(
             {"requirement_version_id": version_id, "status": source_status},
@@ -427,6 +513,7 @@ class RequirementRepository:
                     "approved_by": approved_by,
                 }
             },
+            **({"session": session} if session is not None else {}),
         )
 
     async def mark_requirement_obsolete(
@@ -439,6 +526,7 @@ class RequirementRepository:
         reason,
         user_id,
         timestamp,
+        session=None,
     ):
         return await database.value.requirements.find_one_and_update(
             {
@@ -458,6 +546,7 @@ class RequirementRepository:
                 }
             },
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def mark_version_obsolete(
@@ -471,14 +560,19 @@ class RequirementRepository:
         reason,
         user_id,
         timestamp,
+        expected_revision=None,
+        session=None,
     ):
+        query = {
+            "_id": version_id,
+            "project_id": project_id,
+            "requirement_id": requirement_id,
+            "status": {"$in": source_statuses},
+        }
+        if expected_revision is not None:
+            query["revision"] = expected_revision
         result = await database.value.requirement_versions.update_one(
-            {
-                "_id": version_id,
-                "project_id": project_id,
-                "requirement_id": requirement_id,
-                "status": {"$in": source_statuses},
-            },
+            query,
             {
                 "$set": {
                     "status": obsolete_status,
@@ -490,6 +584,7 @@ class RequirementRepository:
                 },
                 "$inc": {"revision": 1},
             },
+            **({"session": session} if session is not None else {}),
         )
         return result.matched_count == 1
 
@@ -524,14 +619,19 @@ class RequirementRepository:
         reason,
         user_id,
         timestamp,
+        expected_revision=None,
+        session=None,
     ):
+        query = {
+            "_id": version_id,
+            "project_id": project_id,
+            "requirement_id": requirement_id,
+            "status": obsolete_status,
+        }
+        if expected_revision is not None:
+            query["revision"] = expected_revision
         result = await database.value.requirement_versions.update_one(
-            {
-                "_id": version_id,
-                "project_id": project_id,
-                "requirement_id": requirement_id,
-                "status": obsolete_status,
-            },
+            query,
             {
                 "$set": {
                     "status": restored_status,
@@ -548,6 +648,7 @@ class RequirementRepository:
                 },
                 "$inc": {"revision": 1},
             },
+            **({"session": session} if session is not None else {}),
         )
         return result.matched_count == 1
 
@@ -561,6 +662,7 @@ class RequirementRepository:
         reason,
         user_id,
         timestamp,
+        session=None,
     ):
         return await database.value.requirements.find_one_and_update(
             {
@@ -585,6 +687,7 @@ class RequirementRepository:
                 },
             },
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def rollback_version_restore(

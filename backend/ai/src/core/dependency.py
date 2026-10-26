@@ -6,11 +6,11 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
 
+from src.clients.authentication import AuthenticationClient
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.mongo import mongo
 from src.core.infrastructure.redis import redis
 from src.schemas.auth import CurrentUser, SystemRole
-from src.clients.authentication import AuthenticationClient
 
 ALGORITHM = "HS256"
 SECRET_KEY = settings.SECRET_KEY

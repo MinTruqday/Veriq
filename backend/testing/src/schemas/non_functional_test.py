@@ -45,6 +45,7 @@ class NonFunctionalTestPlanCreate(BaseModel):
     spike: dict[str, Any] = Field(default_factory=dict)
     soak: dict[str, Any] = Field(default_factory=dict)
     concurrency: int | dict[str, Any] | None = None
+    duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     throughput_target: float | None = Field(default=None, ge=0)
     response_time_target: float | dict[str, Any] | None = None
     error_rate_target: float | None = Field(default=None, ge=0, le=100)
@@ -97,6 +98,7 @@ class NonFunctionalTestPlanPatch(BaseModel):
     spike: dict[str, Any] | None = None
     soak: dict[str, Any] | None = None
     concurrency: int | dict[str, Any] | None = None
+    duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     throughput_target: float | None = Field(default=None, ge=0)
     response_time_target: float | dict[str, Any] | None = None
     error_rate_target: float | None = Field(default=None, ge=0, le=100)
@@ -107,6 +109,12 @@ class NonFunctionalTestPlanPatch(BaseModel):
 class NonFunctionalTransition(BaseModel):
     expected_revision: int = Field(ge=1)
     note: str = Field(default="", max_length=5000)
+
+
+class ApprovedPerformanceConfigurationGeneration(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=200)
+    source_event_id: str = Field(min_length=1, max_length=240)
+    source_event_revision: int = Field(ge=1)
 
 
 class ExternalTestEvidenceImport(BaseModel):

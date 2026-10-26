@@ -1,9 +1,13 @@
 import asyncio
+from hashlib import sha256
 from typing import Dict, List, Optional
 
 from loguru import logger
 
+from src.clients.content import ContentClient
 from src.core.infrastructure.configuration import settings
+from src.knowledge.metadata import public_retrieval_metadata
+from src.repositories.project_artifact_generation import project_artifact_generation_repository
 from src.services.embedding import embedder
 from src.services.inference import decompose_retrieval
 from src.store.bm25 import bm25_store
@@ -20,30 +24,67 @@ async def initialize_retrieval():
     if len(embedding) != embedder._dimensions:
         raise RuntimeError("Embedding model dimension does not match the retrieval index")
     await vector_store.ensure_collection()
-    documents = await vector_store.scroll_all()
-    stale_documents = [
-        document
-        for document in documents
-        if document.get("metadata", {}).get("embedding_model") != settings.EMBEDDING_MODEL
-    ]
-    if stale_documents:
-        embeddings = await embedder.embed_batch(
-            [document.get("text", "") for document in stale_documents]
-        )
-        metadatas = [
-            {**document.get("metadata", {}), "embedding_model": settings.EMBEDDING_MODEL}
-            for document in stale_documents
-        ]
-        await vector_store.upsert(
-            ids=[document["id"] for document in stale_documents],
-            embeddings=embeddings,
-            documents=[document.get("text", "") for document in stale_documents],
-            metadatas=metadatas,
-        )
-        for document, metadata in zip(stale_documents, metadatas):
-            document["metadata"] = metadata
-        logger.info("AI vector index migrated to hosted embedding model")
-    await bm25_store.initialize(documents)
+
+    async def current_documents():
+        legacy_count = 0
+        migrated_count = 0
+        async for documents in vector_store.iter_scroll_batches():
+            legacy_file_url_ids = [
+                document["id"]
+                for document in documents
+                if document.get("metadata", {}).get("file_url")
+            ]
+            if legacy_file_url_ids:
+                await vector_store.delete_payload_keys(legacy_file_url_ids, ["file_url"])
+                legacy_count += len(legacy_file_url_ids)
+                for document in documents:
+                    metadata = document.get("metadata") or {}
+                    metadata.pop("file_url", None)
+                    document["metadata"] = metadata
+
+            stale_documents = [
+                document
+                for document in documents
+                if document.get("metadata", {}).get("embedding_model")
+                != settings.EMBEDDING_MODEL
+            ]
+            if stale_documents:
+                embeddings = await embedder.embed_batch(
+                    [document.get("text", "") for document in stale_documents]
+                )
+                metadatas = [
+                    {
+                        **document.get("metadata", {}),
+                        "embedding_model": settings.EMBEDDING_MODEL,
+                        "embedding_input_mode": "TEXT",
+                        "embedding_input_hash": sha256(
+                            document.get("text", "").encode("utf-8")
+                        ).hexdigest(),
+                    }
+                    for document in stale_documents
+                ]
+                await vector_store.upsert(
+                    ids=[document["id"] for document in stale_documents],
+                    embeddings=embeddings,
+                    documents=[document.get("text", "") for document in stale_documents],
+                    metadatas=metadatas,
+                )
+                for document, metadata in zip(stale_documents, metadatas):
+                    document["metadata"] = metadata
+                migrated_count += len(stale_documents)
+
+            for document in documents:
+                yield document
+
+        if legacy_count:
+            logger.info(
+                "Removed legacy object-storage URLs from {} vector payloads",
+                legacy_count,
+            )
+        if migrated_count:
+            logger.info("Migrated {} AI vector points to hosted embedding model", migrated_count)
+
+    await bm25_store.initialize_stream(current_documents())
     await retriever.initialize()
     logger.info("AI retrieval capability initialized and ready")
 
@@ -51,6 +92,95 @@ async def initialize_retrieval():
 class RetrievalService:
     def __init__(self):
         self._reranker_ready = False
+
+    @staticmethod
+    async def _filter_active_artifact_generations(documents: List[Dict]) -> List[Dict]:
+        try:
+            return await project_artifact_generation_repository.filter_active(documents)
+        except Exception as error:
+            logger.warning(
+                "Artifact generation verification failed error_type={}", type(error).__name__
+            )
+            raise RetrievalUnavailableError(
+                "artifact_generation_verification_unavailable"
+            ) from error
+
+    @staticmethod
+    async def _filter_currently_accessible_sources(
+        documents: List[Dict], requester_id: Optional[str], is_admin: bool
+    ) -> List[Dict]:
+        source_ids_by_result = []
+        index_document_ids_by_result = []
+        invalid_source_metadata_by_result = []
+        all_source_ids = []
+        for document in documents:
+            metadata = document.get("metadata") or document
+            source_ids = []
+            invalid_source_metadata = False
+            for key in ("document_id", "source_document_id"):
+                value = metadata.get(key)
+                if value:
+                    source_ids.append(str(value).strip())
+            related_source_ids = metadata.get("source_document_ids")
+            if related_source_ids is not None:
+                if not isinstance(related_source_ids, list) or any(
+                    not isinstance(value, (str, int)) or not str(value).strip()
+                    for value in related_source_ids
+                ):
+                    invalid_source_metadata = True
+                else:
+                    source_ids.extend(str(value).strip() for value in related_source_ids)
+            source_ids = list(dict.fromkeys(value for value in source_ids if value))
+            source_ids_by_result.append(source_ids)
+            invalid_source_metadata_by_result.append(invalid_source_metadata)
+            all_source_ids.extend(source_ids)
+            indexed_document_id = str(metadata.get("document_id") or "").strip()
+            index_document_ids_by_result.append(
+                [indexed_document_id] if indexed_document_id else []
+            )
+
+        if not all_source_ids:
+            return [
+                document
+                for document, invalid in zip(
+                    documents, invalid_source_metadata_by_result
+                )
+                if not invalid
+            ]
+        all_source_ids = list(dict.fromkeys(all_source_ids))
+
+        try:
+            active_generations = await ContentClient.active_index_generations_many(
+                all_source_ids, requester_id, is_admin
+            )
+        except Exception as error:
+            logger.warning(
+                "Live document access check failed error_type={}", type(error).__name__
+            )
+            raise RetrievalUnavailableError(
+                "document_access_verification_unavailable"
+            ) from error
+
+        current_documents = []
+        for document, source_ids, indexed_document_ids, invalid_source_metadata in zip(
+            documents,
+            source_ids_by_result,
+            index_document_ids_by_result,
+            invalid_source_metadata_by_result,
+        ):
+            if invalid_source_metadata:
+                continue
+            if not all(source_id in active_generations for source_id in source_ids):
+                continue
+            metadata = document.get("metadata") or document
+            point_generation = str(metadata.get("index_generation") or "")
+            if any(
+                str(active_generations[source_id] or "") != point_generation
+                for source_id in indexed_document_ids
+            ):
+                continue
+            current_documents.append(document)
+        return current_documents
 
     async def initialize(self):
         try:
@@ -66,27 +196,42 @@ class RetrievalService:
         seen = set()
         citations = []
         for doc in results:
-            meta = doc.get("metadata", {})
-            doc_id = meta.get("document_id") or meta.get("source", "")
+            meta = public_retrieval_metadata(doc.get("metadata", {}))
+            doc_id = str(meta.get("document_id") or "")
+            artifact_id = str(meta.get("artifact_id") or "")
+            artifact_version_id = str(meta.get("artifact_version_id") or "")
             title = meta.get("title", "")
             chunk_idx = meta.get("chunk_index", "")
-            chunk_id = meta.get("chunk_id", "")
-            if doc_id and doc_id not in seen:
-                seen.add(doc_id)
-                label = (
-                    f"{title} (ID: {doc_id}, chunk {chunk_idx})"
-                    if title
-                    else f"ID: {doc_id}, chunk {chunk_idx}"
-                )
-                citations.append(
-                    {
-                        "chunk_id": chunk_id,
-                        "document_id": doc_id,
-                        "title": title,
-                        "chunk_index": chunk_idx,
-                        "label": label,
-                    }
-                )
+            chunk_id = str(meta.get("chunk_id") or "")
+            point_id = str(doc.get("id") or "")
+            identity = point_id or "|".join(
+                (doc_id, artifact_id, artifact_version_id, chunk_id, str(chunk_idx))
+            )
+            if not identity.strip("|") or identity in seen:
+                continue
+            seen.add(identity)
+            subject_id = artifact_id or doc_id
+            label = (
+                f"{title} (ID: {subject_id}, chunk {chunk_idx})"
+                if title
+                else f"ID: {subject_id}, chunk {chunk_idx}"
+            )
+            citations.append(
+                {
+                    "point_id": point_id,
+                    "chunk_id": chunk_id,
+                    "document_id": doc_id,
+                    "title": title,
+                    "chunk_index": chunk_idx,
+                    "label": label,
+                    "artifact_type": str(meta.get("artifact_type") or ""),
+                    "artifact_id": artifact_id,
+                    "artifact_version_id": artifact_version_id,
+                    "source_version": meta.get("source_version"),
+                    "page_numbers": list(meta.get("page_numbers") or []),
+                    "source_spans": list(meta.get("source_spans") or []),
+                }
+            )
         return citations
 
     @staticmethod
@@ -142,8 +287,13 @@ class RetrievalService:
         for source, documents in (("dense", dense_documents), ("bm25", sparse_documents)):
             for rank, document in enumerate(documents, start=1):
                 key = self._result_key(document)
+                metadata = document.get("metadata") or {}
+                public_document = {
+                    **document,
+                    "metadata": public_retrieval_metadata(metadata),
+                }
                 entry = fused.setdefault(
-                    key, {**document, "rrf_score": 0.0, "retrieval_sources": []}
+                    key, {**public_document, "rrf_score": 0.0, "retrieval_sources": []}
                 )
                 entry["rrf_score"] += 1.0 / (rank_constant + rank)
                 if source not in entry["retrieval_sources"]:
@@ -214,6 +364,28 @@ class RetrievalService:
             sparse_documents = sparse_result
         if isinstance(dense_result, Exception) and isinstance(sparse_result, Exception):
             raise RetrievalUnavailableError("dense_and_sparse_retrieval_unavailable")
+        candidates = [*dense_documents, *sparse_documents]
+        if not candidates:
+            return []
+
+        candidates = await self._filter_active_artifact_generations(candidates)
+        candidates = await self._filter_currently_accessible_sources(
+            candidates, requester_id, is_admin
+        )
+        if not candidates:
+            return []
+
+        current_candidate_keys = {self._result_key(document) for document in candidates}
+        dense_documents = [
+            document
+            for document in dense_documents
+            if self._result_key(document) in current_candidate_keys
+        ]
+        sparse_documents = [
+            document
+            for document in sparse_documents
+            if self._result_key(document) in current_candidate_keys
+        ]
         documents = self._rrf_fuse(dense_documents, sparse_documents)
         if not documents:
             return []
@@ -228,10 +400,20 @@ class RetrievalService:
                 timeout=settings.MODEL_TIMEOUT_SECONDS,
             )
             scored_documents = sorted(zip(documents, scores), key=lambda x: x[1], reverse=True)
-            return [doc for doc, _ in scored_documents[:result_count]]
+            results = await self._filter_active_artifact_generations(
+                [doc for doc, _ in scored_documents[:result_count]]
+            )
+            return await self._filter_currently_accessible_sources(
+                results, requester_id, is_admin
+            )
         except Exception:
             logger.exception("Search result sorting error")
-            return documents[:result_count]
+            results = await self._filter_active_artifact_generations(
+                documents[:result_count]
+            )
+            return await self._filter_currently_accessible_sources(
+                results, requester_id, is_admin
+            )
 
     async def cross_document_retrieve(
         self,
@@ -289,7 +471,9 @@ class RetrievalService:
                 seen.add(t)
                 unique.append(d)
 
-        return self._lost_in_the_middle_reorder(unique)[:result_count]
+        return await self._filter_active_artifact_generations(
+            self._lost_in_the_middle_reorder(unique)[:result_count]
+        )
 
     def _lost_in_the_middle_reorder(self, documents: List[Dict]) -> List[Dict]:
         if len(documents) <= 2:

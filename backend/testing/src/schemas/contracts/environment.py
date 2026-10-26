@@ -177,12 +177,13 @@ class SecurityTestSuggestionInput(BaseModel):
     categories: list[
         Literal["authorization", "authentication", "input_validation", "session", "data_protection"]
     ] = Field(
-        default_factory=lambda: ["authorization", "input_validation", "session"],
-        min_length=1,
+        default_factory=list,
         max_length=5,
     )
     context: str = Field(default="", max_length=5000)
     idempotency_key: str = Field(min_length=8, max_length=200)
+    source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_event_revision: int | None = Field(default=None, ge=1)
 
 
 class PerformancePlanDraftInput(BaseModel):

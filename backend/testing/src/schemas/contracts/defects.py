@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from src.schemas.contracts.common import empty_doc
 
+
 class DefectCreate(BaseModel):
     project_id: str
     defect_key: str | None = Field(default=None, max_length=80)
@@ -66,20 +67,23 @@ class DefectPatch(BaseModel):
     linked_test_result_id: str | None = Field(default=None, max_length=200)
     linked_test_case_version_id: str | None = Field(default=None, max_length=200)
     linked_requirement_version_ids: list[str] | None = Field(default=None, max_length=200)
-    root_cause_category: Literal[
-        "REQUIREMENT",
-        "DESIGN",
-        "IMPLEMENTATION",
-        "CONFIGURATION",
-        "TEST_DATA",
-        "TEST_CASE_GAP",
-        "ENVIRONMENT",
-        "INTEGRATION",
-        "DEPLOYMENT",
-        "PROCESS",
-        "THIRD_PARTY",
-        "UNKNOWN",
-    ] | None = None
+    root_cause_category: (
+        Literal[
+            "REQUIREMENT",
+            "DESIGN",
+            "IMPLEMENTATION",
+            "CONFIGURATION",
+            "TEST_DATA",
+            "TEST_CASE_GAP",
+            "ENVIRONMENT",
+            "INTEGRATION",
+            "DEPLOYMENT",
+            "PROCESS",
+            "THIRD_PARTY",
+            "UNKNOWN",
+        ]
+        | None
+    ) = None
     root_cause_detail: str | None = Field(default=None, max_length=5000)
     injected_phase: str | None = Field(default=None, max_length=200)
     detected_phase: str | None = Field(default=None, max_length=200)
@@ -118,6 +122,9 @@ class DefectRetestInput(BaseModel):
 
 class BugTraceSuggestionInput(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=200)
+    source_event_id: str = Field(min_length=1, max_length=200)
+    source_event_revision: int = Field(ge=1)
+    source_event_trigger: Literal["DEFECT_RECORDED", "DEFECT_CHANGED"]
 
 
 class DefectTraceUpdateInput(BaseModel):
@@ -139,4 +146,3 @@ class DefectTraceUpdateInput(BaseModel):
         if not trace_fields & self.model_fields_set:
             raise ValueError("Phải chọn ít nhất một liên kết truy vết cần thay đổi")
         return self
-

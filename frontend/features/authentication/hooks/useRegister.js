@@ -34,7 +34,7 @@ export function useRegister() {
         values.slug,
         true,
       );
-      router.push("/dang-nhap");
+      router.push(`/xac-minh-thu-dien-tu?email=${encodeURIComponent(values.email.trim())}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể tạo tài khoản");
       setSubmitting(false);

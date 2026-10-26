@@ -24,6 +24,9 @@ RootCauseCategory = Literal[
 class CausalAnalysisCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     defect_ids: list[str] = Field(default_factory=list, max_length=500)
+    source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_event_revision: int | None = Field(default=None, ge=1)
+    source_event_trigger: Literal["DEFECT_RECORDED", "DEFECT_CHANGED"] | None = None
     problem_statement: str = Field(min_length=2, max_length=10000)
     evidence_refs: list[str] = Field(default_factory=list, max_length=1000)
     evidence: list[dict[str, Any] | str] = Field(default_factory=list, max_length=1000)
@@ -32,6 +35,11 @@ class CausalAnalysisCreate(BaseModel):
 
     @model_validator(mode="after")
     def normalize_evidence(self):
+        event_fields = (self.source_event_id, self.source_event_revision, self.source_event_trigger)
+        if any(value is not None for value in event_fields) and not all(
+            value is not None for value in event_fields
+        ):
+            raise ValueError("Thông tin sự kiện nguồn phải được cung cấp đầy đủ")
         if not self.evidence_refs:
             self.evidence_refs = [str(item) for item in self.evidence]
         if not self.evidence_refs:

@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DocumentStatus(str, Enum):
@@ -98,6 +98,48 @@ class DocumentUpdate(BaseModel):
     artifact_metadata: Optional[ArtifactMetadata] = None
 
 
+class DocumentIndexingProgressUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    indexing_attempt_id: str = Field(min_length=1, max_length=128)
+    indexing_lease_token: str = Field(min_length=1, max_length=128)
+    phase: Literal["parsing"] = "parsing"
+    processed_pages: int = Field(ge=0)
+    total_pages: int = Field(ge=1)
+    unprocessed_pages: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_page_counts(self):
+        if self.processed_pages > self.total_pages:
+            raise ValueError("processed_pages_cannot_exceed_total_pages")
+        if self.unprocessed_pages > self.processed_pages:
+            raise ValueError("unprocessed_pages_cannot_exceed_processed_pages")
+        return self
+
+
+class DocumentIndexingClaimRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    indexing_attempt_id: str = Field(min_length=1, max_length=128)
+    indexing_lease_token: str = Field(min_length=1, max_length=128)
+    dispatch_event_id: str = Field(default="", max_length=128)
+
+
+class DocumentIndexingLeaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    indexing_attempt_id: str = Field(min_length=1, max_length=128)
+    indexing_lease_token: str = Field(min_length=1, max_length=128)
+
+
+class DocumentIndexingClaimResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["claimed", "busy", "superseded", "already_indexed", "not_claimable"]
+    updated: bool
+    lease_until: Optional[datetime] = None
+
+
 class DocumentCreate(DocumentBase):
     password: Optional[str] = Field(default=None, min_length=8, max_length=200)
 
@@ -109,6 +151,9 @@ class DocumentInDB(DocumentBase):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     views: int = 0
+    indexing_attempt_id: Optional[str] = None
+    indexing_lease_token: Optional[str] = None
+    indexing_lease_until: Optional[datetime] = None
 
 
 class DocumentResponse(DocumentBase):

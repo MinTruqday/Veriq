@@ -7,15 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from src.api.agents import router as agents_router
 from src.api.automation import router as automation_router
-from src.api.mcp import router as mcp_router
 from src.api.cache import router as cache_router
 from src.api.embedding import router as embedding_router
 from src.api.events import router as events
 from src.api.indexing import indexing_router
 from src.api.indexing import router as ingest
 from src.api.inference import router as inference
+from src.api.mcp import router as mcp_router
 from src.api.projects import router as projects_router
 from src.api.retrieval import router as retrieval_router
 from src.core.dependency import require_system_admin
@@ -81,7 +80,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(inference)
-app.include_router(agents_router)
 app.include_router(automation_router)
 app.include_router(mcp_router)
 app.include_router(ingest)
@@ -186,6 +184,9 @@ async def agent_status():
 
 async def startup_event():
     logger.info("AI system initialized")
+    from src.prompts.testing import validate_prompt_contract_registry
+
+    validate_prompt_contract_registry()
     try:
         from src.core.infrastructure.database import init_db
 
@@ -215,6 +216,13 @@ async def startup_event():
         logger.info("AI automation worker started")
     except Exception:
         logger.exception("AI automation worker startup error")
+    try:
+        from src.runtime.document_ingestion_worker import document_ingestion_worker
+
+        await document_ingestion_worker.start()
+        logger.info("Durable document ingestion worker started")
+    except Exception:
+        logger.exception("Durable document ingestion worker startup error")
 
 
 async def initialize_retrieval_background():
@@ -251,6 +259,18 @@ async def initialize_ai_runtime_background():
 async def shutdown_event():
     global retrieval_ready
     retrieval_ready = False
+    try:
+        from src.core.infrastructure.observability import langfuse_cloud_exporter
+
+        await langfuse_cloud_exporter.close()
+    except Exception:
+        logger.exception("Optional cloud trace exporter shutdown failed")
+    try:
+        from src.runtime.document_ingestion_worker import document_ingestion_worker
+
+        await document_ingestion_worker.stop()
+    except Exception:
+        logger.exception("Durable document ingestion worker shutdown failed")
     try:
         from src.utils.background import drain_background_tasks
 

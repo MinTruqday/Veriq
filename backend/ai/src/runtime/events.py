@@ -226,9 +226,11 @@ class EventProcessor:
         handlers = self._handlers.get(event.event_type, [])
         if not handlers:
             logger.debug(f"Event processor has no handlers for {event.event_type.value}")
+            event.processed = True
             return None
 
         results = []
+        failures = []
         for handler in handlers:
             if not handler.enabled:
                 continue
@@ -246,6 +248,7 @@ class EventProcessor:
                     self._update_registry.record(update)
             except Exception as e:
                 logger.exception(f"Event processor handler '{handler.description}' failed")
+                failures.append(f"{handler.description or handler.event_type.value}: {str(e)[:200]}")
                 update = SystemUpdate(
                     update_id=str(uuid7()),
                     event_id=event.event_id,
@@ -255,8 +258,9 @@ class EventProcessor:
                 )
                 self._update_registry.record(update)
 
-        event.processed = True
+        event.processed = not failures
         event.processing_result = "; ".join(results) if results else None
+        event.error = "; ".join(failures) if failures else None
         self._processed_events.append(event)
         return event.processing_result
 
@@ -318,34 +322,27 @@ async def _handle_system_heartbeat(event: AgentEvent) -> Optional[str]:
     return "Heartbeat processed"
 
 
-async def _index_uploaded_document(doc_id: str, user_id: str, superseded_document_id: str):
-    from src.services.ingestion import index_document, remove_document
-
-    system_ingest = not bool(user_id)
-    requester_id = user_id or "platform-system"
-    if superseded_document_id:
-        await remove_document(superseded_document_id, requester_id, system_ingest)
-    return await index_document(doc_id, requester_id, system_ingest)
-
-
 async def _handle_document_uploaded(event: AgentEvent) -> Optional[str]:
-    doc_id = event.payload.get("document_id")
-    user_id = event.payload.get("user_id", "")
-    superseded_document_id = event.payload.get("superseded_document_id", "")
+    from src.core.infrastructure.mq import mq
+
+    doc_id = str(event.payload.get("document_id") or "").strip()
+    user_id = str(event.payload.get("user_id") or "")
+    superseded_document_id = str(event.payload.get("superseded_document_id") or "")
     if not doc_id:
-        return None
+        raise ValueError("document_ingestion_event_missing_document_id")
     logger.info(f"Event processor document uploaded event for doc_id={doc_id}")
-
-    async def _run_ingest():
-        try:
-            result = await _index_uploaded_document(doc_id, user_id, superseded_document_id)
-            logger.info(
-                f"Auto-ingest completed doc_id={doc_id} chunks={result.get('chunks', 0)} method={result.get('extraction_method')}"
-            )
-        except Exception:
-            logger.exception(f"Auto-ingest failed for doc_id={doc_id}")
-
-    create_background_task(_run_ingest(), f"auto-ingest-{doc_id}")
+    published = await mq.publish(
+        "ai.document_ingestion",
+        {
+            "event_id": event.event_id,
+            "document_id": doc_id,
+            "user_id": user_id,
+            "superseded_document_id": superseded_document_id,
+            "attempt": 0,
+        },
+    )
+    if not published:
+        raise RuntimeError("document_ingestion_queue_unavailable")
     return f"Document {doc_id} queued for ingestion"
 
 

@@ -1,5 +1,6 @@
 from fastapi import HTTPException
-from pymongo import UpdateOne
+from pymongo import ReturnDocument, UpdateOne
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from src.core.common import audit, get_project, get_project_role, get_project_roles, new_id, now, resolve_user_reference
 from src.core.database import database
@@ -50,6 +51,18 @@ async def _validate_requirements(project_id, requirement_ids):
     found = await database.value.requirements.find({"_id": {"$in": identifiers}, "project_id": project_id}, {"_id": 1}).to_list(len(identifiers))
     if len(found) != len(identifiers):
         raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_REQUIREMENT_INVALID"})
+
+
+def _validate_planned_dates(planned_start_at, planned_end_at):
+    if planned_start_at and planned_end_at:
+        try:
+            valid_range = planned_end_at > planned_start_at
+        except TypeError as exc:
+            raise HTTPException(
+                status_code=422, detail={"code": "WORK_ITEM_SCHEDULE_TIMEZONE_MISMATCH"}
+            ) from exc
+        if not valid_range:
+            raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_SCHEDULE_INVALID"})
 
 
 async def _board(project_id, planning_method):
@@ -108,7 +121,12 @@ async def _workflow(project_id):
     ]
     board = await work_item_repository.find_board(project_id)
     if not board:
-        board = await _board(project_id, "SCRUM")
+        project = await database.value.projects.find_one(
+            {"_id": project_id}, {"planning_method": 1}
+        )
+        board = await _board(
+            project_id, (project or {}).get("planning_method", "SCRUM")
+        )
     value = {
         "_id": new_id("WFL"),
         "project_id": project_id,
@@ -134,10 +152,18 @@ async def _workflow(project_id):
         raise
 
 
-async def _validate_dependency_cycle(project_id, source_id, target_id):
-    dependencies = await work_item_repository.list_dependencies(project_id)
+async def _validate_dependency_cycle(
+    project_id, source_id, target_id, dependency_type="BLOCKS", session=None
+):
+    if dependency_type != "BLOCKS":
+        return
+    dependencies = await work_item_repository.list_dependencies(
+        project_id, session=session
+    )
     links = {}
     for dependency in dependencies:
+        if dependency.get("dependency_type") != "BLOCKS":
+            continue
         links.setdefault(dependency["target_item_id"], set()).add(dependency["source_item_id"])
     links.setdefault(target_id, set()).add(source_id)
     pending = [source_id]
@@ -175,26 +201,60 @@ class WorkItemService:
     @staticmethod
     async def create_item(project_id, payload, user):
         await _require_ba(project_id, user)
+        project = await _project_planning(project_id, user)
         await _validate_parent(project_id, payload.item_type, payload.parent_id)
         await _validate_requirements(project_id, payload.requirement_ids)
+        _validate_planned_dates(payload.planned_start_at, payload.planned_end_at)
         timestamp = now()
         item = {
             "_id": new_id("WI"), "project_id": project_id, **payload.model_dump(),
             "assignee_id": await _resolve_assignee(project_id, payload.assignee_id),
             "status": "BACKLOG", "sprint_id": None,
-            "backlog_rank": await work_item_repository.next_rank(project_id),
             "revision": 1, "created_by": user.id, "created_at": timestamp, "updated_at": timestamp,
         }
-        await work_item_repository.create_item(item)
-        await audit(user.id, "work_item_created", "WorkItem", item["_id"], project_id)
+        await _board(project_id, project.get("planning_method", "SCRUM"))
         from src.clients.ai_automation import emit_work_item_changed
 
-        await emit_work_item_changed(item, user)
+        try:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    board = await work_item_repository.find_board(project_id, session=session)
+                    if not board or not isinstance(board.get("revision"), int) or isinstance(board.get("revision"), bool):
+                        raise HTTPException(
+                            status_code=409, detail={"code": "WORK_ITEM_PLANNING_BOARD_UNAVAILABLE"}
+                        )
+                    if not await work_item_repository.advance_board_revision(
+                        project_id, board["revision"], timestamp, session=session
+                    ):
+                        raise HTTPException(
+                            status_code=409, detail={"code": "WORK_ITEM_RANK_CONCURRENT_UPDATE"}
+                        )
+                    item["backlog_rank"] = await work_item_repository.next_rank(
+                        project_id, session=session
+                    )
+                    await work_item_repository.create_item(item, session=session)
+                    await audit(
+                        user.id, "work_item_created", "WorkItem", item["_id"], project_id,
+                        session=session,
+                    )
+                    await emit_work_item_changed(item, user, session=session)
+        except OperationFailure as exc:
+            if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "WORK_ITEM_RANK_CONCURRENT_UPDATE"},
+                ) from exc
+            raise
         return item
 
     @staticmethod
     async def update_item(project_id, item_id, payload, user):
         await _require_ba(project_id, user)
+        item = await work_item_repository.find_item(project_id, item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
+        if item.get("revision", 1) != payload.expected_revision:
+            _conflict(item)
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("expected_revision", None)
         if not changes:
@@ -203,17 +263,29 @@ class WorkItemService:
             changes["assignee_id"] = await _resolve_assignee(project_id, changes["assignee_id"])
         if "requirement_ids" in changes:
             await _validate_requirements(project_id, changes["requirement_ids"])
+        if {"planned_start_at", "planned_end_at"} & set(changes):
+            _validate_planned_dates(
+                changes.get("planned_start_at", item.get("planned_start_at")),
+                changes.get("planned_end_at", item.get("planned_end_at")),
+            )
         changes["updated_at"] = now()
-        updated = await work_item_repository.patch_item(project_id, item_id, payload.expected_revision, changes)
-        if not updated:
-            existing = await work_item_repository.find_item(project_id, item_id)
-            if not existing:
-                raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
-            _conflict(existing)
-        await audit(user.id, "work_item_updated", "WorkItem", item_id, project_id, {"changed": sorted(changes)})
         from src.clients.ai_automation import emit_work_item_changed
 
-        await emit_work_item_changed(updated, user)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                updated = await work_item_repository.patch_item(
+                    project_id, item_id, payload.expected_revision, changes, session=session
+                )
+                if not updated:
+                    existing = await work_item_repository.find_item(project_id, item_id)
+                    if not existing:
+                        raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
+                    _conflict(existing)
+                await audit(
+                    user.id, "work_item_updated", "WorkItem", item_id, project_id,
+                    {"changed": sorted(changes)}, session=session,
+                )
+                await emit_work_item_changed(updated, user, session=session)
         return updated
 
     @staticmethod
@@ -238,40 +310,193 @@ class WorkItemService:
             raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_WORKFLOW_TRANSITION_INVALID"})
         if payload.status == "IN_PROGRESS" and item.get("sprint_id") is None and project.get("planning_method") == "SCRUM":
             raise HTTPException(status_code=422, detail={"code": "SCRUM_SPRINT_SCOPE_REQUIRED"})
-        if project.get("planning_method") == "KANBAN":
-            board = await _board(project_id, project.get("planning_method", "KANBAN"))
-            column = next((value for value in board["columns"] if value["status"] == payload.status), None)
-            if column and column.get("wip_limit"):
-                active_count = len(
-                    await work_item_repository.list_items(
-                        project_id,
-                        {"project_id": project_id, "status": payload.status},
-                    )
-                )
-                if item["status"] != payload.status and active_count >= column["wip_limit"]:
-                    raise HTTPException(status_code=422, detail={"code": "KANBAN_WIP_LIMIT_REACHED"})
-        updated = await work_item_repository.patch_item(project_id, item_id, payload.expected_revision, {"status": payload.status, "updated_at": now()})
-        if not updated:
-            _conflict(await work_item_repository.find_item(project_id, item_id))
-        await audit(user.id, "work_item_transitioned", "WorkItem", item_id, project_id, {"status": payload.status, "reason": payload.reason})
+        is_kanban = project.get("planning_method") == "KANBAN"
+        if is_kanban:
+            await _board(project_id, "KANBAN")
         from src.clients.ai_automation import emit_work_item_changed
 
-        await emit_work_item_changed(updated, user)
+        try:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    if is_kanban and item["status"] != payload.status:
+                        board = await work_item_repository.find_board(project_id, session=session)
+                        if not board or board.get("planning_method") != "KANBAN":
+                            raise HTTPException(
+                                status_code=409,
+                                detail={"code": "KANBAN_BOARD_UNAVAILABLE"},
+                            )
+                        column = next(
+                            (
+                                value
+                                for value in board.get("columns", [])
+                                if value.get("status") == payload.status
+                            ),
+                            None,
+                        )
+                        if not column:
+                            raise HTTPException(
+                                status_code=422,
+                                detail={
+                                    "code": "KANBAN_STATUS_COLUMN_MISSING",
+                                    "status": payload.status,
+                                },
+                            )
+                        wip_limit = column.get("wip_limit")
+                        if wip_limit is not None:
+                            if (
+                                not isinstance(wip_limit, int)
+                                or isinstance(wip_limit, bool)
+                                or wip_limit < 1
+                                or not isinstance(board.get("revision"), int)
+                                or isinstance(board.get("revision"), bool)
+                            ):
+                                raise HTTPException(
+                                    status_code=409,
+                                    detail={"code": "KANBAN_WIP_CONFIGURATION_INVALID"},
+                                )
+                            active_count = await work_item_repository.count_items(
+                                {"project_id": project_id, "status": payload.status},
+                                session=session,
+                            )
+                            if active_count >= wip_limit:
+                                raise HTTPException(
+                                    status_code=422,
+                                    detail={
+                                        "code": "KANBAN_WIP_LIMIT_REACHED",
+                                        "status": payload.status,
+                                        "limit": wip_limit,
+                                        "active_count": active_count,
+                                    },
+                                )
+                            advanced_board = await work_item_repository.advance_board_revision(
+                                project_id,
+                                board["revision"],
+                                now(),
+                                session=session,
+                            )
+                            if not advanced_board:
+                                raise HTTPException(
+                                    status_code=409,
+                                    detail={"code": "KANBAN_WIP_CONCURRENT_UPDATE"},
+                                )
+
+                    updated = await work_item_repository.patch_item(
+                        project_id,
+                        item_id,
+                        payload.expected_revision,
+                        {"status": payload.status, "updated_at": now()},
+                        session=session,
+                    )
+                    if not updated:
+                        _conflict(await work_item_repository.find_item(project_id, item_id))
+                    await audit(
+                        user.id,
+                        "work_item_transitioned",
+                        "WorkItem",
+                        item_id,
+                        project_id,
+                        {"status": payload.status, "reason": payload.reason},
+                        session=session,
+                    )
+                    await emit_work_item_changed(updated, user, session=session)
+        except DuplicateKeyError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "WORK_ITEM_DEPENDENCY_EXISTS"},
+            ) from exc
+        except OperationFailure as exc:
+            if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "KANBAN_WIP_CONCURRENT_UPDATE"},
+                ) from exc
+            raise
         return updated
 
     @staticmethod
     async def create_dependency(project_id, item_id, payload, user):
         await _require_ba(project_id, user)
+        project = await _project_planning(project_id, user)
         source = await work_item_repository.find_item(project_id, item_id)
         target = await work_item_repository.find_item(project_id, payload.target_item_id)
         if not source or not target or source["_id"] == target["_id"]:
             raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_DEPENDENCY_INVALID"})
-        if await work_item_repository.find_dependency(project_id, item_id, target["_id"], payload.dependency_type):
-            raise HTTPException(status_code=409, detail={"code": "WORK_ITEM_DEPENDENCY_EXISTS"})
-        await _validate_dependency_cycle(project_id, item_id, target["_id"])
+        await _board(project_id, project.get("planning_method", "SCRUM"))
         value = {"_id": new_id("WID"), "project_id": project_id, "source_item_id": item_id, "target_item_id": target["_id"], "dependency_type": payload.dependency_type, "created_by": user.id, "created_at": now()}
-        await work_item_repository.create_dependency(value)
-        await audit(user.id, "work_item_dependency_created", "WorkItemDependency", value["_id"], project_id)
+        try:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    source = await work_item_repository.find_item(
+                        project_id, item_id, session=session
+                    )
+                    target = await work_item_repository.find_item(
+                        project_id, payload.target_item_id, session=session
+                    )
+                    if not source or not target or source["_id"] == target["_id"]:
+                        raise HTTPException(
+                            status_code=422,
+                            detail={"code": "WORK_ITEM_DEPENDENCY_INVALID"},
+                        )
+                    if await work_item_repository.find_dependency(
+                        project_id,
+                        item_id,
+                        target["_id"],
+                        payload.dependency_type,
+                        session=session,
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "WORK_ITEM_DEPENDENCY_EXISTS"},
+                        )
+                    board = await work_item_repository.find_board(
+                        project_id, session=session
+                    )
+                    board_revision = (board or {}).get("revision")
+                    if (
+                        not board
+                        or not isinstance(board_revision, int)
+                        or isinstance(board_revision, bool)
+                        or board_revision < 1
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "WORK_ITEM_PLANNING_BOARD_UNAVAILABLE"},
+                        )
+                    if not await work_item_repository.advance_board_revision(
+                        project_id, board_revision, now(), session=session
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "WORK_ITEM_DEPENDENCY_CONCURRENT_UPDATE"},
+                        )
+                    await _validate_dependency_cycle(
+                        project_id,
+                        item_id,
+                        target["_id"],
+                        dependency_type=payload.dependency_type,
+                        session=session,
+                    )
+                    await work_item_repository.create_dependency(value, session=session)
+                    from src.clients.ai_automation import emit_work_item_dependency_changed
+
+                    await emit_work_item_dependency_changed(
+                        value, source, target, user, session=session
+                    )
+                    await audit(
+                        user.id,
+                        "work_item_dependency_created",
+                        "WorkItemDependency",
+                        value["_id"],
+                        project_id,
+                        session=session,
+                    )
+        except OperationFailure as exc:
+            if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "WORK_ITEM_DEPENDENCY_CONCURRENT_UPDATE"},
+                ) from exc
+            raise
         return value
 
     @staticmethod
@@ -337,26 +562,171 @@ class WorkItemService:
     @staticmethod
     async def rank_item(project_id, item_id, payload, user):
         await _require_ba(project_id, user)
-        item = await work_item_repository.find_item(project_id, item_id)
-        if not item:
-            raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
-        if item["revision"] != payload.expected_revision:
-            _conflict(item)
-        before = None
-        if payload.before_item_id:
-            before = await work_item_repository.find_item(project_id, payload.before_item_id)
-            if not before or before["_id"] == item_id:
-                raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_RANK_TARGET_INVALID"})
-        if before:
-            items = await work_item_repository.list_items(project_id, {"project_id": project_id})
-            prior = next((value for value in reversed(items[: items.index(before)]) if value["_id"] != item_id), None)
-            rank = (int(prior["backlog_rank"]) + int(before["backlog_rank"])) // 2 if prior else int(before["backlog_rank"]) - 1024
-        else:
-            rank = await work_item_repository.next_rank(project_id)
-        updated = await work_item_repository.patch_item(project_id, item_id, item["revision"], {"backlog_rank": rank, "updated_at": now()})
-        if not updated:
-            _conflict(await work_item_repository.find_item(project_id, item_id))
-        await audit(user.id, "work_item_ranked", "WorkItem", item_id, project_id, {"before_item_id": payload.before_item_id})
+        from src.clients.ai_automation import emit_work_item_changed
+
+        timestamp = now()
+        try:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    item = await work_item_repository.find_item(
+                        project_id, item_id, session=session
+                    )
+                    if not item:
+                        raise HTTPException(
+                            status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"}
+                        )
+                    if item["revision"] != payload.expected_revision:
+                        _conflict(item)
+
+                    board = await work_item_repository.find_board(
+                        project_id, session=session
+                    )
+                    if (
+                        not board
+                        or not isinstance(board.get("revision"), int)
+                        or isinstance(board.get("revision"), bool)
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "WORK_ITEM_PLANNING_BOARD_UNAVAILABLE"},
+                        )
+                    if not await work_item_repository.advance_board_revision(
+                        project_id, board["revision"], timestamp, session=session
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "WORK_ITEM_RANK_CONCURRENT_UPDATE"},
+                        )
+
+                    items = await work_item_repository.list_items(
+                        project_id,
+                        {"project_id": project_id},
+                        limit=None,
+                        session=session,
+                    )
+                    ordered = [value for value in items if value["_id"] != item_id]
+                    if payload.before_item_id:
+                        target_index = next(
+                            (
+                                index
+                                for index, value in enumerate(ordered)
+                                if value["_id"] == payload.before_item_id
+                            ),
+                            None,
+                        )
+                        if target_index is None:
+                            raise HTTPException(
+                                status_code=422,
+                                detail={"code": "WORK_ITEM_RANK_TARGET_INVALID"},
+                            )
+                    try:
+                        ranks = [int(value["backlog_rank"]) for value in ordered]
+                        needs_rebalance = any(
+                            right - left <= 1 for left, right in zip(ranks, ranks[1:])
+                        )
+                    except (KeyError, TypeError, ValueError):
+                        needs_rebalance = True
+
+                    changed_items = []
+                    if needs_rebalance:
+                        if payload.before_item_id:
+                            ordered.insert(target_index, item)
+                        else:
+                            ordered.append(item)
+                        desired = enumerate(ordered, start=1)
+                        for index, value in desired:
+                            new_rank = index * 1024
+                            if value.get("backlog_rank") == new_rank:
+                                if value["_id"] == item_id:
+                                    updated = value
+                                continue
+                            ranked = await work_item_repository.patch_item(
+                                project_id,
+                                value["_id"],
+                                value.get("revision", 1),
+                                {"backlog_rank": new_rank, "updated_at": timestamp},
+                                session=session,
+                            )
+                            if not ranked:
+                                _conflict(
+                                    await work_item_repository.find_item(
+                                        project_id, value["_id"], session=session
+                                    )
+                                )
+                            changed_items.append(ranked)
+                            if value["_id"] == item_id:
+                                updated = ranked
+                    else:
+                        target_index = (
+                            target_index
+                            if payload.before_item_id
+                            else len(ordered)
+                        )
+                        upper = (
+                            int(ordered[target_index]["backlog_rank"])
+                            if target_index < len(ordered)
+                            else None
+                        )
+                        lower = (
+                            int(ordered[target_index - 1]["backlog_rank"])
+                            if target_index > 0
+                            else None
+                        )
+                        rank = (
+                            (lower + upper) // 2
+                            if lower is not None and upper is not None
+                            else upper - 1024
+                            if upper is not None
+                            else await work_item_repository.next_rank(
+                                project_id, session=session
+                            )
+                        )
+                        if rank == item.get("backlog_rank"):
+                            updated = item
+                        else:
+                            updated = await work_item_repository.patch_item(
+                                project_id,
+                                item_id,
+                                payload.expected_revision,
+                                {"backlog_rank": rank, "updated_at": timestamp},
+                                session=session,
+                            )
+                            if not updated:
+                                _conflict(
+                                    await work_item_repository.find_item(
+                                        project_id, item_id, session=session
+                                    )
+                                )
+                            changed_items.append(updated)
+
+                    for changed in changed_items:
+                        await emit_work_item_changed(changed, user, session=session)
+                        if changed["_id"] != item_id:
+                            await audit(
+                                user.id,
+                                "work_item_rank_rebalanced",
+                                "WorkItem",
+                                changed["_id"],
+                                project_id,
+                                {"backlog_rank": changed["backlog_rank"]},
+                                session=session,
+                            )
+                    await audit(
+                        user.id,
+                        "work_item_ranked",
+                        "WorkItem",
+                        item_id,
+                        project_id,
+                        {"before_item_id": payload.before_item_id},
+                        session=session,
+                    )
+        except OperationFailure as exc:
+            if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "WORK_ITEM_RANK_CONCURRENT_UPDATE"},
+                ) from exc
+            raise
         return updated
 
     @staticmethod
@@ -364,7 +734,48 @@ class WorkItemService:
         await _project_planning(project_id, user)
         items = await work_item_repository.list_items(project_id, {"project_id": project_id, "item_type": {"$in": ["INITIATIVE", "EPIC"]}})
         releases = await database.value.releases.find({"project_id": project_id}).sort("planned_start_at", 1).to_list(500)
-        return {"items": items, "releases": releases, "dependencies": await work_item_repository.list_dependencies(project_id)}
+        dependencies = await work_item_repository.list_dependencies(project_id)
+        dependency_item_ids = list(
+            {
+                item_id
+                for dependency in dependencies
+                for item_id in (
+                    dependency.get("source_item_id"),
+                    dependency.get("target_item_id"),
+                )
+                if item_id
+            }
+        )
+        dependency_items = await database.value.work_items.find(
+            {"project_id": project_id, "_id": {"$in": dependency_item_ids}},
+            {"_id": 1, "title": 1, "item_type": 1},
+        ).to_list(len(dependency_item_ids)) if dependency_item_ids else []
+        dependency_items_by_id = {
+            item["_id"]: item for item in dependency_items
+        }
+        enriched_dependencies = [
+            {
+                **dependency,
+                "source_item_title": dependency_items_by_id.get(
+                    dependency.get("source_item_id"), {}
+                ).get("title"),
+                "source_item_type": dependency_items_by_id.get(
+                    dependency.get("source_item_id"), {}
+                ).get("item_type"),
+                "target_item_title": dependency_items_by_id.get(
+                    dependency.get("target_item_id"), {}
+                ).get("title"),
+                "target_item_type": dependency_items_by_id.get(
+                    dependency.get("target_item_id"), {}
+                ).get("item_type"),
+            }
+            for dependency in dependencies
+        ]
+        return {
+            "items": items,
+            "releases": releases,
+            "dependencies": enriched_dependencies,
+        }
 
     @staticmethod
     async def list_sprints(project_id, user):
@@ -389,81 +800,217 @@ class WorkItemService:
     @staticmethod
     async def patch_sprint_scope(project_id, sprint_id, payload, user):
         await _require_ba(project_id, user)
-        sprint = await work_item_repository.find_sprint(project_id, sprint_id)
-        if not sprint:
-            raise HTTPException(status_code=404, detail={"code": "SPRINT_NOT_FOUND"})
-        if sprint.get("status") != "PLANNED":
-            raise HTTPException(status_code=409, detail={"code": "SPRINT_SCOPE_LOCKED"})
+        client = database.client
+        if client is None:
+            raise RuntimeError("Cơ sở dữ liệu chưa sẵn sàng")
         identifiers = list(dict.fromkeys(payload.work_item_ids))
-        items = await work_item_repository.list_items(project_id, {"project_id": project_id, "_id": {"$in": identifiers}})
-        if len(items) != len(identifiers):
-            raise HTTPException(status_code=422, detail={"code": "SPRINT_WORK_ITEM_INVALID"})
-        updated = await work_item_repository.patch_sprint(project_id, sprint_id, payload.expected_revision, {"work_item_ids": identifiers, "updated_at": now()})
-        if not updated:
-            _conflict(await work_item_repository.find_sprint(project_id, sprint_id))
-        for item in items:
-            await work_item_repository.patch_item(project_id, item["_id"], item["revision"], {"sprint_id": sprint_id, "updated_at": now()})
+        timestamp = now()
+
+        async def operation(session):
+            sprint = await database.value.sprints.find_one(
+                {"_id": sprint_id, "project_id": project_id}, session=session
+            )
+            if not sprint:
+                raise HTTPException(status_code=404, detail={"code": "SPRINT_NOT_FOUND"})
+            if sprint.get("status") != "PLANNED":
+                raise HTTPException(status_code=409, detail={"code": "SPRINT_SCOPE_LOCKED"})
+            if sprint.get("revision", 1) != payload.expected_revision:
+                _conflict(sprint)
+
+            items = await database.value.work_items.find(
+                {"project_id": project_id, "_id": {"$in": identifiers}}, session=session
+            ).to_list(len(identifiers))
+            if len(items) != len(identifiers):
+                raise HTTPException(status_code=422, detail={"code": "SPRINT_WORK_ITEM_INVALID"})
+            current_ids = set(sprint.get("work_item_ids", []))
+            for item in items:
+                assigned_sprint = item.get("sprint_id")
+                if assigned_sprint and assigned_sprint != sprint_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "SPRINT_ITEM_ALREADY_ASSIGNED",
+                            "work_item_id": item["_id"],
+                            "sprint_id": assigned_sprint,
+                        },
+                    )
+
+            updated = await database.value.sprints.find_one_and_update(
+                {
+                    "_id": sprint_id,
+                    "project_id": project_id,
+                    "revision": payload.expected_revision,
+                    "status": "PLANNED",
+                },
+                {
+                    "$set": {"work_item_ids": identifiers, "updated_at": timestamp},
+                    "$inc": {"revision": 1},
+                },
+                return_document=ReturnDocument.AFTER,
+                session=session,
+            )
+            if not updated:
+                latest = await database.value.sprints.find_one(
+                    {"_id": sprint_id, "project_id": project_id}, session=session
+                )
+                if latest:
+                    _conflict(latest)
+                raise HTTPException(status_code=404, detail={"code": "SPRINT_NOT_FOUND"})
+
+            for item_id in current_ids - set(identifiers):
+                item = await database.value.work_items.find_one(
+                    {"_id": item_id, "project_id": project_id, "sprint_id": sprint_id},
+                    session=session,
+                )
+                if item:
+                    result = await database.value.work_items.update_one(
+                        {
+                            "_id": item_id,
+                            "project_id": project_id,
+                            "sprint_id": sprint_id,
+                            "revision": item.get("revision", 1),
+                        },
+                        {"$set": {"sprint_id": None, "updated_at": timestamp}, "$inc": {"revision": 1}},
+                        session=session,
+                    )
+                    if result.modified_count != 1:
+                        latest = await database.value.sprints.find_one(
+                            {"_id": sprint_id, "project_id": project_id}, session=session
+                        )
+                        _conflict(latest or sprint)
+            for item in items:
+                if item.get("sprint_id") == sprint_id:
+                    continue
+                result = await database.value.work_items.update_one(
+                    {
+                        "_id": item["_id"],
+                        "project_id": project_id,
+                        "revision": item.get("revision", 1),
+                        "$or": [{"sprint_id": None}, {"sprint_id": {"$exists": False}}],
+                    },
+                    {"$set": {"sprint_id": sprint_id, "updated_at": timestamp}, "$inc": {"revision": 1}},
+                    session=session,
+                )
+                if result.modified_count != 1:
+                    latest = await database.value.sprints.find_one(
+                        {"_id": sprint_id, "project_id": project_id}, session=session
+                    )
+                    _conflict(latest or sprint)
+            return updated
+
+        async with await client.start_session() as session:
+            updated = await session.with_transaction(operation)
         await audit(user.id, "sprint_scope_updated", "Sprint", sprint_id, project_id)
         return updated
 
     @staticmethod
     async def transition_sprint(project_id, sprint_id, payload, user):
         await _require_ba(project_id, user)
-        sprint = await work_item_repository.find_sprint(project_id, sprint_id)
-        if not sprint:
-            raise HTTPException(status_code=404, detail={"code": "SPRINT_NOT_FOUND"})
+        workflow = await _workflow(project_id) if payload.action == "COMPLETE" else None
+        client = database.client
+        if client is None:
+            raise RuntimeError("Cơ sở dữ liệu chưa sẵn sàng")
         target, source = ("ACTIVE", "PLANNED") if payload.action == "START" else ("COMPLETED", "ACTIVE")
-        if sprint.get("status") != source:
-            raise HTTPException(status_code=409, detail={"code": "SPRINT_TRANSITION_INVALID"})
-        if payload.action == "COMPLETE":
-            items = await work_item_repository.list_items(
-                project_id, {"project_id": project_id, "sprint_id": sprint_id}
+        timestamp = now()
+
+        async def operation(session):
+            sprint = await database.value.sprints.find_one(
+                {"_id": sprint_id, "project_id": project_id}, session=session
             )
-            workflow = await _workflow(project_id)
-            completed_statuses = {
-                value["key"] for value in workflow.get("statuses", []) if value.get("counts_as_completed")
-            }
-            unfinished = [item for item in items if item.get("status") not in completed_statuses]
-            if unfinished and not payload.unfinished_action:
-                raise HTTPException(status_code=422, detail={"code": "SPRINT_UNFINISHED_ACTION_REQUIRED"})
-            changes_by_item = {}
-            if unfinished and payload.unfinished_action == "NEXT_SPRINT":
-                target_sprint = await work_item_repository.find_sprint(project_id, payload.target_sprint_id or "")
-                if not target_sprint or target_sprint.get("status") != "PLANNED" or target_sprint["_id"] == sprint_id:
-                    raise HTTPException(status_code=422, detail={"code": "SPRINT_TARGET_INVALID"})
-                target_ids = list(dict.fromkeys([*target_sprint.get("work_item_ids", []), *[item["_id"] for item in unfinished]]))
-                target_updated = await work_item_repository.patch_sprint(
-                    project_id,
-                    target_sprint["_id"],
-                    target_sprint["revision"],
-                    {"work_item_ids": target_ids, "updated_at": now()},
+            if not sprint:
+                raise HTTPException(status_code=404, detail={"code": "SPRINT_NOT_FOUND"})
+            if sprint.get("revision", 1) != payload.expected_revision:
+                _conflict(sprint)
+            if sprint.get("status") != source:
+                raise HTTPException(status_code=409, detail={"code": "SPRINT_TRANSITION_INVALID"})
+
+            unfinished = []
+            target_sprint = None
+            if payload.action == "COMPLETE":
+                items = await database.value.work_items.find(
+                    {"project_id": project_id, "sprint_id": sprint_id}, session=session
+                ).to_list(2000)
+                completed_statuses = {
+                    value["key"] for value in workflow.get("statuses", []) if value.get("counts_as_completed")
+                }
+                unfinished = [item for item in items if item.get("status") not in completed_statuses]
+                if unfinished and not payload.unfinished_action:
+                    raise HTTPException(status_code=422, detail={"code": "SPRINT_UNFINISHED_ACTION_REQUIRED"})
+                if unfinished and payload.unfinished_action == "NEXT_SPRINT":
+                    target_sprint = await database.value.sprints.find_one(
+                        {"_id": payload.target_sprint_id, "project_id": project_id}, session=session
+                    )
+                    if not target_sprint or target_sprint.get("status") != "PLANNED" or target_sprint["_id"] == sprint_id:
+                        raise HTTPException(status_code=422, detail={"code": "SPRINT_TARGET_INVALID"})
+                elif unfinished and payload.unfinished_action == "CANCEL":
+                    status_keys = {value["key"] for value in workflow.get("statuses", [])}
+                    if not payload.target_status or payload.target_status not in status_keys:
+                        raise HTTPException(status_code=422, detail={"code": "SPRINT_CANCEL_STATUS_INVALID"})
+                elif unfinished and payload.unfinished_action != "BACKLOG":
+                    raise HTTPException(status_code=422, detail={"code": "SPRINT_UNFINISHED_ACTION_INVALID"})
+
+            if target_sprint:
+                target_ids = list(dict.fromkeys([
+                    *target_sprint.get("work_item_ids", []),
+                    *[item["_id"] for item in unfinished],
+                ]))
+                target_updated = await database.value.sprints.find_one_and_update(
+                    {
+                        "_id": target_sprint["_id"],
+                        "project_id": project_id,
+                        "revision": target_sprint.get("revision", 1),
+                        "status": "PLANNED",
+                    },
+                    {"$set": {"work_item_ids": target_ids, "updated_at": timestamp}, "$inc": {"revision": 1}},
+                    return_document=ReturnDocument.AFTER,
+                    session=session,
                 )
                 if not target_updated:
-                    _conflict(await work_item_repository.find_sprint(project_id, target_sprint["_id"]))
-                changes_by_item = {item["_id"]: {"sprint_id": target_sprint["_id"]} for item in unfinished}
-            elif unfinished and payload.unfinished_action == "BACKLOG":
-                changes_by_item = {item["_id"]: {"sprint_id": None} for item in unfinished}
-            elif unfinished and payload.unfinished_action == "CANCEL":
-                status_keys = {value["key"] for value in workflow.get("statuses", [])}
-                if not payload.target_status or payload.target_status not in status_keys:
-                    raise HTTPException(status_code=422, detail={"code": "SPRINT_CANCEL_STATUS_INVALID"})
-                changes_by_item = {
-                    item["_id"]: {"sprint_id": None, "status": payload.target_status} for item in unfinished
-                }
-            elif unfinished:
-                raise HTTPException(status_code=422, detail={"code": "SPRINT_UNFINISHED_ACTION_INVALID"})
-            for item in unfinished:
-                updated_item = await work_item_repository.patch_item(
-                    project_id,
-                    item["_id"],
-                    item["revision"],
-                    {**changes_by_item[item["_id"]], "updated_at": now()},
+                    latest = await database.value.sprints.find_one(
+                        {"_id": target_sprint["_id"], "project_id": project_id}, session=session
+                    )
+                    _conflict(latest or target_sprint)
+
+            updated = await database.value.sprints.find_one_and_update(
+                {
+                    "_id": sprint_id,
+                    "project_id": project_id,
+                    "revision": payload.expected_revision,
+                    "status": source,
+                },
+                {"$set": {"status": target, "updated_at": timestamp}, "$inc": {"revision": 1}},
+                return_document=ReturnDocument.AFTER,
+                session=session,
+            )
+            if not updated:
+                latest = await database.value.sprints.find_one(
+                    {"_id": sprint_id, "project_id": project_id}, session=session
                 )
-                if not updated_item:
-                    _conflict(await work_item_repository.find_item(project_id, item["_id"]))
-        updated = await work_item_repository.patch_sprint(project_id, sprint_id, payload.expected_revision, {"status": target, "updated_at": now()})
-        if not updated:
-            _conflict(await work_item_repository.find_sprint(project_id, sprint_id))
+                _conflict(latest or sprint)
+
+            for item in unfinished:
+                changes = {"sprint_id": target_sprint["_id"] if target_sprint else None}
+                if payload.unfinished_action == "CANCEL":
+                    changes["status"] = payload.target_status
+                result = await database.value.work_items.update_one(
+                    {
+                        "_id": item["_id"],
+                        "project_id": project_id,
+                        "sprint_id": sprint_id,
+                        "revision": item.get("revision", 1),
+                    },
+                    {"$set": {**changes, "updated_at": timestamp}, "$inc": {"revision": 1}},
+                    session=session,
+                )
+                if result.modified_count != 1:
+                    latest = await database.value.work_items.find_one(
+                        {"_id": item["_id"], "project_id": project_id}, session=session
+                    )
+                    _conflict(latest or item)
+            return updated
+
+        async with await client.start_session() as session:
+            updated = await session.with_transaction(operation)
         await audit(user.id, "sprint_transitioned", "Sprint", sprint_id, project_id, {"action": payload.action, "reason": payload.reason, "unfinished_action": payload.unfinished_action, "target_sprint_id": payload.target_sprint_id, "target_status": payload.target_status})
         return updated
 
@@ -484,32 +1031,65 @@ class WorkItemService:
     @staticmethod
     async def migrate_project_tasks(project_id, payload, user):
         await _require_ba(project_id, user)
-        prior = await work_item_repository.find_migration(project_id)
-        if prior:
-            return {"migration": prior, "created": 0, "already_migrated": True}
-        tasks = await project_repository.list_tasks(project_id)
+        project = await _project_planning(project_id, user)
+        await _board(project_id, project.get("planning_method", "SCRUM"))
         timestamp = now()
         mappings = {value.legacy_status: value.target_status for value in payload.mappings}
-        legacy_statuses = {task.get("status") or "UNKNOWN" for task in tasks}
-        workflow_statuses = {value["key"] for value in (await _workflow(project_id)).get("statuses", [])}
-        if legacy_statuses - set(mappings) or any(status not in workflow_statuses for status in mappings.values()):
-            raise HTTPException(status_code=422, detail={"code": "PROJECT_TASK_MIGRATION_MAPPING_INVALID"})
-        migration = {
-            "_id": new_id("PTM"),
-            "project_id": project_id,
-            "created_by": user.id,
-            "created_at": timestamp,
-            "legacy_task_ids": [task["_id"] for task in tasks],
-            "work_item_ids": [],
+        workflow_statuses = {
+            value["key"] for value in (await _workflow(project_id)).get("statuses", [])
         }
         client = database.client
         if client is None:
             raise RuntimeError("Cơ sở dữ liệu chưa sẵn sàng")
+        from src.clients.ai_automation import emit_work_item_changed
 
         async def operation(session):
-            duplicate = await database.value.project_task_migrations.find_one({"project_id": project_id}, session=session)
+            lock_result = await project_repository.lock_legacy_task_catalog(
+                project_id, session
+            )
+            if lock_result.matched_count != 1:
+                raise HTTPException(
+                    status_code=404, detail={"code": "PROJECT_NOT_FOUND"}
+                )
+            duplicate = await database.value.project_task_migrations.find_one(
+                {"project_id": project_id}, session=session
+            )
             if duplicate:
-                return duplicate
+                return duplicate, True
+            tasks = await database.value.project_tasks.find(
+                {"project_id": project_id}, session=session
+            ).sort([("updated_at", 1), ("_id", 1)]).to_list(length=None)
+            legacy_statuses = {task.get("status") or "UNKNOWN" for task in tasks}
+            if legacy_statuses - set(mappings) or any(
+                status not in workflow_statuses for status in mappings.values()
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "PROJECT_TASK_MIGRATION_MAPPING_INVALID"},
+                )
+
+            board = await work_item_repository.find_board(project_id, session=session)
+            board_revision = (board or {}).get("revision")
+            if (
+                not board
+                or not isinstance(board_revision, int)
+                or isinstance(board_revision, bool)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "WORK_ITEM_PLANNING_BOARD_UNAVAILABLE"},
+                )
+            if not await work_item_repository.advance_board_revision(
+                project_id, board_revision, timestamp, session=session
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "PROJECT_TASK_MIGRATION_CONCURRENT_UPDATE"},
+                )
+
+            first_rank = await work_item_repository.next_rank(
+                project_id, session=session
+            )
             documents = []
             for index, task in enumerate(tasks):
                 documents.append(
@@ -528,7 +1108,7 @@ class WorkItemService:
                         "release_id": None,
                         "status": mappings[task.get("status") or "UNKNOWN"],
                         "sprint_id": None,
-                        "backlog_rank": (index + 1) * 1024,
+                        "backlog_rank": first_rank + index * 1024,
                         "legacy_project_task_id": task["_id"],
                         "revision": 1,
                         "created_by": task.get("created_by") or user.id,
@@ -538,16 +1118,48 @@ class WorkItemService:
                 )
             if documents:
                 await database.value.work_items.insert_many(documents, session=session)
-            saved = {**migration, "work_item_ids": [document["_id"] for document in documents]}
+            saved = {
+                "_id": new_id("PTM"),
+                "project_id": project_id,
+                "created_by": user.id,
+                "created_at": timestamp,
+                "legacy_task_ids": [task["_id"] for task in tasks],
+                "work_item_ids": [document["_id"] for document in documents],
+            }
             await database.value.project_task_migrations.insert_one(saved, session=session)
             if tasks:
-                await database.value.project_tasks.bulk_write(
-                    [UpdateOne({"_id": task["_id"], "project_id": project_id}, {"$set": {"migration_id": saved["_id"], "migrated_at": timestamp}}) for task in tasks],
+                result = await database.value.project_tasks.bulk_write(
+                    [
+                        UpdateOne(
+                            {"_id": task["_id"], "project_id": project_id},
+                            {"$set": {"migration_id": saved["_id"], "migrated_at": timestamp}},
+                        )
+                        for task in tasks
+                    ],
                     session=session,
                 )
-            return saved
+                if result.matched_count != len(tasks):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "PROJECT_TASK_MIGRATION_SOURCE_CHANGED"},
+                    )
+            for document in documents:
+                await emit_work_item_changed(document, user, session=session)
+            await audit(
+                user.id,
+                "project_tasks_migrated",
+                "ProjectTaskMigration",
+                saved["_id"],
+                project_id,
+                {"created": len(saved["work_item_ids"]), "mappings": mappings},
+                session=session,
+            )
+            return saved, False
 
         async with await client.start_session() as session:
-            saved = await session.with_transaction(operation)
-        await audit(user.id, "project_tasks_migrated", "ProjectTaskMigration", saved["_id"], project_id, {"created": len(saved["work_item_ids"]), "mappings": mappings})
-        return {"migration": saved, "created": len(saved["work_item_ids"]), "already_migrated": False}
+            saved, already_migrated = await session.with_transaction(operation)
+        return {
+            "migration": saved,
+            "created": 0 if already_migrated else len(saved["work_item_ids"]),
+            "already_migrated": already_migrated,
+        }

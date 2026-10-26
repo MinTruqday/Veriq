@@ -1,6 +1,5 @@
 import hashlib
 import json
-import re
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -46,6 +45,54 @@ def starter_templates():
             ("api", "Mẫu yêu cầu API", "Bối cảnh và yêu cầu của API"),
         )
     ]
+
+
+def requirement_source_refs_from_suggestion(suggestion, evidence_lookup):
+    """Keep each cited source span narrow enough to preserve requirement lineage."""
+    refs = []
+    source_values = [suggestion.get("title"), suggestion.get("content")]
+    for key in ("acceptance_criteria", "actors", "business_rules", "dependencies"):
+        source_values.extend(suggestion.get(key, []))
+    for key in ("main_flow", "exception_flow", "data_rules", "integration", "quality_measure"):
+        source_values.append(suggestion.get(key))
+    source_values.extend(
+        suggestion.get(f"user_story_{key}") for key in ("actor", "goal", "value")
+    )
+    source_values = list(dict.fromkeys(
+        str(value).strip() for value in source_values if str(value or "").strip()
+    ))
+
+    for reference in suggestion.get("evidence_refs", []):
+        if reference not in evidence_lookup:
+            raise HTTPException(status_code=502, detail={"code": "TEMPLATE_EVIDENCE_INVALID"})
+        source, start, chunk = evidence_lookup[reference]
+        if start is None:
+            refs.append({"template_id": source["_id"], "template_version": source["version"]})
+            continue
+
+        anchor = str((suggestion.get("source_quotes") or {}).get(reference) or "").strip()
+
+        exact_quotes = [anchor] if anchor and anchor in chunk else []
+        for value in source_values:
+            if value in chunk and value not in exact_quotes:
+                exact_quotes.append(value)
+        if not exact_quotes:
+            raise HTTPException(status_code=502, detail={"code": "TEMPLATE_SOURCE_QUOTE_INVALID"})
+
+        for quote in exact_quotes:
+            offset = chunk.find(quote)
+            if offset < 0:
+                continue
+            refs.append({
+                "requirement_document_id": source["_id"],
+                "content_hash": source["content_hash"],
+                "source_version": source.get("source_version"),
+                "source_start": start + offset,
+                "source_end": start + offset + len(quote),
+                "source_text_hash": hashlib.sha256(quote.encode("utf-8")).hexdigest(),
+                "source_quote": quote,
+            })
+    return refs
 
 
 def public_view(template):
@@ -241,6 +288,146 @@ async def template_lineage_documents(project_id, template, user=None, ai_require
 
 async def validate_template_ai_sources(project_id, template, user, visited=None):
     return await template_lineage_documents(project_id, template, user, ai_required=True, visited=visited)
+
+
+def synthesis_source_fingerprint(source, *, template=False):
+    """Fingerprint only source fields that determine generated Requirement content."""
+    fields = (
+        (
+            "_id",
+            "project_id",
+            "version",
+            "revision",
+            "status",
+            "context",
+            "requirements",
+            "source_document_ids",
+            "source_template_ids",
+            "source_template_versions",
+            "source_template_public_ids",
+        )
+        if template
+        else (
+            "_id",
+            "project_id",
+            "revision",
+            "status",
+            "ai_enabled",
+            "normalized_content",
+            "content_hash",
+            "source_version",
+            "source_version_sequence",
+            "source_series_id",
+            "previous_source_version_id",
+            "authority",
+            "source_type",
+            "format",
+            "visibility",
+            "shared_with",
+            "created_by",
+        )
+    )
+    snapshot = {field: source.get(field) for field in fields}
+    encoded = json.dumps(
+        snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def requirement_document_synthesis_snapshot(source_documents):
+    fields = (
+        "revision",
+        "status",
+        "ai_enabled",
+        "source_version",
+        "source_version_sequence",
+        "source_series_id",
+        "previous_source_version_id",
+        "content_hash",
+        "authority",
+        "source_type",
+        "format",
+        "index_status",
+    )
+    snapshots = {}
+    for document in source_documents:
+        if not document.get("_id"):
+            continue
+        snapshot = {field: document.get(field) for field in fields}
+        normalized_content = document.get("normalized_content")
+        snapshot["normalized_content_sha256"] = (
+            hashlib.sha256(str(normalized_content).encode("utf-8")).hexdigest()
+            if isinstance(normalized_content, str)
+            else None
+        )
+        snapshots[str(document["_id"])] = snapshot
+    return snapshots
+
+
+def template_synthesis_source_snapshot(source_document_ids, source_documents, templates):
+    documents_by_id = {str(item.get("_id")): item for item in source_documents if item.get("_id")}
+    template_snapshots = {
+        str(item["_id"]): {
+            "version": item.get("version"),
+            "revision": item.get("revision"),
+            "status": item.get("status"),
+        }
+        for item in templates
+        if item.get("_id")
+    }
+    return {
+        "source_document_ids": sorted(set(map(str, source_document_ids))),
+        "documents": requirement_document_synthesis_snapshot(
+            [documents_by_id[item] for item in sorted(documents_by_id)]
+        ),
+        "templates": template_snapshots,
+    }
+
+
+async def revalidate_template_synthesis_sources(
+    project_id, payload, user, source_documents, source_templates
+):
+    """Re-check source access and exact revisions after inference, before saving output."""
+    await get_project(project_id, user, "requirement.create")
+    current_templates = []
+    current_document_ids = set(payload.source_document_ids)
+    for template_id in payload.source_template_ids:
+        template = await visible_template(template_id, project_id, user)
+        current_templates.append(template)
+        current_document_ids.update(
+            await validate_template_ai_sources(project_id, template, user)
+        )
+
+    original_template_ids = [item.get("_id") for item in source_templates]
+    if [item.get("_id") for item in current_templates] != original_template_ids:
+        raise HTTPException(
+            status_code=409, detail={"code": "TEMPLATE_SOURCE_SNAPSHOT_CHANGED"}
+        )
+    if any(
+        synthesis_source_fingerprint(current, template=True)
+        != synthesis_source_fingerprint(original, template=True)
+        for current, original in zip(current_templates, source_templates)
+    ):
+        raise HTTPException(
+            status_code=409, detail={"code": "TEMPLATE_SOURCE_SNAPSHOT_CHANGED"}
+        )
+
+    if current_document_ids != set(source_documents):
+        raise HTTPException(
+            status_code=409, detail={"code": "TEMPLATE_SOURCE_SNAPSHOT_CHANGED"}
+        )
+    current_documents = await validate_template_documents(
+        project_id, sorted(current_document_ids), user, ai_required=True
+    )
+    current_by_id = {item["_id"]: item for item in current_documents}
+    if any(
+        synthesis_source_fingerprint(current_by_id.get(source_id) or {})
+        != synthesis_source_fingerprint(original)
+        for source_id, original in source_documents.items()
+    ):
+        raise HTTPException(
+            status_code=409, detail={"code": "TEMPLATE_SOURCE_SNAPSHOT_CHANGED"}
+        )
 
 
 async def create_template(project_id, payload, user, synthesis=None):
@@ -455,7 +642,7 @@ async def review_template(project_id, template_id, user):
         result = await request_ai_automation(
             "requirement_template_review",
             project_id,
-            "Review the supplied Requirements template  Write every user facing field in Vietnamese and never use internal field names  Report a missing item only when the permitted source proves it applies to a specific requirement and its absence blocks import  An item absent from the source is not automatically required  Report conflicts with exact quotations from permitted documents  Do not conclude the entire template is ready when the current batch is incomplete  Do not modify the template",
+            "",
             batch,
         )
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
@@ -499,8 +686,16 @@ async def synthesize_template(project_id, payload, user):
     await get_project(project_id, user, "requirement.create")
     documents = await validate_template_documents(project_id, payload.source_document_ids, user, ai_required=True)
     templates = [await visible_template(item, project_id, user) for item in payload.source_template_ids]
+    template_document_ids = set()
     for template in templates:
-        await validate_template_ai_sources(project_id, template, user)
+        template_document_ids.update(
+            await validate_template_ai_sources(project_id, template, user)
+        )
+    source_document_ids = set(payload.source_document_ids) | template_document_ids
+    source_documents = await validate_template_documents(
+        project_id, sorted(source_document_ids), user, ai_required=True
+    ) if source_document_ids else []
+    source_documents_by_id = {item["_id"]: item for item in source_documents}
     if not documents and templates and all(not item.get("requirements") for item in templates):
         context = {}
         conflicts = []
@@ -513,7 +708,13 @@ async def synthesize_template(project_id, payload, user):
                 else:
                     context[key] = value
         data = RequirementTemplateCreate(name=payload.name, product_types=payload.product_types, context=context, source_template_ids=payload.source_template_ids)
-        return await create_template(project_id, data, user, synthesis={"status": "REVIEW_REQUIRED", "conflicts": conflicts, "warnings": ["SOURCE_TEMPLATES_HAVE_NO_REQUIREMENTS"], "evidence_refs": payload.source_template_ids})
+        await revalidate_template_synthesis_sources(
+            project_id, payload, user, source_documents_by_id, templates
+        )
+        source_snapshot = template_synthesis_source_snapshot(
+            payload.source_document_ids, documents, templates
+        )
+        return await create_template(project_id, data, user, synthesis={"status": "REVIEW_REQUIRED", "conflicts": conflicts, "warnings": ["SOURCE_TEMPLATES_HAVE_NO_REQUIREMENTS"], "evidence_refs": payload.source_template_ids, "source_snapshot": source_snapshot})
     evidence = []
     evidence_lookup = {}
     total_chunks = 0
@@ -541,7 +742,12 @@ async def synthesize_template(project_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": "TEMPLATE_SOURCE_EMPTY"})
     results = []
     for start in range(0, len(evidence), 8):
-        result = await request_ai_automation("requirement_template_synthesis", project_id, payload.instruction or "Synthesize a Requirements template  Write every user facing field in Vietnamese and identify missing information or conflicts", evidence[start:start + 8])
+        result = await request_ai_automation(
+            "requirement_template_synthesis",
+            project_id,
+            payload.instruction or "",
+            evidence[start : start + 8],
+        )
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
             raise HTTPException(status_code=503, detail={"code": "TEMPLATE_SYNTHESIS_UNAVAILABLE", "warnings": result.get("warnings", [])})
         results.append(result)
@@ -613,32 +819,7 @@ async def synthesize_template(project_id, payload, user):
                 api_links.append(link)
         if api_links:
             details["api_operations"] = api_links
-        for reference in suggestion.get("evidence_refs", []):
-            if reference not in evidence_lookup:
-                raise HTTPException(status_code=502, detail={"code": "TEMPLATE_EVIDENCE_INVALID"})
-            source, start, chunk = evidence_lookup[reference]
-            if start is None:
-                refs.append({"template_id": source["_id"], "template_version": source["version"]})
-            else:
-                quote = str((suggestion.get("source_quotes") or {}).get(reference) or "").strip()
-                if not quote or quote not in chunk:
-                    raise HTTPException(status_code=502, detail={"code": "TEMPLATE_SOURCE_QUOTE_INVALID"})
-                offset = chunk.index(quote)
-                span_start = offset
-                span_end = offset + len(quote)
-                evidence_values = [suggestion.get("content")]
-                evidence_values.extend(value for values in verified_lists.values() for value in values)
-                evidence_values.extend(value for value in details.values() if isinstance(value, str))
-                evidence_values.extend(story.values())
-                for value in evidence_values:
-                    if not value:
-                        continue
-                    match = re.search(re.escape(str(value)), chunk, flags=re.IGNORECASE)
-                    if match:
-                        span_start = min(span_start, match.start())
-                        span_end = max(span_end, match.end())
-                quote = chunk[span_start:span_end]
-                refs.append({"requirement_document_id": source["_id"], "content_hash": source["content_hash"], "source_version": source.get("source_version"), "source_start": start + span_start, "source_end": start + span_end, "source_text_hash": hashlib.sha256(quote.encode("utf-8")).hexdigest(), "source_quote": quote})
+        refs.extend(requirement_source_refs_from_suggestion(suggestion, evidence_lookup))
         if not refs:
             raise HTTPException(status_code=502, detail={"code": "TEMPLATE_EVIDENCE_MISSING"})
         try:
@@ -689,7 +870,13 @@ async def synthesize_template(project_id, payload, user):
             elif value:
                 context[key] = value
     data = RequirementTemplateCreate(name=payload.name, product_types=payload.product_types, context=context, requirements=requirements, source_document_ids=payload.source_document_ids, source_template_ids=payload.source_template_ids)
-    return await create_template(project_id, data, user, synthesis={"status": "REVIEW_REQUIRED", "conflicts": conflicts, "warnings": list(dict.fromkeys([item for result in results for item in result.get("warnings", [])] + context_warnings + source_field_warnings)), "evidence_refs": list(dict.fromkeys(item for result in results for item in result.get("evidence_refs", [])))})
+    await revalidate_template_synthesis_sources(
+        project_id, payload, user, source_documents_by_id, templates
+    )
+    source_snapshot = template_synthesis_source_snapshot(
+        payload.source_document_ids, documents, templates
+    )
+    return await create_template(project_id, data, user, synthesis={"status": "REVIEW_REQUIRED", "conflicts": conflicts, "warnings": list(dict.fromkeys([item for result in results for item in result.get("warnings", [])] + context_warnings + source_field_warnings)), "evidence_refs": list(dict.fromkeys(item for result in results for item in result.get("evidence_refs", []))), "source_snapshot": source_snapshot})
 
 
 async def request_publication(project_id, template_id, payload, user):

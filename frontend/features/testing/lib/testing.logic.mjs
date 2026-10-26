@@ -30,6 +30,11 @@ const labels = {
   ANALYZED: "Đã phân tích",
   APPROVED: "Đã phê duyệt",
   ASSURED: "Đã có hồ sơ đảm bảo",
+  AWAITING_AUTHORIZATION: "Cần kiểm tra quyền truy cập",
+  AWAITING_INPUT: "Cần bổ sung thông tin",
+  ACTION_STARTED: "Đang thực hiện tác vụ",
+  ACTIONS_EXECUTED: "Đã thực hiện tác vụ",
+  ACTIONS_VERIFIED: "Đã kiểm tra kết quả",
   ARCHIVED: "Đã lưu trữ",
   AUTHENTICATED: "Tài khoản đã xác thực",
   BASELINED: "Đã đặt làm phiên bản chuẩn",
@@ -52,11 +57,15 @@ const labels = {
   EXPIRED: "Đã hết hạn",
   FAIL: "Thất bại",
   FAILED: "Không thành công",
+  FACTS_EXTRACTED: "Đã trích xuất thông tin có nguồn",
+  FINALIZED: "Đã ghi nhận kết quả",
   FRESH: "Còn hiệu lực",
   HISTORICAL: "Lịch sử",
   IN_REVIEW: "Đang chờ duyệt",
   IN_PROGRESS: "Đang thực hiện",
   INACTIVE: "Đã vô hiệu hóa",
+  SCRUM: "Scrum",
+  KANBAN: "Kanban",
   INVITED: "Đã mời",
   LOCKED: "Đã khóa",
   LOW: "Thấp",
@@ -82,6 +91,7 @@ const labels = {
   POTENTIALLY_AFFECTED: "Có thể bị ảnh hưởng",
   PREVIEW_READY: "Sẵn sàng xem trước",
   QUEUED: "Đang chờ xử lý",
+  RECONCILIATION_REQUIRED: "Cần đối soát kết quả",
   READY: "Sẵn sàng",
   READY_FOR_RETEST: "Sẵn sàng kiểm thử lại",
   REJECTED: "Đã từ chối",
@@ -89,6 +99,7 @@ const labels = {
   REVIEW_READY: "Sẵn sàng rà soát",
   REOPENED: "Đã mở lại",
   RESOLVED: "Đã xử lý",
+  RUNNING: "Đang xử lý",
   SHOULD_RUN: "Nên chạy",
   SKIPPED: "Đã bỏ qua",
   STALE: "Đã lỗi thời",
@@ -97,6 +108,10 @@ const labels = {
   TESTABLE_WITH_RISK: "Có thể kiểm thử kèm rủi ro",
   NOT_TESTABLE: "Không thể kiểm thử",
   NEEDS_CLARIFICATION: "Cần làm rõ",
+  OBSERVED: "Đã tiếp nhận sự kiện",
+  PLAN_CREATED: "Đã lập kế hoạch xử lý",
+  GRAPH_COMPLETED: "Đã hoàn tất luồng xử lý",
+  UNCERTAINTY_ASSESSED: "Đã đánh giá thông tin còn thiếu",
   SUCCESS: "Thành công",
   SUGGESTED: "AI đề xuất",
   SUPERSEDED: "Đã được thay thế",
@@ -157,6 +172,8 @@ const valueLabels = {
   TASK: "Công việc",
   BUG: "Lỗi",
   SUBTASK: "Công việc con",
+  SCRUM: "Scrum",
+  KANBAN: "Kanban",
   TEST_STRATEGY: "Chiến lược kiểm thử",
   TEST_PLAN: "Kế hoạch kiểm thử",
   TEST_CONDITION: "Điều kiện kiểm thử",
@@ -304,6 +321,9 @@ const valueLabels = {
   acceptance_criterion: "Tiêu chí chấp nhận",
   test_scenario: "Kịch bản kiểm thử",
   test_case: "Ca kiểm thử",
+  test_case_version: "Phiên bản ca kiểm thử",
+  OBLIGATION: "Nghĩa vụ kiểm thử",
+  CLARIFICATION: "Điểm cần làm rõ",
   test_case_versions: "Phiên bản ca kiểm thử",
   test_run: "Lần chạy kiểm thử",
   defect: "Lỗi",
@@ -325,6 +345,17 @@ const valueLabels = {
   error_handling: "Xử lý lỗi",
   feature: "Theo tính năng",
   functional: "Chức năng",
+  UNIT: "Đơn vị",
+  INTEGRATION: "Tích hợp",
+  SYSTEM: "Hệ thống",
+  ACCEPTANCE: "Nghiệm thu",
+  unassessed: "Chưa đánh giá",
+  performance: "Hiệu năng",
+  security: "Bảo mật",
+  usability: "Khả năng sử dụng",
+  compatibility: "Tương thích",
+  reliability: "Độ tin cậy",
+  accessibility: "Khả năng tiếp cận",
   happy_path: "Luồng thành công",
   high: "Cao",
   integration: "Tích hợp",
@@ -380,6 +411,46 @@ export function formatCalendarDate(value) {
 }
 
 export function messageOf(reason) {
+  const automationMessages = {
+    AUTOMATION_PUBLICATION_NOT_AUTHORIZED:
+      "Lượt AI chưa được cấp quyền tự động công bố kết quả này.",
+    AUTOMATION_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện hợp lệ cho lượt tự động hóa này.",
+    AUTOMATION_PRINCIPAL_ROLE_CHANGED:
+      "Vai trò người thực hiện đã thay đổi; cần kiểm tra lại quyền dự án.",
+    AUTOMATION_PRINCIPAL_UNAVAILABLE: "Không thể xác minh quyền của người thực hiện hiện tại.",
+    AUTHORIZATION_EXPIRED:
+      "Phiên ủy quyền của lượt chạy đã hết hạn; hãy kiểm tra quyền hiện tại rồi tiếp tục.",
+    PROJECT_AUTHORIZATION_CHECK_FAILED:
+      "Chưa xác minh được quyền truy cập dự án. Hãy thử lại khi dịch vụ phân quyền sẵn sàng.",
+    PROJECT_BA_EXECUTOR_UNAVAILABLE: "Dự án chưa có thành viên BA đang hoạt động.",
+    PROJECT_QA_EXECUTOR_UNAVAILABLE: "Dự án chưa có thành viên QA đang hoạt động.",
+    AUTOMATION_RETRY_REQUIRES_RECONCILIATION:
+      "Chưa thể tiếp tục an toàn. Hãy đối soát kết quả thao tác trước.",
+    AUTOMATION_RETRY_NOT_ALLOWED: "Lượt chạy hiện không ở trạng thái có thể tiếp tục.",
+    AUTOMATION_ACTION_OUTCOME_UNCERTAIN:
+      "Chưa xác định được kết quả thao tác trước; cần đối soát để tránh ghi trùng.",
+    AUTOMATION_QUEUE_UNAVAILABLE:
+      "Hàng đợi AI tạm thời chưa sẵn sàng. Hãy thử tiếp tục lại sau khi hàng đợi hoạt động.",
+    REVISION_CONFLICT:
+      "Lượt chạy đã thay đổi. Giao diện đã tải trạng thái mới nhất; hãy kiểm tra lại.",
+    DUPLICATE_SOURCE_NOT_READY:
+      "Tài liệu trùng đang được xử lý hoặc chưa phân tích xong. Hãy chờ nguồn sẵn sàng rồi thử lại.",
+    DUPLICATE_SOURCE_ARCHIVED:
+      "Tài liệu trùng đang được lưu trữ. Hãy khôi phục tài liệu hiện có trước khi dùng lại.",
+    DUPLICATE_SOURCE_RECOVERY_PENDING:
+      "Đã tìm thấy tài liệu trùng nhưng chưa khôi phục được chỉ mục. Nguồn vẫn được giữ; hãy thử lại sau.",
+    DUPLICATE_SOURCE_SETTINGS_CONFLICT:
+      "Tệp này đã có trong dự án với phạm vi chia sẻ hoặc cấu hình AI khác.",
+    SOURCE_EXTRACTION_INCOMPLETE:
+      "Tự động hóa đã dừng an toàn vì còn phần tài liệu chưa trích xuất đầy đủ. Xem chi tiết vị trí trong kết quả lượt chạy.",
+    TEST_CASE_CUSTOM_FIELD_VALUE_INVALID:
+      "Một hoặc nhiều trường mở rộng chưa khớp kiểu dữ liệu hoặc lựa chọn đã cấu hình.",
+    TEST_CASE_CUSTOM_FIELD_REQUIRED:
+      "Cần điền các trường mở rộng bắt buộc trước khi gửi duyệt hoặc duyệt ca.",
+    TEST_CASE_CUSTOM_FIELD_UNKNOWN:
+      "Có trường mở rộng không còn cấu hình trong dự án. Hãy bỏ trường cũ hoặc tải lại dữ liệu.",
+  };
+  if (automationMessages[reason?.code]) return automationMessages[reason.code];
   if (
     [
       "PROJECT_PERMISSION_DENIED",

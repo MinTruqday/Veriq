@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
-import TestBasisPanel from "../../components/TestBasisPanel";
 import TestConditionEditor from "../../components/TestConditionEditor";
 import TestConditionTable from "../../components/TestConditionTable";
 import TestabilityFindingsPanel from "../../components/TestabilityFindingsPanel";
@@ -28,9 +27,7 @@ export default function TestAnalysisPage({ project }) {
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState("conditions");
   const [editing, setEditing] = useState(false);
-  const [basisRefs, setBasisRefs] = useState([]);
-  const [aiResult, setAiResult] = useState(null);
-  const [aiRunning, setAiRunning] = useState(false);
+  const [aiResults, setAiResults] = useState([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -50,22 +47,27 @@ export default function TestAnalysisPage({ project }) {
       setInitialLoading(true);
     }
     try {
-      const [conditionResult, requirementValues, coverageValue, findingValues] = await Promise.all([
-        testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 }),
-        can("requirement.read")
-          ? testingApi.listRequirements(project._id, { status: "BASELINED", page_size: 500 })
-          : Promise.resolve([]),
-        can("testcondition.read")
-          ? testingApi.getTestConditionCoverage(project._id)
-          : Promise.resolve(null),
-        can("testanalysis.read")
-          ? testingApi.listTestAnalysisFindings(project._id)
-          : Promise.resolve({ items: [] }),
-      ]);
+      const [conditionResult, requirementValues, coverageValue, findingValues, aiResultValues] =
+        await Promise.all([
+          testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 }),
+          can("requirement.read")
+            ? testingApi.listRequirements(project._id, { status: "BASELINED", page_size: 500 })
+            : Promise.resolve([]),
+          can("testcondition.read")
+            ? testingApi.getTestConditionCoverage(project._id)
+            : Promise.resolve(null),
+          can("testanalysis.read")
+            ? testingApi.listTestAnalysisFindings(project._id)
+            : Promise.resolve({ items: [] }),
+          can("testanalysis.read")
+            ? testingApi.listTestAnalysisAiResults(project._id)
+            : Promise.resolve([]),
+        ]);
       setConditions(conditionResult.items || []);
       setRequirements(requirementValues);
       setCoverage(coverageValue);
       setFindings(findingValues.items || []);
+      setAiResults(aiResultValues || []);
       setSelected(
         (current) => conditionResult.items?.find((item) => item._id === current?._id) || current,
       );
@@ -81,6 +83,43 @@ export default function TestAnalysisPage({ project }) {
   useEffect(() => {
     void load();
   }, [load]);
+  const tabs = [
+    ...(can("testcondition.read") ? [{ id: "conditions", label: "Điều kiện kiểm thử" }] : []),
+    ...(can("testanalysis.read") ? [{ id: "ai", label: "Đề xuất AI" }] : []),
+    ...(can("testanalysis.read") ? [{ id: "findings", label: "Phát hiện" }] : []),
+    ...(can("testcondition.read") ? [{ id: "traceability", label: "Truy vết" }] : []),
+  ];
+  const visibleTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id;
+  const aiCandidateItems = aiResults.flatMap((result) =>
+    (result.candidates || []).map((candidate) => ({
+      ...candidate,
+      ai_result_id: result._id,
+      source_event_id: result.source_event_id,
+      requirement_version_id: result.requirement_version_id,
+      created_at: result.created_at,
+    })),
+  );
+  useEffect(() => {
+    if (!can("testanalysis.read") || visibleTab !== "ai") return undefined;
+    let active = true;
+    let pending = false;
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== "visible" || pending) return;
+      pending = true;
+      try {
+        const values = await testingApi.listTestAnalysisAiResults(project._id);
+        if (active) setAiResults(values || []);
+      } catch (reason) {
+        if (active) setError(messageOf(reason));
+      } finally {
+        pending = false;
+      }
+    }, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [can, project._id, visibleTab]);
   if (initialLoading || initialLoadFailed)
     return (
       <InitialLoadState
@@ -92,26 +131,20 @@ export default function TestAnalysisPage({ project }) {
       />
     );
   const transition = async (title, confirmLabel, action) => {
-    const answer = await ask({
+    await ask({
       title,
       confirmLabel,
       fields: [{ name: "note", label: "Ghi chú", required: true, multiline: true }],
+      onConfirm: async (answer) => {
+        try {
+          await action(selected._id, { expected_revision: selected.revision, note: answer.note });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await action(selected._id, { expected_revision: selected.revision, note: answer.note });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
-  const tabs = [
-    ...(can("testcondition.read") ? [{ id: "conditions", label: "Điều kiện kiểm thử" }] : []),
-    ...(can("testanalysis.run_ai") ? [{ id: "ai", label: "Đề xuất AI" }] : []),
-    ...(can("testanalysis.read") ? [{ id: "findings", label: "Phát hiện" }] : []),
-    ...(can("testcondition.read") ? [{ id: "traceability", label: "Truy vết" }] : []),
-  ];
-  const visibleTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id;
   return (
     <WorkspacePage
       title="Phân tích kiểm thử"
@@ -181,46 +214,17 @@ export default function TestAnalysisPage({ project }) {
           </Panel>
         </div>
       )}
-      {can("testanalysis.run_ai") && (
+      {can("testanalysis.read") && (
         <div className="space-y-5" hidden={visibleTab !== "ai"}>
-          <Panel title="Đề xuất điều kiện bằng AI">
+          <Panel title="Ứng viên điều kiện từ lượt AI tự động">
             <div className="space-y-4 p-5">
-              <TestBasisPanel
-                refs={basisRefs}
-                onChange={setBasisRefs}
-                requirements={requirements}
-              />
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={!basisRefs.length || aiRunning}
-                onClick={async () => {
-                  try {
-                    setAiRunning(true);
-                    setError("");
-                    setAiResult(
-                      await testingApi.runTestAnalysisAi(project._id, {
-                        basis_refs: basisRefs,
-                        instruction:
-                          "Phân tích đầy đủ hành vi dương âm biên trạng thái quyền tích hợp dữ liệu lỗi và phi chức năng",
-                        idempotency_key: crypto.randomUUID(),
-                      }),
-                    );
-                  } catch (reason) {
-                    setError(messageOf(reason));
-                  } finally {
-                    setAiRunning(false);
-                  }
-                }}
-              >
-                {aiRunning ? "AI đang tạo điều kiện" : "Tạo ứng viên điều kiện"}
-              </button>
-              {aiResult?.degraded_mode && (
-                <p className="text-sm text-warning">AI chưa sẵn sàng để tạo điều kiện kiểm thử</p>
-              )}
+              <p className="text-sm text-ink-muted">
+                Ứng viên được tạo khi phiên bản Requirement được baseline. Mỗi ứng viên phải có
+                trích dẫn nguồn; trang này chỉ hiển thị kết quả và không tự tạo Test Case.
+              </p>
               <DataTable
-                items={aiResult?.candidates || []}
-                empty="Chưa có ứng viên"
+                items={aiCandidateItems}
+                empty="Chưa có ứng viên từ các Requirement đã baseline"
                 columns={[
                   { key: "title", label: "Ứng viên" },
                   {
@@ -229,6 +233,27 @@ export default function TestAnalysisPage({ project }) {
                     render: (item) => valueLabel(item.category),
                   },
                   { key: "coverage_item", label: "Hạng mục độ phủ" },
+                  {
+                    key: "evidence_quotes",
+                    label: "Dẫn chứng nguồn",
+                    render: (item) => (
+                      <div className="max-w-md space-y-1 whitespace-normal text-xs">
+                        {(item.evidence_quotes || []).map((citation, index) => (
+                          <p key={`${citation.evidence_ref}-${index}`}>
+                            <span className="font-medium">{citation.evidence_ref}:</span> “
+                            {citation.quote}”
+                          </p>
+                        ))}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "requirement_version_id",
+                    label: "Phiên bản Requirement",
+                    render: (item) => (
+                      <span className="break-all">{item.requirement_version_id}</span>
+                    ),
+                  },
                   {
                     key: "risk",
                     label: "Rủi ro",
@@ -252,9 +277,8 @@ export default function TestAnalysisPage({ project }) {
                               onClick={() => {
                                 setSelected({
                                   ...item,
-                                  basis_refs: item.basis_refs || basisRefs,
+                                  basis_refs: item.basis_refs || [],
                                   origin: "AI_CANDIDATE_CONFIRMED",
-                                  ai_result_id: aiResult._id,
                                 });
                                 setEditing(true);
                               }}
@@ -382,7 +406,7 @@ export default function TestAnalysisPage({ project }) {
               condition={selected}
               canResolve={can("testanalysis.resolve_finding")}
               onResolve={async (finding) => {
-                const answer = await ask({
+                await ask({
                   title: "Giải quyết phát hiện",
                   confirmLabel: "Ghi nhận",
                   fields: [
@@ -397,17 +421,22 @@ export default function TestAnalysisPage({ project }) {
                     { name: "resolution_ref", label: "Tham chiếu xử lý", required: true },
                     { name: "note", label: "Ghi chú", required: true, multiline: true },
                   ],
+                  onConfirm: async (answer) => {
+                    try {
+                      await testingApi.resolveTestAnalysisFinding(
+                        selected._id,
+                        finding.finding_id,
+                        {
+                          expected_revision: selected.revision,
+                          ...answer,
+                        },
+                      );
+                      await load();
+                    } catch (reason) {
+                      throw new Error(messageOf(reason));
+                    }
+                  },
                 });
-                if (!answer) return;
-                try {
-                  await testingApi.resolveTestAnalysisFinding(selected._id, finding.finding_id, {
-                    expected_revision: selected.revision,
-                    ...answer,
-                  });
-                  await load();
-                } catch (reason) {
-                  setError(messageOf(reason));
-                }
               }}
             />
           </Panel>
@@ -445,23 +474,24 @@ export default function TestAnalysisPage({ project }) {
                             className="secondary-button"
                             type="button"
                             onClick={async () => {
-                              const answer = await ask({
+                              await ask({
                                 title: "Phân công phát hiện",
                                 confirmLabel: "Phân công",
                                 fields: [
                                   { name: "owner_id", label: "Mã thành viên", required: true },
                                 ],
+                                onConfirm: async (answer) => {
+                                  try {
+                                    await testingApi.assignTestAnalysisFinding(item._id, {
+                                      expected_revision: item.revision,
+                                      owner_id: answer.owner_id,
+                                    });
+                                    await load();
+                                  } catch (reason) {
+                                    throw new Error(messageOf(reason));
+                                  }
+                                },
                               });
-                              if (!answer) return;
-                              try {
-                                await testingApi.assignTestAnalysisFinding(item._id, {
-                                  expected_revision: item.revision,
-                                  owner_id: answer.owner_id,
-                                });
-                                await load();
-                              } catch (reason) {
-                                setError(messageOf(reason));
-                              }
                             }}
                           >
                             Phân công
@@ -473,7 +503,7 @@ export default function TestAnalysisPage({ project }) {
                             className="secondary-button"
                             type="button"
                             onClick={async () => {
-                              const answer = await ask({
+                              await ask({
                                 title: "Giải quyết phát hiện",
                                 confirmLabel: "Giải quyết",
                                 fields: [
@@ -485,17 +515,21 @@ export default function TestAnalysisPage({ project }) {
                                   },
                                   { name: "resolution_ref", label: "Tham chiếu" },
                                 ],
+                                onConfirm: async (answer) => {
+                                  try {
+                                    await testingApi.resolveStandaloneTestAnalysisFinding(
+                                      item._id,
+                                      {
+                                        expected_revision: item.revision,
+                                        ...answer,
+                                      },
+                                    );
+                                    await load();
+                                  } catch (reason) {
+                                    throw new Error(messageOf(reason));
+                                  }
+                                },
                               });
-                              if (!answer) return;
-                              try {
-                                await testingApi.resolveStandaloneTestAnalysisFinding(item._id, {
-                                  expected_revision: item.revision,
-                                  ...answer,
-                                });
-                                await load();
-                              } catch (reason) {
-                                setError(messageOf(reason));
-                              }
                             }}
                           >
                             Giải quyết
@@ -506,7 +540,7 @@ export default function TestAnalysisPage({ project }) {
                           className="secondary-button"
                           type="button"
                           onClick={async () => {
-                            const answer = await ask({
+                            await ask({
                               title: "Xác minh phát hiện",
                               confirmLabel: "Xác minh",
                               fields: [
@@ -518,17 +552,18 @@ export default function TestAnalysisPage({ project }) {
                                 },
                                 { name: "resolution_ref", label: "Tham chiếu" },
                               ],
+                              onConfirm: async (answer) => {
+                                try {
+                                  await testingApi.verifyTestAnalysisFinding(item._id, {
+                                    expected_revision: item.revision,
+                                    ...answer,
+                                  });
+                                  await load();
+                                } catch (reason) {
+                                  throw new Error(messageOf(reason));
+                                }
+                              },
                             });
-                            if (!answer) return;
-                            try {
-                              await testingApi.verifyTestAnalysisFinding(item._id, {
-                                expected_revision: item.revision,
-                                ...answer,
-                              });
-                              await load();
-                            } catch (reason) {
-                              setError(messageOf(reason));
-                            }
                           }}
                         >
                           Xác minh

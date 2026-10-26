@@ -33,6 +33,20 @@ class InternalAdminRepository:
             query["status"] = status
         return await database.value.project_members.count_documents(query)
 
+    async def find_active_membership(self, project_id, user_id):
+        return await database.value.project_members.find_one(
+            {"project_id": project_id, "user_id": user_id, "status": "ACTIVE"}
+        )
+
+    async def list_active_qa_members(self, project_id, role):
+        return await database.value.project_members.find(
+            {
+                "project_id": project_id,
+                "status": "ACTIVE",
+                "$or": [{"project_role": role}, {"project_roles": role}],
+            }
+        ).sort([("created_at", 1), ("_id", 1)]).to_list(1000)
+
     async def update_project(self, project_id, changes, increment_revision=True):
         update = {"$set": changes}
         if increment_revision:

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import RiskModelEditor from "./RiskModelEditor";
+import StructuredValueEditor from "./StructuredValueEditor";
 
 const emptyRisk = {
   probability_scale: [
@@ -71,11 +72,6 @@ const objectFields = [
   ["quality_objectives", "Mục tiêu chất lượng"],
 ];
 
-function parseJson(value, fallback) {
-  const parsed = JSON.parse(value || JSON.stringify(fallback));
-  return parsed;
-}
-
 export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
   const [value, setValue] = useState(emptyValue);
   const [error, setError] = useState("");
@@ -101,19 +97,11 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
               probability_scale: risk.probability_scale,
               impact_scale: risk.impact_scale,
               risk_exposure_formula: risk.risk_exposure_formula,
-              thresholds: parseJson(risk.thresholds_text, risk.thresholds),
-              mandatory_test_depth: parseJson(
-                risk.mandatory_test_depth_text,
-                risk.mandatory_test_depth,
-              ),
+              thresholds: risk.thresholds,
+              mandatory_test_depth: risk.mandatory_test_depth,
               regression_priority_rules: risk.regression_priority_rules,
             },
           };
-          for (const [key] of objectFields)
-            payload[key] = parseJson(value[`${key}_text`], value[key]);
-          Object.keys(payload)
-            .filter((key) => key.endsWith("_text"))
-            .forEach((key) => delete payload[key]);
           delete payload._id;
           delete payload.project_id;
           delete payload.lineage_id;
@@ -136,7 +124,7 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
           }
           await onSave(payload);
         } catch (reason) {
-          setError(reason.message || "Dữ liệu JSON không hợp lệ");
+          setError(reason.message || "Không thể lưu chiến lược kiểm thử");
         }
       }}
     >
@@ -205,14 +193,16 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
       />
       <div className="grid gap-4 md:grid-cols-2">
         {objectFields.map(([key, label]) => (
-          <label className="field-label" key={key}>
-            {label} dạng JSON
-            <textarea
-              className="apple-input mt-2 min-h-32 font-mono text-xs"
-              value={value[`${key}_text`] ?? JSON.stringify(value[key], null, 2)}
-              onChange={(event) => setField(`${key}_text`, event.target.value)}
+          <div className="min-w-0 space-y-2" key={key}>
+            <p className="field-label">{label}</p>
+            <StructuredValueEditor
+              label={label}
+              value={value[key] ?? emptyValue[key]}
+              fixedType={key === "quality_objectives" ? "array" : "object"}
+              itemTypes={key === "quality_objectives" ? ["object"] : undefined}
+              onChange={(nextValue) => setField(key, nextValue)}
             />
-          </label>
+          </div>
         ))}
         <label className="field-label md:col-span-2">
           Lý do điều chỉnh

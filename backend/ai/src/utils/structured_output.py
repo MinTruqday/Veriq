@@ -3,6 +3,7 @@ import re
 from types import UnionType
 from typing import Any, Type, Union, get_args, get_origin
 
+
 class StructuredOutputError(ValueError):
     pass
 

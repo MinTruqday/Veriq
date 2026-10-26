@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now
+from src.core.database import database
 from src.repositories.impact_analysis import impact_analysis_repository
 from src.modules.quality.services.change_analysis import classify_test_impact, semantic_candidate_score
 from src.modules.quality.services.impact_automation import (
@@ -8,6 +9,15 @@ from src.modules.quality.services.impact_automation import (
     apply_ai_impact_suggestions,
     request_impact_classification,
 )
+
+
+def impact_test_version_ids(current_tests, direct_targets):
+    current_version_ids = [
+        item["current_version_id"]
+        for item in current_tests
+        if item.get("current_version_id")
+    ]
+    return list(dict.fromkeys([*current_version_ids, *sorted(direct_targets)]))
 
 
 async def create_impact_analysis_record(
@@ -64,11 +74,8 @@ async def create_impact_analysis_record(
         20000,
     )
     versions = await impact_analysis_repository.list_test_versions(
-        [
-            item["current_version_id"]
-            for item in current_tests
-            if item.get("current_version_id")
-        ],
+        change_set["project_id"],
+        impact_test_version_ids(current_tests, direct_targets),
         20000,
     )
     from_version = await impact_analysis_repository.find_requirement_version(
@@ -153,21 +160,38 @@ async def create_impact_analysis_record(
         "created_by": user.id,
         "created_at": now(),
     }
-    await impact_analysis_repository.insert_analysis(analysis)
-    await impact_analysis_repository.set_change_status(
-        change_set_id,
-        change_set["project_id"],
-        'ANALYZED',
-        now(),
-    )
-    await audit(
-        user.id,
-        'impact_analysis_created',
-        'ImpactAnalysis',
-        analysis["_id"],
-        change_set["project_id"],
-        {"affected_count": len(affected)},
-    )
+    timestamp = now()
+    try:
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                committed = await impact_analysis_repository.commit_analysis_for_change_set(
+                    analysis,
+                    change_set_id,
+                    change_set["project_id"],
+                    change_set.get("revision", 1),
+                    change_set["status"],
+                    timestamp,
+                    session,
+                )
+                if not committed:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "CHANGE_SET_CHANGED_DURING_IMPACT_ANALYSIS",
+                            "message": "Change Set đã thay đổi trong lúc phân tích. Hãy chạy phân tích lại.",
+                        },
+                    )
+                await audit(
+                    user.id,
+                    'impact_analysis_created',
+                    'ImpactAnalysis',
+                    analysis["_id"],
+                    change_set["project_id"],
+                    {"affected_count": len(affected)},
+                    session=session,
+                )
+    except HTTPException:
+        raise
     return analysis
 
 

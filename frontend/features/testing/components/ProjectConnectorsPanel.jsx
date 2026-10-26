@@ -4,6 +4,14 @@ import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import {
+  Modal,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "@/shared/components/ui/Modal";
+import StructuredValueEditor, { StructuredValueView } from "./StructuredValueEditor";
 
 const providers = [
   ["jira", "Jira"],
@@ -12,20 +20,15 @@ const providers = [
   ["azure_devops", "Azure DevOps"],
 ];
 
-const parseMapping = (value) => {
-  const parsed = JSON.parse(value || "{}");
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new Error("Ánh xạ trường phải là một đối tượng JSON");
-  }
-  return parsed;
-};
-
 export default function ProjectConnectorsPanel({ project }) {
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [logs, setLogs] = useState([]);
   const [conflicts, setConflicts] = useState([]);
   const [error, setError] = useState("");
+  const [connectorEditor, setConnectorEditor] = useState(null);
+  const [connectorEditorError, setConnectorEditorError] = useState("");
+  const [savingConnector, setSavingConnector] = useState(false);
   const canRead = project.current_permissions?.includes("project.connector.read");
   const canManage = project.current_permissions?.includes("project.connector.manage");
   const canSync = project.current_permissions?.includes("project.connector.sync");
@@ -52,73 +55,51 @@ export default function ProjectConnectorsPanel({ project }) {
     void load();
   }, [load]);
 
-  const bind = async () => {
-    const answer = await ask({
-      title: "Liên kết dịch vụ với dự án",
-      description: "Chỉ sử dụng tham chiếu kết nối đã được quản trị viên cấu hình trên nền tảng",
-      confirmLabel: "Xác nhận liên kết",
-      fields: [
-        {
-          name: "provider",
-          label: "Nhà cung cấp",
-          required: true,
-          options: providers.map(([value, label]) => ({ value, label })),
-          initialValue: "jira",
-        },
-        {
-          name: "connectorReference",
-          label: "Tham chiếu kết nối nền tảng",
-          required: true,
-          initialValue: "connector://platform/",
-        },
-        { name: "externalTarget", label: "Dự án hoặc kho mã nguồn đích", required: true },
-        { name: "fieldMapping", label: "Ánh xạ trường JSON", multiline: true, initialValue: "{}" },
-      ],
+  const openConnectorEditor = (item = null) => {
+    setConnectorEditorError("");
+    setConnectorEditor({
+      source: item,
+      provider: item?.provider || "jira",
+      connectorReference: item?.connector_reference || "connector://platform/",
+      externalTarget: item?.external_target || "",
+      fieldMapping: structuredClone(item?.field_mapping || {}),
     });
-    if (!answer) return;
+  };
+
+  const saveConnector = async (event) => {
+    event.preventDefault();
+    if (!connectorEditor || savingConnector) return;
+    setSavingConnector(true);
+    setConnectorEditorError("");
     try {
-      await testingApi.bindProjectConnector(project._id, {
-        provider: answer.provider,
-        connector_reference: answer.connectorReference.trim(),
-        external_target: answer.externalTarget.trim(),
-        confirm_external_target: true,
-        field_mapping: parseMapping(answer.fieldMapping),
-      });
+      if (connectorEditor.source) {
+        await testingApi.updateProjectConnector(project._id, connectorEditor.source._id, {
+          expected_revision: connectorEditor.source.revision,
+          field_mapping: connectorEditor.fieldMapping,
+        });
+      } else {
+        await testingApi.bindProjectConnector(project._id, {
+          provider: connectorEditor.provider,
+          connector_reference: connectorEditor.connectorReference.trim(),
+          external_target: connectorEditor.externalTarget.trim(),
+          confirm_external_target: true,
+          field_mapping: connectorEditor.fieldMapping,
+        });
+      }
       await load();
+      setConnectorEditor(null);
     } catch (reason) {
-      setError(messageOf(reason));
+      setConnectorEditorError(messageOf(reason));
+    } finally {
+      setSavingConnector(false);
     }
   };
 
-  const editMapping = async (item) => {
-    const answer = await ask({
-      title: "Cập nhật ánh xạ trường",
-      description: `Ánh xạ hiện tại phiên bản ${item.mapping_version}`,
-      confirmLabel: "Lưu phiên bản ánh xạ",
-      fields: [
-        {
-          name: "fieldMapping",
-          label: "Ánh xạ trường JSON",
-          required: true,
-          multiline: true,
-          initialValue: JSON.stringify(item.field_mapping || {}, null, 2),
-        },
-      ],
-    });
-    if (!answer) return;
-    try {
-      await testingApi.updateProjectConnector(project._id, item._id, {
-        expected_revision: item.revision,
-        field_mapping: parseMapping(answer.fieldMapping),
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
-  };
+  const bind = () => openConnectorEditor();
+  const editMapping = (item) => openConnectorEditor(item);
 
   const sync = async (item) => {
-    const answer = await ask({
+    await ask({
       title: "Đồng bộ thủ công",
       description: `${item.provider} ${item.external_target}`,
       confirmLabel: "Đưa tác vụ vào hàng đợi",
@@ -135,22 +116,23 @@ export default function ProjectConnectorsPanel({ project }) {
           ],
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.startProjectConnectorSync(project._id, item._id, {
+            direction: answer.direction,
+            scopes: ["requirements", "defects", "statuses"],
+            idempotency_key: crypto.randomUUID(),
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.startProjectConnectorSync(project._id, item._id, {
-        direction: answer.direction,
-        scopes: ["requirements", "defects", "statuses"],
-        idempotency_key: crypto.randomUUID(),
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
 
   const unbind = async (item) => {
-    const answer = await ask({
+    await ask({
       title: "Ngắt kết nối dự án",
       description: `Xác nhận ngắt ${item.external_target}`,
       confirmLabel: "Ngắt kết nối",
@@ -158,22 +140,23 @@ export default function ProjectConnectorsPanel({ project }) {
       fields: [
         { name: "reason", label: "Lý do", required: true, multiline: true, autoFocus: true },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.unbindProjectConnector(project._id, item._id, {
+            expected_revision: item.revision,
+            reason: answer.reason.trim(),
+            confirm_external_target: true,
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.unbindProjectConnector(project._id, item._id, {
-        expected_revision: item.revision,
-        reason: answer.reason.trim(),
-        confirm_external_target: true,
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
 
   const resolve = async (item) => {
-    const answer = await ask({
+    await ask({
       title: "Giải quyết xung đột đồng bộ",
       description: "Không có dữ liệu nào bị ghi đè nếu chưa xác nhận phương án",
       confirmLabel: "Xác nhận phương án",
@@ -190,18 +173,19 @@ export default function ProjectConnectorsPanel({ project }) {
         },
         { name: "reason", label: "Lý do", required: true, multiline: true },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.resolveProjectConnectorConflict(project._id, item._id, {
+            expected_revision: item.revision,
+            resolution: answer.resolution,
+            reason: answer.reason.trim(),
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.resolveProjectConnectorConflict(project._id, item._id, {
-        expected_revision: item.revision,
-        resolution: answer.resolution,
-        reason: answer.reason.trim(),
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
 
   if (!canRead) return null;
@@ -324,6 +308,108 @@ export default function ProjectConnectorsPanel({ project }) {
         />
       </div>
       {dialog}
+      {connectorEditor && (
+        <Modal
+          isOpen
+          ariaLabel={
+            connectorEditor.source ? "Cập nhật ánh xạ trường" : "Liên kết dịch vụ với dự án"
+          }
+          className="max-h-[94dvh] max-w-3xl overflow-y-auto"
+          onClose={() => {
+            if (!savingConnector) setConnectorEditor(null);
+          }}
+        >
+          <form onSubmit={saveConnector}>
+            <ModalHeader>
+              <ModalTitle>
+                {connectorEditor.source ? "Cập nhật ánh xạ trường" : "Liên kết dịch vụ với dự án"}
+              </ModalTitle>
+              <p className="mt-2 text-sm text-ink-muted">
+                Chỉ dùng tham chiếu kết nối đã được quản trị viên cấu hình trên nền tảng.
+              </p>
+            </ModalHeader>
+            <ModalContent className="space-y-4">
+              {connectorEditorError && <ErrorState message={connectorEditorError} />}
+              {!connectorEditor.source && (
+                <>
+                  <label className="field-label block">
+                    Nhà cung cấp
+                    <select
+                      className="apple-input mt-2 w-full"
+                      value={connectorEditor.provider}
+                      onChange={(event) =>
+                        setConnectorEditor((current) => ({
+                          ...current,
+                          provider: event.target.value,
+                        }))
+                      }
+                    >
+                      {providers.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-label block">
+                    Tham chiếu kết nối nền tảng
+                    <input
+                      className="apple-input mt-2 w-full"
+                      required
+                      value={connectorEditor.connectorReference}
+                      onChange={(event) =>
+                        setConnectorEditor((current) => ({
+                          ...current,
+                          connectorReference: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field-label block">
+                    Dự án hoặc kho mã nguồn đích
+                    <input
+                      className="apple-input mt-2 w-full"
+                      required
+                      value={connectorEditor.externalTarget}
+                      onChange={(event) =>
+                        setConnectorEditor((current) => ({
+                          ...current,
+                          externalTarget: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </>
+              )}
+              <StructuredValueEditor
+                label="Ánh xạ trường"
+                value={connectorEditor.fieldMapping}
+                fixedType="object"
+                onChange={(fieldMapping) =>
+                  setConnectorEditor((current) => ({ ...current, fieldMapping }))
+                }
+              />
+            </ModalContent>
+            <ModalFooter>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={savingConnector}
+                onClick={() => setConnectorEditor(null)}
+              >
+                Hủy
+              </button>
+              <button className="apple-button" type="submit" disabled={savingConnector}>
+                {savingConnector
+                  ? "Đang lưu"
+                  : connectorEditor.source
+                    ? "Lưu ánh xạ"
+                    : "Xác nhận liên kết"}
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      )}
     </Panel>
   );
 }

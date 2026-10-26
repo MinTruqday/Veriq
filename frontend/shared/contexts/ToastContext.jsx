@@ -21,13 +21,13 @@ export function ToastProvider({ children }) {
       {children}
       {mounted && toasts.length > 0 && (
         <div
-          className="pointer-events-none fixed bottom-5 right-4 z-[2500] flex w-[min(380px,calc(100vw-2rem))] flex-col gap-2 sm:right-6"
+          className="pointer-events-none fixed bottom-4 right-4 z-[2500] flex max-h-[70dvh] w-[min(380px,calc(100vw-2rem))] flex-col gap-2 overflow-y-auto overscroll-contain sm:bottom-5 sm:right-6"
           aria-live="polite"
         >
           {toasts.map((toast) => (
             <div
               key={toast.id}
-              className={`pointer-events-auto flex items-start gap-4 border bg-surface px-4 py-3 shadow-[0_12px_36px_rgba(32,32,30,0.12)] ${toast.type === "error" ? "border-danger/40" : toast.type === "success" ? "border-brand/40" : "border-border-strong"}`}
+              className={`pointer-events-auto flex items-start gap-3 rounded-panel border bg-surface px-4 py-3 shadow-[0_12px_36px_rgba(32,32,30,0.12)] ${toast.type === "error" ? "border-danger/40" : toast.type === "success" ? "border-brand/40" : "border-border-strong"}`}
               role={toast.type === "error" ? "alert" : "status"}
             >
               <p className="min-w-0 flex-1 text-[13px] font-medium leading-5 text-ink">
@@ -36,7 +36,7 @@ export function ToastProvider({ children }) {
               <button
                 type="button"
                 onClick={() => removeToast(toast.id)}
-                className="shrink-0 text-[12px] font-semibold text-ink-muted hover:text-ink"
+                className="-mr-2 -mt-1 flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control px-2 text-[12px] font-semibold text-ink-muted hover:bg-surface-quiet hover:text-ink"
               >
                 Đóng
               </button>

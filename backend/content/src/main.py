@@ -17,9 +17,15 @@ from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    from src.services.document_ingestion_dispatcher import document_ingestion_dispatcher
+
+    await document_ingestion_dispatcher.start()
     logger.info("Content management service provisioned and ready")
-    yield
-    await close_db()
+    try:
+        yield
+    finally:
+        await document_ingestion_dispatcher.stop()
+        await close_db()
 
 
 app = FastAPI(title="Veriq Content", version=settings.VERSION, lifespan=lifespan)

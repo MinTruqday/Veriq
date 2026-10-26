@@ -4,44 +4,52 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 
 from src.core.auth import CurrentUser, get_current_user
-from src.core.configuration import settings
 from src.core.common import envelope, get_project_entity
-from src.schemas.contracts.project import ProjectArchiveInput
-from src.schemas.contracts.requirements import (
-    ImportCreate,
-    KnowledgeSourceCreate,
-    RequirementDocumentPatch,
-    RequirementDocumentAccessPatch,
-    RequirementDocumentAIReadPatch,
-    RequirementExtractionInput,
-    RequirementParseRetry,
-)
-from src.schemas.contracts.common import KnowledgeSourceType
+from src.core.configuration import settings
 from src.modules.requirements.services.requirement_documents import (
     archive_requirement_document_record,
     create_requirement_document_record,
     get_requirement_document_record,
+    get_requirement_source_impact,
+    list_ai_requirement_document_page,
     list_requirement_document_records,
+    list_requirement_source_structure_page,
     read_raw_requirement_source,
-    require_document_access,
     reindex_requirement_document_record,
+    require_document_access,
     restore_requirement_document_record,
     retry_requirement_document_parse_record,
-    update_requirement_document_record,
     update_requirement_document_access,
     update_requirement_document_ai_read,
+    update_requirement_document_record,
     upload_requirement_document_record,
 )
-from src.modules.requirements.services.requirement_import_workflow import extract_requirement_candidates
 from src.modules.requirements.services.requirement_import import (
     safe_requirement_filename,
     supported_requirement_formats,
+)
+from src.modules.requirements.services.requirement_import_workflow import (
+    extract_requirement_candidates,
 )
 from src.modules.requirements.services.requirement_sources import (
     archive_requirement_source,
     create_requirement_source,
     list_requirement_sources,
     reindex_requirement_source,
+)
+from src.repositories.requirement_source_block import requirement_source_block_repository
+from src.clients.project_knowledge import list_project_artifact_chunks
+from src.clients.document_conversion import read_requirement_source_image
+from src.schemas.contracts.common import KnowledgeSourceType
+from src.schemas.contracts.project import ProjectArchiveInput
+from src.schemas.contracts.requirements import (
+    ImportCreate,
+    KnowledgeSourceCreate,
+    RequirementDocumentAccessPatch,
+    RequirementDocumentAIReadPatch,
+    RequirementDocumentPatch,
+    RequirementExtractionInput,
+    RequirementParseRetry,
 )
 
 router = APIRouter(prefix="/kiem-thu", tags=["Yêu cầu kiểm thử"])
@@ -61,7 +69,9 @@ async def upload_requirement_document(
     visibility: str = Form(default="private"),
     shared_with: str = Form(default="[]"),
     ai_enabled: bool = Form(default=False),
+    ocr_language: str | None = Form(default=None, min_length=2, max_length=32),
     source_type: KnowledgeSourceType = Form(default="REFERENCE"),
+    supersedes_document_id: str | None = Form(default=None),
     file: UploadFile = File(),
     user: CurrentUser = Depends(get_current_user),
 ):
@@ -89,6 +99,8 @@ async def upload_requirement_document(
         recipients,
         ai_enabled,
         source_type,
+        ocr_language,
+        supersedes_document_id,
     )
     return envelope(
         result.data,
@@ -109,6 +121,16 @@ async def list_requirement_documents(
     return envelope(
         await list_requirement_document_records(project_id, status, q, limit, user)
     )
+
+
+@router.get("/du-an/{project_id}/tai-lieu-yeu-cau/nguon-ai")
+async def list_ai_readable_requirement_documents(
+    project_id: str,
+    cursor: str = Query(default="", max_length=512),
+    limit: int = Query(default=200, ge=1, le=500),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await list_ai_requirement_document_page(project_id, cursor, limit, user))
 
 
 @router.post("/du-an/{project_id}/nguon-tri-thuc", status_code=201)
@@ -132,6 +154,106 @@ async def list_knowledge_sources(
 ):
     return envelope(
         await list_requirement_sources(project_id, include_archived, user)
+    )
+
+
+@router.get("/du-an/{project_id}/nguon-tri-thuc/{document_id}/cac-doan")
+async def list_knowledge_source_chunks(
+    project_id: str,
+    document_id: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: str | None = None,
+    user: CurrentUser = Depends(get_current_user),
+):
+    document = await get_project_entity(
+        "requirement_documents", document_id, user, "knowledge.read"
+    )
+    if document.get("project_id") != project_id:
+        raise HTTPException(status_code=404, detail={"code": "KNOWLEDGE_SOURCE_NOT_FOUND"})
+    await require_document_access(document, user, "knowledge.read")
+    result = await list_project_artifact_chunks(
+        project_id, str(document.get("artifact_version_id") or document_id), limit, cursor
+    )
+    return envelope(result)
+
+
+@router.get("/du-an/{project_id}/nguon-tri-thuc/{document_id}/cau-truc-nguon")
+async def list_knowledge_source_structure(
+    project_id: str,
+    document_id: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=250),
+    user: CurrentUser = Depends(get_current_user),
+):
+    document = await get_project_entity(
+        "requirement_documents", document_id, user, "knowledge.read"
+    )
+
+
+@router.get("/du-an/{project_id}/nguon-tri-thuc/{document_id}/anh/{block_index}")
+async def read_knowledge_source_image(
+    project_id: str,
+    document_id: str,
+    block_index: int,
+    user: CurrentUser = Depends(get_current_user),
+):
+    document = await get_project_entity(
+        "requirement_documents", document_id, user, "knowledge.read"
+    )
+    if document.get("project_id") != project_id:
+        raise HTTPException(status_code=404, detail={"code": "KNOWLEDGE_SOURCE_NOT_FOUND"})
+    await require_document_access(document, user, "knowledge.read")
+    source_hash = str(
+        document.get("source_structure_source_hash") or document.get("content_hash") or ""
+    )
+    if document.get("source_structure_store") == "blocks":
+        rows = await requirement_source_block_repository.page_version(
+            project_id,
+            document_id,
+            source_hash,
+            block_index,
+            1,
+        )
+        row = rows[0] if rows and rows[0].get("block_index") == block_index else None
+        block = row.get("block", {}) if row else {}
+    else:
+        source_blocks = document.get("source_structure") or []
+        block = (
+            source_blocks[block_index]
+            if 0 <= block_index < len(source_blocks)
+            and isinstance(source_blocks[block_index], dict)
+            else {}
+        )
+    image_metadata = block.get("image_metadata") or {}
+    asset_key = str(image_metadata.get("asset_key") or "")
+    if image_metadata.get("asset_status") != "STORED" or not asset_key:
+        raise HTTPException(status_code=404, detail={"code": "KNOWLEDGE_SOURCE_IMAGE_NOT_FOUND"})
+    try:
+        content, content_type = await read_requirement_source_image(
+            project_id,
+            document_id,
+            asset_key,
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "KNOWLEDGE_SOURCE_IMAGE_UNAVAILABLE"},
+        ) from error
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+    if document.get("project_id") != project_id:
+        raise HTTPException(status_code=404, detail={"code": "KNOWLEDGE_SOURCE_NOT_FOUND"})
+    await require_document_access(document, user, "knowledge.read")
+    return envelope(
+        await list_requirement_source_structure_page(
+            document_id, offset, limit, user, permission="knowledge.read"
+        )
     )
 
 
@@ -160,6 +282,13 @@ async def reindex_knowledge_source(
 async def get_requirement_document(document_id: str, user: CurrentUser = Depends(get_current_user)):
     document = await get_requirement_document_record(document_id, user)
     return envelope(document, revision=document["revision"])
+
+
+@router.get("/tai-lieu-yeu-cau/{document_id}/tac-dong")
+async def get_requirement_document_impact(
+    document_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await get_requirement_source_impact(document_id, user))
 
 
 @router.patch("/tai-lieu-yeu-cau/{document_id}")

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, valueLabel } from "../../../lib/testing";
 
@@ -14,6 +14,7 @@ const statusLabel = {
 export default function RequirementClarificationPanel({
   requirementVersionId,
   role,
+  roles,
   permissions = [],
 }) {
   const [items, setItems] = useState([]);
@@ -21,32 +22,51 @@ export default function RequirementClarificationPanel({
   const [evidence, setEvidence] = useState({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const loadSequence = useRef(0);
+  const activeRequirementVersion = useRef(requirementVersionId);
+  activeRequirementVersion.current = requirementVersionId;
   const canRead = permissions.includes("requirement.read");
-  const canReview = role === "QA" && permissions.includes("requirement.review");
-  const canAnswer = role === "BA" && permissions.includes("requirement.update");
+  const memberRoles = Array.isArray(roles) && roles.length ? roles : [role].filter(Boolean);
+  const canReview = memberRoles.includes("QA") && permissions.includes("requirement.review");
+  const canAnswer = memberRoles.includes("BA") && permissions.includes("requirement.update");
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     if (!requirementVersionId || !canRead) return;
     try {
-      setItems(await testingApi.listRequirementClarifications(requirementVersionId));
+      const result = await testingApi.listRequirementClarifications(requirementVersionId);
+      if (sequence !== loadSequence.current) return;
+      setItems(result);
       setError("");
     } catch (reason) {
-      setError(messageOf(reason));
+      if (sequence === loadSequence.current) setError(messageOf(reason));
     }
   }, [canRead, requirementVersionId]);
   useEffect(() => {
-    if (!canRead) return undefined;
+    setItems([]);
+    setAnswers({});
+    setEvidence({});
+    setError("");
+    setBusy(false);
+    if (!canRead) {
+      loadSequence.current += 1;
+      return undefined;
+    }
     void load();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [canRead, load]);
   const perform = async (action) => {
+    const requestedVersionId = requirementVersionId;
     setBusy(true);
     setError("");
     try {
       await action();
-      await load();
+      if (activeRequirementVersion.current === requestedVersionId) await load();
     } catch (reason) {
-      setError(messageOf(reason));
+      if (activeRequirementVersion.current === requestedVersionId) setError(messageOf(reason));
     } finally {
-      setBusy(false);
+      if (activeRequirementVersion.current === requestedVersionId) setBusy(false);
     }
   };
   if (!requirementVersionId || !canRead) return null;

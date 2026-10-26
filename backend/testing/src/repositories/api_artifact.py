@@ -10,24 +10,28 @@ class APIArtifactRepository:
             cursor = cursor.sort(*sort)
         return await cursor.to_list(limit)
 
-    async def find_import(self, artifact_id, project_id):
+    async def find_import(self, artifact_id, project_id, session=None):
         return await database.value.api_imports.find_one(
-            {"_id": artifact_id, "project_id": project_id}
+            {"_id": artifact_id, "project_id": project_id},
+            **({"session": session} if session is not None else {}),
         )
 
     async def insert_import(self, value):
         await database.value.api_imports.insert_one(value)
 
-    async def transition_import(self, query, changes, increment_revision=False):
+    async def transition_import(self, query, changes, increment_revision=False, session=None):
         update = {"$set": changes}
         if increment_revision:
             update["$inc"] = {"revision": 1}
         return await database.value.api_imports.find_one_and_update(
-            query, update, return_document=ReturnDocument.AFTER
+            query, update, return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
-    async def list_operations(self, query, limit, sort=None):
-        cursor = database.value.api_operations.find(query)
+    async def list_operations(self, query, limit, sort=None, session=None):
+        cursor = database.value.api_operations.find(
+            query, **({"session": session} if session is not None else {})
+        )
         if sort:
             cursor = cursor.sort(*sort)
         return await cursor.to_list(limit)
@@ -37,9 +41,10 @@ class APIArtifactRepository:
             {"_id": operation_id, "project_id": project_id}
         )
 
-    async def upsert_operation(self, value):
+    async def upsert_operation(self, value, session=None):
         await database.value.api_operations.update_one(
-            {"_id": value["_id"]}, {"$setOnInsert": value}, upsert=True
+            {"_id": value["_id"]}, {"$setOnInsert": value}, upsert=True,
+            **({"session": session} if session is not None else {}),
         )
 
     async def find_impact(self, project_id, source_type, from_id, to_id):

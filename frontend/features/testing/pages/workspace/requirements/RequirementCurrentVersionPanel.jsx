@@ -12,16 +12,12 @@ export default function RequirementCurrentVersionPanel({
   customFields,
   saveState,
   can,
-  checkingWithAi,
-  onCheckingChange,
-  onLint,
   onError,
   saveDraft,
   onCreateVersion,
   onSplit,
   ask,
   reload,
-  onReview,
   onDraftChange,
 }) {
   return (
@@ -29,33 +25,6 @@ export default function RequirementCurrentVersionPanel({
       title="Phiên bản hiện tại"
       actions={
         <div className="flex flex-wrap gap-2">
-          {can("ai.run_lint") && (
-            <button
-              className="secondary-button"
-              aria-busy={checkingWithAi}
-              disabled={checkingWithAi}
-              type="button"
-              onClick={async () => {
-                onCheckingChange(true);
-                try {
-                  const saved = await saveDraft();
-                  const savedVersion = saved?.current_version || current;
-                  onLint(
-                    await testingApi.lintRequirement(savedVersion._id, {
-                      idempotency_key: crypto.randomUUID(),
-                      instruction: "Phân tích chất lượng và đề xuất bản sửa có căn cứ",
-                    }),
-                  );
-                } catch (reason) {
-                  onError(messageOf(reason));
-                } finally {
-                  onCheckingChange(false);
-                }
-              }}
-            >
-              {checkingWithAi ? "AI đang kiểm tra chất lượng" : "Kiểm tra chất lượng"}
-            </button>
-          )}
           {current.status === "BASELINED" && can("requirement.version.create") && (
             <button className="secondary-button" type="button" onClick={onCreateVersion}>
               Tạo phiên bản mới
@@ -71,7 +40,7 @@ export default function RequirementCurrentVersionPanel({
               className="secondary-button"
               type="button"
               onClick={async () => {
-                const answer = await ask({
+                await ask({
                   title: "Đánh dấu yêu cầu không còn hiệu lực",
                   description: `${selected.requirement_key} vẫn được giữ trong lịch sử truy vết`,
                   confirmLabel: "Đánh dấu",
@@ -86,17 +55,18 @@ export default function RequirementCurrentVersionPanel({
                       autoFocus: true,
                     },
                   ],
+                  onConfirm: async (answer) => {
+                    try {
+                      await testingApi.obsoleteRequirement(selected._id, {
+                        expected_current_version_id: selected.current_version_id,
+                        reason: answer.reason,
+                      });
+                      await reload();
+                    } catch (value) {
+                      throw new Error(messageOf(value));
+                    }
+                  },
                 });
-                if (!answer) return;
-                try {
-                  await testingApi.obsoleteRequirement(selected._id, {
-                    expected_current_version_id: selected.current_version_id,
-                    reason: answer.reason,
-                  });
-                  await reload();
-                } catch (value) {
-                  onError(messageOf(value));
-                }
               }}
             >
               Đánh dấu không còn hiệu lực
@@ -107,7 +77,7 @@ export default function RequirementCurrentVersionPanel({
               className="secondary-button"
               type="button"
               onClick={async () => {
-                const answer = await ask({
+                await ask({
                   title: "Khôi phục yêu cầu",
                   description: `${selected.requirement_key} sẽ trở lại trạng thái trước khi bị đánh dấu không còn hiệu lực`,
                   confirmLabel: "Khôi phục",
@@ -121,35 +91,21 @@ export default function RequirementCurrentVersionPanel({
                       autoFocus: true,
                     },
                   ],
+                  onConfirm: async (answer) => {
+                    try {
+                      await testingApi.restoreRequirement(selected._id, {
+                        expected_current_version_id: selected.current_version_id,
+                        reason: answer.reason,
+                      });
+                      await reload();
+                    } catch (value) {
+                      throw new Error(messageOf(value));
+                    }
+                  },
                 });
-                if (!answer) return;
-                try {
-                  await testingApi.restoreRequirement(selected._id, {
-                    expected_current_version_id: selected.current_version_id,
-                    reason: answer.reason,
-                  });
-                  await reload();
-                } catch (value) {
-                  onError(messageOf(value));
-                }
               }}
             >
               Khôi phục yêu cầu
-            </button>
-          )}
-          {current.status === "DRAFT" && can("requirement.submit_review") && (
-            <button className="apple-button" type="button" onClick={() => onReview("submit")}>
-              Gửi rà soát
-            </button>
-          )}
-          {current.status === "IN_REVIEW" && can("requirement.onReview") && (
-            <button className="secondary-button" type="button" onClick={() => onReview("changes")}>
-              Yêu cầu chỉnh sửa
-            </button>
-          )}
-          {current.status === "IN_REVIEW" && can("requirement.approve") && (
-            <button className="apple-button" type="button" onClick={() => onReview("approve")}>
-              Phê duyệt phiên bản
             </button>
           )}
         </div>

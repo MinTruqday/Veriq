@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from src.core.auth import CurrentUser, get_current_user
@@ -20,6 +20,7 @@ from src.schemas.contracts.execution import (
     TestRunCreate,
     TestRunPatch,
     TestRunResumeInput,
+    TestRunRerunInput,
     TestSuiteCreate,
     TestSuitePatch,
 )
@@ -39,6 +40,7 @@ from src.modules.quality.services.defect_lifecycle import (
     update_defect_record,
 )
 from src.modules.quality.services.defect_trace import (
+    list_defect_trace_suggestions,
     list_defect_trace_candidates,
     suggest_defect_trace_record,
     update_defect_trace_record,
@@ -75,6 +77,7 @@ from src.modules.execution.services.test_run import (
     list_test_run_records,
     record_test_result_entry,
     resume_test_run_record,
+    rerun_test_run_record,
     start_test_run_record,
     update_test_execution_record,
     update_test_run_record,
@@ -248,6 +251,17 @@ async def update_test_run(
 ):
     updated = await update_test_run_record(project_id, run_id, payload, user)
     return envelope(updated, revision=updated["revision"])
+
+
+@router.post("/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/chay-lai", status_code=201)
+async def rerun_test_run(
+    project_id: str,
+    run_id: str,
+    payload: TestRunRerunInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    run = await rerun_test_run_record(project_id, run_id, payload, user)
+    return envelope(run, revision=run["revision"])
 
 
 @router.post("/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/phan-cong")
@@ -482,6 +496,15 @@ async def suggest_defect_trace(
     user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(await suggest_defect_trace_record(project_id, defect_id, payload, user))
+
+
+@router.get("/du-an/{project_id}/ai/goi-y-truy-vet")
+async def list_automated_defect_trace_suggestions(
+    project_id: str,
+    defect_ids: list[str] = Query(default=[], max_length=500),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await list_defect_trace_suggestions(project_id, defect_ids, user))
 
 
 @router.get("/loi/{defect_id}/ung-vien-truy-vet", deprecated=True)

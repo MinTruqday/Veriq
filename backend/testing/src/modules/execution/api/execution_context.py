@@ -32,6 +32,12 @@ async def get_release(release_id: str, user: CurrentUser = Depends(get_current_u
     return envelope(value, revision=value["revision"])
 
 
+@router.get("/ban-phat-hanh/{release_id}/san-sang-dong", openapi_extra={"x-function-ids": ["REL-08"]})
+async def release_close_readiness(release_id: str, user: CurrentUser = Depends(get_current_user)):
+    value = await ExecutionContextService.release_close_readiness(release_id, user)
+    return envelope(value.model_dump(), revision=value.revision)
+
+
 @router.post("/du-an/{project_id}/ban-phat-hanh", status_code=201, openapi_extra={"x-function-ids": ["REL-03"]})
 async def create_release(project_id: str, payload: ReleaseCreate, user: CurrentUser = Depends(get_current_user)):
     value = await ExecutionContextService.create_release(project_id, payload, user)

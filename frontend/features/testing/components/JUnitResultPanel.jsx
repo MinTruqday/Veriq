@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "./DataTable";
 import FilePicker from "./FilePicker";
 import { Panel } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
+import { clearImportMappings } from "../lib/junitImport.logic.mjs";
+import { shouldReloadAfterAmbiguousMutation } from "../lib/executionRecovery.logic.mjs";
 
 export default function JUnitResultPanel({ project, runs, tests, can, onError }) {
   const [imports, setImports] = useState([]);
@@ -13,16 +15,27 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
   const [file, setFile] = useState(null);
   const [fileResetKey, setFileResetKey] = useState(0);
   const [mappings, setMappings] = useState({});
+  const loadGeneration = useRef(0);
   const load = useCallback(async () => {
+    const requestGeneration = ++loadGeneration.current;
     try {
-      setImports(await testingApi.listJUnitResultImports(project._id));
+      const values = await testingApi.listJUnitResultImports(project._id);
+      if (requestGeneration === loadGeneration.current) setImports(values);
     } catch (reason) {
-      onError(messageOf(reason));
+      if (requestGeneration === loadGeneration.current) onError(messageOf(reason));
     }
-  }, [onError, project._id]);
+  }, [loadGeneration, onError, project._id]);
   useEffect(() => {
+    setImports([]);
+    setRunId("");
+    setFile(null);
+    setFileResetKey((current) => current + 1);
+    setMappings({});
     void load();
-  }, [load]);
+    return () => {
+      loadGeneration.current += 1;
+    };
+  }, [load, loadGeneration]);
   return (
     <Panel title="Nhập kết quả JUnit XML">
       {can("automation.create") && (
@@ -139,8 +152,13 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
                                 unresolved_index: index,
                                 test_case_version_id: mappings[key],
                               });
+                              setMappings((current) => clearImportMappings(current, item._id));
                               await load();
                             } catch (reason) {
+                              if (shouldReloadAfterAmbiguousMutation(reason)) {
+                                setMappings((current) => clearImportMappings(current, item._id));
+                                await load();
+                              }
                               onError(messageOf(reason));
                             }
                           }}

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -16,6 +17,31 @@ from src.schemas.contracts.planning import (
     TestPlanRisk,
     TestPlanSchedule,
 )
+
+class ReleaseReadinessCheck(BaseModel):
+    gate: Literal[
+        "RELEASE_STATE",
+        "GATE_REVISION",
+        "COMPLETION_REPORT",
+        "BLOCKING_DEFECTS",
+        "REQUIREMENT_ASSURANCE",
+    ]
+    status: Literal["PASS", "BLOCKED"]
+    code: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReleaseReadiness(BaseModel):
+    release_id: str
+    project_id: str
+    status: str
+    revision: int = Field(ge=1)
+    gate_revision: int | None = Field(default=None, ge=0)
+    evaluated_at: datetime
+    can_close: bool
+    checks: list[ReleaseReadinessCheck]
+    blockers: list[ReleaseReadinessCheck]
+
 
 class TestPlanPatch(BaseModel):
     expected_revision: int = Field(ge=1)
@@ -84,12 +110,17 @@ class TestRunCreate(BaseModel):
     test_plan_id: str | None = None
     test_suite_ids: list[str] = Field(default_factory=list, max_length=500)
     test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
+    assignment_strategy: Literal["MANUAL", "CONFIRMED_SKILLS"] = "MANUAL"
     environment: str = Field(default="staging", max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str = Field(default="", max_length=200)
     release_id: str | None = Field(default=None, max_length=200)
     build: str = Field(default="", max_length=200)
     build_id: str | None = Field(default=None, max_length=200)
+
+
+class TestRunRerunInput(BaseModel):
+    idempotency_key: str = Field(min_length=8, max_length=200)
 
 
 class TestRunPatch(BaseModel):
@@ -110,6 +141,7 @@ class TestRunAssignmentInput(BaseModel):
     expected_revision: int = Field(ge=1)
     assignee_id: str = Field(min_length=1, max_length=200)
     test_case_assignments: dict[str, str] = Field(default_factory=dict)
+    expected_skill_profile_revisions: dict[str, int] = Field(default_factory=dict)
 
 
 class TestRunResumeInput(BaseModel):

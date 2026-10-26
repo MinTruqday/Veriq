@@ -23,10 +23,28 @@ class MaintenanceProposalRepository:
         await database.value.maintenance_proposals.insert_one(value)
         return value
 
-    async def list_proposals(self, query, sort_field, direction, limit):
-        return await database.value.maintenance_proposals.find(query).sort(
-            sort_field, direction
-        ).to_list(limit)
+    async def list_proposals(self, query, sort_field, direction, limit, skip=0):
+        cursor = database.value.maintenance_proposals.find(query).sort(
+            [(sort_field, direction), ("_id", 1)]
+        )
+        if skip:
+            cursor = cursor.skip(skip)
+        return await cursor.to_list(limit)
+
+    async def proposal_scope_snapshot(self, query, sort_field, direction):
+        projection = {
+            "_id": 1,
+            "project_id": 1,
+            "impact_analysis_id": 1,
+            "proposal_type": 1,
+            "target_artifact_id": 1,
+            "base_version_id": 1,
+            "status": 1,
+            "revision": 1,
+        }
+        return await database.value.maintenance_proposals.find(query, projection).sort(
+            [(sort_field, direction), ("_id", 1)]
+        ).to_list(None)
 
     async def list_test_case_versions(self, project_id, version_ids, limit):
         return await database.value.test_case_versions.find(

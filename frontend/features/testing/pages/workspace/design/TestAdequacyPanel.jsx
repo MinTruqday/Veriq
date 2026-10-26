@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { useActionDialog } from "../../../components/WorkspacePrimitives";
@@ -32,29 +32,42 @@ export default function TestAdequacyPanel({
   const [filter, setFilter] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const loadSequence = useRef(0);
+  const activeRequirementVersion = useRef(requirementVersionId);
+  activeRequirementVersion.current = requirementVersionId;
   const load = useCallback(async () => {
     if (!requirementVersionId) return;
+    const sequence = ++loadSequence.current;
     setError("");
     try {
-      setAssessment(await testingApi.getTestAdequacy(requirementVersionId));
+      const result = await testingApi.getTestAdequacy(requirementVersionId);
+      if (sequence === loadSequence.current) setAssessment(result);
     } catch (reason) {
-      setError(messageOf(reason));
+      if (sequence === loadSequence.current) setError(messageOf(reason));
     }
   }, [requirementVersionId]);
   useEffect(() => {
+    setAssessment(null);
+    setFilter("");
+    setError("");
     void load();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [load]);
   const items = useMemo(
     () => (assessment?.coverage_items || []).filter((item) => !filter || item.status === filter),
     [assessment, filter],
   );
   const update = async (work) => {
+    const requestedVersionId = requirementVersionId;
     setBusy(true);
     setError("");
     try {
-      setAssessment(await work());
+      const result = await work();
+      if (activeRequirementVersion.current === requestedVersionId) setAssessment(result);
     } catch (reason) {
-      setError(messageOf(reason));
+      if (activeRequirementVersion.current === requestedVersionId) setError(messageOf(reason));
     } finally {
       setBusy(false);
     }
@@ -103,6 +116,8 @@ export default function TestAdequacyPanel({
     );
   };
   const createClarification = async (item) => {
+    const requestedVersionId = requirementVersionId;
+    const requestedAssessmentId = assessment?._id;
     const value = await ask({
       title: "Tạo Phiếu làm rõ",
       description: "Phiếu gắn với đúng Nghĩa vụ này và chỉ BA mới có thể trả lời",
@@ -128,16 +143,24 @@ export default function TestAdequacyPanel({
         source_ref: item.source_ref,
         source_quote: item.source_quote,
       });
-      setAssessment(
-        await testingApi.decideTestAdequacyItem(assessment._id, item.coverage_item_id, {
+      const result = await testingApi.decideTestAdequacyItem(
+        assessment._id,
+        item.coverage_item_id,
+        {
           expected_revision: assessment.revision,
           status: "MISSING_INFORMATION",
           reason: value.reason,
           clarification_id: clarification._id,
-        }),
+        },
       );
+      if (
+        activeRequirementVersion.current === requestedVersionId &&
+        assessment?._id === requestedAssessmentId
+      ) {
+        setAssessment(result);
+      }
     } catch (reason) {
-      setError(messageOf(reason));
+      if (activeRequirementVersion.current === requestedVersionId) setError(messageOf(reason));
     } finally {
       setBusy(false);
     }

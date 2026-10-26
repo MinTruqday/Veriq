@@ -10,15 +10,18 @@ class KnowledgeClient:
         document_id: str,
         user_id: str,
         superseded_document_id: str = "",
+        event_id: str = "",
     ):
         params = {"document_id": document_id, "user_id": user_id}
+        if event_id:
+            params["event_id"] = event_id
         if superseded_document_id:
             params["superseded_document_id"] = superseded_document_id
         async with httpx.AsyncClient(
             timeout=20
         ) as client:
             response = await client.post(
-                f"{settings.AI_URL}/su-kien/webhook/tai-lieu-dang-tai",
+                f"{settings.AI_URL}/su-kien/moc-goi/tai-lieu-dang-tai",
                 params=params,
                 headers={"X-Internal-Token": settings.SECRET_KEY},
             )

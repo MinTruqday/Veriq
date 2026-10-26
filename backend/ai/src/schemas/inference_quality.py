@@ -1,6 +1,13 @@
-from typing import Annotated, Any, List, Literal
+from typing import List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class EvidenceQuoteOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_ref: str = Field(min_length=1, max_length=200)
+    quote: str = Field(min_length=2, max_length=1000)
 
 
 class SecuritySuggestionOutput(BaseModel):
@@ -14,13 +21,14 @@ class SecuritySuggestionOutput(BaseModel):
     action: str = Field(min_length=2, max_length=5000)
     expected: str = Field(min_length=2, max_length=5000)
     requirement_version_ids: List[str] = Field(default_factory=list, max_length=100)
+    evidence_quotes: List[EvidenceQuoteOutput] = Field(min_length=1, max_length=20)
 
 class SecuritySuggestionsOutput(BaseModel):
-    """Generate concrete evidence grounded security tests in the language of the user instruction. Never claim a vulnerability scan was executed and use only requirement version identifiers present in evidence."""
+    """Structured security test candidates."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["security_test_generation"]
-    suggestions: List[SecuritySuggestionOutput] = Field(min_length=1, max_length=100)
+    suggestions: List[SecuritySuggestionOutput] = Field(default_factory=list, max_length=100)
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=20)
@@ -30,15 +38,16 @@ class PerformanceSuggestionOutput(BaseModel):
 
     workload_type: Literal["baseline", "load", "stress", "spike", "soak"]
     title: str = Field(min_length=2, max_length=300)
-    virtual_users: int = Field(ge=1, le=1000000)
+    virtual_users: int | None = Field(default=None, ge=1, le=1000000)
     requests_per_second: float | None = Field(default=None, gt=0)
-    duration_minutes: int = Field(ge=1, le=10080)
+    duration_minutes: int | None = Field(default=None, ge=1, le=10080)
     ramp_pattern: str = Field(min_length=2, max_length=2000)
     actions: List[str] = Field(min_length=1, max_length=50)
     expected: str = Field(min_length=2, max_length=5000)
+    evidence_quotes: List[EvidenceQuoteOutput] = Field(min_length=1, max_length=20)
 
 class PerformanceSuggestionsOutput(BaseModel):
-    """Generate an evidence grounded performance plan in the language of the user instruction. Include requested workload types only, do not claim load execution, and do not invent targets outside the instruction."""
+    """Structured performance workload candidates."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["performance_plan_generation"]
@@ -54,7 +63,7 @@ class AutomationScriptSuggestionOutput(BaseModel):
     secret_placeholders: List[str] = Field(default_factory=list, max_length=100)
 
 class AutomationScriptOutput(BaseModel):
-    """Create exactly one complete automation script draft in the requested framework and language without markdown. Use secret placeholders only, use environment variables for unknown locators or URLs, report them in warnings, and never write to a repository."""
+    """Structured automation script draft."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["automation_script_generation"]
@@ -89,7 +98,7 @@ class CausalHypothesisSuggestionOutput(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 class CausalHypothesesOutput(BaseModel):
-    """Propose root cause hypotheses, defect clusters, contributing factors, and missing test coverage. Never confirm a cause or approve CAPA. Every hypothesis cites evidence references."""
+    """Structured causal analysis hypotheses."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["causal_analysis"]
@@ -111,7 +120,7 @@ class StatusReportNarrativeSuggestionOutput(BaseModel):
     ]
 
 class StatusReportNarrativeOutput(BaseModel):
-    """Draft only from supplied metrics and evidence. Never alter metrics, approve the report, or add unsupported conclusions."""
+    """Structured status report narrative draft."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["status_report_narrative"]
@@ -129,7 +138,7 @@ class CompletionReportNarrativeSuggestionOutput(BaseModel):
     recommendation_rationale: str = Field(min_length=2, max_length=10000)
 
 class CompletionReportNarrativeOutput(BaseModel):
-    """Draft only from supplied metrics and evidence. Never change the quality gate recommendation or approve the report."""
+    """Structured completion report narrative draft."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["completion_report_narrative"]
@@ -148,7 +157,7 @@ class LessonsLearnedClusterSuggestionOutput(BaseModel):
     improvement_candidates: List[str] = Field(default_factory=list, max_length=100)
 
 class LessonsLearnedClustersOutput(BaseModel):
-    """Cluster lessons learned by theme, preserve source-index grounding, and propose improvement candidates without applying them."""
+    """Structured lessons-learned clusters."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["lessons_learned_clustering"]

@@ -66,6 +66,17 @@ class CausalAnalysisRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
+    async def find_latest_ai_result(self, project_id, subject_id, result_type, projection=None):
+        return await database.value.ai_results.find_one(
+            {
+                "project_id": project_id,
+                "subject_id": subject_id,
+                "result_type": result_type,
+            },
+            projection,
+            sort=[("created_at", -1), ("_id", -1)],
+        )
+
     async def insert_ai_result(self, value):
         await database.value.ai_results.insert_one(value)
         return value

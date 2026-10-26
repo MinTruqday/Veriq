@@ -1,10 +1,5 @@
 "use client";
-
-function valueText(value) {
-  if (value === undefined) return "Không có";
-  if (typeof value === "string") return value;
-  return JSON.stringify(value, null, 2);
-}
+import { StructuredValueView } from "./StructuredValueEditor";
 
 export default function ProposalDiffPanel({ proposal }) {
   const patch = proposal.patch || {};
@@ -26,14 +21,10 @@ export default function ProposalDiffPanel({ proposal }) {
             <tr key={field}>
               <th className="p-2 align-top font-semibold">{field}</th>
               <td className="p-2 align-top">
-                <pre className="max-w-sm whitespace-pre-wrap break-words">
-                  {valueText(base[field])}
-                </pre>
+                <StructuredValueView value={base[field]} />
               </td>
               <td className="bg-brand-soft/30 p-2 align-top">
-                <pre className="max-w-sm whitespace-pre-wrap break-words">
-                  {valueText(patch[field])}
-                </pre>
+                <StructuredValueView value={patch[field]} />
               </td>
             </tr>
           ))}

@@ -168,6 +168,9 @@ class ResidualRiskDecision(BaseModel):
 class TestCompletionAiDraft(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=200)
     instruction: str = Field(default="", max_length=5000)
+    source_event_id: str = Field(min_length=1, max_length=200)
+    source_event_revision: int = Field(ge=1)
+    source_event_trigger: Literal["TEST_COMPLETION_REPORT_CREATED"]
 
 
 def completion_snapshot(report):
@@ -189,6 +192,8 @@ def completion_snapshot(report):
         "review_history",
         "approved_snapshot",
         "approved_snapshot_hash",
+        "automation_gate_snapshot",
+        "automation_gate_hash",
         "change_request",
     }
     return {key: value for key, value in report.items() if key not in excluded}

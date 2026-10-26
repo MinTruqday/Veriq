@@ -237,7 +237,9 @@ class ImportCreate(BaseModel):
     visibility: Literal["private", "project", "shared"] = "private"
     shared_with: list[str] = Field(default_factory=list, max_length=100)
     ai_enabled: bool = False
+    ocr_language: str | None = Field(default=None, min_length=2, max_length=32)
     source_type: KnowledgeSourceType = "REFERENCE"
+    supersedes_document_id: str | None = Field(default=None, min_length=1, max_length=200)
 
     @model_validator(mode="after")
     def validate_access(self):
@@ -364,7 +366,7 @@ class ImportConfirm(BaseModel):
     separate_indexes: list[int] = Field(default_factory=list, max_length=2000)
     separate_reasons: dict[int, str] = Field(default_factory=dict)
     accept_incomplete: bool = False
-    expected_revision: int | None = Field(default=None, ge=1)
+    expected_revision: int = Field(ge=1)
 
 
 class RequirementImportResolution(BaseModel):

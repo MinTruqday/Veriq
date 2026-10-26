@@ -19,6 +19,9 @@ def serialize_document(document):
     document["views_count"] = views
     document.pop("password", None)
     document.pop("access_password_hash", None)
+    document.pop("indexing_attempt_id", None)
+    document.pop("indexing_lease_token", None)
+    document.pop("indexing_lease_until", None)
     return document
 
 

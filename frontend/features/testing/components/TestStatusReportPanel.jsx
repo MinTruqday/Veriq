@@ -6,6 +6,7 @@ import QualityGateBadge from "./QualityGateBadge";
 import { ErrorState, Metric, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+import { StructuredValueView } from "./StructuredValueEditor";
 
 function lines(value) {
   return String(value || "")
@@ -37,9 +38,10 @@ export default function TestStatusReportPanel({ project }) {
   const [builds, setBuilds] = useState([]);
   const [selected, setSelected] = useState(null);
   const [comparison, setComparison] = useState(null);
-  const [aiDraft, setAiDraft] = useState(null);
+  const [narrativeResult, setNarrativeResult] = useState(null);
   const [error, setError] = useState("");
-  const [draftingWithAi, setDraftingWithAi] = useState(false);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [narrativeTimedOut, setNarrativeTimedOut] = useState(false);
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     try {
@@ -67,15 +69,56 @@ export default function TestStatusReportPanel({ project }) {
     void load();
   }, [load]);
 
-  const run = async (operation) => {
+  useEffect(() => {
+    if (!selected?._id) {
+      setNarrativeResult(null);
+      setNarrativeLoading(false);
+      return undefined;
+    }
+    let active = true;
+    let timer;
+    let attempts = 0;
+    setNarrativeResult(null);
+    setNarrativeLoading(true);
+    setNarrativeTimedOut(false);
+    const refreshNarrative = async () => {
+      try {
+        const value = await testingApi.getTestStatusReportNarrative(selected._id);
+        if (!active) return;
+        if (value) {
+          setNarrativeResult(value);
+          setNarrativeLoading(false);
+          return;
+        }
+      } catch (reason) {
+        if (active) setError(messageOf(reason));
+      }
+      attempts += 1;
+      if (active && attempts < 20) {
+        timer = setTimeout(refreshNarrative, 3000);
+      } else if (active) {
+        setNarrativeLoading(false);
+        setNarrativeTimedOut(true);
+      }
+    };
+    void refreshNarrative();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [selected?._id, selected?.revision]);
+
+  const run = async (operation, { retainDialog = false } = {}) => {
     try {
       const value = await operation();
       setComparison(null);
-      setAiDraft(null);
+      setNarrativeResult(null);
       await load();
       if (value?._id) setSelected(value);
     } catch (reason) {
-      setError(messageOf(reason));
+      const message = messageOf(reason);
+      setError(message);
+      if (retainDialog) throw new Error(message);
     }
   };
 
@@ -83,7 +126,7 @@ export default function TestStatusReportPanel({ project }) {
     const today = new Date();
     const end = today.toISOString().slice(0, 16);
     const startDate = new Date(today.getTime() - 7 * 86400000);
-    const answer = await ask({
+    await ask({
       title: "Tạo báo cáo trạng thái từ ảnh chụp",
       confirmLabel: "Tạo báo cáo",
       fields: [
@@ -130,34 +173,37 @@ export default function TestStatusReportPanel({ project }) {
         { name: "distribution", label: "Danh sách phân phối mỗi dòng một người", multiline: true },
         { name: "evidence_refs", label: "Mã bằng chứng mỗi dòng một mã", multiline: true },
       ],
+      onConfirm: (answer) =>
+        run(
+          () =>
+            testingApi.generateTestStatusReport(project._id, {
+              idempotency_key: crypto.randomUUID(),
+              snapshot_id: answer.snapshot_id,
+              build_id: answer.build_id,
+              reporting_period: {
+                start_at: new Date(answer.start_at).toISOString(),
+                end_at: new Date(answer.end_at).toISOString(),
+              },
+              executive_summary: answer.executive_summary,
+              forecast: {
+                expected_completion_at: answer.expected_completion_at
+                  ? new Date(answer.expected_completion_at).toISOString()
+                  : null,
+                confidence:
+                  answer.forecast_confidence === "" ? null : Number(answer.forecast_confidence),
+                assumptions: lines(answer.forecast_assumptions),
+              },
+              distribution: lines(answer.distribution),
+              evidence_refs: lines(answer.evidence_refs),
+            }),
+          { retainDialog: true },
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi.generateTestStatusReport(project._id, {
-        idempotency_key: crypto.randomUUID(),
-        snapshot_id: answer.snapshot_id,
-        build_id: answer.build_id,
-        reporting_period: {
-          start_at: new Date(answer.start_at).toISOString(),
-          end_at: new Date(answer.end_at).toISOString(),
-        },
-        executive_summary: answer.executive_summary,
-        forecast: {
-          expected_completion_at: answer.expected_completion_at
-            ? new Date(answer.expected_completion_at).toISOString()
-            : null,
-          confidence: answer.forecast_confidence === "" ? null : Number(answer.forecast_confidence),
-          assumptions: lines(answer.forecast_assumptions),
-        },
-        distribution: lines(answer.distribution),
-        evidence_refs: lines(answer.evidence_refs),
-      }),
-    );
   };
 
   const edit = async () => {
     if (!selected) return;
-    const answer = await ask({
+    await ask({
       title: "Chỉnh sửa nội dung báo cáo",
       confirmLabel: "Lưu nội dung",
       fields: [
@@ -204,29 +250,32 @@ export default function TestStatusReportPanel({ project }) {
           initialValue: (selected.distribution || []).join("\n"),
         },
       ],
+      onConfirm: (answer) =>
+        run(
+          () =>
+            testingApi.updateTestStatusReport(selected._id, {
+              expected_revision: selected.revision,
+              executive_summary: answer.executive_summary,
+              risk_explanation: answer.risk_explanation,
+              forecast: {
+                expected_completion_at: answer.expected_completion_at
+                  ? new Date(answer.expected_completion_at).toISOString()
+                  : null,
+                confidence:
+                  answer.forecast_confidence === "" ? null : Number(answer.forecast_confidence),
+                assumptions: lines(answer.forecast_assumptions),
+              },
+              recommendation_narrative: answer.recommendation_narrative,
+              distribution: lines(answer.distribution),
+            }),
+          { retainDialog: true },
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi.updateTestStatusReport(selected._id, {
-        expected_revision: selected.revision,
-        executive_summary: answer.executive_summary,
-        risk_explanation: answer.risk_explanation,
-        forecast: {
-          expected_completion_at: answer.expected_completion_at
-            ? new Date(answer.expected_completion_at).toISOString()
-            : null,
-          confidence: answer.forecast_confidence === "" ? null : Number(answer.forecast_confidence),
-          assumptions: lines(answer.forecast_assumptions),
-        },
-        recommendation_narrative: answer.recommendation_narrative,
-        distribution: lines(answer.distribution),
-      }),
-    );
   };
 
   const attachEvidence = async () => {
     if (!selected) return;
-    const answer = await ask({
+    await ask({
       title: "Gắn bằng chứng",
       confirmLabel: "Gắn bằng chứng",
       fields: [
@@ -237,26 +286,33 @@ export default function TestStatusReportPanel({ project }) {
           multiline: true,
         },
       ],
+      onConfirm: (answer) =>
+        run(
+          () =>
+            testingApi.attachTestStatusReportEvidence(selected._id, {
+              expected_revision: selected.revision,
+              evidence_refs: lines(answer.evidence_refs),
+            }),
+          { retainDialog: true },
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi.attachTestStatusReportEvidence(selected._id, {
-        expected_revision: selected.revision,
-        evidence_refs: lines(answer.evidence_refs),
-      }),
-    );
   };
 
   const transition = async (action, title) => {
-    const answer = await ask({
+    await ask({
       title,
       confirmLabel: title,
       fields: [{ name: "note", label: "Ghi chú", multiline: true }],
+      onConfirm: (answer) =>
+        run(
+          () =>
+            testingApi[action](selected._id, {
+              expected_revision: selected.revision,
+              note: answer.note,
+            }),
+          { retainDialog: true },
+        ),
     });
-    if (!answer) return;
-    await run(() =>
-      testingApi[action](selected._id, { expected_revision: selected.revision, note: answer.note }),
-    );
   };
 
   const compare = async () => {
@@ -286,37 +342,6 @@ export default function TestStatusReportPanel({ project }) {
     }
   };
 
-  const draftNarrative = async () => {
-    setDraftingWithAi(true);
-    try {
-      const value = await testingApi.draftTestStatusReportNarrative(selected._id, {
-        idempotency_key: crypto.randomUUID(),
-        instruction: "Diễn giải ngắn gọn chính xác và nêu rõ rủi ro cần chú ý",
-      });
-      const ready = value.status === "SUCCESS" && value.suggestions?.[0]?.executive_summary;
-      setAiDraft(ready ? value : null);
-      setError(ready ? "" : "AI chưa sẵn sàng và chưa tạo được bản nháp");
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setDraftingWithAi(false);
-    }
-  };
-
-  const applyAiDraft = async () => {
-    const candidate = aiDraft?.suggestions?.[0];
-    if (!candidate) return;
-    await run(() =>
-      testingApi.updateTestStatusReport(selected._id, {
-        expected_revision: selected.revision,
-        executive_summary: candidate.executive_summary || "",
-        risk_explanation: candidate.risk_explanation || "",
-        forecast: candidate.forecast || undefined,
-        recommendation_narrative: candidate.recommendation_narrative || "",
-      }),
-    );
-  };
-
   return (
     <Panel
       title="Báo cáo trạng thái kiểm thử"
@@ -339,8 +364,8 @@ export default function TestStatusReportPanel({ project }) {
           <ErrorState message={error} />
         </div>
       )}
-      <div className="grid border-t border-border-subtle xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="border-r border-border-subtle">
+      <div className="grid border-t border-border/70 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="border-r border-border/70">
           <DataTable
             items={reports}
             empty="Chưa có báo cáo trạng thái"
@@ -356,7 +381,6 @@ export default function TestStatusReportPanel({ project }) {
                     onClick={() => {
                       setSelected(item);
                       setComparison(null);
-                      setAiDraft(null);
                     }}
                   >
                     {formatDate(item.created_at)}
@@ -382,17 +406,6 @@ export default function TestStatusReportPanel({ project }) {
                 {selected.status === "DRAFT" && can("teststatusreport.update") && (
                   <button className="secondary-button" type="button" onClick={edit}>
                     Chỉnh sửa
-                  </button>
-                )}
-                {selected.status === "DRAFT" && can("teststatusreport.update") && (
-                  <button
-                    aria-busy={draftingWithAi}
-                    className="secondary-button"
-                    disabled={draftingWithAi}
-                    type="button"
-                    onClick={draftNarrative}
-                  >
-                    {draftingWithAi ? "AI đang soạn báo cáo" : "AI soạn bản nháp"}
                   </button>
                 )}
                 {selected.status === "DRAFT" && can("teststatusreport.update") && (
@@ -472,14 +485,34 @@ export default function TestStatusReportPanel({ project }) {
                     </button>
                   ))}
               </div>
-              {aiDraft?.suggestions?.[0] && (
-                <Panel title="Bản nháp diễn giải do AI đề xuất">
+              {narrativeLoading && !narrativeResult && (
+                <p className="text-sm text-ink-muted" role="status">
+                  Báo cáo đã được tạo; đang chờ lượt AI tự động tạo phần diễn giải.
+                </p>
+              )}
+              {narrativeTimedOut && !narrativeResult && (
+                <p className="text-sm text-ink-muted" role="status">
+                  Chưa nhận được kết quả tự động. Báo cáo gốc vẫn được giữ nguyên; kiểm tra trạng
+                  thái lượt chạy trong Lịch sử AI.
+                </p>
+              )}
+              {narrativeResult?.suggestions?.[0] && (
+                <Panel title="Diễn giải được tạo tự động">
                   <div className="space-y-4 text-sm">
+                    {narrativeResult.stale && (
+                      <p className="text-amber-700" role="status">
+                        Báo cáo đã đổi sau khi AI tạo phần diễn giải; kết quả này thuộc phiên bản
+                        trước và không được dùng làm nội dung hiện hành.
+                      </p>
+                    )}
                     {[
-                      ["Tóm tắt điều hành", aiDraft.suggestions[0].executive_summary],
-                      ["Diễn giải rủi ro", aiDraft.suggestions[0].risk_explanation],
-                      ["Dự báo", forecastText(aiDraft.suggestions[0].forecast)],
-                      ["Diễn giải khuyến nghị", aiDraft.suggestions[0].recommendation_narrative],
+                      ["Tóm tắt điều hành", narrativeResult.suggestions[0].executive_summary],
+                      ["Diễn giải rủi ro", narrativeResult.suggestions[0].risk_explanation],
+                      ["Dự báo", forecastText(narrativeResult.suggestions[0].forecast)],
+                      [
+                        "Diễn giải khuyến nghị",
+                        narrativeResult.suggestions[0].recommendation_narrative,
+                      ],
                     ].map(([label, value]) => (
                       <div key={label}>
                         <p className="field-label">{label}</p>
@@ -487,13 +520,16 @@ export default function TestStatusReportPanel({ project }) {
                       </div>
                     ))}
                     <p className="text-xs text-ink-muted">
-                      Đây là ứng viên cần người dùng xác nhận và không thay đổi số liệu ảnh chụp
+                      Kết quả được tạo từ sự kiện tạo báo cáo; không thay đổi số liệu hoặc nội dung
+                      báo cáo gốc.
                     </p>
-                    <button className="apple-button" type="button" onClick={applyAiDraft}>
-                      Dùng làm bản nháp
-                    </button>
                   </div>
                 </Panel>
+              )}
+              {narrativeResult && !narrativeResult.suggestions?.[0] && (
+                <p className="text-sm text-ink-muted" role="status">
+                  Lượt AI tự động chưa tạo được phần diễn giải: {valueLabel(narrativeResult.status)}
+                </p>
               )}
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <Metric
@@ -558,14 +594,12 @@ export default function TestStatusReportPanel({ project }) {
                       {
                         key: "from",
                         label: "Báo cáo hiện tại",
-                        render: (item) =>
-                          typeof item.from === "string" ? item.from : JSON.stringify(item.from),
+                        render: (item) => <StructuredValueView value={item.from} />,
                       },
                       {
                         key: "to",
                         label: "Báo cáo đối chiếu",
-                        render: (item) =>
-                          typeof item.to === "string" ? item.to : JSON.stringify(item.to),
+                        render: (item) => <StructuredValueView value={item.to} />,
                       },
                     ]}
                   />

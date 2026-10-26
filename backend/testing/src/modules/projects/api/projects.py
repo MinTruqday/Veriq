@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
@@ -14,10 +14,52 @@ from src.schemas.contracts.project import (
     ProjectTaskDelete,
     ProjectTaskPatch,
 )
+from src.schemas.contracts.skill_profile import AssignmentRecommendationInput, SkillProfilePatch
 from src.modules.projects.services.project import ProjectService
 from src.modules.projects.services.project_progress import ProjectProgressService
+from src.modules.projects.services.skill_profiles import (
+    extract_own_skill_profile_from_cv,
+    get_own_skill_profile,
+    recommend_test_run_assignments,
+    update_own_skill_profile,
+)
 
 router = APIRouter(prefix="/kiem-thu", tags=["Dự án kiểm thử"])
+
+
+@router.get("/du-an/{project_id}/ho-so-nang-luc/cua-toi")
+async def read_own_skill_profile(project_id: str, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await get_own_skill_profile(project_id, user))
+
+
+@router.put("/du-an/{project_id}/ho-so-nang-luc/cua-toi")
+async def save_own_skill_profile(
+    project_id: str,
+    payload: SkillProfilePatch,
+    user: CurrentUser = Depends(get_current_user),
+):
+    value = await update_own_skill_profile(project_id, payload, user)
+    return envelope(value, revision=value["revision"])
+
+
+@router.post("/du-an/{project_id}/ho-so-nang-luc/cua-toi/trich-xuat-cv")
+async def extract_own_skill_profile_cv(
+    project_id: str,
+    file: UploadFile = File(),
+    user: CurrentUser = Depends(get_current_user),
+):
+    result = await extract_own_skill_profile_from_cv(project_id, file, user)
+    return envelope(result)
+
+
+@router.post("/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/goi-y-phan-cong")
+async def suggest_test_run_assignments(
+    project_id: str,
+    run_id: str,
+    payload: AssignmentRecommendationInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await recommend_test_run_assignments(project_id, run_id, payload, user))
 
 
 @router.get("/du-an/kha-nang", response_model=dict)

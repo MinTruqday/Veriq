@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import AgentRunPanel from "../../components/AgentRunPanel";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
@@ -13,6 +14,21 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import { formatProjectDate, projectPlannedDurationDays } from "../../lib/projectSchedule.logic.mjs";
+import { taskProgressPresentation } from "../../lib/projectProgress.logic.mjs";
+
+function projectOverviewDescription(project) {
+  const details = [`Phương thức: ${valueLabel(project.planning_method || "SCRUM")}`];
+  const duration = projectPlannedDurationDays(project.planned_start_at, project.planned_end_at);
+  if (project.planned_start_at) {
+    details.push(`Bắt đầu dự kiến: ${formatProjectDate(project.planned_start_at)}`);
+  }
+  if (project.planned_end_at) {
+    details.push(`Kết thúc dự kiến: ${formatProjectDate(project.planned_end_at)}`);
+  }
+  if (duration) details.push(`Thời lượng dự kiến: ${duration} ngày lịch`);
+  return details.join(" · ");
+}
 
 export default function DashboardPage({ project }) {
   const { ask, dialog } = useActionDialog();
@@ -20,15 +36,23 @@ export default function DashboardPage({ project }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState({
-    percent: project.project_completion_percent ?? 0,
+    percent: Number.isFinite(project.project_completion_percent)
+      ? project.project_completion_percent
+      : null,
     revision: project.revision,
     taskSummary: project.task_summary,
   });
-  const isQa = project.current_membership?.project_role === "QA";
+  const membershipRoles = project.current_membership?.project_roles;
+  const memberRoles =
+    Array.isArray(membershipRoles) && membershipRoles.length
+      ? membershipRoles
+      : [project.current_membership?.project_role].filter(Boolean);
+  const isQa = memberRoles.includes("QA");
   const permissions = project.current_permissions || [];
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
   const canReadCoverage = can("coverage.read");
+  const canReadAutomationRuns = can("proposal.read") || can("automation.read");
   useEffect(() => {
     let active = true;
     const requests = [];
@@ -52,7 +76,9 @@ export default function DashboardPage({ project }) {
         setValue({ dashboard: data.dashboard || null, coverage: data.coverage || null });
         if (!currentProject) return;
         setProgress({
-          percent: currentProject.project_completion_percent ?? 0,
+          percent: Number.isFinite(currentProject.project_completion_percent)
+            ? currentProject.project_completion_percent
+            : null,
           revision: currentProject.revision,
           taskSummary: currentProject.task_summary,
         });
@@ -80,6 +106,7 @@ export default function DashboardPage({ project }) {
   );
   const dashboard = value?.dashboard;
   const coverage = value?.coverage;
+  const taskProgress = taskProgressPresentation(progress.taskSummary);
   const hasOverviewMetrics =
     can("requirement.read") ||
     can("testcase.read") ||
@@ -88,25 +115,24 @@ export default function DashboardPage({ project }) {
   const hasQualityMetrics =
     can("testcase.read") ||
     (can("coverage.read") && Boolean(coverage)) ||
-    can("proposal.read") ||
     can("testrun.read") ||
     can("impact.read");
   return (
-    <WorkspacePage title={project.name}>
+    <WorkspacePage title={project.name} description={projectOverviewDescription(project)}>
       {error && <ErrorState message={error} />}
       {loading ? (
         <LoadingState />
       ) : (
         <>
           <Panel
-            title="Tiến độ dự án"
+            title="Tiến độ Project và Tasks"
             actions={
               isQa ? (
                 <button
                   className="secondary-button"
                   type="button"
                   onClick={async () => {
-                    const answer = await ask({
+                    await ask({
                       title: "Cập nhật tiến độ dự án",
                       confirmLabel: "Lưu tiến độ",
                       fields: [
@@ -114,27 +140,27 @@ export default function DashboardPage({ project }) {
                           name: "project_completion_percent",
                           label: "Tiến độ dự án",
                           type: "number",
-                          initialValue: String(progress.percent),
+                          min: 0,
+                          max: 100,
+                          step: 1,
+                          initialValue: progress.percent == null ? "" : String(progress.percent),
                           required: true,
                         },
                         { name: "note", label: "Ghi chú", multiline: true, required: true },
                       ],
+                      onConfirm: async (answer) => {
+                        const updated = await testingApi.updateProjectProgress(project._id, {
+                          expected_revision: progress.revision,
+                          project_completion_percent: Number(answer.project_completion_percent),
+                          note: answer.note.trim(),
+                        });
+                        setProgress((current) => ({
+                          ...current,
+                          percent: updated.project_completion_percent,
+                          revision: updated.revision,
+                        }));
+                      },
                     });
-                    if (!answer) return;
-                    try {
-                      const updated = await testingApi.updateProjectProgress(project._id, {
-                        expected_revision: progress.revision,
-                        project_completion_percent: Number(answer.project_completion_percent),
-                        note: answer.note.trim(),
-                      });
-                      setProgress((current) => ({
-                        ...current,
-                        percent: updated.project_completion_percent,
-                        revision: updated.revision,
-                      }));
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
                   }}
                 >
                   Cập nhật tiến độ
@@ -145,38 +171,61 @@ export default function DashboardPage({ project }) {
             <div className="grid gap-5 p-5 lg:grid-cols-2">
               <div>
                 <div className="flex items-center justify-between text-sm">
-                  <span>Tiến độ dự án {progress.percent}%</span>
-                  <span className="text-ink-muted">Đánh giá của QA</span>
-                </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-quiet">
-                  <div
-                    className="h-full rounded-full bg-brand"
-                    style={{ width: `${progress.percent}%` }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between text-sm">
                   <span>
-                    {progress.taskSummary?.completion_percent === null
-                      ? "Chưa có công việc"
-                      : `Tiến độ công việc ${progress.taskSummary?.completion_percent ?? 0}%`}
+                    {progress.percent == null
+                      ? "Project · Chưa có đánh giá của QA"
+                      : `Project ${progress.percent}%`}
                   </span>
-                  <span className="text-ink-muted">
-                    {progress.taskSummary?.completed ?? 0} hoàn thành
-                  </span>
+                  <span className="text-ink-muted">QA đánh giá tổng thể</span>
                 </div>
-                {progress.taskSummary?.completion_percent !== null && (
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-quiet">
+                {progress.percent != null && (
+                  <div
+                    aria-label="Tiến độ tổng thể do QA đánh giá"
+                    aria-valuemax={100}
+                    aria-valuemin={0}
+                    aria-valuenow={progress.percent}
+                    className="mt-3 h-2 overflow-hidden rounded-full bg-surface-quiet"
+                    role="progressbar"
+                  >
                     <div
                       className="h-full rounded-full bg-brand"
-                      style={{ width: `${progress.taskSummary?.completion_percent ?? 0}%` }}
+                      style={{ width: `${progress.percent}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span>
+                    {taskProgress.completionPercent == null
+                      ? `Tasks · ${taskProgress.label}`
+                      : `Tasks ${taskProgress.completionPercent}%`}
+                  </span>
+                  {taskProgress.completed != null && (
+                    <span className="shrink-0 text-ink-muted">
+                      {taskProgress.completed} hoàn thành
+                    </span>
+                  )}
+                </div>
+                {taskProgress.completionPercent != null && (
+                  <div
+                    aria-label="Tiến độ công việc được tính từ các công việc chưa hủy"
+                    aria-valuemax={100}
+                    aria-valuemin={0}
+                    aria-valuenow={taskProgress.completionPercent}
+                    className="mt-3 h-2 overflow-hidden rounded-full bg-surface-quiet"
+                    role="progressbar"
+                  >
+                    <div
+                      className="h-full rounded-full bg-brand"
+                      style={{ width: `${taskProgress.completionPercent}%` }}
                     />
                   </div>
                 )}
               </div>
             </div>
           </Panel>
+          {canReadAutomationRuns && <AgentRunPanel project={project} showDefinitions={false} />}
           {dashboard && hasOverviewMetrics && (
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
               {can("requirement.read") && <Metric label="Yêu cầu" value={dashboard.requirements} />}
@@ -190,7 +239,7 @@ export default function DashboardPage({ project }) {
             </div>
           )}
           {dashboard && hasQualityMetrics && (
-            <details className="rounded-panel border border-border bg-surface p-4 shadow-card">
+            <details className="rounded-panel border border-border bg-surface p-4 shadow-sm">
               <summary className="cursor-pointer text-sm font-medium">
                 Chỉ số chất lượng chi tiết
               </summary>
@@ -207,9 +256,6 @@ export default function DashboardPage({ project }) {
                     <Metric label="Độ phủ còn hiệu lực" value={`${coverage.fresh_coverage}%`} />
                     <Metric label="Độ phủ thực thi" value={`${coverage.execution_coverage}%`} />
                   </>
-                )}
-                {can("proposal.read") && (
-                  <Metric label="Đề xuất đang chờ xử lý" value={dashboard.pending_proposals} />
                 )}
                 {can("testrun.read") && (
                   <Metric label="Lần chạy hiện tại" value={dashboard.current_runs} />

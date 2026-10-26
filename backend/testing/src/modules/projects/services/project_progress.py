@@ -1,4 +1,6 @@
 from fastapi import HTTPException
+from pymongo import ReturnDocument
+from pymongo.errors import OperationFailure
 
 from src.core.common import audit, get_project, get_project_role, get_project_roles, new_id, now, optimistic_patch, resolve_user_reference
 from src.core.database import database
@@ -41,7 +43,7 @@ async def task_summaries(project_ids):
             "project_id": {"$in": project_ids},
             "item_type": {"$in": ["TASK", "SUBTASK"]},
         }
-    ).to_list(10_000)
+    ).to_list(length=None)
     workflows = await database.value.planning_workflows.find(
         {"project_id": {"$in": project_ids}}
     ).to_list(len(project_ids))
@@ -66,6 +68,35 @@ async def task_summaries(project_ids):
     return {project_id: task_summary(items) for project_id, items in grouped.items()}
 
 
+async def _ensure_legacy_task_catalog_writable(project_id, session):
+    lock = await project_repository.lock_legacy_task_catalog(project_id, session)
+    if lock.matched_count != 1:
+        raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND"})
+    if await database.value.project_task_migrations.find_one(
+        {"project_id": project_id}, session=session
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "PROJECT_TASKS_MIGRATED_USE_WORK_ITEM"},
+        )
+
+
+async def _run_legacy_task_write(project_id, operation):
+    client = database.client
+    if client is None:
+        raise RuntimeError("Cơ sở dữ liệu chưa sẵn sàng")
+    async with await client.start_session() as session:
+        try:
+            return await session.with_transaction(operation)
+        except OperationFailure as exc:
+            if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "PROJECT_TASK_CATALOG_CONCURRENT_UPDATE"},
+                ) from exc
+            raise
+
+
 class ProjectProgressService:
     @staticmethod
     async def _require_qa(project_id, user):
@@ -75,33 +106,65 @@ class ProjectProgressService:
 
     @staticmethod
     async def update_project_progress(project_id, payload, user):
-        project = await get_project(project_id, user, "project.read")
+        await get_project(project_id, user, "project.read")
         await ProjectProgressService._require_qa(project_id, user)
-        previous_value = int(project.get("project_completion_percent", 0))
-        updated = await optimistic_patch(
-            "projects",
-            project_id,
-            project_id,
-            payload.expected_revision,
-            {"project_completion_percent": payload.project_completion_percent},
-        )
-        await audit(
-            user.id,
-            "project_completion_percent_updated",
-            "Project",
-            project_id,
-            project_id,
-            {
-                "previous_value": previous_value,
-                "new_value": payload.project_completion_percent,
-                "note": payload.note,
-            },
-        )
-        return updated
+
+        async def operation(session):
+            current = await database.value.projects.find_one(
+                {"_id": project_id, "revision": payload.expected_revision},
+                session=session,
+            )
+            if not current:
+                return await optimistic_patch(
+                    "projects",
+                    project_id,
+                    project_id,
+                    payload.expected_revision,
+                    {"project_completion_percent": payload.project_completion_percent},
+                    session=session,
+                )
+            updated = await optimistic_patch(
+                "projects",
+                project_id,
+                project_id,
+                payload.expected_revision,
+                {"project_completion_percent": payload.project_completion_percent},
+                session=session,
+            )
+            await audit(
+                user.id,
+                "project_completion_percent_updated",
+                "Project",
+                project_id,
+                project_id,
+                {
+                    "previous_value": int(current.get("project_completion_percent", 0)),
+                    "new_value": payload.project_completion_percent,
+                    "note": payload.note,
+                },
+                session=session,
+            )
+            return updated
+
+        client = database.client
+        if client is None:
+            raise RuntimeError("Cơ sở dữ liệu chưa sẵn sàng")
+        async with await client.start_session() as session:
+            return await session.with_transaction(operation)
 
     @staticmethod
     async def list_tasks(project_id, user, status=None):
         await get_project(project_id, user, "project.read")
+        migration = await database.value.project_task_migrations.find_one(
+            {"project_id": project_id}
+        )
+        if migration:
+            return {
+                "items": [],
+                "summary": task_summary([]),
+                "migration": migration,
+                "read_only": True,
+            }
         items = await project_repository.list_tasks(project_id, status=status)
         return {"items": items, "summary": task_summary(items)}
 
@@ -120,8 +183,20 @@ class ProjectProgressService:
             "created_at": timestamp,
             "updated_at": timestamp,
         }
-        await project_repository.create_task(task)
-        await audit(user.id, "project_task_created", "ProjectTask", task["_id"], project_id)
+
+        async def operation(session):
+            await _ensure_legacy_task_catalog_writable(project_id, session)
+            await database.value.project_tasks.insert_one(task, session=session)
+            await audit(
+                user.id,
+                "project_task_created",
+                "ProjectTask",
+                task["_id"],
+                project_id,
+                session=session,
+            )
+
+        await _run_legacy_task_write(project_id, operation)
         return task
 
     @staticmethod
@@ -136,33 +211,89 @@ class ProjectProgressService:
                 project_id, changes["assignee_id"]
             )
         changes["updated_at"] = now()
-        updated = await project_repository.update_task(
-            project_id, task_id, payload.expected_revision, changes
-        )
-        if not updated:
-            existing = await project_repository.find_task(project_id, task_id)
-            if not existing:
-                raise HTTPException(status_code=404, detail={"code": "PROJECT_TASK_NOT_FOUND"})
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "REVISION_CONFLICT", "current_revision": existing.get("revision")},
+
+        async def operation(session):
+            await _ensure_legacy_task_catalog_writable(project_id, session)
+            updated = await database.value.project_tasks.find_one_and_update(
+                {
+                    "_id": task_id,
+                    "project_id": project_id,
+                    "revision": payload.expected_revision,
+                },
+                {"$set": changes, "$inc": {"revision": 1}},
+                return_document=ReturnDocument.AFTER,
+                session=session,
             )
-        await audit(user.id, "project_task_updated", "ProjectTask", task_id, project_id, {"changed": sorted(changes)})
+            if not updated:
+                existing = await database.value.project_tasks.find_one(
+                    {"_id": task_id, "project_id": project_id}, session=session
+                )
+                if not existing:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": "PROJECT_TASK_NOT_FOUND"},
+                    )
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "REVISION_CONFLICT",
+                        "current_revision": existing.get("revision"),
+                    },
+                )
+            await audit(
+                user.id,
+                "project_task_updated",
+                "ProjectTask",
+                task_id,
+                project_id,
+                {"changed": sorted(changes)},
+                session=session,
+            )
+            return updated
+
+        updated = await _run_legacy_task_write(project_id, operation)
         return updated
 
     @staticmethod
     async def delete_task(project_id, task_id, payload, user):
         await ProjectProgressService._require_qa(project_id, user)
-        result = await project_repository.delete_task(project_id, task_id, payload.expected_revision)
-        if not result.deleted_count:
-            existing = await project_repository.find_task(project_id, task_id)
-            if not existing:
-                raise HTTPException(status_code=404, detail={"code": "PROJECT_TASK_NOT_FOUND"})
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "REVISION_CONFLICT", "current_revision": existing.get("revision")},
+
+        async def operation(session):
+            await _ensure_legacy_task_catalog_writable(project_id, session)
+            result = await database.value.project_tasks.delete_one(
+                {
+                    "_id": task_id,
+                    "project_id": project_id,
+                    "revision": payload.expected_revision,
+                },
+                session=session,
             )
-        await audit(user.id, "project_task_deleted", "ProjectTask", task_id, project_id)
+            if not result.deleted_count:
+                existing = await database.value.project_tasks.find_one(
+                    {"_id": task_id, "project_id": project_id}, session=session
+                )
+                if not existing:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": "PROJECT_TASK_NOT_FOUND"},
+                    )
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "REVISION_CONFLICT",
+                        "current_revision": existing.get("revision"),
+                    },
+                )
+            await audit(
+                user.id,
+                "project_task_deleted",
+                "ProjectTask",
+                task_id,
+                project_id,
+                session=session,
+            )
+
+        await _run_legacy_task_write(project_id, operation)
         return {"deleted": True, "task_id": task_id}
 
     @staticmethod

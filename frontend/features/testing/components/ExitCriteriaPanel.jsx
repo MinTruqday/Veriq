@@ -1,5 +1,6 @@
 import DataTable from "./DataTable";
 import QualityGateBadge from "./QualityGateBadge";
+import { StructuredValueView } from "./StructuredValueEditor";
 
 export default function ExitCriteriaPanel({ snapshot, canOverride, onOverride }) {
   const items =
@@ -26,10 +27,7 @@ export default function ExitCriteriaPanel({ snapshot, canOverride, onOverride })
           {
             key: "actual",
             label: "Thực tế",
-            render: (item) =>
-              typeof item.actual === "object"
-                ? JSON.stringify(item.actual)
-                : String(item.actual ?? "Cần đánh giá"),
+            render: (item) => <StructuredValueView value={item.actual ?? "Cần đánh giá"} />,
           },
           {
             key: "status",

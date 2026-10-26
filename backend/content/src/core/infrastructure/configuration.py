@@ -1,5 +1,6 @@
 import os
 
+
 class Settings:
     PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
@@ -16,6 +17,11 @@ class Settings:
     CONTENT_DB_NAME: str = os.environ["CONTENT_DB_NAME"]
     OBJECT_STORAGE_ENDPOINT: str = os.environ["OBJECT_STORAGE_ENDPOINT"]
     OBJECT_STORAGE_PUBLIC_URL: str = os.environ["OBJECT_STORAGE_PUBLIC_URL"]
+    DOCUMENT_INDEXING_LEASE_SECONDS: int = int(
+        os.getenv("DOCUMENT_INDEXING_LEASE_SECONDS", "180")
+    )
 
 
 settings = Settings()
+if settings.DOCUMENT_INDEXING_LEASE_SECONDS < 2:
+    raise ValueError("DOCUMENT_INDEXING_LEASE_SECONDS must be at least 2")

@@ -6,45 +6,23 @@ import {
   getToken,
 } from "@/shared/services/api-client";
 export { API_URL, getAuthHeaders, getToken };
-export function setToken(token) {
+export function removeToken(expectedToken) {
   if (typeof window !== "undefined") {
-    localStorage.setItem("veriq_token", token);
-    userMePromise = null;
-  }
-}
-export function removeToken() {
-  if (typeof window !== "undefined") {
+    const currentToken = getToken();
+    if (expectedToken && currentToken !== expectedToken) return false;
     localStorage.removeItem("veriq_token");
-    userMePromise = null;
+    const cookieToken = document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("token="))
+      ?.slice("token=".length);
+    if (!expectedToken || cookieToken === expectedToken) {
+      document.cookie = "token=; path=/; max-age=0; SameSite=Lax";
+    }
+    if (!expectedToken || userMePromise?.token === expectedToken) userMePromise = null;
+    return true;
   }
-}
-export function getUserFromToken(token = getToken()) {
-  if (!token) return null;
-  try {
-    const encodedPayload = token.split(".")[1];
-    if (!encodedPayload) return null;
-    const normalized = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
-    const payload = JSON.parse(
-      decodeURIComponent(
-        Array.from(atob(padded))
-          .map((character) => `%${character.charCodeAt(0).toString(16).padStart(2, "0")}`)
-          .join(""),
-      ),
-    );
-    const userId = payload.uid || payload.user_id || payload.id;
-    if (!payload.sub || !userId) return null;
-    if (payload.exp && payload.exp * 1000 <= Date.now()) return null;
-    return {
-      _id: userId,
-      email: payload.sub,
-      full_name: payload.full_name || payload.sub,
-      slug: payload.slug || "",
-      system_role: payload.system_role || "USER",
-    };
-  } catch {
-    return null;
-  }
+  return false;
 }
 function errorMessage(data, fallback) {
   const detail = data?.detail ?? data?.message;
@@ -105,14 +83,14 @@ export async function register(email, password, full_name, slug, agreed_to_terms
 export async function getUserMe() {
   const token = getToken();
   if (!token) return null;
-  if (userMePromise) return userMePromise;
-  userMePromise = (async () => {
+  if (userMePromise?.token === token) return userMePromise.promise;
+  const promise = (async () => {
     try {
       const res = await authenticatedFetch(`${API_URL}/xac-thuc/ca-nhan`, {
         method: "GET",
       });
       if (res.status === 401 || res.status === 403) {
-        removeToken();
+        removeToken(token);
         return null;
       }
       if (!res.ok) throw new Error("Không thể xác minh phiên đăng nhập");
@@ -120,10 +98,11 @@ export async function getUserMe() {
       if (!json?.data) throw new Error("Không thể xác minh phiên đăng nhập");
       return json.data;
     } finally {
-      userMePromise = null;
+      if (userMePromise?.promise === promise) userMePromise = null;
     }
   })();
-  return userMePromise;
+  userMePromise = { token, promise };
+  return promise;
 }
 async function authenticatedJson(path, options = {}, fallback = "Yêu cầu không thành công") {
   const response = await authenticatedFetch(`${API_URL}${path}`, options);
@@ -208,7 +187,7 @@ export const forgotPasswordAPI = async (email) => {
     body: JSON.stringify({ email }),
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(data, "Không thể tạo tiến trình khôi phục mật khẩu"));
+  if (!res.ok) throw new Error(errorMessage(data, "Không thể gửi yêu cầu khôi phục mật khẩu"));
   return data?.data || data;
 };
 export const resetPasswordAPI = async (token, newPassword) => {
@@ -218,7 +197,7 @@ export const resetPasswordAPI = async (token, newPassword) => {
     body: JSON.stringify({ token, new_password: newPassword }),
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(data, "Không thể cập nhật cấu trúc mật khẩu mới"));
+  if (!res.ok) throw new Error(errorMessage(data, "Không thể cập nhật mật khẩu mới"));
   return data?.data || data;
 };
 export const verifyCodeAPI = async (token) => {
@@ -228,7 +207,17 @@ export const verifyCodeAPI = async (token) => {
     body: JSON.stringify({ token }),
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(data, "Lỗi sai lệch mã thông báo xác thực"));
+  if (!res.ok) throw new Error(errorMessage(data, "Mã xác thực không hợp lệ hoặc đã hết hạn"));
+  return data?.data || data;
+};
+export const verifyEmailAPI = async (token) => {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/xac-minh-thu-dien-tu`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(errorMessage(data, "Không thể xác minh địa chỉ thư điện tử"));
   return data?.data || data;
 };
 export const passkeyLoginBeginAPI = async (email) => {

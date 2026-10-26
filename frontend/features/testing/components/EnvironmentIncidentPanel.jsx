@@ -140,7 +140,7 @@ export default function EnvironmentIncidentPanel({ project }) {
   };
   const transition = async (item, status) => {
     const answer = await ask({
-      title: `Chuyển incident sang ${status}`,
+      title: "Cập nhật trạng thái sự cố môi trường",
       confirmLabel: "Chuyển",
       fields: [
         {
@@ -171,7 +171,7 @@ export default function EnvironmentIncidentPanel({ project }) {
         can("environment.read") &&
         can("project.members.read") ? (
           <button className="apple-button" type="button" onClick={create}>
-            Ghi nhận incident
+            Ghi nhận sự cố môi trường
           </button>
         ) : null
       }

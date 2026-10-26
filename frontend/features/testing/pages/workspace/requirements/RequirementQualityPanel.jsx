@@ -1,31 +1,30 @@
-import { useState } from "react";
 import DataTable from "../../../components/DataTable";
 import { Panel } from "../../../components/WorkspacePrimitives";
-import { messageOf } from "../../../lib/testing";
-import { testingApi } from "../../../services/testing.service";
 import { requirementFieldLabel, requirementSuggestionPreview } from "./requirements.model";
 
-export default function RequirementQualityPanel({
-  lint,
-  current,
-  selected,
-  can,
-  onSelectedChange,
-  onLintChange,
-  onError,
-}) {
-  const [applyingSuggestionId, setApplyingSuggestionId] = useState("");
+export default function RequirementQualityPanel({ lint }) {
   if (!lint) return null;
   return (
     <Panel
       title={
         lint.degraded_mode
-          ? "Chưa thể xác minh chất lượng"
+          ? "Chưa thể hoàn tất đánh giá tự động"
           : lint.valid
-            ? "Kiểm tra chất lượng không có lỗi chặn"
-            : "Kiểm tra chất lượng phát hiện vấn đề"
+            ? "Đánh giá tự động không phát hiện lỗi chặn"
+            : "Đánh giá tự động phát hiện vấn đề"
       }
     >
+      {lint.is_stale && (
+        <p className="px-5 pt-4 text-sm text-warning" role="status">
+          Kết quả này thuộc phiên bản hoặc lần sửa trước; đang chờ phân tích tự động cho revision
+          hiện tại.
+        </p>
+      )}
+      {lint.artifact_revision && (
+        <p className="px-5 pt-3 text-sm text-ink-muted">
+          Kết quả tự động cho revision {lint.artifact_revision}
+        </p>
+      )}
       <DataTable
         items={lint.findings}
         empty="Không có vấn đề"
@@ -73,46 +72,6 @@ export default function RequirementQualityPanel({
                 "Nội dung",
             },
             { key: "rationale", label: "Cơ sở" },
-            {
-              key: "actions",
-              label: "Thao tác",
-              hideWhenEmpty: true,
-              render: (item) =>
-                current.status === "DRAFT" && can("requirement.update") ? (
-                  <button
-                    className="apple-button"
-                    type="button"
-                    disabled={Boolean(applyingSuggestionId)}
-                    onClick={async () => {
-                      setApplyingSuggestionId(item.suggestion_id);
-                      try {
-                        await testingApi.applyRequirementAiSuggestion(current._id, {
-                          expected_revision: current.revision,
-                          ai_result_id: lint._id,
-                          suggestion_id: item.suggestion_id,
-                        });
-                        const updatedRequirement = await testingApi.getRequirement(selected._id);
-                        onSelectedChange(updatedRequirement);
-                        onLintChange(
-                          await testingApi.lintRequirement(updatedRequirement.current_version._id, {
-                            idempotency_key: crypto.randomUUID(),
-                            instruction:
-                              "Kiểm tra lại bản đã áp dụng và chỉ trả về kết quả cuối cùng",
-                          }),
-                        );
-                      } catch (reason) {
-                        onError(messageOf(reason));
-                      } finally {
-                        setApplyingSuggestionId("");
-                      }
-                    }}
-                  >
-                    {applyingSuggestionId === item.suggestion_id
-                      ? "Đang áp dụng và kiểm tra lại"
-                      : "Áp dụng vào bản nháp"}
-                  </button>
-                ) : null,
-            },
           ]}
         />
       </div>

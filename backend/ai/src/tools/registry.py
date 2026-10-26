@@ -5,6 +5,7 @@ from typing import Any, Callable, Literal
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+
 from src.schemas.agent import (
     AgentTask,
     CapabilityDomain,
@@ -108,11 +109,27 @@ async def verify_application(
     specification = access.verification if access else None
     result = outcome.get("result") or {}
     if not specification:
+        if (
+            isinstance(result, dict)
+            and result.get("status") == "automation_partial_failure"
+            and result.get("reason_code") == "SOURCE_EXTRACTION_INCOMPLETE"
+            and result.get("safe_no_mutation") is True
+        ):
+            return {
+                "status": ToolExecutionStatus.COMPLETED,
+                "reason_code": "SAFE_NO_MUTATION_OUTCOME",
+                "project_id": task.project_id,
+                "artifact_ids": [],
+                "checks": ["source_extraction_incomplete_before_mutation"],
+            }
         composite = result.get("verification") if isinstance(result, dict) else None
         if not isinstance(composite, dict):
             return {"status": ToolExecutionStatus.NOT_REQUIRED}
         verified = (
-            composite.get("status") == ToolExecutionStatus.COMPLETED
+            composite.get("status") in {
+                ToolExecutionStatus.COMPLETED,
+                "AWAITING_INPUT",
+            }
             and composite.get("project_id") == task.project_id
             and bool(composite.get("artifact_ids"))
         )
@@ -129,7 +146,7 @@ async def verify_application(
             "status": ToolExecutionStatus.FAILED,
             "reason_code": "POSTCONDITION_IDENTIFIER_MISSING",
         }
-    from src.tools.testing import call, parse
+    from src.tools.testing_api import call, parse
 
     configurable = {
         "token": token,
@@ -137,6 +154,22 @@ async def verify_application(
         "run_id": task.run_id,
     }
     if automation_run_id:
+        from src.repositories.automation import automation_repository
+        from src.schemas.automation import AutomationStatus
+
+        active_run = await automation_repository.get_run(automation_run_id)
+        if not active_run:
+            return {
+                "status": ToolExecutionStatus.DENIED,
+                "reason_code": "AUTOMATION_RUN_NOT_FOUND",
+                "tool_name": tool_name,
+            }
+        if active_run.status != AutomationStatus.RUNNING:
+            return {
+                "status": ToolExecutionStatus.DENIED,
+                "reason_code": "AUTOMATION_RUN_NOT_ACTIVE",
+                "tool_name": tool_name,
+            }
         configurable["automation_run_id"] = automation_run_id
     config = RunnableConfig(configurable=configurable)
     readback = parse(
@@ -212,6 +245,7 @@ async def invoke_tool(
             "token": token,
             "project_id": task.project_id,
             "run_id": task.run_id,
+            "task_id": task.task_id,
             "user_id": task.user_id,
             "evidence": evidence or [],
             "permissions": permissions,
@@ -221,6 +255,63 @@ async def invoke_tool(
     config = RunnableConfig(configurable=configurable)
     started = time.monotonic()
     try:
+        if automation_run_id:
+            from src.core.infrastructure.configuration import settings
+            import jwt
+            from src.repositories.automation import automation_repository
+            from src.schemas.automation import AutomationStatus
+
+            try:
+                active_run = await automation_repository.get_run(automation_run_id)
+            except Exception:
+                return {
+                    "status": ToolExecutionStatus.DENIED,
+                    "reason_code": "AUTOMATION_RUN_STATE_UNAVAILABLE",
+                    "tool_name": tool_name,
+                }
+            if not active_run or active_run.status != AutomationStatus.RUNNING:
+                return {
+                    "status": ToolExecutionStatus.DENIED,
+                    "reason_code": (
+                        "AUTOMATION_RUN_NOT_FOUND"
+                        if not active_run
+                        else "AUTOMATION_RUN_NOT_ACTIVE"
+                    ),
+                    "tool_name": tool_name,
+                }
+            source_event_verified = bool(
+                getattr(active_run, "source_event_verified", False)
+            )
+            source_event_id = getattr(active_run, "source_event_id", None)
+            if source_event_verified and source_event_id:
+                configurable["event_trigger"] = str(
+                    getattr(
+                        getattr(active_run, "trigger", None),
+                        "value",
+                        getattr(active_run, "trigger", None),
+                    )
+                    or ""
+                )
+                configurable["source_event_id"] = source_event_id
+            try:
+                token_payload = jwt.decode(
+                    token.removeprefix("Bearer "),
+                    settings.SECRET_KEY,
+                    algorithms=["HS256"],
+                )
+                worker_revision = token_payload.get("ai_automation_worker_revision")
+            except jwt.PyJWTError:
+                worker_revision = None
+            if (
+                isinstance(worker_revision, bool)
+                or not isinstance(worker_revision, int)
+                or worker_revision != active_run.revision
+            ):
+                return {
+                    "status": ToolExecutionStatus.DENIED,
+                    "reason_code": "AUTOMATION_WORKER_FENCE_LOST",
+                    "tool_name": tool_name,
+                }
         result = await tool.ainvoke(arguments, config=config)
         if isinstance(result, str):
             try:
@@ -234,23 +325,38 @@ async def invoke_tool(
             "invalid_payload",
             "qa_operation_failed",
             "automation_blocked",
-            "automation_partial_failure",
             "degraded",
+            "failed",
             "insufficient_evidence",
         }
+        denied_statuses = {"blocked", "denied", "forbidden"}
         result_status = (
             str(parsed.get("status") or "").casefold()
             if isinstance(parsed, dict)
             else ""
         )
-        if isinstance(parsed, dict) and result_status in failed_statuses:
+        waiting_for_input = (
+            isinstance(parsed, dict)
+            and result_status == "automation_waiting_for_input"
+        )
+        if (
+            isinstance(parsed, dict)
+            and (result_status in failed_statuses or result_status in denied_statuses)
+            and not waiting_for_input
+        ):
+            error_detail = parsed.get("error")
+            error_code = error_detail.get("code") if isinstance(error_detail, dict) else None
             reason_code = (
-                (parsed.get("error") or {}).get("code")
+                error_code
                 or parsed.get("reason_code")
                 or str(parsed.get("status")).upper()
             )
             outcome = {
-                "status": ToolExecutionStatus.FAILED,
+                "status": (
+                    ToolExecutionStatus.DENIED
+                    if result_status in denied_statuses
+                    else ToolExecutionStatus.FAILED
+                ),
                 "tool_name": tool_name,
                 "reason_code": reason_code,
                 "result": parsed,

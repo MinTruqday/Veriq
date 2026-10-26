@@ -7,6 +7,7 @@ from loguru import logger
 from uuid6 import uuid7
 
 from src.core.infrastructure.configuration import settings
+from src.runtime.limits import limits
 from src.utils.background import create_background_task
 
 
@@ -20,13 +21,15 @@ class RabbitMQClient:
 
     async def connect(self):
         if self.connection and not self.connection.is_closed:
+            if not self.channel or self.channel.is_closed:
+                self.channel = await self.connection.channel(on_return_raises=True)
             return
 
         max_retries = 10
         for attempt in range(max_retries):
             try:
                 self.connection = await aio_pika.connect_robust(self.url)
-                self.channel = await self.connection.channel()
+                self.channel = await self.connection.channel(on_return_raises=True)
                 logger.info("RabbitMQ connection successful")
                 return
             except Exception as e:
@@ -34,6 +37,14 @@ class RabbitMQClient:
                 if attempt == max_retries - 1:
                     raise e
                 await asyncio.sleep(3)
+
+    async def _ensure_publisher_channel(self):
+        if self.channel and not self.channel.is_closed:
+            return
+        if not self.connection or self.connection.is_closed:
+            await self.connect()
+        elif not self.channel or self.channel.is_closed:
+            self.channel = await self.connection.channel(on_return_raises=True)
 
     async def get_queue(self, queue_name: str, channel=None):
         if channel is None:
@@ -49,19 +60,26 @@ class RabbitMQClient:
         return await channel.declare_queue(queue_name, durable=True, arguments=queue_args)
 
     async def publish(self, queue_name: str, payload: dict) -> bool:
-        if not self.channel:
-            await self.connect()
         try:
+            await self._ensure_publisher_channel()
+            await self.get_queue(queue_name)
             message = aio_pika.Message(
                 body=json.dumps(payload).encode(), delivery_mode=aio_pika.DeliveryMode.PERSISTENT
             )
-            await self.channel.default_exchange.publish(message, routing_key=queue_name)
+            await self.channel.default_exchange.publish(
+                message, routing_key=queue_name, mandatory=True
+            )
             return True
         except Exception:
             logger.exception("Error distributing message to RabbitMQ")
             return False
 
-    async def consume(self, queue_name: str, timeout: int = 30) -> Optional[Dict[str, Any]]:
+    async def consume(
+        self,
+        queue_name: str,
+        timeout: int = 30,
+        ack_timeout_seconds: int = limits.message_ack_timeout_seconds,
+    ) -> Optional[Dict[str, Any]]:
         if not self.connection or self.connection.is_closed:
             await self.connect()
         channel = self.consumer_channels.get(queue_name)
@@ -72,14 +90,25 @@ class RabbitMQClient:
         try:
             message = await queue.get(timeout=timeout)
             if message:
-                payload = json.loads(message.body.decode())
+                try:
+                    payload = json.loads(message.body.decode())
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    logger.exception("Rejecting malformed RabbitMQ message queue={}", queue_name)
+                    await message.nack(requeue=False)
+                    return None
+                if not isinstance(payload, dict):
+                    logger.error("Rejecting non-object RabbitMQ message queue={}", queue_name)
+                    await message.nack(requeue=False)
+                    return None
                 ack_id = str(uuid7())
 
                 self.pending_acks[ack_id] = message
 
-                create_background_task(
-                    self._auto_nack_if_timeout(ack_id, delay=300), f"rabbitmq-auto-nack-{ack_id}"
-                )
+                if ack_timeout_seconds > 0:
+                    create_background_task(
+                        self._auto_nack_if_timeout(ack_id, delay=ack_timeout_seconds),
+                        f"rabbitmq-auto-nack-{ack_id}",
+                    )
 
                 return {"payload": payload, "delivery_tag": ack_id}
             return None
@@ -137,6 +166,7 @@ class RabbitMQClient:
             if not channel.is_closed:
                 await channel.close()
         self.consumer_channels.clear()
+        self.pending_acks.clear()
         if self.connection:
             await self.connection.close()
 

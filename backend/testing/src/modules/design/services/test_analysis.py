@@ -1,5 +1,6 @@
 import json
 import re
+import hashlib
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -9,6 +10,7 @@ from src.core.common import audit, get_project, new_id, next_key, now, page_payl
 from src.schemas.test_analysis import TestConditionCreate, condition_hash, condition_snapshot
 from src.repositories.test_condition import test_condition_repository
 from src.repositories.test_analysis import test_analysis_repository
+from src.repositories.requirement_analysis import requirement_analysis_repository
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.modules.design.services.test_analysis_basis import (
     deterministic_testability_findings,
@@ -19,6 +21,29 @@ from src.modules.design.services.test_analysis_basis import (
 
 
 __all__ = ["list_test_basis"]
+
+
+async def list_ai_analysis_results(project_id, user, limit=100, idempotency_key=None):
+    if idempotency_key:
+        await get_project(project_id, user, "testanalysis.run_ai")
+        if (
+            not getattr(user, "_ai_automation_run_id", "")
+            or getattr(user, "_ai_automation_trigger", "") != "REQUIREMENT_CHANGED"
+        ):
+            raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
+        result = await test_analysis_repository.find_ai_result(project_id, idempotency_key)
+        if result and (
+            result.get("created_by") != user.id
+            or not result.get("source_event_id")
+            or result.get("source_event_revision") is None
+        ):
+            raise HTTPException(404, detail={"code": "ENTITY_NOT_FOUND"})
+        if result:
+            result.pop("basis_snapshots", None)
+            result.pop("created_by", None)
+        return result
+    await get_project(project_id, user, "testanalysis.read")
+    return await test_analysis_repository.list_ai_results(project_id, limit)
 
 
 async def get_condition_for_user(condition_id, user, permission=None):
@@ -290,6 +315,34 @@ async def resolve_finding(condition_id, finding_id, payload, user):
 async def run_ai_analysis(project_id, payload, user):
     
     await get_project(project_id, user, 'testanalysis.run_ai')
+    event_scoped = bool(payload.source_event_id or payload.source_event_revision)
+    automation_trigger = str(getattr(user, "_ai_automation_trigger", "") or "")
+    source_version_id = None
+    if (
+        not event_scoped
+        or not payload.source_event_id
+        or payload.source_event_revision is None
+        or not getattr(user, "_ai_automation_run_id", "")
+        or automation_trigger != "REQUIREMENT_CHANGED"
+        or len(payload.basis_refs) != 1
+        or payload.basis_refs[0].artifact_type != "REQUIREMENT_VERSION"
+    ):
+        raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
+    if event_scoped:
+        source_version_id = str(
+            payload.basis_refs[0].artifact_version_id or payload.basis_refs[0].artifact_id
+        )
+        expected_event_id = (
+            f"requirement-version:{source_version_id}:"
+            f"{payload.source_event_revision}:BASELINED"
+        )
+        if payload.source_event_id != expected_event_id:
+            raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
+        expected_key = "test-condition-baseline:" + hashlib.sha256(
+            f"{payload.source_event_id}:{source_version_id}".encode("utf-8")
+        ).hexdigest()
+        if payload.idempotency_key != expected_key:
+            raise HTTPException(422, detail={"code": "TEST_CONDITION_EVENT_KEY_INVALID"})
     existing = await test_analysis_repository.find_ai_result(
         project_id, payload.idempotency_key
     )
@@ -299,8 +352,34 @@ async def run_ai_analysis(project_id, payload, user):
                 status_code=409,
                 detail={"code": 'IDEMPOTENCY_KEY_REUSED'},
             )
+        if event_scoped and (
+            existing.get("source_event_id") != payload.source_event_id
+            or existing.get("source_event_revision") != payload.source_event_revision
+            or existing.get("requirement_version_id") != source_version_id
+        ):
+            raise HTTPException(409, detail={"code": "TEST_CONDITION_EVENT_KEY_CONFLICT"})
         return existing
     basis_snapshots = await resolve_basis(project_id, payload.basis_refs, user)
+    if event_scoped:
+        version = await requirement_analysis_repository.find_version(
+            source_version_id, project_id
+        )
+        requirement = (
+            await requirement_analysis_repository.find_requirement(
+                str(version.get("requirement_id") or ""), project_id
+            )
+            if version
+            else None
+        )
+        if (
+            not version
+            or version.get("status") != "BASELINED"
+            or version.get("revision") != payload.source_event_revision
+            or not requirement
+            or requirement.get("current_version_id") != source_version_id
+        ):
+            raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
+        initial_source_hash = basis_snapshots[0].get("source_hash")
     evidence = [
         {
             "artifact_type": item["artifact_type"],
@@ -318,18 +397,82 @@ async def run_ai_analysis(project_id, payload, user):
     ai_result = await request_ai_automation(
         "test_condition_generation", project_id, instruction, evidence
     )
+    if ai_result.get("status") != "SUCCESS" or ai_result.get("degraded_mode"):
+        raise HTTPException(
+            503,
+            detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True},
+        )
+    if event_scoped:
+        current_version = await requirement_analysis_repository.find_version(
+            source_version_id, project_id
+        )
+        current_requirement = (
+            await requirement_analysis_repository.find_requirement(
+                str(current_version.get("requirement_id") or ""), project_id
+            )
+            if current_version
+            else None
+        )
+        current_basis = await resolve_basis(project_id, payload.basis_refs, user)
+        if (
+            not current_version
+            or current_version.get("status") != "BASELINED"
+            or current_version.get("revision") != payload.source_event_revision
+            or not current_requirement
+            or current_requirement.get("current_version_id") != source_version_id
+            or current_basis[0].get("source_hash") != initial_source_hash
+        ):
+            raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
+        basis_snapshots = current_basis
+    suggestions = ai_result.get("suggestions", [])
+    if not isinstance(suggestions, list) or any(not isinstance(item, dict) for item in suggestions):
+        raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
     raw_candidates = [
         item
-        for item in ai_result.get("suggestions", [])
+        for item in suggestions
         if isinstance(item, dict) and str(item.get("title") or "").strip()
     ]
+    if len(raw_candidates) != len(suggestions) or len(raw_candidates) > 100:
+        raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
+    basis_by_ref = {}
+    for snapshot in basis_snapshots:
+        for reference in (
+            str(snapshot.get("artifact_id") or ""),
+            str(snapshot.get("artifact_version_id") or snapshot.get("resolved_id") or ""),
+        ):
+            if reference:
+                basis_by_ref[reference] = snapshot
+    for candidate in raw_candidates:
+        citations = candidate.get("evidence_quotes")
+        if not isinstance(citations, list) or not citations:
+            raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
+        for citation in citations:
+            if not isinstance(citation, dict):
+                raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
+            source_ref = str(citation.get("evidence_ref") or "")
+            quote = str(citation.get("quote") or "").strip()
+            source_snapshot = basis_by_ref.get(source_ref)
+            if not source_snapshot or len(quote) < 2 or quote not in str(source_snapshot.get("text") or ""):
+                raise HTTPException(502, detail={"code": "AI_GENERATION_INVALID"})
     candidates = [
         {
             **item,
             "candidate_id": f"{'TCON-CAND-'}{index}",
             "status": 'CANDIDATE',
             "candidate_only": True,
-            "basis_refs": [ref.model_dump() for ref in payload.basis_refs],
+            "basis_refs": [
+                ref.model_dump()
+                for ref in payload.basis_refs
+                if any(
+                    str(citation.get("evidence_ref") or "")
+                    in {
+                        str(ref.artifact_id),
+                        str(ref.artifact_version_id or ""),
+                    }
+                    for citation in item.get("evidence_quotes", [])
+                    if isinstance(citation, dict)
+                )
+            ],
         }
         for index, item in enumerate(raw_candidates, 1)
     ]
@@ -339,6 +482,10 @@ async def run_ai_analysis(project_id, payload, user):
         "result_type": 'TEST_CONDITION_CANDIDATES',
         "candidates": candidates,
         "basis_snapshots": basis_snapshots,
+        "requirement_version_id": source_version_id if event_scoped else None,
+        "source_event_id": payload.source_event_id,
+        "source_event_revision": payload.source_event_revision,
+        "generation_status": ai_result.get("status", "DEGRADED"),
         "candidate_only": True,
         "human_confirmation_required": True,
         **ai_contract_metadata(ai_result),

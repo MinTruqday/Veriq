@@ -9,6 +9,9 @@ class RequirementClarificationCreate(BaseModel):
     coverage_item_id: str | None = Field(default=None, min_length=1, max_length=200)
     source_ref: str | None = Field(default=None, min_length=1, max_length=500)
     source_quote: str | None = Field(default=None, min_length=1, max_length=10000)
+    unlocks_obligation_keys: list[str] = Field(default_factory=list, max_length=100)
+    unlocks_source_quotes: list[str] = Field(default_factory=list, max_length=100)
+    unlocks_coverage_item_ids: list[str] = Field(default_factory=list, max_length=100)
 
 
 class RequirementClarificationAnswer(BaseModel):

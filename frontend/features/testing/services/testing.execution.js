@@ -68,6 +68,8 @@ export const executionTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  getReleaseCloseReadiness: (releaseId) =>
+    testingRequest(`/ban-phat-hanh/${releaseId}/san-sang-dong`),
   listBuilds: (id, query = {}) => {
     const value = listQuery(query);
     return testingRequest(`/du-an/${id}/ban-dung${value ? `?${value}` : ""}`);
@@ -121,26 +123,11 @@ export const executionTestingApi = {
     }),
   listSecurityTestSuggestions: (projectId) =>
     testingRequest(`/du-an/${projectId}/ai/goi-y-kiem-thu-bao-mat`),
-  generateSecurityTestSuggestions: (projectId, payload) =>
-    testingStreamRequest(`/du-an/${projectId}/ai/goi-y-kiem-thu-bao-mat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   listPerformancePlanDrafts: (projectId) =>
     testingRequest(`/du-an/${projectId}/ai/ke-hoach-hieu-nang`),
-  generatePerformancePlanDraft: (projectId, payload) =>
-    testingStreamRequest(`/du-an/${projectId}/ai/ke-hoach-hieu-nang`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   listAutomationScriptDrafts: (projectId) =>
     testingRequest(`/du-an/${projectId}/ban-nhap-kich-ban-tu-dong`),
   getAutomationScriptDraft: (draftId) => testingRequest(`/ban-nhap-kich-ban-tu-dong/${draftId}`),
-  generateAutomationScriptDraft: (projectId, payload) =>
-    testingStreamRequest(`/du-an/${projectId}/ai/ban-nhap-kich-ban-tu-dong`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   updateAutomationScriptDraft: (draftId, payload) =>
     testingRequest(`/ban-nhap-kich-ban-tu-dong/${draftId}`, {
       method: "PATCH",
@@ -278,9 +265,25 @@ export const executionTestingApi = {
     testingRequest(
       `/du-an/${id}/ket-qua-kiem-thu${status ? `?status=${encodeURIComponent(status)}` : ""}`,
     ),
+  getTestResult: (resultId) => testingRequest(`/ket-qua-kiem-thu/${resultId}`),
   createRun: (payload) =>
     testingRequest("/lan-chay-kiem-thu", { method: "POST", body: JSON.stringify(payload) }),
   getRun: (id) => testingRequest(`/lan-chay-kiem-thu/${id}`),
+  rerunRun: (projectId, runId, payload) =>
+    testingRequest(`/du-an/${projectId}/lan-chay-kiem-thu/${runId}/chay-lai`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  recommendRunAssignment: (projectId, runId, payload) =>
+    testingRequest(`/du-an/${projectId}/lan-chay-kiem-thu/${runId}/goi-y-phan-cong`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  assignRun: (projectId, runId, payload) =>
+    testingRequest(`/du-an/${projectId}/lan-chay-kiem-thu/${runId}/phan-cong`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   startRun: (id) => testingRequest(`/lan-chay-kiem-thu/${id}/bat-dau`, { method: "POST" }),
   resumeRun: (projectId, runId, payload) =>
     testingRequest(`/du-an/${projectId}/lan-chay-kiem-thu/${runId}/tiep-tuc`, {
@@ -309,11 +312,13 @@ export const executionTestingApi = {
   listDefects: (id, query = "") =>
     listPage(`/du-an/${id}/loi`, query).then((result) => result.items),
   findDuplicateDefects: (id) => testingRequest(`/du-an/${id}/loi/trung-lap`),
-  suggestDefectTrace: (projectId, defectId, payload) =>
-    testingStreamRequest(`/du-an/${projectId}/ai/loi/${defectId}/goi-y-truy-vet`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+  listAutomatedDefectTraceSuggestions: (projectId, defectIds) => {
+    const query = new URLSearchParams();
+    (defectIds || []).forEach((defectId) => query.append("defect_ids", defectId));
+    return testingRequest(
+      `/du-an/${projectId}/ai/goi-y-truy-vet${query.size ? `?${query.toString()}` : ""}`,
+    );
+  },
   updateDefectTrace: (projectId, defectId, payload) =>
     testingRequest(`/du-an/${projectId}/loi/${defectId}/truy-vet`, {
       method: "PATCH",

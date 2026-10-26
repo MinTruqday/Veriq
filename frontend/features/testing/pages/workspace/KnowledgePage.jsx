@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import {
@@ -46,39 +47,204 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   const { ask, dialog } = useActionDialog();
   const [query, setQuery] = useState(initialQuery);
   const [result, setResult] = useState(null);
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState(null);
   const [sources, setSources] = useState([]);
   const [error, setError] = useState("");
   const [sourcesLoading, setSourcesLoading] = useState(true);
   const [sourcesLoadFailed, setSourcesLoadFailed] = useState(false);
   const sourcesLoaded = useRef(false);
+  const sourceListRequestGeneration = useRef(0);
   const [creatingSource, setCreatingSource] = useState(false);
-  const [askingAi, setAskingAi] = useState(false);
-  const canAsk = project.current_permissions?.includes("ai.ask_project");
+  const [metadataSource, setMetadataSource] = useState(null);
+  const [metadataPage, setMetadataPage] = useState(null);
+  const [metadataLoading, setMetadataLoading] = useState(false);
+  const [metadataError, setMetadataError] = useState("");
+  const [sourceStructurePage, setSourceStructurePage] = useState(null);
+  const [sourceStructureLoading, setSourceStructureLoading] = useState(false);
+  const [sourceStructureError, setSourceStructureError] = useState("");
+  const [sourceImageUrls, setSourceImageUrls] = useState({});
+  const [sourceImageLoading, setSourceImageLoading] = useState({});
+  const [sourceImageErrors, setSourceImageErrors] = useState({});
+  const sourceImageUrlsRef = useRef({});
+  const sourceImageRequestGeneration = useRef(0);
+  const metadataRequestGeneration = useRef(0);
+  const sourceStructureRequestGeneration = useRef(0);
+  const projectSearchRequestGeneration = useRef(0);
+  const sourceProjectId = useRef(project._id);
   const canManage = project.current_permissions?.includes("knowledge.manage");
   const loadSources = useCallback(async () => {
+    const requestGeneration = ++sourceListRequestGeneration.current;
     if (!sourcesLoaded.current) setSourcesLoading(true);
     try {
-      setSources(await testingApi.listKnowledgeSources(project._id));
-      sourcesLoaded.current = true;
-      setSourcesLoadFailed(false);
+      const nextSources = await testingApi.listKnowledgeSources(project._id);
+      if (requestGeneration === sourceListRequestGeneration.current) {
+        setSources(nextSources);
+        sourcesLoaded.current = true;
+        setSourcesLoadFailed(false);
+      }
     } catch (reason) {
-      setError(messageOf(reason));
-      if (!sourcesLoaded.current) setSourcesLoadFailed(true);
+      if (requestGeneration === sourceListRequestGeneration.current) {
+        setError(messageOf(reason));
+        if (!sourcesLoaded.current) setSourcesLoadFailed(true);
+      }
     } finally {
-      setSourcesLoading(false);
+      if (requestGeneration === sourceListRequestGeneration.current) {
+        setSourcesLoading(false);
+      }
     }
   }, [project._id]);
+  const loadChunkMetadata = async (source, cursor = "") => {
+    const requestGeneration = ++metadataRequestGeneration.current;
+    setMetadataLoading(true);
+    setMetadataError("");
+    try {
+      const page = await testingApi.listKnowledgeSourceChunks(project._id, source._id, 50, cursor);
+      if (requestGeneration === metadataRequestGeneration.current) {
+        setMetadataPage((previous) =>
+          cursor && previous
+            ? { ...page, items: [...(previous.items || []), ...(page.items || [])] }
+            : page,
+        );
+      }
+    } catch (reason) {
+      if (requestGeneration === metadataRequestGeneration.current) {
+        setMetadataError(messageOf(reason));
+      }
+    } finally {
+      if (requestGeneration === metadataRequestGeneration.current) {
+        setMetadataLoading(false);
+      }
+    }
+  };
+  const loadSourceStructure = async (source, offset = 0) => {
+    const requestGeneration = ++sourceStructureRequestGeneration.current;
+    setSourceStructureLoading(true);
+    setSourceStructureError("");
+    try {
+      const page = await testingApi.listKnowledgeSourceStructure(
+        project._id,
+        source._id,
+        offset,
+        100,
+      );
+      if (requestGeneration === sourceStructureRequestGeneration.current) {
+        setSourceStructurePage((previous) =>
+          offset && previous
+            ? { ...page, items: [...(previous.items || []), ...(page.items || [])] }
+            : page,
+        );
+      }
+    } catch (reason) {
+      if (requestGeneration === sourceStructureRequestGeneration.current) {
+        setSourceStructureError(messageOf(reason));
+      }
+    } finally {
+      if (requestGeneration === sourceStructureRequestGeneration.current) {
+        setSourceStructureLoading(false);
+      }
+    }
+  };
+  const clearSourceImageUrls = () => {
+    sourceImageRequestGeneration.current += 1;
+    Object.values(sourceImageUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+    sourceImageUrlsRef.current = {};
+    setSourceImageUrls({});
+    setSourceImageLoading({});
+    setSourceImageErrors({});
+  };
+  const clearSourceInspection = () => {
+    metadataRequestGeneration.current += 1;
+    sourceStructureRequestGeneration.current += 1;
+    clearSourceImageUrls();
+    setMetadataPage(null);
+    setMetadataLoading(false);
+    setMetadataError("");
+    setSourceStructurePage(null);
+    setSourceStructureLoading(false);
+    setSourceStructureError("");
+  };
+  const loadSourceImage = async (source, block) => {
+    const key = `${source._id}:${block.block_index}`;
+    const requestGeneration = sourceImageRequestGeneration.current;
+    setSourceImageLoading((current) => ({ ...current, [key]: true }));
+    setSourceImageErrors((current) => ({ ...current, [key]: "" }));
+    try {
+      const blob = await testingApi.getKnowledgeSourceImage(
+        project._id,
+        source._id,
+        block.block_index,
+      );
+      const url = URL.createObjectURL(blob);
+      if (requestGeneration !== sourceImageRequestGeneration.current) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      const previousUrl = sourceImageUrlsRef.current[key];
+      if (previousUrl) URL.revokeObjectURL(previousUrl);
+      sourceImageUrlsRef.current[key] = url;
+      setSourceImageUrls((current) => ({ ...current, [key]: url }));
+    } catch (reason) {
+      if (requestGeneration === sourceImageRequestGeneration.current) {
+        setSourceImageErrors((current) => ({ ...current, [key]: messageOf(reason) }));
+      }
+    } finally {
+      if (requestGeneration === sourceImageRequestGeneration.current) {
+        setSourceImageLoading((current) => ({ ...current, [key]: false }));
+      }
+    }
+  };
   useEffect(() => {
     loadSources();
   }, [loadSources]);
   useEffect(() => {
+    if (sourceProjectId.current !== project._id) {
+      sourceProjectId.current = project._id;
+      sourcesLoaded.current = false;
+      setSources([]);
+      setSourcesLoadFailed(false);
+      setSourcesLoading(true);
+      setError("");
+      metadataRequestGeneration.current += 1;
+      sourceStructureRequestGeneration.current += 1;
+      setMetadataSource(null);
+      setMetadataPage(null);
+      setMetadataLoading(false);
+      setMetadataError("");
+      setSourceStructurePage(null);
+      setSourceStructureLoading(false);
+      setSourceStructureError("");
+      setSourceImageUrls({});
+      setSourceImageLoading({});
+      setSourceImageErrors({});
+    }
+    return () => {
+      sourceListRequestGeneration.current += 1;
+      metadataRequestGeneration.current += 1;
+      sourceStructureRequestGeneration.current += 1;
+      sourceImageRequestGeneration.current += 1;
+      Object.values(sourceImageUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+      sourceImageUrlsRef.current = {};
+    };
+  }, [project._id]);
+  useEffect(() => {
     if (!useGlobalSearch || !initialQuery) return;
+    const requestGeneration = ++projectSearchRequestGeneration.current;
     testingApi
       .searchProject(project._id, initialQuery)
-      .then(setResult)
-      .catch((reason) => setError(messageOf(reason)));
+      .then((searchResult) => {
+        if (requestGeneration === projectSearchRequestGeneration.current) {
+          setResult(searchResult);
+        }
+      })
+      .catch((reason) => {
+        if (requestGeneration === projectSearchRequestGeneration.current) {
+          setError(messageOf(reason));
+        }
+      });
+    return () => {
+      if (requestGeneration === projectSearchRequestGeneration.current) {
+        projectSearchRequestGeneration.current += 1;
+      }
+    };
   }, [initialQuery, project._id, useGlobalSearch]);
   return (
     <WorkspacePage
@@ -96,67 +262,6 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
     >
       {error && <ErrorState message={error} />}
       <DegradedBanner mode={result?.degraded_mode} />
-      {canAsk && (
-        <Panel title="Hỏi AI về dữ liệu dự án">
-          <form
-            className="space-y-3 p-5"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              setError("");
-              setAskingAi(true);
-              try {
-                setAnswer(
-                  await testingApi.askProject(project._id, {
-                    question,
-                    artifact_types: [],
-                    evidence_limit: 20,
-                  }),
-                );
-              } catch (reason) {
-                setError(messageOf(reason));
-              } finally {
-                setAskingAi(false);
-              }
-            }}
-          >
-            <textarea
-              aria-label="Câu hỏi về dự án"
-              className="apple-input min-h-28 w-full"
-              required
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Nhập câu hỏi cần trả lời từ yêu cầu tài liệu ca kiểm thử và lỗi của dự án"
-            />
-            <button aria-busy={askingAi} className="apple-button" disabled={askingAi} type="submit">
-              {askingAi ? "AI đang tìm bằng chứng và trả lời" : "Trả lời"}
-            </button>
-          </form>
-          {answer && (
-            <div className="space-y-4 border-t border-line p-5">
-              <p className="whitespace-pre-wrap text-sm text-ink">{answer.answer}</p>
-              <p className="text-xs text-ink-muted">Độ tin cậy {answer.confidence}</p>
-              <DataTable
-                items={answer.evidence || []}
-                empty="Không có bằng chứng"
-                columns={[
-                  {
-                    key: "artifact_type",
-                    label: "Loại",
-                    render: (item) => valueLabel(item.artifact_type),
-                  },
-                  { key: "title", label: "Nguồn" },
-                  {
-                    key: "authority",
-                    label: "Thẩm quyền",
-                    render: (item) => valueLabel(item.authority),
-                  },
-                  { key: "score", label: "Điểm" },
-                ]}
-              />
-            </div>
-          )}
-        </Panel>
-      )}
       <Panel title="Tìm trong dữ liệu dự án">
         <form
           className="flex flex-col gap-3 p-5 sm:flex-row"
@@ -439,7 +544,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             className="secondary-button"
                             type="button"
                             onClick={async () => {
-                              const answer = await ask({
+                              await ask({
                                 title: "Lưu trữ tài liệu tham chiếu",
                                 description: item.title || item.filename,
                                 confirmLabel: "Lưu trữ",
@@ -452,17 +557,18 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                                     multiline: true,
                                   },
                                 ],
+                                onConfirm: async (answer) => {
+                                  try {
+                                    await testingApi.archiveKnowledgeSource(item._id, {
+                                      expected_revision: item.revision,
+                                      reason: answer.reason,
+                                    });
+                                    await loadSources();
+                                  } catch (reason) {
+                                    throw new Error(messageOf(reason));
+                                  }
+                                },
                               });
-                              if (!answer) return;
-                              try {
-                                await testingApi.archiveKnowledgeSource(item._id, {
-                                  expected_revision: item.revision,
-                                  reason: answer.reason,
-                                });
-                                await loadSources();
-                              } catch (reason) {
-                                setError(messageOf(reason));
-                              }
                             }}
                           >
                             Lưu trữ
@@ -472,10 +578,607 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                     },
                   ]
                 : []),
+              {
+                key: "metadata",
+                label: "Chỉ mục",
+                render: (item) => (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => {
+                      clearSourceInspection();
+                      setMetadataSource(item);
+                      void loadChunkMetadata(item);
+                    }}
+                  >
+                    Xem các đoạn và metadata
+                  </button>
+                ),
+              },
             ]}
           />
         )}
       </Panel>
+      <Modal
+        isOpen={Boolean(metadataSource)}
+        onClose={() => {
+          clearSourceInspection();
+          setMetadataSource(null);
+        }}
+        ariaLabel="Chi tiết các đoạn tài liệu đã lập chỉ mục"
+        className="max-h-[94dvh] max-w-6xl"
+      >
+        <ModalHeader>
+          <ModalTitle>Các đoạn đã lập chỉ mục</ModalTitle>
+        </ModalHeader>
+        <div className="mb-4 rounded-lg border border-border bg-surface-quiet p-4 text-sm">
+          <p className="font-medium">Cách Qdrant lưu một điểm tìm kiếm</p>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="min-w-0 rounded-md bg-surface p-3">
+              <p className="font-semibold">1. Mã điểm</p>
+              <p className="mt-1 text-ink-muted">
+                ID để đọc, cập nhật hoặc xóa đúng point. Khi tạo thế hệ chỉ mục mới, ID có thể đổi;
+                không dùng nó làm mã tài liệu hay mã Requirement.
+              </p>
+            </div>
+            <div className="min-w-0 rounded-md bg-surface p-3">
+              <p className="font-semibold">2. Véc-tơ tìm kiếm</p>
+              <p className="mt-1 text-ink-muted">
+                Dãy số do mô hình nhúng (embedding) tạo từ đoạn văn bản (với đối tượng kiểm thử, đầu
+                vào gồm tiêu đề và đoạn). Qdrant dùng véc-tơ để tìm nội dung gần nghĩa; màn này
+                không cần hiển thị dãy số.
+              </p>
+            </div>
+            <div className="min-w-0 rounded-md bg-surface p-3">
+              <p className="font-semibold">3. Dữ liệu kèm theo (payload)</p>
+              <p className="mt-1 text-ink-muted">
+                Gồm <code>text</code> là nội dung của một đoạn và siêu dữ liệu (metadata) để lọc,
+                kiểm tra trạng thái trích xuất, rồi lần về đúng tài liệu, phiên bản và vị trí nguồn.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-ink-muted">
+            Một tài liệu dài tạo nhiều điểm dữ liệu (point), mỗi điểm chứa một đoạn riêng; bảng được
+            giữ theo các hàng đã tách và có thể lặp tiêu đề cột. Luồng xử lý cũng có thể tạo điểm
+            tóm tắt riêng, được đánh dấu là tóm tắt chứ không thay cho đoạn nguồn. Ảnh gốc không nằm
+            trong payload; đoạn chỉ giữ siêu dữ liệu hoặc tham chiếu ảnh khi có. Ngoài mã định danh
+            (ID), véc-tơ và payload, Veriq hiện không thêm một vùng dữ liệu thứ tư cho điểm.
+          </p>
+        </div>
+        {metadataSource && (
+          <div className="space-y-4 p-5">
+            <div className="rounded-lg bg-surface-quiet p-4 text-sm">
+              <p className="font-semibold">{metadataSource.title || metadataSource.filename}</p>
+              <p className="mt-1 text-ink-muted">
+                Tài liệu {metadataSource._id} · Trạng thái chỉ mục:{" "}
+                {valueLabel(String(metadataSource.index_status || "unknown").toUpperCase())}
+              </p>
+              <div className="mt-3 grid gap-2 text-xs text-ink-muted sm:grid-cols-3">
+                <p>
+                  <strong>Nguồn:</strong> tệp gốc và nội dung đã phân tích được quản lý riêng; khối
+                  có mã cha khi bộ phân tích cung cấp.
+                </p>
+                <p>
+                  <strong>Qdrant:</strong> mỗi điểm dữ liệu gồm mã, véc-tơ ngữ nghĩa và payload;
+                  payload chứa văn bản đoạn cùng siêu dữ liệu.
+                </p>
+                <p>
+                  <strong>Không phải cây:</strong> siêu dữ liệu đoạn trỏ về khối cha/đường dẫn
+                  nguồn; véc-tơ không hiển thị vì dãy số không hữu ích khi rà tài liệu.
+                </p>
+              </div>
+            </div>
+            {metadataError && <ErrorState message={metadataError} />}
+            <details className="rounded-lg border border-border p-4">
+              <summary className="cursor-pointer text-sm font-semibold">
+                Cấu trúc khối nguồn (không phải cây trong Qdrant)
+              </summary>
+              <div className="mt-3 space-y-3 text-sm">
+                <p className="text-ink-muted">
+                  Đây là danh sách khối mà bộ phân tích lưu trong tài liệu chuẩn. Mã khối cha và cấp
+                  chỉ được hiển thị khi nguồn cung cấp; một số tài liệu có thể chỉ tạo thành rừng
+                  khối hoặc không có cấu trúc.
+                </p>
+                {!sourceStructurePage && !sourceStructureLoading && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void loadSourceStructure(metadataSource)}
+                  >
+                    Tải cấu trúc nguồn
+                  </button>
+                )}
+                {sourceStructureError && <ErrorState message={sourceStructureError} />}
+                {sourceStructureLoading && <LoadingState />}
+                {sourceStructurePage && (
+                  <>
+                    <p className="text-xs text-ink-muted">
+                      {sourceStructurePage.source_structure_available
+                        ? `${sourceStructurePage.source_structure_count ?? sourceStructurePage.items.length} khối nguồn`
+                        : "Bộ phân tích không lưu cấu trúc khối cho tài liệu này"}
+                      {sourceStructurePage.parse_report?.page_count
+                        ? ` · ${sourceStructurePage.parse_report.page_count} trang`
+                        : ""}
+                      {sourceStructurePage.parse_report?.ocr_enabled === true
+                        ? ` · OCR đã bật${sourceStructurePage.parse_report.ocr_language ? ` (${sourceStructurePage.parse_report.ocr_language})` : ""}`
+                        : sourceStructurePage.parse_report?.ocr_enabled === false
+                          ? " · OCR không được dùng"
+                          : " · trạng thái OCR không được ghi nhận"}
+                    </p>
+                    {sourceStructurePage.items.length > 0 && (
+                      <ol className="max-h-[45dvh] space-y-2 overflow-auto">
+                        {sourceStructurePage.items.map((block) => {
+                          const firstLine = String(block.text_preview || block.text || "").split(
+                            "\n",
+                            1,
+                          )[0];
+                          return (
+                            <li
+                              className="min-w-0 rounded-md bg-surface-quiet p-3"
+                              key={`${block.block_index}-${block.block_id || "source-block"}`}
+                              style={{
+                                marginInlineStart: `${Math.min(Number(block.level) || 0, 8) * 12}px`,
+                              }}
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">
+                                  {valueLabel(block.type || "khối nguồn")}
+                                </span>
+                                {block.page_no != null && (
+                                  <span className="text-ink-muted">Trang {block.page_no}</span>
+                                )}
+                                <span className="break-all text-xs text-ink-muted">
+                                  {block.block_id || "Không có mã khối"}
+                                </span>
+                              </div>
+                              <p className="mt-1 break-words">
+                                {firstLine || "Khối không có văn bản trích xuất"}
+                                {block.text_truncated && (
+                                  <span className="text-ink-muted">
+                                    {" "}
+                                    · Bản xem trước, {block.text_length} ký tự
+                                  </span>
+                                )}
+                              </p>
+                              {block.image_metadata?.asset_available === true && (
+                                <div className="mt-2 space-y-2">
+                                  {sourceImageUrls[`${metadataSource._id}:${block.block_index}`] ? (
+                                    <Image
+                                      alt={`Ảnh nguồn ${block.image_metadata.image_id || block.block_id || block.block_index}`}
+                                      className="max-h-96 max-w-full rounded-md border border-border object-contain"
+                                      height={Number(block.image_metadata.height) || 800}
+                                      unoptimized
+                                      src={
+                                        sourceImageUrls[
+                                          `${metadataSource._id}:${block.block_index}`
+                                        ]
+                                      }
+                                      width={Number(block.image_metadata.width) || 1200}
+                                    />
+                                  ) : (
+                                    <button
+                                      className="secondary-button"
+                                      type="button"
+                                      disabled={
+                                        sourceImageLoading[
+                                          `${metadataSource._id}:${block.block_index}`
+                                        ]
+                                      }
+                                      onClick={() => void loadSourceImage(metadataSource, block)}
+                                    >
+                                      {sourceImageLoading[
+                                        `${metadataSource._id}:${block.block_index}`
+                                      ]
+                                        ? "Đang tải ảnh nguồn…"
+                                        : "Xem ảnh nguồn"}
+                                    </button>
+                                  )}
+                                  {sourceImageErrors[
+                                    `${metadataSource._id}:${block.block_index}`
+                                  ] && (
+                                    <ErrorState
+                                      message={
+                                        sourceImageErrors[
+                                          `${metadataSource._id}:${block.block_index}`
+                                        ]
+                                      }
+                                    />
+                                  )}
+                                </div>
+                              )}
+                              <p className="mt-1 break-all text-xs text-ink-muted">
+                                Khối cha: {block.parent_block_id || "Không có mã cha"}
+                              </p>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    )}
+                    {sourceStructurePage.next_offset != null && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={sourceStructureLoading}
+                        onClick={() =>
+                          void loadSourceStructure(metadataSource, sourceStructurePage.next_offset)
+                        }
+                      >
+                        Tải thêm khối nguồn
+                      </button>
+                    )}
+                    {sourceStructurePage.parse_report?.unprocessed_block_count > 0 && (
+                      <p className="rounded-md border border-border p-3 text-sm text-ink-muted">
+                        Có {sourceStructurePage.parse_report.unprocessed_block_count} khối chưa được
+                        trích xuất đầy đủ; trạng thái này không có nghĩa OCR đã chính xác.
+                      </p>
+                    )}
+                    {sourceStructurePage.parse_report?.unprocessed_blocks?.some(
+                      (block) => typeof block.ocr_page_confidence === "number",
+                    ) && (
+                      <div className="rounded-md border border-border p-3 text-sm">
+                        <p className="font-medium">Điểm OCR do bộ phân tích cung cấp theo trang</p>
+                        <p className="mt-1 text-ink-muted">
+                          Đây là chẩn đoán của bộ phân tích, không phải cam kết độ chính xác nội
+                          dung.
+                        </p>
+                        <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                          {sourceStructurePage.parse_report.unprocessed_blocks
+                            .filter((block) => typeof block.ocr_page_confidence === "number")
+                            .map((block, index) => (
+                              <li key={`${block.page_no ?? "page"}-${index}`}>
+                                Trang {block.page_no ?? "không rõ"}:{" "}
+                                {block.ocr_page_confidence.toFixed(3)}
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </details>
+            {metadataLoading ? (
+              <LoadingState />
+            ) : metadataPage?.items?.length ? (
+              <div className="space-y-3">
+                <p className="text-xs text-ink-muted">
+                  Đã tải {metadataPage.items.length} đoạn
+                  {metadataPage.next_cursor ? "; còn trang tiếp theo" : "; hết kết quả"}.
+                </p>
+                {metadataPage.items.map((chunk) => {
+                  const metadata = chunk.metadata || {};
+                  return (
+                    <article
+                      className="min-w-0 rounded-lg border border-border p-4"
+                      key={chunk.point_id}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold">
+                          Đoạn {Number(metadata.chunk_index ?? 0) + 1}
+                        </h3>
+                        <span className="break-all text-xs text-ink-muted">
+                          Point ID: {chunk.point_id}
+                        </span>
+                      </div>
+                      <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                        {[
+                          ["Mã dự án", metadata.project_id],
+                          ["Loại đối tượng nguồn", valueLabel(metadata.artifact_type)],
+                          ["Mã đối tượng nguồn", metadata.artifact_id],
+                          ["Mã phiên bản đối tượng", metadata.artifact_version_id],
+                          ["Mức độ thẩm quyền nguồn", valueLabel(metadata.authority)],
+                          ["Trạng thái nguồn", valueLabel(metadata.status)],
+                          ["Phạm vi hiển thị", valueLabel(metadata.visibility)],
+                          ["Loại nội dung", valueLabel(metadata.content_type)],
+                          ["Tình trạng duyệt nguồn", valueLabel(metadata.approval_status)],
+                          ["Lĩnh vực sản phẩm", metadata.product_area],
+                          ["Thành phần", metadata.component],
+                          ["Mã bản phát hành", metadata.release_id],
+                          ["Mã nguồn bên ngoài", metadata.external_source_id],
+                          ["Thẻ", (metadata.tags || []).join(", ")],
+                          ["Người sở hữu nguồn", metadata.owner_id],
+                          ["Người tạo nguồn", metadata.creator_id],
+                          ["Số người được chia sẻ riêng", metadata.shared_with?.length ?? null],
+                          ["Người duyệt nguồn", metadata.approved_by],
+                          [
+                            "Thời điểm duyệt",
+                            metadata.approved_at
+                              ? new Date(metadata.approved_at).toLocaleString("vi-VN")
+                              : null,
+                          ],
+                          [
+                            "Thời điểm có hiệu lực",
+                            metadata.effective_from
+                              ? new Date(metadata.effective_from).toLocaleString("vi-VN")
+                              : null,
+                          ],
+                          [
+                            "Requirement liên quan",
+                            [
+                              ...(metadata.requirement_ids || []),
+                              ...(metadata.requirement_version_ids || []),
+                              ...(metadata.linked_requirement_version_ids || []),
+                            ].join(", "),
+                          ],
+                          [
+                            "Tiêu chí chấp nhận liên quan",
+                            (metadata.acceptance_criterion_ids || []).join(", "),
+                          ],
+                          [
+                            "Tài liệu nguồn liên quan",
+                            (metadata.source_document_ids || []).join(", "),
+                          ],
+                          [
+                            "Phiên bản ca kiểm thử liên quan",
+                            [
+                              ...(metadata.test_case_version_ids || []),
+                              metadata.test_case_version_id,
+                            ]
+                              .filter(Boolean)
+                              .join(", "),
+                          ],
+                          ["Đợt chạy kiểm thử liên quan", metadata.test_run_id],
+                          ["Kết quả kiểm thử liên quan", metadata.linked_test_result_id],
+                          ["Mã tài liệu", metadata.document_id],
+                          ["Mã tài liệu nguồn", metadata.source_document_id],
+                          ["Loại nguồn", valueLabel(metadata.source_type)],
+                          ["Định dạng nội dung", valueLabel(metadata.content_format)],
+                          ["Dấu băm nguồn", metadata.source_hash],
+                          ["Dấu băm nội dung chuẩn hóa", metadata.normalized_content_hash],
+                          ["Tiêu đề trong chỉ mục", metadata.title],
+                          ["Mã đoạn", metadata.chunk_id],
+                          ["Mã đoạn ổn định theo nguồn", metadata.logical_chunk_id],
+                          ["Dấu băm nội dung đoạn", metadata.chunk_hash],
+                          ["Loại đoạn", valueLabel(metadata.chunk_type)],
+                          [
+                            "Loại khối nguồn",
+                            (metadata.structure_types || []).map(valueLabel).join(", "),
+                          ],
+                          ["Phiên bản nguồn", metadata.version || metadata.source_version],
+                          ["Mã phiên bản chỉ mục", metadata.index_generation],
+                          ["Mã lần xử lý tài liệu", metadata.indexing_attempt_id],
+                          ["Mô hình biểu diễn", metadata.embedding_model],
+                          ["Dấu băm đầu vào mô hình biểu diễn", metadata.embedding_input_hash],
+                          ["Phạm vi điểm tóm tắt", valueLabel(metadata.summary_scope)],
+                          ["Số đoạn nguồn của tài liệu", metadata.document_chunk_count],
+                          ["Số ký tự mẫu tóm tắt", metadata.summary_sample_char_count],
+                          [
+                            "Mã đoạn được lấy mẫu",
+                            (metadata.summary_sample_chunk_ids || []).join(", "),
+                          ],
+                          [
+                            "Trang được lấy mẫu",
+                            (metadata.summary_sample_page_numbers || []).join(", "),
+                          ],
+                          [
+                            "Bộ phân tích",
+                            metadata.parser_name
+                              ? `${metadata.parser_name}${metadata.parser_version ? ` · ${metadata.parser_version}` : ""}`
+                              : null,
+                          ],
+                          [
+                            "OCR",
+                            metadata.ocr_enabled === true
+                              ? `Đã bật${metadata.ocr_language ? ` · ${metadata.ocr_language}` : ""}`
+                              : metadata.ocr_enabled === false
+                                ? "Không bật"
+                                : null,
+                          ],
+                          ["Tổng số trang nguồn", metadata.page_count],
+                          ["Số khối nguồn parser trả về", metadata.source_block_count],
+                          ["Trạng thái trích xuất", valueLabel(metadata.extraction_status)],
+                          ["Khối chưa xử lý", metadata.unprocessed_block_count],
+                          ["Số cảnh báo trích xuất", metadata.extraction_warning_count],
+                          [
+                            "Mã cảnh báo trích xuất",
+                            (metadata.extraction_warning_codes || []).map(valueLabel).join(", "),
+                          ],
+                          ["Phương pháp trích xuất", valueLabel(metadata.extraction_method)],
+                          [
+                            "Thời điểm tài liệu được tạo",
+                            metadata.source_created_at
+                              ? new Date(metadata.source_created_at).toLocaleString("vi-VN")
+                              : null,
+                          ],
+                          [
+                            "Thời điểm tài liệu được cập nhật",
+                            metadata.source_updated_at
+                              ? new Date(metadata.source_updated_at).toLocaleString("vi-VN")
+                              : null,
+                          ],
+                          [
+                            "Thời điểm lập chỉ mục",
+                            metadata.indexed_at
+                              ? new Date(metadata.indexed_at).toLocaleString("vi-VN")
+                              : null,
+                          ],
+                          [
+                            "Số ký tự / từ",
+                            metadata.char_count != null
+                              ? `${metadata.char_count} / ${metadata.word_count ?? "—"}`
+                              : null,
+                          ],
+                          ["Trang nguồn", (metadata.page_numbers || []).join(", ")],
+                          [
+                            "Khoảng trang",
+                            metadata.page_start != null || metadata.page_end != null
+                              ? `${metadata.page_start ?? "—"}–${metadata.page_end ?? "—"}`
+                              : null,
+                          ],
+                        ]
+                          .filter(
+                            ([, value]) => value !== null && value !== undefined && value !== "",
+                          )
+                          .map(([label, value]) => (
+                            <div className="min-w-0" key={label}>
+                              <dt className="text-xs text-ink-muted">{label}</dt>
+                              <dd className="break-words">{value}</dd>
+                            </div>
+                          ))}
+                      </dl>
+                      <details className="mt-3 rounded-md bg-surface-quiet p-3">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Văn bản đoạn
+                        </summary>
+                        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink">
+                          {chunk.text}
+                        </p>
+                      </details>
+                      <details className="mt-2 rounded-md bg-surface-quiet p-3">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Vị trí và liên kết khối nguồn
+                        </summary>
+                        {metadata.source_spans?.length ? (
+                          <ol className="mt-3 space-y-3">
+                            {metadata.source_spans.map((span, index) => (
+                              <li
+                                className="border-l-2 border-accent pl-3 text-sm"
+                                key={`${span.block_id || "block"}-${index}`}
+                              >
+                                <p>
+                                  <strong>Khối:</strong>{" "}
+                                  {span.block_id || "Parser không cung cấp mã khối"}
+                                </p>
+                                <p>
+                                  <strong>Khối cha:</strong>{" "}
+                                  {span.parent_block_id || "Không có mã khối cha"}
+                                </p>
+                                <p>
+                                  <strong>Loại:</strong> {valueLabel(span.content_type)}
+                                </p>
+                                <p>
+                                  <strong>Đường dẫn mục:</strong>{" "}
+                                  {(span.section_path || []).join(" / ") || "Không có"}
+                                </p>
+                                {span.table_metadata && (
+                                  <div>
+                                    <p>
+                                      <strong>Bảng:</strong>{" "}
+                                      {span.table_metadata.table_id || "Không có mã"}
+                                      {span.table_metadata.row_count != null
+                                        ? ` · ${span.table_metadata.row_count} hàng`
+                                        : ""}
+                                      {span.table_metadata.column_count != null
+                                        ? ` · ${span.table_metadata.column_count} cột`
+                                        : ""}
+                                      {span.table_metadata.column_headers?.length
+                                        ? ` · Tiêu đề cột: ${span.table_metadata.column_headers.join(" | ")}`
+                                        : ""}
+                                      {span.table_metadata.metadata_source
+                                        ? ` · Metadata từ ${span.table_metadata.metadata_source}`
+                                        : ""}
+                                    </p>
+                                    {span.table_metadata.cell_spans?.length > 0 && (
+                                      <details className="mt-2 rounded-md bg-surface-quiet p-2">
+                                        <summary className="cursor-pointer">
+                                          Vị trí các ô trong đoạn (
+                                          {span.table_metadata.cell_spans.length})
+                                        </summary>
+                                        <ul className="mt-2 space-y-1">
+                                          {span.table_metadata.cell_spans.map((cell) => (
+                                            <li
+                                              className="break-words"
+                                              key={`${cell.row_index}-${cell.column_index}-${cell.chunk_start}`}
+                                            >
+                                              Hàng {cell.row_index + 1}, cột {cell.column_index + 1}
+                                              : {chunk.text.slice(cell.chunk_start, cell.chunk_end)}{" "}
+                                              · nguồn {cell.source_start}–{cell.source_end}, đoạn{" "}
+                                              {cell.chunk_start}–{cell.chunk_end}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </details>
+                                    )}
+                                  </div>
+                                )}
+                                {span.image_metadata && (
+                                  <p>
+                                    <strong>Hình:</strong>{" "}
+                                    {span.image_metadata.image_id || "Không có mã"}
+                                    {span.image_metadata.extracted_text_present === true
+                                      ? " · Có văn bản trích xuất"
+                                      : " · Không có văn bản trích xuất"}
+                                    {span.image_metadata.page_ocr_confidence != null
+                                      ? ` · Điểm OCR cấp trang ${span.image_metadata.page_ocr_confidence}`
+                                      : ""}
+                                    {span.image_metadata.asset_available === true
+                                      ? ` · Ảnh nguồn đã lưu riêng tư${span.image_metadata.width && span.image_metadata.height ? ` (${span.image_metadata.width} × ${span.image_metadata.height})` : ""}`
+                                      : span.image_metadata.asset_status === "FAILED"
+                                        ? " · Lưu tệp ảnh thất bại, cần xử lý lại tài liệu"
+                                        : span.image_metadata.asset_status === "UNAVAILABLE"
+                                          ? " · Bộ phân tích không cung cấp dữ liệu ảnh"
+                                          : " · Chưa yêu cầu lưu tệp ảnh riêng"}
+                                  </p>
+                                )}
+                                <p>
+                                  <strong>Trang/vùng:</strong>{" "}
+                                  {(span.locations || [])
+                                    .map((location) => {
+                                      const box = location.bbox;
+                                      const coordinates =
+                                        box &&
+                                        [box.x0, box.y0, box.x1, box.y1].every(Number.isFinite)
+                                          ? ` · vùng ${[box.x0, box.y0, box.x1, box.y1].join(", ")}`
+                                          : "";
+                                      return `Trang ${location.page_no ?? "không rõ"}${coordinates}`;
+                                    })
+                                    .join("; ") || "Parser không cung cấp vị trí"}
+                                </p>
+                                <p>
+                                  <strong>Offset khối / đoạn:</strong> {span.source_start ?? "—"}–
+                                  {span.source_end ?? "—"} / {span.chunk_start ?? "—"}–
+                                  {span.chunk_end ?? "—"} ({span.offset_basis || "không rõ cơ sở"})
+                                </p>
+                                {span.source_segments?.length > 0 && (
+                                  <p>
+                                    <strong>Ánh xạ từng phần:</strong>{" "}
+                                    {span.source_segments
+                                      .map((segment) => {
+                                        const segmentLabel =
+                                          segment.role === "REPEATED_HEADER"
+                                            ? "tiêu đề bảng lặp"
+                                            : segment.role === "HEADER"
+                                              ? "tiêu đề bảng"
+                                              : segment.role === "DATA_ROWS"
+                                                ? "các hàng dữ liệu"
+                                                : valueLabel(segment.role);
+                                        return `${segmentLabel}: nguồn ${segment.source_start}–${segment.source_end} → đoạn ${segment.chunk_start}–${segment.chunk_end}`;
+                                      })
+                                      .join("; ")}
+                                  </p>
+                                )}
+                              </li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <p className="mt-2 text-sm text-ink-muted">
+                            Không có liên kết khối nguồn trong metadata của đoạn.
+                          </p>
+                        )}
+                      </details>
+                    </article>
+                  );
+                })}
+                {metadataPage.next_cursor && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={metadataLoading}
+                    onClick={() => void loadChunkMetadata(metadataSource, metadataPage.next_cursor)}
+                  >
+                    Tải trang metadata tiếp theo
+                  </button>
+                )}
+              </div>
+            ) : !metadataError ? (
+              <p className="rounded-lg border border-border p-5 text-sm text-ink-muted">
+                Chưa tìm thấy point cho phiên bản này. Có thể nguồn chưa được lập chỉ mục, dùng kiểu
+                chỉ mục khác hoặc dữ liệu cũ không có metadata đoạn.
+              </p>
+            ) : null}
+          </div>
+        )}
+      </Modal>
       {dialog}
     </WorkspacePage>
   );

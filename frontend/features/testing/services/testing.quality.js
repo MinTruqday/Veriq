@@ -1,11 +1,19 @@
 import {
   downloadTestingFile,
+  inferenceRequest,
   listQuery,
   testingRequest,
-  testingStreamRequest,
 } from "./testing.transport";
 
 export const qualityTestingApi = {
+  listSyntheticTestabilityBenchmarkRuns: (limit = 20) =>
+    inferenceRequest(
+      `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/tong-hop/lan-chay?limit=${encodeURIComponent(limit)}`,
+    ),
+  runSyntheticTestabilityBenchmark: () =>
+    inferenceRequest("/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/tong-hop/chay-lap", {
+      method: "POST",
+    }),
   listReviewSessions: (projectId, filters = {}) =>
     testingRequest(`/du-an/${projectId}/phien-ra-soat?${listQuery(filters)}`),
   createReviewSession: (projectId, payload) =>
@@ -169,6 +177,8 @@ export const qualityTestingApi = {
       body: JSON.stringify(payload),
     }),
   getCausalAnalysis: (analysisId) => testingRequest(`/phan-tich-nguyen-nhan/${analysisId}`),
+  getLatestCausalHypothesisResult: (analysisId) =>
+    testingRequest(`/phan-tich-nguyen-nhan/${analysisId}/goi-y-tu-dong`),
   updateCausalAnalysis: (analysisId, payload) =>
     testingRequest(`/phan-tich-nguyen-nhan/${analysisId}`, {
       method: "PATCH",
@@ -226,11 +236,6 @@ export const qualityTestingApi = {
     }),
   closeCausalAnalysis: (analysisId, payload) =>
     testingRequest(`/phan-tich-nguyen-nhan/${analysisId}/dong`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  generateCausalHypotheses: (analysisId, payload) =>
-    testingStreamRequest(`/phan-tich-nguyen-nhan/${analysisId}/ai/goi-y`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

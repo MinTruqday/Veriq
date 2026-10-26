@@ -7,13 +7,14 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
 from src.tools.registry import with_tool_access
-from src.tools.testing import AutomationOperationError, require_operation
+from src.tools.testing_api import AutomationOperationError, require_operation
 
 
 @with_tool_access(("execution",), "MUTATE", "testcase.read", owner_domain="execution")
 async def process_recorded_test_execution(
     project_id: Annotated[str, Field(description="Testing project identifier")],
     result_id: Annotated[str, Field(min_length=1, description="Recorded Test Result identifier")],
+    expected_revision: Annotated[int, Field(ge=1, description="Revision captured by the verified result event")],
     config: RunnableConfig = None,
 ) -> str:
     """Record a verified failed execution against mapped assurance obligations."""
@@ -28,6 +29,7 @@ async def process_recorded_test_execution(
             and item.get("project_id") == project_id
             and item.get("artifact_type") == "test_result"
             and str(item.get("artifact_id") or "") == result_id
+            and item.get("artifact_revision") == expected_revision
         ),
         None,
     )
@@ -37,6 +39,24 @@ async def process_recorded_test_execution(
     result = await require_operation("GET", f"/ket-qua-kiem-thu/{result_id}", config)
     if result.get("project_id") != project_id or result.get("_id") != result_id:
         return json.dumps({"status": "automation_blocked", "reason_code": "TEST_RESULT_PROJECT_SCOPE_INVALID"})
+    if result.get("revision") != expected_revision:
+        return json.dumps(
+            {
+                "status": "completed",
+                "result_id": result_id,
+                "action": "SKIPPED",
+                "reason_code": "TEST_RESULT_EVENT_SUPERSEDED",
+                "event_revision": expected_revision,
+                "observed_revision": result.get("revision"),
+                "verification": {
+                    "status": "COMPLETED",
+                    "project_id": project_id,
+                    "artifact_ids": [result_id],
+                    "checks": ["project_scope", "result_revision", "superseded_event_noop"],
+                },
+            },
+            ensure_ascii=False,
+        )
 
     case = result.get("test_case_version") or {}
     case_version_id = str(result.get("test_case_version_id") or case.get("_id") or "")
@@ -45,6 +65,28 @@ async def process_recorded_test_execution(
         for item in result.get("defects", [])
         if isinstance(item, dict) and (item.get("_id") or item.get("defect_id"))
     ]
+    linked_defects = list(dict.fromkeys(linked_defects))
+    if len(linked_defects) > 1:
+        return json.dumps(
+            {
+                "status": "needs_review",
+                "result_id": result_id,
+                "feedback_recorded": 0,
+                "reason_code": "MULTIPLE_LINKED_DEFECTS_REQUIRE_REVIEW",
+                "linked_defect_ids": linked_defects,
+                "verification": {
+                    "status": "NEEDS_REVIEW",
+                    "project_id": project_id,
+                    "artifact_ids": [result_id, *linked_defects],
+                    "checks": [
+                        "result_readback",
+                        "project_scope",
+                        "ambiguous_defect_mapping_not_applied",
+                    ],
+                },
+            },
+            ensure_ascii=False,
+        )
     if result.get("status") != "FAIL" or not case_version_id or not linked_defects:
         return json.dumps(
             {
@@ -87,6 +129,7 @@ async def process_recorded_test_execution(
             matched_coverage_item_ids.append(coverage_item_id)
             if any(
                 str(feedback.get("test_result_id") or "") == result_id
+                and feedback.get("test_result_revision") == expected_revision
                 for feedback in item.get("execution_feedback", [])
             ):
                 already_recorded.append(coverage_item_id)
@@ -98,6 +141,7 @@ async def process_recorded_test_execution(
                 {
                     "expected_revision": assessment["revision"],
                     "test_case_version_id": case_version_id,
+                    "test_result_revision": expected_revision,
                     "outcome": "CAUGHT_DEFECT",
                     "test_result_id": result_id,
                     "defect_id": linked_defects[0],
@@ -116,6 +160,7 @@ async def process_recorded_test_execution(
                 or not verified_item
                 or not any(
                     str(feedback.get("test_result_id") or "") == result_id
+                    and feedback.get("test_result_revision") == expected_revision
                     and feedback.get("outcome") == "CAUGHT_DEFECT"
                     for feedback in verified_item.get("execution_feedback", [])
                 )

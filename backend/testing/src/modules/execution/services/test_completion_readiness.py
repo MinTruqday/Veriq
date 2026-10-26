@@ -41,6 +41,63 @@ async def reevaluate_completion_exit_criteria(plan, snapshot, completed_run_ids)
     return evaluations
 
 
+def validate_completion_outcome(report):
+    exit_criteria = report.get(
+        "exit_criteria_evaluations", report.get("exit_criteria_evaluation", [])
+    )
+    if not isinstance(exit_criteria, list) or any(
+        not isinstance(item, dict) for item in exit_criteria
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": 'COMPLETION_REPORT_NOT_READY',
+                "reason_code": 'COMPLETION_EXIT_CRITERIA_UNRESOLVED',
+                "criteria": [],
+            },
+        )
+    failed_criteria = [
+        item.get("criterion_id")
+        for item in exit_criteria
+        if item.get("status") == 'FAIL'
+    ]
+    if failed_criteria:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": 'COMPLETION_REPORT_NOT_READY',
+                "reason_code": 'COMPLETION_EXIT_CRITERIA_FAILED',
+                "criterion_ids": failed_criteria,
+            },
+        )
+    unresolved_criteria = [
+        {
+            "criterion_id": item.get("criterion_id"),
+            "status": item.get("status"),
+        }
+        for item in exit_criteria
+        if item.get("status") != 'PASS'
+    ]
+    if not exit_criteria or unresolved_criteria:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": 'COMPLETION_REPORT_NOT_READY',
+                "reason_code": 'COMPLETION_EXIT_CRITERIA_UNRESOLVED',
+                "criteria": unresolved_criteria,
+            },
+        )
+    if report.get("recommendation") not in {'READY_FOR_RELEASE', 'READY_WITH_RISK'}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": 'COMPLETION_REPORT_NOT_READY',
+                "reason_code": 'COMPLETION_RECOMMENDATION_NOT_RELEASE_READY',
+                "recommendation": report.get("recommendation"),
+            },
+        )
+
+
 async def validate_completion_readiness(report):
     
     
@@ -91,22 +148,7 @@ async def validate_completion_readiness(report):
             status_code=409,
             detail={"code": 'RESIDUAL_RISK_OWNER_REQUIRED', "risk_ids": ownerless_critical},
         )
-    failed_criteria = [
-        item.get("criterion_id")
-        for item in report.get(
-            "exit_criteria_evaluations", report.get("exit_criteria_evaluation", [])
-        )
-        if item.get("status") == 'FAIL'
-    ]
-    if failed_criteria:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": 'COMPLETION_REPORT_NOT_READY',
-                "reason_code": 'COMPLETION_EXIT_CRITERIA_FAILED',
-                "criterion_ids": failed_criteria,
-            },
-        )
+    validate_completion_outcome(report)
     reasonless_scope = [
         item.get("item_id")
         for item in report.get("unexecuted_scope", [])

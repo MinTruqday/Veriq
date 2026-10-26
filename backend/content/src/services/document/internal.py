@@ -1,14 +1,65 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
 from loguru import logger
 
 from src.clients.knowledge import knowledge_client
+from src.core.infrastructure.configuration import settings
 from src.core.dependency import SystemRole
 from src.repositories.document import DocumentRepository
+from src.repositories.document_ingestion_outbox import document_ingestion_outbox
+from src.schemas.document import (
+    DocumentIndexingClaimRequest,
+    DocumentIndexingClaimResponse,
+    DocumentIndexingLeaseRequest,
+    DocumentIndexingProgressUpdate,
+)
 from src.services.document.base import can_read_full
+
+
+INDEX_SOURCE_SNAPSHOT_FIELDS = frozenset(
+    {
+        "file_url",
+        "revision",
+        "content_hash",
+        "source_hash",
+        "content_sha256",
+        "title",
+        "author",
+        "author_name",
+        "visibility",
+        "owner_id",
+        "creator_id",
+        "shared_with",
+        "ai_enabled",
+        "source",
+        "content_source",
+        "source_name",
+        "source_url",
+        "source_type",
+        "authority",
+        "content_format",
+        "version",
+        "source_version",
+        "publisher",
+        "publisher_name",
+        "book_title",
+        "collector_version",
+        "project_id",
+        "artifact_type",
+        "artifact_id",
+        "artifact_version_id",
+        "module",
+        "status",
+        "content_type",
+        "conflict_key",
+        "claim_value",
+        "ocr_language",
+        "artifact_metadata",
+    }
+)
 
 
 def serialize_internal(value: Any):
@@ -21,6 +72,19 @@ def serialize_internal(value: Any):
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     return str(value)
+
+
+def indexing_status_from_report(index_report: dict) -> str:
+    """Do not label a partial index as complete when any source material was skipped."""
+    incomplete_sections = (
+        "failed_chunks",
+        "quarantined_chunks",
+        "unprocessed_blocks",
+        "index_cleanup_pending",
+    )
+    if any(index_report.get(section) for section in incomplete_sections):
+        return "degraded"
+    return "indexed"
 
 
 async def internal_document_data(req: dict):
@@ -177,41 +241,329 @@ async def exchange_internal_document(req: dict):
         document.pop("password", None)
         document.pop("access_password_hash", None)
         return {"data": document}
-    if action == "update_index":
+    if action == "get_accessible_documents":
+        document_ids = list(dict.fromkeys(
+            str(value).strip()
+            for value in req.get("document_ids", [])
+            if str(value).strip()
+        ))
+        if not document_ids or len(document_ids) > 100:
+            raise HTTPException(status_code=422, detail="Danh sách tài liệu không hợp lệ")
+        query = {
+            "_id": {"$in": document_ids},
+            "is_deleted": {"$ne": True},
+            "is_indexed": {"$ne": False},
+            "ai_enabled": {"$ne": False},
+            "index_status": {"$ne": "REVOKE_PENDING"},
+        }
+        if not bool(req.get("is_admin", False)):
+            user_id = str(req.get("user_id") or "")
+            query["$or"] = [
+                {"creator_id": user_id},
+                {
+                    "status": "published",
+                    "$or": [
+                        {"visibility": "public"},
+                        {"visibility": {"$exists": False}},
+                    ],
+                },
+            ]
+        rows = await documents.find(
+            query, {"_id": 1, "active_index_generation": 1}
+        ).to_list(length=len(document_ids))
+        return {
+            "data": {
+                "documents": [
+                    {
+                        "_id": str(row["_id"]),
+                        "active_index_generation": row.get("active_index_generation"),
+                    }
+                    for row in rows
+                    if row.get("_id")
+                ]
+            }
+        }
+    if action == "update_indexing_progress":
+        try:
+            progress = DocumentIndexingProgressUpdate.model_validate(
+                {
+                    key: req[key]
+                    for key in (
+                        "indexing_attempt_id",
+                        "indexing_lease_token",
+                        "phase",
+                        "processed_pages",
+                        "total_pages",
+                        "unprocessed_pages",
+                    )
+                    if key in req
+                }
+            )
+        except Exception as error:
+            raise HTTPException(
+                status_code=422, detail="Tiến độ xử lý tài liệu không hợp lệ"
+            ) from error
         result = await documents.update_one(
-            {"_id": document_id, "is_deleted": {"$ne": True}},
+            {
+                "_id": document_id,
+                "is_deleted": {"$ne": True},
+                "ai_enabled": {"$ne": False},
+                "index_status": {"$ne": "REVOKE_PENDING"},
+                "indexing_attempt_id": progress.indexing_attempt_id,
+                "indexing_lease_token": progress.indexing_lease_token,
+                "indexing_lease_until": {"$gt": datetime.now(timezone.utc)},
+                "indexing_status": "indexing",
+            },
             {
                 "$set": {
-                    "indexing_status": "indexed",
-                    "is_indexed": True,
-                    "chunks_count": int(req.get("indexed_chunks", 0)),
-                    "indexed_chunks": int(req.get("indexed_chunks", 0)),
-                    "extraction_method": str(req.get("extraction_method", "")),
-                    "index_report": dict(req.get("index_report") or {}),
-                    "extracted_text": str(req.get("extracted_text") or "")[:200000],
-                    "extracted_text_truncated": bool(req.get("extracted_text_truncated", False)),
+                    "indexing_progress": progress.model_dump(
+                        exclude={"indexing_lease_token"}
+                    ),
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
         )
         return {"data": {"updated": result.matched_count == 1}}
-    if action == "mark_indexing":
+    if action == "update_index":
+        index_report = dict(req.get("index_report") or {})
+        indexing_status = indexing_status_from_report(index_report)
+        indexing_attempt_id = str(req.get("indexing_attempt_id") or "")
+        indexing_lease_token = str(req.get("indexing_lease_token") or "")
+        index_generation = str(req.get("index_generation") or "")
+        source_snapshot = req.get("source_snapshot")
+        if not indexing_attempt_id or not indexing_lease_token:
+            raise HTTPException(status_code=422, detail="Thiếu mã lượt lập chỉ mục")
+        if (
+            not isinstance(source_snapshot, dict)
+            or set(source_snapshot) != INDEX_SOURCE_SNAPSHOT_FIELDS
+        ):
+            raise HTTPException(status_code=422, detail="Ảnh chụp nguồn lập chỉ mục không hợp lệ")
+        if len(index_generation) != 64 or any(
+            character not in "0123456789abcdef" for character in index_generation
+        ):
+            raise HTTPException(status_code=422, detail="Mã thế hệ chỉ mục không hợp lệ")
+        query = {
+            "_id": document_id,
+            "is_deleted": {"$ne": True},
+            "ai_enabled": {"$ne": False},
+            "index_status": {"$ne": "REVOKE_PENDING"},
+        }
+        query["indexing_attempt_id"] = indexing_attempt_id
+        query["indexing_lease_token"] = indexing_lease_token
+        query["indexing_status"] = "indexing"
+        query["indexing_lease_until"] = {"$gt": datetime.now(timezone.utc)}
+        query.update(source_snapshot)
         result = await documents.update_one(
-            {"_id": document_id, "is_deleted": {"$ne": True}},
+            query,
             {
-                "$set": {"indexing_status": "indexing", "updated_at": datetime.now(timezone.utc)},
-                "$unset": {"indexing_error": ""},
+                "$set": {
+                    "indexing_status": indexing_status,
+                    "active_index_generation": index_generation,
+                    "is_indexed": True,
+                    "chunks_count": int(req.get("indexed_chunks", 0)),
+                    "indexed_chunks": int(req.get("indexed_chunks", 0)),
+                    "extraction_method": str(req.get("extraction_method", "")),
+                    "index_report": index_report,
+                    "extracted_text": str(req.get("extracted_text") or "")[:200000],
+                    "extracted_text_truncated": bool(req.get("extracted_text_truncated", False)),
+                    "updated_at": datetime.now(timezone.utc),
+                },
+                "$unset": {"indexing_progress": ""},
             },
         )
-        return {"data": {"updated": result.matched_count == 1}}
-    if action == "mark_index_failed":
+        return {
+            "data": {
+                "updated": result.matched_count == 1,
+                "indexing_status": indexing_status,
+            }
+        }
+    if action == "mark_indexing":
+        try:
+            claim = DocumentIndexingClaimRequest.model_validate(
+                {
+                    key: req[key]
+                    for key in (
+                        "indexing_attempt_id",
+                        "indexing_lease_token",
+                        "dispatch_event_id",
+                    )
+                    if key in req
+                }
+            )
+        except Exception as error:
+            raise HTTPException(
+                status_code=422, detail="Yêu cầu nhận lượt lập chỉ mục không hợp lệ"
+            ) from error
+        now = datetime.now(timezone.utc)
+        lease_until = now + timedelta(seconds=settings.DOCUMENT_INDEXING_LEASE_SECONDS)
+        query = {
+            "_id": document_id,
+            "is_deleted": {"$ne": True},
+            "ai_enabled": {"$ne": False},
+            "index_status": {"$ne": "REVOKE_PENDING"},
+            "$or": [
+                {"indexing_status": {"$in": [None, "not_started", "queued", "failed"]}},
+                {
+                    "indexing_status": "degraded",
+                    "$or": [
+                        {"index_report.failed_chunks": {"$exists": True, "$ne": []}},
+                        {"index_report.unprocessed_blocks": {"$exists": True, "$ne": []}},
+                        {"index_report.index_cleanup_pending": {"$exists": True, "$ne": []}},
+                    ],
+                },
+                {
+                    "indexing_status": "indexing",
+                    "$or": [
+                        {"indexing_lease_until": {"$exists": False}},
+                        {"indexing_lease_until": None},
+                        {"indexing_lease_until": {"$lte": now}},
+                    ],
+                },
+            ],
+        }
+        if claim.dispatch_event_id:
+            query["index_dispatch_event_id"] = claim.dispatch_event_id
+        updated = await documents.find_one_and_update(
+            query,
+            {
+                "$set": {
+                    "indexing_status": "indexing",
+                    "indexing_attempt_id": claim.indexing_attempt_id,
+                    "indexing_lease_token": claim.indexing_lease_token,
+                    "indexing_lease_until": lease_until,
+                    "updated_at": now,
+                },
+                "$unset": {"indexing_error": "", "indexing_progress": ""},
+            },
+        )
+        if updated:
+            response = DocumentIndexingClaimResponse(
+                status="claimed", updated=True, lease_until=lease_until
+            )
+            return {"data": response.model_dump(mode="json")}
+
+        current = await documents.find_one(
+            {"_id": document_id, "is_deleted": {"$ne": True}}
+        )
+        current_lease_until = current.get("indexing_lease_until") if current else None
+        if (
+            isinstance(current_lease_until, datetime)
+            and current_lease_until.tzinfo is None
+        ):
+            current_lease_until = current_lease_until.replace(tzinfo=timezone.utc)
+        if (
+            not current
+            or (
+                claim.dispatch_event_id
+                and current.get("index_dispatch_event_id") != claim.dispatch_event_id
+            )
+        ):
+            status = "superseded"
+        elif current.get("indexing_status") in {"indexed", "degraded"}:
+            status = "already_indexed"
+        elif (
+            current.get("indexing_status") == "indexing"
+            and isinstance(current_lease_until, datetime)
+            and current_lease_until > now
+        ):
+            status = "busy"
+        else:
+            status = "not_claimable"
+        response = DocumentIndexingClaimResponse(
+            status=status,
+            updated=False,
+            lease_until=current_lease_until,
+        )
+        return {"data": response.model_dump(mode="json")}
+    if action == "renew_indexing_lease":
+        try:
+            lease = DocumentIndexingLeaseRequest.model_validate(
+                {
+                    key: req[key]
+                    for key in ("indexing_attempt_id", "indexing_lease_token")
+                    if key in req
+                }
+            )
+        except Exception as error:
+            raise HTTPException(
+                status_code=422, detail="Yêu cầu gia hạn lượt lập chỉ mục không hợp lệ"
+            ) from error
+        now = datetime.now(timezone.utc)
+        lease_until = now + timedelta(seconds=settings.DOCUMENT_INDEXING_LEASE_SECONDS)
         result = await documents.update_one(
-            {"_id": document_id, "is_deleted": {"$ne": True}},
+            {
+                "_id": document_id,
+                "is_deleted": {"$ne": True},
+                "ai_enabled": {"$ne": False},
+                "index_status": {"$ne": "REVOKE_PENDING"},
+                "indexing_status": "indexing",
+                "indexing_attempt_id": lease.indexing_attempt_id,
+                "indexing_lease_token": lease.indexing_lease_token,
+                "indexing_lease_until": {"$gt": now},
+            },
+            {"$set": {"indexing_lease_until": lease_until, "updated_at": now}},
+        )
+        return {
+            "data": {
+                "updated": result.matched_count == 1,
+                "lease_until": lease_until.isoformat(),
+            }
+        }
+    if action == "mark_index_failed":
+        indexing_attempt_id = str(req.get("indexing_attempt_id") or "")
+        indexing_lease_token = str(req.get("indexing_lease_token") or "")
+        if not indexing_attempt_id or not indexing_lease_token:
+            raise HTTPException(status_code=422, detail="Thiếu mã lượt lập chỉ mục")
+        query = {
+            "_id": document_id,
+            "is_deleted": {"$ne": True},
+            "ai_enabled": {"$ne": False},
+            "index_status": {"$ne": "REVOKE_PENDING"},
+            "indexing_status": "indexing",
+            "indexing_lease_until": {"$gt": datetime.now(timezone.utc)},
+        }
+        query["indexing_attempt_id"] = indexing_attempt_id
+        query["indexing_lease_token"] = indexing_lease_token
+        result = await documents.update_one(
+            query,
             {
                 "$set": {
                     "indexing_status": "failed",
                     "indexing_error": str(req.get("error_code") or "unknown"),
                     "updated_at": datetime.now(timezone.utc),
+                },
+                "$unset": {
+                    "indexing_attempt_id": "",
+                    "indexing_lease_token": "",
+                    "indexing_lease_until": "",
+                    "indexing_progress": "",
+                },
+            },
+        )
+        return {"data": {"updated": result.matched_count == 1}}
+    if action == "complete_indexing":
+        indexing_attempt_id = str(req.get("indexing_attempt_id") or "")
+        indexing_lease_token = str(req.get("indexing_lease_token") or "")
+        if not indexing_attempt_id or not indexing_lease_token:
+            raise HTTPException(status_code=422, detail="Thiếu mã lượt lập chỉ mục")
+        now = datetime.now(timezone.utc)
+        result = await documents.update_one(
+            {
+                "_id": document_id,
+                "is_deleted": {"$ne": True},
+                "ai_enabled": {"$ne": False},
+                "index_status": {"$ne": "REVOKE_PENDING"},
+                "indexing_attempt_id": indexing_attempt_id,
+                "indexing_lease_token": indexing_lease_token,
+                "indexing_lease_until": {"$gt": now},
+                "indexing_status": {"$in": ["indexed", "degraded"]},
+            },
+            {
+                "$unset": {
+                    "indexing_attempt_id": "",
+                    "indexing_lease_token": "",
+                    "indexing_lease_until": "",
+                    "indexing_progress": "",
                 }
             },
         )
@@ -226,7 +578,13 @@ async def exchange_internal_document(req: dict):
                     "is_indexed": False,
                     "indexing_status": "not_started",
                     "updated_at": datetime.now(timezone.utc),
-                }
+                },
+                "$unset": {
+                    "indexing_attempt_id": "",
+                    "indexing_lease_token": "",
+                    "indexing_lease_until": "",
+                    "indexing_progress": "",
+                },
             },
         )
         return {"data": {"updated": result.matched_count == 1}}
@@ -298,23 +656,27 @@ async def exchange_internal_document(req: dict):
             )
         collected_doc_id = str(row["_id"])
         superseded_document_id = str(row.get("previous_version_id") or "")
-        if payload.get("file_url"):
-            import asyncio
-
-            async def _fire_collected_ingest():
-                try:
-                    await knowledge_client.index_document(
-                        collected_doc_id,
-                        "",
-                        superseded_document_id,
-                    )
-                except Exception:
-                    logger.warning(
-                        f"Collected document ingest webhook failed for document_id={collected_doc_id}"
-                    )
-
-            asyncio.create_task(_fire_collected_ingest())
-        return {"data": {"document_id": collected_doc_id}}
+        indexing_status = str(row.get("indexing_status") or "not_started")
+        if payload.get("file_url") and indexing_status not in {"indexed", "degraded"}:
+            await documents.update_one(
+                {"_id": row["_id"]},
+                {
+                    "$set": {
+                        "indexing_status": "queued",
+                        "is_indexed": False,
+                        "updated_at": now,
+                    },
+                    "$unset": {"indexing_error": "", "index_dispatch_event_id": ""},
+                },
+            )
+            await document_ingestion_outbox.enqueue(
+                {**row, "_id": collected_doc_id},
+                user_id="",
+                superseded_document_id=superseded_document_id,
+                force_new=indexing_status == "failed",
+            )
+            indexing_status = "queued"
+        return {"data": {"document_id": collected_doc_id, "indexing_status": indexing_status}}
     if action == "update_collected":
         result = await documents.update_one(
             {"_id": document_id},

@@ -9,24 +9,13 @@ export function useProject(projectId) {
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const lastAccessRefreshPath = useRef("");
-  const deniedProjectId = useRef(projectId);
-  const deniedPermissions = useRef(new Set());
   const reload = useCallback(async () => {
-    if (deniedProjectId.current !== projectId) {
-      deniedProjectId.current = projectId;
-      deniedPermissions.current.clear();
-    }
     setLoading(true);
     setError("");
     setForbidden(false);
     try {
       const value = await testingApi.getProject(projectId);
-      setProject({
-        ...value,
-        current_permissions: (value.current_permissions || []).filter(
-          (permission) => !deniedPermissions.current.has(permission),
-        ),
-      });
+      setProject(value);
     } catch (reason) {
       setError(messageOf(reason));
       setForbidden(reason?.status === 403);
@@ -50,7 +39,6 @@ export function useProject(projectId) {
       lastAccessRefreshPath.current = pagePath;
       const deniedPermission = event.detail?.permission;
       if (typeof deniedPermission === "string") {
-        deniedPermissions.current.add(deniedPermission);
         setProject((current) =>
           current
             ? {

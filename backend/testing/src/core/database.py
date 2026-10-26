@@ -105,6 +105,11 @@ async def close_database():
 
 async def create_indexes():
     db = database.value
+    await db.requirement_documents.create_index(
+        [("project_id", 1), ("source_series_id", 1), ("source_version_sequence", 1)],
+        unique=True,
+        partialFilterExpression={"source_series_id": {"$type": "string"}},
+    )
     for collection_name in QUALITY_PROCESS_COLLECTIONS:
         collection = db[collection_name]
         await collection.create_index([("project_id", 1), ("_id", 1)], unique=True)
@@ -118,6 +123,8 @@ async def create_indexes():
     await db.projects.create_index([("created_by", 1), ("updated_at", -1)])
     await db.project_members.create_index([("project_id", 1), ("user_id", 1)], unique=True)
     await db.project_members.create_index([("user_id", 1), ("status", 1)])
+    await db.member_skill_profiles.create_index([("project_id", 1), ("user_id", 1)], unique=True)
+    await db.member_skill_profiles.create_index([("user_id", 1), ("updated_at", -1)])
     await db.project_tasks.create_index([("project_id", 1), ("updated_at", -1)])
     await db.project_tasks.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
     await db.work_items.create_index([("project_id", 1), ("backlog_rank", 1)])
@@ -131,15 +138,36 @@ async def create_indexes():
     await db.planning_workflows.create_index("project_id", unique=True)
     await db.project_task_migrations.create_index("project_id", unique=True)
     await db.ai_automation_outbox.create_index([("status", 1), ("next_attempt_at", 1)])
+    await db.ai_automation_outbox.create_index([("status", 1), ("updated_at", 1)])
     await db.requirements.create_index([("project_id", 1), ("requirement_key", 1)], unique=True)
     await ensure_unique_index(db.requirement_documents, [("project_id", 1), ("created_by", 1), ("content_hash", 1)])
+    await db.requirement_documents.create_index(
+        "deduplication_key",
+        unique=True,
+        sparse=True,
+        name="requirement_document_deduplication_key_unique",
+    )
     indexes = await db.requirement_documents.list_indexes().to_list(length=1000)
     for index in indexes:
         if dict(index["key"]) == {"project_id": 1, "content_hash": 1} and index.get("unique"):
             await db.requirement_documents.drop_index(index["name"])
     await db.requirement_documents.create_index([("project_id", 1), ("created_at", -1)])
+    await db.requirement_documents.create_index(
+        [("project_id", 1), ("status", 1), ("ai_enabled", 1), ("_id", 1)]
+    )
+    await db.requirement_documents.create_index(
+        [("status", 1), ("updated_at", 1), ("_id", 1)]
+    )
+    await db.requirement_source_blocks.create_index(
+        [("project_id", 1), ("document_id", 1), ("source_hash", 1), ("block_index", 1)],
+        unique=True,
+    )
+    await db.requirement_source_blocks.create_index(
+        [("project_id", 1), ("document_id", 1), ("source_hash", 1), ("block.parent_block_id", 1)]
+    )
     await db.requirement_templates.create_index([("project_id", 1), ("updated_at", -1)])
     await db.requirement_templates.create_index([("status", 1), ("updated_at", -1)])
+    await db.test_case_custom_fields.create_index([("project_id", 1), ("key", 1)], unique=True)
     await db.requirement_template_versions.create_index([("template_id", 1), ("version", -1)], unique=True)
     await db.requirement_custom_fields.create_index([("project_id", 1), ("key", 1)], unique=True)
     await db.import_jobs.update_many(
@@ -184,6 +212,9 @@ async def create_indexes():
     )
     await db.test_case_drafts.create_index([("project_id", 1), ("updated_at", -1)])
     await db.test_case_drafts.create_index([("project_id", 1), ("requirement_version_ids", 1)])
+    await db.test_case_drafts.create_index(
+        [("project_id", 1), ("status", 1), ("_id", 1)]
+    )
     await db.test_cases.create_index([("project_id", 1), ("test_case_key", 1)], unique=True)
     await db.test_case_versions.create_index([("test_case_id", 1), ("version", 1)], unique=True)
     await db.test_case_versions.create_index([("project_id", 1), ("requirement_version_ids", 1)])
@@ -208,6 +239,9 @@ async def create_indexes():
         unique=True,
     )
     await db.ai_results.create_index([("project_id", 1), ("created_at", -1)])
+    await db.ai_results.create_index(
+        [("project_id", 1), ("result_type", 1), ("subject_id", 1), ("created_at", -1)]
+    )
     await ensure_partial_unique_index(
         db.ai_results,
         [("project_id", 1), ("idempotency_key", 1)],
@@ -217,6 +251,15 @@ async def create_indexes():
         db.ai_findings,
         [("project_id", 1), ("artifact_id", 1), ("idempotency_key", 1)],
         {"idempotency_key": {"$type": "string"}},
+    )
+    await db.ai_findings.create_index(
+        [
+            ("project_id", 1),
+            ("artifact_id", 1),
+            ("result_type", 1),
+            ("created_at", -1),
+            ("_id", -1),
+        ]
     )
     await db.coverage_snapshots.create_index([("project_id", 1), ("created_at", -1)])
     await ensure_partial_unique_index(
@@ -493,6 +536,11 @@ async def create_indexes():
         [("project_id", 1), ("idempotency_key", 1)], unique=True
     )
     await db.junit_result_imports.create_index([("project_id", 1), ("test_run_id", 1), ("created_at", -1)])
+    await ensure_partial_unique_index(
+        db.junit_result_imports,
+        [("project_id", 1), ("test_run_id", 1), ("source_hash", 1)],
+        {"source_hash": {"$type": "string"}},
+    )
     await db.collaboration_sessions.create_index(
         [
             ("project_id", 1),

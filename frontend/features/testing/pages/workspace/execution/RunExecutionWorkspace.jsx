@@ -1,3 +1,6 @@
+"use client";
+
+import { useRef, useState } from "react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../../components/DataTable";
 import FilePicker from "../../../components/FilePicker";
@@ -14,6 +17,7 @@ import { testingApi } from "../../../services/testing.service";
 export default function RunExecutionWorkspace({
   run,
   projectId,
+  members,
   error,
   can,
   resumeContext,
@@ -31,7 +35,55 @@ export default function RunExecutionWorkspace({
   attachments,
   onAttachmentsChange,
   dialog,
+  savingExecution = false,
 }) {
+  const activeTesters = (members || []).filter((member) => {
+    const roles = member.project_roles || [member.project_role];
+    return member.status === "ACTIVE" && roles.includes("TESTER");
+  });
+  const [assignmentEditing, setAssignmentEditing] = useState(false);
+  const [assignmentDraft, setAssignmentDraft] = useState({});
+  const [runAssigneeDraft, setRunAssigneeDraft] = useState("");
+  const [savingAssignment, setSavingAssignment] = useState(false);
+  const [creatingRerun, setCreatingRerun] = useState(false);
+  const rerunKey = useRef(null);
+  const beginAssignmentEdit = () => {
+    const assignments = { ...(run.test_case_assignments || {}) };
+    setAssignmentDraft(assignments);
+    setRunAssigneeDraft(
+      run.assignee_id ||
+        Object.values(assignments).find(Boolean) ||
+        activeTesters[0]?.user_id ||
+        "",
+    );
+    setAssignmentEditing(true);
+  };
+  const saveAssignments = async () => {
+    const testCaseAssignments = Object.fromEntries(
+      Object.entries(assignmentDraft).filter(
+        ([versionId, assigneeId]) =>
+          run.test_case_version_ids?.includes(versionId) && Boolean(assigneeId),
+      ),
+    );
+    if (!runAssigneeDraft) {
+      onError("Chọn người phụ trách lần chạy trước khi lưu phân công");
+      return;
+    }
+    setSavingAssignment(true);
+    try {
+      const updatedRun = await testingApi.assignRun(projectId, run._id, {
+        expected_revision: run.revision,
+        assignee_id: runAssigneeDraft,
+        test_case_assignments: testCaseAssignments,
+      });
+      onRunChange(updatedRun);
+      setAssignmentEditing(false);
+    } catch (reason) {
+      onError(messageOf(reason));
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
   return (
     <WorkspacePage title={run.name} actions={<ProjectCrumb projectId={projectId} />}>
       {error && <ErrorState message={error} />}
@@ -39,6 +91,16 @@ export default function RunExecutionWorkspace({
         title="Điều khiển lần chạy"
         actions={
           <div className="flex flex-wrap gap-2">
+            {can("testrun.assign") && can("project.members.read") && (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!activeTesters.length}
+                onClick={beginAssignmentEdit}
+              >
+                Sửa phân công
+              </button>
+            )}
             {can("report.export") && (
               <button
                 className="secondary-button"
@@ -48,6 +110,30 @@ export default function RunExecutionWorkspace({
                 }
               >
                 Xuất báo cáo
+              </button>
+            )}
+            {["COMPLETED", "ABORTED"].includes(run.status) && can("testrun.create") && (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={creatingRerun}
+                onClick={async () => {
+                  setCreatingRerun(true);
+                  rerunKey.current ||= crypto.randomUUID();
+                  try {
+                    const created = await testingApi.rerunRun(projectId, run._id, {
+                      idempotency_key: rerunKey.current,
+                    });
+                    rerunKey.current = null;
+                    window.location.assign(`/du-an/${projectId}/thuc-thi/${created._id}`);
+                  } catch (reason) {
+                    onError(messageOf(reason));
+                  } finally {
+                    setCreatingRerun(false);
+                  }
+                }}
+              >
+                {creatingRerun ? "Đang tạo lần chạy mới…" : "Chạy lại bằng lần chạy mới"}
               </button>
             )}
             {run.status === "DRAFT" && can("testrun.start") && (
@@ -72,6 +158,7 @@ export default function RunExecutionWorkspace({
                   <button
                     className="apple-button"
                     type="button"
+                    disabled={savingExecution}
                     onClick={async () => {
                       try {
                         const value = await testingApi.resumeRun(projectId, run._id, {
@@ -92,8 +179,9 @@ export default function RunExecutionWorkspace({
                   <button
                     className="secondary-button"
                     type="button"
+                    disabled={savingExecution}
                     onClick={async () => {
-                      const answer = await ask({
+                      await ask({
                         title: "Hủy lần chạy kiểm thử",
                         description: `${run.name} sẽ dừng và giữ nguyên toàn bộ kết quả đã ghi nhận`,
                         confirmLabel: "Hủy lần chạy",
@@ -108,14 +196,15 @@ export default function RunExecutionWorkspace({
                             autoFocus: true,
                           },
                         ],
+                        onConfirm: async (answer) => {
+                          try {
+                            await testingApi.abortRun(run._id, answer.reason);
+                            onRunChange(await testingApi.getRun(run._id));
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
                       });
-                      if (!answer) return;
-                      try {
-                        await testingApi.abortRun(run._id, answer.reason);
-                        onRunChange(await testingApi.getRun(run._id));
-                      } catch (value) {
-                        onError(messageOf(value));
-                      }
                     }}
                   >
                     Hủy lần chạy
@@ -125,6 +214,7 @@ export default function RunExecutionWorkspace({
                   <button
                     className="apple-button"
                     type="button"
+                    disabled={savingExecution}
                     onClick={async () => {
                       try {
                         await testingApi.completeRun(run._id);
@@ -165,13 +255,197 @@ export default function RunExecutionWorkspace({
           )}
         </div>
       </Panel>
+      {can("testrun.assign") && can("project.members.read") && assignmentEditing && (
+        <Panel title="Phân công lần chạy">
+          <div className="space-y-4 p-5">
+            <label className="field-label block">
+              Người phụ trách lần chạy
+              <select
+                aria-label="Người phụ trách lần chạy"
+                className="apple-input mt-2"
+                disabled={savingAssignment}
+                value={runAssigneeDraft}
+                onChange={(event) => setRunAssigneeDraft(event.target.value)}
+              >
+                <option value="">Chọn Tester</option>
+                {activeTesters.map((member) => (
+                  <option key={member.user_id} value={member.user_id}>
+                    {member.user_label || member.user?.label || member.user_id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="space-y-3">
+              {(run.test_case_versions || []).map((version) => (
+                <label
+                  className="grid min-w-0 gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(12rem,20rem)] sm:items-center"
+                  key={version._id}
+                >
+                  <span className="break-words">
+                    {version.test_case_key} · {version.title}
+                  </span>
+                  <select
+                    aria-label={`Người thực hiện ${version.test_case_key}`}
+                    className="apple-input"
+                    disabled={savingAssignment}
+                    value={assignmentDraft[version._id] || ""}
+                    onChange={(event) =>
+                      setAssignmentDraft((current) => ({
+                        ...current,
+                        [version._id]: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Chưa phân công ca này</option>
+                    {activeTesters.map((member) => (
+                      <option key={member.user_id} value={member.user_id}>
+                        {member.user_label || member.user?.label || member.user_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            {!activeTesters.length && (
+              <p className="text-sm text-danger">Không có Tester đang hoạt động để phân công.</p>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={savingAssignment}
+                onClick={() => setAssignmentEditing(false)}
+              >
+                Hủy
+              </button>
+              <button
+                className="apple-button"
+                type="button"
+                disabled={!activeTesters.length || savingAssignment}
+                onClick={saveAssignments}
+              >
+                {savingAssignment ? "Đang lưu" : "Lưu phân công"}
+              </button>
+            </div>
+          </div>
+        </Panel>
+      )}
+      {!!run.unassigned_assignment_reasons?.length && (
+        <Panel title="Ca chưa được tự phân công">
+          <div className="space-y-2 p-5">
+            <p className="text-sm text-ink-muted">
+              Không có thành viên khả dụng khớp đủ kỹ năng đã xác nhận. Các ca này vẫn thuộc lần
+              chạy nhưng cần người quản lý phân công.
+            </p>
+            {run.unassigned_assignment_reasons.map((item) => {
+              const version = run.test_case_versions?.find(
+                (candidate) => candidate._id === item.test_case_version_id,
+              );
+              return (
+                <p className="break-words text-sm" key={item.test_case_version_id}>
+                  {version?.test_case_key || item.test_case_version_id} ·{" "}
+                  {version?.title || "Ca kiểm thử"}
+                  {" — "}
+                  {item.reason === "NO_FULL_SKILL_MATCH"
+                    ? "Chưa có người khớp đủ kỹ năng"
+                    : "Chưa có Tester khả dụng trong dự án"}
+                </p>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+      {run.assignment_strategy === "CONFIRMED_SKILLS" &&
+        Object.keys(run.test_case_assignment_decisions || {}).length > 0 && (
+          <Panel title="Căn cứ phân công tự động">
+            <div className="space-y-3 p-5">
+              <p className="text-sm text-ink-muted">
+                Đây là thông tin được ghi lại tại thời điểm tạo lần chạy; thay đổi hồ sơ thành viên
+                sau đó không làm thay đổi lịch sử phân công.
+              </p>
+              {Object.entries(run.test_case_assignment_decisions).map(([versionId, decision]) => {
+                const version = run.test_case_versions?.find(
+                  (candidate) => candidate._id === versionId,
+                );
+                const reasonLabel = [
+                  "CONFIRMED_SKILLS_THEN_LOWEST_ACTIVE_CASE_AND_RUN_LOAD",
+                  "CONFIRMED_SKILLS_THEN_AVAILABILITY_AND_LOWEST_ACTIVE_CASE_AND_RUN_LOAD",
+                ].includes(decision.reason)
+                  ? "Khớp kỹ năng đã xác nhận, sau đó cân bằng tải ca và lần chạy"
+                  : "Không yêu cầu kỹ năng cụ thể; cân bằng tải ca và lần chạy";
+
+                return (
+                  <section
+                    className="grid min-w-0 gap-1 border-b border-border pb-3 text-sm last:border-b-0 last:pb-0"
+                    key={versionId}
+                  >
+                    <h3 className="break-words font-medium">
+                      {version?.test_case_key || versionId} · {version?.title || "Ca kiểm thử"}
+                    </h3>
+                    <p className="break-words text-ink-muted">
+                      Người thực hiện:{" "}
+                      {run.test_case_assignment_identities?.[decision.assignee_id]?.display_name ||
+                        decision.assignee_id ||
+                        "Chưa phân công"}
+                      {" · "}
+                      {reasonLabel}
+                    </p>
+                    <p className="break-words text-ink-muted">
+                      Kỹ năng yêu cầu: {decision.required_skills?.join(", ") || "Không yêu cầu"}
+                      {" · "}
+                      Kỹ năng khớp: {decision.matched_skills?.join(", ") || "Không có"}
+                    </p>
+                    {!!decision.matched_skill_evidence?.length && (
+                      <ul className="space-y-1 pl-4 text-xs text-ink-muted">
+                        {decision.matched_skill_evidence.map((item, index) => (
+                          <li className="break-words" key={`${item.name}-${index}`}>
+                            {item.name}: {item.evidence || "Đã xác nhận, không có trích dẫn"}
+                            {item.source_block_id ? ` · nguồn ${item.source_block_id}` : ""}
+                            {item.source_page_no ? ` · trang ${item.source_page_no}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="break-words text-ink-muted">
+                      Hồ sơ kỹ năng phiên bản {decision.skill_profile_revision ?? 0}
+                      {" · "}
+                      Số đợt đang chạy trước khi gán:{" "}
+                      {decision.active_run_count_before_assignment ?? 0}
+                      {" · "}
+                      Tải ca trước khi gán: {decision.active_case_count_before_assignment ?? 0}
+                      {" · "}
+                      Tình trạng khả dụng: {decision.availability_at_assignment || "Chưa ghi nhận"}
+                    </p>
+                  </section>
+                );
+              })}
+            </div>
+          </Panel>
+        )}
       <Panel title="Kết quả thủ công">
+        {savingExecution && (
+          <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
+            Đang lưu kết quả thực thi…
+          </p>
+        )}
         <DataTable
           items={run.test_case_versions || []}
           columns={[
             { key: "test_case_key", label: "Ca kiểm thử" },
             { key: "version", label: "Phiên bản", render: (item) => `v${item.version}` },
             { key: "title", label: "Tên" },
+            {
+              key: "assignee",
+              label: "Người thực hiện",
+              render: (item) => {
+                const assigneeId = run.test_case_assignments?.[item._id];
+                return (
+                  run.test_case_assignment_identities?.[assigneeId]?.display_name ||
+                  assigneeId ||
+                  "Chưa phân công"
+                );
+              },
+            },
             {
               key: "result",
               label: "Kết quả",
@@ -214,6 +488,7 @@ export default function RunExecutionWorkspace({
                       <button
                         className="secondary-button"
                         type="button"
+                        disabled={savingExecution}
                         onClick={() => onTransition(result, "IN_PROGRESS", item)}
                       >
                         Bắt đầu ca kiểm thử
@@ -221,6 +496,7 @@ export default function RunExecutionWorkspace({
                       <button
                         className="secondary-button"
                         type="button"
+                        disabled={savingExecution}
                         onClick={() => onTransition(result, "SKIPPED", item)}
                       >
                         Bỏ qua
@@ -250,6 +526,7 @@ export default function RunExecutionWorkspace({
                           <select
                             aria-label={`Trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
                             className="apple-input"
+                            disabled={savingExecution}
                             value={edited.status || existing?.status || "PASS"}
                             onChange={(event) =>
                               onStepResultsChange((values) => ({
@@ -273,6 +550,7 @@ export default function RunExecutionWorkspace({
                           <textarea
                             aria-label={`Kết quả bước ${stepIndex + 1} ${item.test_case_key}`}
                             className="apple-input min-h-16"
+                            disabled={savingExecution}
                             value={edited.actual ?? docText(existing?.actual_doc)}
                             onChange={(event) =>
                               onStepResultsChange((values) => ({
@@ -291,6 +569,7 @@ export default function RunExecutionWorkspace({
                           <textarea
                             aria-label={`Lý do trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
                             className="apple-input min-h-16"
+                            disabled={savingExecution}
                             value={edited.note ?? existing?.note ?? ""}
                             onChange={(event) =>
                               onStepResultsChange((values) => ({
@@ -312,6 +591,7 @@ export default function RunExecutionWorkspace({
                     <textarea
                       aria-label={`Kết quả thực tế ${item.test_case_key}`}
                       className="apple-input min-h-20"
+                      disabled={savingExecution}
                       value={actuals[result._id] ?? docText(result.actual_result_doc)}
                       onChange={(event) =>
                         onActualsChange({ ...actuals, [result._id]: event.target.value })
@@ -321,16 +601,19 @@ export default function RunExecutionWorkspace({
                     <FilePicker
                       ariaLabel={`Tệp bằng chứng ${item.test_case_key}`}
                       buttonLabel="Chọn tệp bằng chứng"
+                      disabled={savingExecution}
                       onChange={async (event) => {
                         const file = event.target.files?.[0];
                         if (!file) return;
                         try {
                           const uploaded = await uploadAssetAPI(file);
-                          const current = attachments[result._id] || result.attachments || [];
-                          onAttachmentsChange({
-                            ...attachments,
-                            [result._id]: [...current, uploaded.data],
-                          });
+                          onAttachmentsChange((current) => ({
+                            ...current,
+                            [result._id]: [
+                              ...(current[result._id] || result.attachments || []),
+                              uploaded.data,
+                            ],
+                          }));
                         } catch (reason) {
                           onError(messageOf(reason));
                         }
@@ -346,6 +629,7 @@ export default function RunExecutionWorkspace({
                         <button
                           className="secondary-button"
                           type="button"
+                          disabled={savingExecution}
                           key={value}
                           onClick={() => onTransition(result, value, item)}
                         >

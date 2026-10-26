@@ -22,6 +22,7 @@ from src.modules.design.services.test_analysis import (
     create_condition,
     get_condition_for_user,
     list_analysis_findings,
+    list_ai_analysis_results,
     list_conditions,
     list_test_basis,
     resolve_finding,
@@ -125,6 +126,18 @@ async def resolve_test_analysis_finding(
 ):
     value = await resolve_finding(condition_id, finding_id, payload, user)
     return envelope(value, revision=value["revision"])
+
+
+@router.get("/du-an/{project_id}/phan-tich-kiem-thu/ai")
+async def list_test_analysis_ai_results(
+    project_id: str,
+    limit: int = Query(default=100, ge=1, le=200),
+    idempotency_key: str | None = Query(default=None, min_length=8, max_length=200),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(
+        await list_ai_analysis_results(project_id, user, limit, idempotency_key)
+    )
 
 
 @router.post("/du-an/{project_id}/phan-tich-kiem-thu/ai", status_code=201)

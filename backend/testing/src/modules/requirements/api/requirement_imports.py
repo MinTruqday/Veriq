@@ -18,6 +18,7 @@ from src.modules.requirements.services.requirement_import import (
 )
 from src.modules.requirements.services.requirement_import_workflow import (
     authorize_requirement_import_job,
+    apply_requirement_import_job,
     compare_requirement_import_job,
     confirm_requirement_import_job,
     create_requirement_import_job,
@@ -135,6 +136,16 @@ async def confirm_requirement_import(
     job_id: str, payload: ImportConfirm, user: CurrentUser = Depends(get_current_user)
 ):
     result = await confirm_requirement_import_job(job_id, payload, user)
+    if result["job"] is not None:
+        return envelope(result["job"])
+    return envelope({"job_id": job_id, "requirements": result["requirements"]})
+
+
+@router.post("/nhap-yeu-cau/{job_id}/tu-dong-ap-dung")
+async def apply_requirement_import(
+    job_id: str, payload: ImportConfirm, user: CurrentUser = Depends(get_current_user)
+):
+    result = await apply_requirement_import_job(job_id, payload, user)
     if result["job"] is not None:
         return envelope(result["job"])
     return envelope({"job_id": job_id, "requirements": result["requirements"]})

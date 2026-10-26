@@ -1,7 +1,7 @@
 import asyncio
 import re
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Literal
 
 from loguru import logger
 
@@ -17,6 +17,13 @@ class ScanResult:
     violations: List[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ExternalToolOutputScanResult:
+    status: Literal["SAFE", "REDACTED", "BLOCKED"]
+    sanitized_text: str | None
+    reason_code: str | None = None
+
+
 class SecurityHarness:
     def __init__(self):
         self.analyzer = None
@@ -29,19 +36,32 @@ class SecurityHarness:
             from presidio_analyzer import AnalyzerEngine
             from presidio_analyzer.nlp_engine import NlpEngineProvider
             from presidio_anonymizer import AnonymizerEngine
+            from presidio_analyzer.nlp_engine import SpacyNlpEngine
+            import spacy
 
+            models = [
+                {
+                    "lang_code": "en",
+                    "model_name": "en_core_web_sm",
+                }
+            ]
             provider = NlpEngineProvider(
                 nlp_configuration={
                     "nlp_engine_name": "spacy",
-                    "models": [
-                        {
-                            "lang_code": "en",
-                            "model_name": "en_core_web_sm",
-                        }
-                    ],
+                    "models": models,
                 }
             )
-            self.analyzer = AnalyzerEngine(nlp_engine=provider.create_engine())
+            try:
+                nlp_engine = provider.create_engine()
+            except OverflowError:
+                nlp_engine = SpacyNlpEngine(models=models)
+                nlp_engine.nlp = {
+                    model["lang_code"]: spacy.load(
+                        model["model_name"], exclude=["tokenizer"]
+                    )
+                    for model in models
+                }
+            self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
             self.anonymizer = AnonymizerEngine()
             logger.info("Presidio security engines initialized")
         except ImportError:
@@ -170,6 +190,55 @@ class SecurityHarness:
             risk_score=risk_score,
             sanitized_text=sanitized,
             violations=violations,
+        )
+
+    async def inspect_external_tool_output(self, text: str) -> ExternalToolOutputScanResult:
+        if not isinstance(text, str) or not text.strip():
+            return ExternalToolOutputScanResult(
+                status="BLOCKED",
+                sanitized_text=None,
+                reason_code="EXTERNAL_TOOL_OUTPUT_INVALID",
+            )
+        await self._ensure_pii_engine()
+        if not self.analyzer or not self.anonymizer:
+            return ExternalToolOutputScanResult(
+                status="BLOCKED",
+                sanitized_text=None,
+                reason_code="EXTERNAL_TOOL_PII_SCANNER_UNAVAILABLE",
+            )
+        baseline = guardrails_engine.inspect_input(text)
+        if not baseline.get("is_safe", False):
+            return ExternalToolOutputScanResult(
+                status="BLOCKED",
+                sanitized_text=None,
+                reason_code="EXTERNAL_TOOL_SENSITIVE_CONTENT",
+            )
+        sanitized = baseline.get("sanitized_text", text)
+        try:
+            findings = self.analyzer.analyze(
+                text=sanitized,
+                entities=["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD", "CRYPTO"],
+                language="en",
+            )
+            if findings:
+                sanitized = self.anonymizer.anonymize(
+                    text=sanitized,
+                    analyzer_results=findings,
+                ).text
+                return ExternalToolOutputScanResult(
+                    status="REDACTED",
+                    sanitized_text=sanitized,
+                )
+        except Exception:
+            logger.exception("External tool output privacy inspection failed")
+            return ExternalToolOutputScanResult(
+                status="BLOCKED",
+                sanitized_text=None,
+                reason_code="EXTERNAL_TOOL_PII_SCAN_FAILED",
+            )
+        return ExternalToolOutputScanResult(
+            status="SAFE",
+            sanitized_text=sanitized,
         )
 
     async def ascan_output(self, text: str, session_id: str = "") -> str:

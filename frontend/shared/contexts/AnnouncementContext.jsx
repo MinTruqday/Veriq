@@ -1,30 +1,38 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import {
   getAnnouncementsAPI,
   markAnnouncementReadAPI,
 } from "@/features/notification/services/announcement.service";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
-import { useToast } from "./ToastContext";
 const AnnouncementContext = createContext(undefined);
 export function AnnouncementProvider({ children }) {
   const { user } = useAuth();
-  const { showToast } = useToast();
+  const userId = user?._id || null;
   const [announcements, setAnnouncements] = useState([]);
+  const [announcementsOwnerId, setAnnouncementsOwnerId] = useState(null);
+  const requestId = useRef(0);
   const fetchAnnouncements = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
+    const currentRequest = ++requestId.current;
     try {
       const data = await getAnnouncementsAPI();
+      if (currentRequest !== requestId.current) return;
       let arr = data.data || data || [];
       if (!Array.isArray(arr)) arr = [];
       setAnnouncements(arr);
+      setAnnouncementsOwnerId(userId);
     } catch (e) {
-      console.error("Error fetching global announcements:", e);
+      if (currentRequest === requestId.current) {
+        console.error("Error fetching global announcements:", e);
+      }
     }
-  }, [user]);
+  }, [userId]);
   const markAsRead = useCallback(async (id) => {
+    const currentRequest = requestId.current;
     try {
       await markAnnouncementReadAPI(id);
+      if (currentRequest !== requestId.current) return;
       setAnnouncements((prev) =>
         prev.map((n) =>
           n._id === id
@@ -36,11 +44,16 @@ export function AnnouncementProvider({ children }) {
         ),
       );
     } catch (e) {
-      console.error("Error marking announcement as read:", e);
+      if (currentRequest === requestId.current) {
+        console.error("Error marking announcement as read:", e);
+      }
     }
   }, []);
   useEffect(() => {
-    if (!user) {
+    requestId.current += 1;
+    setAnnouncements([]);
+    setAnnouncementsOwnerId(null);
+    if (!userId) {
       setAnnouncements([]);
       return;
     }
@@ -50,14 +63,21 @@ export function AnnouncementProvider({ children }) {
     }, 30000);
     return () => {
       clearInterval(interval);
+      requestId.current += 1;
     };
-  }, [user, fetchAnnouncements]);
-  const unreadCount = Array.isArray(announcements)
-    ? announcements.filter((n) => !n.is_read).length
+  }, [userId, fetchAnnouncements]);
+  const visibleAnnouncements = announcementsOwnerId === userId ? announcements : [];
+  const unreadCount = Array.isArray(visibleAnnouncements)
+    ? visibleAnnouncements.filter((n) => !n.is_read).length
     : 0;
   return (
     <AnnouncementContext.Provider
-      value={{ announcements, unreadCount, fetchAnnouncements, markAsRead }}
+      value={{
+        announcements: visibleAnnouncements,
+        unreadCount,
+        fetchAnnouncements,
+        markAsRead,
+      }}
     >
       {children}
     </AnnouncementContext.Provider>

@@ -5,7 +5,11 @@ from src.core.rich_text import text_document
 from src.repositories.analysis import analysis_repository
 from src.repositories.test_design import test_design_repository
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
-from src.modules.design.services.generation import generate_requirement_drafts, select_generation_criteria
+from src.modules.design.services.generation import (
+    generate_requirement_drafts,
+    requirement_test_evidence_text,
+    select_generation_criteria,
+)
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases, project_test_text, require_current_baselined_version
 
@@ -16,21 +20,23 @@ async def generate_test_case_draft_records(version_id, payload, user):
     version = await get_project_entity(
         "requirement_versions", version_id, user, "ai.generate_testcase"
     )
-    await require_current_baselined_version(
-        version, allow_automation_draft=bool(user._ai_automation_run_id)
-    )
+    await require_current_baselined_version(version)
     await get_project(version["project_id"], user, "testcase.create")
-    criteria = await analysis_repository.list_acceptance_criteria(version_id)
-    criteria = select_generation_criteria(criteria, payload.acceptance_criterion_ids)
-    drafts, result = await generate_requirement_drafts(version, criteria, payload, scenario=False)
+    all_criteria = await analysis_repository.list_acceptance_criteria(version_id)
+    criteria = select_generation_criteria(all_criteria, payload.acceptance_criterion_ids)
+    drafts, result = await generate_requirement_drafts(
+        version,
+        criteria,
+        payload,
+        scenario=False,
+        acceptance_criteria_snapshot_ids=[item["_id"] for item in all_criteria],
+    )
     current_versions = await analysis_repository.list_requirement_versions(
         version["project_id"], [version_id], 1
     )
     if not current_versions:
         raise HTTPException(409, detail={"code": "TEST_DESIGN_REQUIREMENT_CHANGED", "message": "Yêu cầu đã thay đổi trong lúc AI tạo ca  Hãy tạo lại bản xem trước"})
-    await require_current_baselined_version(
-        current_versions[0], allow_automation_draft=bool(user._ai_automation_run_id)
-    )
+    await require_current_baselined_version(current_versions[0])
     current_criteria = await analysis_repository.list_acceptance_criteria(version_id)
     current_criteria = select_generation_criteria(
         current_criteria, payload.acceptance_criterion_ids
@@ -51,9 +57,7 @@ async def generate_test_case_draft_records(version_id, payload, user):
     suite_signature = active_suite_signature(related, [version_id])
     if payload.challenge_hypotheses and suite_signature != payload.challenge_suite_signature:
         raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi trong lúc AI tạo ca  Hãy nhận gợi ý mới"})
-    await require_current_baselined_version(
-        version, allow_automation_draft=bool(user._ai_automation_run_id)
-    )
+    await require_current_baselined_version(version)
     criterion_ids = {item["_id"] for item in criteria}
     from src.modules.design.services.test_adequacy import _sources
     coverage_by_criterion = {
@@ -133,7 +137,7 @@ async def recommend_test_design_techniques(version_id, payload, user):
     evidence = [{
         "artifact_type": "requirement_version",
         "artifact_version_id": version_id,
-        "text": version.get("plain_text_projection") or plain_text(version.get("content_doc", {})),
+        "text": requirement_test_evidence_text(version),
     }]
     evidence.extend({
         "artifact_type": "acceptance_criterion",
@@ -288,18 +292,67 @@ async def recommend_test_design_techniques(version_id, payload, user):
     }
 
 
-async def find_duplicate_test_case_records(project_id, user):
+async def find_duplicate_test_case_records(
+    project_id, user, test_case_draft_id=None, expected_revision=None
+):
     await get_project(project_id, user, "testcase.duplicate_check")
     await get_project(project_id, user, "ai.run_duplicate_check")
-    
+
+    pairs = []
+    if test_case_draft_id:
+        if expected_revision is None:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "TEST_CASE_DRAFT_REVISION_REQUIRED"},
+            )
+        draft = await get_project_entity(
+            "test_case_drafts", test_case_draft_id, user, "testcase.read"
+        )
+        if str(draft.get("project_id") or "") != str(project_id):
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "ARTIFACT_NOT_FOUND"},
+            )
+        if draft.get("revision") != expected_revision:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_CASE_DRAFT_REVISION_STALE"},
+            )
+        versions = await analysis_repository.list_active_test_case_versions(
+            project_id, 'ACTIVE'
+        )
+        settings = await test_design_repository.find_project_settings(project_id)
+        threshold = settings.get("testcase_duplicate_threshold", 0.72)
+        parent_version_id = str(draft.get("parent_version_id") or "")
+        for candidate in versions:
+            if (
+                str(candidate.get("_id") or "") == parent_version_id
+                or (
+                    draft.get("test_case_id")
+                    and str(candidate.get("test_case_id") or "")
+                    == str(draft["test_case_id"])
+                )
+            ):
+                continue
+            score, reasons = duplicate_score(draft, candidate, threshold)
+            if score >= threshold:
+                pairs.append(
+                    {
+                        "left": draft,
+                        "right": candidate,
+                        "similarity": score,
+                        "reasons": reasons,
+                    }
+                )
+        return sorted(pairs, key=lambda item: item["similarity"], reverse=True)[:100]
+
     versions = await analysis_repository.list_active_test_case_versions(
         project_id, 'ACTIVE'
     )
     settings = await test_design_repository.find_project_settings(project_id)
-    pairs = []
+    threshold = settings.get("testcase_duplicate_threshold", 0.72)
     for index, left in enumerate(versions):
         for right in versions[index + 1 :]:
-            threshold = settings.get("testcase_duplicate_threshold", 0.72)
             score, reasons = duplicate_score(left, right, threshold)
             if score >= threshold:
                 pairs.append(
@@ -308,3 +361,28 @@ async def find_duplicate_test_case_records(project_id, user):
     return sorted(pairs, key=lambda item: item["similarity"], reverse=True)[
         : 100
     ]
+
+
+async def compare_test_case_draft_batch(project_id, payloads, user):
+    await get_project(project_id, user, "testcase.duplicate_check")
+    await get_project(project_id, user, "ai.run_duplicate_check")
+    _, threshold = await comparison_cases(project_id)
+    duplicates = []
+    for right_index, right in enumerate(payloads):
+        for left_index, left in enumerate(payloads[:right_index]):
+            score, reasons = duplicate_score(
+                right.model_dump(), left.model_dump(), threshold
+            )
+            if score >= threshold:
+                duplicates.append(
+                    {
+                        "left_index": left_index,
+                        "right_index": right_index,
+                        "similarity": score,
+                        "reasons": reasons,
+                    }
+                )
+    return {
+        "candidate_count": len(payloads),
+        "duplicates": duplicates,
+    }

@@ -4,7 +4,7 @@ import re
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 
 from src.core.dependency import verify_internal_token
-from src.core.storage import download_file, upload_file
+from src.core.storage import delete_file, download_file, upload_file
 from src.services.internal_storage import InternalStorageService
 
 router = APIRouter(prefix="/noi-bo")
@@ -53,6 +53,19 @@ async def read_qa_requirement_source(project_id: str, document_id: str, object_k
         raise HTTPException(status_code=403, detail={"code": "SOURCE_PATH_FORBIDDEN"})
     data, content_type = await download_file(object_key)
     return Response(content=data, media_type=content_type or "application/octet-stream")
+
+
+@router.delete(
+    "/kiem-thu/nguon-yeu-cau",
+    dependencies=[Depends(verify_internal_token)],
+    include_in_schema=False,
+)
+async def delete_qa_requirement_source(project_id: str, document_id: str, object_key: str):
+    prefix = f"system/qa/{project_id}/yeu-cau/{document_id}/"
+    if not object_key.startswith(prefix):
+        raise HTTPException(status_code=403, detail={"code": "SOURCE_PATH_FORBIDDEN"})
+    await delete_file(object_key)
+    return {"data": {"deleted": True}}
 
 
 @router.post("/luu-tru", dependencies=[Depends(verify_internal_token)], include_in_schema=False)

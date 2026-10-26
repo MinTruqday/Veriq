@@ -1,7 +1,12 @@
 from pymongo import ReturnDocument
 
 from src.core.database import database
+from src.repositories.common import common_repository
 from src.schemas.contracts.common import FAILED_OUTCOME
+
+
+class ActiveTestCaseVersionIntegrityError(Exception):
+    """A current Test Case points at a missing or mismatched version record."""
 
 
 class AnalysisRepository:
@@ -76,10 +81,11 @@ class AnalysisRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def list_acceptance_criteria(self, requirement_version_id, limit=500):
-        return await database.value.acceptance_criteria.find(
-            {"requirement_version_id": requirement_version_id}
-        ).to_list(limit)
+    async def list_acceptance_criteria(self, requirement_version_id, limit=None):
+        query = {"requirement_version_id": requirement_version_id}
+        if limit is not None:
+            return await database.value.acceptance_criteria.find(query).to_list(limit)
+        return await common_repository.list_all_acceptance_criteria(requirement_version_id)
 
     async def list_active_test_case_versions(self, project_id, active_status, limit=2000):
         return await database.value.test_cases.aggregate([
@@ -89,6 +95,38 @@ class AnalysisRepository:
             {"$replaceRoot": {"newRoot": "$version"}},
             {"$limit": limit},
         ]).to_list(limit)
+
+    async def iter_active_test_case_version_pages(self, project_id, active_status, page_size=500):
+        """Yield every current active Test Case version in stable bounded pages."""
+        last_case_id = None
+        while True:
+            query = {
+                "project_id": project_id,
+                "status": active_status,
+                "current_version_id": {"$ne": None},
+            }
+            if last_case_id is not None:
+                query["_id"] = {"$gt": last_case_id}
+            cases = await database.value.test_cases.find(
+                query,
+                {"_id": 1, "current_version_id": 1},
+            ).sort("_id", 1).to_list(page_size)
+            if not cases:
+                return
+            version_ids = [case["current_version_id"] for case in cases]
+            versions = await database.value.test_case_versions.find(
+                {"_id": {"$in": version_ids}, "project_id": project_id}
+            ).to_list(len(version_ids))
+            by_id = {version["_id"]: version for version in versions}
+            if len(by_id) != len(cases) or any(
+                by_id.get(case["current_version_id"], {}).get("test_case_id") != case["_id"]
+                for case in cases
+            ):
+                raise ActiveTestCaseVersionIntegrityError
+            yield [by_id[case["current_version_id"]] for case in cases]
+            last_case_id = cases[-1]["_id"]
+            if len(cases) < page_size:
+                return
 
     async def list_related_active_test_case_versions(self, project_id, version_id, limit):
         return await database.value.test_cases.aggregate([

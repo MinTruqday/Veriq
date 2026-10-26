@@ -1,5 +1,6 @@
 import { useState } from "react";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
+import StructuredValueEditor from "./StructuredValueEditor";
 
 const listFields = [
   ["scope_in", "Trong phạm vi"],
@@ -15,7 +16,7 @@ const listFields = [
   ["resumption_criteria", "Tiêu chí tiếp tục"],
 ];
 
-const jsonFields = [
+const structuredFields = [
   ["dependencies", "Phụ thuộc"],
   ["stakeholders", "Các bên liên quan"],
   ["responsibility_matrix", "Ma trận trách nhiệm"],
@@ -94,14 +95,9 @@ export default function TestPlanEditor({
             build_id: null,
             environment_id: null,
           };
-          for (const [key] of jsonFields)
-            payload[key] = JSON.parse(value[`${key}_text`] ?? JSON.stringify(value[key]));
-          Object.keys(payload)
-            .filter((key) => key.endsWith("_text"))
-            .forEach((key) => delete payload[key]);
           await onSave(payload);
         } catch (reason) {
-          setError(reason.message || "Dữ liệu kế hoạch không hợp lệ");
+          setError(reason.message || "Không thể lưu kế hoạch kiểm thử");
         }
       }}
     >
@@ -214,15 +210,17 @@ export default function TestPlanEditor({
             />
           </label>
         ))}
-        {jsonFields.map(([key, label]) => (
-          <label className="field-label" key={key}>
-            {label} dạng JSON
-            <textarea
-              className="apple-input mt-2 min-h-32 font-mono text-xs"
-              value={value[`${key}_text`] ?? JSON.stringify(value[key], null, 2)}
-              onChange={(event) => setField(`${key}_text`, event.target.value)}
+        {structuredFields.map(([key, label]) => (
+          <div className="min-w-0 space-y-2" key={key}>
+            <p className="field-label">{label}</p>
+            <StructuredValueEditor
+              label={label}
+              value={value[key] ?? defaults[key]}
+              fixedType={Array.isArray(defaults[key]) ? "array" : "object"}
+              itemTypes={key === "deliverables" || key === "tools" ? undefined : ["object"]}
+              onChange={(nextValue) => setField(key, nextValue)}
             />
-          </label>
+          </div>
         ))}
       </div>
       <div className="action-dialog-footer flex items-center justify-end gap-3">

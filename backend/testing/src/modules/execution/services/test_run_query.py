@@ -88,7 +88,30 @@ async def get_test_run_record(run_id, user):
     defects = await test_run_repository.list_defects_for_results(
         run["project_id"], [item["_id"] for item in results], 10000
     )
-    return {**run, "test_case_versions": versions, "results": results, "defects": defects}
+    decision_assignees = {
+        decision.get("assignee_id")
+        for decision in (run.get("test_case_assignment_decisions") or {}).values()
+        if decision.get("assignee_id")
+    }
+    assigned_users = set((run.get("test_case_assignments") or {}).values()) | decision_assignees
+    try:
+        identities = await load_user_identities(assigned_users)
+    except HTTPException as error:
+        if error.status_code != 503:
+            raise
+        identities = {}
+    return {
+        **run,
+        "test_case_versions": versions,
+        "results": results,
+        "defects": defects,
+        "test_case_assignment_identities": {
+            user_id: {
+                "display_name": identity.get("full_name") or user_id,
+            }
+            for user_id, identity in identities.items()
+        },
+    }
 
 
 async def get_test_result_record(result_id, user):

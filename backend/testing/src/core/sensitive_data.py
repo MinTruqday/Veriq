@@ -1,30 +1,33 @@
 import re
 
+REDACTED_VALUE = "Đã ẩn"
+FIELD_NAME_PATTERN = r"token|secret|password|authorization|cookie|api[-_]?key"
+AUTHORIZATION_PATTERN = r"(authorization)(\s*[:=]\s*)(?!['\"]?Đã(?:%20|\s)ẩn)['\"]?[^'\";,&]+"
+RAW_ASSIGNMENT_PATTERN = r"(password|secret|token|api[_-]?key)(\s*[:=]\s*)['\"](?!\$\{|<|Đã ẩn)[^'\"]{4,}['\"]"
+INLINE_VALUE_PATTERN = r"(authorization|token|secret|password|api[-_]?key)(\s*[:=]\s*)(?!['\"]?Đã(?:%20|\s)ẩn)['\"]?(?!\$\{|<)[^'\"\s;,&]+"
+URL_VALUE_PATTERN = r"(?i)([?&](?:token|secret|password|api[-_]?key)=)(?!Đã%20ẩn|Đã ẩn)[^&#\s]+"
 
 
 def secret_pattern():
-    return re.compile('token|secret|password|authorization|cookie|api[-_]?key', re.I)
+    return re.compile(FIELD_NAME_PATTERN, re.I)
 
 
 def redact_sensitive_text(value):
-    
-    
     result = re.sub(
-        '(?i)([?&](?:token|secret|password|api[-_]?key)=)(?!Đã%20ẩn|Đã ẩn)[^&#\\s]+',
-        lambda match: f"{match.group(1)}{replacement}",
+        URL_VALUE_PATTERN,
+        lambda match: f"{match.group(1)}{REDACTED_VALUE}",
         value,
     )
-    for pattern_name in ("raw_assignment_pattern", "inline_value_pattern"):
+    result = re.sub(
+        AUTHORIZATION_PATTERN,
+        lambda match: f"{match.group(1)}{match.group(2)}{REDACTED_VALUE}",
+        result,
+        flags=re.I,
+    )
+    for pattern in (RAW_ASSIGNMENT_PATTERN, INLINE_VALUE_PATTERN):
         result = re.sub(
-            {'redacted_value': 'Đã ẩn',
- 'field_name_pattern': 'token|secret|password|authorization|cookie|api[-_]?key',
- 'raw_assignment_pattern': '(password|secret|token|api[_-]?key)(\\s*[:=]\\s*)[\'\\"](?!\\$\\{|<|Đã '
-                           'ẩn)[^\'\\"]{4,}[\'\\"]',
- 'placeholder_pattern': '[A-Z][A-Z0-9_]{0,99}',
- 'url_value_pattern': '(?i)([?&](?:token|secret|password|api[-_]?key)=)(?!Đã%20ẩn|Đã ẩn)[^&#\\s]+',
- 'inline_value_pattern': '(?i)(authorization|token|secret|password|api[-_]?key)(\\s*[:=]\\s*)[\'"]?(?!Đã '
-                         'ẩn)[^\'"\\s;,&]+'}[pattern_name],
-            lambda match: f"{match.group(1)}{match.group(2)}{replacement}",
+            pattern,
+            lambda match: f"{match.group(1)}{match.group(2)}{REDACTED_VALUE}",
             result,
             flags=re.I,
         )
@@ -32,10 +35,9 @@ def redact_sensitive_text(value):
 
 
 def redact_sensitive_data(value):
-    
     if isinstance(value, dict):
         return {
-            key: 'Đã ẩn'
+            key: REDACTED_VALUE
             if secret_pattern().search(str(key))
             else redact_sensitive_data(item)
             for key, item in value.items()

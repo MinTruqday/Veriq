@@ -3,10 +3,12 @@ import json
 from fastapi import HTTPException
 from langchain_core.runnables import RunnableConfig
 
-from src.tools.testing import get_project_context
+from src.tools.knowledge_tools import get_project_context
 
 
-async def project_access(project_id, token, automation_run_id=None):
+async def project_access(
+    project_id, token, automation_run_id=None, preferred_role=None
+):
     configurable = {"token": f"Bearer {token}", "project_id": project_id}
     if automation_run_id:
         configurable["automation_run_id"] = automation_run_id
@@ -22,5 +24,13 @@ async def project_access(project_id, token, automation_run_id=None):
     if not project.get("_id") or not membership.get("project_role"):
         raise HTTPException(status_code=403, detail={"code": "PROJECT_ACCESS_DENIED"})
     roles = set(membership.get("project_roles") or [membership["project_role"]])
-    effective_role = "QA" if "QA" in roles else membership["project_role"]
+    if preferred_role:
+        if preferred_role not in roles:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "PROJECT_ROLE_NOT_ACTIVE", "required_role": preferred_role},
+            )
+        effective_role = preferred_role
+    else:
+        effective_role = "QA" if "QA" in roles else membership["project_role"]
     return effective_role, permissions

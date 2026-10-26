@@ -6,13 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from loguru import logger
 
 from src.core.dependency import require_system_admin, verify_internal_token
-from src.runtime.events import (
-    AgentEvent,
-    CronSchedule,
-    EventType,
-    cron_scheduler,
-    event_processor,
-)
+from src.runtime.events import AgentEvent, CronSchedule, EventType, cron_scheduler, event_processor
 from src.schemas.events import CreateScheduleRequest, ManualTriggerRequest, WebhookPayload
 
 router = APIRouter(prefix="/su-kien")
@@ -31,6 +25,40 @@ async def receive_webhook(body: WebhookPayload):
             "user_registered": EventType.USER_REGISTERED,
         }
         event_type = event_type_map[event_type_str]
+
+        if event_type is EventType.DOCUMENT_UPLOADED:
+            from src.core.infrastructure.mq import mq
+
+            document_id = str(body.payload.get("document_id") or "").strip()
+            if not document_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "DOCUMENT_ID_REQUIRED"},
+                )
+            event_id = str(uuid4())
+            published = await mq.publish(
+                "ai.document_ingestion",
+                {
+                    **body.payload,
+                    "event_id": event_id,
+                    "document_id": document_id,
+                    "user_id": str(body.payload.get("user_id") or ""),
+                    "superseded_document_id": str(
+                        body.payload.get("superseded_document_id") or ""
+                    ),
+                    "attempt": 0,
+                },
+            )
+            if not published:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "DOCUMENT_INGESTION_QUEUE_UNAVAILABLE"},
+                )
+            return {
+                "status": "accepted",
+                "event_id": event_id,
+                "event_type": event_type.value,
+            }
 
         event = AgentEvent(
             event_id=str(uuid4()),
@@ -55,23 +83,35 @@ async def receive_webhook(body: WebhookPayload):
 
 @router.post("/moc-goi/tai-lieu-dang-tai", dependencies=[Depends(verify_internal_token)])
 async def document_uploaded_webhook(
-    document_id: str, user_id: str = "", superseded_document_id: str = ""
+    document_id: str,
+    user_id: str = "",
+    superseded_document_id: str = "",
+    event_id: str = "",
 ):
-    event = AgentEvent(
-        event_id=str(uuid4()),
-        event_type=EventType.DOCUMENT_UPLOADED,
-        payload={
+    from src.core.infrastructure.mq import mq
+
+    document_id = document_id.strip()
+    if not document_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "DOCUMENT_ID_REQUIRED"},
+        )
+    event_id = event_id.strip() or str(uuid4())
+    published = await mq.publish(
+        "ai.document_ingestion",
+        {
+            "event_id": event_id,
             "document_id": document_id,
             "user_id": user_id,
             "superseded_document_id": superseded_document_id,
+            "attempt": 0,
         },
-        source="content_service",
     )
-    try:
-        await event_processor.emit_event(event)
-    except asyncio.QueueFull:
-        raise HTTPException(status_code=503, detail={"code": "event_queue_full"})
-    return {"status": "accepted", "event_id": event.event_id}
+    if not published:
+        raise HTTPException(
+            status_code=503, detail={"code": "DOCUMENT_INGESTION_QUEUE_UNAVAILABLE"}
+        )
+    return {"status": "accepted", "event_id": event_id}
 
 
 @router.get("/lich-trinh", dependencies=[Depends(require_system_admin)])
@@ -176,4 +216,9 @@ async def manual_trigger(
         event_id=str(uuid4()), event_type=et, payload=req.payload, source="manual_trigger"
     )
     result = await event_processor.handle_event(event)
+    if event.error:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "EVENT_HANDLER_FAILED", "message": event.error},
+        )
     return {"status": "triggered", "event_id": event.event_id, "result": result}

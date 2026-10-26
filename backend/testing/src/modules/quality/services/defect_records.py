@@ -16,8 +16,14 @@ from src.core.common import (
     sort_spec,
     visible_defect,
 )
+from src.core.database import database
 from src.repositories.defect import defect_repository
-from src.modules.execution.services.execution_context import resolve_execution_context
+from src.modules.execution.services.execution_context import (
+    defect_blocks_release,
+    recheck_release_gates_for_defect,
+    resolve_execution_context,
+    serialize_release_gate,
+)
 from src.clients.project_knowledge import index_artifact
 from src.clients.ai_automation import emit_defect_recorded
 
@@ -27,22 +33,37 @@ async def create_defect_record(project_id, payload, user):
     if project_id != payload.project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     await get_project(project_id, user, "defect.create")
+    linked_result = None
+    linked_run = None
+    if payload.linked_test_result_id:
+        linked_result = await defect_repository.find_test_result(
+            payload.linked_test_result_id, project_id
+        )
+        if not linked_result or linked_result["status"] != 'FAIL':
+            raise HTTPException(status_code=422, detail={"code": 'DEFECT_REQUIRES_FAILED_RESULT'})
+        linked_run = await defect_repository.find_test_run(
+            linked_result.get("test_run_id"), project_id
+        )
+        if not linked_run:
+            raise HTTPException(status_code=409, detail={"code": "DEFECT_TEST_RUN_CONTEXT_UNAVAILABLE"})
+    for field in ("release_id", "build_id", "environment_id"):
+        supplied = getattr(payload, field)
+        run_value = linked_run.get(field) if linked_run else None
+        if supplied and run_value and supplied != run_value:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "DEFECT_EXECUTION_CONTEXT_MISMATCH", "field": field},
+            )
     context = await resolve_execution_context(
         project_id,
         user,
-        release_id=payload.release_id,
-        build_id=payload.build_id,
-        environment_id=payload.environment_id,
-        release=payload.release,
-        build=payload.build,
-        environment=payload.environment,
+        release_id=payload.release_id or (linked_run or {}).get("release_id"),
+        build_id=payload.build_id or (linked_run or {}).get("build_id"),
+        environment_id=payload.environment_id or (linked_run or {}).get("environment_id"),
+        release=payload.release or (linked_run or {}).get("release", ""),
+        build=payload.build or (linked_run or {}).get("build", ""),
+        environment=payload.environment or (linked_run or {}).get("environment", ""),
     )
-    if payload.linked_test_result_id:
-        result = await defect_repository.find_test_result(
-            payload.linked_test_result_id, project_id
-        )
-        if not result or result["status"] != 'FAIL':
-            raise HTTPException(status_code=422, detail={"code": 'DEFECT_REQUIRES_FAILED_RESULT'})
     timestamp = now()
     defect = {
         "_id": new_id('DEF'),
@@ -56,7 +77,29 @@ async def create_defect_record(project_id, payload, user):
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    await defect_repository.insert_defect(defect)
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            if defect_blocks_release(defect):
+                await serialize_release_gate(
+                    project_id,
+                    [context.get("release_id")],
+                    session,
+                    require_open_release_ids=[context.get("release_id")],
+                )
+            await defect_repository.insert_defect(defect, session=session)
+            await audit(
+                user.id,
+                "defect_created",
+                "Defect",
+                defect["_id"],
+                project_id,
+                session=session,
+            )
+            await emit_defect_recorded(defect, user, session=session)
+            if defect_blocks_release(defect):
+                await recheck_release_gates_for_defect(
+                    project_id, [defect.get("release_id")], defect, user, session
+                )
     await index_artifact(
         project_id,
         "defect",
@@ -72,8 +115,6 @@ async def create_defect_record(project_id, payload, user):
         linked_test_result_id=defect.get("linked_test_result_id"),
         linked_requirement_version_ids=defect.get("linked_requirement_version_ids", []),
     )
-    await audit(user.id, "defect_created", "Defect", defect["_id"], project_id)
-    await emit_defect_recorded(defect, user)
     return defect
 
 

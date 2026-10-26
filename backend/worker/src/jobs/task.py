@@ -7,21 +7,62 @@ import re
 import tempfile
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import httpx
 from loguru import logger
 
 from src.core.infrastructure.configuration import settings
-from src.repositories.jobs import worker_job_repository
 from src.core.infrastructure.mq import mq
 from src.core.metrics import metrics_collector
+from src.jobs.execution_lease import maintain_execution_lease, recover_expired_executions
+from src.jobs.outbox import dispatch_worker_job_outbox
+from src.repositories.jobs import worker_job_repository
 from src.schemas import AutomationExecutionStatus, WorkerJobStatus
 
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+WORKER_CONTROLLED_ENVIRONMENT_KEYS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "TMPDIR",
+        "NODE_PATH",
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "NODE_OPTIONS",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "BASH_ENV",
+        "ENV",
+        "IFS",
+        "SHELLOPTS",
+        "CDPATH",
+    }
+)
 
 
 class PermanentTaskError(Exception):
     code = "permanent_task_error"
+
+
+def validate_testing_job_response(response_body: dict) -> dict:
+    if not isinstance(response_body, dict):
+        raise PermanentTaskError("Testing job response must be an object")
+    result = response_body.get("data")
+    if not isinstance(result, dict):
+        raise PermanentTaskError("Testing job response is missing its result")
+    if result.get("status") == "FAILED":
+        error_code = str(result.get("error_code") or "testing_job_failed")[:160]
+        if result.get("retryable"):
+            raise RuntimeError(error_code)
+        raise PermanentTaskError(error_code)
+    return result
+
+
+def raise_for_testing_response(response) -> None:
+    status_code = int(response.status_code)
+    if 400 <= status_code < 500 and status_code not in {408, 425, 429}:
+        raise PermanentTaskError(f"testing_api_http_{status_code}")
+    response.raise_for_status()
 
 
 def validate_identifier(value: str, field: str):
@@ -35,26 +76,30 @@ async def handle_testing_job(payload: dict):
     requester_email = str(payload.get("requester_email") or "")
     validate_identifier(job_id, "job identifier")
     validate_identifier(requester_id, "requester identifier")
-    job = await worker_job_repository.find_one(
-        {"_id": job_id}, {"status": 1}
-    )
-    if job and job.get("status") == WorkerJobStatus.CANCELED:
-        return
     job_payload = payload.get("payload")
     if not isinstance(job_payload, dict):
         raise PermanentTaskError("Testing job payload is required")
-    await worker_job_repository.record(
-        job_id,
-        {
-            "status": WorkerJobStatus.RUNNING,
-            "attempt_started_at": datetime.now(timezone.utc),
-        },
-        {
-            "kind": payload.get("event"),
-            "project_id": payload.get("project_id"),
-            "requester_id": requester_id,
-        },
-    )
+    if payload.get("_worker_claimed_for_delivery") is not True:
+        lease_token = str(uuid4())
+        now = datetime.now(timezone.utc)
+        claimed = await worker_job_repository.claim_execution(
+            job_id,
+            lease_token,
+            now,
+            now + timedelta(seconds=settings.WORKER_EXECUTION_LEASE_SECONDS),
+        )
+        if not claimed:
+            latest = await worker_job_repository.find_one({"_id": job_id}, {"status": 1})
+            if not latest:
+                raise PermanentTaskError("Worker job record is unavailable")
+            if latest.get("status") != WorkerJobStatus.QUEUED:
+                return
+            raise RuntimeError("Worker job could not be claimed; retry message delivery")
+        payload["_worker_claimed_for_delivery"] = True
+        payload["_execution_lease_token"] = lease_token
+    lease_token = payload.get("_execution_lease_token")
+    if not isinstance(lease_token, str) or not lease_token:
+        raise PermanentTaskError("Worker execution lease is unavailable")
     if payload.get("event") in {"automation.newman.requested", "automation.playwright.requested"}:
         runner = payload["event"].split(".")[1]
         result = (
@@ -63,8 +108,9 @@ async def handle_testing_job(payload: dict):
             else await run_playwright(job_id, payload, job_payload)
         )
         completed_at = datetime.now(timezone.utc)
-        await worker_job_repository.record(
+        finalized = await worker_job_repository.finalize_execution(
             job_id,
+            lease_token,
             {
                 "status": WorkerJobStatus.COMPLETED,
                 "result": result,
@@ -72,6 +118,8 @@ async def handle_testing_job(payload: dict):
                 "expire_at": completed_at + timedelta(days=30),
             },
         )
+        if not finalized or finalized.matched_count != 1:
+            raise PermanentTaskError("Worker execution lease was lost before completion")
         return result
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
@@ -89,11 +137,12 @@ async def handle_testing_job(payload: dict):
                 "payload": job_payload,
             },
         )
-    response.raise_for_status()
-    result = response.json()
+    raise_for_testing_response(response)
+    result = validate_testing_job_response(response.json())
     completed_at = datetime.now(timezone.utc)
-    await worker_job_repository.record(
+    finalized = await worker_job_repository.finalize_execution(
         job_id,
+        lease_token,
         {
             "status": WorkerJobStatus.COMPLETED,
             "result": result,
@@ -101,6 +150,8 @@ async def handle_testing_job(payload: dict):
             "expire_at": completed_at + timedelta(days=30),
         },
     )
+    if not finalized or finalized.matched_count != 1:
+        raise PermanentTaskError("Worker execution lease was lost before completion")
     return result
 
 
@@ -147,7 +198,7 @@ async def run_newman(job_id, payload, job_payload):
             *command,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
-            env=automation_environment(directory, environment),
+            env=automation_environment(directory),
         )
         try:
             return_code = await asyncio.wait_for(
@@ -214,7 +265,13 @@ def automation_environment(directory, values=None):
     }
     if isinstance(values, dict):
         for key, value in values.items():
-            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", str(key)) and value is not None:
+            normalized_key = str(key).upper()
+            if (
+                re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", str(key))
+                and normalized_key not in WORKER_CONTROLLED_ENVIRONMENT_KEYS
+                and not normalized_key.startswith(("LD_", "DYLD_"))
+                and value is not None
+            ):
                 environment[str(key)] = str(value)
     return environment
 
@@ -338,17 +395,18 @@ async def mark_failed(queue_name: str, payload: dict, error: Exception):
     job_id = str(payload.get("job_id") or "")
     if IDENTIFIER_PATTERN.fullmatch(job_id):
         completed_at = datetime.now(timezone.utc)
-        await worker_job_repository.record(
-            job_id,
-            {
-                "status": WorkerJobStatus.FAILED,
-                "error_code": getattr(error, "code", "worker_task_failed"),
-                "error": message,
-                "completed_at": completed_at,
-                "expire_at": completed_at + timedelta(days=30),
-            },
-            {"kind": queue_name},
-        )
+        values = {
+            "status": WorkerJobStatus.FAILED,
+            "error_code": getattr(error, "code", "worker_task_failed"),
+            "error": message,
+            "completed_at": completed_at,
+            "expire_at": completed_at + timedelta(days=30),
+        }
+        lease_token = payload.get("_execution_lease_token")
+        if isinstance(lease_token, str) and lease_token:
+            await worker_job_repository.fail_execution(job_id, lease_token, values)
+        else:
+            await worker_job_repository.record(job_id, values, {"kind": queue_name})
 
 
 class WorkerRunner:
@@ -370,29 +428,67 @@ class WorkerRunner:
                             except (UnicodeDecodeError, json.JSONDecodeError, PermanentTaskError):
                                 await message.reject(requeue=False)
                                 continue
+                            lease_task = None
+                            job_id = str(payload.get("job_id") or "")
+                            if IDENTIFIER_PATTERN.fullmatch(job_id):
+                                lease_token = str(uuid4())
+                                now = datetime.now(timezone.utc)
+                                claimed = await worker_job_repository.claim_execution(
+                                    job_id,
+                                    lease_token,
+                                    now,
+                                    now + timedelta(
+                                        seconds=settings.WORKER_EXECUTION_LEASE_SECONDS
+                                    ),
+                                )
+                                if not claimed:
+                                    latest = await worker_job_repository.find_one(
+                                        {"_id": job_id}, {"status": 1}
+                                    )
+                                    if not latest:
+                                        raise PermanentTaskError(
+                                            "Worker job record is unavailable"
+                                        )
+                                    if latest and latest.get("status") != WorkerJobStatus.QUEUED:
+                                        await message.ack()
+                                        metrics_collector.change_queue_depth(queue_name, -1)
+                                        continue
+                                    raise RuntimeError("Worker job could not be claimed")
+                                payload["_worker_claimed_for_delivery"] = True
+                                payload["_execution_lease_token"] = lease_token
+                                lease_task = asyncio.create_task(
+                                    maintain_execution_lease(job_id, lease_token),
+                                    name=f"worker:execution-lease:{job_id}",
+                                )
                             failure = None
-                            for attempt in range(3):
-                                try:
-                                    await handler(payload)
-                                    failure = None
-                                    break
-                                except PermanentTaskError as error:
-                                    failure = error
-                                    break
-                                except Exception as error:
-                                    failure = error
-                                    logger.exception("Worker task attempt failed")
-                                    if attempt + 1 < 3:
-                                        await asyncio.sleep(2**attempt)
-                            if failure is None:
-                                await message.ack()
-                            else:
-                                await mark_failed(queue_name, payload, failure)
-                                if isinstance(failure, PermanentTaskError):
+                            try:
+                                for attempt in range(3):
+                                    try:
+                                        await handler(payload)
+                                        failure = None
+                                        break
+                                    except PermanentTaskError as error:
+                                        failure = error
+                                        break
+                                    except Exception as error:
+                                        failure = error
+                                        logger.exception("Worker task attempt failed")
+                                        if attempt + 1 < 3:
+                                            await asyncio.sleep(2**attempt)
+                                if failure is None:
                                     await message.ack()
                                 else:
-                                    await message.reject(requeue=False)
-                            metrics_collector.change_queue_depth(queue_name, -1)
+                                    await mark_failed(queue_name, payload, failure)
+                                    if isinstance(failure, PermanentTaskError):
+                                        await message.ack()
+                                    else:
+                                        await message.reject(requeue=False)
+                                metrics_collector.change_queue_depth(queue_name, -1)
+                            finally:
+                                if lease_task:
+                                    lease_task.cancel()
+                                    with suppress(asyncio.CancelledError, Exception):
+                                        await lease_task
                         except Exception:
                             if not message.processed:
                                 await message.reject(requeue=True)
@@ -420,7 +516,15 @@ class WorkerRunner:
             asyncio.create_task(
                 self.consume(settings.WORKER_QUEUE_NAME, handle_testing_job),
                 name=f"worker:{settings.WORKER_QUEUE_NAME}",
-            )
+            ),
+            asyncio.create_task(
+                dispatch_worker_job_outbox(),
+                name="worker:job-outbox-dispatcher",
+            ),
+            asyncio.create_task(
+                recover_expired_executions(),
+                name="worker:execution-lease-recovery",
+            ),
         ]
 
     async def close(self):

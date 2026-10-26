@@ -19,6 +19,12 @@ async def init_db():
     jobs = database.mongodb[settings.WORKER_DB_NAME].worker_jobs
     await jobs.create_index([("document_id", 1), ("created_at", -1)])
     await jobs.create_index("expire_at", expireAfterSeconds=0)
+    await jobs.create_index([("status", 1), ("execution_lease_until", 1)])
+    outbox = database.mongodb[settings.WORKER_DB_NAME].worker_job_outbox
+    await outbox.create_index([("status", 1), ("next_attempt_at", 1)])
+    await outbox.create_index([("status", 1), ("lease_until", 1)])
+    await outbox.create_index([("job_id", 1), ("dispatch_generation", 1)], unique=True)
+    await outbox.create_index("expire_at", expireAfterSeconds=0)
 
 
 async def close_db():

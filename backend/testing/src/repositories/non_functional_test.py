@@ -33,11 +33,12 @@ class NonFunctionalTestRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def transition_plan(self, plan_id, revision, source_status, changes):
+    async def transition_plan(self, plan_id, revision, source_status, changes, session=None):
         return await database.value.non_functional_test_plans.find_one_and_update(
             {"_id": plan_id, "revision": revision, "status": source_status},
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def find_evidence_by_idempotency_key(self, project_id, idempotency_key):

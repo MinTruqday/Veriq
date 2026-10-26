@@ -104,7 +104,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   const invalidCaseSubsection = Boolean(
     section[0] === PROJECT_SECTION_SLUGS.testCases && section[1] && !caseSubsectionItem,
   );
-  const planningSubsections = ["backlog", "board", "sprint", "roadmap"];
+  const planningSubsections = ["list", "backlog", "board", "sprint", "roadmap"];
   const invalidPlanningSubsection = Boolean(
     section[0] === PROJECT_SECTION_SLUGS.planning &&
       section[1] &&
@@ -135,7 +135,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     "test-design": "testcase.read",
     traceability: "trace.read",
     changes: null,
-    "ai-review": "proposal.read",
+    "ai-review": null,
     execution: "testrun.read",
     defects: "defect.read",
     knowledge: "knowledge.read",
@@ -167,10 +167,12 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
           "processimprovement.read",
         ]
       : area === "changes"
-        ? ["changeset.read", "proposal.read"]
-        : area === "settings" && section[0] !== PROJECT_SECTION_SLUGS.audit
-          ? PROJECT_SETTINGS_PERMISSIONS
-          : null;
+        ? ["changeset.read"]
+        : area === "ai-review"
+          ? ["automation.read", "proposal.read"]
+          : area === "settings" && section[0] !== PROJECT_SECTION_SLUGS.audit
+            ? PROJECT_SETTINGS_PERMISSIONS
+            : null;
   const hasRequiredPermission = Array.isArray(requiredPermission)
     ? requiredPermission.every((permission) => permissions.includes(permission))
     : requiredPermission

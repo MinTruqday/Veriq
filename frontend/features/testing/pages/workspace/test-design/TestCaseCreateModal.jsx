@@ -1,8 +1,68 @@
 import DocumentEditor from "../../../editor/DocumentEditor";
-import { valueLabel } from "../../../lib/testing";
+import { docText, valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
-import { selectedValues, TEST_CASE_TYPES, TEST_LEVELS } from "./testDesign.model";
+import {
+  TEST_CASE_TYPES,
+  TEST_CASE_ASSESSMENT_LEVELS,
+  TESTING_LEVELS,
+  TEST_KINDS,
+  EXPECTED_IMPACTS,
+} from "./testDesign.model";
+import TestCaseCustomValues from "./TestCaseCustomValues";
+import { emptyDoc } from "../../../lib/testing.logic.mjs";
+
+function TestDataEntries({ label, entries, onChange }) {
+  const updateEntry = (index, patch) =>
+    onChange(
+      entries.map((entry, entryIndex) => (entryIndex === index ? { ...entry, ...patch } : entry)),
+    );
+  return (
+    <fieldset className="space-y-3 rounded-control border border-border p-3">
+      <legend className="field-label px-1">{label}</legend>
+      <button
+        className="secondary-button"
+        type="button"
+        onClick={() => onChange([...entries, { id: crypto.randomUUID(), name: "", value: "" }])}
+      >
+        Thêm dòng dữ liệu
+      </button>
+      {entries.map((entry, index) => (
+        <div
+          className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+          key={entry.id || index}
+        >
+          <input
+            className="apple-input"
+            aria-label={`${label}: tên trường ${index + 1}`}
+            value={entry.name}
+            onChange={(event) => updateEntry(index, { name: event.target.value })}
+            placeholder="Tên trường"
+          />
+          <input
+            className="apple-input"
+            aria-label={`${label}: giá trị ${index + 1}`}
+            value={entry.value}
+            onChange={(event) => updateEntry(index, { value: event.target.value })}
+            placeholder="Giá trị"
+          />
+          <div className="flex gap-2">
+            {entries.length > 1 && (
+              <button
+                className="secondary-button"
+                type="button"
+                aria-label={`Xóa dòng dữ liệu ${index + 1}`}
+                onClick={() => onChange(entries.filter((_, entryIndex) => entryIndex !== index))}
+              >
+                Xóa
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </fieldset>
+  );
+}
 
 export default function TestCaseCreateModal({
   isOpen,
@@ -13,10 +73,30 @@ export default function TestCaseCreateModal({
   testConditions,
   repositoryNodes,
   reusableSteps,
+  customFields,
+  requirements = [],
+  members = [],
+  canReadMembers = false,
+  membersUnavailable = false,
   saving,
   onSubmit,
 }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
+  const updateStep = (index, patch) =>
+    setForm((current) => ({
+      ...current,
+      steps: current.steps.map((step, stepIndex) =>
+        stepIndex === index ? { ...step, ...patch } : step,
+      ),
+    }));
+  const selectedCriteria = requirements
+    .filter((item) => form.requirementVersionIds.includes(item.current_version_id))
+    .flatMap((item) =>
+      (item.current_version?.acceptance_criteria || []).map((criterion) => ({
+        ...criterion,
+        requirement_key: item.requirement_key,
+      })),
+    );
 
   return (
     <Modal
@@ -76,7 +156,7 @@ export default function TestCaseCreateModal({
               value={form.priority}
               onChange={(event) => update({ priority: event.target.value })}
             >
-              {TEST_LEVELS.map((value) => (
+              {TEST_CASE_ASSESSMENT_LEVELS.map((value) => (
                 <option key={value} value={value}>
                   {valueLabel(value)}
                 </option>
@@ -91,7 +171,7 @@ export default function TestCaseCreateModal({
               value={form.risk}
               onChange={(event) => update({ risk: event.target.value })}
             >
-              {TEST_LEVELS.map((value) => (
+              {TEST_CASE_ASSESSMENT_LEVELS.map((value) => (
                 <option key={value} value={value}>
                   {valueLabel(value)}
                 </option>
@@ -99,6 +179,93 @@ export default function TestCaseCreateModal({
             </select>
           </label>
         </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            { field: "testLevel", label: "Cấp kiểm thử", options: TESTING_LEVELS },
+            { field: "testKind", label: "Loại kiểm thử", options: TEST_KINDS },
+            { field: "expectedImpact", label: "Ảnh hưởng dự kiến", options: EXPECTED_IMPACTS },
+          ].map(({ field, label, options }) => (
+            <label className="field-label" key={field}>
+              {label}
+              <select
+                className="apple-input mt-2"
+                value={form[field]}
+                aria-label={label}
+                onChange={(event) => update({ [field]: event.target.value })}
+              >
+                {field !== "expectedImpact" && <option value="">Chưa phân loại</option>}
+                {options.map((value) => (
+                  <option key={value} value={value}>
+                    {valueLabel(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+        <label className="field-label">
+          Lý do đánh giá ảnh hưởng
+          <textarea
+            className="apple-input mt-2"
+            value={form.assessmentReason}
+            onChange={(event) => update({ assessmentReason: event.target.value })}
+          />
+        </label>
+        <div>
+          <p className="field-label mb-2">Mục tiêu</p>
+          <DocumentEditor
+            value={form.objective}
+            onChange={(objective) => update({ objective })}
+            label="Mục tiêu của ca kiểm thử"
+            minHeight="min-h-20"
+          />
+        </div>
+        <div>
+          <p className="field-label mb-2">Điều kiện trước</p>
+          <DocumentEditor
+            value={form.preconditions}
+            onChange={(preconditions) => update({ preconditions })}
+            label="Điều kiện cần có trước khi chạy"
+            minHeight="min-h-20"
+          />
+        </div>
+        <label className="field-label">
+          Kỹ năng cần có để thực hiện ca (phân cách bằng dấu phẩy)
+          <input
+            className="apple-input mt-2"
+            value={form.requiredSkills}
+            onChange={(event) => update({ requiredSkills: event.target.value })}
+            placeholder="Ví dụ: kiểm thử API, bảo mật"
+          />
+        </label>
+        {canReadMembers && (
+          <label className="field-label">
+            Người phụ trách
+            <select
+              aria-label="Người phụ trách ca kiểm thử"
+              className="apple-input mt-2"
+              value={form.ownerId || ""}
+              disabled={membersUnavailable}
+              onChange={(event) => update({ ownerId: event.target.value })}
+            >
+              <option value="">Chưa phân công</option>
+              {members.map((member) => (
+                <option key={member.user_id} value={member.user_id}>
+                  {member.user_label ||
+                    member.user?.full_name ||
+                    member.user?.email ||
+                    member.user_id}
+                  {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
+                </option>
+              ))}
+            </select>
+            {membersUnavailable && (
+              <span role="status" className="text-sm text-amber-800">
+                Không tải được thành viên dự án; hãy thử tải lại trước khi phân công.
+              </span>
+            )}
+          </label>
+        )}
         {form.testStyle === "BDD" && (
           <div className="grid gap-3 rounded-control border border-border p-4">
             <p className="field-label">Kịch bản BDD</p>
@@ -169,24 +336,173 @@ export default function TestCaseCreateModal({
             ))}
           </select>
         </label>
+        <MultiSelect
+          label="Phiên bản Requirement liên quan"
+          searchPlaceholder="Tìm Requirement"
+          options={requirements.map((item) => ({
+            value: item.current_version_id,
+            label: `${item.requirement_key} · ${item.current_version?.title || "Không có tiêu đề"}`,
+          }))}
+          value={form.requirementVersionIds}
+          onChange={(requirementVersionIds) => {
+            const allowedCriteria = new Set(
+              requirements
+                .filter((item) => requirementVersionIds.includes(item.current_version_id))
+                .flatMap((item) =>
+                  (item.current_version?.acceptance_criteria || []).map(
+                    (criterion) => criterion._id,
+                  ),
+                ),
+            );
+            update({
+              requirementVersionIds,
+              acceptanceCriterionIds: form.acceptanceCriterionIds.filter((id) =>
+                allowedCriteria.has(id),
+              ),
+            });
+          }}
+        />
+        {form.requirementVersionIds.length > 0 && (
+          <MultiSelect
+            label="Tiêu chí chấp nhận được ca này kiểm thử"
+            searchPlaceholder="Tìm tiêu chí chấp nhận"
+            emptyMessage="Requirement đã chọn chưa có tiêu chí chấp nhận"
+            options={selectedCriteria.map((criterion) => ({
+              value: criterion._id,
+              label: `${criterion.requirement_key} · ${criterion.key || "Tiêu chí"}`,
+              description: criterion.plain_text || docText(criterion.content_doc),
+            }))}
+            value={form.acceptanceCriterionIds}
+            onChange={(acceptanceCriterionIds) => update({ acceptanceCriterionIds })}
+          />
+        )}
+        <section
+          className="space-y-4 rounded-control border border-border p-4"
+          aria-label="Các bước kiểm thử"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold">Các bước kiểm thử</h3>
+              <p className="text-sm text-muted-foreground">
+                Mỗi bước có thao tác, dữ liệu đầu vào và kết quả mong đợi riêng.
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                update({
+                  steps: [
+                    ...form.steps,
+                    {
+                      id: crypto.randomUUID(),
+                      action: emptyDoc(),
+                      data: [{ id: crypto.randomUUID(), name: "", value: "" }],
+                      expected: emptyDoc(),
+                    },
+                  ],
+                })
+              }
+            >
+              Thêm bước
+            </button>
+          </div>
+          {form.steps.map((step, index) => (
+            <div className="space-y-3 rounded-control border border-border p-3" key={step.id}>
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="font-medium">Bước {index + 1}</h4>
+                {form.steps.length > 1 && (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() =>
+                      update({ steps: form.steps.filter((_, stepIndex) => stepIndex !== index) })
+                    }
+                  >
+                    Xóa bước
+                  </button>
+                )}
+              </div>
+              <div>
+                <p className="field-label mb-2">Thao tác</p>
+                <DocumentEditor
+                  value={step.action}
+                  onChange={(action) => updateStep(index, { action })}
+                  label={`Thao tác bước ${index + 1}`}
+                  minHeight="min-h-20"
+                />
+              </div>
+              <TestDataEntries
+                label={`Dữ liệu bước ${index + 1}`}
+                entries={step.data}
+                onChange={(data) => updateStep(index, { data })}
+              />
+              <div>
+                <p className="field-label mb-2">Kết quả mong đợi</p>
+                <DocumentEditor
+                  value={step.expected}
+                  onChange={(expected) => updateStep(index, { expected })}
+                  label={`Kết quả mong đợi bước ${index + 1}`}
+                  minHeight="min-h-20"
+                />
+              </div>
+            </div>
+          ))}
+        </section>
+        <TestDataEntries
+          label="Dữ liệu kiểm thử chung"
+          entries={form.testData}
+          onChange={(testData) => update({ testData })}
+        />
         <div>
-          <p className="field-label mb-2">Thao tác</p>
+          <p className="field-label mb-2">Kết quả mong đợi chung</p>
           <DocumentEditor
-            value={form.action}
-            onChange={(action) => update({ action })}
-            label="Thao tác của ca kiểm thử"
-            minHeight="min-h-24"
+            value={form.expectedResult}
+            onChange={(expectedResult) => update({ expectedResult })}
+            label="Kết quả mong đợi chung của ca kiểm thử"
+            minHeight="min-h-20"
           />
         </div>
         <div>
-          <p className="field-label mb-2">Kết quả mong đợi</p>
+          <p className="field-label mb-2">Điều kiện sau</p>
           <DocumentEditor
-            value={form.expected}
-            onChange={(expected) => update({ expected })}
-            label="Kết quả mong đợi của ca kiểm thử"
-            minHeight="min-h-24"
+            value={form.postconditions}
+            onChange={(postconditions) => update({ postconditions })}
+            label="Điều kiện sau khi chạy ca kiểm thử"
+            minHeight="min-h-20"
           />
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="field-label">
+            Kỹ thuật kiểm thử (phân cách bằng dấu phẩy)
+            <input
+              className="apple-input mt-2"
+              value={form.techniques}
+              onChange={(event) => update({ techniques: event.target.value })}
+              placeholder="Ví dụ: phân vùng tương đương, giá trị biên"
+            />
+          </label>
+          <label className="field-label">
+            Nhãn (phân cách bằng dấu phẩy)
+            <input
+              className="apple-input mt-2"
+              value={form.tags}
+              onChange={(event) => update({ tags: event.target.value })}
+            />
+          </label>
+        </div>
+        <label className="field-label">
+          Trạng thái tự động hóa
+          <select
+            className="apple-input mt-2"
+            value={form.automationStatus}
+            onChange={(event) => update({ automationStatus: event.target.value })}
+          >
+            <option value="manual">Thủ công</option>
+            <option value="candidate">Đang xem xét tự động hóa</option>
+            <option value="automated">Đã tự động hóa</option>
+          </select>
+        </label>
         <MultiSelect
           label="Bộ dữ liệu tham số"
           options={dataSets.map((item) => ({
@@ -204,6 +520,11 @@ export default function TestCaseCreateModal({
           }))}
           value={form.testConditionIds}
           onChange={(testConditionIds) => update({ testConditionIds })}
+        />
+        <TestCaseCustomValues
+          fields={customFields}
+          values={form.customValues || {}}
+          onChange={(customValues) => update({ customValues })}
         />
         <div className="action-dialog-footer flex justify-end gap-3">
           <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.dependency import CurrentUser, get_current_user_optional, verify_internal_token
 from src.core.metrics import metrics_collector
+from src.knowledge.metadata import public_retrieval_metadata
 from src.schemas.response import APIResponse
 from src.schemas.retrieval import (
     CitationItem,
@@ -57,17 +58,26 @@ async def retrieve_documents(
     citations_data = retriever.get_citations(docs)
     retrieved_docs = [
         RetrievedDocument(
-            text=d.get("text", ""), metadata=d.get("metadata", {}), score=float(d.get("score", 0.0))
+            text=d.get("text", ""),
+            metadata=public_retrieval_metadata(d.get("metadata", {})),
+            score=float(d.get("score", 0.0)),
         )
         for d in docs
     ]
     citations = [
         CitationItem(
+            point_id=c.get("point_id", ""),
             chunk_id=c.get("chunk_id", ""),
             document_id=c.get("document_id", ""),
             title=c.get("title", ""),
             chunk_index=c.get("chunk_index", ""),
             label=c.get("label", ""),
+            artifact_type=c.get("artifact_type", ""),
+            artifact_id=c.get("artifact_id", ""),
+            artifact_version_id=c.get("artifact_version_id", ""),
+            source_version=c.get("source_version"),
+            page_numbers=c.get("page_numbers", []),
+            source_spans=c.get("source_spans", []),
         )
         for c in citations_data
     ]
@@ -109,17 +119,26 @@ async def cross_document_retrieve(
     citations_data = retriever.get_citations(docs)
     retrieved_docs = [
         RetrievedDocument(
-            text=d.get("text", ""), metadata=d.get("metadata", {}), score=float(d.get("score", 0.0))
+            text=d.get("text", ""),
+            metadata=public_retrieval_metadata(d.get("metadata", {})),
+            score=float(d.get("score", 0.0)),
         )
         for d in docs
     ]
     citations = [
         CitationItem(
+            point_id=c.get("point_id", ""),
             chunk_id=c.get("chunk_id", ""),
             document_id=c.get("document_id", ""),
             title=c.get("title", ""),
             chunk_index=c.get("chunk_index", ""),
             label=c.get("label", ""),
+            artifact_type=c.get("artifact_type", ""),
+            artifact_id=c.get("artifact_id", ""),
+            artifact_version_id=c.get("artifact_version_id", ""),
+            source_version=c.get("source_version"),
+            page_numbers=c.get("page_numbers", []),
+            source_spans=c.get("source_spans", []),
         )
         for c in citations_data
     ]

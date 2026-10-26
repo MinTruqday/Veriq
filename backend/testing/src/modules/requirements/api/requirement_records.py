@@ -121,6 +121,7 @@ async def list_requirements(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=500),
     sort: str = Query(default="-updated_at", max_length=80),
+    include_acceptance_criteria: bool = Query(default=False),
     user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(
@@ -139,6 +140,7 @@ async def list_requirements(
             page=page,
             page_size=page_size,
             sort=sort,
+            include_acceptance_criteria=include_acceptance_criteria,
         )
     )
 

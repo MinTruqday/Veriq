@@ -1,4 +1,5 @@
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import StructuredValueEditor from "../../../components/StructuredValueEditor";
 
 export default function DataSetCreateModal({ isOpen, onClose, form, setForm, saving, onSubmit }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
@@ -25,24 +26,37 @@ export default function DataSetCreateModal({ isOpen, onClose, form, setForm, sav
             onChange={(event) => update({ name: event.target.value })}
           />
         </label>
-        <label className="field-label">
-          Biến JSON
-          <textarea
-            className="apple-input mt-2 min-h-28 font-mono"
-            required
-            value={form.variables}
-            onChange={(event) => update({ variables: event.target.value })}
+        <div className="min-w-0 space-y-2">
+          <p className="field-label">Biến dữ liệu</p>
+          <StructuredValueEditor
+            label="Biến dữ liệu"
+            value={form.variables || {}}
+            fixedType="object"
+            onChange={(variables) => update({ variables })}
           />
-        </label>
-        <label className="field-label">
-          Secret refs JSON
-          <textarea
-            className="apple-input mt-2 min-h-28 font-mono"
-            required
-            value={form.secretRefs}
-            onChange={(event) => update({ secretRefs: event.target.value })}
+          <span
+            id="dataset-variables-help"
+            className="mt-1 block text-xs font-normal text-ink-muted"
+          >
+            Khai báo dữ liệu kiểm thử theo cặp tên và giá trị. Không nhập mật khẩu, mã truy cập hoặc
+            khóa bí mật ở đây.
+          </span>
+        </div>
+        <div className="min-w-0 space-y-2">
+          <p className="field-label">Tham chiếu đến bí mật</p>
+          <StructuredValueEditor
+            label="Tham chiếu đến bí mật"
+            value={form.secretRefs || {}}
+            fixedType="object"
+            onChange={(secretRefs) => update({ secretRefs })}
           />
-        </label>
+          <span
+            id="dataset-secret-refs-help"
+            className="mt-1 block text-xs font-normal text-ink-muted"
+          >
+            Dùng địa chỉ bắt đầu bằng <code>secret://</code>; không nhập giá trị bí mật trực tiếp.
+          </span>
+        </div>
         <div className="action-dialog-footer flex justify-end gap-3">
           <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
             Hủy

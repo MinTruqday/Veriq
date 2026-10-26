@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
+from src.core.auth import ProjectRole, roles_for_membership
 from src.repositories.internal_admin import internal_admin_repository
 
 
@@ -24,6 +25,51 @@ def attachment_size(value):
 
 
 class InternalAdminService:
+    @staticmethod
+    async def resolve_automation_principal(project_id, payload):
+        project = await internal_admin_repository.find_project(
+            project_id, {"_id": 1, "initial_qa_user_id": 1, "administrative_status": 1}
+        )
+        if not project:
+            raise HTTPException(status_code=404, detail={"code": "PROJECT_NOT_FOUND"})
+        if project.get("administrative_status", "ACTIVE") != "ACTIVE":
+            raise HTTPException(status_code=423, detail={"code": "PROJECT_ADMINISTRATIVELY_SUSPENDED"})
+
+        requester = await internal_admin_repository.find_active_membership(
+            project_id, payload.requester_user_id
+        )
+        if not requester:
+            raise HTTPException(status_code=403, detail={"code": "PROJECT_MEMBERSHIP_REQUIRED"})
+
+        qa_role = payload.required_role
+        if qa_role in roles_for_membership(requester):
+            selected = requester
+        else:
+            selected = None
+            initial_qa_user_id = project.get("initial_qa_user_id")
+            if initial_qa_user_id and qa_role == ProjectRole.QA.value:
+                initial_qa = await internal_admin_repository.find_active_membership(
+                    project_id, initial_qa_user_id
+                )
+                if initial_qa and qa_role in roles_for_membership(initial_qa):
+                    selected = initial_qa
+            if not selected:
+                candidates = await internal_admin_repository.list_active_qa_members(
+                    project_id, qa_role
+                )
+                selected = candidates[0] if candidates else None
+
+        if not selected:
+            raise HTTPException(
+                status_code=409, detail={"code": f"PROJECT_{qa_role}_EXECUTOR_UNAVAILABLE"}
+            )
+        return {
+            "project_id": project_id,
+            "executor_user_id": selected["user_id"],
+            "executor_role": qa_role,
+            "requester_user_id": payload.requester_user_id,
+        }
+
     @staticmethod
     async def user_memberships(user_id):
         return await internal_admin_repository.list_memberships(

@@ -1,11 +1,11 @@
 import hashlib
+import json
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
+
 from src.repositories.jobs import worker_job_repository
-from src.core.infrastructure.mq import mq
-from src.core.metrics import metrics_collector
-from src.core.infrastructure.configuration import settings
 from src.schemas import DiscardJobRequest, TestingJobRequest
 
 
@@ -13,35 +13,80 @@ class WorkerJobService:
     @staticmethod
     async def enqueue(payload: TestingJobRequest):
         event = payload.event.value
-        idempotency_key = ":".join(
+        request_payload = payload.model_dump(mode="json")
+        canonical_request = json.dumps(
+            request_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        request_fingerprint = hashlib.sha256(canonical_request.encode()).hexdigest()
+        identity = ":".join(
+            [
+                payload.project_id,
+                payload.artifact_version_id,
+                event,
+                payload.model_version,
+                payload.requester_id,
+                request_fingerprint,
+            ]
+        )
+        job_id = f"qa-{hashlib.sha256(identity.encode()).hexdigest()[:40]}"
+        if existing := await worker_job_repository.find_one({"_id": job_id}):
+            await worker_job_repository.ensure_queued_job_outbox(existing)
+            return {"job_id": job_id, "status": existing["status"]}
+
+        legacy_identity = ":".join(
             [payload.project_id, payload.artifact_version_id, event, payload.model_version]
         )
-        job_id = f"qa-{hashlib.sha256(idempotency_key.encode()).hexdigest()[:40]}"
-        if existing := await worker_job_repository.find_one({"_id": job_id}):
-            return {"job_id": job_id, "status": existing["status"]}
-        task_payload = {"job_id": job_id, **payload.model_dump(mode="json")}
-        await worker_job_repository.record(
-            job_id,
-            {"status": "queued"},
-            {
-                "kind": event,
-                "project_id": payload.project_id,
-                "requester_id": payload.requester_id,
-                "request": task_payload,
-            },
-        )
+        legacy_job_id = f"qa-{hashlib.sha256(legacy_identity.encode()).hexdigest()[:40]}"
+        if existing := await worker_job_repository.find_one({"_id": legacy_job_id}):
+            legacy_request = existing.get("request")
+            if isinstance(legacy_request, dict):
+                legacy_request.pop("job_id", None)
+            if legacy_request == request_payload:
+                await worker_job_repository.ensure_queued_job_outbox(existing)
+                return {"job_id": legacy_job_id, "status": existing["status"]}
+
+        task_payload = {"job_id": job_id, **request_payload}
+        now = datetime.now(timezone.utc)
         try:
-            await mq.publish(settings.WORKER_QUEUE_NAME, task_payload)
-            metrics_collector.change_queue_depth(settings.WORKER_QUEUE_NAME, 1)
-        except Exception as error:
-            await worker_job_repository.record(job_id, {"status": "failed", "error": "Queue unavailable"})
-            raise HTTPException(status_code=503, detail="Worker queue is unavailable") from error
+            await worker_job_repository.create_job_with_outbox(
+                job_id,
+                {"status": "queued", "dispatch_generation": 0},
+                {
+                    "kind": event,
+                    "project_id": payload.project_id,
+                    "requester_id": payload.requester_id,
+                    "request": task_payload,
+                },
+                {
+                    "_id": f"{job_id}:0",
+                    "job_id": job_id,
+                    "dispatch_generation": 0,
+                    "payload": task_payload,
+                    "status": "pending",
+                    "attempt_count": 0,
+                    "next_attempt_at": now,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+        except DuplicateKeyError:
+            existing = await worker_job_repository.find_one({"_id": job_id})
+            if not existing:
+                raise
+            await worker_job_repository.ensure_queued_job_outbox(existing)
+            return {"job_id": job_id, "status": existing["status"]}
         return {"job_id": job_id, "status": "queued"}
 
     @staticmethod
     async def retry(job_id: str):
         WorkerJobService._validate_id(job_id)
-        job = await worker_job_repository.find_one({"_id": job_id})
+        job = await worker_job_repository.find_one(
+            {"_id": job_id},
+            {"execution_lease_token": 0},
+        )
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         if job.get("status") != "failed":
@@ -49,21 +94,21 @@ class WorkerJobService:
         request = job.get("request")
         if not isinstance(request, dict):
             raise HTTPException(status_code=422, detail="Job payload is unavailable for retry")
-        retry_count = int(job.get("manual_retry_count", 0))
-        if retry_count >= 9:
-            raise HTTPException(status_code=409, detail="Manual retry limit reached")
-        await worker_job_repository.record(
-            job_id,
-            {
-                "status": "queued",
-                "manual_retry_count": retry_count + 1,
-                "error": None,
-                "error_code": None,
-            },
-        )
-        await mq.publish(settings.WORKER_QUEUE_NAME, request)
-        metrics_collector.change_queue_depth(settings.WORKER_QUEUE_NAME, 1)
-        return {"job_id": job_id, "status": "queued", "manual_retry_count": retry_count + 1}
+        claimed = await worker_job_repository.claim_retry_with_outbox(job_id, 9)
+        if not claimed:
+            latest = await worker_job_repository.find_one({"_id": job_id})
+            if not latest:
+                raise HTTPException(status_code=404, detail="Job not found")
+            retry_count = int(latest.get("manual_retry_count", 0))
+            if retry_count >= 9:
+                raise HTTPException(status_code=409, detail="Manual retry limit reached")
+            raise HTTPException(status_code=409, detail="Job retry is already in progress")
+        retry_count = int(claimed.get("manual_retry_count", 0))
+        return {
+            "job_id": job_id,
+            "status": "queued",
+            "manual_retry_count": retry_count,
+        }
 
     @staticmethod
     async def cancel(job_id: str):
@@ -75,13 +120,23 @@ class WorkerJobService:
             return {"job_id": job_id, "status": "canceled"}
         if job.get("status") != "queued":
             raise HTTPException(status_code=409, detail="Only queued jobs can be canceled")
-        await worker_job_repository.record(job_id, {"status": "canceled", "canceled_at": datetime.now(timezone.utc)})
+        canceled = await worker_job_repository.cancel_queued(
+            job_id, datetime.now(timezone.utc)
+        )
+        if not canceled:
+            latest = await worker_job_repository.find_one({"_id": job_id})
+            if latest and latest.get("status") == "canceled":
+                return {"job_id": job_id, "status": "canceled"}
+            raise HTTPException(status_code=409, detail="Worker job state changed; reload before canceling")
         return {"job_id": job_id, "status": "canceled"}
 
     @staticmethod
     async def get(job_id: str):
         WorkerJobService._validate_id(job_id)
-        job = await worker_job_repository.find_one({"_id": job_id})
+        job = await worker_job_repository.find_one(
+            {"_id": job_id},
+            {"execution_lease_token": 0},
+        )
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         for field in ["created_at", "updated_at", "attempt_started_at", "expire_at"]:

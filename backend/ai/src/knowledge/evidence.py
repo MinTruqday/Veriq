@@ -4,7 +4,12 @@ from src.schemas.agent import EvidencePackage
 def deduplicate(items):
     selected = {}
     for item in items:
-        key = item.artifact_version_id or item.artifact_id
+        artifact_ref = item.artifact_version_id or item.artifact_id
+        key = (
+            item.artifact_type,
+            artifact_ref,
+            item.chunk_id if item.chunk_id else None,
+        )
         previous = selected.get(key)
         candidate_rank = (item.source == "database", item.score)
         previous_rank = (

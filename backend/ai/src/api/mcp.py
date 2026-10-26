@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit, urlunsplit
+
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo.errors import DuplicateKeyError
 
@@ -7,8 +9,30 @@ from src.schemas.auth import CurrentUser
 from src.schemas.mcp import MCPConnection, MCPConnectionCreate, MCPConnectionPatch
 from src.tools.mcp_gateway import probe_connection
 
-
 router = APIRouter(prefix="/mcp", tags=["MCP Gateway"])
+
+
+def _connection_response(connection: MCPConnection) -> dict:
+    payload = connection.model_dump(
+        mode="json", exclude={"credential_environment_variable"}
+    )
+    parsed = urlsplit(payload["endpoint"])
+    safe_authority = parsed.netloc.rsplit("@", 1)[-1]
+    payload["endpoint"] = urlunsplit(
+        (parsed.scheme, safe_authority, parsed.path, "", "")
+    )
+    return payload
+
+
+async def _require_project_read(project_id: str, token: str) -> None:
+    from src.services.project_access import project_access
+
+    _, permissions = await project_access(project_id, token)
+    if "project.read" not in permissions:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "PROJECT_READ_FORBIDDEN"},
+        )
 
 
 @router.post("/ket-noi", status_code=201)
@@ -25,7 +49,8 @@ async def create_mcp_connection(
         created_by=user.id,
     )
     try:
-        return await mcp_repository.create(connection)
+        created = await mcp_repository.create(connection)
+        return _connection_response(created)
     except DuplicateKeyError as error:
         raise HTTPException(status_code=409, detail={"code": "MCP_CONNECTION_EXISTS"}) from error
 
@@ -36,15 +61,20 @@ async def list_mcp_connections(
     token: str = Depends(oauth2_scheme),
     user: CurrentUser = Depends(get_current_user),
 ):
-    # Connection credentials are never returned by this endpoint; access is scoped to project membership.
-    from src.services.project_access import project_access
-
-    await project_access(project_id, token)
+    await _require_project_read(project_id, token)
     values = await mcp_repository.list_project(project_id)
-    return [
-        item.model_dump(mode="json", exclude={"credential_environment_variable"})
-        for item in values
-    ]
+    return [_connection_response(item) for item in values]
+
+
+@router.get("/du-an/{project_id}/nhat-ky-goi")
+async def list_mcp_call_audits(
+    project_id: str,
+    token: str = Depends(oauth2_scheme),
+    user: CurrentUser = Depends(get_current_user),
+):
+    await _require_project_read(project_id, token)
+    values = await mcp_repository.list_call_audits(project_id)
+    return [item.model_dump(mode="json") for item in values]
 
 
 @router.patch("/ket-noi/{connection_id}")
@@ -66,9 +96,12 @@ async def update_mcp_connection(
         latest = await mcp_repository.get(connection_id)
         raise HTTPException(
             status_code=409,
-            detail={"code": "REVISION_CONFLICT", "latest": latest.model_dump(mode="json") if latest else None},
+            detail={
+                "code": "REVISION_CONFLICT",
+                "latest": _connection_response(latest) if latest else None,
+            },
         )
-    return updated.model_dump(mode="json", exclude={"credential_environment_variable"})
+    return _connection_response(updated)
 
 
 @router.post("/ket-noi/{connection_id}/kiem-tra")

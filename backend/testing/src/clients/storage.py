@@ -51,5 +51,23 @@ class StorageClient:
         response.raise_for_status()
         return response.content
 
+    async def delete_requirement_source(
+        self,
+        project_id: str,
+        document_id: str,
+        object_key: str,
+    ) -> None:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.delete(
+                f"{settings.CLOUD_URL.rstrip('/')}/noi-bo/kiem-thu/nguon-yeu-cau",
+                headers={"X-Internal-Token": settings.SECRET_KEY},
+                params={
+                    "project_id": project_id,
+                    "document_id": document_id,
+                    "object_key": object_key,
+                },
+            )
+        response.raise_for_status()
+
 
 storage_client = StorageClient()

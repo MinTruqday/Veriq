@@ -16,15 +16,17 @@ class TestingJobEvent(str, Enum):
 
 
 class WorkerJobStatus(str, Enum):
+    QUEUED = "queued"
     CANCELED = "canceled"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    RECONCILIATION_REQUIRED = "reconciliation_required"
 
 
 class AutomationExecutionStatus(str, Enum):
     COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
+    FAILED = "failed"
 
 
 class TestingJobRequest(BaseModel):

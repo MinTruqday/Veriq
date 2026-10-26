@@ -2,7 +2,7 @@ import hashlib
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.schemas.contracts.common import AnalysisFindingStatus, TestabilityStatus
 
@@ -24,6 +24,11 @@ class GeneratedEvidenceQuote(BaseModel):
     quote: str = Field(min_length=2, max_length=1000)
 
 
+class GeneratedObligationEvidence(BaseModel):
+    obligation_key: str = Field(min_length=1, max_length=200)
+    evidence_quotes: list[GeneratedEvidenceQuote] = Field(min_length=1, max_length=20)
+
+
 class SecurityCandidate(BaseModel):
     category: str
     title: str = Field(min_length=2, max_length=300)
@@ -31,6 +36,7 @@ class SecurityCandidate(BaseModel):
     action: str = Field(min_length=2, max_length=5000)
     expected: str = Field(min_length=2, max_length=5000)
     requirement_version_ids: list[str] = Field(default_factory=list, max_length=100)
+    evidence_quotes: list[GeneratedEvidenceQuote] = Field(min_length=1, max_length=20)
 
     @field_validator("category")
     @classmethod
@@ -69,8 +75,44 @@ class GeneratedCase(BaseModel):
     techniques: list[str] = Field(default_factory=list)
     challenge_techniques: list[str] = Field(default_factory=list)
     coverage_obligations: list[str] = Field(default_factory=list)
+    obligation_evidence: list[GeneratedObligationEvidence] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     evidence_quotes: list[GeneratedEvidenceQuote] = Field(min_length=1, max_length=20)
+
+    @field_validator("coverage_obligations")
+    @classmethod
+    def unique_coverage_obligations(cls, value):
+        if len(value) != len(set(value)):
+            raise ValueError("test_case_coverage_obligations_must_be_unique")
+        return value
+
+    @field_validator("obligation_evidence")
+    @classmethod
+    def unique_obligation_evidence(cls, value):
+        keys = [item.obligation_key for item in value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("test_case_obligation_evidence_keys_must_be_unique")
+        return value
+
+    @model_validator(mode="after")
+    def validate_obligation_evidence(self):
+        coverage_obligations = set(self.coverage_obligations)
+        evidence_keys = {item.obligation_key for item in self.obligation_evidence}
+        if not evidence_keys <= coverage_obligations:
+            raise ValueError("test_case_obligation_evidence_must_reference_case_obligations")
+        case_quotes = {
+            (item.evidence_ref, item.quote)
+            for item in self.evidence_quotes
+        }
+        if any(
+            (quote.evidence_ref, quote.quote) not in case_quotes
+            for item in self.obligation_evidence
+            for quote in item.evidence_quotes
+        ):
+            raise ValueError("test_case_obligation_evidence_must_reference_case_evidence")
+        if self.coverage_obligations and evidence_keys != coverage_obligations:
+            raise ValueError("test_case_obligation_evidence_must_cover_each_obligation")
+        return self
 
 
 class TestBasisRef(BaseModel):
@@ -180,6 +222,8 @@ class TestAnalysisAIInput(BaseModel):
     basis_refs: list[TestBasisRef] = Field(min_length=1, max_length=100)
     instruction: str = Field(default="", max_length=5000)
     idempotency_key: str = Field(min_length=8, max_length=200)
+    source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_event_revision: int | None = Field(default=None, ge=1)
 
 
 class TestAnalysisInput(BaseModel):

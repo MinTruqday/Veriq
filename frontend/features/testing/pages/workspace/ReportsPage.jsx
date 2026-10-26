@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import TestStatusReportPanel from "../../components/TestStatusReportPanel";
 import CompletionPage from "./CompletionPage";
@@ -35,6 +35,9 @@ export default function ReportsPage({ project }) {
   });
   const [activeTab, setActiveTab] = useState("summary");
   const [error, setError] = useState("");
+  const loadGeneration = useRef(0);
+  const optionsGeneration = useRef(0);
+  const loadedProjectId = useRef(project._id);
   const permissions = useMemo(
     () => project.current_permissions || [],
     [project.current_permissions],
@@ -46,6 +49,14 @@ export default function ReportsPage({ project }) {
   const canReadAiAnalytics = can("analytics.ai.read");
   const canCreateSnapshot = canReadCoverage && can("coverage.snapshot.create");
   const canFilterScope = can("release.read") || can("build.read") || can("environment.read");
+  const hasScopedFilter = Boolean(
+    scope.release_id ||
+      scope.release ||
+      scope.environment_id ||
+      scope.environment ||
+      scope.build_id ||
+      scope.build,
+  );
   const reportTabs = [
     ...(canReadAnalytics || canReadCoverage || canReadReports
       ? [{ id: "summary", label: "Tổng quan" }]
@@ -59,6 +70,19 @@ export default function ReportsPage({ project }) {
   ];
   const visibleTab = reportTabs.some((tab) => tab.id === activeTab) ? activeTab : reportTabs[0]?.id;
   const load = useCallback(async () => {
+    const requestGeneration = ++loadGeneration.current;
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      setValue(null);
+      setScope({
+        release: "",
+        release_id: "",
+        environment: "",
+        environment_id: "",
+        build: "",
+        build_id: "",
+      });
+    }
     setError("");
     const requests = [
       ["dashboard", canReadAnalytics ? testingApi.dashboard(project._id) : Promise.resolve(null)],
@@ -89,6 +113,7 @@ export default function ReportsPage({ project }) {
       ],
     ];
     const results = await Promise.allSettled(requests.map(([, request]) => request));
+    if (requestGeneration !== loadGeneration.current) return;
     const data = {
       dashboard: null,
       coverage: null,
@@ -109,6 +134,10 @@ export default function ReportsPage({ project }) {
     setError([...new Set(errors)].join(" · "));
   }, [canReadAiAnalytics, canReadAnalytics, canReadCoverage, canReadReports, project._id, scope]);
   useEffect(() => {
+    const requestGeneration = ++optionsGeneration.current;
+    setReleases([]);
+    setBuilds([]);
+    setEnvironments([]);
     Promise.all([
       permissions.includes("release.read")
         ? testingApi.listReleases(project._id)
@@ -119,15 +148,21 @@ export default function ReportsPage({ project }) {
         : Promise.resolve([]),
     ])
       .then(([releaseValues, buildValues, environmentValues]) => {
+        if (requestGeneration !== optionsGeneration.current) return;
         setReleases(releaseValues);
         setBuilds(buildValues);
         setEnvironments(environmentValues);
       })
-      .catch((reason) => setError(messageOf(reason)));
+      .catch((reason) => {
+        if (requestGeneration === optionsGeneration.current) setError(messageOf(reason));
+      });
+    return () => {
+      if (optionsGeneration.current === requestGeneration) optionsGeneration.current += 1;
+    };
   }, [permissions, project._id]);
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (visibleTab === "summary") void load();
+  }, [load, visibleTab]);
   return (
     <WorkspacePage title="Báo cáo" actions={<ProjectCrumb projectId={project._id} />}>
       {error && <ErrorState message={error} />}
@@ -139,377 +174,416 @@ export default function ReportsPage({ project }) {
           tabs={reportTabs}
         />
       )}
-      <div className="space-y-6" hidden={visibleTab !== "reports"}>
-        {can("teststatusreport.read") && <TestStatusReportPanel project={project} />}
-        {can("testcompletion.read") && <CompletionPage project={project} />}
-      </div>
-      <div className="space-y-6" hidden={visibleTab !== "quality"}>
-        {can("qualityevaluation.read") && <ReleaseQualityPanel project={project} />}
-        {can("measurement.read") && <MetricDefinitionPanel project={project} />}
-        {can("processimprovement.read") && <ProcessImprovementPanel project={project} />}
-      </div>
-      <div className="space-y-6" hidden={visibleTab !== "summary"}>
-        {(canReadReports || canReadCoverage) && (canFilterScope || canCreateSnapshot) && (
-          <Panel
-            title="Phạm vi dữ liệu"
-            actions={
-              canCreateSnapshot ? (
-                <button
-                  className="apple-button"
-                  type="button"
-                  onClick={async () => {
-                    const answer = await ask({
-                      title: "Lưu ảnh chụp độ phủ",
-                      description: `Phạm vi lưu: ${scope.release || "mọi bản phát hành"} · ${scope.build || "mọi bản dựng"}`,
-                      confirmLabel: "Lưu ảnh chụp",
-                      fields: [
-                        { name: "label", label: "Tên ảnh chụp", required: true, autoFocus: true },
-                      ],
-                    });
-                    if (!answer) return;
-                    try {
-                      await testingApi.createCoverageSnapshot(project._id, {
-                        label: answer.label,
-                        release: scope.release,
-                        release_id: scope.release_id,
-                        build: scope.build,
-                        build_id: scope.build_id,
-                        idempotency_key: crypto.randomUUID(),
-                      });
-                      await load();
-                    } catch (reason) {
-                      setError(messageOf(reason));
-                    }
-                  }}
-                >
-                  Lưu ảnh chụp
-                </button>
-              ) : null
-            }
-          >
-            {canFilterScope && (
-              <div className="grid gap-3 p-5 sm:grid-cols-3">
-                {can("environment.read") && (
-                  <select
-                    aria-label="Lọc theo môi trường"
-                    className="apple-input"
-                    value={scope.environment_id}
-                    onChange={(event) => {
-                      const environmentId = event.target.value;
-                      const environment = environments.find((item) => item._id === environmentId);
-                      setScope({
-                        ...scope,
-                        environment_id: environmentId,
-                        environment: environment?.name || "",
+      {visibleTab === "reports" && (
+        <div className="space-y-6">
+          {can("teststatusreport.read") && <TestStatusReportPanel project={project} />}
+          {can("testcompletion.read") && <CompletionPage project={project} />}
+        </div>
+      )}
+      {visibleTab === "quality" && (
+        <div className="space-y-6">
+          {can("qualityevaluation.read") && <ReleaseQualityPanel project={project} />}
+          {can("measurement.read") && <MetricDefinitionPanel project={project} />}
+          {can("processimprovement.read") && <ProcessImprovementPanel project={project} />}
+        </div>
+      )}
+      {visibleTab === "summary" && (
+        <div className="space-y-6">
+          {(canReadReports || canReadCoverage) && (canFilterScope || canCreateSnapshot) && (
+            <Panel
+              title="Phạm vi dữ liệu"
+              actions={
+                canCreateSnapshot ? (
+                  <button
+                    className="apple-button"
+                    type="button"
+                    onClick={async () => {
+                      await ask({
+                        title: "Lưu ảnh chụp độ phủ",
+                        description: `Phạm vi lưu: ${scope.release || "mọi bản phát hành"} · ${scope.build || "mọi bản dựng"}`,
+                        confirmLabel: "Lưu ảnh chụp",
+                        fields: [
+                          { name: "label", label: "Tên ảnh chụp", required: true, autoFocus: true },
+                        ],
+                        onConfirm: async (answer) => {
+                          try {
+                            await testingApi.createCoverageSnapshot(project._id, {
+                              label: answer.label,
+                              release: scope.release,
+                              release_id: scope.release_id,
+                              build: scope.build,
+                              build_id: scope.build_id,
+                              idempotency_key: crypto.randomUUID(),
+                            });
+                            await load();
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
                       });
                     }}
                   >
-                    <option value="">Tất cả môi trường</option>
-                    {environments.map((item) => (
-                      <option key={item._id} value={item._id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {can("release.read") && (
-                  <select
-                    aria-label="Lọc theo bản phát hành"
-                    className="apple-input"
-                    value={scope.release_id}
-                    onChange={(event) => {
-                      const releaseId = event.target.value;
-                      const release = releases.find((item) => item._id === releaseId);
-                      setScope({
-                        ...scope,
-                        release_id: releaseId,
-                        release: release?.key || "",
-                        build_id: "",
-                        build: "",
-                      });
-                    }}
-                  >
-                    <option value="">Tất cả bản phát hành</option>
-                    {releases.map((item) => (
-                      <option key={item._id} value={item._id}>
-                        {item.key} · {item.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {can("build.read") && (
-                  <select
-                    aria-label="Lọc theo bản dựng"
-                    className="apple-input"
-                    value={scope.build_id}
-                    onChange={(event) => {
-                      const buildId = event.target.value;
-                      const build = builds.find((item) => item._id === buildId);
-                      const release = releases.find((item) => item._id === build?.release_id);
-                      setScope({
-                        ...scope,
-                        build_id: buildId,
-                        build: build?.identifier || "",
-                        release_id: build?.release_id || scope.release_id,
-                        release: release?.key || scope.release,
-                      });
-                    }}
-                  >
-                    <option value="">Tất cả bản dựng</option>
-                    {builds
-                      .filter((item) => !scope.release_id || item.release_id === scope.release_id)
-                      .map((item) => (
+                    Lưu ảnh chụp
+                  </button>
+                ) : null
+              }
+            >
+              {canFilterScope && (
+                <div className="grid gap-3 p-5 sm:grid-cols-3">
+                  {can("environment.read") && (
+                    <select
+                      aria-label="Lọc theo môi trường"
+                      className="apple-input"
+                      value={scope.environment_id}
+                      onChange={(event) => {
+                        const environmentId = event.target.value;
+                        const environment = environments.find((item) => item._id === environmentId);
+                        setScope({
+                          ...scope,
+                          environment_id: environmentId,
+                          environment: environment?.name || "",
+                        });
+                      }}
+                    >
+                      <option value="">Tất cả môi trường</option>
+                      {environments.map((item) => (
                         <option key={item._id} value={item._id}>
-                          {item.identifier} · {item.version}
+                          {item.name}
                         </option>
                       ))}
-                  </select>
+                    </select>
+                  )}
+                  {can("release.read") && (
+                    <select
+                      aria-label="Lọc theo bản phát hành"
+                      className="apple-input"
+                      value={scope.release_id}
+                      onChange={(event) => {
+                        const releaseId = event.target.value;
+                        const release = releases.find((item) => item._id === releaseId);
+                        setScope({
+                          ...scope,
+                          release_id: releaseId,
+                          release: release?.key || "",
+                          build_id: "",
+                          build: "",
+                        });
+                      }}
+                    >
+                      <option value="">Tất cả bản phát hành</option>
+                      {releases.map((item) => (
+                        <option key={item._id} value={item._id}>
+                          {item.key} · {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {can("build.read") && (
+                    <select
+                      aria-label="Lọc theo bản dựng"
+                      className="apple-input"
+                      value={scope.build_id}
+                      onChange={(event) => {
+                        const buildId = event.target.value;
+                        const build = builds.find((item) => item._id === buildId);
+                        const release = releases.find((item) => item._id === build?.release_id);
+                        setScope({
+                          ...scope,
+                          build_id: buildId,
+                          build: build?.identifier || "",
+                          release_id: build?.release_id || scope.release_id,
+                          release: release?.key || scope.release,
+                        });
+                      }}
+                    >
+                      <option value="">Tất cả bản dựng</option>
+                      {builds
+                        .filter((item) => !scope.release_id || item.release_id === scope.release_id)
+                        .map((item) => (
+                          <option key={item._id} value={item._id}>
+                            {item.identifier} · {item.version}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </div>
+              )}
+            </Panel>
+          )}
+          {!value && !error ? (
+            <LoadingState />
+          ) : value ? (
+            <>
+              {value.coverage && (
+                <section aria-labelledby="coverage-metrics-heading" className="space-y-3">
+                  <div>
+                    <h2 className="text-base font-semibold" id="coverage-metrics-heading">
+                      Độ phủ truy vết và thực thi
+                    </h2>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Độ phủ Requirement, tiêu chí, hiệu lực và kỹ thuật tính trên toàn dự án. Độ
+                      phủ thực thi chỉ lọc theo bản phát hành và bản dựng; API hiện chưa lọc chỉ số
+                      này theo môi trường.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                    <Metric
+                      label="Yêu cầu được bao phủ"
+                      value={`${value.coverage.requirement_coverage}%`}
+                    />
+                    <Metric
+                      label="Tiêu chí chấp nhận được bao phủ"
+                      value={`${value.coverage.acceptance_criterion_coverage}%`}
+                    />
+                    <Metric
+                      label="Độ phủ còn hiệu lực"
+                      value={`${value.coverage.fresh_coverage}%`}
+                    />
+                    <Metric
+                      label="Độ phủ thực thi"
+                      value={`${value.coverage.execution_coverage}%`}
+                    />
+                    <Metric label="Ca kiểm thử cần cập nhật" value={value.coverage.stale_tests} />
+                  </div>
+                </section>
+              )}
+              {(value.execution || value.defects) && (
+                <section aria-labelledby="execution-metrics-heading" className="space-y-3">
+                  <div>
+                    <h2 className="text-base font-semibold" id="execution-metrics-heading">
+                      Kết quả thực thi và lỗi trong phạm vi đã chọn
+                    </h2>
+                    {hasScopedFilter && (
+                      <p className="mt-1 text-sm text-ink-muted">
+                        Các số liệu này chỉ áp dụng cho bộ lọc bản phát hành, bản dựng hoặc môi
+                        trường hiện tại.
+                      </p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                    {value.execution && (
+                      <Metric
+                        label="Kết quả kiểm thử đạt"
+                        value={
+                          value.execution.pass_rate === null
+                            ? "Chưa đủ dữ liệu"
+                            : `${Math.round(value.execution.pass_rate * 100)}%`
+                        }
+                        detail={
+                          value.execution.terminal_result_count
+                            ? `${value.execution.result_counts?.PASS || 0} trên ${value.execution.terminal_result_count} kết quả đã kết thúc`
+                            : "Chưa có kết quả đã kết thúc"
+                        }
+                      />
+                    )}
+                    {value.defects && (
+                      <>
+                        <Metric
+                          label="Tuổi trung bình lỗi đang mở"
+                          value={`${value.defects.average_open_age_days} ngày`}
+                        />
+                      </>
+                    )}
+                  </div>
+                </section>
+              )}
+              {(value.dashboard || value.defects || value.maintenance || value.ai) && (
+                <section aria-labelledby="project-metrics-heading" className="space-y-3">
+                  <div>
+                    <h2 className="text-base font-semibold" id="project-metrics-heading">
+                      Chỉ số toàn dự án
+                    </h2>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Những số liệu dưới đây không bị giới hạn bởi bộ lọc phạm vi ở trên.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                    {value.dashboard && (
+                      <Metric
+                        label="Lỗi đang mở · toàn dự án"
+                        value={value.dashboard.open_defects}
+                      />
+                    )}
+                    {value.defects && (
+                      <Metric
+                        label="Số lần mở lại lỗi · toàn dự án"
+                        value={value.defects.reopened_count}
+                      />
+                    )}
+                    {value.maintenance && (
+                      <Metric
+                        label="Lượt phân tích ảnh hưởng"
+                        value={value.maintenance.impact_analysis_count}
+                      />
+                    )}
+                    {value.ai && (
+                      <>
+                        <Metric
+                          label="Lượt AI suy giảm hoặc không thành công"
+                          value={value.ai.degraded_count}
+                          detail={`${Math.round(value.ai.degraded_rate * 100)}% số lượt có dữ liệu AI`}
+                        />
+                        <Metric
+                          label="Thời gian phản hồi AI trung bình"
+                          value={`${Math.round(value.ai.average_latency_ms)} ms`}
+                        />
+                      </>
+                    )}
+                  </div>
+                </section>
+              )}
+              <div className="grid gap-5 xl:grid-cols-2">
+                {value.execution && (
+                  <Panel title="Kết quả thực thi">
+                    <DataTable
+                      items={Object.entries(value.execution.result_counts || {}).map(
+                        ([status, count]) => ({ _id: status, status, count }),
+                      )}
+                      empty="Chưa có kết quả thực thi"
+                      columns={[
+                        {
+                          key: "status",
+                          label: "Trạng thái",
+                          render: (item) => valueLabel(item.status),
+                        },
+                        { key: "count", label: "Số lượng" },
+                      ]}
+                    />
+                  </Panel>
+                )}
+                {value.defects && (
+                  <Panel title="Lỗi theo mức độ">
+                    <DataTable
+                      items={Object.entries(value.defects.severity_counts || {}).map(
+                        ([severity, count]) => ({ _id: severity, severity, count }),
+                      )}
+                      empty="Chưa có lỗi"
+                      columns={[
+                        {
+                          key: "severity",
+                          label: "Mức độ",
+                          render: (item) => valueLabel(item.severity),
+                        },
+                        { key: "count", label: "Số lượng" },
+                      ]}
+                    />
+                  </Panel>
                 )}
               </div>
-            )}
-          </Panel>
-        )}
-        {!value && !error ? (
-          <LoadingState />
-        ) : value ? (
-          <>
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <div className="grid gap-5 xl:grid-cols-2">
+                {value.coverage && (
+                  <Panel title="Độ phủ theo kỹ thuật · toàn dự án">
+                    <DataTable
+                      items={Object.entries(value.coverage.category_coverage || {}).map(
+                        ([category, coverage]) => ({ _id: category, category, coverage }),
+                      )}
+                      empty="Chưa có dữ liệu kỹ thuật"
+                      columns={[
+                        {
+                          key: "category",
+                          label: "Kỹ thuật",
+                          render: (item) => valueLabel(item.category),
+                        },
+                        { key: "coverage", label: "Độ phủ", render: (item) => `${item.coverage}%` },
+                      ]}
+                    />
+                  </Panel>
+                )}
+                {value.ai && (
+                  <Panel title="Phiên bản mô hình AI">
+                    <DataTable
+                      items={Object.entries(value.ai.model_versions || {}).map(
+                        ([model, count]) => ({
+                          _id: model,
+                          model,
+                          count,
+                        }),
+                      )}
+                      empty="Chưa có lần chạy AI"
+                      columns={[
+                        { key: "model", label: "Mô hình" },
+                        { key: "count", label: "Số lần chạy" },
+                      ]}
+                    />
+                  </Panel>
+                )}
+              </div>
               {value.coverage && (
-                <>
-                  <Metric
-                    label="Độ phủ yêu cầu"
-                    value={`${value.coverage.requirement_coverage}%`}
-                  />
-                  <Metric
-                    label="Độ phủ tiêu chí chấp nhận"
-                    value={`${value.coverage.acceptance_criterion_coverage}%`}
-                  />
-                  <Metric label="Độ phủ còn hiệu lực" value={`${value.coverage.fresh_coverage}%`} />
-                  <Metric label="Độ phủ thực thi" value={`${value.coverage.execution_coverage}%`} />
-                  <Metric label="Ca kiểm thử cần cập nhật" value={value.coverage.stale_tests} />
-                </>
-              )}
-              {value.dashboard && (
-                <Metric label="Lỗi đang mở" value={value.dashboard.open_defects} />
-              )}
-              {value.execution && (
-                <Metric
-                  label="Tỷ lệ kết quả kiểm thử đạt"
-                  value={
-                    value.execution.pass_rate === null
-                      ? "Chưa đủ dữ liệu"
-                      : `${Math.round(value.execution.pass_rate * 100)}%`
-                  }
-                  detail={
-                    value.execution.terminal_result_count
-                      ? `${value.execution.result_counts?.PASS || 0} trên ${value.execution.terminal_result_count} kết quả đã kết thúc`
-                      : "Chưa có kết quả đã kết thúc"
-                  }
-                />
-              )}
-              {value.defects && (
-                <>
-                  <Metric label="Số lần mở lại lỗi" value={value.defects.reopened_count} />
-                  <Metric
-                    label="Tuổi trung bình lỗi mở"
-                    value={`${value.defects.average_open_age_days} ngày`}
-                  />
-                </>
-              )}
-              {value.maintenance && (
-                <Metric
-                  label="Phân tích ảnh hưởng"
-                  value={value.maintenance.impact_analysis_count}
-                />
-              )}
-              {value.ai && (
-                <Metric
-                  label="Tỷ lệ đề xuất được chấp nhận"
-                  value={
-                    value.ai.proposal_acceptance_rate === null
-                      ? "Chưa đủ dữ liệu"
-                      : `${Math.round(value.ai.proposal_acceptance_rate * 100)}%`
-                  }
-                />
-              )}
-              {value.ai && (
-                <Metric label="Số lần điều chỉnh kết quả AI" value={value.ai.override_count} />
-              )}
-              {value.ai && (
-                <Metric
-                  label="Tỷ lệ AI chạy suy giảm"
-                  value={`${Math.round(value.ai.degraded_rate * 100)}%`}
-                />
-              )}
-              {value.ai && (
-                <Metric
-                  label="Độ trễ AI trung bình"
-                  value={`${Math.round(value.ai.average_latency_ms)} mili giây`}
-                />
-              )}
-            </div>
-            <div className="grid gap-5 xl:grid-cols-2">
-              {value.execution && (
-                <Panel title="Kết quả thực thi">
+                <Panel title="Ảnh chụp độ phủ">
+                  <p className="px-5 pt-4 text-sm text-ink-muted">
+                    Danh sách ảnh chụp của toàn dự án; mỗi ảnh giữ phạm vi tại thời điểm được lưu.
+                  </p>
                   <DataTable
-                    items={Object.entries(value.execution.result_counts || {}).map(
-                      ([status, count]) => ({ _id: status, status, count }),
-                    )}
-                    empty="Chưa có kết quả thực thi"
+                    items={value.snapshots}
+                    empty="Chưa lưu ảnh chụp"
                     columns={[
-                      {
-                        key: "status",
-                        label: "Trạng thái",
-                        render: (item) => valueLabel(item.status),
-                      },
-                      { key: "count", label: "Số lượng" },
-                    ]}
-                  />
-                </Panel>
-              )}
-              {value.defects && (
-                <Panel title="Lỗi theo mức độ">
-                  <DataTable
-                    items={Object.entries(value.defects.severity_counts || {}).map(
-                      ([severity, count]) => ({ _id: severity, severity, count }),
-                    )}
-                    empty="Chưa có lỗi"
-                    columns={[
-                      {
-                        key: "severity",
-                        label: "Mức độ",
-                        render: (item) => valueLabel(item.severity),
-                      },
-                      { key: "count", label: "Số lượng" },
-                    ]}
-                  />
-                </Panel>
-              )}
-            </div>
-            <div className="grid gap-5 xl:grid-cols-2">
-              {value.coverage && (
-                <Panel title="Độ phủ theo kỹ thuật">
-                  <DataTable
-                    items={Object.entries(value.coverage.category_coverage || {}).map(
-                      ([category, coverage]) => ({ _id: category, category, coverage }),
-                    )}
-                    empty="Chưa có dữ liệu kỹ thuật"
-                    columns={[
-                      {
-                        key: "category",
-                        label: "Kỹ thuật",
-                        render: (item) => valueLabel(item.category),
-                      },
-                      { key: "coverage", label: "Độ phủ", render: (item) => `${item.coverage}%` },
-                    ]}
-                  />
-                </Panel>
-              )}
-              {value.ai && (
-                <Panel title="Trạng thái đề xuất AI">
-                  <DataTable
-                    items={(value.ai.proposal_status || []).map((item) => ({
-                      ...item,
-                      status: item._id,
-                    }))}
-                    empty="Chưa có đề xuất"
-                    columns={[
-                      {
-                        key: "status",
-                        label: "Trạng thái",
-                        render: (item) => valueLabel(item.status),
-                      },
-                      { key: "count", label: "Số lượng" },
-                    ]}
-                  />
-                </Panel>
-              )}
-              {value.ai && (
-                <Panel title="Phiên bản mô hình AI">
-                  <DataTable
-                    items={Object.entries(value.ai.model_versions || {}).map(([model, count]) => ({
-                      _id: model,
-                      model,
-                      count,
-                    }))}
-                    empty="Chưa có lần chạy AI"
-                    columns={[
-                      { key: "model", label: "Mô hình" },
-                      { key: "count", label: "Số lần chạy" },
-                    ]}
-                  />
-                </Panel>
-              )}
-            </div>
-            {value.coverage && (
-              <Panel title="Ảnh chụp độ phủ">
-                <DataTable
-                  items={value.snapshots}
-                  empty="Chưa lưu ảnh chụp"
-                  columns={[
-                    { key: "label", label: "Tên" },
-                    {
-                      key: "created_at",
-                      label: "Thời điểm",
-                      render: (item) => formatDate(item.created_at),
-                    },
-                    {
-                      key: "requirement_coverage",
-                      label: "Độ phủ yêu cầu",
-                      render: (item) => `${item.metrics?.requirement_coverage ?? 0}%`,
-                    },
-                    {
-                      key: "fresh_coverage",
-                      label: "Độ phủ còn hiệu lực",
-                      render: (item) => `${item.metrics?.fresh_coverage ?? 0}%`,
-                    },
-                    {
-                      key: "execution_coverage",
-                      label: "Độ phủ thực thi",
-                      render: (item) => `${item.metrics?.execution_coverage ?? 0}%`,
-                    },
-                  ]}
-                />
-              </Panel>
-            )}
-            {value.activity && (
-              <Panel title="Hoạt động chất lượng gần đây">
-                <div
-                  className="max-h-[34rem] overflow-auto overscroll-contain"
-                  role="region"
-                  aria-label="Danh sách hoạt động chất lượng"
-                  tabIndex={0}
-                >
-                  <DataTable
-                    items={value.activity.filter(
-                      (item) => item.action !== "project_membership_required",
-                    )}
-                    empty="Chưa có hoạt động"
-                    columns={[
-                      {
-                        key: "action",
-                        label: "Hành động",
-                        render: (item) => valueLabel(item.action),
-                      },
-                      {
-                        key: "entity_type",
-                        label: "Loại dữ liệu",
-                        render: (item) => valueLabel(item.entity_type),
-                      },
-                      { key: "entity_id", label: "Mã" },
+                      { key: "label", label: "Tên" },
                       {
                         key: "created_at",
                         label: "Thời điểm",
                         render: (item) => formatDate(item.created_at),
                       },
+                      {
+                        key: "requirement_coverage",
+                        label: "Độ phủ yêu cầu",
+                        render: (item) => `${item.metrics?.requirement_coverage ?? 0}%`,
+                      },
+                      {
+                        key: "fresh_coverage",
+                        label: "Độ phủ còn hiệu lực",
+                        render: (item) => `${item.metrics?.fresh_coverage ?? 0}%`,
+                      },
+                      {
+                        key: "execution_coverage",
+                        label: "Độ phủ thực thi",
+                        render: (item) => `${item.metrics?.execution_coverage ?? 0}%`,
+                      },
                     ]}
                   />
-                </div>
-              </Panel>
-            )}
-          </>
-        ) : null}
-      </div>
+                </Panel>
+              )}
+              {value.activity && (
+                <Panel title="Hoạt động chất lượng gần đây">
+                  <p className="px-5 pt-4 text-sm text-ink-muted">
+                    Nhật ký hoạt động của toàn dự án, không chịu ảnh hưởng của bộ lọc báo cáo.
+                  </p>
+                  <div
+                    className="max-h-[34rem] overflow-auto overscroll-contain"
+                    role="region"
+                    aria-label="Danh sách hoạt động chất lượng"
+                    tabIndex={0}
+                  >
+                    <DataTable
+                      items={value.activity.filter(
+                        (item) => item.action !== "project_membership_required",
+                      )}
+                      empty="Chưa có hoạt động"
+                      columns={[
+                        {
+                          key: "action",
+                          label: "Hành động",
+                          render: (item) => valueLabel(item.action),
+                        },
+                        {
+                          key: "entity_type",
+                          label: "Loại dữ liệu",
+                          render: (item) => valueLabel(item.entity_type),
+                        },
+                        { key: "entity_id", label: "Mã" },
+                        {
+                          key: "created_at",
+                          label: "Thời điểm",
+                          render: (item) => formatDate(item.created_at),
+                        },
+                      ]}
+                    />
+                  </div>
+                </Panel>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
       {dialog}
     </WorkspacePage>
   );

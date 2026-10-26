@@ -33,6 +33,10 @@ export default function TraceabilityPage({ project }) {
   );
   const can = useCallback((permission) => permissions.includes(permission), [permissions]);
   const load = useCallback(async () => {
+    if (!can("trace.read")) {
+      setInitialLoading(false);
+      return;
+    }
     if (loadedProjectId.current !== project._id) {
       loadedProjectId.current = project._id;
       initialDataLoaded.current = false;
@@ -59,6 +63,7 @@ export default function TraceabilityPage({ project }) {
   useEffect(() => {
     void load();
   }, [load]);
+  if (!can("trace.read")) return null;
   if (initialLoading || initialLoadFailed)
     return (
       <InitialLoadState
@@ -116,7 +121,7 @@ export default function TraceabilityPage({ project }) {
               className="secondary-button"
               type="button"
               onClick={async () => {
-                const answer = await ask({
+                await ask({
                   title: "Lưu ảnh chụp độ phủ",
                   description:
                     "Ảnh chụp giữ nguyên các chỉ số tại thời điểm hiện tại để đối chiếu release",
@@ -130,17 +135,18 @@ export default function TraceabilityPage({ project }) {
                       autoFocus: true,
                     },
                   ],
+                  onConfirm: async (answer) => {
+                    try {
+                      await testingApi.createCoverageSnapshot(project._id, {
+                        label: answer.label,
+                        idempotency_key: crypto.randomUUID(),
+                      });
+                      await load();
+                    } catch (reason) {
+                      throw new Error(messageOf(reason));
+                    }
+                  },
                 });
-                if (!answer) return;
-                try {
-                  await testingApi.createCoverageSnapshot(project._id, {
-                    label: answer.label,
-                    idempotency_key: crypto.randomUUID(),
-                  });
-                  await load();
-                } catch (reason) {
-                  setError(messageOf(reason));
-                }
               }}
             >
               Lưu ảnh chụp độ phủ

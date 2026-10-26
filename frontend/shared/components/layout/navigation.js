@@ -14,6 +14,7 @@ import {
   Settings,
   TestTube2,
   ListTodo,
+  ListFilter,
   Columns3,
   Map,
   Flag,
@@ -29,9 +30,17 @@ import {
   PROJECTS_ROUTE,
   PROJECT_SECTION_SLUGS,
   projectRoute,
-} from "@/features/testing/routes";
+} from "../../../features/testing/routes";
+import {
+  canSeeNavigationItem,
+  hasNavigationPermission,
+  navigationItemForPath,
+} from "./navigationAccess.mjs";
+
+export { hasNavigationPermission, navigationItemForPath };
 
 export const PROJECT_SETTINGS_PERMISSIONS = [
+  "project.read",
   "project.settings.manage",
   "project.update",
   "project.archive",
@@ -47,15 +56,6 @@ export const PROJECT_SETTINGS_PERMISSIONS = [
   "webhook.project.read",
 ];
 
-export function hasNavigationPermission(item, permissions) {
-  const granted = Array.isArray(permissions) ? permissions : [];
-  return (
-    (!item.permission || granted.includes(item.permission)) &&
-    (item.permissions || []).every((permission) => granted.includes(permission)) &&
-    (!item.anyPermission || item.anyPermission.some((permission) => granted.includes(permission)))
-  );
-}
-
 export function testCaseSubsectionItems(projectId) {
   const root = projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases);
   return [
@@ -68,9 +68,9 @@ export function testCaseSubsectionItems(projectId) {
     },
     {
       id: "ai",
-      label: "Tạo ca bằng AI",
+      label: "Lượt chạy AI",
       href: `${root}/ai`,
-      anyPermission: ["ai.generate_testcase", "ai.generate_scenario", "testcase.duplicate_check"],
+      anyPermission: ["proposal.read", "automation.read"],
       permissions: ["testcase.read"],
     },
     {
@@ -142,6 +142,13 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
         ],
         planning: [
           {
+            id: "work-list",
+            label: "Danh sách công việc",
+            href: `${root}/${PROJECT_SECTION_SLUGS.planning}/list`,
+            icon: ListFilter,
+            permission: "project.read",
+          },
+          {
             id: "backlog",
             label: "Danh sách chờ",
             href: `${root}/${PROJECT_SECTION_SLUGS.planning}/backlog`,
@@ -209,7 +216,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Phân tích thay đổi",
             href: `${root}/${PROJECT_SECTION_SLUGS.changes}`,
             icon: GitCompareArrows,
-            anyPermission: ["changeset.read", "proposal.read"],
+            permission: "changeset.read",
           },
         ],
         design: [
@@ -335,10 +342,10 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
           },
           {
             id: "ai-review",
-            label: "Đề xuất AI",
+            label: "Lượt chạy AI",
             href: `${root}/${PROJECT_SECTION_SLUGS.aiReview}`,
             icon: BrainCircuit,
-            permission: "proposal.read",
+            anyPermission: ["automation.read", "proposal.read"],
           },
         ],
         resources: [
@@ -371,7 +378,13 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
     {
       label: "Không gian làm việc",
       items: [
-        { id: "projects", label: "Dự án", href: PROJECTS_ROUTE, icon: FolderKanban },
+        {
+          id: "projects",
+          label: "Dự án",
+          href: PROJECTS_ROUTE,
+          icon: FolderKanban,
+          requireAuth: true,
+        },
         {
           id: "operations",
           label: "Vận hành nền tảng",
@@ -412,12 +425,7 @@ export function availableNavigation(groups, user, permissions = null) {
   return groups
     .map((group) => ({
       ...group,
-      items: group.items.filter(
-        (item) =>
-          (!item.requireAuth || user) &&
-          (!item.requireAdmin || user?.system_role === "ADMIN") &&
-          hasNavigationPermission(item, permissions),
-      ),
+      items: group.items.filter((item) => canSeeNavigationItem(item, user, permissions)),
     }))
     .filter((group) => group.items.length > 0);
 }

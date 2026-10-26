@@ -1,7 +1,9 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.clients.ai_automation import emit_performance_configuration_approved
 from src.core.common import audit, get_project, new_id, now
+from src.core.database import database
 from src.repositories.non_functional_test import non_functional_test_repository
 
 
@@ -152,19 +154,24 @@ async def transition_plan(plan_id, payload, user, approve=False):
         changes.update({"approved_by": user.id, "approved_at": timestamp})
     else:
         changes.update({"submitted_by": user.id, "submitted_at": timestamp})
-    updated = await non_functional_test_repository.transition_plan(
-        plan_id, payload.expected_revision, source, changes
-    )
-    if not updated:
-        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
-    await audit(
-        user.id,
-        "nfr_test_plan_approved" if approve else "nfr_test_plan_submitted",
-        "NonFunctionalTestPlan",
-        plan_id,
-        value["project_id"],
-        {"note": payload.note},
-    )
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await non_functional_test_repository.transition_plan(
+                plan_id, payload.expected_revision, source, changes, session=session
+            )
+            if not updated:
+                raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
+            await audit(
+                user.id,
+                "nfr_test_plan_approved" if approve else "nfr_test_plan_submitted",
+                "NonFunctionalTestPlan",
+                plan_id,
+                value["project_id"],
+                {"note": payload.note},
+                session=session,
+            )
+            if approve and updated.get("plan_type") == "PERFORMANCE_TEST_PLAN":
+                await emit_performance_configuration_approved(updated, user, session=session)
     return updated
 
 

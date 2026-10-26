@@ -3,8 +3,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, model_validator
 
 CapabilityDomain = Literal["requirement", "test_design", "analysis", "execution", "reporting"]
 
@@ -35,16 +34,54 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
+class EvidenceRelationship(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    relationship_id: str = Field(min_length=1, max_length=200)
+    relationship_type: Literal["BLOCKS", "RELATES_TO"]
+    project_id: str = Field(min_length=1, max_length=200)
+    source_artifact_id: str = Field(min_length=1, max_length=200)
+    target_artifact_id: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def validate_endpoints(self):
+        if self.source_artifact_id == self.target_artifact_id:
+            raise ValueError("evidence_relationship_endpoints_must_differ")
+        return self
+
+
 class EvidenceItem(BaseModel):
     artifact_type: str
     artifact_id: str
     artifact_version_id: str | None = None
-    source: Literal["database", "document", "vector", "graph", "memory", "tool"]
+    source: Literal["database", "document", "vector", "graph", "memory", "tool", "user"]
     authority: str
     score: float = Field(default=1, ge=0, le=1)
     text: str = ""
     relationship_path: list[str] = Field(default_factory=list)
+    relationship: EvidenceRelationship | None = None
     project_id: str
+    artifact_revision: int | None = Field(default=None, ge=1, strict=True)
+    chunk_id: str | None = None
+    chunk_index: int | None = None
+    chunk_type: str | None = None
+    page_numbers: list[int] = Field(default_factory=list)
+    source_spans: list[dict[str, Any]] = Field(default_factory=list)
+    source_hash: str | None = None
+
+    @model_validator(mode="after")
+    def validate_relationship_scope(self):
+        if self.relationship is not None and (
+            self.artifact_type != "work_item"
+            or self.relationship.project_id != self.project_id
+            or self.artifact_id
+            not in {
+                self.relationship.source_artifact_id,
+                self.relationship.target_artifact_id,
+            }
+        ):
+            raise ValueError("evidence_relationship_scope_invalid")
+        return self
 
 
 class EvidencePackage(BaseModel):
@@ -101,6 +138,7 @@ class AgentProposal(BaseModel):
     actions: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     success_criteria_met: list[str] = Field(default_factory=list)
+    change_simulation_report: dict[str, Any] | None = None
 
 
 class VeriqRunState(BaseModel):
@@ -108,9 +146,11 @@ class VeriqRunState(BaseModel):
     project_id: str
     user_id: str
     role: str
+    source_event_id: str | None = None
     permissions: list[str] = Field(default_factory=list)
     objective: str
     intent: str = ""
+    intent_arguments: dict[str, Any] = Field(default_factory=dict, max_length=100)
     execution_plan: list[dict[str, Any]] = Field(default_factory=list)
     active_task: dict[str, Any] | None = None
     completed_tasks: list[dict[str, Any]] = Field(default_factory=list)

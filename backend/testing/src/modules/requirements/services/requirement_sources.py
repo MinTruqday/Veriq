@@ -19,15 +19,20 @@ class RequirementSourceResult:
 
     @property
     def status(self):
-        return (
-            'SUCCESS'
-            if self.indexed
-            else 'DEGRADED'
-        )
+        return 'SUCCESS' if self.data.get("index_status") == 'INDEXED' else 'DEGRADED'
 
     @property
     def degraded_mode(self):
-        return None if self.indexed else 'DEGRADED_VECTOR'
+        index_status = self.data.get("index_status")
+        if index_status == 'INDEXED':
+            return None
+        if index_status == 'DEGRADED':
+            return 'PARTIAL_SOURCE_EXTRACTION'
+        if index_status == 'FAILED':
+            return 'DEGRADED_VECTOR'
+        if index_status == 'PENDING':
+            return 'KNOWLEDGE_INDEX_PENDING'
+        return 'UNKNOWN_INDEX_STATUS'
 
 
 async def create_requirement_source(project_id, payload, user):
@@ -144,7 +149,10 @@ async def list_requirement_sources(project_id, include_archived, user):
 
 
 async def reindex_requirement_source(document_id, user):
-    from src.modules.requirements.services.requirement_documents import require_document_access
+    from src.modules.requirements.services.requirement_documents import (
+        index_requirement_document,
+        require_document_access,
+    )
 
     document = await get_project_entity(
         'requirement_documents',
@@ -157,38 +165,13 @@ async def reindex_requirement_source(document_id, user):
         raise HTTPException(
             status_code=409, detail={"code": 'KNOWLEDGE_SOURCE_ARCHIVED'}
         )
-    content = str((document.get("raw_source") or {}).get("content") or "")
-    indexed = await index_artifact(
-        document["project_id"],
-        "requirement_document",
-        document["_id"],
-        document["_id"],
-        document.get("title") or document.get("filename") or "",
-        content,
-        document.get("status", 'READY'),
-        document.get("authority"),
-        document.get("source_version"),
-        module=document.get("module") or "",
-        component=document.get("component"),
-        product_area=document.get("product_area"),
-        release_id=document.get("release_id"),
-        external_source_id=document.get("external_source_id"),
-        approval_status=document.get("approval_status"),
-        owner_id=document.get("owner_id"),
-        approved_by=document.get("approved_by"),
-        approved_at=document.get("approved_at"),
-        effective_from=document.get("effective_from"),
-        tags=document.get("tags", []),
-    )
+    await index_requirement_document(document)
     timestamp = now()
-    await requirement_document_repository.set_index_result(
-        document_id,
-        document["project_id"],
-        'INDEXED'
-        if indexed
-        else 'FAILED',
-        timestamp,
+    updated_document = await requirement_document_repository.find(
+        document_id, document["project_id"]
     )
+    index_status = (updated_document or {}).get("index_status", "FAILED")
+    indexed = index_status == "INDEXED"
     await requirement_document_repository.update(
         document_id,
         document["project_id"],

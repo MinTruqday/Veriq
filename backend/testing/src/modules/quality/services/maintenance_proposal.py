@@ -1,6 +1,9 @@
+import hashlib
+import json
+
 from fastapi import HTTPException
 
-from src.core.common import audit, get_project, get_project_entity, new_id, now, sort_spec
+from src.core.common import audit, get_project, get_project_entity, new_id, now, page_payload, sort_spec
 from src.core.metrics import PROPOSAL_ACCEPTANCE_RATE
 from src.repositories.maintenance_proposal import maintenance_proposal_repository
 
@@ -89,8 +92,11 @@ async def list_maintenance_proposal_records(
     status="",
     proposal_type="",
     target_artifact_id="",
+    impact_analysis_id="",
     sort="-created_at",
     limit=100,
+    page=0,
+    page_size=100,
 ):
     
     await get_project(project_id, user, "proposal.read")
@@ -99,15 +105,47 @@ async def list_maintenance_proposal_records(
         "status": status,
         "proposal_type": proposal_type,
         "target_artifact_id": target_artifact_id,
+        "impact_analysis_id": impact_analysis_id,
     }.items():
         if value:
             query[field] = value
     sort_field, direction = sort_spec(
         sort, set(['status', 'proposal_type', 'confidence', 'created_at', 'updated_at']), "-created_at"
     )
+    if page:
+        limit = page_size
+        scope_snapshot = await maintenance_proposal_repository.proposal_scope_snapshot(
+            query, sort_field, direction
+        )
+        total = len(scope_snapshot)
+        skip = (page - 1) * page_size
+    else:
+        scope_snapshot = None
+        total = None
+        skip = 0
     proposals = await maintenance_proposal_repository.list_proposals(
-        query, sort_field, direction, limit
+        query, sort_field, direction, limit, skip
     )
+    if page:
+        expected_page = scope_snapshot[skip : skip + page_size]
+        scope_fields = (
+            "_id",
+            "project_id",
+            "impact_analysis_id",
+            "proposal_type",
+            "target_artifact_id",
+            "base_version_id",
+            "status",
+            "revision",
+        )
+        if len(proposals) != len(expected_page) or any(
+            any(proposal.get(field) != expected.get(field) for field in scope_fields)
+            for proposal, expected in zip(proposals, expected_page)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "MAINTENANCE_PROPOSAL_SCOPE_CHANGED_DURING_READ"},
+            )
     base_ids = [item.get("base_version_id") for item in proposals if item.get("base_version_id")]
     bases = await maintenance_proposal_repository.list_test_case_versions(
         project_id, base_ids, limit
@@ -120,7 +158,7 @@ async def list_maintenance_proposal_records(
         project_id, analysis_ids, limit
     )
     analyses_by_id = {item["_id"]: item for item in analyses}
-    return [
+    records = [
         {
             **item,
             "base_version": by_id.get(item.get("base_version_id")),
@@ -128,6 +166,19 @@ async def list_maintenance_proposal_records(
         }
         for item in proposals
     ]
+    if page:
+        payload = page_payload(records, page, page_size, total)
+        payload["scope_fingerprint"] = hashlib.sha256(
+            json.dumps(
+                scope_snapshot,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        return payload
+    return records
 
 
 async def get_maintenance_proposal_record(proposal_id, user, permission="proposal.read"):

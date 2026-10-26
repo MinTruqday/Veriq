@@ -143,10 +143,18 @@ async def list_proposals(
     status: str = Query(default="", max_length=30),
     proposal_type: str = Query(default="", max_length=50),
     target_artifact_id: str = Query(default="", max_length=200),
+    impact_analysis_id: str = Query(default="", max_length=200),
     sort: str = Query(default="-created_at", max_length=80),
-    limit: int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=100, ge=1, le=10000),
+    page: int = Query(default=0, ge=0),
+    page_size: int = Query(default=500, ge=1, le=500),
     user: CurrentUser = Depends(get_current_user),
 ):
+    if page and not impact_analysis_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "PAGINATION_REQUIRES_IMPACT_ANALYSIS_SCOPE"},
+        )
     return envelope(
         await list_maintenance_proposal_records(
             project_id,
@@ -154,8 +162,11 @@ async def list_proposals(
             status=status,
             proposal_type=proposal_type,
             target_artifact_id=target_artifact_id,
+            impact_analysis_id=impact_analysis_id,
             sort=sort,
             limit=limit,
+            page=page,
+            page_size=page_size,
         )
     )
 

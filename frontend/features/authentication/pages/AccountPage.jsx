@@ -1,18 +1,19 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import {
   changeMyPassword,
   listMySessions,
-  logoutAPI,
   revokeMySession,
   updateMyProfile,
 } from "../services/session.service";
 
 export default function AccountPage() {
   const { user, logoutState, refreshUser } = useAuth();
+  const userId = user?._id || null;
+  const sessionsRequestId = useRef(0);
   const [profile, setProfile] = useState({
     full_name: "",
     locale: "vi-VN",
@@ -20,6 +21,7 @@ export default function AccountPage() {
   });
   const [password, setPassword] = useState({ current_password: "", new_password: "" });
   const [sessions, setSessions] = useState([]);
+  const [sessionsOwnerId, setSessionsOwnerId] = useState(null);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState("");
   const [sessionPage, setSessionPage] = useState(1);
@@ -38,22 +40,36 @@ export default function AccountPage() {
     });
   }, [user]);
   const loadSessions = useCallback(async () => {
+    const currentRequest = ++sessionsRequestId.current;
     setSessionsLoading(true);
     setSessionsError("");
     try {
       const data = await listMySessions();
+      if (currentRequest !== sessionsRequestId.current) return;
       setSessions(Array.isArray(data) ? data : []);
+      setSessionsOwnerId(userId);
     } catch (reason) {
+      if (currentRequest !== sessionsRequestId.current) return;
       setSessionsError(
         reason instanceof Error ? reason.message : "Không thể tải danh sách phiên đăng nhập",
       );
     } finally {
-      setSessionsLoading(false);
+      if (currentRequest === sessionsRequestId.current) setSessionsLoading(false);
     }
-  }, []);
+  }, [userId]);
   useEffect(() => {
+    sessionsRequestId.current += 1;
+    setSessions([]);
+    setSessionsOwnerId(null);
+    setSessionsError("");
+    setSessionsLoading(Boolean(userId));
+    setSessionPage(1);
+    if (!userId) return undefined;
     void loadSessions();
-  }, [loadSessions]);
+    return () => {
+      sessionsRequestId.current += 1;
+    };
+  }, [loadSessions, userId]);
   const submitProfile = async (event) => {
     event.preventDefault();
     setSavingProfile(true);
@@ -86,12 +102,25 @@ export default function AccountPage() {
     }
   };
   const closeOtherSessions = async () => {
+    const otherSessions = visibleSessions.filter((session) => !session.is_current);
+    if (!otherSessions.length || sessionAction) return;
     setError("");
+    setStatus("");
     setSessionAction("close-others");
     try {
-      await logoutAPI(true);
+      const results = await Promise.allSettled(
+        otherSessions.map((session) => revokeMySession(session._id)),
+      );
       await loadSessions();
-      setStatus("Đã đóng toàn bộ phiên đăng nhập khác");
+      const revokedCount = results.filter((result) => result.status === "fulfilled").length;
+      const failedCount = results.length - revokedCount;
+      if (failedCount) {
+        setError(
+          `Đã thu hồi ${revokedCount}/${results.length} phiên đăng nhập khác. Không thể thu hồi ${failedCount} phiên; hãy tải lại danh sách và thử lại.`,
+        );
+      } else {
+        setStatus(`Đã thu hồi ${revokedCount} phiên đăng nhập khác; phiên hiện tại vẫn hoạt động.`);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể đóng các phiên khác");
     } finally {
@@ -111,6 +140,7 @@ export default function AccountPage() {
       setSessionAction("");
     }
   };
+  const visibleSessions = sessionsOwnerId === userId ? sessions : [];
   return (
     <div className="mx-auto w-full max-w-[980px] min-w-0 space-y-6 py-5 sm:py-6 xl:py-8">
       <header className="border-b border-border pb-6">
@@ -208,14 +238,18 @@ export default function AccountPage() {
           <button
             className="secondary-button"
             type="button"
-            disabled={Boolean(sessionAction)}
+            disabled={
+              Boolean(sessionAction) ||
+              sessionsLoading ||
+              visibleSessions.every((session) => session.is_current)
+            }
             onClick={closeOtherSessions}
           >
             {sessionAction === "close-others" ? "Đang đóng phiên" : "Đóng các phiên khác"}
           </button>
         </div>
         <div className="mt-4 divide-y divide-border border-y border-border">
-          {sessionsLoading ? (
+          {sessionsLoading || (userId && sessionsOwnerId !== userId) ? (
             <p className="py-4 text-sm text-ink-muted" role="status">
               Đang tải danh sách phiên đăng nhập
             </p>
@@ -228,8 +262,8 @@ export default function AccountPage() {
                 Thử lại
               </button>
             </div>
-          ) : sessions.length ? (
-            sessions
+          ) : visibleSessions.length ? (
+            visibleSessions
               .slice((sessionPage - 1) * sessionPageSize, sessionPage * sessionPageSize)
               .map((session) => (
                 <div
@@ -265,7 +299,7 @@ export default function AccountPage() {
         <Pagination
           page={sessionPage}
           pageSize={sessionPageSize}
-          total={sessions.length}
+          total={visibleSessions.length}
           onChange={setSessionPage}
         />
       </section>

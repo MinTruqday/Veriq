@@ -1,9 +1,12 @@
+import hashlib
 import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.clients.ai_automation import queue_requirement_changed
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, validate_doc
+from src.core.database import database
 from src.repositories.requirement_ai import requirement_ai_repository
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.modules.design.services.linters import requirement_findings
@@ -13,6 +16,22 @@ from src.modules.requirements.services.requirement_workflow import (
     requirement_suggestion_changes,
     text_doc,
 )
+
+
+async def get_latest_requirement_quality_analysis(version_id, user):
+    version = await get_project_entity(
+        "requirement_versions", version_id, user, "requirement.read"
+    )
+    result = await requirement_ai_repository.find_latest_quality_analysis(
+        version["project_id"], version_id
+    )
+    if not result:
+        return None
+    return {
+        **result,
+        "artifact_revision": result.get("artifact_revision"),
+        "is_stale": result.get("artifact_revision") != version.get("revision"),
+    }
 
 
 async def analyze_requirement_quality(version_id, payload, user):
@@ -114,6 +133,8 @@ async def analyze_requirement_quality(version_id, payload, user):
         "artifact_id": version_id,
         "result_type": 'REQUIREMENT_QUALITY_ANALYSIS',
         "requirement_version_id": version_id,
+        "artifact_revision": version.get("revision"),
+        "source_hash": hashlib.sha256(evidence[0]["text"].encode("utf-8")).hexdigest(),
         "findings": findings,
         "suggestions": suggestions,
         "valid": ai_result.get("status") == 'SUCCESS'
@@ -126,25 +147,27 @@ async def analyze_requirement_quality(version_id, payload, user):
         "created_at": now(),
     }
     try:
-        await requirement_ai_repository.insert_finding(result)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await requirement_ai_repository.insert_finding(result, session=session)
+                await audit(
+                    user.id,
+                    "requirement_quality_analyzed",
+                    "AIResult",
+                    result["_id"],
+                    version["project_id"],
+                    {"requirement_version_id": version_id, "status": result["status"]},
+                    session=session,
+                )
     except DuplicateKeyError:
         existing = await requirement_ai_repository.find_finding(query)
         if existing:
             return existing
         raise
-    await audit(
-        user.id,
-        "requirement_quality_analyzed",
-        "AIResult",
-        result["_id"],
-        version["project_id"],
-        {"requirement_version_id": version_id, "status": result["status"]},
-    )
     return result
 
 
 async def apply_requirement_quality_suggestion(version_id, payload, user):
-    
     version = await get_project_entity(
         "requirement_versions", version_id, user, "requirement.update"
     )
@@ -165,6 +188,8 @@ async def apply_requirement_quality_suggestion(version_id, payload, user):
     )
     if not ai_result:
         raise HTTPException(status_code=404, detail={"code": 'AI_SUGGESTION_NOT_FOUND'})
+    if ai_result.get("artifact_revision") != version.get("revision"):
+        raise HTTPException(status_code=409, detail={"code": "AI_SUGGESTION_STALE"})
     suggestion = next(
         (
             item
@@ -212,66 +237,104 @@ async def apply_requirement_quality_suggestion(version_id, payload, user):
             )
         for item in proposed_criteria:
             validate_doc(item.get("content_doc", {}))
-    updated = await requirement_ai_repository.update_requirement(
-        {
-            "_id": version_id,
-            "project_id": version["project_id"],
-            "status": 'DRAFT',
-            "revision": payload.expected_revision,
-        },
-        changes,
-    )
-    if not updated:
-        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
-    if proposed_criteria is not None:
-        previous_criteria = acceptance_criteria
-        await requirement_ai_repository.delete_acceptance_criteria(version_id)
-        try:
-            await persist_acceptance_criteria(updated, proposed_criteria)
-        except Exception:
-            await requirement_ai_repository.delete_acceptance_criteria(version_id)
-            if previous_criteria:
-                await requirement_ai_repository.insert_acceptance_criteria(previous_criteria)
-            rollback_values = {
-                field: version[field]
-                for field in changes
-                if field in version and field != "revision"
-            }
-            rollback_values.update(
-                {
-                    "acceptance_criterion_ids": [item["_id"] for item in previous_criteria],
-                    "revision": payload.expected_revision,
-                }
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            current_version = await requirement_ai_repository.find_requirement_version(
+                version_id, session=session
             )
-            missing_fields = [
-                field for field in changes if field not in version and field != "revision"
-            ]
-            await requirement_ai_repository.rollback_requirement(
+            if (
+                not current_version
+                or current_version.get("project_id") != version["project_id"]
+                or current_version.get("status") != "DRAFT"
+                or current_version.get("revision") != payload.expected_revision
+            ):
+                raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+            current_result = await requirement_ai_repository.find_finding(
+                {
+                    "_id": payload.ai_result_id,
+                    "project_id": version["project_id"],
+                    "artifact_id": version_id,
+                    "result_type": "REQUIREMENT_QUALITY_ANALYSIS",
+                },
+                session=session,
+            )
+            if (
+                not current_result
+                or current_result.get("status") != "SUCCESS"
+                or current_result.get("degraded_mode")
+                or payload.suggestion_id in current_result.get("applied_suggestion_ids", [])
+            ):
+                raise HTTPException(
+                    status_code=409, detail={"code": "AI_SUGGESTION_NOT_APPLICABLE"}
+                )
+            if current_result.get("artifact_revision") != current_version.get("revision"):
+                raise HTTPException(status_code=409, detail={"code": "AI_SUGGESTION_STALE"})
+            current_suggestion = next(
+                (
+                    item
+                    for item in current_result.get("suggestions", [])
+                    if item.get("suggestion_id") == payload.suggestion_id
+                ),
+                None,
+            )
+            if current_suggestion != suggestion:
+                raise HTTPException(
+                    status_code=409, detail={"code": "AI_SUGGESTION_CHANGED"}
+                )
+            current_criteria = await requirement_ai_repository.list_acceptance_criteria(
+                version_id, 200, session=session
+            )
+            if not requirement_suggestion_changes(
+                current_version, current_suggestion, current_criteria
+            ):
+                raise HTTPException(
+                    status_code=422, detail={"code": "AI_SUGGESTION_NO_CHANGE"}
+                )
+            updated = await requirement_ai_repository.update_requirement(
                 {
                     "_id": version_id,
                     "project_id": version["project_id"],
-                    "status": 'DRAFT',
-                    "revision": payload.expected_revision + 1,
+                    "status": "DRAFT",
+                    "revision": payload.expected_revision,
                 },
-                rollback_values,
-                missing_fields,
+                {**changes, "updated_at": now()},
+                session=session,
             )
-            raise
-        updated = await requirement_ai_repository.find_requirement_version(version_id)
-    await requirement_ai_repository.mark_suggestion_applied(
-        ai_result["_id"], version["project_id"], payload.suggestion_id, now()
-    )
-    await audit(
-        user.id,
-        "requirement_ai_suggestion_applied",
-        "RequirementVersion",
-        version_id,
-        version["project_id"],
-        {
-            "ai_result_id": ai_result["_id"],
-            "suggestion_id": payload.suggestion_id,
-            "reason_codes": suggestion.get("reason_codes", []),
-            "evidence_refs": suggestion.get("evidence_refs", []),
-        },
-    )
+            if not updated:
+                raise HTTPException(
+                    status_code=409, detail={"code": "REVISION_CONFLICT"}
+                )
+            if proposed_criteria is not None:
+                await requirement_ai_repository.delete_acceptance_criteria(
+                    version_id, session=session
+                )
+                updated = await persist_acceptance_criteria(
+                    updated, proposed_criteria, session=session
+                )
+            marked = await requirement_ai_repository.mark_suggestion_applied(
+                current_result["_id"],
+                version["project_id"],
+                payload.suggestion_id,
+                now(),
+                session=session,
+            )
+            if not marked:
+                raise HTTPException(
+                    status_code=409, detail={"code": "AI_SUGGESTION_CHANGED"}
+                )
+            await queue_requirement_changed(updated, user, session)
+            await audit(
+                user.id,
+                "requirement_ai_suggestion_applied",
+                "RequirementVersion",
+                version_id,
+                version["project_id"],
+                {
+                    "ai_result_id": current_result["_id"],
+                    "suggestion_id": payload.suggestion_id,
+                    "reason_codes": suggestion.get("reason_codes", []),
+                    "evidence_refs": suggestion.get("evidence_refs", []),
+                },
+                session=session,
+            )
     return updated

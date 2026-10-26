@@ -155,13 +155,54 @@
   }
 
   .workspace-panel-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .workspace-panel-heading {
+    flex: 1 1 18rem;
+    min-width: min(14rem, 100%);
+  }
+
+  .workspace-panel-actions {
+    flex: 2 1 34rem;
+    min-width: 0;
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .workspace-panel-with-actions {
+    container-type: inline-size;
+  }
+
+  .workspace-panel-header-with-actions {
     display: grid;
+    grid-template-columns: minmax(14rem, 0.9fr) minmax(0, 1.6fr);
+    align-items: start;
+  }
+
+  .workspace-panel-header-with-actions .workspace-panel-heading {
+    min-width: 0;
+  }
+
+  .workspace-panel-header-with-actions .workspace-panel-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .requirements-list-panel .workspace-panel-header-with-actions {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .workspace-panel-heading,
-  .workspace-panel-actions {
+  .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-heading {
+    width: 100%;
     min-width: 0;
+  }
+
+  .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-actions {
+    justify-content: flex-start;
   }
 
   .workspace-panel-heading h2 {
@@ -557,30 +598,41 @@
   }
 }
 
-@media (min-width: 1024px) {
-  .workspace-panel-header-with-actions {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 639px) {
+  .workspace-panel-header {
     align-items: stretch;
   }
 
-  .workspace-panel-header-with-actions .workspace-panel-heading,
-  .workspace-panel-header-with-actions .workspace-panel-actions {
-    grid-column: 1 / -1;
+  .workspace-panel-heading,
+  .workspace-panel-actions {
+    flex-basis: 100%;
     width: 100%;
   }
 
-  .workspace-panel-header-with-actions .workspace-panel-actions {
+  .workspace-panel-heading {
+    min-width: 0;
+  }
+
+  .workspace-panel-actions {
     justify-content: flex-start;
   }
-}
 
-@media (max-width: 639px) {
   .workspace-page form.grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
   .workspace-page form.grid > * {
     grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 72rem) {
+  .workspace-panel-header-with-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-panel-header-with-actions .workspace-panel-actions {
+    justify-content: flex-start;
   }
 }
 

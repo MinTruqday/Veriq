@@ -6,6 +6,8 @@ from fastapi import HTTPException
 
 from src.clients.authentication import load_accounts, resolve_account
 from src.core.auth import CurrentUser, ai_automation_context, archive_read_permissions, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership
+from src.core.auth import business_role_allows
+from src.core.human_decisions import require_automation_publication_authority
 from src.repositories.common import common_repository
 
 
@@ -169,6 +171,29 @@ async def audit(
     entity_id: str,
     project_id: str | None,
     details: dict | None = None,
+    session=None,
+    event_id: str | None = None,
+):
+    event = build_audit_event(
+        user_id,
+        action,
+        entity_type,
+        entity_id,
+        project_id,
+        details,
+        event_id,
+    )
+    return await common_repository.insert_audit_event(event, session=session)
+
+
+def build_audit_event(
+    user_id: str,
+    action: str,
+    entity_type: str,
+    entity_id: str,
+    project_id: str | None,
+    details: dict | None = None,
+    event_id: str | None = None,
 ):
     automation = ai_automation_context.get()
     event_details = details or {}
@@ -180,7 +205,7 @@ async def audit(
             "automation_definition_id": automation.get("definition_id"),
         }
     event = {
-        "_id": new_id('AUD'),
+        "_id": event_id or new_id('AUD'),
         "project_id": project_id,
         "actor_id": user_id,
         "action": action,
@@ -191,7 +216,7 @@ async def audit(
     }
     if automation and automation.get("principal_id") == user_id:
         event["automation_run_id"] = automation.get("run_id")
-    return await common_repository.insert_audit_event(event)
+    return event
 
 
 async def get_project(
@@ -225,7 +250,24 @@ async def get_project(
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_MEMBERSHIP_INACTIVE'})
     if project.get("administrative_status", 'ACTIVE') != 'ACTIVE':
         raise HTTPException(status_code=423, detail={"code": 'PROJECT_ADMINISTRATIVELY_SUSPENDED'})
+    automation = ai_automation_context.get()
+    automation_publication_allowed = bool(
+        automation
+        and automation.get("principal_id") == user.id
+        and automation.get("publication_project_id") == project_id
+        and permission in set(automation.get("publication_permissions") or [])
+    )
+    if permission.endswith(".approve") or permission in {
+        "proposal.bulk.approve", "release.close", "qualitygate.decide",
+        "qualitygate.accept_risk", "qualitygate.override",
+    }:
+        if not automation_publication_allowed:
+            require_automation_publication_authority(user, permission)
     memberships_roles = roles_for_membership(membership)
+    active_roles = memberships_roles if membership and membership.get("status") == 'ACTIVE' else set()
+    if not automation_publication_allowed and not business_role_allows(permission, active_roles):
+        await audit(user.id, 'project_business_role_denied', 'Project', project_id, project_id, {"permission": permission})
+        raise HTTPException(status_code=403, detail={"code": 'PROJECT_PERMISSION_DENIED', "permission": permission})
     permissions = permissions_for_membership(membership, project.get("settings")) if (
         membership and membership.get("status") == 'ACTIVE'
     ) else set()
@@ -239,6 +281,7 @@ async def get_project(
         permission not in permissions
         and permission not in grant_permissions
         and not assigned_access
+        and not automation_publication_allowed
     ):
         await audit(
             user.id,
@@ -345,7 +388,12 @@ async def get_project_entity(
 
 
 async def optimistic_patch(
-    collection: str, entity_id: str, project_id: str, expected_revision: int, changes: dict
+    collection: str,
+    entity_id: str,
+    project_id: str,
+    expected_revision: int,
+    changes: dict,
+    session=None,
 ):
     cleaned = {
         key: value
@@ -360,6 +408,7 @@ async def optimistic_patch(
         expected_revision,
         cleaned,
         include_project_scope=collection != "projects",
+        session=session,
     )
     if entity:
         return entity

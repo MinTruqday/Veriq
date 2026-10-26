@@ -60,12 +60,14 @@ async def compare_test_import_candidates(project_id, preview, selected_indexes=N
     return results
 
 
-async def store_test_import_preview(project_id, filename, format, preview, user, source=None):
+async def store_test_import_preview(
+    project_id, filename, format, preview, user, source=None, idempotent_job_id=None
+):
     comparisons = await compare_test_import_candidates(project_id, preview)
     for index, matches in comparisons.items():
         preview[index]["similar_cases"] = matches
     job = {
-        "_id": new_id('TIMP'),
+        "_id": idempotent_job_id or new_id('TIMP'),
         "project_id": project_id,
         "filename": filename,
         "format": format,
@@ -75,6 +77,18 @@ async def store_test_import_preview(project_id, filename, format, preview, user,
         "created_at": now(),
         **(source or {}),
     }
+    if idempotent_job_id:
+        persisted = await test_design_repository.upsert_import_once(job)
+        if (
+            not persisted
+            or persisted.get("project_id") != project_id
+            or persisted.get("source_api_operation_id")
+            != (source or {}).get("source_api_operation_id")
+            or persisted.get("source_api_operation_fingerprint")
+            != (source or {}).get("source_api_operation_fingerprint")
+        ):
+            raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_IDEMPOTENCY_CONFLICT"})
+        return persisted
     await test_design_repository.insert_import(job)
     return job
 
@@ -220,8 +234,8 @@ async def preview_test_import(
             draft = TestCaseDraftCreate(
                 title=title,
                 type=row.get("type") or "custom",
-                priority=row.get("priority") or "medium",
-                risk=row.get("risk") or "medium",
+                priority=row.get("priority") or "unassessed",
+                risk=row.get("risk") or "unassessed",
                 objective_doc=text_document(str(row.get("objective") or projection).strip()),
                 preconditions_doc=text_document(str(row.get("preconditions") or row.get("precondition") or "").strip()),
                 steps=steps,
@@ -317,7 +331,73 @@ async def confirm_test_import(
             raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_SOURCE_CHANGED", "message": "Nguồn API đã thay đổi hoặc được lưu trữ Hãy xem trước lại trước khi nhập ca"})
     selected = payload.selected_indexes
     if not selected:
-        raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_SELECTION_REQUIRED"})
+        if (
+            not job.get("source_api_operation_id")
+            or not getattr(user, "_ai_automation_run_id", None)
+            or getattr(user, "_ai_automation_trigger", None) != "API_OPERATION_CONFIRMED"
+        ):
+            raise HTTPException(status_code=422, detail={"code": "TEST_IMPORT_SELECTION_REQUIRED"})
+        safe_candidates = [
+            index
+            for index, item in enumerate(job.get("preview") or [])
+            if not item.get("incomplete")
+            and item.get("draft")
+            and not item.get("similar_cases")
+        ]
+        if safe_candidates:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "TEST_IMPORT_AUTOMATION_EMPTY_SELECTION_UNSAFE"},
+            )
+        claimed = await test_design_repository.claim_import(job_id, job["project_id"])
+        if not claimed:
+            raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_CONFIRM_IN_PROGRESS"})
+        skipped_indexes = [
+            index for index, item in enumerate(job.get("preview") or [])
+            if item.get("similar_cases")
+        ]
+        incomplete_indexes = [
+            index for index, item in enumerate(job.get("preview") or [])
+            if item.get("incomplete") or not item.get("draft")
+        ]
+        try:
+            confirmed = await test_design_repository.confirm_import(
+                job_id,
+                job["project_id"],
+                {
+                    "status": "CONFIRMED",
+                    "created_draft_ids": [],
+                    "selected_indexes": [],
+                    "automatic_skipped_duplicate_indexes": skipped_indexes,
+                    "automatic_skipped_incomplete_indexes": incomplete_indexes,
+                    "confirmed_at": now(),
+                },
+            )
+        except Exception:
+            await test_design_repository.reset_import(job_id, job["project_id"])
+            raise
+        if confirmed.matched_count != 1:
+            await test_design_repository.reset_import(job_id, job["project_id"])
+            raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_CONFIRM_IN_PROGRESS"})
+        await audit(
+            user.id,
+            "test_import_automation_completed_without_unique_cases",
+            "TestImport",
+            job_id,
+            job["project_id"],
+            {
+                "skipped_duplicate_indexes": skipped_indexes,
+                "skipped_incomplete_indexes": incomplete_indexes,
+            },
+        )
+        return envelope(
+            {
+                "job_id": job_id,
+                "drafts": [],
+                "skipped_duplicate_indexes": skipped_indexes,
+                "skipped_incomplete_indexes": incomplete_indexes,
+            }
+        )
     if len(selected) != len(set(selected)):
         raise HTTPException(status_code=422, detail={"code": "DUPLICATE_PREVIEW_INDEX"})
     version_resolutions = payload.version_resolutions
@@ -410,6 +490,24 @@ async def confirm_test_import(
                 "status": 'CONFIRMED',
                 "created_draft_ids": [item["_id"] for item in created],
                 "selected_indexes": selected,
+                **(
+                    {
+                        "automatic_selected_indexes": selected,
+                        "automatic_skipped_duplicate_indexes": [
+                            index
+                            for index, item in enumerate(job.get("preview") or [])
+                            if item.get("similar_cases")
+                        ],
+                        "automatic_skipped_incomplete_indexes": [
+                            index
+                            for index, item in enumerate(job.get("preview") or [])
+                            if item.get("incomplete") or not item.get("draft")
+                        ],
+                    }
+                    if getattr(user, "_ai_automation_trigger", None)
+                    == "API_OPERATION_CONFIRMED"
+                    else {}
+                ),
                 "separate_reasons": {str(index): payload.separate_reasons[index].strip() for index in payload.separate_indexes},
                 "version_resolutions": {
                     str(index): resolution.model_dump() for index, resolution in version_resolutions.items()

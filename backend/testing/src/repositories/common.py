@@ -4,8 +4,41 @@ from src.core.database import database
 
 
 class CommonRepository:
-    async def insert_audit_event(self, event):
-        await database.value.audit_events.insert_one(event)
+    async def list_all_by_id(self, collection_name, query, session=None):
+        """Read a complete result set in stable keyset pages, optionally in a transaction."""
+        records = []
+        last_id = None
+        while True:
+            page_query = dict(query)
+            if last_id is not None:
+                id_after_cursor = {"_id": {"$gt": last_id}}
+                if "_id" in page_query:
+                    page_query = {"$and": [page_query, id_after_cursor]}
+                else:
+                    page_query.update(id_after_cursor)
+            page = await database.value[collection_name].find(
+                page_query, **({"session": session} if session is not None else {})
+            ).sort("_id", 1).to_list(500)
+            if not page:
+                break
+            records.extend(page)
+            last_id = page[-1]["_id"]
+            if len(page) < 500:
+                break
+        return records
+
+    async def list_all_acceptance_criteria(self, requirement_version_id, session=None):
+        """Read every criterion for one Requirement version without silent truncation."""
+        return await self.list_all_by_id(
+            "acceptance_criteria",
+            {"requirement_version_id": requirement_version_id},
+            session,
+        )
+
+    async def insert_audit_event(self, event, session=None):
+        await database.value.audit_events.insert_one(
+            event, **({"session": session} if session is not None else {})
+        )
         return event
 
     async def find_project(self, project_id, projection=None):
@@ -43,6 +76,7 @@ class CommonRepository:
         expected_revision,
         changes,
         include_project_scope=True,
+        session=None,
     ):
         scope = {"_id": entity_id, "revision": expected_revision}
         if include_project_scope:
@@ -51,6 +85,7 @@ class CommonRepository:
             scope,
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def find_entity(self, collection, entity_id):

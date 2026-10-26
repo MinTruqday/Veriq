@@ -15,6 +15,62 @@ def percent(value, total):
     return round(value * 100 / total, 2) if total else 0
 
 
+def scope_traceability_matrix(result, requirement_version_ids):
+    if isinstance(requirement_version_ids, str):
+        requirement_version_ids = [requirement_version_ids]
+    version_ids = list(dict.fromkeys(str(value) for value in requirement_version_ids or [] if value))
+    baselines_by_id = {
+        str(item.get("_id")): item
+        for item in result.get("requirement_versions", [])
+        if item.get("_id") in version_ids
+    }
+    if not version_ids or set(version_ids) != set(baselines_by_id):
+        raise HTTPException(status_code=404, detail={"code": "ENTITY_NOT_FOUND"})
+
+    criteria = [
+        item for item in result.get("acceptance_criteria", [])
+        if item.get("requirement_version_id") in baselines_by_id
+    ]
+    criteria_ids = {item.get("_id") for item in criteria}
+    links = [
+        item for item in result.get("trace_links", [])
+        if (
+            (
+                item.get("source_type") == "requirement_version"
+                and item.get("source_id") in baselines_by_id
+            )
+            or (
+                item.get("source_type") == "acceptance_criterion"
+                and item.get("source_id") in criteria_ids
+            )
+        )
+        and item.get("target_type") == "test_case_version"
+        and item.get("status") in {"CONFIRMED", "SUGGESTED"}
+    ]
+    linked_version_ids = {item.get("target_id") for item in links}
+    test_versions = [
+        item for item in result.get("test_case_versions", [])
+        if item.get("_id") in linked_version_ids
+    ]
+    linked_test_ids = {item.get("test_case_id") for item in test_versions}
+    requirement_ids = {item.get("requirement_id") for item in baselines_by_id.values()}
+    return {
+        "requirements": [
+            item for item in result.get("requirements", [])
+            if item.get("_id") in requirement_ids
+        ],
+        "requirement_versions": [baselines_by_id[value] for value in version_ids],
+        "acceptance_criteria": criteria,
+        "test_cases": [
+            item for item in result.get("test_cases", [])
+            if item.get("_id") in linked_test_ids
+        ],
+        "test_case_versions": test_versions,
+        "trace_links": links,
+        "defects": [],
+    }
+
+
 class TraceabilityService:
     @staticmethod
     async def validate_artifact(artifact_type, artifact_id, project_id):
@@ -147,9 +203,16 @@ class TraceabilityService:
         return updated
 
     @staticmethod
-    async def matrix(project_id, user):
+    async def matrix(project_id, user, requirement_version_id=None, requirement_version_ids=None):
         await get_project(project_id, user, "trace.read")
         role = await get_project_role(project_id, user.id)
+        scoped_version_ids = list(
+            dict.fromkeys(
+                str(value)
+                for value in [requirement_version_id, *(requirement_version_ids or [])]
+                if value
+            )
+        )
         requirements = await traceability_repository.list_records(
             "requirements",
             {"project_id": project_id},
@@ -161,11 +224,32 @@ class TraceabilityService:
             {"_id": {"$in": [item["current_version_id"] for item in requirements]}},
             5000,
         )
+        if scoped_version_ids:
+            baseline_records = await traceability_repository.list_records(
+                "requirement_versions",
+                {"_id": {"$in": scoped_version_ids}, "project_id": project_id},
+                len(scoped_version_ids),
+            )
+            known_version_ids = {item.get("_id") for item in versions}
+            versions.extend(
+                item for item in baseline_records if item.get("_id") not in known_version_ids
+            )
         criteria = await traceability_repository.list_records(
             "acceptance_criteria",
-            {"project_id": project_id},
-            10000,
+            (
+                {
+                    "project_id": project_id,
+                    "requirement_version_id": {"$in": scoped_version_ids},
+                }
+                if scoped_version_ids
+                else {"project_id": project_id}
+            ),
+            10001 if scoped_version_ids else 10000,
         )
+        if scoped_version_ids and len(criteria) > 10000:
+            raise HTTPException(
+                status_code=413, detail={"code": "TRACEABILITY_SCOPE_TOO_LARGE"}
+            )
         tests = await traceability_repository.list_records(
             "test_cases",
             {"project_id": project_id},
@@ -194,9 +278,26 @@ class TraceabilityService:
             20000,
         )
         defects = [visible_defect(item, role) for item in defects]
-        links = await traceability_repository.list_records(
-            "trace_links", {"project_id": project_id}, 50000
-        )
+        trace_query = {"project_id": project_id}
+        trace_limit = 50000
+        if scoped_version_ids:
+            source_ids = list(
+                dict.fromkeys(
+                    [*scoped_version_ids, *(item.get("_id") for item in criteria if item.get("_id"))]
+                )
+            )
+            trace_query["source_id"] = {"$in": source_ids}
+            links = await traceability_repository.list_records(
+                "trace_links", trace_query, trace_limit + 1
+            )
+            if len(links) > trace_limit:
+                raise HTTPException(
+                    status_code=413, detail={"code": "TRACEABILITY_SCOPE_TOO_LARGE"}
+                )
+        else:
+            links = await traceability_repository.list_records(
+                "trace_links", trace_query, trace_limit
+            )
         linked_requirement_version_ids = {
             item.get("source_id")
             for item in links
@@ -275,7 +376,7 @@ class TraceabilityService:
             )
             target_label = f"{target.get('test_case_key', '')} v{target.get('version', '')} {target.get('title', '')}".strip() if target else link.get("target_id")
             enriched_links.append({**link, "source_label": source_label, "target_label": target_label, "obsolete": bool(reasons), "obsolete_reasons": reasons})
-        return {
+        result = {
             "requirements": requirements,
             "requirement_versions": versions,
             "acceptance_criteria": criteria,
@@ -284,6 +385,7 @@ class TraceabilityService:
             "trace_links": enriched_links,
             "defects": defects,
         }
+        return result if not scoped_version_ids else scope_traceability_matrix(result, scoped_version_ids)
 
     @staticmethod
     async def coverage(project_id, build, build_id, release, release_id, user):

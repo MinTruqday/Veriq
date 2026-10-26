@@ -16,7 +16,21 @@ import {
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { testingApi } from "@/features/testing/services/testing.service";
 import { useAnnouncements } from "@/shared/contexts/AnnouncementContext";
-import { availableNavigation, navigationGroupsFor, projectIdFromPath } from "./navigation";
+import { PROJECT_SECTION_SLUGS } from "@/features/testing/routes";
+import {
+  canOpenRoleRestrictedPath,
+  canRenderProtectedRoute,
+  legacyProjectRouteItems,
+  projectSearchRouteItem,
+} from "./navigationAccess.mjs";
+import {
+  availableNavigation,
+  hasNavigationPermission,
+  navigationGroupsFor,
+  navigationItemForPath,
+  projectIdFromPath,
+  testCaseSubsectionItems,
+} from "./navigation";
 
 function collapsedNavigationGroups(groups, pathname) {
   const activeGroup = groups
@@ -123,7 +137,7 @@ export default function AppShell({ children, requireAuth }) {
   const searchParams = useSearchParams();
   const routeQuery = searchParams.get("q") || "";
   const projectId = projectIdFromPath(pathname);
-  const { user, isLoading, logoutState } = useAuth();
+  const { user, isLoading, authError, refreshUser, logoutState } = useAuth();
   const { unreadCount } = useAnnouncements();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -132,8 +146,8 @@ export default function AppShell({ children, requireAuth }) {
   const [permissionsProjectId, setPermissionsProjectId] = useState(null);
   const [planningMethod, setPlanningMethod] = useState(null);
   const [projectContext, setProjectContext] = useState(null);
+  const [projectContextError, setProjectContextError] = useState("");
   const projectContextRequest = useRef(0);
-  const deniedProjectPermissions = useRef(new Map());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiStream, setAiStream] = useState(null);
   const aiStreamDismissal = useRef(null);
@@ -146,7 +160,7 @@ export default function AppShell({ children, requireAuth }) {
       if (!value?.id) return;
       if (aiStreamDismissal.current) window.clearTimeout(aiStreamDismissal.current);
       setAiStream(value);
-      if (value.status !== "streaming") {
+      if (value.status === "complete") {
         aiStreamDismissal.current = window.setTimeout(() => setAiStream(null), 4000);
       }
     };
@@ -165,6 +179,7 @@ export default function AppShell({ children, requireAuth }) {
   }, [pathname]);
   const refreshProjectContext = useCallback(async (id, hideUntilVerified = false) => {
     const requestId = ++projectContextRequest.current;
+    setProjectContextError("");
     if (hideUntilVerified) {
       setProjectPermissions(null);
       setPermissionsProjectId(null);
@@ -172,29 +187,32 @@ export default function AppShell({ children, requireAuth }) {
     try {
       const project = await testingApi.getProject(id);
       if (requestId !== projectContextRequest.current) return;
-      const denied = deniedProjectPermissions.current.get(id) || new Set();
-      setProjectPermissions(
-        (project?.current_permissions || []).filter((permission) => !denied.has(permission)),
-      );
+      setProjectPermissions(project?.current_permissions || []);
       setPermissionsProjectId(id);
       setPlanningMethod(project ? project.planning_method || "SCRUM" : null);
       setProjectContext(project || null);
-    } catch {
+    } catch (error) {
       if (requestId !== projectContextRequest.current) return;
-      setProjectPermissions([]);
-      setPermissionsProjectId(id);
       setPlanningMethod(null);
       setProjectContext(null);
+      if (error?.status === 403 || error?.status === 404) {
+        setProjectPermissions([]);
+        setPermissionsProjectId(id);
+        return;
+      }
+      setProjectPermissions(null);
+      setPermissionsProjectId(null);
+      setProjectContextError("Không thể tải quyền và thông tin dự án. Hãy thử lại.");
     }
   }, []);
   useEffect(() => {
     if (!projectId || !user) {
       projectContextRequest.current += 1;
-      if (!user) deniedProjectPermissions.current.clear();
       setProjectPermissions(null);
       setPermissionsProjectId(null);
       setPlanningMethod(null);
       setProjectContext(null);
+      setProjectContextError("");
       return;
     }
     setProjectPermissions(null);
@@ -211,9 +229,6 @@ export default function AppShell({ children, requireAuth }) {
       if (event.detail?.projectId === projectId && user) {
         const permission = event.detail?.permission;
         if (typeof permission === "string") {
-          const denied = deniedProjectPermissions.current.get(projectId) || new Set();
-          denied.add(permission);
-          deniedProjectPermissions.current.set(projectId, denied);
           setProjectPermissions(
             (current) =>
               current?.filter((grantedPermission) => grantedPermission !== permission) ?? null,
@@ -227,12 +242,12 @@ export default function AppShell({ children, requireAuth }) {
       window.removeEventListener("veriq-project-access-denied", refreshAfterDeniedAction);
   }, [projectId, refreshProjectContext, user]);
   useEffect(() => {
-    if (requireAuth && !isLoading && !user) {
+    if (requireAuth && !isLoading && !user && !authError) {
       const query = searchParams.toString();
       const returnPath = `${pathname}${query ? `?${query}` : ""}`;
       router.replace(`/dang-nhap?next=${encodeURIComponent(returnPath)}`);
     }
-  }, [isLoading, pathname, requireAuth, router, searchParams, user]);
+  }, [authError, isLoading, pathname, requireAuth, router, searchParams, user]);
   useEffect(() => {
     const close = (event) => {
       if (accountRef.current && !accountRef.current.contains(event.target)) setAccountOpen(false);
@@ -263,7 +278,10 @@ export default function AppShell({ children, requireAuth }) {
     });
     const trapFocus = (event) => {
       if (event.key !== "Tab" || !drawer) return;
-      const focusable = Array.from(drawer.querySelectorAll(focusableSelector));
+      const focusable = Array.from(drawer.querySelectorAll(focusableSelector)).filter(
+        (element) =>
+          element.getClientRects().length > 0 && !element.closest('[aria-hidden="true"], [inert]'),
+      );
       if (!focusable.length) {
         event.preventDefault();
         drawer.focus();
@@ -290,7 +308,88 @@ export default function AppShell({ children, requireAuth }) {
   const currentProjectPermissions = permissionsProjectId === projectId ? projectPermissions : null;
   const currentPlanningMethod = permissionsProjectId === projectId ? planningMethod : null;
   const currentProjectContext = permissionsProjectId === projectId ? projectContext : null;
-  if (requireAuth && (isLoading || !user)) {
+  const projectAccessReady =
+    !projectId || (permissionsProjectId === projectId && Array.isArray(currentProjectPermissions));
+  const projectRouteItem = projectId
+    ? navigationItemForPath(navigationGroupsFor(pathname, currentPlanningMethod), pathname, [
+        ...testCaseSubsectionItems(projectId),
+        ...legacyProjectRouteItems(projectId, {
+          projectTasksSlug: PROJECT_SECTION_SLUGS.projectTasks,
+          testDesignSlug: PROJECT_SECTION_SLUGS.testDesign,
+        }),
+        projectSearchRouteItem(projectId),
+      ])
+    : null;
+  const projectRouteDenied =
+    projectAccessReady &&
+    (!projectRouteItem || !hasNavigationPermission(projectRouteItem, currentProjectPermissions));
+  const globalRoleAccess = projectId
+    ? null
+    : canOpenRoleRestrictedPath(navigationGroupsFor(pathname), pathname, user);
+  const globalRouteRequiresAuth = Boolean(globalRoleAccess?.item?.requireAuth && !user);
+  const globalRouteDenied = Boolean(
+    !isLoading &&
+      globalRoleAccess?.item &&
+      !globalRoleAccess.allowed &&
+      !(globalRouteRequiresAuth && authError),
+  );
+  const routeDenied = projectId ? projectRouteDenied : globalRouteDenied;
+  useEffect(() => {
+    if (!projectRouteDenied || !projectId) return;
+    const destination = currentProjectPermissions?.includes("project.read")
+      ? `/du-an/${projectId}`
+      : "/du-an";
+    if (pathname !== destination) router.replace(destination);
+  }, [currentProjectPermissions, pathname, projectId, projectRouteDenied, router]);
+  useEffect(() => {
+    if (projectId || isLoading || !globalRouteDenied) return;
+    if (globalRouteRequiresAuth) {
+      const query = searchParams.toString();
+      const returnPath = `${pathname}${query ? `?${query}` : ""}`;
+      router.replace(`/dang-nhap?next=${encodeURIComponent(returnPath)}`);
+      return;
+    }
+    router.replace("/du-an");
+  }, [
+    globalRouteDenied,
+    globalRouteRequiresAuth,
+    isLoading,
+    pathname,
+    projectId,
+    router,
+    searchParams,
+  ]);
+  if (routeDenied) return null;
+  if (
+    !canRenderProtectedRoute({
+      requireAuth,
+      isLoading,
+      user,
+      projectId,
+      projectAccessReady,
+      routeDenied,
+    })
+  ) {
+    if (requireAuth && !isLoading && !user && authError) {
+      return (
+        <main className="flex min-h-[100dvh] items-center justify-center bg-canvas px-4 py-8">
+          <section
+            className="w-full max-w-md rounded-panel border border-border bg-surface p-6"
+            role="alert"
+          >
+            <h1 className="text-lg font-semibold text-ink">Chưa xác minh được phiên</h1>
+            <p className="mt-2 text-sm text-ink-muted">{authError}</p>
+            <button
+              className="primary-button mt-4"
+              type="button"
+              onClick={() => void refreshUser()}
+            >
+              Thử xác minh lại
+            </button>
+          </section>
+        </main>
+      );
+    }
     return (
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[1280px] gap-8 px-6 py-10">
         <div className="hidden w-48 space-y-3 lg:block">
@@ -315,24 +414,30 @@ export default function AppShell({ children, requireAuth }) {
     <div className="min-h-[100dvh] bg-canvas text-ink">
       {aiStream && (
         <div
-          className="fixed bottom-5 right-5 z-[70] min-w-56 rounded-control border border-border bg-surface px-4 py-3 shadow-lg"
+          className="fixed inset-x-4 bottom-4 z-[70] ml-auto w-auto max-w-sm rounded-control border border-border bg-surface px-4 py-3 shadow-lg sm:inset-x-auto sm:bottom-5 sm:right-5"
           aria-live="polite"
         >
-          <p className="text-sm font-semibold text-ink">
-            {aiStream.status === "complete"
-              ? "AI đã hoàn tất xử lý"
-              : aiStream.status === "failed"
-                ? "AI chưa tạo được kết quả"
-                : "AI đang xử lý nội dung"}
-          </p>
-          {aiStream.status === "failed" && aiStream.message && (
-            <p className="mt-1 max-w-80 text-xs text-ink-muted">{aiStream.message}</p>
-          )}
-          <p className="mt-1 text-xs text-ink-muted">
-            Đã nhận {aiStream.inputCharacters || 0} ký tự đầu vào
-          </p>
-          <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-quiet">
-            <div className="h-full w-2/3 animate-pulse rounded-full bg-brand" />
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink">
+                {aiStream.status === "complete"
+                  ? "Yêu cầu AI đã hoàn tất"
+                  : aiStream.status === "failed"
+                    ? "Không thể hoàn tất yêu cầu AI"
+                    : "AI đang xử lý yêu cầu"}
+              </p>
+              {aiStream.status === "failed" && aiStream.message && (
+                <p className="mt-1 break-words text-xs text-ink-muted">{aiStream.message}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setAiStream(null)}
+              className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-ink-muted hover:bg-surface-quiet hover:text-ink"
+              aria-label="Đóng thông báo AI"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
           </div>
         </div>
       )}
@@ -438,9 +543,7 @@ export default function AppShell({ children, requireAuth }) {
                     type="button"
                     onClick={() => setAccountOpen((value) => !value)}
                     className="flex h-10 items-center gap-2 rounded-control px-1.5 pr-2 text-left hover:bg-surface-quiet"
-                    aria-controls="account-menu"
                     aria-expanded={accountOpen}
-                    aria-haspopup="menu"
                   >
                     <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-brand text-[13px] font-semibold text-white">
                       {user.avatar_url ? (
@@ -463,7 +566,6 @@ export default function AppShell({ children, requireAuth }) {
                   {accountOpen && (
                     <div
                       id="account-menu"
-                      role="menu"
                       className="absolute right-0 top-12 w-60 rounded-panel border border-border bg-surface p-2 shadow-[0_18px_50px_rgba(48,47,42,0.12)]"
                     >
                       <div className="border-b border-border px-3 py-2.5">
@@ -474,7 +576,6 @@ export default function AppShell({ children, requireAuth }) {
                       </div>
                       <Link
                         href="/cai-dat"
-                        role="menuitem"
                         onClick={() => setAccountOpen(false)}
                         className="mt-1 block rounded-control px-3 py-2 text-[14px] hover:bg-surface-quiet"
                       >
@@ -482,7 +583,6 @@ export default function AppShell({ children, requireAuth }) {
                       </Link>
                       <button
                         type="button"
-                        role="menuitem"
                         onClick={logoutState}
                         className="block w-full rounded-control px-3 py-2 text-left text-[14px] text-danger hover:bg-danger-soft"
                       >
@@ -618,9 +718,35 @@ export default function AppShell({ children, requireAuth }) {
 
       <main
         id="main-content"
+        tabIndex={-1}
         className={`min-h-[100dvh] min-w-0 pt-[68px] transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
       >
-        <div className="page-shell">{children}</div>
+        <div className="page-shell">
+          {projectContextError ? (
+            <section
+              className="mx-auto max-w-xl rounded-panel border border-border bg-surface p-6"
+              role="alert"
+            >
+              <h1 className="text-lg font-semibold text-ink">Không thể tải quyền dự án</h1>
+              <p className="mt-2 break-words text-sm text-ink-muted">{projectContextError}</p>
+              <button
+                className="primary-button mt-4"
+                type="button"
+                onClick={() => void refreshProjectContext(projectId, true)}
+              >
+                Thử tải lại
+              </button>
+            </section>
+          ) : !projectAccessReady ? (
+            <div aria-busy="true" aria-label="Đang kiểm tra quyền truy cập" className="space-y-5">
+              <div className="skeleton h-9 w-56 max-w-full" />
+              <div className="skeleton h-4 w-80 max-w-full" />
+              <div className="skeleton h-56 w-full" />
+            </div>
+          ) : routeDenied ? null : (
+            children
+          )}
+        </div>
       </main>
     </div>
   );

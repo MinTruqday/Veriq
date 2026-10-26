@@ -26,7 +26,7 @@ class SessionMetrics:
     user_id: str
     started_at: datetime
     ended_at: Optional[datetime] = None
-    status: Literal["running", "done", "failed", "cancelled"] = "running"
+    status: Literal["running", "done", "waiting_input", "failed", "cancelled"] = "running"
     total_tool_calls: int = 0
     total_llm_calls: int = 0
     total_tokens_in: int = 0
@@ -69,7 +69,9 @@ class AgentMetrics:
         logger.info("Started recording session")
 
     def record_session_end(
-        self, session_id: str, status: Literal["done", "failed", "cancelled"] = "done"
+        self,
+        session_id: str,
+        status: Literal["done", "waiting_input", "failed", "cancelled"] = "done",
     ):
         metrics = self._sessions.get(session_id)
         if not metrics:

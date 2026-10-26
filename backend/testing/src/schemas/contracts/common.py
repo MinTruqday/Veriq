@@ -12,8 +12,11 @@ class SystemRole(str, Enum):
 class CurrentUser(BaseModel):
     _access_token: str = PrivateAttr(default="")
     _ai_automation_run_id: str = PrivateAttr(default="")
+    _ai_automation_trigger: str = PrivateAttr(default="")
+    _ai_automation_source_event_id: str = PrivateAttr(default="")
     _ai_automation_initiator_id: str = PrivateAttr(default="")
     _ai_automation_definition_id: str = PrivateAttr(default="")
+    _ai_automation_publication_permissions: list[str] = PrivateAttr(default_factory=list)
     id: str = Field(alias="_id")
     email: str = ""
     system_role: SystemRole = SystemRole.USER
@@ -52,15 +55,16 @@ KnowledgeAuthority = Literal[
     "DRAFT",
     "UNVERIFIED",
 ]
+
+
 class KnowledgeApprovalStatus(str, Enum):
     DRAFT = "DRAFT"
     IN_REVIEW = "IN_REVIEW"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
 
-TestOutcome: TypeAlias = Literal[
-    "PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"
-]
+
+TestOutcome: TypeAlias = Literal["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]
 TestExecutionStatus: TypeAlias = Literal[
     "PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE", "IN_PROGRESS", "NOT_RUN"
 ]

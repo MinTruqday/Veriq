@@ -65,6 +65,9 @@ class TestStatusReportTransition(BaseModel):
 class TestStatusReportAiDraft(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=200)
     instruction: str = Field(default="", max_length=5000)
+    source_event_id: str = Field(min_length=1, max_length=200)
+    source_event_revision: int = Field(ge=1)
+    source_event_trigger: Literal["STATUS_REPORT_CREATED"]
 
 
 def status_report_snapshot(report):

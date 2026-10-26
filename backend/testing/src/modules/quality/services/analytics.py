@@ -212,7 +212,8 @@ class AnalyticsService:
             reference = item.get("artifact_version_id") or item.get("artifact_id")
             if reference:
                 dense_ids_by_type.setdefault(item.get("artifact_type"), set()).add(reference)
-        valid_dense_ids = set()
+        valid_dense_refs = set()
+        dense_authoritative_records = {}
         for artifact_type, collection, _ in [['requirement_version', 'requirement_versions', 'plain_text_projection'],
  ['test_case_version', 'test_case_versions', 'plain_text_projection'],
  ['defect', 'defects', 'title'],
@@ -224,32 +225,132 @@ class AnalyticsService:
             if not references:
                 continue
             dense_query = {"project_id": project_id, "_id": {"$in": list(references)}}
-            if collection == "requirement_documents" and not user.is_system_admin:
-                dense_query["$or"] = [
-                    {"created_by": user.id},
-                    {"visibility": "project"},
-                    {"visibility": "shared", "shared_with": user.id},
-                ]
+            if collection == "requirement_documents":
+                dense_query["status"] = {"$ne": 'ARCHIVED'}
+                if not user.is_system_admin:
+                    dense_query["$or"] = [
+                        {"created_by": user.id},
+                        {"visibility": "project"},
+                        {"visibility": "shared", "shared_with": user.id},
+                    ]
             documents = await analytics_repository.list_records(
                 collection,
                 dense_query,
                 len(references),
-                projection={"_id": 1},
             )
-            valid_dense_ids.update(item["_id"] for item in documents)
-        dense = [item for item in dense if (item.get("artifact_version_id") or item.get("artifact_id")) in valid_dense_ids]
-        by_version = {item.get("artifact_version_id"): item for item in results}
+            for record in documents:
+                reference = (artifact_type, record["_id"])
+                valid_dense_refs.add(reference)
+                dense_authoritative_records[reference] = {
+                    "artifact_type": artifact_type,
+                    "artifact_id": record.get("requirement_id")
+                    or record.get("test_case_id")
+                    or record["_id"],
+                    "artifact_version_id": record["_id"],
+                    "title": record.get("title")
+                    or record.get("name")
+                    or record.get("filename"),
+                    "status": record.get("status"),
+                    "authority": record.get("authority")
+                    or (
+                        'APPROVED_SOURCE'
+                        if record.get("status") == 'BASELINED'
+                        else 'DRAFT'
+                    ),
+                    "project_id": project_id,
+                }
+        dense = [
+            item for item in dense
+            if (
+                item.get("artifact_type"),
+                item.get("artifact_version_id") or item.get("artifact_id"),
+            )
+            in valid_dense_refs
+        ]
+        dense_by_version = {}
         for item in dense:
-            version_id = item.get("artifact_version_id")
-            if version_id in by_version:
-                by_version[version_id]["score"] = round(
-                    0.45 * by_version[version_id]["score"]
-                    + 0.55 * item["score"],
+            version_id = item.get("artifact_version_id") or item.get("artifact_id")
+            if not version_id:
+                continue
+            dense_by_version.setdefault(
+                (item.get("artifact_type"), version_id), []
+            ).append(item)
+
+        def passage_rank(item):
+            return float(item.get("score") or 0)
+
+        for passages in dense_by_version.values():
+            passages.sort(key=passage_rank, reverse=True)
+
+        by_version = {
+            (
+                item.get("artifact_type"),
+                item.get("artifact_version_id") or item.get("artifact_id"),
+            ): item
+            for item in results
+        }
+        source_location_fields = (
+            "chunk_id",
+            "chunk_index",
+            "chunk_type",
+            "source_spans",
+            "page_numbers",
+            "source_hash",
+            "parser_name",
+            "parser_version",
+            "extraction_status",
+            "index_generation",
+        )
+        for identity, passages in dense_by_version.items():
+            _artifact_type, version_id = identity
+            item = passages[0]
+            retrieved_passages = []
+            seen_chunk_ids = set()
+            for passage in passages:
+                chunk_id = passage.get("chunk_id")
+                if chunk_id and chunk_id in seen_chunk_ids:
+                    continue
+                if chunk_id:
+                    seen_chunk_ids.add(chunk_id)
+                retrieved_passages.append(
+                    {
+                        "text": passage.get("text", ""),
+                        "score": float(passage.get("score") or 0),
+                        **{
+                            field: passage[field]
+                            for field in source_location_fields
+                            if field in passage
+                        },
+                    }
+                )
+            if identity in by_version:
+                merged = by_version[identity]
+                merged["score"] = round(
+                    0.45 * merged["score"] + 0.55 * float(item.get("score") or 0),
                     4,
                 )
-                by_version[version_id]["retrieval_source"] = "hybrid_fusion"
+                merged["retrieval_source"] = "hybrid_fusion"
+                merged["retrieved_passages"] = retrieved_passages
+                merged["text"] = item.get("text", merged.get("text", ""))
+                for field in source_location_fields:
+                    if field in item:
+                        merged[field] = item[field]
             else:
-                by_version[version_id] = item
+                authoritative = dense_authoritative_records.get(
+                    identity, {}
+                )
+                by_version[identity] = {
+                    **authoritative,
+                    **item,
+                    "artifact_type": authoritative.get("artifact_type", item.get("artifact_type")),
+                    "artifact_id": authoritative.get("artifact_id", item.get("artifact_id")),
+                    "artifact_version_id": version_id,
+                    "title": authoritative.get("title", item.get("title")),
+                    "status": authoritative.get("status", item.get("status")),
+                    "authority": authoritative.get("authority", item.get("authority")),
+                    "project_id": project_id,
+                    "retrieved_passages": retrieved_passages,
+                }
         results = list(by_version.values())
         authority_order = (project.get("settings") or {}).get(
             "knowledge_authority_order",

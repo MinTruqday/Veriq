@@ -148,7 +148,7 @@ export default function MonitoringPage({ project }) {
     );
   const createSnapshot = async () => {
     if (!selectedPlanId) return;
-    const answer = await ask({
+    await ask({
       title: "Tạo ảnh chụp giám sát",
       confirmLabel: "Tạo ảnh chụp",
       fields: [
@@ -159,25 +159,26 @@ export default function MonitoringPage({ project }) {
           type: "datetime-local",
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          const value = await testingApi.createMonitoringSnapshot(project._id, {
+            test_plan_id: selectedPlanId,
+            actual_effort: answer.actual_effort === "" ? null : Number(answer.actual_effort),
+            expected_completion: answer.expected_completion || null,
+            risks: [],
+            blockers: [],
+          });
+          setSelectedSnapshot(value);
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      const value = await testingApi.createMonitoringSnapshot(project._id, {
-        test_plan_id: selectedPlanId,
-        actual_effort: answer.actual_effort === "" ? null : Number(answer.actual_effort),
-        expected_completion: answer.expected_completion || null,
-        risks: [],
-        blockers: [],
-      });
-      setSelectedSnapshot(value);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const createAction = async () => {
     if (!selectedSnapshot) return;
-    const answer = await ask({
+    await ask({
       title: "Tạo hành động kiểm soát",
       confirmLabel: "Tạo hành động",
       fields: [
@@ -210,18 +211,19 @@ export default function MonitoringPage({ project }) {
         },
         { name: "decision_reason", label: "Lý do quyết định", required: true, multiline: true },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.createControlAction(project._id, {
+            ...answer,
+            snapshot_id: selectedSnapshot._id,
+            evidence_refs: [selectedSnapshot._id],
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.createControlAction(project._id, {
-        ...answer,
-        snapshot_id: selectedSnapshot._id,
-        evidence_refs: [selectedSnapshot._id],
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const createDecision = async (decision) => {
     if (!selectedSnapshot) return;
@@ -247,35 +249,36 @@ export default function MonitoringPage({ project }) {
         },
         { name: "expiry_at", label: "Ngày hết hạn", required: true, type: "datetime-local" },
       );
-    const answer = await ask({
+    await ask({
       title: decisionLabels[decision],
       confirmLabel: "Ghi nhận quyết định",
       fields,
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.createQualityDecision(selectedSnapshot._id, {
+            idempotency_key: crypto.randomUUID(),
+            decision,
+            reason: answer.reason,
+            override_reason: answer.override_reason || null,
+            risk_acceptance:
+              decision === "ACCEPT_RISK"
+                ? {
+                    risks: answer.risks
+                      .split(/[\n,]/)
+                      .map((value) => value.trim())
+                      .filter(Boolean),
+                    owner_id: answer.owner_id,
+                    expiry_at: answer.expiry_at,
+                  }
+                : null,
+            evidence_refs: [selectedSnapshot._id, gate?._id].filter(Boolean),
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.createQualityDecision(selectedSnapshot._id, {
-        idempotency_key: crypto.randomUUID(),
-        decision,
-        reason: answer.reason,
-        override_reason: answer.override_reason || null,
-        risk_acceptance:
-          decision === "ACCEPT_RISK"
-            ? {
-                risks: answer.risks
-                  .split(/[\n,]/)
-                  .map((value) => value.trim())
-                  .filter(Boolean),
-                owner_id: answer.owner_id,
-                expiry_at: answer.expiry_at,
-              }
-            : null,
-        evidence_refs: [selectedSnapshot._id, gate?._id].filter(Boolean),
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const exportGate = async () => {
     if (!selectedSnapshot) return;
@@ -411,7 +414,7 @@ export default function MonitoringPage({ project }) {
                 snapshot={selectedSnapshot}
                 canOverride={can("testmonitor.exit_criteria.override")}
                 onOverride={async (criterion) => {
-                  const answer = await ask({
+                  await ask({
                     title: "Ghi đè tiêu chí thoát",
                     confirmLabel: "Ghi nhận",
                     fields: [
@@ -423,23 +426,24 @@ export default function MonitoringPage({ project }) {
                       },
                       { name: "reason", label: "Lý do", required: true, multiline: true },
                     ],
+                    onConfirm: async (answer) => {
+                      try {
+                        const value = await testingApi.overrideMonitoringCriterion(
+                          selectedSnapshot._id,
+                          {
+                            expected_revision: selectedSnapshot.revision,
+                            criterion_id: criterion.criterion_id,
+                            ...answer,
+                            evidence_refs: [],
+                          },
+                        );
+                        setSelectedSnapshot(value);
+                        await load();
+                      } catch (reason) {
+                        throw new Error(messageOf(reason));
+                      }
+                    },
                   });
-                  if (!answer) return;
-                  try {
-                    const value = await testingApi.overrideMonitoringCriterion(
-                      selectedSnapshot._id,
-                      {
-                        expected_revision: selectedSnapshot.revision,
-                        criterion_id: criterion.criterion_id,
-                        ...answer,
-                        evidence_refs: [],
-                      },
-                    );
-                    setSelectedSnapshot(value);
-                    await load();
-                  } catch (reason) {
-                    setError(messageOf(reason));
-                  }
                 }}
               />
             </Panel>
@@ -545,7 +549,7 @@ export default function MonitoringPage({ project }) {
             />
           </Panel>
           <Panel title="Nợ bảo trì kiểm thử">
-            <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
               <Metric
                 label="Yêu cầu đã thay đổi"
                 value={selectedSnapshot.metrics?.changed_requirements || 0}
@@ -557,10 +561,6 @@ export default function MonitoringPage({ project }) {
               <Metric
                 label="Phân tích ảnh hưởng đang chờ"
                 value={selectedSnapshot.metrics?.impact_pending || 0}
-              />
-              <Metric
-                label="Đề xuất bảo trì đang chờ"
-                value={selectedSnapshot.metrics?.proposal_pending || 0}
               />
             </div>
           </Panel>

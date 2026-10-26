@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 class ProjectCreate(BaseModel):
     key: str = Field(min_length=2, max_length=30, pattern=r"^[A-Z][A-Z0-9_-]+$")
@@ -14,6 +14,22 @@ class ProjectCreate(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
     initial_qa_user_id: str = Field(min_length=1, max_length=320)
     planning_method: Literal["SCRUM", "KANBAN"] = "SCRUM"
+    planned_start_at: datetime | None = None
+    planned_end_at: datetime | None = None
+    automation_framework: Literal["playwright", "cypress", "selenium"] | None = None
+    automation_language: Literal["typescript", "javascript", "python"] | None = None
+
+    @model_validator(mode="after")
+    def validate_automation_runtime(self):
+        framework = self.automation_framework
+        language = self.automation_language
+        if (framework is None) != (language is None):
+            raise ValueError("Phải cấu hình đồng thời công cụ và ngôn ngữ tự động hóa")
+        if framework == "selenium" and language != "python":
+            raise ValueError("Selenium yêu cầu Python")
+        if framework in {"playwright", "cypress"} and language == "python":
+            raise ValueError("Playwright và Cypress yêu cầu TypeScript hoặc JavaScript")
+        return self
 
 
 class ProjectCapabilities(BaseModel):
@@ -28,6 +44,27 @@ class ProjectPatch(BaseModel):
     locale: str | None = Field(default=None, min_length=2, max_length=20)
     timezone: str | None = Field(default=None, min_length=2, max_length=80)
     settings: dict[str, Any] | None = None
+    planned_start_at: datetime | None = None
+    planned_end_at: datetime | None = None
+    automation_framework: Literal["playwright", "cypress", "selenium"] | None = None
+    automation_language: Literal["typescript", "javascript", "python"] | None = None
+
+    @model_validator(mode="after")
+    def validate_automation_runtime(self):
+        fields_set = self.model_fields_set
+        if not ({"automation_framework", "automation_language"} & fields_set):
+            return self
+        if not {"automation_framework", "automation_language"}.issubset(fields_set):
+            raise ValueError("Phải cập nhật đồng thời công cụ và ngôn ngữ tự động hóa")
+        framework = self.automation_framework
+        language = self.automation_language
+        if (framework is None) != (language is None):
+            raise ValueError("Phải cấu hình đồng thời công cụ và ngôn ngữ tự động hóa")
+        if framework == "selenium" and language != "python":
+            raise ValueError("Selenium yêu cầu Python")
+        if framework in {"playwright", "cypress"} and language == "python":
+            raise ValueError("Playwright và Cypress yêu cầu TypeScript hoặc JavaScript")
+        return self
 
 
 class WorkItemType(str, Enum):
@@ -56,6 +93,8 @@ class WorkItemCreate(BaseModel):
     priority: Literal["LOW", "MEDIUM", "HIGH", "HIGHEST"] = "MEDIUM"
     estimate: float | None = Field(default=None, gt=0, le=1_000_000)
     assignee_id: str | None = Field(default=None, min_length=1, max_length=200)
+    planned_start_at: datetime | None = None
+    planned_end_at: datetime | None = None
     due_at: datetime | None = None
     requirement_ids: list[str] = Field(default_factory=list, max_length=500)
     release_id: str | None = Field(default=None, min_length=1, max_length=200)
@@ -68,6 +107,8 @@ class WorkItemPatch(BaseModel):
     priority: Literal["LOW", "MEDIUM", "HIGH", "HIGHEST"] | None = None
     estimate: float | None = Field(default=None, gt=0, le=1_000_000)
     assignee_id: str | None = Field(default=None, min_length=1, max_length=200)
+    planned_start_at: datetime | None = None
+    planned_end_at: datetime | None = None
     due_at: datetime | None = None
     requirement_ids: list[str] | None = Field(default=None, max_length=500)
     release_id: str | None = Field(default=None, min_length=1, max_length=200)

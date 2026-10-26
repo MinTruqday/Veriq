@@ -26,6 +26,22 @@ export default function TestCaseTransferPanel({
   const [busy, setBusy] = useState(false);
   const [fileResetKey, setFileResetKey] = useState(0);
   const initializedPreviewId = useRef(null);
+  const previousProjectId = useRef(projectId);
+  const projectScope = useRef({ projectId, epoch: 0 });
+  if (projectScope.current.projectId !== projectId) {
+    projectScope.current = { projectId, epoch: projectScope.current.epoch + 1 };
+  }
+  useEffect(() => {
+    if (previousProjectId.current === projectId) return;
+    previousProjectId.current = projectId;
+    initializedPreviewId.current = null;
+    setPreview(null);
+    setAcceptIncomplete(false);
+    setSelectedIndexes([]);
+    setSeparateReasons({});
+    setVersionResolutions({});
+    setFileResetKey((current) => current + 1);
+  }, [projectId, setPreview]);
   useEffect(() => {
     if (!preview?._id || initializedPreviewId.current === preview._id) return;
     initializedPreviewId.current = preview._id;
@@ -47,10 +63,11 @@ export default function TestCaseTransferPanel({
     const input = event.target;
     const file = input.files?.[0];
     if (!file || busy) return;
+    const requestScope = projectScope.current;
     setBusy(true);
     try {
-      const result = await testingApi.uploadTestImport(projectId, file);
-      setPreview(result);
+      const result = await testingApi.uploadTestImport(requestScope.projectId, file);
+      if (projectScope.current.epoch === requestScope.epoch) setPreview(result);
     } catch (reason) {
       onError(messageOf(reason));
     } finally {
@@ -144,7 +161,7 @@ export default function TestCaseTransferPanel({
     >
       {can("testcase.import") && (
         <div className="space-y-4 p-5">
-          <p className="text-sm text-[var(--muted)]">
+          <p className="text-sm text-ink-muted">
             Tệp xuất giữ cấu trúc ca kiểm thử để có thể nhập lại thành bản nháp và đối chiếu trùng
             trước khi xác nhận
           </p>
@@ -158,7 +175,7 @@ export default function TestCaseTransferPanel({
           {preview && (
             <>
               {preview.format === "api_operation" && (
-                <p className="text-sm text-[var(--muted)]">
+                <p className="text-sm text-ink-muted">
                   Bản xem trước từ {preview.filename} chưa được lưu thành ca kiểm thử
                 </p>
               )}
@@ -288,12 +305,12 @@ export default function TestCaseTransferPanel({
               {selectedIndexes.some(
                 (index) => !preview.preview[index].draft?.requirement_version_ids?.length,
               ) && (
-                <p className="text-sm text-[var(--muted)]">
+                <p className="text-sm text-ink-muted">
                   Ca chưa liên kết yêu cầu cần được bổ sung truy vết trước khi gửi duyệt
                 </p>
               )}
               {selectedIndexes.some((index) => versionResolutions[index]?.target_version_id) && (
-                <p className="text-sm text-[var(--muted)]">
+                <p className="text-sm text-ink-muted">
                   Phiên bản mới chỉ là bản nháp Dữ liệu nhập cần được rà soát và phê duyệt trước khi
                   thay phiên bản hiện hành
                 </p>

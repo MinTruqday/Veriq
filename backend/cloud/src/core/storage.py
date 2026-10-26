@@ -145,6 +145,13 @@ async def download_file(object_name: str) -> tuple[bytes, str]:
     return content, response.get("ContentType", "application/octet-stream")
 
 
+async def delete_file(object_name: str) -> None:
+    storage_client = await get_storage_client()
+    await storage_client.delete_object(
+        Bucket=get_bucket(object_name), Key=object_name
+    )
+
+
 async def generate_presigned_url(object_name: str, expiration: int = 3600) -> str:
     storage_client = await get_storage_client()
     params = {"Bucket": get_bucket(object_name), "Key": object_name}

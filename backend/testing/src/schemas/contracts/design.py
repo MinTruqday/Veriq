@@ -1,4 +1,5 @@
 from typing import Any, Literal, TypeAlias
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -6,6 +7,9 @@ from src.schemas.contracts.common import empty_doc
 from src.schemas.contracts.utility import TestDesignChallengeInput
 
 RiskLevel: TypeAlias = Literal["critical", "high", "medium", "low"]
+TestCaseAssessmentLevel: TypeAlias = Literal[
+    "unassessed", "critical", "high", "medium", "low"
+]
 TestScenarioCategory: TypeAlias = Literal[
     "happy_path", "negative", "boundary", "validation", "permission",
     "state_transition", "integration", "error_handling", "data_persistence",
@@ -45,7 +49,7 @@ class ScenarioPatch(BaseModel):
 
 
 class TestStep(BaseModel):
-    id: str
+    id: str = Field(min_length=1, max_length=200)
     order: int = Field(ge=1)
     action_doc: dict[str, Any] = Field(default_factory=empty_doc)
     test_data: dict[str, Any] = Field(default_factory=dict)
@@ -60,6 +64,7 @@ class TestStep(BaseModel):
 
 
 class BddStep(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()), min_length=1, max_length=200)
     keyword: Literal["Given", "When", "Then", "And", "But"]
     text: str = Field(min_length=1, max_length=2000)
     reusable_step_version_id: str | None = Field(default=None, max_length=200)
@@ -69,6 +74,12 @@ class BddScenario(BaseModel):
     feature: str = Field(min_length=2, max_length=300)
     scenario: str = Field(min_length=2, max_length=300)
     steps: list[BddStep] = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def unique_step_ids(self):
+        if len({step.id for step in self.steps}) != len(self.steps):
+            raise ValueError("Định danh bước BDD không được trùng")
+        return self
 
 
 class TestRepositoryNodeCreate(BaseModel):
@@ -102,6 +113,55 @@ class EvidenceQuote(BaseModel):
     quote: str = Field(min_length=2, max_length=1000)
 
 
+class TestCaseObligationEvidence(BaseModel):
+    obligation_key: str = Field(min_length=1, max_length=200)
+    evidence_quotes: list[EvidenceQuote] = Field(min_length=1, max_length=20)
+
+
+class TestCaseCustomFieldCreate(BaseModel):
+    key: str = Field(min_length=2, max_length=80, pattern=r"^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=2, max_length=200)
+    value_type: Literal["text", "number", "boolean", "date", "choice"]
+    required: bool = False
+    choices: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_choices(self):
+        if self.value_type == "choice" and not self.choices:
+            raise ValueError("Trường lựa chọn phải có ít nhất một giá trị")
+        if self.value_type != "choice" and self.choices:
+            raise ValueError("Chỉ trường lựa chọn mới được khai báo danh sách giá trị")
+        if len(self.choices) != len(set(self.choices)):
+            raise ValueError("Giá trị lựa chọn không được trùng")
+        return self
+
+
+class TestCaseCustomFieldPatch(BaseModel):
+    expected_revision: int = Field(ge=1)
+    label: str | None = Field(default=None, min_length=2, max_length=200)
+    required: bool | None = None
+    status: Literal["ACTIVE", "INACTIVE"] | None = None
+
+    @field_validator("label")
+    @classmethod
+    def normalize_label(cls, value):
+        if value is None:
+            return value
+        normalized = " ".join(value.split())
+        if len(normalized) < 2:
+            raise ValueError("Tên trường phải có ít nhất 2 ký tự")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_update(self):
+        fields = self.model_fields_set - {"expected_revision"}
+        if not fields:
+            raise ValueError("Cần có ít nhất một thay đổi")
+        if any(getattr(self, name) is None for name in fields):
+            raise ValueError("Không thể xóa giá trị cấu hình bằng null")
+        return self
+
+
 class TestImportVersionResolution(BaseModel):
     target_version_id: str = Field(min_length=1, max_length=200)
     reason: str = Field(min_length=2, max_length=2000)
@@ -119,8 +179,12 @@ class TestCaseDraftCreate(BaseModel):
     test_case_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
     type: TestCaseType = "happy_path"
-    priority: RiskLevel = "medium"
-    risk: RiskLevel = "medium"
+    test_level: Literal["UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"] | None = None
+    test_kind: Literal["functional", "performance", "security", "usability", "compatibility", "reliability", "accessibility"] | None = None
+    expected_impact: Literal["unassessed", "low", "medium", "high", "critical"] = "unassessed"
+    assessment_reason: str = Field(default="", max_length=2000)
+    priority: TestCaseAssessmentLevel = "unassessed"
+    risk: TestCaseAssessmentLevel = "unassessed"
     objective_doc: dict[str, Any] = Field(default_factory=empty_doc)
     preconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
     steps: list[TestStep] = Field(default_factory=list, max_length=500)
@@ -128,6 +192,8 @@ class TestCaseDraftCreate(BaseModel):
     expected_result_doc: dict[str, Any] = Field(default_factory=empty_doc)
     postconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
     tags: list[str] = Field(default_factory=list, max_length=100)
+    required_skills: list[str] = Field(default_factory=list, max_length=50)
+    custom_values: dict[str, Any] = Field(default_factory=dict, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
     techniques: list[str] = Field(default_factory=list, max_length=50)
     automation_status: AutomationStatus = "manual"
@@ -142,7 +208,9 @@ class TestCaseDraftCreate(BaseModel):
     bdd: BddScenario | None = None
     origin: Literal["manual", "ai_generated", "clone", "import", "maintenance"] = "manual"
     source_evidence: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
+    acceptance_criteria_snapshot_ids: list[str] | None = Field(default=None, max_length=500)
     coverage_obligations: list[str] = Field(default_factory=list, max_length=100)
+    obligation_evidence: list[TestCaseObligationEvidence] = Field(default_factory=list, max_length=100)
     evidence_refs: list[str] = Field(default_factory=list, max_length=200)
     evidence_quotes: list[EvidenceQuote] = Field(default_factory=list, max_length=20)
     challenge_hypotheses: list[TestDesignChallengeInput] = Field(default_factory=list, max_length=5)
@@ -165,6 +233,8 @@ class TestCaseDraftCreate(BaseModel):
         orders = [step.order for step in self.steps]
         if len(orders) != len(set(orders)):
             raise ValueError("Thứ tự bước kiểm thử không được trùng")
+        if len({step.id for step in self.steps}) != len(self.steps):
+            raise ValueError("Định danh bước kiểm thử không được trùng")
         if self.evidence_refs and not set(self.evidence_refs) <= {
             item.get("artifact_version_id") for item in self.source_evidence
         }:
@@ -179,15 +249,54 @@ class TestCaseDraftCreate(BaseModel):
             for quote in self.evidence_quotes
         ):
             raise ValueError("Trích dẫn không nằm trong nguồn của ca kiểm thử")
+        obligation_keys = [item.obligation_key for item in self.obligation_evidence]
+        if len(obligation_keys) != len(set(obligation_keys)):
+            raise ValueError("Dẫn chứng nghĩa vụ không được trùng")
+        if not set(obligation_keys) <= set(self.coverage_obligations):
+            raise ValueError("Dẫn chứng phải thuộc nghĩa vụ của ca kiểm thử")
+        if self.origin == "ai_generated" and self.coverage_obligations and set(
+            obligation_keys
+        ) != set(self.coverage_obligations):
+            raise ValueError("Mỗi nghĩa vụ AI phải có dẫn chứng riêng")
+        case_quotes = {(item.evidence_ref, item.quote) for item in self.evidence_quotes}
+        if any(
+            (quote.evidence_ref, quote.quote) not in case_quotes
+            for item in self.obligation_evidence
+            for quote in item.evidence_quotes
+        ):
+            raise ValueError("Dẫn chứng nghĩa vụ không nằm trong trích dẫn của ca")
         return self
+
+    @field_validator("required_skills")
+    @classmethod
+    def normalize_required_skills(cls, values):
+        normalized = []
+        seen = set()
+        for value in values:
+            item = " ".join(str(value).split())
+            key = item.casefold()
+            if item and key not in seen:
+                normalized.append(item)
+                seen.add(key)
+        if any(len(value) > 120 for value in normalized):
+            raise ValueError("Kỹ năng yêu cầu không được dài quá 120 ký tự")
+        return normalized
+
+
+class TestCaseDraftBatchComparisonInput(BaseModel):
+    items: list[TestCaseDraftCreate] = Field(min_length=2, max_length=100)
 
 
 class TestCaseDraftPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=2, max_length=300)
     type: TestCaseType | None = None
-    priority: RiskLevel | None = None
-    risk: RiskLevel | None = None
+    test_level: Literal["UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"] | None = None
+    test_kind: Literal["functional", "performance", "security", "usability", "compatibility", "reliability", "accessibility"] | None = None
+    expected_impact: Literal["unassessed", "low", "medium", "high", "critical"] | None = None
+    assessment_reason: str | None = Field(default=None, max_length=2000)
+    priority: TestCaseAssessmentLevel | None = None
+    risk: TestCaseAssessmentLevel | None = None
     objective_doc: dict[str, Any] | None = None
     preconditions_doc: dict[str, Any] | None = None
     steps: list[TestStep] | None = None
@@ -195,6 +304,8 @@ class TestCaseDraftPatch(BaseModel):
     expected_result_doc: dict[str, Any] | None = None
     postconditions_doc: dict[str, Any] | None = None
     tags: list[str] | None = None
+    required_skills: list[str] | None = Field(default=None, max_length=50)
+    custom_values: dict[str, Any] | None = Field(default=None, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
     techniques: list[str] | None = None
     automation_status: AutomationStatus | None = None
@@ -207,6 +318,7 @@ class TestCaseDraftPatch(BaseModel):
     scenario_id: str | None = None
     repository_node_id: str | None = Field(default=None, max_length=200)
     bdd: BddScenario | None = None
+    duplicate_reason: str | None = Field(default=None, min_length=2, max_length=2000)
 
     @field_validator(
         "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc"
@@ -219,11 +331,60 @@ class TestCaseDraftPatch(BaseModel):
             raise ValueError("Tiptap JSON không hợp lệ")
         return value
 
+    @field_validator("required_skills")
+    @classmethod
+    def normalize_required_skills(cls, values):
+        if values is None:
+            return values
+        normalized = []
+        seen = set()
+        for value in values:
+            item = " ".join(str(value).split())
+            key = item.casefold()
+            if item and key not in seen:
+                normalized.append(item)
+                seen.add(key)
+        if any(len(value) > 120 for value in normalized):
+            raise ValueError("Kỹ năng yêu cầu không được dài quá 120 ký tự")
+        return normalized
+
 
 class TestCaseFreezeInput(BaseModel):
     expected_revision: int = Field(ge=1)
     change_reason: str = Field(default="Phê duyệt phiên bản kiểm thử", max_length=2000)
     review_note: str = Field(default="", max_length=2000)
+
+
+class TestCaseMergeChoice(BaseModel):
+    field: str = Field(min_length=1, max_length=100)
+    step_id: str | None = Field(default=None, max_length=200)
+    source: Literal["ORIGINAL", "AI", "MANUAL"]
+
+
+class TestCaseMergeSave(BaseModel):
+    expected_revision: int = Field(ge=1)
+    comparison_token: str = Field(min_length=64, max_length=64)
+    operation_id: str = Field(min_length=8, max_length=100)
+    result: TestCaseDraftCreate
+    choices: list[TestCaseMergeChoice] = Field(default_factory=list, max_length=2000)
+
+
+class TestCaseBatchAcceptItem(BaseModel):
+    draft_id: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=1)
+    comparison_token: str = Field(min_length=64, max_length=64)
+
+
+class TestCaseBatchAccept(BaseModel):
+    items: list[TestCaseBatchAcceptItem] = Field(min_length=1, max_length=100)
+    operation_id: str = Field(min_length=8, max_length=100)
+    review_note: str = Field(min_length=2, max_length=2000)
+
+    @model_validator(mode="after")
+    def unique_drafts(self):
+        if len({item.draft_id for item in self.items}) != len(self.items):
+            raise ValueError("Nhóm duyệt không được có bản nháp trùng")
+        return self
 
 
 class TestCaseCloneInput(BaseModel):

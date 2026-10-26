@@ -2,9 +2,11 @@ import xml.etree.ElementTree as xml
 
 from fastapi import HTTPException
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
+from src.modules.integrations.services.junit_import_identity import junit_import_source_hash
 
 
 def junit_cases(content):
@@ -37,28 +39,21 @@ async def import_junit_result(project_id, test_run_id, content, user):
     run = await database.value.test_runs.find_one({"_id": test_run_id, "project_id": project_id})
     if not run:
         raise HTTPException(status_code=422, detail={"code": "INVALID_TEST_RUN"})
+    source_hash = junit_import_source_hash(test_run_id, content)
+    existing_receipt = await database.value.junit_result_imports.find_one(
+        {"project_id": project_id, "test_run_id": test_run_id, "source_hash": source_hash}
+    )
+    if existing_receipt:
+        return existing_receipt
     rows = junit_cases(content)
     allowed = set(run.get("test_case_version_ids", []))
     timestamp = now()
     imported, unresolved = [], []
-    for row in rows:
-        version_id = row["test_case_version_id"]
-        if not version_id or version_id not in allowed:
-            unresolved.append(row)
-            continue
-        result = await database.value.test_results.find_one({"test_run_id": test_run_id, "test_case_version_id": version_id})
-        if not result:
-            unresolved.append(row)
-            continue
-        await database.value.test_results.update_one(
-            {"_id": result["_id"], "revision": result.get("revision", 1)},
-            {"$set": {"status": row["status"], "note": row["message"], "executor_id": "automation:junit", "completed_at": timestamp, "updated_at": timestamp}, "$inc": {"revision": 1}},
-        )
-        imported.append(version_id)
     receipt = {
         "_id": new_id("JUNIT"),
         "project_id": project_id,
         "test_run_id": test_run_id,
+        "source_hash": source_hash,
         "mapped_test_case_version_ids": imported,
         "unresolved": unresolved,
         "status": "NEEDS_MAPPING" if unresolved else "IMPORTED",
@@ -66,8 +61,71 @@ async def import_junit_result(project_id, test_run_id, content, user):
         "created_by": user.id,
         "created_at": timestamp,
     }
-    await database.value.junit_result_imports.insert_one(receipt)
-    await audit(user.id, "junit_result_imported", "JUnitResultImport", receipt["_id"], project_id, {"mapped": len(imported), "unresolved": len(unresolved)})
+    try:
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                existing_receipt = await database.value.junit_result_imports.find_one(
+                    {
+                        "project_id": project_id,
+                        "test_run_id": test_run_id,
+                        "source_hash": source_hash,
+                    },
+                    session=session,
+                )
+                if existing_receipt:
+                    return existing_receipt
+                for row in rows:
+                    version_id = row["test_case_version_id"]
+                    if not version_id or version_id not in allowed:
+                        unresolved.append(row)
+                        continue
+                    result = await database.value.test_results.find_one(
+                        {"test_run_id": test_run_id, "test_case_version_id": version_id},
+                        session=session,
+                    )
+                    if not result:
+                        unresolved.append(row)
+                        continue
+                    updated_result = await database.value.test_results.update_one(
+                        {"_id": result["_id"], "revision": result.get("revision", 1)},
+                        {
+                            "$set": {
+                                "status": row["status"],
+                                "note": row["message"],
+                                "executor_id": "automation:junit",
+                                "completed_at": timestamp,
+                                "updated_at": timestamp,
+                            },
+                            "$inc": {"revision": 1},
+                        },
+                        session=session,
+                    )
+                    if not updated_result.matched_count:
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "JUNIT_RESULT_CHANGED_RETRY_IMPORT"},
+                        )
+                    imported.append(version_id)
+                receipt["mapped_test_case_version_ids"] = imported
+                receipt["unresolved"] = unresolved
+                receipt["status"] = "NEEDS_MAPPING" if unresolved else "IMPORTED"
+                await database.value.junit_result_imports.insert_one(receipt, session=session)
+                await audit(
+                    user.id,
+                    "junit_result_imported",
+                    "JUnitResultImport",
+                    receipt["_id"],
+                    project_id,
+                    {"mapped": len(imported), "unresolved": len(unresolved)},
+                    session=session,
+                )
+    except DuplicateKeyError:
+        existing_receipt = await database.value.junit_result_imports.find_one(
+            {"project_id": project_id, "test_run_id": test_run_id, "source_hash": source_hash}
+        )
+        if existing_receipt:
+            return existing_receipt
+        raise
     return receipt
 
 

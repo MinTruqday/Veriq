@@ -11,6 +11,7 @@ from src.clients.knowledge import knowledge_client
 from src.clients.notification import notification_client
 from src.repositories.cache import DocumentCacheRepository
 from src.repositories.document import DocumentRepository
+from src.repositories.document_ingestion_outbox import document_ingestion_outbox
 from src.schemas.document import DocumentContentUpdate, DocumentCreate, DocumentInDB, DocumentStatus
 from src.services.document.base import can_read_full, is_admin, pwd_context, serialize_document
 
@@ -42,6 +43,9 @@ class DocumentCrudService:
         doc_data["is_deleted"] = False
         doc_data["created_at"] = datetime.now(timezone.utc)
         doc_data["updated_at"] = datetime.now(timezone.utc)
+        if doc_data.get("file_url"):
+            doc_data["indexing_status"] = "queued"
+            doc_data["is_indexed"] = False
 
         if doc_in.password:
             doc_data["access_password_hash"] = pwd_context.hash(doc_in.password)
@@ -51,11 +55,11 @@ class DocumentCrudService:
 
         if doc_data.get("file_url"):
             try:
-                await knowledge_client.index_document(
-                    doc_data["_id"], str(current_user.id)
+                await document_ingestion_outbox.enqueue(
+                    doc_data, user_id=str(current_user.id)
                 )
             except Exception:
-                logger.exception("Create ingest webhook failed")
+                logger.exception("Create ingest outbox persistence failed")
 
         return serialize_document(doc_data)
 
@@ -90,6 +94,7 @@ class DocumentCrudService:
                 "artifact_metadata": document.get("artifact_metadata"),
                 "is_indexed": document.get("is_indexed", False),
                 "indexing_status": document.get("indexing_status", "not_started"),
+                "indexing_progress": document.get("indexing_progress"),
                 "indexing_error": document.get("indexing_error"),
                 "index_report": document.get(
                     "index_report", {"failed_chunks": [], "quarantined_chunks": []}
@@ -242,24 +247,26 @@ class DocumentCrudService:
                 {"_id": document_id},
                 {
                     "$set": {"indexing_status": "queued", "is_indexed": False},
-                    "$unset": {"indexing_error": ""},
+                    "$unset": {"indexing_error": "", "index_dispatch_event_id": ""},
                 },
             )
             try:
-                await knowledge_client.index_document(
-                    document_id, document.get("creator_id", "")
+                await document_ingestion_outbox.enqueue(
+                    {**document, **update_data, "_id": document_id},
+                    user_id=str(document.get("creator_id") or ""),
+                    force_new=True,
                 )
             except Exception:
                 await DocumentRepository.update_one(
                     {"_id": document_id},
                     {
                         "$set": {
-                            "indexing_status": "failed",
-                            "indexing_error": "indexing_dispatch_failed",
+                            "indexing_status": "queued",
+                            "indexing_error": "outbox_persistence_pending",
                         }
                     },
                 )
-                logger.exception(f"Ingest webhook dispatch failed for document_id={document_id}")
+                logger.exception(f"Ingest outbox persistence failed for document_id={document_id}")
 
         updated = await DocumentRepository.find_one({"_id": document_id})
         return serialize_document(updated)
@@ -277,11 +284,17 @@ class DocumentCrudService:
             raise HTTPException(status_code=422, detail="Tài liệu chưa có tệp nguồn")
         await DocumentRepository.update_one(
             {"_id": document_id},
-            {"$set": {"indexing_status": "queued"}, "$unset": {"indexing_error": ""}},
+            {
+                "$set": {"indexing_status": "queued"},
+                "$unset": {"indexing_error": "", "index_dispatch_event_id": ""},
+            },
         )
         try:
-            await knowledge_client.index_document(
-                document_id, document.get("creator_id", "")
+            await document_ingestion_outbox.enqueue(
+                document,
+                user_id=str(document.get("creator_id") or ""),
+                superseded_document_id=str(document.get("previous_version_id") or ""),
+                force_new=True,
             )
         except Exception:
             await DocumentRepository.update_one(

@@ -34,6 +34,26 @@ async def list_analyses(project_id, user):
     return {"items": items, "total": len(items)}
 
 
+async def latest_hypothesis_result(analysis_id, user):
+    analysis = await get_analysis(analysis_id, user, "causalanalysis.read")
+    return await causal_analysis_repository.find_latest_ai_result(
+        analysis["project_id"],
+        analysis_id,
+        "CAUSAL_ANALYSIS_HYPOTHESES",
+        {
+            "_id": 1,
+            "suggestions": 1,
+            "candidate_only": 1,
+            "human_confirmation_required": 1,
+            "created_at": 1,
+            "model": 1,
+            "confidence": 1,
+            "status": 1,
+            "reason_codes": 1,
+        },
+    )
+
+
 async def suggest_candidates(project_id, user):
     project = await get_project(project_id, user, "causalanalysis.read")
     project_settings = project.get("settings") or {}

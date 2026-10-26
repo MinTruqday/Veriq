@@ -4,9 +4,13 @@ import json
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.common import audit, envelope, get_project, get_project_entity, new_id, now
+from src.core.database import database
+from src.clients.ai_automation import queue_api_operation_confirmed
 from src.core.rich_text import text_document
 from src.schemas.contracts.design import TestCaseDraftCreate
+from src.schemas.test_analysis import GeneratedCase
 from src.schemas.contracts.requirements import (
     APIArtifactArchive,
     APIArtifactConfirm,
@@ -15,7 +19,6 @@ from src.schemas.contracts.requirements import (
     ImportCreate,
 )
 from src.modules.integrations.services.api_artifact_formats import (
-    api_case_blueprints,
     operation_fingerprint,
     operation_identity,
     parse_openapi,
@@ -25,6 +28,7 @@ from src.modules.integrations.services.api_artifact_formats import (
     sanitize_postman,
 )
 from src.repositories.api_artifact import api_artifact_repository
+from src.repositories.test_design import test_design_repository
 from src.modules.design.services.test_case_transfer import (
     confirm_test_import,
     export_test_cases,
@@ -43,6 +47,42 @@ __all__ = [
     "recover_trace_links",
     "upload_test_import",
 ]
+
+
+def api_operation_source_text(operation):
+    schemas = operation.get("schemas")
+    if not isinstance(schemas, dict):
+        schemas = {}
+    contract = {
+        key: value for key, value in operation.items() if key != "schemas"
+    }
+    pending = []
+
+    def collect_references(value):
+        if isinstance(value, dict):
+            reference = value.get("$ref")
+            if isinstance(reference, str) and reference.startswith(
+                "#/components/schemas/"
+            ):
+                name = reference.removeprefix("#/components/schemas/").split("/", 1)[0]
+                pending.append(name.replace("~1", "/").replace("~0", "~"))
+            for child in value.values():
+                collect_references(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect_references(child)
+
+    collect_references(contract)
+    selected = {}
+    while pending:
+        name = pending.pop(0)
+        if name in selected or name not in schemas:
+            continue
+        selected[name] = schemas[name]
+        collect_references(schemas[name])
+    if selected:
+        contract["schemas"] = selected
+    return json.dumps(contract, sort_keys=True, ensure_ascii=False, indent=2, default=str)
 
 
 async def list_api_artifacts(
@@ -68,6 +108,34 @@ async def get_api_artifact(artifact_id: str, user: CurrentUser):
             {"project_id": artifact["project_id"], "import_id": artifact_id},
             5000,
             ("path", 1),
+        )
+    previews = await test_design_repository.list_imports(
+        artifact["project_id"], {"source_api_import_id": artifact_id}, 5000
+    ) if artifact.get("status") == 'CONFIRMED' else []
+    preview_by_operation = {
+        item.get("source_api_operation_id"): item
+        for item in previews
+        if item.get("source_api_operation_id")
+    }
+    event_ids = [
+        f"api-operation:{item['_id']}:r{item.get('revision', 1)}"
+        for item in operations
+    ]
+    event_rows = (
+        await database.value.ai_automation_outbox.find(
+            {"_id": {"$in": event_ids}}, {"_id": 1, "status": 1}
+        ).to_list(len(event_ids))
+        if event_ids
+        else []
+    )
+    event_by_id = {item["_id"]: item.get("status") for item in event_rows}
+    for operation in operations:
+        preview = preview_by_operation.get(operation["_id"])
+        if preview:
+            operation["test_import_preview_id"] = preview["_id"]
+            operation["test_import_preview_status"] = preview.get("status")
+        operation["automation_dispatch_status"] = event_by_id.get(
+            f"api-operation:{operation['_id']}:r{operation.get('revision', 1)}"
         )
     return envelope(
         {**public_api_import(artifact, include_preview=True), "operations": operations},
@@ -185,6 +253,10 @@ async def confirm_api_artifact(
             5000,
             ("path", 1),
         )
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                for operation in operations:
+                    await queue_api_operation_confirmed(operation, user, session)
         return envelope(
             {**public_api_import(artifact), "operations": operations}, revision=artifact["revision"]
         )
@@ -225,30 +297,61 @@ async def confirm_api_artifact(
             "import_id": artifact_id,
             "source_index": index,
             **preview[index],
+            "revision": 1,
             "created_at": timestamp,
         }
         for index in selected
     ]
-    for operation in operations:
-        await api_artifact_repository.upsert_operation(operation)
-    updated = await api_artifact_repository.transition_import(
-        {
-            "_id": artifact_id,
-            "project_id": artifact["project_id"],
-            "revision": payload.expected_revision,
-            "status": 'CONFIRMING',
-            "idempotency_key": payload.idempotency_key,
-        },
-        {
-            "status": 'CONFIRMED',
-            "operation_ids": [operation["_id"] for operation in operations],
-            "idempotency_key": payload.idempotency_key,
-            "confirmed_by": user.id,
-            "confirmed_at": timestamp,
-            "updated_at": timestamp,
-        },
-        increment_revision=True,
-    )
+    async def persist_confirmation(session):
+        for operation in operations:
+            await api_artifact_repository.upsert_operation(operation, session=session)
+        updated_import = await api_artifact_repository.transition_import(
+            {
+                "_id": artifact_id,
+                "project_id": artifact["project_id"],
+                "revision": payload.expected_revision,
+                "status": 'CONFIRMING',
+                "idempotency_key": payload.idempotency_key,
+            },
+            {
+                "status": 'CONFIRMED',
+                "operation_ids": [operation["_id"] for operation in operations],
+                "idempotency_key": payload.idempotency_key,
+                "confirmed_by": user.id,
+                "confirmed_at": timestamp,
+                "updated_at": timestamp,
+            },
+            increment_revision=True,
+            session=session,
+        )
+        if not updated_import:
+            current_import = await api_artifact_repository.find_import(
+                artifact_id, artifact["project_id"], session=session
+            )
+            if not current_import or current_import.get("status") != 'CONFIRMED':
+                raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
+            updated_import = current_import
+        persisted_operations = await api_artifact_repository.list_operations(
+            {"project_id": artifact["project_id"], "import_id": artifact_id},
+            5000,
+            ("path", 1),
+            session=session,
+        )
+        await audit(
+            user.id,
+            'api_artifact_confirmed',
+            'APIImport',
+            artifact_id,
+            artifact["project_id"],
+            {"operation_count": len(persisted_operations)},
+            session=session,
+        )
+        for operation in persisted_operations:
+            await queue_api_operation_confirmed(operation, user, session)
+        return updated_import, persisted_operations
+
+    async with await database.client.start_session() as session:
+        updated, persisted = await session.with_transaction(persist_confirmation)
     if not updated:
         current = await api_artifact_repository.find_import(
             artifact_id, artifact["project_id"]
@@ -256,19 +359,6 @@ async def confirm_api_artifact(
         if not current or current.get("status") != 'CONFIRMED':
             raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
         updated = current
-    persisted = await api_artifact_repository.list_operations(
-        {"project_id": artifact["project_id"], "import_id": artifact_id},
-        5000,
-        ("path", 1),
-    )
-    await audit(
-        user.id,
-        'api_artifact_confirmed',
-        'APIImport',
-        artifact_id,
-        artifact["project_id"],
-        {"operation_count": len(persisted)},
-    )
     return envelope(
         {**public_api_import(updated), "operations": persisted}, revision=updated["revision"]
     )
@@ -281,19 +371,74 @@ async def list_api_operations(project_id: str, user: CurrentUser):
     )
     if not artifacts:
         return envelope([])
-    return envelope(
-        await api_artifact_repository.list_operations(
-            {
-                "project_id": project_id,
-                "import_id": {"$in": [artifact["_id"] for artifact in artifacts]},
-            },
-            5000,
-            ("path", 1),
-        )
+    operations = await api_artifact_repository.list_operations(
+        {
+            "project_id": project_id,
+            "import_id": {"$in": [artifact["_id"] for artifact in artifacts]},
+        },
+        5000,
+        ("path", 1),
     )
+    previews = await test_design_repository.list_imports(
+        project_id,
+        {"source_api_operation_id": {"$in": [item["_id"] for item in operations]}},
+        5000,
+    )
+    preview_by_operation = {
+        item["source_api_operation_id"]: item
+        for item in previews
+        if item.get("source_api_operation_id")
+    }
+    event_ids = [
+        f"api-operation:{item['_id']}:r{item.get('revision', 1)}"
+        for item in operations
+    ]
+    event_rows = (
+        await database.value.ai_automation_outbox.find(
+            {"_id": {"$in": event_ids}}, {"_id": 1, "status": 1}
+        ).to_list(len(event_ids))
+        if event_ids
+        else []
+    )
+    event_by_id = {item["_id"]: item.get("status") for item in event_rows}
+    for operation in operations:
+        preview = preview_by_operation.get(operation["_id"])
+        if preview:
+            operation["test_import_preview_id"] = preview["_id"]
+            operation["test_import_preview_status"] = preview.get("status")
+        operation["automation_dispatch_status"] = event_by_id.get(
+            f"api-operation:{operation['_id']}:r{operation.get('revision', 1)}"
+        )
+    return envelope(operations)
+
+
+async def get_api_operation(operation_id: str, user: CurrentUser):
+    operation = await get_project_entity(
+        "api_operations", operation_id, user, "apiartifact.read"
+    )
+    artifact = await api_artifact_repository.find_import(
+        operation.get("import_id"), operation.get("project_id")
+    )
+    if (
+        not artifact
+        or artifact.get("status") != "CONFIRMED"
+        or operation.get("project_id") != artifact.get("project_id")
+        or operation.get("import_id") != artifact.get("_id")
+    ):
+        raise HTTPException(status_code=409, detail={"code": "API_OPERATION_SOURCE_INVALID"})
+    return envelope(operation, revision=operation.get("revision", 1))
 
 
 async def generate_api_tests(operation_id: str, user: CurrentUser):
+    if (
+        not getattr(user, "_ai_automation_run_id", None)
+        or getattr(user, "_ai_automation_trigger", None)
+        != "API_OPERATION_CONFIRMED"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "API_TEST_GENERATION_REQUIRES_AUTOMATION_EVENT"},
+        )
     operation = await get_project_entity(
         'api_operations', operation_id, user, 'ai.generate_api_testcase'
     )
@@ -304,25 +449,133 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
     )
     if not artifact or artifact.get("status") != 'CONFIRMED':
         raise HTTPException(status_code=409, detail={"code": "API_ARTIFACT_NOT_CONFIRMED"})
-    cases = api_case_blueprints(operation)
+    source_fingerprint = operation_fingerprint(operation)
+    idempotent_job_id = (
+        "TIMP-"
+        + hashlib.sha256(
+            f"{operation_id}:{source_fingerprint}".encode()
+        ).hexdigest()[:32]
+    )
+    existing_job = await test_design_repository.find_import(
+        operation["project_id"], idempotent_job_id
+    )
+    if existing_job:
+        if (
+            existing_job.get("source_api_operation_id") != operation_id
+            or existing_job.get("source_api_operation_fingerprint")
+            != source_fingerprint
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_IMPORT_IDEMPOTENCY_CONFLICT"},
+            )
+        return envelope(existing_job)
+    source_text = api_operation_source_text(operation)
+    evidence_chunks = [
+        source_text[index : index + 3500]
+        for index in range(0, len(source_text), 3500)
+    ]
+    if len(evidence_chunks) > 100:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "API_OPERATION_EVIDENCE_TOO_LARGE"},
+        )
+    evidence = [
+        {
+            "artifact_type": "api_operation",
+            "artifact_id": operation_id,
+            "artifact_version_id": operation_id,
+            "source_version": str(operation.get("revision", 1)),
+            "authority": "CONFIRMED_API_DEFINITION",
+            "text": chunk,
+        }
+        for chunk in evidence_chunks
+    ]
+    ai_result = await request_ai_automation(
+        "test_generation",
+        operation["project_id"],
+        "Tạo các ca kiểm thử API có bước thực thi cụ thể, dữ liệu đầu vào và kết quả kiểm chứng được. Chỉ dùng hành vi, tham số, schema, bảo mật và mã phản hồi được mô tả trong thao tác API đã xác nhận. Không suy diễn hành vi lỗi hoặc giới hạn không có trong nguồn. Trả trích dẫn nguyên văn từ nguồn cho từng ca.",
+        evidence,
+    )
+    if ai_result.get("status") != "SUCCESS" or ai_result.get("degraded_mode"):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "API_TEST_GENERATION_UNAVAILABLE",
+                "retryable": True,
+                "reason_codes": ai_result.get("reason_codes", []),
+            },
+        )
+    try:
+        cases = [
+            GeneratedCase.model_validate(item)
+            for item in ai_result.get("suggestions", [])
+        ]
+    except Exception as error:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "API_TEST_GENERATION_CONTRACT_INVALID"},
+        ) from error
     if not cases:
-        raise HTTPException(status_code=422, detail={"code": "API_OPERATION_HAS_NO_TESTABLE_RESPONSES", "message": "Thao tác API chưa có phản hồi đủ rõ trong đặc tả để đề xuất ca kiểm thử"})
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "API_TEST_GENERATION_EVIDENCE_INSUFFICIENT",
+                "warnings": ai_result.get("warnings", []),
+            },
+        )
     preview = []
-    for case in cases:
+    for case_index, case in enumerate(cases):
+        if (
+            set(case.evidence_refs) != {operation_id}
+            or case.acceptance_criterion_ids
+            or case.coverage_obligations
+            or case.challenge_techniques
+            or not case.evidence_quotes
+            or any(
+                quote.evidence_ref != operation_id
+                or quote.quote not in source_text
+                for quote in case.evidence_quotes
+            )
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail={"code": "API_TEST_GENERATION_GROUNDING_INVALID"},
+            )
         draft = TestCaseDraftCreate(
-            title=case["title"],
-            type='api',
-            expected_result_doc=text_document(case["expected"]),
-            tags=['api'],
+            title=case.title,
+            type=case.category,
+            objective_doc=text_document(case.objective),
+            preconditions_doc=text_document(case.preconditions),
+            steps=[
+                {
+                    "id": hashlib.sha256(
+                        f"{operation_id}:{case_index}:{step_index}".encode()
+                    ).hexdigest()[:24],
+                    "order": step_index + 1,
+                    "action_doc": text_document(step.action),
+                    "test_data": step.test_data,
+                    "expected_doc": text_document(step.expected),
+                }
+                for step_index, step in enumerate(case.steps)
+            ],
+            expected_result_doc=text_document(case.expected),
+            techniques=case.techniques,
+            evidence_refs=case.evidence_refs,
+            evidence_quotes=[item.model_dump() for item in case.evidence_quotes],
+            tags=["api"],
             automation_status='manual',
-            origin='import',
+            origin='ai_generated',
             source_evidence=[
                 {
                     "artifact_type": 'api_operation',
                     "artifact_version_id": operation_id,
-                    "path": operation["path"],
-                    "method": operation["method"],
-                    "response_code": case["response_code"],
+                    "text": "\n".join(
+                        quote.quote for quote in case.evidence_quotes
+                    ),
+                    "path": operation.get("path"),
+                    "method": operation.get("method"),
+                    "operation_id": operation.get("operation_id"),
                 }
             ],
         )
@@ -331,8 +584,8 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
             "type": draft.type,
             "priority": draft.priority,
             "risk": draft.risk,
-            "expected": case["expected"],
-            "incomplete": True,
+            "expected": case.expected,
+            "incomplete": False,
             "source_test_case_key": "",
             "source_projection": "",
             "draft": draft.model_dump(),
@@ -340,14 +593,16 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
     job = await store_test_import_preview(
         operation["project_id"],
         f"{operation['method']} {operation['path']}",
-        "api_operation",
+        "api_operation_ai",
         preview,
         user,
         {
             "source_api_operation_id": operation_id,
-            "source_api_operation_fingerprint": operation_fingerprint(operation),
+            "source_api_operation_fingerprint": source_fingerprint,
             "source_api_import_id": operation["import_id"],
+            "ai_generation": ai_contract_metadata(ai_result),
         },
+        idempotent_job_id=idempotent_job_id,
     )
     await audit(
         user.id,
@@ -357,6 +612,11 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
         operation["project_id"],
         {"count": len(preview)},
     )
+    return envelope(job)
+
+
+async def get_test_import_preview(job_id: str, user: CurrentUser):
+    job = await get_project_entity("test_imports", job_id, user, "testcase.import")
     return envelope(job)
 
 

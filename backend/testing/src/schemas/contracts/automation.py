@@ -8,6 +8,8 @@ class AutomationScriptGenerateInput(BaseModel):
     framework: Literal["playwright", "cypress", "selenium"]
     language: Literal["typescript", "javascript", "python"]
     test_case_version_id: str = Field(min_length=1, max_length=200)
+    source_event_key: str = Field(min_length=1, max_length=200)
+    source_event_revision: int = Field(ge=1)
     context: str = Field(default="", max_length=5000)
     idempotency_key: str = Field(min_length=8, max_length=200)
 

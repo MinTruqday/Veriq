@@ -5,13 +5,13 @@ from langgraph.graph import END, StateGraph
 from src.agents.runner.nodes import (
     aggregate,
     execute_agent,
+    finalize,
     load_context,
     plan,
+    route_after_agent,
     route_after_aggregate,
     route_after_context,
     route_after_finalize,
-    route_after_agent,
-    finalize,
     verify,
 )
 
@@ -45,7 +45,7 @@ workflow.add_edge("plan", "execute")
 workflow.add_conditional_edges(
     "execute",
     route_after_agent,
-    {"execute": "execute", "finalize": "finalize"},
+    {"execute": "execute", "replan": "plan", "finalize": "finalize"},
 )
 workflow.add_conditional_edges(
     "finalize",

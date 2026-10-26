@@ -8,7 +8,7 @@ class ExecutionStateRepository:
     async def active_membership_role(self, project_id, user_id, active_status):
         return await database.value.project_members.find_one(
             {"project_id": project_id, "user_id": user_id, "status": active_status},
-            {"project_role": 1},
+            {"project_role": 1, "project_roles": 1},
         )
 
     async def list_results(self, run_id, version_ids, limit=10000):

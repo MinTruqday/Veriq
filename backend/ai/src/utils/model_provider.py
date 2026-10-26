@@ -1,5 +1,8 @@
 import asyncio
 import json
+import math
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from types import SimpleNamespace
 from typing import Any, AsyncIterator
 
@@ -7,6 +10,25 @@ import httpx
 from loguru import logger
 
 from src.core.infrastructure.configuration import settings
+
+
+def _retry_delay(error: Exception, attempt: int) -> float:
+    if isinstance(error, httpx.HTTPStatusError):
+        value = error.response.headers.get("Retry-After")
+        if value:
+            try:
+                seconds = float(value)
+            except ValueError:
+                try:
+                    retry_at = parsedate_to_datetime(value)
+                    if retry_at.tzinfo is None:
+                        retry_at = retry_at.replace(tzinfo=timezone.utc)
+                    seconds = (retry_at - datetime.now(timezone.utc)).total_seconds()
+                except (TypeError, ValueError, OverflowError):
+                    seconds = float("nan")
+            if math.isfinite(seconds) and seconds >= 0:
+                return min(seconds, max(0.0, float(settings.MODEL_TIMEOUT_SECONDS)))
+    return min(2**attempt, 4)
 
 
 class ModelProviderUnavailable(RuntimeError):
@@ -91,7 +113,7 @@ class HostedModelClient:
                     attempt + 1,
                     type(provider_error).__name__,
                 )
-                await asyncio.sleep(2**attempt)
+                await asyncio.sleep(_retry_delay(provider_error, attempt))
         body = response.json()
         choices = body.get("choices") or []
         content = str(choices[0].get("message", {}).get("content", "")).strip() if choices else ""
@@ -215,7 +237,7 @@ class HostedModelClient:
                     attempt + 1,
                     type(provider_error).__name__,
                 )
-                await asyncio.sleep(2**attempt)
+                await asyncio.sleep(_retry_delay(provider_error, attempt))
         if not emitted:
             self._runtime_status = "unavailable"
             raise ModelProviderUnavailable("hosted_model_empty_response")
@@ -291,7 +313,7 @@ class HostedAuxiliaryClient:
                     type(provider_error).__name__,
                     model,
                 )
-                await asyncio.sleep(2**attempt)
+                await asyncio.sleep(_retry_delay(provider_error, attempt))
         raise ModelProviderUnavailable("hosted_auxiliary_model_unavailable")
 
     async def embed(self, texts: list[str], prompt_name: str) -> list[list[float]]:

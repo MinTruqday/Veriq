@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf } from "../../../lib/testing";
@@ -22,12 +22,58 @@ export default function ApiArtifactsPanel({
   reload,
   onError,
 }) {
-  const [previewingOperationId, setPreviewingOperationId] = useState(null);
   const [reviewArtifact, setReviewArtifact] = useState(null);
   const [selectedOperationIndexes, setSelectedOperationIndexes] = useState([]);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [impactAnalysis, setImpactAnalysis] = useState(null);
+  const [impactBusy, setImpactBusy] = useState(false);
+  const impactBusyRef = useRef(false);
+  const [comparisonBusy, setComparisonBusy] = useState(false);
+  const comparisonBusyRef = useRef(false);
+  const [automationRuns, setAutomationRuns] = useState([]);
+  const [automationRunsError, setAutomationRunsError] = useState("");
   const confirmed = artifacts.filter((item) => item.status === "CONFIRMED");
+  const canReadAutomationRuns = can("automation.read") || can("proposal.read");
+
+  useEffect(() => {
+    if (!canReadAutomationRuns || !confirmed.length) return undefined;
+    let active = true;
+    let pending = false;
+    const refreshRuns = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const runs = await testingApi.listAutomationRuns(projectId);
+        if (active) {
+          setAutomationRuns(runs || []);
+          setAutomationRunsError("");
+        }
+      } catch (reason) {
+        if (active) setAutomationRunsError(messageOf(reason));
+      } finally {
+        pending = false;
+      }
+    };
+    void refreshRuns();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshRuns();
+    }, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [canReadAutomationRuns, confirmed.length, projectId]);
+
+  const automationRunFor = (operation) => {
+    const eventId = `api-operation:${operation._id}:r${operation.revision}`;
+    return automationRuns.find(
+      (run) =>
+        run.trigger === "API_OPERATION_CONFIRMED" &&
+        (run.source_event_id === eventId ||
+          (!run.source_event_id && (run.target_artifact_ids || []).includes(operation._id))),
+    );
+  };
   const importArtifact = async (event) => {
     event.preventDefault();
     try {
@@ -89,7 +135,7 @@ export default function ApiArtifactsPanel({
     }
   };
   const archive = async (item) => {
-    const answer = await ask({
+    await ask({
       title: "Lưu trữ nguồn đặc tả API",
       description: item.filename,
       confirmLabel: "Lưu trữ",
@@ -102,44 +148,71 @@ export default function ApiArtifactsPanel({
           multiline: true,
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.archiveApiArtifact(item._id, {
+            expected_revision: item.revision,
+            reason: answer.reason,
+          });
+          await reload();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.archiveApiArtifact(item._id, {
-        expected_revision: item.revision,
-        reason: answer.reason,
-      });
-      await reload();
-    } catch (reason) {
-      onError(messageOf(reason));
-    }
   };
   const compare = async () => {
+    if (comparisonBusyRef.current) return;
+    comparisonBusyRef.current = true;
+    setComparisonBusy(true);
     try {
       setDifference(await testingApi.diffApiArtifacts(projectId, compareFrom, compareTo));
     } catch (reason) {
       onError(messageOf(reason));
+    } finally {
+      comparisonBusyRef.current = false;
+      setComparisonBusy(false);
     }
   };
   const analyzeImpact = async () => {
+    if (impactBusyRef.current) return;
+    impactBusyRef.current = true;
+    setImpactBusy(true);
     try {
-      await testingApi.analyzeApiArtifactImpact(projectId, {
+      const analysis = await testingApi.analyzeApiArtifactImpact(projectId, {
         from_artifact_id: compareFrom,
         to_artifact_id: compareTo,
       });
+      setImpactAnalysis({
+        fromArtifactId: compareFrom,
+        toArtifactId: compareTo,
+        affectedCount: analysis.affected_test_cases?.length || 0,
+        newTestCount: analysis.new_test_requirements?.length || 0,
+      });
+    } catch (reason) {
+      onError(messageOf(reason));
+    } finally {
+      impactBusyRef.current = false;
+      setImpactBusy(false);
+    }
+  };
+  const openTestImportPreview = async (operation) => {
+    try {
+      if (!operation.test_import_preview_id) return;
+      onTestImportPreview(await testingApi.getTestImportPreview(operation.test_import_preview_id));
     } catch (reason) {
       onError(messageOf(reason));
     }
   };
-  const generateTests = async (operation) => {
-    if (previewingOperationId) return;
-    setPreviewingOperationId(operation._id);
+  const refreshAutomationState = async () => {
     try {
-      onTestImportPreview(await testingApi.generateApiTests(operation._id));
+      await reload();
+      if (canReadAutomationRuns) {
+        setAutomationRuns(await testingApi.listAutomationRuns(projectId));
+        setAutomationRunsError("");
+      }
     } catch (reason) {
       onError(messageOf(reason));
-    } finally {
-      setPreviewingOperationId(null);
     }
   };
 
@@ -330,14 +403,19 @@ export default function ApiArtifactsPanel({
             </section>
           )}
           {confirmed.length >= 2 && (
-            <div className="rounded-2xl border border-[var(--border)] p-4">
+            <div className="rounded-2xl border border-border p-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="field-label">
                   Phiên bản trước
                   <select
                     className="apple-input mt-2"
                     value={compareFrom}
-                    onChange={(event) => setCompareFrom(event.target.value)}
+                    disabled={comparisonBusy || impactBusy}
+                    onChange={(event) => {
+                      setCompareFrom(event.target.value);
+                      setImpactAnalysis(null);
+                      setDifference(null);
+                    }}
                   >
                     {confirmed.map((item) => (
                       <option key={item._id} value={item._id}>
@@ -351,7 +429,12 @@ export default function ApiArtifactsPanel({
                   <select
                     className="apple-input mt-2"
                     value={compareTo}
-                    onChange={(event) => setCompareTo(event.target.value)}
+                    disabled={comparisonBusy || impactBusy}
+                    onChange={(event) => {
+                      setCompareTo(event.target.value);
+                      setImpactAnalysis(null);
+                      setDifference(null);
+                    }}
                   >
                     {confirmed.map((item) => (
                       <option key={item._id} value={item._id}>
@@ -364,25 +447,45 @@ export default function ApiArtifactsPanel({
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   className="secondary-button"
-                  disabled={!compareFrom || !compareTo || compareFrom === compareTo}
+                  disabled={
+                    !compareFrom ||
+                    !compareTo ||
+                    compareFrom === compareTo ||
+                    comparisonBusy ||
+                    impactBusy
+                  }
                   type="button"
                   onClick={compare}
                 >
-                  So sánh đặc tả
+                  {comparisonBusy ? "Đang so sánh…" : "So sánh đặc tả"}
                 </button>
                 {can("impact.execute") && (
                   <button
                     className="secondary-button"
-                    disabled={!compareFrom || !compareTo || compareFrom === compareTo}
+                    disabled={
+                      !compareFrom ||
+                      !compareTo ||
+                      compareFrom === compareTo ||
+                      comparisonBusy ||
+                      impactBusy
+                    }
                     type="button"
                     onClick={analyzeImpact}
                   >
-                    Phân tích ảnh hưởng
+                    {impactBusy ? "Đang tính ảnh hưởng…" : "Phân tích ảnh hưởng"}
                   </button>
                 )}
               </div>
+              {impactAnalysis &&
+                impactAnalysis.fromArtifactId === compareFrom &&
+                impactAnalysis.toArtifactId === compareTo && (
+                  <p className="mt-3 text-sm text-ink-muted" role="status">
+                    Đã ghi nhận {impactAnalysis.affectedCount} ca cần rà soát và{" "}
+                    {impactAnalysis.newTestCount} thao tác API mới cần kiểm thử.
+                  </p>
+                )}
               {difference && (
-                <p className="mt-3 text-sm text-[var(--muted)]">
+                <p className="mt-3 text-sm text-ink-muted">
                   Thêm {difference.added.length} thay đổi {difference.changed.length} loại bỏ{" "}
                   {difference.removed.length}
                 </p>
@@ -397,24 +500,78 @@ export default function ApiArtifactsPanel({
               { key: "path", label: "Đường dẫn" },
               { key: "title", label: "Tên" },
               {
-                key: "generate",
-                label: "Tạo ca kiểm thử",
-                render: (item) =>
-                  can("ai.generate_api_testcase") &&
-                  can("testcase.create") &&
-                  can("testcase.import") ? (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={Boolean(previewingOperationId)}
-                      aria-busy={previewingOperationId === item._id}
-                      onClick={() => generateTests(item)}
-                    >
-                      {previewingOperationId === item._id
-                        ? "Đang tạo bản xem trước"
-                        : "Xem trước ca kiểm thử"}
-                    </button>
-                  ) : null,
+                key: "automation",
+                label: "Tự động hóa",
+                render: (item) => {
+                  const run = automationRunFor(item);
+                  if (item.test_import_preview_id && can("testcase.import")) {
+                    return (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusPill value={item.test_import_preview_status || "PREVIEW_READY"} />
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => void openTestImportPreview(item)}
+                        >
+                          Xem và xử lý bản xem trước
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="grid min-w-48 gap-2 text-sm text-ink-muted">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {run ? (
+                          <>
+                            <StatusPill value={run.status} />
+                            <span>Trạng thái lượt AI</span>
+                          </>
+                        ) : (
+                          <span>
+                            {item.automation_dispatch_status === "PENDING" ||
+                            item.automation_dispatch_status === "DISPATCHING"
+                              ? "Sự kiện đang chờ được chuyển tới AI"
+                              : item.automation_dispatch_status === "DELIVERED"
+                                ? "Sự kiện đã chuyển tới AI; đang chờ lượt xử lý"
+                                : item.automation_dispatch_status === "SUPPRESSED"
+                                  ? "Luồng tự động hóa đang tắt"
+                                  : "Chưa có trạng thái xử lý tự động"}
+                          </span>
+                        )}
+                        {item.automation_dispatch_status !== "SUPPRESSED" && (
+                          <button
+                            className="text-accent underline underline-offset-2"
+                            type="button"
+                            onClick={() => void refreshAutomationState()}
+                          >
+                            Làm mới
+                          </button>
+                        )}
+                      </div>
+                      {run && (
+                        <div className="grid gap-1">
+                          <span className="break-all text-xs">{run.automation_run_id}</span>
+                          {(run.error_code || run.result?.summary) && (
+                            <span className="break-words text-xs">
+                              {run.error_code || run.result.summary}
+                            </span>
+                          )}
+                          <a
+                            className="text-accent underline underline-offset-2"
+                            href={`/du-an/${projectId}/ca-kiem-thu/ai`}
+                          >
+                            Mở lượt chạy AI
+                          </a>
+                        </div>
+                      )}
+                      {automationRunsError && canReadAutomationRuns && (
+                        <span className="text-xs" role="status">
+                          Chưa tải được trạng thái lượt AI: {automationRunsError}
+                        </span>
+                      )}
+                    </div>
+                  );
+                },
               },
             ]}
           />

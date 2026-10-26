@@ -76,6 +76,19 @@ def requirement_findings(version, acceptance_criteria=None):
         else version.get("acceptance_criterion_ids", []),
     }
     findings = evaluate_rules("requirement", normalized_version)
+    has_business_rules = bool(_values(normalized_version.get("business_rules")))
+    has_acceptance_criteria = bool(_values(normalized_version.get("acceptance_criteria")))
+    for finding in findings:
+        if finding.get("rule_id") == "MISSING_ACTOR":
+            finding["severity"] = "warning"
+        elif (
+            finding.get("rule_id") == "MISSING_BUSINESS_RULE"
+            and has_acceptance_criteria
+        ) or (
+            finding.get("rule_id") == "MISSING_ACCEPTANCE_CRITERIA"
+            and has_business_rules
+        ):
+            finding["severity"] = "warning"
     for criterion in criteria:
         identity = {"criterion_id": criterion["id"], "criterion_key": criterion["key"]}
         findings.extend(
@@ -120,8 +133,6 @@ def requirement_duplicate_score(left, right):
         _criterion_texts(right.get("acceptance_criteria")),
     )
     signals = [content_similarity]
-    if actor_similarity is not None:
-        signals.append(actor_similarity)
     if rule_similarity is not None:
         signals.append(rule_similarity)
     if criterion_similarity is not None:
@@ -165,6 +176,13 @@ def _collection_similarity(left, right):
 
 def lint_test_case(draft):
     findings = evaluate_rules("test_case", draft)
+    bdd_steps = (draft.get("bdd") or {}).get("steps") or []
+    bdd_has_expected_behavior = bool(bdd_steps) and any(
+        step.get("keyword") == "Then" and str(step.get("text") or "").strip()
+        for step in bdd_steps
+    )
+    if bdd_has_expected_behavior:
+        findings = [finding for finding in findings if finding.get("rule_id") != "TCQ-001"]
     if (
         draft.get("origin") == "ai_generated"
         and draft.get("source_evidence")
@@ -187,15 +205,20 @@ def lint_test_case(draft):
             "message": "Ca kiểm thử cần có bước thực hiện và kết quả mong đợi cho từng bước",
             "suggestion": "Bổ sung các bước có hành động và kết quả kiểm chứng trước khi gửi duyệt",
         })
-    for step in draft.get("steps", []):
-        findings.extend(
-            {**finding, "step_id": step.get("id")}
-            for finding in evaluate_rules("test_step", step)
-        )
+    if not draft.get("bdd"):
+        for step in draft.get("steps", []):
+            findings.extend(
+                {**finding, "step_id": step.get("id")}
+                for finding in evaluate_rules("test_step", step)
+            )
     return findings
 
 
 def has_verifiable_steps(draft):
+    if draft.get("bdd"):
+        scenario = draft["bdd"]
+        steps = scenario.get("steps") or []
+        return bool(scenario.get("feature", "").strip() and scenario.get("scenario", "").strip()) and {"Given", "When", "Then"} <= {step.get("keyword") for step in steps} and all(str(step.get("text") or "").strip() for step in steps)
     steps = draft.get("steps") or []
     return bool(steps) and all(
         plain_text(step.get("action_doc") or {}).strip()

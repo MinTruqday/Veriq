@@ -6,7 +6,7 @@ from typing import Optional
 
 from loguru import logger
 
-from src.schemas.evaluation import TestabilityBenchmarkRequest, TestabilityBenchmarkReport
+from src.schemas.evaluation import TestabilityBenchmarkReport, TestabilityBenchmarkRequest
 
 
 @dataclass
@@ -64,7 +64,7 @@ def _compute_rouge_l(reference: str, hypothesis: str) -> float:
 
 
 async def _llm_judge(instruction: str, expected: str, actual: str) -> dict:
-    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_core.messages import SystemMessage
 
     from src.prompts.evaluation import eval_judge
     from src.schemas.evaluation import JudgeScores
@@ -74,10 +74,7 @@ async def _llm_judge(instruction: str, expected: str, actual: str) -> dict:
     try:
         evaluator = create_chat_model().with_structured_output(JudgeScores)
         scores = await evaluator.ainvoke(
-            [
-                SystemMessage(content=prompt),
-                HumanMessage(content="Produce the required evaluation result"),
-            ],
+            [SystemMessage(content=prompt)],
             max_tokens=256,
             temperature=0.1,
         )
@@ -88,7 +85,7 @@ async def _llm_judge(instruction: str, expected: str, actual: str) -> dict:
             "accuracy": 0,
             "completeness": 0,
             "relevance": 0,
-            "explanation": "The evaluation process failed to complete successfully due to an internal system exception",
+            "explanation": "Không thể hoàn tất đánh giá do lỗi nội bộ của hệ thống.",
         }
 
 
@@ -192,7 +189,7 @@ class EvaluationHarness:
                     {
                         "instruction": instruction,
                         "expected": expected,
-                        "actual": "The system encountered an unexpected error during the model evaluation execution",
+                        "actual": "Đã xảy ra lỗi khi hệ thống chạy đánh giá mô hình.",
                         "bleu": 0.0,
                         "rouge_l": 0.0,
                         "judge_scores": None,
@@ -258,7 +255,7 @@ class EvaluationHarness:
     def get_dashboard_metrics(self) -> dict:
         if not self._reports:
             return {
-                "status": "The system currently has no recorded evaluation to generate the dashboard metrics",
+                "status": "Chưa có lượt đánh giá nào để tổng hợp số liệu.",
                 "total_evaluations": 0,
             }
         count = len(self._reports)
@@ -278,7 +275,7 @@ class EvaluationHarness:
                 "rouge_l": round(sum(r.rouge_l for r in self._reports) / count, 4),
                 "overall_score": round(sum(r.overall_score for r in self._reports) / count, 4),
             },
-            "status": "The evaluation metrics dashboard is ready and available for viewing",
+            "status": "Bảng số liệu đánh giá đã sẵn sàng.",
         }
 
 

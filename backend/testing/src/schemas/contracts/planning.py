@@ -4,6 +4,19 @@ from pydantic import BaseModel, Field, model_validator
 
 from src.schemas.contracts.common import TestPlanRiskStatus
 
+
+class TestPlanSuiteSnapshot(BaseModel):
+    test_suite_id: str = Field(min_length=1, max_length=200)
+    revision: int = Field(ge=1)
+    test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
+
+    @model_validator(mode="after")
+    def unique_test_case_versions(self):
+        if len(self.test_case_version_ids) != len(set(self.test_case_version_ids)):
+            raise ValueError("TEST_PLAN_SUITE_SNAPSHOT_VERSIONS_MUST_BE_UNIQUE")
+        return self
+
+
 class TestPlanEstimation(BaseModel):
     method: Literal["expert_judgment", "three_point", "historical", "custom"] = "expert_judgment"
     planned_effort_hours: float = Field(default=0, ge=0)

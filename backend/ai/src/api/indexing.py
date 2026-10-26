@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from loguru import logger
 
 from src.core.dependency import (
@@ -8,12 +9,23 @@ from src.core.dependency import (
     get_current_user_optional,
     verify_internal_token,
 )
-from src.schemas.ingestion import AttachmentConversionRequest, IngestRequest, IngestResponse
+from src.schemas.inference_skill_profile import (
+    SkillProfileExtractionOutput,
+    SkillProfileExtractionRequest,
+)
+from src.schemas.ingestion import (
+    AttachmentConversionRequest,
+    ConversionCheckpointCleanupRequest,
+    IngestRequest,
+    IngestResponse,
+)
 from src.schemas.response import APIResponse
 from src.services.ingestion import convert_attachment as convert_attachment_data
 from src.services.ingestion import extract_document as extract_document_text
 from src.services.ingestion import index_document as index_document_data
 from src.services.ingestion import remove_document as remove_document_data
+from src.services.conversion import document_parser
+from src.services.skill_profile_extraction import extract_skill_profile_candidates
 
 router = APIRouter(prefix="/tiep-nap")
 indexing_router = APIRouter(dependencies=[Depends(verify_internal_token)])
@@ -93,16 +105,26 @@ async def ingest_document(
         result = await index_document_data(req.document_id, requester_id, is_admin)
     except Exception as error:
         raise document_error(error)
+    status = result.get("status", "indexed")
     return APIResponse(
         data=IngestResponse(
             document_id=result.get("document_id", req.document_id),
-            status=result.get("status", "indexed"),
+            status=status,
             chunks_count=result.get("chunks_count", 0),
             extraction_method=result.get("extraction_method", "local"),
             quarantined_chunks=result.get("quarantined_chunks", []),
             failed_chunks=result.get("failed_chunks", []),
+            unprocessed_blocks=result.get("unprocessed_blocks", []),
+            extraction_warnings=result.get("extraction_warnings", []),
+            index_cleanup_pending=result.get("index_cleanup_pending", []),
         ),
-        message="Nạp và chỉ mục hóa tài liệu thành công",
+        message=(
+            "Nạp và chỉ mục hóa tài liệu thành công; có cảnh báo trích xuất cần lưu ý"
+            if status == "indexed" and result.get("extraction_warnings")
+            else "Nạp và chỉ mục hóa tài liệu thành công"
+            if status == "indexed"
+            else "Tài liệu đã được lập chỉ mục nhưng còn phần xử lý hoặc dọn chỉ mục cần kiểm tra"
+        ),
     )
 
 
@@ -132,10 +154,74 @@ async def extract_document(
 )
 async def convert_attachment(req: AttachmentConversionRequest):
     try:
-        result = await convert_attachment_data(req.data, req.filename)
+        result = await convert_attachment_data(
+            req.data,
+            req.filename,
+            req.page_range,
+            req.document_id,
+            req.project_id,
+            req.owner_id,
+            req.ocr_language,
+        )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return APIResponse(data=result, message="Chuyển đổi tài liệu thành công")
+
+
+@indexing_router.delete(
+    "/chuyen-doi/checkpoints",
+    response_model=APIResponse[dict],
+    description="Dọn checkpoint chuyển đổi sau khi dịch vụ nguồn đã lưu kết quả",
+)
+async def clear_conversion_checkpoints(req: ConversionCheckpointCleanupRequest):
+    from src.repositories.document_ingestion_checkpoint import (
+        document_ingestion_checkpoint_repository,
+    )
+
+    await document_ingestion_checkpoint_repository.delete_source_version(
+        req.document_id, req.project_id, req.owner_id, req.source_hash
+    )
+    return APIResponse(data={"deleted": True}, message="Đã dọn checkpoint chuyển đổi")
+
+
+@indexing_router.get(
+    "/tai-lieu/{document_id}/anh-nguon",
+    description="Đọc ảnh nguồn riêng tư sau khi dịch vụ Testing đã kiểm tra quyền tài liệu",
+)
+async def read_document_picture_asset(
+    document_id: str,
+    project_id: str = Query(min_length=1, max_length=200),
+    asset_key: str = Query(min_length=1, max_length=1000),
+):
+    try:
+        content, content_type = await document_parser.read_picture_asset(
+            project_id,
+            document_id,
+            asset_key,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="DOCUMENT_IMAGE_NOT_FOUND") from error
+    except Exception as error:
+        logger.exception("Source image read failed document_id={}", document_id)
+        raise HTTPException(status_code=502, detail="DOCUMENT_IMAGE_UNAVAILABLE") from error
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@indexing_router.post(
+    "/ho-so-nang-luc/trich-xuat-cv",
+    response_model=APIResponse[SkillProfileExtractionOutput],
+    description="Trích xuất ứng viên kỹ năng từ nội dung CV tạm thời; không lưu CV hoặc lập chỉ mục",
+)
+async def extract_skill_profile(req: SkillProfileExtractionRequest):
+    result = await extract_skill_profile_candidates(req)
+    return APIResponse(data=result, message="Đã trích xuất ứng viên hồ sơ năng lực")
 
 
 @indexing_router.delete(

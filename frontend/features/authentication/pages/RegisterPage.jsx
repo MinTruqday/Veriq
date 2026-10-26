@@ -88,6 +88,7 @@ export default function RegisterPage() {
         <label className="flex items-start gap-3 text-[13px] leading-relaxed text-ink">
           <input
             type="checkbox"
+            required
             checked={agreed}
             onChange={(event) => setAgreed(event.target.checked)}
             className="mt-0.5 h-4 w-4 shrink-0 accent-[hsl(var(--brand))]"

@@ -14,14 +14,33 @@ import {
 } from "../components/WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { taskProgressPresentation } from "../lib/projectProgress.logic.mjs";
+import {
+  formatProjectDate,
+  invalidProjectDateRange,
+  minimumProjectEndDate,
+  projectPlannedDurationDays,
+} from "../lib/projectSchedule.logic.mjs";
+
+function projectScheduleLabel(project) {
+  const duration = projectPlannedDurationDays(project.planned_start_at, project.planned_end_at);
+  const dates = [
+    project.planned_start_at && `Bắt đầu dự kiến: ${formatProjectDate(project.planned_start_at)}`,
+    project.planned_end_at && `Kết thúc dự kiến: ${formatProjectDate(project.planned_end_at)}`,
+    duration && `Thời lượng dự kiến: ${duration} ngày lịch`,
+  ].filter(Boolean);
+  return dates.join(" · ");
+}
 
 export default function ProjectsPage() {
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [invitations, setInvitations] = useState([]);
+  const [invitationActionId, setInvitationActionId] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("active");
   const [invitationError, setInvitationError] = useState("");
+  const [invitationActionError, setInvitationActionError] = useState("");
   const [form, setForm] = useState({
     key: "",
     name: "",
@@ -29,6 +48,8 @@ export default function ProjectsPage() {
     project_type: "web",
     planning_method: "SCRUM",
     initial_qa_user_id: "",
+    planned_start_at: "",
+    planned_end_at: "",
   });
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -37,7 +58,13 @@ export default function ProjectsPage() {
   const [error, setError] = useState("");
   const [canCreateProject, setCanCreateProject] = useState(false);
   const [capabilityError, setCapabilityError] = useState("");
+  const invitationActionInFlight = useRef(false);
   const requestSequence = useRef(0);
+  const minimumPlannedEndAt = minimumProjectEndDate(form.planned_start_at);
+  const plannedDateRangeInvalid = invalidProjectDateRange(
+    form.planned_start_at,
+    form.planned_end_at,
+  );
   const openCreateModal = () => {
     setCreateError("");
     setCreating(true);
@@ -81,6 +108,22 @@ export default function ProjectsPage() {
       setCapabilityError(reason?.status === 403 ? "" : messageOf(reason));
     }
   }, []);
+  const respondToInvitation = async (invitation, action) => {
+    if (invitationActionInFlight.current) return;
+    invitationActionInFlight.current = true;
+    setInvitationActionId(invitation._id);
+    setInvitationActionError("");
+    try {
+      if (action === "accept") await testingApi.acceptInvitation(invitation._id);
+      else await testingApi.declineInvitation(invitation._id);
+      await load(query, status);
+    } catch (reason) {
+      setInvitationActionError(messageOf(reason));
+    } finally {
+      invitationActionInFlight.current = false;
+      setInvitationActionId("");
+    }
+  };
   useEffect(() => {
     void load("", status);
   }, [load, status]);
@@ -90,6 +133,10 @@ export default function ProjectsPage() {
   const submit = async (event) => {
     event.preventDefault();
     if (saving) return;
+    if (plannedDateRangeInvalid) {
+      setCreateError("Ngày kết thúc phải sau ngày bắt đầu.");
+      return;
+    }
     setCreateError("");
     setSaving(true);
     try {
@@ -97,6 +144,12 @@ export default function ProjectsPage() {
         ...form,
         key: form.key.trim().toUpperCase(),
         name: form.name.trim(),
+        planned_start_at: form.planned_start_at
+          ? new Date(`${form.planned_start_at}T00:00:00.000Z`).toISOString()
+          : null,
+        planned_end_at: form.planned_end_at
+          ? new Date(`${form.planned_end_at}T00:00:00.000Z`).toISOString()
+          : null,
       });
       setForm({
         key: "",
@@ -105,6 +158,8 @@ export default function ProjectsPage() {
         project_type: "web",
         planning_method: "SCRUM",
         initial_qa_user_id: "",
+        planned_start_at: "",
+        planned_end_at: "",
       });
       setCreating(false);
       setQuery("");
@@ -184,12 +239,17 @@ export default function ProjectsPage() {
             <input
               className="apple-input mt-2 w-full"
               type="text"
-              autoComplete="off"
+              autoComplete="username"
               required
               value={form.initial_qa_user_id}
               onChange={(event) => setForm({ ...form, initial_qa_user_id: event.target.value })}
+              aria-describedby="initial-qa-help"
               placeholder="qa@congty.vn hoặc mã tài khoản QA"
             />
+            <span className="mt-1 block text-xs leading-5 text-ink-muted" id="initial-qa-help">
+              Có thể nhập email hoặc mã tài khoản. Nếu là chính bạn, tài khoản sẽ có cả vai trò BA
+              và QA trong dự án.
+            </span>
           </label>
           <label className="field-label block min-w-0">
             Tên dự án
@@ -238,6 +298,38 @@ export default function ProjectsPage() {
               onChange={(event) => setForm({ ...form, description: event.target.value })}
             />
           </label>
+          <label className="field-label block min-w-0">
+            Ngày bắt đầu dự kiến
+            <input
+              className="apple-input mt-2 w-full"
+              type="date"
+              value={form.planned_start_at}
+              onChange={(event) => setForm({ ...form, planned_start_at: event.target.value })}
+            />
+          </label>
+          <label className="field-label block min-w-0">
+            Ngày kết thúc dự kiến
+            <input
+              className="apple-input mt-2 w-full"
+              type="date"
+              min={minimumPlannedEndAt}
+              value={form.planned_end_at}
+              aria-invalid={Boolean(plannedDateRangeInvalid)}
+              aria-describedby="project-date-range-help"
+              onChange={(event) => setForm({ ...form, planned_end_at: event.target.value })}
+            />
+            <span
+              className={`mt-1 block text-xs ${
+                plannedDateRangeInvalid ? "text-danger" : "text-ink-muted"
+              }`}
+              id="project-date-range-help"
+              role={plannedDateRangeInvalid ? "alert" : undefined}
+            >
+              {plannedDateRangeInvalid
+                ? "Ngày kết thúc phải sau ngày bắt đầu."
+                : "Có thể để trống nếu chưa xác định thời hạn."}
+            </span>
+          </label>
           <div className="action-dialog-footer flex justify-end gap-3 md:col-span-2">
             <button
               className="secondary-button"
@@ -247,14 +339,18 @@ export default function ProjectsPage() {
             >
               Hủy
             </button>
-            <button className="apple-button" type="submit" disabled={saving}>
+            <button
+              className="apple-button"
+              type="submit"
+              disabled={saving || Boolean(plannedDateRangeInvalid)}
+            >
               {saving ? "Đang lưu" : "Lưu dự án"}
             </button>
           </div>
         </form>
       </Modal>
-      {(invitations.length > 0 || invitationError) && (
-        <Panel title="Lời mời tham gia dự án" description="Chấp nhận lời mời để mở dự án">
+      {(invitations.length > 0 || invitationError || invitationActionError) && (
+        <Panel title="Lời mời tham gia dự án">
           {invitationError ? (
             <div className="space-y-3 p-5">
               <ErrorState message={`Không thể tải lời mời: ${invitationError}`} />
@@ -268,6 +364,11 @@ export default function ProjectsPage() {
             </div>
           ) : (
             <div className="divide-y divide-border">
+              {invitationActionError && (
+                <div className="p-5">
+                  <ErrorState message={`Không thể xử lý lời mời: ${invitationActionError}`} />
+                </div>
+              )}
               {invitations.map((invitation) => (
                 <article
                   key={invitation._id}
@@ -286,30 +387,18 @@ export default function ProjectsPage() {
                     <button
                       type="button"
                       className="secondary-button"
-                      onClick={async () => {
-                        try {
-                          await testingApi.declineInvitation(invitation._id);
-                          await load(query, status);
-                        } catch (reason) {
-                          setError(messageOf(reason));
-                        }
-                      }}
+                      disabled={Boolean(invitationActionId)}
+                      onClick={() => void respondToInvitation(invitation, "decline")}
                     >
-                      Từ chối
+                      {invitationActionId === invitation._id ? "Đang xử lý" : "Từ chối"}
                     </button>
                     <button
                       type="button"
                       className="apple-button"
-                      onClick={async () => {
-                        try {
-                          await testingApi.acceptInvitation(invitation._id);
-                          await load(query, status);
-                        } catch (reason) {
-                          setError(messageOf(reason));
-                        }
-                      }}
+                      disabled={Boolean(invitationActionId)}
+                      onClick={() => void respondToInvitation(invitation, "accept")}
                     >
-                      Chấp nhận
+                      {invitationActionId === invitation._id ? "Đang xử lý" : "Chấp nhận"}
                     </button>
                   </div>
                 </article>
@@ -377,81 +466,126 @@ export default function ProjectsPage() {
           </EmptyState>
         ) : (
           <div className="divide-y divide-border">
-            {items.map((item) => (
-              <article
-                key={item._id}
-                className="grid gap-4 p-5 transition hover:bg-surface-quiet xl:grid-cols-[120px_minmax(0,1fr)_minmax(180px,0.7fr)_140px_180px_auto] xl:items-center"
-              >
-                <span className="font-mono text-[13px] font-semibold text-brand">{item.key}</span>
-                <Link href={`/du-an/${item._id}`} className="min-w-0">
-                  <strong className="block break-words text-[14px]">{item.name}</strong>
-                  {item.description && (
-                    <small className="line-clamp-1 text-ink-muted">{item.description}</small>
-                  )}
-                </Link>
-                <div className="space-y-2 text-[12px]">
-                  <div className="flex justify-between gap-2">
-                    <span>Tiến độ dự án {item.project_completion_percent ?? 0}%</span>
-                    <span>
-                      {item.task_summary?.completion_percent === null
-                        ? "Chưa có công việc"
-                        : `Tiến độ công việc ${item.task_summary?.completion_percent ?? 0}%`}
+            {items.map((item) => {
+              const taskProgress = taskProgressPresentation(item.task_summary);
+              return (
+                <article
+                  key={item._id}
+                  className="grid gap-4 p-5 transition hover:bg-surface-quiet xl:grid-cols-[120px_minmax(0,1fr)_minmax(180px,0.7fr)_140px_180px_auto] xl:items-center"
+                >
+                  <span className="font-mono text-[13px] font-semibold text-brand">{item.key}</span>
+                  <Link href={`/du-an/${item._id}`} className="min-w-0">
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <strong className="break-words text-[14px]">{item.name}</strong>
+                      <StatusPill value={item.planning_method || "SCRUM"} />
+                    </span>
+                    {item.description && (
+                      <small className="line-clamp-1 text-ink-muted">{item.description}</small>
+                    )}
+                    {projectScheduleLabel(item) && (
+                      <small className="mt-1 block text-ink-muted">
+                        {projectScheduleLabel(item)}
+                      </small>
+                    )}
+                  </Link>
+                  <div className="space-y-2 text-[12px]">
+                    {Number.isFinite(item.project_completion_percent) ? (
+                      <div className="space-y-1">
+                        <div className="flex justify-between gap-2">
+                          <span>Project · QA đánh giá</span>
+                          <strong>{item.project_completion_percent}%</strong>
+                        </div>
+                        <div
+                          aria-label={`Project ${item.project_completion_percent}%`}
+                          aria-valuemax={100}
+                          aria-valuemin={0}
+                          aria-valuenow={item.project_completion_percent}
+                          className="h-1.5 overflow-hidden rounded-full bg-surface-quiet"
+                          role="progressbar"
+                        >
+                          <div
+                            className="h-full rounded-full bg-brand"
+                            style={{ width: `${item.project_completion_percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-ink-muted">Project · Chưa có đánh giá của QA</span>
+                    )}
+                    {taskProgress.completionPercent == null ? (
+                      <span className="text-ink-muted">Tasks · {taskProgress.label}</span>
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="flex justify-between gap-2">
+                          <span>Tasks · Tự tính</span>
+                          <strong>{taskProgress.completionPercent}%</strong>
+                        </div>
+                        <div
+                          aria-label={`Tasks ${taskProgress.completionPercent}%`}
+                          aria-valuemax={100}
+                          aria-valuemin={0}
+                          aria-valuenow={taskProgress.completionPercent}
+                          className="h-1.5 overflow-hidden rounded-full bg-surface-quiet"
+                          role="progressbar"
+                        >
+                          <div
+                            className="h-full rounded-full bg-sky-500"
+                            style={{ width: `${taskProgress.completionPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <span className="text-ink-muted">
+                      {taskProgress.total == null
+                        ? "Chưa có thống kê số lượng công việc"
+                        : `${taskProgress.total} công việc · ${taskProgress.blocked ?? 0} bị chặn`}
                     </span>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-surface-quiet">
-                    <div
-                      className="h-full rounded-full bg-brand"
-                      style={{ width: `${item.project_completion_percent ?? 0}%` }}
-                    />
+                  <div className="flex items-center xl:block">
+                    <StatusPill value={String(item.status).toUpperCase()} />
                   </div>
-                  <span className="text-ink-muted">
-                    {item.task_summary?.total ?? 0} công việc · {item.task_summary?.blocked ?? 0} bị
-                    chặn
-                  </span>
-                </div>
-                <div className="flex items-center xl:block">
-                  <StatusPill value={String(item.status).toUpperCase()} />
-                </div>
-                <div className="text-[12px] text-ink-muted">
-                  <span className="mr-2 font-semibold text-ink xl:hidden">Cập nhật</span>
-                  {formatDate(item.updated_at)}
-                </div>
-                {item.status === "archived" &&
-                  item.current_permissions?.includes("project.restore") && (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={async () => {
-                        const answer = await ask({
-                          title: "Khôi phục dự án",
-                          description: `${item.key} sẽ hoạt động trở lại và tiếp tục nhận thay đổi`,
-                          confirmLabel: "Khôi phục",
-                          fields: [
-                            {
-                              name: "reason",
-                              label: "Lý do khôi phục",
-                              initialValue: "Tiếp tục thực hiện dự án",
-                              required: true,
+                  <div className="text-[12px] text-ink-muted">
+                    <span className="mr-2 font-semibold text-ink xl:hidden">Cập nhật</span>
+                    {formatDate(item.updated_at)}
+                  </div>
+                  {item.status === "archived" &&
+                    item.current_permissions?.includes("project.restore") && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={async () => {
+                          await ask({
+                            title: "Khôi phục dự án",
+                            description: `${item.key} sẽ hoạt động trở lại và tiếp tục nhận thay đổi`,
+                            confirmLabel: "Khôi phục",
+                            fields: [
+                              {
+                                name: "reason",
+                                label: "Lý do khôi phục",
+                                initialValue: "Tiếp tục thực hiện dự án",
+                                required: true,
+                              },
+                            ],
+                            onConfirm: async (answer) => {
+                              try {
+                                await testingApi.restoreProject(item._id, {
+                                  expected_revision: item.revision,
+                                  reason: answer.reason,
+                                });
+                                await load(query, status);
+                              } catch (reason) {
+                                throw new Error(messageOf(reason));
+                              }
                             },
-                          ],
-                        });
-                        if (!answer) return;
-                        try {
-                          await testingApi.restoreProject(item._id, {
-                            expected_revision: item.revision,
-                            reason: answer.reason,
                           });
-                          await load(query, status);
-                        } catch (reason) {
-                          setError(messageOf(reason));
-                        }
-                      }}
-                    >
-                      Khôi phục
-                    </button>
-                  )}
-              </article>
-            ))}
+                        }}
+                      >
+                        Khôi phục
+                      </button>
+                    )}
+                </article>
+              );
+            })}
           </div>
         )}
       </Panel>

@@ -3,6 +3,18 @@ from fastapi.responses import StreamingResponse
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
+from src.modules.execution.services.test_status_report import (
+    attach_status_report_evidence,
+    compare_status_reports,
+    generate_status_report,
+    generate_status_report_narrative,
+    get_report_for_user,
+    latest_status_report_narrative,
+    list_status_reports,
+    transition_status_report,
+    update_status_report,
+)
+from src.modules.execution.services.test_status_report_export import export_status_report
 from src.schemas.test_status_report import (
     TestStatusReportAiDraft,
     TestStatusReportEvidence,
@@ -10,17 +22,6 @@ from src.schemas.test_status_report import (
     TestStatusReportPatch,
     TestStatusReportTransition,
 )
-from src.modules.execution.services.test_status_report import (
-    attach_status_report_evidence,
-    compare_status_reports,
-    generate_status_report,
-    generate_status_report_narrative,
-    get_report_for_user,
-    list_status_reports,
-    transition_status_report,
-    update_status_report,
-)
-from src.modules.execution.services.test_status_report_export import export_status_report
 
 router = APIRouter(prefix="/kiem-thu", tags=["Báo cáo trạng thái kiểm thử"])
 
@@ -72,6 +73,13 @@ async def draft_test_status_report_narrative(
     return envelope(await generate_status_report_narrative(report_id, payload, user))
 
 
+@router.get("/bao-cao-trang-thai/{report_id}/ai/ban-nhap")
+async def get_test_status_report_ai_narrative(
+    report_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await latest_status_report_narrative(report_id, user))
+
+
 @router.post("/bao-cao-trang-thai/{report_id}/bang-chung")
 async def attach_test_status_report_evidence(
     report_id: str, payload: TestStatusReportEvidence, user: CurrentUser = Depends(get_current_user)
@@ -86,12 +94,7 @@ async def submit_test_status_report_review(
     payload: TestStatusReportTransition,
     user: CurrentUser = Depends(get_current_user),
 ):
-    value = await transition_status_report(
-        report_id,
-        payload,
-        user,
-        "submit",
-    )
+    value = await transition_status_report(report_id, payload, user, "submit")
     return envelope(value, revision=value["revision"])
 
 
@@ -101,12 +104,7 @@ async def request_test_status_report_changes(
     payload: TestStatusReportTransition,
     user: CurrentUser = Depends(get_current_user),
 ):
-    value = await transition_status_report(
-        report_id,
-        payload,
-        user,
-        "request_changes",
-    )
+    value = await transition_status_report(report_id, payload, user, "request_changes")
     return envelope(value, revision=value["revision"])
 
 
@@ -116,12 +114,7 @@ async def approve_test_status_report(
     payload: TestStatusReportTransition,
     user: CurrentUser = Depends(get_current_user),
 ):
-    value = await transition_status_report(
-        report_id,
-        payload,
-        user,
-        "approve",
-    )
+    value = await transition_status_report(report_id, payload, user, "approve")
     return envelope(value, revision=value["revision"])
 
 
@@ -131,12 +124,7 @@ async def publish_test_status_report(
     payload: TestStatusReportTransition,
     user: CurrentUser = Depends(get_current_user),
 ):
-    value = await transition_status_report(
-        report_id,
-        payload,
-        user,
-        "publish",
-    )
+    value = await transition_status_report(report_id, payload, user, "publish")
     return envelope(value, revision=value["revision"])
 
 
@@ -146,12 +134,7 @@ async def archive_test_status_report(
     payload: TestStatusReportTransition,
     user: CurrentUser = Depends(get_current_user),
 ):
-    value = await transition_status_report(
-        report_id,
-        payload,
-        user,
-        "archive",
-    )
+    value = await transition_status_report(report_id, payload, user, "archive")
     return envelope(value, revision=value["revision"])
 
 

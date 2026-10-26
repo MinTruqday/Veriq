@@ -1,10 +1,10 @@
-from typing import Annotated, Any, List, Literal
+from typing import List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProjectQuestionOutput(BaseModel):
-    """Answer in at most five sentences and cite only evidence references actually used"""
+    """Structured answer based on project evidence."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["project_question"]

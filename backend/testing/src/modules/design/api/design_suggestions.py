@@ -6,6 +6,7 @@ from src.schemas.contracts.environment import (
     PerformancePlanDraftInput,
     SecurityTestSuggestionInput,
 )
+from src.schemas.non_functional_test import ApprovedPerformanceConfigurationGeneration
 from src.modules.design.services.design_suggestion import DesignSuggestionService
 
 router = APIRouter(prefix="/kiem-thu", tags=["Thiết kế kiểm thử chuyên sâu"])
@@ -43,3 +44,17 @@ async def generate_performance_plan_draft(
 ):
     value, metadata = await DesignSuggestionService.generate_performance(project_id, payload, user)
     return envelope(value, revision=value["revision"], **metadata)
+
+
+@router.post("/du-an/{project_id}/ai/ke-hoach-hieu-nang/tu-cau-hinh-da-duyet")
+async def generate_performance_plan_from_approved_configuration(
+    project_id: str,
+    payload: ApprovedPerformanceConfigurationGeneration,
+    user: CurrentUser = Depends(get_current_user),
+):
+    value = await DesignSuggestionService.generate_performance_from_approved_configuration(
+        project_id, payload, user
+    )
+    if value.get("status") == "automation_waiting_for_input":
+        return envelope(value)
+    return envelope(value, revision=(value.get("draft") or {}).get("revision"))

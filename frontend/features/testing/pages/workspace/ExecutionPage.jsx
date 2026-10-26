@@ -24,6 +24,10 @@ import RunExecutionWorkspace from "./execution/RunExecutionWorkspace";
 import JUnitResultPanel from "../../components/JUnitResultPanel";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
+import {
+  operationForRetry,
+  shouldReloadAfterAmbiguousMutation,
+} from "../../lib/executionRecovery.logic.mjs";
 
 export default function ExecutionPage({ project, section, workspaceView }) {
   const { ask, dialog } = useActionDialog();
@@ -57,16 +61,24 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   });
   const [tests, setTests] = useState([]);
   const [requirements, setRequirements] = useState([]);
+  const [members, setMembers] = useState([]);
   const [run, setRun] = useState(null);
   const [error, setError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
   const loadedProjectId = useRef(project._id);
+  const loadedRunRoute = useRef(`${project._id}:${runId}`);
+  const loadGeneration = useRef(0);
   const [planValidation, setPlanValidation] = useState(null);
   const [creatingPlan, setCreatingPlan] = useState(false);
   const [creatingSuite, setCreatingSuite] = useState(false);
   const [creatingRun, setCreatingRun] = useState(false);
+  const [savingRun, setSavingRun] = useState(false);
+  const [savingExecution, setSavingExecution] = useState(false);
+  const savingExecutionRef = useRef(false);
+  const runCreationInFlight = useRef(false);
+  const runCreateOperation = useRef(null);
   const [runSubsection, setRunSubsection] = useState("runs");
   const [automationSubsection, setAutomationSubsection] = useState("results");
   const [runForm, setRunForm] = useState({
@@ -80,6 +92,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     testPlanId: "",
     suiteIds: [],
     versionIds: [],
+    assignmentStrategy: "CONFIRMED_SKILLS",
   });
   const [actuals, setActuals] = useState({});
   const [stepResults, setStepResults] = useState({});
@@ -99,6 +112,20 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     ? ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]
     : ["PASS", "FAIL", "BLOCKED", "SKIPPED"];
   const load = useCallback(async () => {
+    const requestGeneration = ++loadGeneration.current;
+    const routeKey = `${project._id}:${runId}`;
+    if (loadedRunRoute.current !== routeKey) {
+      loadedRunRoute.current = routeKey;
+      setRun(null);
+      setResumeContext(null);
+      setActuals({});
+      setStepResults({});
+      setAttachments({});
+      if (runId) {
+        setInitialLoading(true);
+        setInitialLoadFailed(false);
+      }
+    }
     if (loadedProjectId.current !== project._id) {
       loadedProjectId.current = project._id;
       initialDataLoaded.current = false;
@@ -107,6 +134,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       setInitialLoading(true);
       setInitialLoadFailed(false);
     }
+    let memberLoadError = "";
     try {
       const [
         planValues,
@@ -118,6 +146,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         environmentValues,
         strategyValues,
         requirementValues,
+        memberValues,
       ] = await Promise.all([
         permissions.includes("testplan.read")
           ? testingApi.listPlans(project._id, planFilters)
@@ -146,7 +175,20 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         permissions.includes("requirement.read")
           ? testingApi.listRequirements(project._id, { page_size: 500, status: "BASELINED" })
           : Promise.resolve([]),
+        permissions.includes("testrun.assign") && permissions.includes("project.members.read")
+          ? testingApi.listMembers(project._id).catch((reason) => {
+              memberLoadError = `Không tải được danh sách thành viên để phân công: ${messageOf(reason)}`;
+              return [];
+            })
+          : Promise.resolve([]),
       ]);
+      const runValue =
+        runId && permissions.includes("testrun.read") ? await testingApi.getRun(runId) : null;
+      if (requestGeneration !== loadGeneration.current) return;
+      if (runValue && runValue.project_id !== project._id) {
+        throw new Error("Lần chạy không thuộc dự án đang mở");
+      }
+      if (memberLoadError) setError(memberLoadError);
       setPlans(planValues);
       setSuites(suiteValues);
       setRuns(runValues.items);
@@ -157,14 +199,16 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       setEnvironments(environmentValues);
       setStrategies(strategyValues.items || []);
       setRequirements(requirementValues);
-      if (runId && permissions.includes("testrun.read")) setRun(await testingApi.getRun(runId));
+      setMembers(memberValues);
+      setRun(runValue);
       initialDataLoaded.current = true;
       setInitialLoadFailed(false);
     } catch (reason) {
+      if (requestGeneration !== loadGeneration.current) return;
       if (!initialDataLoaded.current) setInitialLoadFailed(true);
       setError(messageOf(reason));
     } finally {
-      setInitialLoading(false);
+      if (requestGeneration === loadGeneration.current) setInitialLoading(false);
     }
   }, [
     initialDataLoaded,
@@ -183,20 +227,35 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const versions = tests.map((item) => item.current_version_id).filter(Boolean);
   const createRun = async (event) => {
     event.preventDefault();
+    if (runCreationInFlight.current) return;
+    const payload = {
+      project_id: project._id,
+      name: runForm.name,
+      test_plan_id: runForm.testPlanId || null,
+      test_suite_ids: runForm.suiteIds,
+      test_case_version_ids: runForm.versionIds,
+      assignment_strategy: runForm.assignmentStrategy,
+      environment: runForm.environment,
+      environment_id: runForm.environmentId || null,
+      release: runForm.release,
+      release_id: runForm.releaseId || null,
+      build: runForm.build,
+      build_id: runForm.buildId || null,
+    };
+    const signature = JSON.stringify(payload);
+    runCreateOperation.current = operationForRetry(
+      runCreateOperation.current,
+      signature,
+      crypto.randomUUID(),
+    );
+    runCreationInFlight.current = true;
+    setSavingRun(true);
     try {
       await testingApi.createRun({
-        project_id: project._id,
-        name: runForm.name,
-        test_plan_id: runForm.testPlanId || null,
-        test_suite_ids: runForm.suiteIds,
-        test_case_version_ids: runForm.versionIds,
-        environment: runForm.environment,
-        environment_id: runForm.environmentId || null,
-        release: runForm.release,
-        release_id: runForm.releaseId || null,
-        build: runForm.build,
-        build_id: runForm.buildId || null,
+        ...payload,
+        idempotency_key: runCreateOperation.current.idempotencyKey,
       });
+      runCreateOperation.current = null;
       setRunForm({
         name: "",
         release: "",
@@ -208,18 +267,35 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         testPlanId: "",
         suiteIds: [],
         versionIds: [],
+        assignmentStrategy: "CONFIRMED_SKILLS",
       });
       setCreatingRun(false);
       await load();
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      runCreationInFlight.current = false;
+      setSavingRun(false);
     }
   };
   const transition = async (execution, status, version) => {
+    const saveResult = async (resultNote) => {
+      if (savingExecutionRef.current) {
+        throw new Error("Kết quả thực thi đang được lưu. Hãy chờ thao tác này hoàn tất.");
+      }
+      savingExecutionRef.current = true;
+      setSavingExecution(true);
+      try {
+        await saveExecutionResult(execution, status, version, resultNote);
+      } finally {
+        savingExecutionRef.current = false;
+        setSavingExecution(false);
+      }
+    };
     try {
-      let resultNote = "Kết quả thực thi thủ công";
+      const resultNote = "Kết quả thực thi thủ công";
       if (status === "NOT_APPLICABLE") {
-        const answer = await ask({
+        await ask({
           title: "Ghi nhận kết quả Không áp dụng",
           description: `${version.test_case_key} ${version.title}`,
           confirmLabel: "Ghi nhận",
@@ -232,28 +308,40 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               autoFocus: true,
             },
           ],
+          onConfirm: async (answer) => {
+            try {
+              await saveResult(answer.reason.trim());
+            } catch (reason) {
+              throw new Error(messageOf(reason));
+            }
+          },
         });
-        if (!answer) return;
-        resultNote = answer.reason.trim();
-      }
-      const values = (version.steps || []).map((step) => {
-        const existing = execution.step_results?.find((item) => item.step_id === step.id);
-        const edited = stepResults[execution._id]?.[step.id];
-        return {
-          step_id: step.id,
-          status: edited?.status || existing?.status || "PASS",
-          actual_doc: textDoc(edited?.actual || docText(existing?.actual_doc)),
-          attachments: existing?.attachments || [],
-          note: edited?.note ?? existing?.note ?? "",
-        };
-      });
-      const invalidStep = values.find(
-        (item) => item.status === "NOT_APPLICABLE" && item.note.trim().length < 2,
-      );
-      if (invalidStep) {
-        setError("Mỗi bước Không áp dụng phải có lý do riêng");
         return;
       }
+      await saveResult(resultNote);
+    } catch (reason) {
+      setError(messageOf(reason));
+    }
+  };
+  const saveExecutionResult = async (execution, status, version, resultNote) => {
+    const values = (version.steps || []).map((step) => {
+      const existing = execution.step_results?.find((item) => item.step_id === step.id);
+      const edited = stepResults[execution._id]?.[step.id];
+      return {
+        step_id: step.id,
+        status: edited?.status || existing?.status || "PASS",
+        actual_doc: textDoc(edited?.actual || docText(existing?.actual_doc)),
+        attachments: existing?.attachments || [],
+        note: edited?.note ?? existing?.note ?? "",
+      };
+    });
+    const invalidStep = values.find(
+      (item) => item.status === "NOT_APPLICABLE" && item.note.trim().length < 2,
+    );
+    if (invalidStep) {
+      throw new Error("Mỗi bước Không áp dụng phải có lý do riêng");
+    }
+    try {
       await testingApi.updateExecution(project._id, execution._id, {
         status,
         step_results: status === "IN_PROGRESS" ? execution.step_results || [] : values,
@@ -263,11 +351,16 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         idempotency_key: crypto.randomUUID(),
         expected_revision: execution.revision,
       });
-      setResumeContext(null);
-      setRun(await testingApi.getRun(run._id));
     } catch (reason) {
-      setError(messageOf(reason));
+      if (shouldReloadAfterAmbiguousMutation(reason)) {
+        try {
+          setRun(await testingApi.getRun(run._id));
+        } catch {}
+      }
+      throw reason;
     }
+    setResumeContext(null);
+    setRun(await testingApi.getRun(run._id));
   };
   const createDefectFromResult = async (result, version) => {
     try {
@@ -293,7 +386,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     }
   };
   const updatePlan = async (item) => {
-    const answer = await ask({
+    await ask({
       title: "Sửa kế hoạch kiểm thử",
       description: item.name,
       confirmLabel: "Lưu kế hoạch",
@@ -306,21 +399,22 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           multiline: true,
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.updatePlan(item._id, {
+            expected_revision: item.revision,
+            name: answer.name,
+            objective: answer.objective,
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.updatePlan(item._id, {
-        expected_revision: item.revision,
-        name: answer.name,
-        objective: answer.objective,
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const transitionPlan = async (item, action) => {
-    const answer = await ask({
+    await ask({
       title:
         action === "approve"
           ? "Phê duyệt kế hoạch"
@@ -334,43 +428,45 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       fields: [
         { name: "note", label: "Ghi chú", required: true, multiline: true, autoFocus: true },
       ],
+      onConfirm: async (answer) => {
+        try {
+          const payload =
+            action === "archive"
+              ? { expected_revision: item.revision, reason: answer.note }
+              : { expected_revision: item.revision, review_note: answer.note };
+          if (action === "approve") await testingApi.approvePlan(item._id, payload);
+          else if (action === "archive") await testingApi.archivePlan(item._id, payload);
+          else await testingApi.submitPlan(item._id, payload);
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      const payload =
-        action === "archive"
-          ? { expected_revision: item.revision, reason: answer.note }
-          : { expected_revision: item.revision, review_note: answer.note };
-      if (action === "approve") await testingApi.approvePlan(item._id, payload);
-      else if (action === "archive") await testingApi.archivePlan(item._id, payload);
-      else await testingApi.submitPlan(item._id, payload);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const updateSuite = async (item) => {
-    const answer = await ask({
+    await ask({
       title: "Sửa bộ kiểm thử",
       description: item.name,
       confirmLabel: "Lưu bộ kiểm thử",
       fields: [
         { name: "name", label: "Tên", initialValue: item.name, required: true, autoFocus: true },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.updateSuite(item._id, {
+            expected_revision: item.revision,
+            name: answer.name,
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.updateSuite(item._id, {
-        expected_revision: item.revision,
-        name: answer.name,
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const archiveSuite = async (item) => {
-    const answer = await ask({
+    await ask({
       title: "Lưu trữ bộ kiểm thử",
       description: item.name,
       confirmLabel: "Lưu trữ",
@@ -378,17 +474,18 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       fields: [
         { name: "reason", label: "Lý do", required: true, multiline: true, autoFocus: true },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.archiveSuite(item._id, {
+            expected_revision: item.revision,
+            reason: answer.reason,
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.archiveSuite(item._id, {
-        expected_revision: item.revision,
-        reason: answer.reason,
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const pageTitle =
     workspaceView === "test-plans"
@@ -419,6 +516,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       <RunExecutionWorkspace
         run={run}
         projectId={project._id}
+        members={members}
         error={error}
         can={can}
         resumeContext={resumeContext}
@@ -436,6 +534,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         attachments={attachments}
         onAttachmentsChange={setAttachments}
         dialog={dialog}
+        savingExecution={savingExecution}
       />
     );
   return (
@@ -462,11 +561,12 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               Tạo bộ kiểm thử
             </button>
           )}
-          {(workspaceView === "" || workspaceView === "test-runs") && can("testrun.create") && (
-            <button className="apple-button" type="button" onClick={() => setCreatingRun(true)}>
-              Tạo lần chạy
-            </button>
-          )}
+          {(workspaceView === "" || (workspaceView === "test-runs" && runSubsection === "runs")) &&
+            can("testrun.create") && (
+              <button className="apple-button" type="button" onClick={() => setCreatingRun(true)}>
+                Tạo lần chạy
+              </button>
+            )}
         </div>
       }
     >
@@ -570,7 +670,9 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         {can("testrun.create") && (
           <Modal
             isOpen={creatingRun}
-            onClose={() => setCreatingRun(false)}
+            onClose={() => {
+              if (!savingRun) setCreatingRun(false);
+            }}
             ariaLabel="Tạo lần chạy"
             className="max-w-3xl max-h-[90dvh] overflow-y-auto"
           >
@@ -578,133 +680,157 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               <ModalTitle>Tạo lần chạy</ModalTitle>
             </ModalHeader>
             <form className="space-y-3 p-5" onSubmit={createRun}>
-              <input
-                aria-label="Tên lần chạy"
-                required
-                className="apple-input"
-                value={runForm.name}
-                onChange={(event) => setRunForm({ ...runForm, name: event.target.value })}
-                placeholder="Tên lần chạy"
-              />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <select
-                  aria-label="Bản phát hành"
+              <fieldset className="min-w-0 space-y-3" disabled={savingRun}>
+                <legend className="sr-only">Thông tin lần chạy kiểm thử</legend>
+                <input
+                  aria-label="Tên lần chạy"
+                  required
                   className="apple-input"
-                  value={runForm.releaseId}
-                  onChange={(event) => {
-                    const releaseId = event.target.value;
-                    const release = releases.find((item) => item._id === releaseId);
-                    setRunForm({
-                      ...runForm,
-                      releaseId,
-                      release: release?.key || "",
-                      buildId: "",
-                      build: "",
-                    });
-                  }}
-                >
-                  <option value="">Không gắn bản phát hành</option>
-                  {releases.map((item) => (
-                    <option key={item._id} value={item._id}>
-                      {item.key} · {item.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Bản dựng"
-                  className="apple-input"
-                  value={runForm.buildId}
-                  onChange={(event) => {
-                    const buildId = event.target.value;
-                    const build = builds.find((item) => item._id === buildId);
-                    setRunForm({
-                      ...runForm,
-                      buildId,
-                      build: build?.identifier || "",
-                      releaseId: build?.release_id || runForm.releaseId,
-                      release:
-                        releases.find((item) => item._id === build?.release_id)?.key ||
-                        runForm.release,
-                    });
-                  }}
-                >
-                  <option value="">Không gắn bản dựng</option>
-                  {builds
-                    .filter((item) => !runForm.releaseId || item.release_id === runForm.releaseId)
-                    .map((item) => (
+                  value={runForm.name}
+                  onChange={(event) => setRunForm({ ...runForm, name: event.target.value })}
+                  placeholder="Tên lần chạy"
+                />
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <select
+                    aria-label="Bản phát hành"
+                    className="apple-input"
+                    value={runForm.releaseId}
+                    onChange={(event) => {
+                      const releaseId = event.target.value;
+                      const release = releases.find((item) => item._id === releaseId);
+                      setRunForm({
+                        ...runForm,
+                        releaseId,
+                        release: release?.key || "",
+                        buildId: "",
+                        build: "",
+                      });
+                    }}
+                  >
+                    <option value="">Không gắn bản phát hành</option>
+                    {releases.map((item) => (
                       <option key={item._id} value={item._id}>
-                        {item.identifier} · {item.version}
+                        {item.key} · {item.name}
                       </option>
                     ))}
-                </select>
+                  </select>
+                  <select
+                    aria-label="Bản dựng"
+                    className="apple-input"
+                    value={runForm.buildId}
+                    onChange={(event) => {
+                      const buildId = event.target.value;
+                      const build = builds.find((item) => item._id === buildId);
+                      setRunForm({
+                        ...runForm,
+                        buildId,
+                        build: build?.identifier || "",
+                        releaseId: build?.release_id || runForm.releaseId,
+                        release:
+                          releases.find((item) => item._id === build?.release_id)?.key ||
+                          runForm.release,
+                      });
+                    }}
+                  >
+                    <option value="">Không gắn bản dựng</option>
+                    {builds
+                      .filter((item) => !runForm.releaseId || item.release_id === runForm.releaseId)
+                      .map((item) => (
+                        <option key={item._id} value={item._id}>
+                          {item.identifier} · {item.version}
+                        </option>
+                      ))}
+                  </select>
+                  <select
+                    aria-label="Môi trường"
+                    className="apple-input"
+                    value={runForm.environmentId}
+                    onChange={(event) => {
+                      const environmentId = event.target.value;
+                      const environment = environments.find((item) => item._id === environmentId);
+                      setRunForm({
+                        ...runForm,
+                        environmentId,
+                        environment: environment?.name || "staging",
+                      });
+                    }}
+                  >
+                    <option value="">Mặc định staging</option>
+                    {environments.map((item) => (
+                      <option key={item._id} value={item._id}>
+                        {item.name} · {valueLabel(item.environment_type)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <select
-                  aria-label="Môi trường"
+                  aria-label="Kế hoạch kiểm thử"
                   className="apple-input"
-                  value={runForm.environmentId}
-                  onChange={(event) => {
-                    const environmentId = event.target.value;
-                    const environment = environments.find((item) => item._id === environmentId);
-                    setRunForm({
-                      ...runForm,
-                      environmentId,
-                      environment: environment?.name || "staging",
-                    });
-                  }}
+                  value={runForm.testPlanId}
+                  onChange={(event) => setRunForm({ ...runForm, testPlanId: event.target.value })}
                 >
-                  <option value="">Mặc định staging</option>
-                  {environments.map((item) => (
+                  <option value="">Không gắn kế hoạch</option>
+                  {plans.map((item) => (
                     <option key={item._id} value={item._id}>
-                      {item.name} · {valueLabel(item.environment_type)}
+                      {item.name}
                     </option>
                   ))}
                 </select>
-              </div>
-              <select
-                aria-label="Kế hoạch kiểm thử"
-                className="apple-input"
-                value={runForm.testPlanId}
-                onChange={(event) => setRunForm({ ...runForm, testPlanId: event.target.value })}
-              >
-                <option value="">Không gắn kế hoạch</option>
-                {plans.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-              <MultiSelect
-                label="Bộ kiểm thử"
-                options={suites.map((item) => ({ value: item._id, label: item.name }))}
-                searchPlaceholder="Tìm bộ kiểm thử"
-                value={runForm.suiteIds}
-                onChange={(suiteIds) => setRunForm((current) => ({ ...current, suiteIds }))}
-              />
-              <MultiSelect
-                label="Phiên bản ca kiểm thử"
-                options={tests.map((item) => ({
-                  value: item.current_version_id,
-                  label: `${item.test_case_key} ${item.current_version?.title || ""}`,
-                }))}
-                searchPlaceholder="Tìm ca kiểm thử"
-                value={runForm.versionIds}
-                onChange={(versionIds) => setRunForm((current) => ({ ...current, versionIds }))}
-              />
-              <p className="text-[12px] text-ink-muted">
-                Ảnh chụp {runForm.versionIds.length} phiên bản được chọn cùng các phiên bản trong bộ
-                kiểm thử
-              </p>
-              <div className="action-dialog-footer flex justify-end gap-3">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => setCreatingRun(false)}
-                >
-                  Hủy
-                </button>
-                <button className="apple-button" type="submit">
-                  Tạo lần chạy
-                </button>
-              </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium" htmlFor="run-assignment-strategy">
+                    Phân công ca kiểm thử
+                  </label>
+                  <select
+                    id="run-assignment-strategy"
+                    className="apple-input"
+                    value={runForm.assignmentStrategy}
+                    onChange={(event) =>
+                      setRunForm({ ...runForm, assignmentStrategy: event.target.value })
+                    }
+                  >
+                    <option value="CONFIRMED_SKILLS">Tự động theo kỹ năng đã xác nhận</option>
+                    <option value="MANUAL">Để trống để phân công thủ công</option>
+                  </select>
+                  <p className="text-xs text-ink-muted">
+                    Hệ thống giữ nguyên phân công thủ công; ca không tìm được người phù hợp sẽ để
+                    trống và ghi rõ lý do.
+                  </p>
+                </div>
+                <MultiSelect
+                  label="Bộ kiểm thử"
+                  options={suites.map((item) => ({ value: item._id, label: item.name }))}
+                  searchPlaceholder="Tìm bộ kiểm thử"
+                  value={runForm.suiteIds}
+                  onChange={(suiteIds) => setRunForm((current) => ({ ...current, suiteIds }))}
+                />
+                <MultiSelect
+                  label="Phiên bản ca kiểm thử"
+                  options={tests.map((item) => ({
+                    value: item.current_version_id,
+                    label: `${item.test_case_key} ${item.current_version?.title || ""}`,
+                  }))}
+                  searchPlaceholder="Tìm ca kiểm thử"
+                  value={runForm.versionIds}
+                  onChange={(versionIds) => setRunForm((current) => ({ ...current, versionIds }))}
+                />
+                <p className="text-[12px] text-ink-muted">
+                  Ảnh chụp {runForm.versionIds.length} phiên bản được chọn cùng các phiên bản trong
+                  bộ kiểm thử
+                </p>
+                <div className="action-dialog-footer flex justify-end gap-3">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={savingRun}
+                    onClick={() => setCreatingRun(false)}
+                  >
+                    Hủy
+                  </button>
+                  <button className="apple-button" type="submit" disabled={savingRun}>
+                    {savingRun ? "Đang tạo lần chạy…" : "Tạo lần chạy"}
+                  </button>
+                </div>
+              </fieldset>
             </form>
           </Modal>
         )}
@@ -1032,102 +1158,101 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           />
         </Panel>
       )}
-      {can("testrun.read") && (workspaceView === "" || workspaceView === "test-runs") && (
-        <div hidden={workspaceView === "test-runs" && runSubsection !== "runs"}>
-          <Panel title="Danh sách lần chạy">
-            <details className="border-b border-border p-4">
-              <summary className="cursor-pointer text-sm font-medium">
-                Tìm kiếm bộ lọc và sắp xếp
-              </summary>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <input
-                  aria-label="Tìm lần chạy"
-                  className="apple-input"
-                  placeholder="Tên lần chạy"
-                  value={runFilters.name}
-                  onChange={(event) => {
-                    setRunFilters({ ...runFilters, name: event.target.value });
-                    setRunPage(1);
-                  }}
-                />
-                <select
-                  aria-label="Lọc trạng thái lần chạy"
-                  className="apple-input"
-                  value={runFilters.status}
-                  onChange={(event) => {
-                    setRunFilters({ ...runFilters, status: event.target.value });
-                    setRunPage(1);
-                  }}
-                >
-                  <option value="">Mọi trạng thái</option>
-                  {["DRAFT", "READY", "IN_PROGRESS", "COMPLETED", "ABORTED"].map((value) => (
-                    <option key={value} value={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  aria-label="Lọc môi trường lần chạy"
-                  className="apple-input"
-                  placeholder="Môi trường"
-                  value={runFilters.environment}
-                  onChange={(event) => {
-                    setRunFilters({ ...runFilters, environment: event.target.value });
-                    setRunPage(1);
-                  }}
-                />
-                <select
-                  aria-label="Sắp xếp lần chạy"
-                  className="apple-input"
-                  value={runFilters.sort}
-                  onChange={(event) => {
-                    setRunFilters({ ...runFilters, sort: event.target.value });
-                    setRunPage(1);
-                  }}
-                >
-                  <option value="-updated_at">Mới cập nhật</option>
-                  <option value="updated_at">Cũ cập nhật</option>
-                  <option value="name">Tên tăng dần</option>
-                </select>
-              </div>
-            </details>
-            <DataTable
-              onSelect={(item) =>
-                window.location.assign(`/du-an/${project._id}/thuc-thi/${item._id}`)
-              }
-              items={runs}
-              empty="Chưa có lần chạy"
-              columns={[
-                { key: "name", label: "Tên" },
-                { key: "environment", label: "Môi trường" },
-                { key: "build", label: "Bản dựng" },
-                {
-                  key: "count",
-                  label: "Số ca kiểm thử",
-                  render: (item) => item.test_case_version_ids.length,
-                },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.status} />,
-                },
-              ]}
-            />
-            <Pagination value={runPageInfo} onChange={setRunPage} />
-          </Panel>
-        </div>
-      )}
-      {(workspaceView === "" || workspaceView === "test-runs") &&
-        project.current_permissions?.includes("environmentincident.read") && (
-          <div hidden={workspaceView === "test-runs" && runSubsection !== "incidents"}>
-            <EnvironmentIncidentPanel project={project} />
+      {can("testrun.read") &&
+        (workspaceView === "" || (workspaceView === "test-runs" && runSubsection === "runs")) && (
+          <div>
+            <Panel title="Danh sách lần chạy">
+              <details className="border-b border-border p-4">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Tìm kiếm bộ lọc và sắp xếp
+                </summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <input
+                    aria-label="Tìm lần chạy"
+                    className="apple-input"
+                    placeholder="Tên lần chạy"
+                    value={runFilters.name}
+                    onChange={(event) => {
+                      setRunFilters({ ...runFilters, name: event.target.value });
+                      setRunPage(1);
+                    }}
+                  />
+                  <select
+                    aria-label="Lọc trạng thái lần chạy"
+                    className="apple-input"
+                    value={runFilters.status}
+                    onChange={(event) => {
+                      setRunFilters({ ...runFilters, status: event.target.value });
+                      setRunPage(1);
+                    }}
+                  >
+                    <option value="">Mọi trạng thái</option>
+                    {["DRAFT", "READY", "IN_PROGRESS", "COMPLETED", "ABORTED"].map((value) => (
+                      <option key={value} value={value}>
+                        {valueLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    aria-label="Lọc môi trường lần chạy"
+                    className="apple-input"
+                    placeholder="Môi trường"
+                    value={runFilters.environment}
+                    onChange={(event) => {
+                      setRunFilters({ ...runFilters, environment: event.target.value });
+                      setRunPage(1);
+                    }}
+                  />
+                  <select
+                    aria-label="Sắp xếp lần chạy"
+                    className="apple-input"
+                    value={runFilters.sort}
+                    onChange={(event) => {
+                      setRunFilters({ ...runFilters, sort: event.target.value });
+                      setRunPage(1);
+                    }}
+                  >
+                    <option value="-updated_at">Mới cập nhật</option>
+                    <option value="updated_at">Cũ cập nhật</option>
+                    <option value="name">Tên tăng dần</option>
+                  </select>
+                </div>
+              </details>
+              <DataTable
+                onSelect={(item) =>
+                  window.location.assign(`/du-an/${project._id}/thuc-thi/${item._id}`)
+                }
+                items={runs}
+                empty="Chưa có lần chạy"
+                columns={[
+                  { key: "name", label: "Tên" },
+                  { key: "environment", label: "Môi trường" },
+                  { key: "build", label: "Bản dựng" },
+                  {
+                    key: "count",
+                    label: "Số ca kiểm thử",
+                    render: (item) => item.test_case_version_ids.length,
+                  },
+                  {
+                    key: "status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.status} />,
+                  },
+                ]}
+              />
+              <Pagination value={runPageInfo} onChange={setRunPage} />
+            </Panel>
           </div>
         )}
       {(workspaceView === "" || workspaceView === "test-runs") &&
-        project.current_permissions?.includes("nfrtest.read") && (
-          <div hidden={workspaceView === "test-runs" && runSubsection !== "nonfunctional"}>
-            <NonFunctionalTestPanel project={project} />
-          </div>
+        project.current_permissions?.includes("environmentincident.read") &&
+        (workspaceView === "" || runSubsection === "incidents") && (
+          <EnvironmentIncidentPanel project={project} />
+        )}
+      {(workspaceView === "" || workspaceView === "test-runs") &&
+        project.current_permissions?.includes("nfrtest.read") &&
+        (workspaceView === "" || runSubsection === "nonfunctional") && (
+          <NonFunctionalTestPanel project={project} />
         )}
       {dialog}
     </WorkspacePage>

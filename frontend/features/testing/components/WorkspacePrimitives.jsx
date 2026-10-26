@@ -48,17 +48,21 @@ export function useActionDialog() {
     const dialogElement = dialogRef.current;
     const focusableSelector =
       'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
-    const focusable = () => Array.from(dialogElement?.querySelectorAll(focusableSelector) || []);
-    const initialFocus = () => {
-      const firstInput = dialogElement?.querySelector(
-        'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])',
+    const focusable = () =>
+      Array.from(dialogElement?.querySelectorAll(focusableSelector) || []).filter(
+        (element) =>
+          element.getClientRects().length > 0 && !element.closest('[aria-hidden="true"], [inert]'),
       );
-      (
-        dialogElement?.querySelector("[autofocus]") ||
-        firstInput ||
-        focusable()[0] ||
-        dialogElement
-      )?.focus();
+    const initialFocus = () => {
+      const visibleFocusable = focusable();
+      const initialTarget =
+        visibleFocusable.find((element) => element.hasAttribute("autofocus")) ||
+        visibleFocusable.find((element) =>
+          element.matches('input:not([type="hidden"]), select, textarea'),
+        ) ||
+        visibleFocusable[0] ||
+        dialogElement;
+      initialTarget?.focus();
     };
     initialFocus();
     const handleKeyDown = (event) => {
@@ -174,7 +178,7 @@ export function useActionDialog() {
               <MultiSelect
                 autoFocus={field.autoFocus}
                 className="min-w-0"
-                disabled={submitting}
+                disabled={submitting || Boolean(field.disabled)}
                 key={field.name}
                 label={field.label}
                 options={field.options}
@@ -189,6 +193,7 @@ export function useActionDialog() {
                   <select
                     autoFocus={field.autoFocus}
                     className="apple-input mt-2"
+                    disabled={submitting || Boolean(field.disabled)}
                     required={field.required}
                     value={values[field.name] ?? ""}
                     onChange={(event) =>
@@ -205,6 +210,7 @@ export function useActionDialog() {
                   <textarea
                     autoFocus={field.autoFocus}
                     className="apple-input mt-2 min-h-28"
+                    disabled={submitting || Boolean(field.disabled)}
                     required={field.required}
                     value={values[field.name] || ""}
                     onChange={(event) =>
@@ -215,8 +221,12 @@ export function useActionDialog() {
                   <input
                     autoFocus={field.autoFocus}
                     className="apple-input mt-2"
+                    disabled={submitting || Boolean(field.disabled)}
                     required={field.required}
                     type={field.type || "text"}
+                    min={field.min}
+                    max={field.max}
+                    step={field.step}
                     value={values[field.name] || ""}
                     onChange={(event) =>
                       setValues((current) => ({ ...current, [field.name]: event.target.value }))
@@ -312,12 +322,14 @@ export function WorkspaceSectionNav({ items, current, compact = false, permissio
 
 export function Panel({ title, description, actions, children, className = "" }) {
   return (
-    <section className={`workspace-panel min-w-0 ${className}`}>
+    <section
+      className={`workspace-panel min-w-0 ${actions ? "workspace-panel-with-actions" : ""} ${className}`}
+    >
       {(title || actions) && (
         <div
           className={`workspace-panel-header min-w-0 gap-3 border-b border-border bg-surface-raised/50 px-4 py-4 sm:px-5 ${actions ? "workspace-panel-header-with-actions" : ""}`}
         >
-          <div className="workspace-panel-heading min-w-0">
+          <div className="workspace-panel-heading">
             {title && (
               <h2 className="min-w-0 whitespace-normal break-normal font-semibold leading-6">
                 {title}

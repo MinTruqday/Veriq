@@ -17,6 +17,7 @@ async def index_artifact(
     authority,
     version=None,
     module="",
+    source_structure=None,
     **metadata,
 ) -> bool:
     if not str(text or "").strip():
@@ -27,25 +28,25 @@ async def index_artifact(
             "artifact_id": artifact_id,
             "artifact_version_id": artifact_version_id,
             "title": title,
-            "text": str(text)[:50000],
+            "text": str(text),
             "status": status,
             "authority": authority,
             "version": version,
             "module": module,
+            "source_structure": source_structure or [],
             "metadata": metadata,
         }
     )
     try:
-        async with httpx.AsyncClient(
-            timeout=60
-        ) as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 f"{settings.AI_URL.rstrip('/')}/tri-thuc/du-an/{project_id}/doi-tuong",
                 headers={"X-Internal-Token": settings.SECRET_KEY},
                 json=payload,
             )
             response.raise_for_status()
-        return True
+            result = response.json()
+        return isinstance(result, dict) and result.get("status") == "indexed"
     except httpx.HTTPError:
         return False
 
@@ -92,6 +93,28 @@ async def search_project_with_status(project_id, query, artifact_types, limit, u
 async def search_project(project_id, query, artifact_types, limit, user) -> list:
     result = await search_project_with_status(project_id, query, artifact_types, limit, user)
     return result.get("items", [])
+
+
+async def list_project_artifact_chunks(
+    project_id: str,
+    artifact_version_id: str,
+    limit: int,
+    cursor: str | None,
+) -> dict:
+    params = {"limit": limit}
+    if cursor:
+        params["cursor"] = cursor
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(
+            f"{settings.AI_URL.rstrip('/')}/tri-thuc/du-an/{project_id}/doi-tuong/{artifact_version_id}/cac-doan",
+            headers={"X-Internal-Token": settings.SECRET_KEY},
+            params=params,
+        )
+        response.raise_for_status()
+        result = response.json()
+    if not isinstance(result, dict) or not isinstance(result.get("items"), list):
+        raise RuntimeError("KNOWLEDGE_CHUNK_LIST_RESPONSE_INVALID")
+    return result
 
 
 async def compare_project_text_semantics(query: str, passages: list[str]) -> list[float]:

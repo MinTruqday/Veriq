@@ -190,8 +190,10 @@ class RequirementImportRepository:
         requirement_ids,
         selected_indexes,
         rejected_indexes,
+        requirement_version_ids,
         user_id,
         updated_at,
+        session=None,
     ):
         result = await database.value.import_jobs.update_one(
             {"_id": job_id, "project_id": project_id, "status": source_status},
@@ -199,6 +201,7 @@ class RequirementImportRepository:
                 "$set": {
                     "status": target_status,
                     "created_requirement_ids": requirement_ids,
+                    "created_requirement_version_ids": requirement_version_ids,
                     "selected_indexes": selected_indexes,
                     "rejected_indexes": rejected_indexes,
                     "confirmed_at": updated_at,
@@ -207,16 +210,18 @@ class RequirementImportRepository:
                 },
                 "$inc": {"revision": 1},
             },
+            **({"session": session} if session is not None else {}),
         )
         return result.matched_count == 1
 
-    async def confirm_document(self, document_id, project_id, status, updated_at):
+    async def confirm_document(self, document_id, project_id, status, updated_at, session=None):
         await database.value.requirement_documents.update_one(
             {"_id": document_id, "project_id": project_id},
             {
                 "$set": {"status": status, "updated_at": updated_at},
                 "$inc": {"revision": 1},
             },
+            **({"session": session} if session is not None else {}),
         )
 
 

@@ -2,11 +2,25 @@ import {
   downloadTestingFile,
   listPage,
   listQuery,
+  testingImageRequest,
   testingRequest,
   testingStreamRequest,
 } from "./testing.transport";
 
 export const designTestingApi = {
+  listTestCaseCustomFields: (projectId) => testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu`),
+  listManagedTestCaseCustomFields: (projectId) =>
+    testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu/quan-ly`),
+  createTestCaseCustomField: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateTestCaseCustomField: (projectId, fieldId, payload) =>
+    testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu/${fieldId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   listTestRepository: (projectId) => testingRequest(`/du-an/${projectId}/kho-ca-kiem-thu`),
   createTestRepositoryNode: (projectId, payload) =>
     testingRequest(`/du-an/${projectId}/kho-ca-kiem-thu`, {
@@ -23,6 +37,11 @@ export const designTestingApi = {
     testingRequest(`/du-an/${projectId}/buoc-dung-lai`, {
       method: "POST",
       body: JSON.stringify({ ...payload, project_id: projectId }),
+    }),
+  updateReusableTestStep: (stepId, payload) =>
+    testingRequest(`/buoc-dung-lai/${stepId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
     }),
   listRequirementClarifications: (requirementVersionId) =>
     testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/phieu-lam-ro`),
@@ -103,16 +122,8 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify({ expected_revision: revision }),
     }),
-  lintRequirement: (id, payload) =>
-    testingStreamRequest(`/phien-ban-yeu-cau/${id}/ai/kiem-tra`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  applyRequirementAiSuggestion: (id, payload) =>
-    testingRequest(`/phien-ban-yeu-cau/${id}/ai/ap-dung-de-xuat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+  getLatestRequirementQualityAnalysis: (id) =>
+    testingRequest(`/phien-ban-yeu-cau/${id}/ai/ket-qua-moi-nhat`),
   compareRequirement: (id, fromId, toId) =>
     testingRequest(`/yeu-cau/${id}/so-sanh`, {
       method: "POST",
@@ -234,6 +245,10 @@ export const designTestingApi = {
     body.append("shared_with", JSON.stringify(access.shared_with || []));
     body.append("ai_enabled", String(Boolean(access.ai_enabled)));
     body.append("source_type", access.source_type || "REFERENCE");
+    if (access.ocr_language?.trim()) body.append("ocr_language", access.ocr_language.trim());
+    if (access.supersedes_document_id) {
+      body.append("supersedes_document_id", access.supersedes_document_id);
+    }
     return testingRequest(`/du-an/${id}/tai-lieu-yeu-cau/tai-len`, { method: "POST", body });
   },
   listRequirementDocuments: (id, query = "") =>
@@ -245,6 +260,23 @@ export const designTestingApi = {
     }),
   listKnowledgeSources: (id, includeArchived = false) =>
     testingRequest(`/du-an/${id}/nguon-tri-thuc?include_archived=${includeArchived}`),
+  listKnowledgeSourceChunks: (projectId, documentId, limit = 50, cursor = "") => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set("cursor", cursor);
+    return testingRequest(
+      `/du-an/${projectId}/nguon-tri-thuc/${documentId}/cac-doan?${params.toString()}`,
+    );
+  },
+  listKnowledgeSourceStructure: (projectId, documentId, offset = 0, limit = 100) => {
+    const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+    return testingRequest(
+      `/du-an/${projectId}/nguon-tri-thuc/${documentId}/cau-truc-nguon?${params.toString()}`,
+    );
+  },
+  getKnowledgeSourceImage: (projectId, documentId, blockIndex) =>
+    testingImageRequest(
+      `/du-an/${encodeURIComponent(projectId)}/nguon-tri-thuc/${encodeURIComponent(documentId)}/anh/${encodeURIComponent(blockIndex)}`,
+    ),
   archiveKnowledgeSource: (id, payload) =>
     testingRequest(`/nguon-tri-thuc/${id}/luu-tru`, {
       method: "POST",
@@ -424,12 +456,23 @@ export const designTestingApi = {
       body: JSON.stringify(payload),
     }),
   getTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}`),
+  compareTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}/so-sanh`),
+  saveTestDraftMerge: (id, payload) =>
+    testingRequest(`/ban-nhap-ca-kiem-thu/${id}/luu-ban-ghep`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  acceptTestDraftGroup: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/ban-nhap-ca-kiem-thu/chap-nhan-nhom`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   updateTestDraft: (id, payload) =>
     testingRequest(`/ban-nhap-ca-kiem-thu/${id}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  lintTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}/kiem-tra`, { method: "POST" }),
+  getLatestTestDraftLint: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}/kiem-tra`),
   freezeTestDraft: (id, revision, reason) =>
     testingRequest(`/ban-nhap-ca-kiem-thu/${id}/dong-bang`, {
       method: "POST",
@@ -438,6 +481,7 @@ export const designTestingApi = {
   listTestCasePage: (id, query = "") => listPage(`/du-an/${id}/ca-kiem-thu`, query),
   listTestCases: (id, query = "") =>
     listPage(`/du-an/${id}/ca-kiem-thu`, query).then((result) => result.items),
+  getTestCaseVersion: (versionId) => testingRequest(`/phien-ban-ca-kiem-thu/${versionId}`),
   listTestVersions: (id) => testingRequest(`/ca-kiem-thu/${id}/phien-ban`),
   cloneTestCase: (id, payload) =>
     testingRequest(`/ca-kiem-thu/${id}/nhan-ban`, {
@@ -482,6 +526,7 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  getTestImportPreview: (id) => testingRequest(`/nhap-ca-kiem-thu/${id}`),
   exportTestCases: (id, format = "csv") =>
     downloadTestingFile(
       `/du-an/${id}/ca-kiem-thu/xuat?format=${format}`,

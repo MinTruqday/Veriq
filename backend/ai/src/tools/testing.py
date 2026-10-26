@@ -1,13 +1,9 @@
-import json
-from typing import Annotated
-from uuid import uuid4
+import math
+from urllib.parse import urlencode
 
-from langchain_core.runnables import RunnableConfig
-from pydantic import Field
+from src.tools.automation_publication import publish_grounded_test_case
+from src.tools.testing_api import AutomationOperationError, require_operation
 
-from src.core.infrastructure.configuration import settings
-from src.tools.registry import with_tool_access
-from src.tools.testing_api import AutomationOperationError, INTERNAL_API_URL, call, headers, parse, require_operation
 
 def compilable_document_ids(documents, event_document_id):
     """Return the authorized, AI-enabled source set for one compilation event."""
@@ -33,6 +29,124 @@ def response_items(value):
         items = value.get("items")
         return items if isinstance(items, list) else []
     return []
+
+
+async def list_resumable_ai_test_case_drafts(project_id, requirement_version_id, config):
+    drafts_by_id = {}
+    for status in ("DRAFT", "IN_REVIEW"):
+        query = urlencode(
+            {"requirement_version_id": requirement_version_id, "status": status}
+        )
+        response = await require_operation(
+            "GET",
+            f"/du-an/{project_id}/ban-nhap-ca-kiem-thu?{query}",
+            config,
+        )
+        if not isinstance(response, (list, dict)):
+            raise AutomationOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
+        items = response_items(response)
+        if isinstance(response, dict) and not isinstance(response.get("items"), list):
+            raise AutomationOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
+        for draft in items:
+            if not isinstance(draft, dict) or not draft.get("_id"):
+                raise AutomationOperationError("AI_TEST_CASE_DRAFT_READBACK_INVALID")
+            if (
+                draft.get("project_id") != project_id
+                or requirement_version_id
+                not in (draft.get("requirement_version_ids") or [])
+                or draft.get("status") != status
+            ):
+                raise AutomationOperationError("AI_TEST_CASE_DRAFT_SCOPE_INVALID")
+            if draft.get("origin") != "ai_generated":
+                continue
+            previous = drafts_by_id.get(str(draft["_id"]))
+            if previous and (
+                previous.get("status") != draft.get("status")
+                or previous.get("revision") != draft.get("revision")
+            ):
+                raise AutomationOperationError(
+                    "AI_TEST_CASE_DRAFT_STATE_CHANGED_DURING_READ"
+                )
+            drafts_by_id[str(draft["_id"])] = draft
+    return sorted(
+        drafts_by_id.values(),
+        key=lambda draft: (str(draft.get("created_at") or ""), str(draft["_id"])),
+    )
+
+
+async def list_all_test_case_records(project_id, requirement_id, config, page_size=500):
+    if not isinstance(page_size, int) or isinstance(page_size, bool) or page_size < 1:
+        raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
+    page = 1
+    total = None
+    total_pages = None
+    records = []
+    seen_ids = set()
+    scope_fingerprint = None
+    while total_pages is None or page <= total_pages:
+        response = await require_operation(
+            "GET",
+            f"/du-an/{project_id}/ca-kiem-thu?requirement_id={requirement_id}"
+            f"&page={page}&page_size={page_size}&sort=test_case_key",
+            config,
+        )
+        items = response_items(response)
+        for item in items:
+            identifier = str(item.get("_id") or "")
+            if not identifier:
+                raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
+            if item.get("project_id") != project_id:
+                raise AutomationOperationError("REQUIREMENT_TEST_CASE_SCOPE_INVALID")
+            if identifier in seen_ids:
+                raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_DUPLICATE")
+            seen_ids.add(identifier)
+            records.append(item)
+
+        if not isinstance(response, dict):
+            raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
+
+        try:
+            reported_total = int(response["total"])
+            reported_pages = int(response["total_pages"])
+            reported_page = int(response["page"])
+            reported_page_size = int(response["page_size"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise AutomationOperationError(
+                "REQUIREMENT_TEST_CASE_PAGINATION_INVALID"
+            ) from error
+        if (
+            reported_total < 0
+            or reported_pages != math.ceil(reported_total / page_size)
+            or reported_page != page
+            or reported_page_size != page_size
+        ):
+            raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INVALID")
+        if total is not None and reported_total != total:
+            raise AutomationOperationError(
+                "REQUIREMENT_TEST_CASE_SCOPE_CHANGED_DURING_READ"
+            )
+        if total_pages is not None and reported_pages != total_pages:
+            raise AutomationOperationError(
+                "REQUIREMENT_TEST_CASE_SCOPE_CHANGED_DURING_READ"
+            )
+        total = reported_total
+        total_pages = reported_pages
+        reported_fingerprint = response.get("scope_fingerprint")
+        if not isinstance(reported_fingerprint, str) or not reported_fingerprint:
+            raise AutomationOperationError("REQUIREMENT_TEST_CASE_SCOPE_FINGERPRINT_MISSING")
+        if scope_fingerprint is not None and reported_fingerprint != scope_fingerprint:
+            raise AutomationOperationError("REQUIREMENT_TEST_CASE_SCOPE_CHANGED_DURING_READ")
+        scope_fingerprint = reported_fingerprint
+        expected_items = min(page_size, max(0, reported_total - (page - 1) * page_size))
+        if len(items) != expected_items:
+            raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INCOMPLETE")
+        if reported_pages == 0:
+            break
+        page += 1
+
+    if total is not None and len(records) != total:
+        raise AutomationOperationError("REQUIREMENT_TEST_CASE_PAGINATION_INCOMPLETE")
+    return records
 
 async def carry_forward_unchanged_requirement_tests(
     project_id, requirement_id, target_version, requirement_versions, impact_analysis, config
@@ -70,14 +184,10 @@ async def carry_forward_unchanged_requirement_tests(
         if criterion.get("_id")
     }
     prior_criterion_ids = set(prior_criteria_by_id)
-    cases = await require_operation(
-        "GET",
-        f"/du-an/{project_id}/ca-kiem-thu?requirement_id={requirement_id}&page_size=500",
-        config,
-    )
+    cases = await list_all_test_case_records(project_id, requirement_id, config)
     carried = []
     unresolved = []
-    for case in response_items(cases):
+    for case in cases:
         current = case.get("current_version") or {}
         current_version_id = case.get("current_version_id") or current.get("_id")
         old_requirement_ids = set(current.get("requirement_version_ids", [])) & set(prior_versions)
@@ -87,18 +197,34 @@ async def carry_forward_unchanged_requirement_tests(
             or not old_requirement_ids
         ):
             continue
+        if case.get("stale_status") == "STALE" or current.get("status") != "ACTIVE":
+            unresolved.append(
+                {
+                    "test_case_id": case.get("_id"),
+                    "reason": "UNCHANGED_TEST_CASE_SOURCE_VERSION_NOT_CURRENT",
+                }
+            )
+            continue
         old_criterion_links = set(current.get("acceptance_criterion_ids", [])) & prior_criterion_ids
+        unmapped_criterion_ids = [
+            criterion_id
+            for criterion_id in old_criterion_links
+            if prior_criteria_by_id[criterion_id].get("key") not in target_by_key
+        ]
+        if unmapped_criterion_ids:
+            unresolved.append(
+                {
+                    "test_case_id": case.get("_id"),
+                    "reason": "UNCHANGED_TEST_CASE_CRITERION_MAPPING_INCOMPLETE",
+                    "acceptance_criterion_ids": sorted(unmapped_criterion_ids),
+                }
+            )
+            continue
         mapped_criterion_ids = {
             target_by_key[prior_criteria_by_id[item].get("key")]["_id"]
             for item in old_criterion_links
             if prior_criteria_by_id[item].get("key") in target_by_key
         }
-        if old_criterion_links and not mapped_criterion_ids:
-            unresolved.append({
-                "test_case_id": case.get("_id"),
-                "reason": "UNCHANGED_TEST_CASE_CRITERION_MAPPING_NOT_FOUND",
-            })
-            continue
         requirement_ids = sorted((set(current.get("requirement_version_ids", [])) - old_requirement_ids) | {target_version["_id"]})
         criterion_ids = sorted((set(current.get("acceptance_criterion_ids", [])) - prior_criterion_ids) | mapped_criterion_ids)
         if (
@@ -132,29 +258,15 @@ async def carry_forward_unchanged_requirement_tests(
             if not lint.get("valid"):
                 unresolved.append({"test_case_id": case["_id"], "reason": "CARRIED_TEST_CASE_QUALITY_FAILED"})
                 continue
-            reviewed = await require_operation(
-                "POST",
-                f"/du-an/{project_id}/ca-kiem-thu/{draft['_id']}/gui-ra-soat",
-                config,
-                {
-                    "expected_revision": draft["revision"],
-                    "review_note": "Tự động kiểm tra chất lượng và nguồn trước khi chốt phiên bản đã được impact analysis xác nhận còn hiệu lực",
-                },
+            published_case, published_version, _ = await publish_grounded_test_case(
+                project_id, draft, config
             )
-            approved = await require_operation(
-                "POST",
-                f"/du-an/{project_id}/ca-kiem-thu/{draft['_id']}/phe-duyet",
-                config,
+            carried.append(
                 {
-                    "expected_revision": reviewed["revision"],
-                    "change_reason": "Tự động cập nhật trace của ca còn hiệu lực sang Requirement version mới",
-                    "review_note": "Impact analysis xác nhận ca còn hiệu lực; kiểm tra chất lượng phiên bản mới đã đạt",
-                },
+                    "test_case_id": published_case["_id"],
+                    "test_case_version_id": published_version["_id"],
+                }
             )
-            readback = approved.get("test_case") or (approved.get("data") or {}).get("test_case")
-            if not readback or readback.get("_id") != case.get("_id"):
-                raise RuntimeError("UNCHANGED_TEST_CASE_VERSION_READBACK_INVALID")
-            carried.append(case["_id"])
         except (KeyError, RuntimeError) as error:
             unresolved.append({"test_case_id": case.get("_id"), "reason": str(error)})
     return carried, unresolved
@@ -181,14 +293,40 @@ async def resolve_answered_clarifications(version, config):
     clarifications = await require_operation(
         "GET", f"/phien-ban-yeu-cau/{version['_id']}/phieu-lam-ro", config
     )
-    source_text = requirement_source_text(version)
-    unresolved = []
-    for item in response_items(clarifications):
+    items = response_items(clarifications)
+    permissions = set((config or {}).get("configurable", {}).get("permissions", []))
+    if "requirement.approve" not in permissions:
+        return [item for item in items if item.get("status") in {"OPEN", "ANSWERED"}]
+
+    source_parts = [str(version.get("plain_text_projection") or "")]
+
+    def collect_text(value):
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, list):
+            return [part for item in value for part in collect_text(item)]
+        if isinstance(value, dict):
+            if isinstance(value.get("text"), str):
+                return [value["text"]]
+            return [part for item in value.values() for part in collect_text(item)]
+        return []
+
+    source_parts.extend(collect_text(version.get("content_doc") or {}))
+    source_parts.extend(collect_text(version.get("business_rules") or []))
+    source_parts.extend(
+        collect_text(version.get("acceptance_criteria") or [])
+    )
+    source_text = "\n".join(source_parts)
+    pending = []
+    for item in items:
+        if item.get("status") == "OPEN":
+            pending.append(item)
+            continue
         if item.get("status") != "ANSWERED":
             continue
         answer = str(item.get("answer") or "").strip()
-        if not answer or answer.casefold() not in source_text:
-            unresolved.append(item)
+        if not answer or answer.casefold() not in source_text.casefold():
+            pending.append(item)
             continue
         try:
             await require_operation(
@@ -201,21 +339,25 @@ async def resolve_answered_clarifications(version, config):
                     "evidence_quote": answer,
                 },
             )
-        except (KeyError, RuntimeError):
-            unresolved.append(item)
-
-    refreshed = await require_operation(
-        "GET", f"/phien-ban-yeu-cau/{version['_id']}/phieu-lam-ro", config
-    )
-    unresolved.extend(
-        item for item in response_items(refreshed)
-        if item.get("status") in {"OPEN", "ANSWERED"}
-        and item not in unresolved
-    )
-    return unresolved
+        except AutomationOperationError:
+            latest = response_items(
+                await require_operation(
+                    "GET", f"/phien-ban-yeu-cau/{version['_id']}/phieu-lam-ro", config
+                )
+            )
+            already_resolved = any(
+                current.get("_id") == item.get("_id")
+                and current.get("status") == "RESOLVED"
+                and current.get("resolved_requirement_version_id") == version["_id"]
+                and current.get("resolution_evidence_quote") == answer
+                for current in latest
+            )
+            if not already_resolved:
+                raise
+    return pending
 
 async def plan_clarification_priority(version, clarifications, config):
-    """Rank open questions only by obligations linked through exact source identity."""
+    """Rank open questions by persisted, exact links to unresolved test obligations."""
     if not clarifications:
         return []
     assessment = await require_operation(
@@ -230,19 +372,36 @@ async def plan_clarification_priority(version, clarifications, config):
     ]
     ranked = []
     for clarification in clarifications:
-        source_ref = str(clarification.get("source_ref") or "").strip().casefold()
-        source_quote = str(clarification.get("source_quote") or "").strip().casefold()
-        linked = []
-        for item in unresolved_items:
-            if clarification.get("coverage_item_id") == item.get("coverage_item_id"):
-                linked.append(item)
-                continue
-            if source_ref and source_ref == str(item.get("source_ref") or "").strip().casefold():
-                linked.append(item)
-                continue
-            quote = str(item.get("source_quote") or "").strip().casefold()
-            if source_quote and quote and (source_quote == quote or source_quote in quote or quote in source_quote):
-                linked.append(item)
+        explicit_item_ids = set(clarification.get("unlocks_coverage_item_ids") or [])
+        obligation_quotes = {
+            " ".join(str(value or "").split())
+            for value in clarification.get("unlocks_source_quotes", [])
+            if str(value or "").strip()
+        }
+        if explicit_item_ids:
+            linked = [
+                item for item in unresolved_items
+                if item.get("coverage_item_id") in explicit_item_ids
+            ]
+        elif obligation_quotes:
+            linked = [
+                item for item in unresolved_items
+                if " ".join(str(item.get("source_quote") or "").split()) in obligation_quotes
+            ]
+        else:
+            source_ref = str(clarification.get("source_ref") or "").strip()
+            source_quote = " ".join(str(clarification.get("source_quote") or "").split())
+            linked = [
+                item for item in unresolved_items
+                if (
+                    clarification.get("coverage_item_id") == item.get("coverage_item_id")
+                    or (source_ref and source_ref == str(item.get("source_ref") or "").strip())
+                    or (
+                        source_quote
+                        and source_quote == " ".join(str(item.get("source_quote") or "").split())
+                    )
+                )
+            ]
         ranked.append(
             {
                 "clarification_id": clarification.get("_id"),
@@ -264,76 +423,4 @@ async def plan_clarification_priority(version, clarifications, config):
         else:
             item["priority_basis"] = "Số Nghĩa vụ còn mở được liên kết qua mã nguồn hoặc trích dẫn chính xác"
     return ranked
-
-from src.tools.knowledge_tools import (
-    get_project_context,
-    search_project_knowledge,
-    retrieve_project_evidence,
-)
-
-from src.tools.requirement_tools import (
-    get_requirement_version,
-    compare_requirement_versions,
-    get_acceptance_criteria,
-    get_trace_links,
-    synthesize_requirement_template,
-    create_requirement_draft,
-    create_trace_link_suggestion,
-    confirm_trace_link,
-    baseline_requirement_version,
-    get_requirement,
-    get_change_facts,
-    lint_requirement,
-    get_traceability_links,
-)
-
-from src.tools.test_design_tools import (
-    search_test_cases,
-    get_test_case_version,
-    get_test_case_draft,
-    get_test_case_version_by_id,
-    find_near_duplicates,
-    create_test_case_draft,
-    approve_test_case_version,
-    mark_test_case_obsolete,
-    apply_test_case_revision,
-    apply_maintenance_proposal,
-    search_related_testcases,
-    generate_test_scenarios,
-    generate_testcases,
-    lint_testcase,
-    find_duplicate_testcases,
-    calculate_coverage,
-    propose_testcase_revision,
-    propose_new_testcase,
-    propose_obsolete_testcase,
-)
-
-from src.tools.execution_tools import (
-    get_test_results,
-    get_test_result,
-    get_test_plan,
-    get_release,
-    get_work_item,
-    get_work_item_impact_context,
-    get_historical_defects,
-    create_impact_analysis,
-    create_maintenance_proposal,
-    create_regression_recommendation,
-    analyze_change_impact,
-    suggest_regression_scope,
-    get_execution_history,
-    get_bug_history,
-    link_bug_candidates,
-)
-
-from src.tools.requirement_workflows import (
-    process_changed_requirement_version,
-    process_ingested_requirement_document,
-)
-from src.tools.execution_workflows import (
-    process_approved_test_plan,
-    process_changed_test_plan,
-    process_recorded_defect,
-)
 

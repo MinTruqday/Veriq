@@ -1,6 +1,7 @@
 import os
 from typing import Optional
 
+
 class Settings:
     PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
@@ -35,6 +36,40 @@ class Settings:
     AI_DB_NAME: str = os.environ["AI_DB_NAME"]
     AUTHENTICATION_URL: str = os.environ["AUTHENTICATION_URL"]
     CONTENT_URL: str = os.environ["CONTENT_URL"]
+    DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS: int = int(
+        os.getenv("DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS", "7")
+    )
+    DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT: int = int(
+        os.getenv("DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT", "15000")
+    )
+    DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE: int = int(
+        os.getenv("DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE", "4")
+    )
+    DOCUMENT_OCR_LANGUAGE: str = os.getenv("DOCUMENT_OCR_LANGUAGE", "iso:vi").strip()
+    DOCUMENT_INDEXING_LEASE_SECONDS: int = int(
+        os.getenv("DOCUMENT_INDEXING_LEASE_SECONDS", "180")
+    )
+    DOCUMENT_INDEXING_LEASE_HEARTBEAT_SECONDS: int = int(
+        os.getenv("DOCUMENT_INDEXING_LEASE_HEARTBEAT_SECONDS", "45")
+    )
 
 
 settings = Settings()
+if settings.DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS < 1:
+    raise ValueError("DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS must be positive")
+if settings.DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT < 2000:
+    raise ValueError("DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT must be at least 2000")
+if not 1 <= settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE <= 32:
+    raise ValueError("DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE must be between 1 and 32")
+if not settings.DOCUMENT_OCR_LANGUAGE:
+    raise ValueError("DOCUMENT_OCR_LANGUAGE must not be empty")
+if settings.DOCUMENT_INDEXING_LEASE_SECONDS < 2:
+    raise ValueError("DOCUMENT_INDEXING_LEASE_SECONDS must be at least 2")
+if not (
+    0
+    < settings.DOCUMENT_INDEXING_LEASE_HEARTBEAT_SECONDS
+    < settings.DOCUMENT_INDEXING_LEASE_SECONDS
+):
+    raise ValueError(
+        "DOCUMENT_INDEXING_LEASE_HEARTBEAT_SECONDS must be positive and shorter than the lease"
+    )

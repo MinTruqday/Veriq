@@ -59,6 +59,14 @@ async def setup_indexes():
         await db["documents"].create_index([("source_url", 1)], background=True)
         await db["documents"].create_index([("content_hash", 1)], background=True)
         await db["documents"].create_index(
+            [("indexing_status", 1), ("is_deleted", 1), ("source_is_current", 1)],
+            background=True,
+        )
+        await db["documents"].create_index(
+            [("indexing_status", 1), ("indexing_lease_until", 1), ("is_deleted", 1)],
+            background=True,
+        )
+        await db["documents"].create_index(
             [("source_url", 1), ("source_is_current", 1)], background=True
         )
         await db["documents"].create_index(
@@ -95,6 +103,14 @@ async def setup_indexes():
 
         await db["document_versions"].create_index(
             [("document_id", 1), ("created_at", -1)], background=True
+        )
+        await db["document_ingestion_outbox"].create_index(
+            [("status", 1), ("available_at", 1), ("created_at", 1)],
+            background=True,
+        )
+        await db["document_ingestion_outbox"].create_index(
+            [("status", 1), ("lease_until", 1)],
+            background=True,
         )
         await db["workspace_folders"].create_index([("creator_id", 1), ("parent_id", 1)])
         logger.info("MongoDB indexing initialized")

@@ -158,3 +158,10 @@ async def generate_causal_analysis_hypotheses(
     return envelope(
         await CausalAnalysisService.generate_hypotheses(analysis_id, payload, user)
     )
+
+
+@router.get("/phan-tich-nguyen-nhan/{analysis_id}/goi-y-tu-dong")
+async def get_latest_causal_analysis_hypotheses(
+    analysis_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await CausalAnalysisService.latest_hypothesis_result(analysis_id, user))

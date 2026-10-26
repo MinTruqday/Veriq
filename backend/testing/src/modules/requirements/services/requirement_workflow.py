@@ -134,12 +134,5 @@ def candidate_quality_issues(candidate):
 
 def candidate_fingerprint(candidate):
     return hashlib.sha256(
-        serialized_content(
-            {
-                "candidate_id": candidate.get("candidate_id"),
-                "title": candidate.get("title"),
-                "content_doc": candidate.get("content_doc"),
-                "source_refs": candidate.get("source_refs", []),
-            }
-        ).encode("utf-8")
+        serialized_content(candidate).encode("utf-8")
     ).hexdigest()

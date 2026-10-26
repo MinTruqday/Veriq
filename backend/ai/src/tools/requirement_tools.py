@@ -1,12 +1,9 @@
 import json
 from typing import Annotated, Any, Literal
-from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
-from src.core.infrastructure.configuration import settings
-from src.prompts.requirement_analysis import requirement_quality_analysis_instruction
 from src.tools.registry import with_tool_access
 from src.tools.testing_api import call, parse
 
@@ -210,27 +207,30 @@ async def get_change_facts(
     """Read a stored change set and its change facts"""
     return await call("GET", f"/bo-thay-doi/{change_set_id}", config)
 
-@with_tool_access(("requirement",), "PROPOSE", "ai.run_lint")
-async def lint_requirement(
-    requirement_version_id: Annotated[str, Field(description="Requirement version identifier")],
-    config: RunnableConfig = None,
-) -> str:
-    """Evaluate requirement version quality"""
-    return await call(
-        "POST",
-        f"/phien-ban-yeu-cau/{requirement_version_id}/ai/kiem-tra",
-        config,
-        {
-            "idempotency_key": f"agent-requirement-analysis-{uuid4().hex}",
-        "instruction": requirement_quality_analysis_instruction(),
-        },
-        timeout=settings.MODEL_TIMEOUT_SECONDS,
-    )
-
 @with_tool_access(("analysis", "reporting"), "READ", "trace.read")
 async def get_traceability_links(
-    project_id: Annotated[str, Field(description="Project identifier")], config: RunnableConfig = None
+    project_id: Annotated[str, Field(description="Project identifier")],
+    requirement_version_id: Annotated[
+        str | None,
+        Field(description="Optional Requirement version to scope the traceability response"),
+    ] = None,
+    requirement_version_ids: Annotated[
+        list[str] | None,
+        Field(description="Optional Requirement versions to scope the traceability response"),
+    ] = None,
+    config: RunnableConfig = None,
 ) -> str:
     """Read traceability links within a project"""
-    return await call("GET", f"/du-an/{project_id}/truy-vet", config)
+    path = f"/du-an/{project_id}/truy-vet"
+    if requirement_version_id:
+        from urllib.parse import quote
+
+        path = f"{path}?requirement_version_id={quote(requirement_version_id, safe='')}"
+    if requirement_version_ids:
+        from urllib.parse import urlencode
+
+        separator = "&" if "?" in path else "?"
+        query = urlencode([("requirement_version_ids", value) for value in requirement_version_ids])
+        path = f"{path}{separator}{query}"
+    return await call("GET", path, config)
 

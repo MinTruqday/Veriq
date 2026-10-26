@@ -10,8 +10,15 @@ class DefectRepository:
             query["status"] = status
         return await database.value.test_results.find_one(query)
 
-    async def insert_defect(self, value):
-        await database.value.defects.insert_one(value)
+    async def find_test_run(self, run_id, project_id):
+        return await database.value.test_runs.find_one(
+            {"_id": run_id, "project_id": project_id}
+        )
+
+    async def insert_defect(self, value, session=None):
+        await database.value.defects.insert_one(
+            value, **({"session": session} if session is not None else {})
+        )
         return value
 
     async def list_requirement_version_ids(self, project_id, requirement_id, limit):
@@ -80,7 +87,7 @@ class DefectRepository:
         )
 
     async def transition_defect(
-        self, defect_id, project_id, current_status, revision, changes
+        self, defect_id, project_id, current_status, revision, changes, session=None
     ):
         return await database.value.defects.find_one_and_update(
             {
@@ -91,6 +98,7 @@ class DefectRepository:
             },
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def find_retest(self, defect_id, idempotency_key):
@@ -103,8 +111,10 @@ class DefectRepository:
             {"_id": defect_id, "project_id": project_id}
         )
 
-    async def insert_retest(self, value):
-        await database.value.defect_retests.insert_one(value)
+    async def insert_retest(self, value, session=None):
+        await database.value.defect_retests.insert_one(
+            value, **({"session": session} if session is not None else {})
+        )
         return value
 
     async def apply_retest(
@@ -117,6 +127,7 @@ class DefectRepository:
         event_id,
         result_id,
         updated_at,
+        session=None,
     ):
         return await database.value.defects.find_one_and_update(
             {
@@ -136,6 +147,7 @@ class DefectRepository:
                 "$push": {"retest_event_ids": event_id},
             },
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def delete_retest(self, event_id, application_status):
@@ -143,9 +155,11 @@ class DefectRepository:
             {"_id": event_id, "application_status": application_status}
         )
 
-    async def mark_retest_applied(self, event_id, application_status):
+    async def mark_retest_applied(self, event_id, application_status, session=None):
         await database.value.defect_retests.update_one(
-            {"_id": event_id}, {"$set": {"application_status": application_status}}
+            {"_id": event_id},
+            {"$set": {"application_status": application_status}},
+            **({"session": session} if session is not None else {}),
         )
 
     async def find_ai_result_by_idempotency(self, project_id, idempotency_key):
@@ -166,6 +180,22 @@ class DefectRepository:
                 "subject_id": subject_id,
             }
         )
+
+    async def list_ai_results_for_defects(self, project_id, defect_ids):
+        return await database.value.ai_results.aggregate(
+            [
+                {
+                    "$match": {
+                        "project_id": project_id,
+                        "result_type": "BUG_TRACE_SUGGESTION",
+                        "subject_id": {"$in": defect_ids},
+                    }
+                },
+                {"$sort": {"created_at": -1, "_id": -1}},
+                {"$group": {"_id": "$subject_id", "item": {"$first": "$$ROOT"}}},
+                {"$replaceRoot": {"newRoot": "$item"}},
+            ]
+        ).to_list(len(defect_ids))
 
     async def review_ai_result(self, result_id, project_id, changes):
         await database.value.ai_results.update_one(

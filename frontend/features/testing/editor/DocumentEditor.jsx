@@ -48,6 +48,7 @@ export default function DocumentEditor({
   label,
   minHeight = "min-h-40",
   readOnly = false,
+  ignoreUnfocusedUpdates = false,
 }) {
   const [tableOfContents, setTableOfContents] = useState([]);
   const { ask, dialog } = useActionDialog();
@@ -69,6 +70,7 @@ export default function DocumentEditor({
       },
     },
     onUpdate({ editor: current }) {
+      if (ignoreUnfocusedUpdates && !current.isFocused) return;
       onChange?.(current.getJSON());
     },
   });

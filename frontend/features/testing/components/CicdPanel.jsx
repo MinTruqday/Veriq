@@ -30,7 +30,7 @@ export default function CicdPanel({ project }) {
     void load();
   }, [load]);
   const create = async () => {
-    const answer = await ask({
+    await ask({
       title: "Ánh xạ quy trình CI CD",
       description: "Quy trình phải thuộc một kết nối dự án đang hoạt động",
       confirmLabel: "Tạo ánh xạ",
@@ -53,19 +53,20 @@ export default function CicdPanel({ project }) {
           initialValue: "pipeline://platform/",
         },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.createCicdBinding(project._id, {
+            name: answer.name.trim(),
+            connector_id: answer.connectorId,
+            pipeline_reference: answer.pipelineReference.trim(),
+            test_case_version_ids: [],
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.createCicdBinding(project._id, {
-        name: answer.name.trim(),
-        connector_id: answer.connectorId,
-        pipeline_reference: answer.pipelineReference.trim(),
-        test_case_version_ids: [],
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const toggle = async (item) => {
     try {
@@ -79,25 +80,26 @@ export default function CicdPanel({ project }) {
     }
   };
   const retry = async (run) => {
-    const answer = await ask({
+    await ask({
       title: "Đối soát lại lần chạy CI",
       description: "Tác vụ mới không tạo trùng lần thực thi đã có",
       confirmLabel: "Đưa vào hàng đợi",
       fields: [
         { name: "reason", label: "Lý do", required: true, multiline: true, autoFocus: true },
       ],
+      onConfirm: async (answer) => {
+        try {
+          await testingApi.retryCicdRun(project._id, run._id, {
+            expected_revision: run.revision,
+            idempotency_key: crypto.randomUUID(),
+            reason: answer.reason.trim(),
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await testingApi.retryCicdRun(project._id, run._id, {
-        expected_revision: run.revision,
-        idempotency_key: crypto.randomUUID(),
-        reason: answer.reason.trim(),
-      });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   if (!can("cicd.read")) return null;
   return (

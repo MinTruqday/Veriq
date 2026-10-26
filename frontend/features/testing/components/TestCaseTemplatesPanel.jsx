@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import DataTable from "./DataTable";
 import {
   EmptyState,
@@ -11,6 +11,14 @@ import {
 } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { formatDate, messageOf } from "../lib/testing";
+import {
+  Modal,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "@/shared/components/ui/Modal";
+import StructuredValueEditor, { StructuredValueView } from "./StructuredValueEditor";
 
 const templateTypes = [
   ["functional", "Chức năng"],
@@ -22,19 +30,6 @@ const templateTypes = [
 
 const typeLabel = (value) =>
   templateTypes.find(([templateType]) => templateType === value)?.[1] || value;
-
-const jsonObject = (value) => {
-  let parsed;
-  try {
-    parsed = JSON.parse(value || "{}");
-  } catch {
-    throw new Error("Định nghĩa JSON không hợp lệ");
-  }
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-    throw new Error("Định nghĩa mẫu phải là một đối tượng JSON");
-  }
-  return parsed;
-};
 
 const splitTags = (value) =>
   Array.from(
@@ -51,14 +46,22 @@ export default function TestCaseTemplatesPanel({ project }) {
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [templateType, setTemplateType] = useState("");
+  const [templateEditor, setTemplateEditor] = useState(null);
+  const [templateError, setTemplateError] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const canManage = project.current_permissions?.includes("testcase.template.manage");
-  const role = project.current_membership?.project_role;
+  const membershipRoles = project.current_membership?.project_roles;
+  const memberRoles =
+    Array.isArray(membershipRoles) && membershipRoles.length
+      ? membershipRoles
+      : [project.current_membership?.project_role].filter(Boolean);
   const canArchive =
     canManage &&
-    (role === "QA" ||
-      (role === "TESTER" && project.settings?.tester_can_archive_testcase_templates === true));
+    (memberRoles.includes("QA") ||
+      (memberRoles.includes("TESTER") &&
+        project.settings?.tester_can_archive_testcase_templates === true));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,96 +92,56 @@ export default function TestCaseTemplatesPanel({ project }) {
     }
   };
 
-  const templateFields = useCallback(
-    (value = {}) => [
-      {
-        name: "name",
-        label: "Tên mẫu",
-        required: true,
-        autoFocus: true,
-        initialValue: value.name || "",
-      },
-      {
-        name: "templateType",
-        label: "Loại mẫu",
-        required: true,
-        initialValue: value.template_type || "functional",
-        options: templateTypes.map(([type, label]) => ({ value: type, label })),
-      },
-      {
-        name: "description",
-        label: "Mô tả",
-        multiline: true,
-        initialValue: value.description || "",
-      },
-      {
-        name: "definition",
-        label: "Định nghĩa JSON",
-        required: true,
-        multiline: true,
-        initialValue: JSON.stringify(value.definition || {}, null, 2),
-      },
-      {
-        name: "tags",
-        label: "Nhãn phân cách bằng dấu phẩy",
-        initialValue: (value.tags || []).join(", "),
-      },
-    ],
-    [],
-  );
-
-  const createTemplate = async () => {
-    const answer = await ask({
-      title: "Tạo mẫu ca kiểm thử",
-      confirmLabel: "Tạo mẫu",
-      fields: templateFields(),
+  const openTemplateEditor = (item = null) => {
+    setTemplateError("");
+    setTemplateEditor({
+      source: item,
+      name: item?.name || "",
+      templateType: item?.template_type || "functional",
+      description: item?.description || "",
+      definition: structuredClone(item?.definition || {}),
+      tags: (item?.tags || []).join(", "),
     });
-    if (!answer) return;
-    setError("");
+  };
+
+  const saveTemplate = async (event) => {
+    event.preventDefault();
+    if (!templateEditor || savingTemplate) return;
+    setSavingTemplate(true);
+    setTemplateError("");
+    const payload = {
+      name: templateEditor.name.trim(),
+      template_type: templateEditor.templateType,
+      description: templateEditor.description.trim(),
+      definition: templateEditor.definition,
+      tags: splitTags(templateEditor.tags),
+    };
     try {
-      const created = await testingApi.createTestCaseTemplate(project._id, {
-        name: answer.name.trim(),
-        template_type: answer.templateType,
-        description: answer.description.trim(),
-        definition: jsonObject(answer.definition),
-        tags: splitTags(answer.tags),
-      });
+      const saved = templateEditor.source
+        ? await testingApi.updateTestCaseTemplate(templateEditor.source._id, {
+            ...payload,
+            expected_revision: templateEditor.source.revision,
+          })
+        : await testingApi.createTestCaseTemplate(project._id, payload);
       await load();
-      setSelected(created);
+      setSelected(saved);
+      setTemplateEditor(null);
     } catch (reason) {
-      setError(messageOf(reason));
+      setTemplateError(messageOf(reason));
+    } finally {
+      setSavingTemplate(false);
     }
   };
 
-  const editTemplate = async () => {
-    if (!selected) return;
-    const answer = await ask({
-      title: "Chỉnh sửa mẫu ca kiểm thử",
-      description: `Phiên bản chỉnh sửa hiện tại ${selected.revision}`,
-      confirmLabel: "Lưu thay đổi",
-      fields: templateFields(selected),
-    });
-    if (!answer) return;
-    setError("");
-    try {
-      const updated = await testingApi.updateTestCaseTemplate(selected._id, {
-        expected_revision: selected.revision,
-        name: answer.name.trim(),
-        template_type: answer.templateType,
-        description: answer.description.trim(),
-        definition: jsonObject(answer.definition),
-        tags: splitTags(answer.tags),
-      });
-      await load();
-      setSelected(updated);
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
+  const createTemplate = () => openTemplateEditor();
+
+  const editTemplate = () => {
+    if (selected) openTemplateEditor(selected);
   };
 
   const archiveTemplate = async () => {
     if (!selected) return;
-    const answer = await ask({
+    await ask({
       title: "Lưu trữ mẫu ca kiểm thử",
       description: "Các ca kiểm thử đã tạo từ mẫu này vẫn được giữ nguyên",
       confirmLabel: "Lưu trữ mẫu",
@@ -192,25 +155,21 @@ export default function TestCaseTemplatesPanel({ project }) {
           autoFocus: true,
         },
       ],
+      onConfirm: async (answer) => {
+        setError("");
+        try {
+          await testingApi.archiveTestCaseTemplate(selected._id, {
+            expected_revision: selected.revision,
+            reason: answer.reason.trim(),
+          });
+          setSelected(null);
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    setError("");
-    try {
-      await testingApi.archiveTestCaseTemplate(selected._id, {
-        expected_revision: selected.revision,
-        reason: answer.reason.trim(),
-      });
-      setSelected(null);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
-
-  const formattedDefinition = useMemo(
-    () => (selected ? JSON.stringify(selected.definition || {}, null, 2) : ""),
-    [selected],
-  );
 
   return (
     <Panel
@@ -281,9 +240,7 @@ export default function TestCaseTemplatesPanel({ project }) {
                 )}
                 <div>
                   <p className="field-label mb-2">Định nghĩa</p>
-                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-control bg-surface-quiet p-4 text-[12px] leading-5">
-                    {formattedDefinition}
-                  </pre>
+                  <StructuredValueView value={selected.definition || {}} />
                 </div>
                 <div>
                   <p className="field-label mb-2">Nhãn</p>
@@ -335,6 +292,102 @@ export default function TestCaseTemplatesPanel({ project }) {
           </div>
         )}
       </div>
+      {templateEditor && (
+        <Modal
+          isOpen
+          ariaLabel={templateEditor.source ? "Chỉnh sửa mẫu ca kiểm thử" : "Tạo mẫu ca kiểm thử"}
+          className="max-h-[94dvh] max-w-4xl overflow-y-auto"
+          onClose={() => {
+            if (!savingTemplate) setTemplateEditor(null);
+          }}
+        >
+          <form onSubmit={saveTemplate}>
+            <ModalHeader>
+              <ModalTitle>
+                {templateEditor.source ? "Chỉnh sửa mẫu ca kiểm thử" : "Tạo mẫu ca kiểm thử"}
+              </ModalTitle>
+            </ModalHeader>
+            <ModalContent className="space-y-4">
+              {templateError && <ErrorState message={templateError} />}
+              <label className="field-label block">
+                Tên mẫu
+                <input
+                  autoFocus
+                  className="apple-input mt-2 w-full"
+                  required
+                  value={templateEditor.name}
+                  onChange={(event) =>
+                    setTemplateEditor((current) => ({ ...current, name: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="field-label block">
+                Loại mẫu
+                <select
+                  className="apple-input mt-2 w-full"
+                  value={templateEditor.templateType}
+                  onChange={(event) =>
+                    setTemplateEditor((current) => ({
+                      ...current,
+                      templateType: event.target.value,
+                    }))
+                  }
+                >
+                  {templateTypes.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-label block">
+                Mô tả
+                <textarea
+                  className="apple-input mt-2 min-h-20 w-full"
+                  value={templateEditor.description}
+                  onChange={(event) =>
+                    setTemplateEditor((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <StructuredValueEditor
+                label="Nội dung mẫu"
+                value={templateEditor.definition}
+                fixedType="object"
+                onChange={(definition) =>
+                  setTemplateEditor((current) => ({ ...current, definition }))
+                }
+              />
+              <label className="field-label block">
+                Nhãn, phân cách bằng dấu phẩy
+                <input
+                  className="apple-input mt-2 w-full"
+                  value={templateEditor.tags}
+                  onChange={(event) =>
+                    setTemplateEditor((current) => ({ ...current, tags: event.target.value }))
+                  }
+                />
+              </label>
+            </ModalContent>
+            <ModalFooter>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={savingTemplate}
+                onClick={() => setTemplateEditor(null)}
+              >
+                Hủy
+              </button>
+              <button className="apple-button" type="submit" disabled={savingTemplate}>
+                {savingTemplate ? "Đang lưu" : "Lưu mẫu"}
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      )}
       {dialog}
     </Panel>
   );

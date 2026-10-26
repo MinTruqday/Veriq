@@ -13,6 +13,7 @@ export default function FormalReviewPanel({
   artifactId,
   artifactVersionId,
   reviewType,
+  readOnly = false,
 }) {
   const [sessions, setSessions] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -21,7 +22,11 @@ export default function FormalReviewPanel({
   const { ask, dialog } = useActionDialog();
   const can = (permission) => project.current_permissions?.includes(permission);
   const userId = project.current_membership?.user_id;
-  const role = project.current_membership?.project_role;
+  const membershipRoles = project.current_membership?.project_roles;
+  const memberRoles =
+    Array.isArray(membershipRoles) && membershipRoles.length
+      ? membershipRoles
+      : [project.current_membership?.project_role].filter(Boolean);
   const load = useCallback(async () => {
     try {
       const permissions = new Set(project.current_permissions || []);
@@ -372,7 +377,7 @@ export default function FormalReviewPanel({
     <Panel
       title="Rà soát chính thức"
       actions={
-        can("reviewsession.create") && can("project.members.read") ? (
+        !readOnly && can("reviewsession.create") && can("project.members.read") ? (
           <button className="apple-button" type="button" onClick={create}>
             Tạo phiên rà soát
           </button>
@@ -384,6 +389,11 @@ export default function FormalReviewPanel({
         <div className="p-4">
           <ErrorState message={error} />
         </div>
+      )}
+      {readOnly && (
+        <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
+          Chỉ xem lịch sử rà soát. Luồng AI tự động không chờ quyết định tại đây.
+        </p>
       )}
       <DataTable
         items={sessions}
@@ -425,74 +435,84 @@ export default function FormalReviewPanel({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {selected.status === "PLANNED" && can("reviewsession.update") && (
+              {!readOnly && (
                 <>
-                  <button className="secondary-button" type="button" onClick={assignParticipants}>
-                    Phân công
-                  </button>
-                  {selected.moderator_id === userId && (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => transition(testingApi.startReviewSession)}
-                    >
-                      Bắt đầu
+                  {selected.status === "PLANNED" && can("reviewsession.update") && (
+                    <>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={assignParticipants}
+                      >
+                        Phân công
+                      </button>
+                      {selected.moderator_id === userId && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => transition(testingApi.startReviewSession)}
+                        >
+                          Bắt đầu
+                        </button>
+                      )}
+                      {can("reviewsession.complete") && selected.moderator_id === userId && (
+                        <button
+                          className="danger-button"
+                          type="button"
+                          onClick={() => terminalTransition("CANCELLED")}
+                        >
+                          Hủy phiên
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {selected.status === "IN_PROGRESS" && can("reviewsession.finding.manage") && (
+                    <button className="secondary-button" type="button" onClick={addFinding}>
+                      Thêm phát hiện
                     </button>
                   )}
-                  {can("reviewsession.complete") && selected.moderator_id === userId && (
-                    <button
-                      className="danger-button"
-                      type="button"
-                      onClick={() => terminalTransition("CANCELLED")}
-                    >
-                      Hủy phiên
+                  {selected.status === "IN_PROGRESS" &&
+                    can("reviewsession.complete") &&
+                    selected.moderator_id === userId && (
+                      <button
+                        className="apple-button"
+                        type="button"
+                        onClick={() =>
+                          transition(testingApi.recordReviewSessionDecision, "decision")
+                        }
+                      >
+                        Ghi quyết định
+                      </button>
+                    )}
+                  {selected.status === "DECISION_PENDING" &&
+                    can("reviewsession.complete") &&
+                    selected.moderator_id === userId && (
+                      <button
+                        className="apple-button"
+                        type="button"
+                        onClick={() => transition(testingApi.completeReviewSession, "complete")}
+                      >
+                        Hoàn tất
+                      </button>
+                    )}
+                  {selected.status === "COMPLETED" && can("reviewsession.create") && (
+                    <button className="secondary-button" type="button" onClick={createFollowUp}>
+                      Tạo phiên tiếp theo
                     </button>
                   )}
+                  {selected.status === "COMPLETED" &&
+                    can("reviewsession.complete") &&
+                    selected.moderator_id === userId && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => terminalTransition("ARCHIVED")}
+                      >
+                        Lưu trữ
+                      </button>
+                    )}
                 </>
               )}
-              {selected.status === "IN_PROGRESS" && can("reviewsession.finding.manage") && (
-                <button className="secondary-button" type="button" onClick={addFinding}>
-                  Thêm phát hiện
-                </button>
-              )}
-              {selected.status === "IN_PROGRESS" &&
-                can("reviewsession.complete") &&
-                selected.moderator_id === userId && (
-                  <button
-                    className="apple-button"
-                    type="button"
-                    onClick={() => transition(testingApi.recordReviewSessionDecision, "decision")}
-                  >
-                    Ghi quyết định
-                  </button>
-                )}
-              {selected.status === "DECISION_PENDING" &&
-                can("reviewsession.complete") &&
-                selected.moderator_id === userId && (
-                  <button
-                    className="apple-button"
-                    type="button"
-                    onClick={() => transition(testingApi.completeReviewSession, "complete")}
-                  >
-                    Hoàn tất
-                  </button>
-                )}
-              {selected.status === "COMPLETED" && can("reviewsession.create") && (
-                <button className="secondary-button" type="button" onClick={createFollowUp}>
-                  Tạo phiên tiếp theo
-                </button>
-              )}
-              {selected.status === "COMPLETED" &&
-                can("reviewsession.complete") &&
-                selected.moderator_id === userId && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => terminalTransition("ARCHIVED")}
-                  >
-                    Lưu trữ
-                  </button>
-                )}
               <button
                 className="secondary-button"
                 type="button"
@@ -555,11 +575,14 @@ export default function FormalReviewPanel({
           <ReviewChecklist items={selected.checklist} />
           <ReviewFindingsTable
             findings={selected.findings}
-            canAssign={() => can("reviewsession.finding.manage")}
+            canAssign={() => !readOnly && can("reviewsession.finding.manage")}
             canResolve={(item) =>
-              can("reviewsession.finding.manage") && (role === "QA" || item.owner_id === userId)
+              !readOnly &&
+              can("reviewsession.finding.manage") &&
+              (memberRoles.includes("QA") || item.owner_id === userId)
             }
             canVerify={(item) =>
+              !readOnly &&
               can("reviewsession.finding.manage") &&
               (selected.moderator_id === userId ||
                 (selected.reviewer_ids || selected.reviewers || []).includes(userId)) &&

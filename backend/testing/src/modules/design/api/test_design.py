@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.auth import CurrentUser, get_current_user
+from src.core.internal import require_internal_token
 from src.core.common import (
     envelope,
     get_project_entity,
@@ -8,9 +9,14 @@ from src.core.common import (
 from src.schemas.contracts.design import (
     ScenarioCreate,
     ScenarioPatch,
+    TestCaseDraftBatchComparisonInput,
     TestCaseCloneInput,
     TestCaseLifecycleInput,
     TestCaseVersionDraftInput,
+    TestCaseMergeSave,
+    TestCaseBatchAccept,
+    TestCaseCustomFieldCreate,
+    TestCaseCustomFieldPatch,
 )
 from src.schemas.contracts.project import ProjectArchiveInput
 from src.schemas.contracts.requirements import ReviewTransitionInput
@@ -40,11 +46,13 @@ from src.modules.design.services.test_case_query import (
 )
 from src.modules.design.services.test_case_lifecycle import (
     approve_test_case_draft_record,
+    get_latest_test_case_draft_lint,
     lint_test_case_draft_record,
     request_test_case_changes_record,
     submit_test_case_review_record,
 )
 from src.modules.design.services.test_case_automation import (
+    compare_test_case_draft_batch,
     find_duplicate_test_case_records,
     generate_test_case_draft_records,
     recommend_test_design_techniques,
@@ -58,8 +66,70 @@ from src.modules.design.services.test_scenario import (
     list_test_scenario_records,
     update_test_scenario_record,
 )
+from src.modules.design.services.test_case_custom_fields import (
+    create_test_case_custom_field,
+    list_all_test_case_custom_fields,
+    list_test_case_custom_fields,
+    update_test_case_custom_field,
+)
 
 router = APIRouter(prefix="/kiem-thu", tags=["Thiết kế kiểm thử"])
+
+
+@router.get("/du-an/{project_id}/truong-ca-kiem-thu")
+async def list_test_case_fields(project_id: str, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await list_test_case_custom_fields(project_id, user))
+
+
+@router.get("/du-an/{project_id}/truong-ca-kiem-thu/quan-ly")
+async def list_managed_test_case_fields(
+    project_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await list_all_test_case_custom_fields(project_id, user))
+
+
+@router.post("/du-an/{project_id}/truong-ca-kiem-thu", status_code=201)
+async def create_test_case_field(
+    project_id: str,
+    payload: TestCaseCustomFieldCreate,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await create_test_case_custom_field(project_id, payload, user))
+
+
+@router.patch("/du-an/{project_id}/truong-ca-kiem-thu/{field_id}")
+async def update_test_case_field(
+    project_id: str,
+    field_id: str,
+    payload: TestCaseCustomFieldPatch,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(
+        await update_test_case_custom_field(project_id, field_id, payload, user),
+        revision=payload.expected_revision + 1,
+    )
+
+
+@router.get("/ban-nhap-ca-kiem-thu/{draft_id}/so-sanh")
+async def compare_test_case_draft(draft_id: str, user: CurrentUser = Depends(get_current_user)):
+    from src.modules.design.services.test_case_review import review_context
+
+    return envelope(await review_context(draft_id, user))
+
+
+@router.post("/ban-nhap-ca-kiem-thu/{draft_id}/luu-ban-ghep")
+async def save_test_case_merge(draft_id: str, payload: TestCaseMergeSave, user: CurrentUser = Depends(get_current_user)):
+    from src.modules.design.services.test_case_review import save_merged_test_case
+
+    return envelope(await save_merged_test_case(draft_id, payload, user))
+
+
+@router.post("/du-an/{project_id}/ban-nhap-ca-kiem-thu/chap-nhan-nhom")
+async def accept_test_case_draft_group(project_id: str, payload: TestCaseBatchAccept, user: CurrentUser = Depends(get_current_user)):
+    from src.modules.design.services.test_case_batch_review import accept_test_case_group
+
+    result = await accept_test_case_group(project_id, payload, user)
+    return envelope(result, status="DEGRADED" if result.get("derived_pending_version_ids") else "SUCCESS")
 
 
 @router.post("/du-an/{project_id}/kich-ban-kiem-thu", status_code=201)
@@ -149,9 +219,19 @@ async def create_generated_test_case_batch(
 async def list_test_case_drafts(
     project_id: str,
     limit: int = Query(default=100, ge=1, le=500),
+    requirement_version_id: str = Query(default="", max_length=200),
+    status: str = Query(default="", max_length=30),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return envelope(await list_test_case_draft_records(project_id, limit, user))
+    return envelope(
+        await list_test_case_draft_records(
+            project_id,
+            limit,
+            user,
+            requirement_version_id=requirement_version_id,
+            status=status,
+        )
+    )
 
 
 @router.get("/ban-nhap-ca-kiem-thu/{draft_id}")
@@ -187,9 +267,19 @@ async def update_test_case_draft(
 @router.post("/ca-kiem-thu/{draft_id}/kiem-tra")
 @router.post("/ban-nhap-ca-kiem-thu/{draft_id}/kiem-tra")
 async def lint_test_case_draft(
-    draft_id: str, project_id: str | None = None, user: CurrentUser = Depends(get_current_user)
+    draft_id: str,
+    project_id: str | None = None,
+    _: None = Depends(require_internal_token),
+    user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(await lint_test_case_draft_record(draft_id, user, project_id))
+
+
+@router.get("/ban-nhap-ca-kiem-thu/{draft_id}/kiem-tra")
+async def get_latest_test_case_draft_lint_result(
+    draft_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await get_latest_test_case_draft_lint(draft_id, user))
 
 
 @router.post("/du-an/{project_id}/ca-kiem-thu/{draft_id}/gui-ra-soat")
@@ -396,5 +486,26 @@ async def generate_project_test_cases(
 
 
 @router.get("/du-an/{project_id}/ca-kiem-thu/trung-lap")
-async def find_duplicates(project_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(await find_duplicate_test_case_records(project_id, user))
+async def find_duplicates(
+    project_id: str,
+    test_case_draft_id: str | None = Query(default=None),
+    expected_revision: int | None = Query(default=None, ge=1),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(
+        await find_duplicate_test_case_records(
+            project_id,
+            user,
+            test_case_draft_id=test_case_draft_id,
+            expected_revision=expected_revision,
+        )
+    )
+
+
+@router.post("/du-an/{project_id}/ca-kiem-thu/trung-lap/ban-nhap")
+async def compare_draft_batch(
+    project_id: str,
+    payload: TestCaseDraftBatchComparisonInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await compare_test_case_draft_batch(project_id, payload.items, user))

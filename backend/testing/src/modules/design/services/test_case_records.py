@@ -13,9 +13,19 @@ from src.core.common import (
     optimistic_patch,
     plain_text,
 )
+from src.core.database import database
 from src.repositories.test_design import test_design_repository
-from src.repositories.analysis import analysis_repository
+from src.repositories.analysis import (
+    ActiveTestCaseVersionIntegrityError,
+    analysis_repository,
+)
+from src.repositories.common import common_repository
 from src.modules.design.services.linters import duplicate_score
+from src.modules.design.services.test_evidence import requirement_test_evidence_text
+from src.modules.design.services.test_case_custom_fields import (
+    inherit_custom_values,
+    validate_test_case_custom_values,
+)
 
 
 def project_test_text(value):
@@ -31,6 +41,7 @@ def project_test_text(value):
             steps,
             plain_text(value.get("expected_result_doc", {})),
             plain_text(value.get("postconditions_doc", {})),
+            " ".join(str(item) for item in (value.get("custom_values") or {}).values()),
         ]
     ).strip()
 
@@ -58,7 +69,17 @@ def active_suite_signature(cases, requirement_version_ids):
     ).hexdigest()
 
 
-async def require_current_baselined_version(version, allow_automation_draft=False):
+def acceptance_criteria_snapshot_matches(snapshot_ids, current_ids):
+    """Check the complete criterion set observed by generation, not cited subset."""
+    if snapshot_ids is None:
+        return None
+    snapshot_ids = list(snapshot_ids)
+    if len(snapshot_ids) != len(set(snapshot_ids)):
+        return False
+    return set(snapshot_ids) == set(current_ids)
+
+
+async def require_current_baselined_version(version):
     requirement = await test_design_repository.find_current_requirement(
         version["project_id"], version["requirement_id"]
     )
@@ -70,23 +91,27 @@ async def require_current_baselined_version(version, allow_automation_draft=Fals
         and requirement.get("status") == "BASELINED"
         and version.get("status") == "BASELINED"
     )
-    automation_draft = bool(
-        allow_automation_draft
-        and current_version
-        and requirement.get("status") == "DRAFT"
-        and version.get("status") == "DRAFT"
-    )
-    if not (baselined or automation_draft):
+    if not baselined:
         raise HTTPException(409, detail={"code": "TEST_DESIGN_REQUIREMENT_CHANGED", "message": "Phiên bản yêu cầu đã thay đổi hoặc chưa được duyệt  Hãy tải lại trước khi thiết kế ca kiểm thử"})
 
 
 async def comparison_cases(project_id):
-    versions = await analysis_repository.list_active_test_case_versions(project_id, "ACTIVE", 2001)
-    drafts = await test_design_repository.list_case_drafts(
-        project_id, 2001, ["DRAFT", "IN_REVIEW", "APPROVING"]
-    )
-    if len(versions) > 2000 or len(drafts) > 2000:
-        raise HTTPException(status_code=422, detail={"code": "TEST_CASE_COMPARISON_LIMIT_EXCEEDED", "message": "Có quá nhiều ca kiểm thử để đối chiếu đầy đủ, chưa cho tạo ca mới có thể trùng"})
+    versions = []
+    try:
+        async for page in analysis_repository.iter_active_test_case_version_pages(
+            project_id, "ACTIVE"
+        ):
+            versions.extend(page)
+    except ActiveTestCaseVersionIntegrityError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_CASE_CURRENT_VERSION_MISSING"},
+        ) from error
+    drafts = []
+    async for page in test_design_repository.iter_case_draft_pages(
+        project_id, ["DRAFT", "IN_REVIEW", "APPROVING"]
+    ):
+        drafts.extend(page)
     settings = await test_design_repository.find_project_settings(project_id)
     return versions + drafts, settings.get("testcase_duplicate_threshold", 0.72)
 
@@ -189,6 +214,28 @@ async def validate_test_design_structure(project_id, repository_node_id, bdd):
             raise HTTPException(status_code=422, detail={"code": "REUSABLE_TEST_STEP_NOT_FOUND"})
 
 
+async def validate_test_case_owner(project_id, owner_id):
+    owner = str(owner_id or "").strip()
+    if not owner:
+        return None
+    membership = await common_repository.find_membership(
+        project_id, owner, status="ACTIVE", projection={"_id": 1, "user_id": 1}
+    )
+    if (
+        not membership
+        or membership.get("status", "ACTIVE") != "ACTIVE"
+        or membership.get("user_id", owner) != owner
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "TEST_CASE_OWNER_NOT_ACTIVE_PROJECT_MEMBER",
+                "message": "Người phụ trách phải là thành viên đang hoạt động của dự án.",
+            },
+        )
+    return owner
+
+
 async def validate_coverage_items(project_id, requirement_version_ids, coverage_item_ids):
     if not coverage_item_ids:
         return
@@ -208,10 +255,18 @@ async def validate_coverage_items(project_id, requirement_version_ids, coverage_
 
 
 async def create_test_case_draft_record(
-    project_id, payload, user, parent_version_id=None, change_reason=None
+    project_id, payload, user, parent_version_id=None, change_reason=None, session=None,
+    draft_id=None,
 ):
     
     await get_project(project_id, user, "testcase.create")
+    if payload.owner_id:
+        await get_project(project_id, user, "project.members.read")
+    owner_id = await validate_test_case_owner(project_id, payload.owner_id)
+    if owner_id != payload.owner_id:
+        payload = payload.model_copy(update={"owner_id": owner_id})
+    if payload.custom_values:
+        await validate_test_case_custom_values(project_id, payload.custom_values)
     if payload.target_version_id:
         if payload.origin != "ai_generated" or parent_version_id or len((payload.version_reason or "").strip()) < 2:
             raise HTTPException(status_code=422, detail={"code": "TEST_CASE_VERSION_RESOLUTION_INVALID"})
@@ -227,7 +282,12 @@ async def create_test_case_draft_record(
             raise HTTPException(status_code=409, detail={"code": "TEST_CASE_VERSION_TARGET_CHANGED", "message": "Phiên bản ca kiểm thử đích đã thay đổi  Hãy tạo lại bản xem trước"})
         parent_version_id = payload.target_version_id
         change_reason = payload.version_reason.strip()
-        payload = payload.model_copy(update={"test_case_key": target_case["test_case_key"]})
+        payload = payload.model_copy(
+            update={
+                "test_case_key": target_case["test_case_key"],
+                "custom_values": inherit_custom_values(payload.custom_values, target),
+            }
+        )
     elif payload.version_reason:
         raise HTTPException(status_code=422, detail={"code": "TEST_CASE_VERSION_RESOLUTION_INVALID"})
     if payload.test_case_key:
@@ -259,9 +319,7 @@ async def create_test_case_draft_record(
         if len(versions) != len(set(payload.requirement_version_ids)):
             raise HTTPException(409, detail={"code": "TEST_DESIGN_REQUIREMENT_CHANGED", "message": "Phiên bản yêu cầu đã thay đổi  Hãy tải lại trước khi lưu ca kiểm thử"})
         for version in versions:
-            await require_current_baselined_version(
-                version, allow_automation_draft=bool(user._ai_automation_run_id)
-            )
+            await require_current_baselined_version(version)
         existing, threshold = await comparison_cases(project_id)
         if payload.suite_signature != active_suite_signature(existing, payload.requirement_version_ids):
             raise HTTPException(409, detail={"code": "TEST_DESIGN_PREVIEW_STALE", "message": "Bộ ca đang hiệu lực đã thay đổi  Hãy tạo lại bản xem trước trước khi lưu"})
@@ -312,17 +370,30 @@ async def create_test_case_draft_record(
                 for item in source_evidence
                 if item.get("artifact_type") == "requirement_version"
             }
-            current_criterion_count = await test_design_repository.count_acceptance_criteria({
-                "project_id": project_id,
-                "requirement_version_id": {"$in": version_ids},
-            })
-            if source_version_ids != set(version_ids) or current_criterion_count != len(criterion_ids):
+            snapshot_matches = None
+            if payload.acceptance_criteria_snapshot_ids is not None:
+                current_criteria = [
+                    criterion
+                    for version_id in version_ids
+                    for criterion in await analysis_repository.list_acceptance_criteria(version_id)
+                ]
+                snapshot_matches = acceptance_criteria_snapshot_matches(
+                    payload.acceptance_criteria_snapshot_ids,
+                    [item["_id"] for item in current_criteria],
+                )
+            else:
+                current_criterion_count = await test_design_repository.count_acceptance_criteria({
+                    "project_id": project_id,
+                    "requirement_version_id": {"$in": version_ids},
+                })
+                snapshot_matches = current_criterion_count == len(criterion_ids)
+            if source_version_ids != set(version_ids) or not snapshot_matches:
                 raise HTTPException(status_code=409, detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Nguồn yêu cầu hoặc tiêu chí chấp nhận đã thay đổi  Hãy tạo lại bản xem trước"})
         criteria = await test_design_repository.list_acceptance_criteria_by_ids(
             project_id, version_ids, criterion_ids
         ) if criterion_ids else []
         expected = {
-            ("requirement_version", item["_id"]): item.get("plain_text_projection") or plain_text(item.get("content_doc", {}))
+            ("requirement_version", item["_id"]): requirement_test_evidence_text(item)
             for item in versions
         }
         expected.update({
@@ -345,9 +416,14 @@ async def create_test_case_draft_record(
             raise HTTPException(status_code=422, detail={"code": "TEST_CASE_EVIDENCE_CHANGED"})
         source_evidence = canonical
     draft = {
-        "_id": new_id('TCD'),
+        "_id": draft_id or new_id('TCD'),
         "project_id": project_id,
-        **payload.model_dump(exclude={"suite_signature", "target_version_id", "version_reason"}),
+        **payload.model_dump(exclude={
+            "suite_signature",
+            "target_version_id",
+            "version_reason",
+            "acceptance_criteria_snapshot_ids",
+        }),
         "source_evidence": source_evidence,
         "test_case_key": payload.test_case_key
         or await next_key(project_id, 'test_case', 'TC'),
@@ -358,15 +434,31 @@ async def create_test_case_draft_record(
         "created_at": now(),
         "updated_at": now(),
     }
-    await test_design_repository.insert_case_draft(draft)
-    try:
-        await audit(user.id, "test_case_draft_created", "TestCaseDraft", draft["_id"], project_id)
-    except Exception:
-        await test_design_repository.delete_created_drafts(project_id, [draft["_id"]])
-        raise
+    if payload.origin in {"ai_generated", "maintenance"}:
+        from src.modules.design.services.test_case_review import proposal_snapshot
+
+        draft["ai_proposal_snapshot"] = proposal_snapshot(draft)
+        draft["review_acceptance_criteria_snapshot_ids"] = payload.acceptance_criteria_snapshot_ids
     from src.clients.ai_automation import emit_test_case_changed
 
-    await emit_test_case_changed(draft, user)
+    async def persist(active_session):
+        await test_design_repository.insert_case_draft(draft, session=active_session)
+        await audit(
+            user.id,
+            "test_case_draft_created",
+            "TestCaseDraft",
+            draft["_id"],
+            project_id,
+            session=active_session,
+        )
+        await emit_test_case_changed(draft, user, session=active_session)
+
+    if session is not None:
+        await persist(session)
+    else:
+        async with await database.client.start_session() as active_session:
+            async with active_session.start_transaction():
+                await persist(active_session)
     return draft
 
 
@@ -405,29 +497,20 @@ async def create_generated_test_case_draft_batch(project_id, payloads, user):
                 },
             )
     created = []
-    try:
-        for index, item in enumerate(payloads):
-            try:
-                created.append(await create_test_case_draft_record(project_id, item, user))
-            except HTTPException as error:
-                detail = error.detail
-                if isinstance(detail, dict):
-                    detail = {**detail, "index": index}
-                raise HTTPException(error.status_code, detail=detail) from error
-    except Exception:
-        await test_design_repository.delete_created_drafts(
-            project_id, [item["_id"] for item in created]
-        )
-        if created:
-            await audit(
-                user.id,
-                "test_case_draft_batch_rolled_back",
-                "Project",
-                project_id,
-                project_id,
-                {"draft_ids": [item["_id"] for item in created]},
-            )
-        raise
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            for index, item in enumerate(payloads):
+                try:
+                    created.append(
+                        await create_test_case_draft_record(
+                            project_id, item, user, session=session
+                        )
+                    )
+                except HTTPException as error:
+                    detail = error.detail
+                    if isinstance(detail, dict):
+                        detail = {**detail, "index": index}
+                    raise HTTPException(error.status_code, detail=detail) from error
     return created
 
 
@@ -440,6 +523,10 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         raise HTTPException(status_code=409, detail={"code": 'IMMUTABLE_TEST_CASE_DRAFT'})
     if payload.attachments is not None:
         await get_project(draft["project_id"], user, "attachment.manage")
+    if payload.owner_id is not None and payload.owner_id != draft.get("owner_id"):
+        await get_project(draft["project_id"], user, "project.members.read")
+        owner_id = await validate_test_case_owner(draft["project_id"], payload.owner_id)
+        payload = payload.model_copy(update={"owner_id": owner_id})
     await validate_design_sources(
         draft["project_id"],
         payload.requirement_version_ids
@@ -467,7 +554,12 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         payload.bdd if payload.bdd is not None else draft.get("bdd"),
     )
     changes = payload.model_dump()
-    if (draft.get("evidence_refs") or draft.get("coverage_obligations") or draft.get("challenge_hypotheses")) and any(
+    effective_custom_values = (
+        payload.custom_values if payload.custom_values is not None else draft.get("custom_values", {})
+    )
+    if effective_custom_values:
+        await validate_test_case_custom_values(draft["project_id"], effective_custom_values)
+    if (draft.get("evidence_refs") or draft.get("coverage_obligations") or draft.get("obligation_evidence") or draft.get("challenge_hypotheses")) and any(
         changes.get(field) is not None and changes[field] != draft.get(field)
         for field in (
             "title", "type", "objective_doc", "preconditions_doc", "steps", "test_data",
@@ -477,17 +569,30 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         )
     ):
         changes["coverage_obligations"] = []
+        changes["obligation_evidence"] = []
         changes["evidence_refs"] = []
         changes["challenge_hypotheses"] = []
-    updated = await optimistic_patch(
-        "test_case_drafts",
-        draft_id,
-        draft["project_id"],
-        payload.expected_revision,
-        changes,
-    )
-    await audit(user.id, "test_case_draft_updated", "TestCaseDraft", draft_id, draft["project_id"])
     from src.clients.ai_automation import emit_test_case_changed
 
-    await emit_test_case_changed(updated, user)
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await optimistic_patch(
+                "test_case_drafts",
+                draft_id,
+                draft["project_id"],
+                payload.expected_revision,
+                changes,
+                session=session,
+            )
+            await audit(
+                user.id,
+                "test_case_draft_updated",
+                "TestCaseDraft",
+                draft_id,
+                draft["project_id"],
+                session=session,
+            )
+            await emit_test_case_changed(
+                updated, user, previous_case=draft, session=session
+            )
     return updated

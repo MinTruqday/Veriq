@@ -1,5 +1,7 @@
 import json
+import re
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from loguru import logger
@@ -7,16 +9,22 @@ from loguru import logger
 from src.core.infrastructure.configuration import settings
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
-from src.prompts.testing import build_testing_prompt
+from src.prompts.testability_blueprint_review import build_testability_blueprint_grounding_prompt
+from src.prompts.testing import (
+    build_testing_prompt,
+    prompt_contract_fingerprint,
+    prompt_messages_fingerprint,
+)
 from src.runtime.output import normalize_narrative_payload
-from src.schemas.inference import (
-    TestingAutomationRequest,
-    GeneratedCasesGroundingReview,
+from src.schemas.inference import output_schema
+from src.schemas.inference_requests import (
     TestingAutomationDegradedMode,
+    TestingAutomationRequest,
     TestingAutomationResult,
     TestingAutomationStatus,
-    output_schema,
 )
+from src.schemas.inference_requirements import TestabilityBlueprintGroundingReview
+from src.schemas.inference_test_design import GeneratedCasesGroundingReview
 from src.services.inference import model_metadata, structured
 
 
@@ -29,13 +37,40 @@ def evidence_text(evidence, compact=False):
             continue
         metadata = {
             key: item.get(key)
-            for key in ("artifact_type", "artifact_id", "artifact_version_id", "authority")
+            for key in (
+                "artifact_type",
+                "artifact_id",
+                "artifact_version_id",
+                "source_version",
+                "relationship_paths",
+                "authority",
+            )
             if item.get(key) is not None
         }
+        if item.get("verified_facts"):
+            metadata["verified_facts"] = item["verified_facts"]
         values.extend(
             (json.dumps(metadata, ensure_ascii=False, default=str), str(item.get("text", ""))[:4000])
         )
     return "\n".join(values)
+
+
+def evidence_payload(evidence):
+    return [
+        {
+            "artifact_type": item.artifact_type,
+            "artifact_id": item.artifact_id,
+            "artifact_version_id": item.artifact_version_id,
+            "source_version": item.source_version,
+            "relationship_paths": item.relationship_paths,
+            "authority": item.authority,
+            "verified_facts": [
+                fact.model_dump(mode="json") for fact in item.verified_facts
+            ],
+            "text": item.text,
+        }
+        for item in evidence
+    ]
 
 
 def evidence_reference_ids(evidence):
@@ -60,17 +95,55 @@ def nested_values(value, key_name):
     return values
 
 
+def performance_targets_have_evidence(suggestions, evidence):
+    source_text = {
+        str(item.get("artifact_version_id") or item.get("artifact_id")): str(
+            item.get("text") or ""
+        )
+        for item in evidence
+        if item.get("artifact_version_id") or item.get("artifact_id")
+    }
+    for suggestion in suggestions:
+        quotes = suggestion.get("evidence_quotes") or []
+        valid_quotes = [
+            quote
+            for quote in quotes
+            if quote.get("evidence_ref") in source_text
+            and quote.get("quote", "").strip()
+            and quote["quote"].strip() in source_text[quote["evidence_ref"]]
+        ]
+        if not valid_quotes:
+            return False
+        for field in ("virtual_users", "requests_per_second", "duration_minutes"):
+            value = suggestion.get(field)
+            if value is None:
+                continue
+            try:
+                expected = Decimal(format(float(value), ".15g"))
+            except (InvalidOperation, TypeError, ValueError):
+                return False
+            supported = False
+            for quote in valid_quotes:
+                tokens = re.findall(
+                    r"(?<![\w])[+-]?\d+(?:[.,]\d+)*(?![\w])", quote["quote"]
+                )
+                for token in tokens:
+                    try:
+                        token_value = Decimal(token.replace(",", "."))
+                    except InvalidOperation:
+                        continue
+                    if token_value == expected:
+                        supported = True
+                        break
+                if supported:
+                    break
+            if not supported:
+                return False
+    return True
+
+
 async def generate_ai_automation(req: TestingAutomationRequest):
-    evidence = [
-        {
-            "artifact_type": item.artifact_type,
-            "artifact_id": item.artifact_id,
-            "artifact_version_id": item.artifact_version_id,
-            "authority": item.authority,
-            "text": item.text,
-        }
-        for item in req.evidence
-    ]
+    evidence = evidence_payload(req.evidence)
     source_text = evidence_text(
         evidence,
         compact=req.capability in {"project_question", "requirement_quality_analysis"},
@@ -92,11 +165,24 @@ async def generate_ai_automation(req: TestingAutomationRequest):
     )
     model = {
         **model_metadata(),
-        "prompt_version": "ai_automation_v1_multilingual_few_shot",
+        "prompt_version": prompt_contract_fingerprint(req.capability, schema),
+        "prompt_execution_fingerprints": [],
+        "prompt_execution_attempts": [],
         "tool_schema_version": "ai_automation",
         "retrieval_version": "project_evidence",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    def observe_prompt_attempt(stage):
+        def record(messages, attempt):
+            fingerprint = prompt_messages_fingerprint(messages)
+            model["prompt_execution_fingerprints"].append(fingerprint)
+            model["prompt_execution_attempts"].append(
+                {"stage": stage, "attempt": attempt, "fingerprint": fingerprint}
+            )
+
+        return record
+
     unsupported_details = []
     try:
         generated = await structured(
@@ -105,6 +191,7 @@ async def generate_ai_automation(req: TestingAutomationRequest):
             max_tokens=4096,
             timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
             provider_schema=False,
+            prompt_attempt_observer=observe_prompt_attempt("generation"),
         )
         generated_data = normalize_narrative_payload(generated.model_dump())
         generated_data["capability"] = req.capability
@@ -115,14 +202,20 @@ async def generate_ai_automation(req: TestingAutomationRequest):
         )
         if unknown_refs:
             raise ValueError("AI_EVIDENCE_REF_UNKNOWN")
+        if req.capability == "performance_plan_generation" and not (
+            performance_targets_have_evidence(generated_data.get("suggestions", []), evidence)
+        ):
+            raise ValueError("AI_PERFORMANCE_TARGET_EVIDENCE_INVALID")
         if req.capability == "test_generation" and generated_data.get("suggestions"):
             cases = generated_data["suggestions"]
+            grounding_prompt = build_generated_cases_grounding_prompt(evidence, cases)
             review = await structured(
-                build_generated_cases_grounding_prompt(evidence, cases),
+                grounding_prompt,
                 GeneratedCasesGroundingReview,
                 max_tokens=4096,
                 timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
                 provider_schema=False,
+                prompt_attempt_observer=observe_prompt_attempt("grounding"),
             )
             if [item.index for item in review.cases] != list(range(len(cases))):
                 raise ValueError("AI_GROUNDING_REVIEW_INVALID")
@@ -151,6 +244,45 @@ async def generate_ai_automation(req: TestingAutomationRequest):
                     *generated_data.get("warnings", []),
                     "AI_UNGROUNDED_CANDIDATES_REJECTED",
                 ]
+        if req.capability == "testability_blueprint_compilation" and (
+            generated_data.get("obligations") or generated_data.get("clarifications")
+        ):
+            review_prompt = build_testability_blueprint_grounding_prompt(
+                evidence,
+                generated_data.get("obligations", []),
+                generated_data.get("clarifications", []),
+            )
+            review = await structured(
+                review_prompt,
+                TestabilityBlueprintGroundingReview,
+                max_tokens=4096,
+                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                provider_schema=False,
+                prompt_attempt_observer=observe_prompt_attempt("blueprint_grounding"),
+            )
+            expected_obligation_indexes = list(range(len(generated_data.get("obligations", []))))
+            expected_clarification_indexes = list(range(len(generated_data.get("clarifications", []))))
+            if (
+                [item.index for item in review.obligations] != expected_obligation_indexes
+                or [item.index for item in review.clarifications] != expected_clarification_indexes
+            ):
+                raise ValueError("AI_BLUEPRINT_GROUNDING_REVIEW_INVALID")
+            rejected_claims = [
+                {
+                    "claim_type": claim_type,
+                    "index": item.index,
+                    "unsupported_claims": item.unsupported_claims[:10],
+                }
+                for claim_type, items in (
+                    ("OBLIGATION", review.obligations),
+                    ("CLARIFICATION", review.clarifications),
+                )
+                for item in items
+                if item.unsupported_claims
+            ]
+            if rejected_claims:
+                unsupported_details = rejected_claims[:100]
+                raise ValueError("AI_BLUEPRINT_UNGROUNDED_OUTPUT")
         if req.capability == "test_condition_generation":
             generated_data["suggestions"] = generated_data.pop("condition_candidates")
         generated_data.update(
@@ -180,7 +312,9 @@ async def generate_ai_automation(req: TestingAutomationRequest):
         }
         failure_code = (
             "AI_UNGROUNDED_OUTPUT"
-            if str(error) == "AI_UNGROUNDED_OUTPUT"
+            if str(error) in {"AI_UNGROUNDED_OUTPUT", "AI_BLUEPRINT_UNGROUNDED_OUTPUT"}
+            else "AI_GROUNDING_REVIEW_INVALID"
+            if str(error) == "AI_BLUEPRINT_GROUNDING_REVIEW_INVALID"
             else "AI_OUTPUT_INVALID" if output_invalid else "AI_PROVIDER_UNAVAILABLE"
         )
         degraded_mode = (
@@ -190,14 +324,21 @@ async def generate_ai_automation(req: TestingAutomationRequest):
         )
         provider = model["provider"] if output_invalid else "unavailable"
         answer = (
-            "The model output did not satisfy the required response contract"
+            "Đầu ra của mô hình không đáp ứng hợp đồng dữ liệu yêu cầu"
             if output_invalid
-            else "An evidence grounded answer cannot be produced while the AI provider is unavailable"
+            else "Chưa thể tạo kết quả có căn cứ vì dịch vụ AI hiện không khả dụng"
         )
         result = TestingAutomationResult(
             capability=req.capability,
             suggestions=[],
-            findings=unsupported_details if failure_code == "AI_UNGROUNDED_OUTPUT" else [],
+            findings=unsupported_details
+            if failure_code
+            in {
+                "AI_UNGROUNDED_OUTPUT",
+                "AI_BLUEPRINT_UNGROUNDED_OUTPUT",
+                "AI_GROUNDING_REVIEW_INVALID",
+            }
+            else [],
             evidence_refs=evidence_reference_ids(evidence),
             confidence=0,
             warnings=[failure_code, "MANUAL_REVIEW_REQUIRED"],

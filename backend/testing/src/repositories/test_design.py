@@ -4,6 +4,45 @@ from src.core.database import database
 
 
 class TestDesignRepository:
+    async def list_test_case_custom_fields(self, project_id):
+        return await database.value.test_case_custom_fields.find(
+            {"project_id": project_id, "status": "ACTIVE"}
+        ).sort([("created_at", 1), ("_id", 1)]).to_list(200)
+
+    async def list_all_test_case_custom_fields(self, project_id, session=None):
+        options = {"session": session} if session is not None else {}
+        return await database.value.test_case_custom_fields.find(
+            {"project_id": project_id}, **options
+        ).sort([("created_at", 1), ("_id", 1)]).to_list(200)
+
+    async def insert_test_case_custom_field(self, value):
+        await database.value.test_case_custom_fields.insert_one(value)
+        return value
+
+    async def update_test_case_custom_field(
+        self, project_id, field_id, expected_revision, changes
+    ):
+        revision_filter = (
+            {"revision": expected_revision}
+            if expected_revision > 1
+            else {"$or": [{"revision": 1}, {"revision": {"$exists": False}}]}
+        )
+        return await database.value.test_case_custom_fields.find_one_and_update(
+            {
+                "_id": field_id,
+                "project_id": project_id,
+                "status": {"$in": ["ACTIVE", "INACTIVE"]},
+                **revision_filter,
+            },
+            {"$set": changes, "$inc": {"revision": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def find_test_case_custom_field(self, project_id, field_id):
+        return await database.value.test_case_custom_fields.find_one(
+            {"_id": field_id, "project_id": project_id}
+        )
+
     async def list_repository_nodes(self, project_id):
         return await database.value.test_repository_nodes.find(
             {"project_id": project_id, "status": "ACTIVE"}
@@ -71,6 +110,65 @@ class TestDesignRepository:
             query["status"] = status
         return await database.value.test_cases.find(query).to_list(limit)
 
+    async def list_cases_linked_to_requirement(
+        self, project_id, requirement_version_ids, status=None
+    ):
+        if not requirement_version_ids:
+            return []
+        match = {"project_id": project_id}
+        if status:
+            match["status"] = status
+        pipeline = [
+            {"$match": match},
+            {
+                "$lookup": {
+                    "from": "test_case_versions",
+                    "localField": "current_version_id",
+                    "foreignField": "_id",
+                    "pipeline": [
+                        {
+                            "$match": {
+                                "project_id": project_id,
+                                "requirement_version_ids": {"$in": requirement_version_ids},
+                            }
+                        }
+                    ],
+                    "as": "current_version",
+                }
+            },
+            {"$unwind": "$current_version"},
+            {"$sort": {"test_case_key": 1, "_id": 1}},
+        ]
+        return await database.value.test_cases.aggregate(pipeline).to_list(None)
+
+    async def list_case_versions_linked_to_requirements(
+        self, project_id, requirement_version_ids
+    ):
+        if not requirement_version_ids:
+            return []
+        return await database.value.test_case_versions.find(
+            {
+                "project_id": project_id,
+                "requirement_version_ids": {"$in": requirement_version_ids},
+            },
+            {
+                "_id": 1,
+                "test_case_id": 1,
+                "version": 1,
+                "status": 1,
+                "requirement_version_ids": 1,
+                "created_at": 1,
+            },
+        ).sort([("test_case_id", 1), ("version", 1), ("_id", 1)]).to_list(None)
+
+    async def list_cases_by_ids(self, project_id, test_case_ids):
+        if not test_case_ids:
+            return []
+        return await database.value.test_cases.find(
+            {"project_id": project_id, "_id": {"$in": test_case_ids}},
+            {"_id": 1, "test_case_key": 1, "current_version_id": 1, "status": 1},
+        ).to_list(None)
+
     async def list_case_versions_by_ids(self, project_id, version_ids, limit=20000):
         return await database.value.test_case_versions.find(
             {"project_id": project_id, "_id": {"$in": version_ids}}
@@ -100,9 +198,12 @@ class TestDesignRepository:
         )
 
     async def list_requirement_version_ids(self, project_id, requirement_id, limit=1000):
-        return await database.value.requirement_versions.find(
-            {"project_id": project_id, "requirement_id": requirement_id}, {"_id": 1}
-        ).to_list(limit)
+        query = {"project_id": project_id, "requirement_id": requirement_id}
+        if limit is None:
+            return await database.value.requirement_versions.find(
+                query, {"_id": 1}
+            ).sort("_id", 1).to_list(None)
+        return await database.value.requirement_versions.find(query, {"_id": 1}).to_list(limit)
 
     async def list_case_drafts(self, project_id, limit, statuses=None):
         query = {"project_id": project_id}
@@ -113,6 +214,20 @@ class TestDesignRepository:
             .sort("updated_at", -1)
             .to_list(limit)
         )
+
+    async def iter_case_draft_pages(self, project_id, statuses, page_size=500):
+        last_id = None
+        while True:
+            query = {"project_id": project_id, "status": {"$in": list(statuses)}}
+            if last_id is not None:
+                query["_id"] = {"$gt": last_id}
+            page = await database.value.test_case_drafts.find(query).sort("_id", 1).to_list(page_size)
+            if not page:
+                return
+            yield page
+            last_id = page[-1]["_id"]
+            if len(page) < page_size:
+                return
 
     async def list_related_case_drafts(self, project_id, version_id, limit, statuses=None):
         query = {"project_id": project_id, "requirement_version_ids": version_id}
@@ -147,6 +262,22 @@ class TestDesignRepository:
 
     async def insert_ai_finding(self, value):
         await database.value.ai_findings.insert_one(value)
+
+    async def find_latest_test_draft_lint(self, project_id, draft_id):
+        values = await (
+            database.value.ai_findings.find(
+                {
+                    "project_id": project_id,
+                    "artifact_type": "test_case_draft",
+                    "artifact_id": draft_id,
+                    "result_type": "TEST_CASE_DRAFT_LINT",
+                }
+            )
+            .sort([("created_at", -1), ("_id", -1)])
+            .limit(1)
+            .to_list(1)
+        )
+        return values[0] if values else None
 
     async def find_case_draft(self, draft_id, project_id):
         return await database.value.test_case_drafts.find_one(
@@ -232,6 +363,8 @@ class TestDesignRepository:
         trace_error_code,
         approval_audit_status,
         approval_audit_error_code,
+        adequacy_invalidation_status,
+        adequacy_invalidation_error_code,
     ):
         return await database.value.test_case_versions.update_one(
             {"_id": version_id, "project_id": project_id},
@@ -244,6 +377,8 @@ class TestDesignRepository:
                     "trace_error_code": trace_error_code,
                     "approval_audit_status": approval_audit_status,
                     "approval_audit_error_code": approval_audit_error_code,
+                    "adequacy_invalidation_status": adequacy_invalidation_status,
+                    "adequacy_invalidation_error_code": adequacy_invalidation_error_code,
                 }
             },
         )
@@ -383,14 +518,22 @@ class TestDesignRepository:
             {"project_id": project_id, "_id": {"$in": version_ids}}
         )
 
-    async def insert_case_draft(self, value):
-        await database.value.test_case_drafts.insert_one(value)
+    async def insert_case_draft(self, value, session=None):
+        await database.value.test_case_drafts.insert_one(
+            value, **({"session": session} if session is not None else {})
+        )
         return value
 
     async def list_requirement_versions(self, query, limit):
         return await database.value.requirement_versions.find(query).to_list(limit)
 
     async def list_case_versions(self, query, limit, sort_field=None, direction=1):
+        if limit is None:
+            if sort_field:
+                raise ValueError("UNBOUNDED_CASE_VERSION_READ_REQUIRES_STABLE_ID_ORDER")
+            from src.repositories.common import common_repository
+
+            return await common_repository.list_all_by_id("test_case_versions", query)
         cursor = database.value.test_case_versions.find(query)
         if sort_field:
             cursor = cursor.sort(sort_field, direction)
@@ -407,6 +550,26 @@ class TestDesignRepository:
     async def insert_import(self, value):
         await database.value.test_imports.insert_one(value)
         return value
+
+    async def upsert_import_once(self, value):
+        from pymongo.errors import DuplicateKeyError
+
+        try:
+            await database.value.test_imports.update_one(
+                {"_id": value["_id"]}, {"$setOnInsert": value}, upsert=True
+            )
+        except DuplicateKeyError:
+            pass
+        return await database.value.test_imports.find_one({"_id": value["_id"]})
+
+    async def find_import(self, project_id, import_id):
+        return await database.value.test_imports.find_one(
+            {"_id": import_id, "project_id": project_id}
+        )
+
+    async def list_imports(self, project_id, query=None, limit=1000):
+        cursor = database.value.test_imports.find({"project_id": project_id, **(query or {})})
+        return await cursor.sort([("created_at", -1), ("_id", 1)]).to_list(limit)
 
     async def claim_import(self, import_id, project_id):
         return await database.value.test_imports.find_one_and_update(
@@ -480,10 +643,13 @@ class TestDesignRepository:
             {"project_id": project_id, "scenario_id": scenario_id}
         ).sort("test_case_key", 1).to_list(limit)
 
-    async def list_acceptance_criteria(self, requirement_version_id, limit=500):
-        return await database.value.acceptance_criteria.find(
-            {"requirement_version_id": requirement_version_id}
-        ).to_list(limit)
+    async def list_acceptance_criteria(self, requirement_version_id, limit=None):
+        query = {"requirement_version_id": requirement_version_id}
+        if limit is not None:
+            return await database.value.acceptance_criteria.find(query).to_list(limit)
+        from src.repositories.common import common_repository
+
+        return await common_repository.list_all_acceptance_criteria(requirement_version_id)
 
     async def insert_suite(self, value):
         await database.value.test_suites.insert_one(value)

@@ -1,9 +1,9 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../components/DataTable";
 import PlatformOperationsPanel from "../components/PlatformOperationsPanel";
 import PlatformUsersPanel from "../components/PlatformUsersPanel";
+import TestabilityBenchmarkPanel from "../components/TestabilityBenchmarkPanel";
 import {
   ErrorState,
   LoadingState,
@@ -30,7 +30,6 @@ const modelLabels = {
 };
 
 export default function OperationsPage() {
-  const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const [section, setSection] = useState("overview");
   const [value, setValue] = useState(null);
@@ -39,6 +38,8 @@ export default function OperationsPage() {
   const [auditQuery, setAuditQuery] = useState("");
   const [storagePage, setStoragePage] = useState(1);
   const [auditPage, setAuditPage] = useState(1);
+  const [retryingJobs, setRetryingJobs] = useState(() => new Set());
+  const retryingJobsRef = useRef(new Set());
   const storagePageSize = 10;
   const auditPageSize = 20;
   const isPlatformAdmin = user?.system_role === "ADMIN";
@@ -54,19 +55,21 @@ export default function OperationsPage() {
     }
   }, []);
   useEffect(() => {
-    if (authLoading) return;
-    if (!isPlatformAdmin) {
-      router.replace("/du-an");
-      return;
-    }
+    if (authLoading || !user || !isPlatformAdmin) return;
     void load();
-  }, [authLoading, isPlatformAdmin, load, router]);
+  }, [authLoading, isPlatformAdmin, load, user]);
   const retryJob = async (jobId) => {
+    if (retryingJobsRef.current.has(jobId)) return;
+    retryingJobsRef.current.add(jobId);
+    setRetryingJobs(new Set(retryingJobsRef.current));
     try {
       await testingApi.retryOperationJob(jobId);
       await load();
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      retryingJobsRef.current.delete(jobId);
+      setRetryingJobs(new Set(retryingJobsRef.current));
     }
   };
   const auditEvents = (value?.audit_events || []).filter((item) => {
@@ -105,11 +108,6 @@ export default function OperationsPage() {
       name: "Độ trễ trung bình",
       count: `${Math.round(impactMetrics.average_latency_ms || 0)} mili giây`,
     },
-    {
-      _id: "proposals",
-      name: "Đề xuất bảo trì",
-      count: value?.ai_request_metrics?.proposals || 0,
-    },
   ];
   if (authLoading)
     return (
@@ -128,6 +126,7 @@ export default function OperationsPage() {
           ["overview", "Tổng quan"],
           ["users", "Tài khoản"],
           ["platform", "Cấu hình nền tảng"],
+          ["benchmark", "Benchmark AI"],
         ].map(([value, label]) => (
           <button
             key={value}
@@ -150,6 +149,8 @@ export default function OperationsPage() {
         <PlatformUsersPanel />
       ) : section === "platform" ? (
         <PlatformOperationsPanel />
+      ) : section === "benchmark" ? (
+        <TestabilityBenchmarkPanel />
       ) : !value ? (
         loading ? (
           <LoadingState />
@@ -192,7 +193,7 @@ export default function OperationsPage() {
                 ]}
               />
             </Panel>
-            <Panel title="Số liệu AI đã ghi nhận">
+            <Panel title="Số liệu phân tích ảnh hưởng bằng AI">
               <DataTable
                 items={aiMetrics}
                 columns={[
@@ -242,9 +243,10 @@ export default function OperationsPage() {
                     <button
                       className="secondary-button"
                       type="button"
+                      disabled={retryingJobs.has(item._id)}
                       onClick={() => retryJob(item._id)}
                     >
-                      Thử lại
+                      {retryingJobs.has(item._id) ? "Đang thử lại…" : "Thử lại"}
                     </button>
                   ),
                 },

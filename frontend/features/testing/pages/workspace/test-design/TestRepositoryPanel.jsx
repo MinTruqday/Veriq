@@ -1,14 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Folder } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Folder, Pencil } from "lucide-react";
 import DataTable from "../../../components/DataTable";
 import { LoadingState, Panel } from "../../../components/WorkspacePrimitives";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, textDoc } from "../../../lib/testing";
 import { Modal, ModalFooter, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 
-function RepositoryBranch({ node, childrenByParent, expanded, onToggle, depth = 0 }) {
+function RepositoryBranch({
+  node,
+  childrenByParent,
+  expanded,
+  onToggle,
+  onRename,
+  canRename,
+  depth = 0,
+}) {
   const children = childrenByParent.get(node._id) || [];
   const isExpanded = expanded.has(node._id);
   return (
@@ -36,6 +44,16 @@ function RepositoryBranch({ node, childrenByParent, expanded, onToggle, depth = 
         )}
         <Folder size={17} aria-hidden="true" className="shrink-0 text-brand" />
         <span className="min-w-0 break-words text-sm font-medium text-ink">{node.name}</span>
+        {canRename && (
+          <button
+            className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-ink-muted hover:bg-surface-quiet hover:text-ink"
+            type="button"
+            aria-label={`Đổi tên thư mục ${node.name}`}
+            onClick={() => onRename(node)}
+          >
+            <Pencil size={15} aria-hidden="true" />
+          </button>
+        )}
       </div>
       {children.length > 0 && isExpanded && (
         <ul className="space-y-1">
@@ -46,6 +64,8 @@ function RepositoryBranch({ node, childrenByParent, expanded, onToggle, depth = 
               childrenByParent={childrenByParent}
               expanded={expanded}
               onToggle={onToggle}
+              onRename={onRename}
+              canRename={canRename}
               depth={depth + 1}
             />
           ))}
@@ -55,7 +75,7 @@ function RepositoryBranch({ node, childrenByParent, expanded, onToggle, depth = 
   );
 }
 
-export default function TestRepositoryPanel({ project, can, onError, focus = "" }) {
+export default function TestRepositoryPanel({ project, can, ask, onError, focus = "" }) {
   const [nodes, setNodes] = useState([]);
   const [steps, setSteps] = useState([]);
   const [nodeName, setNodeName] = useState("");
@@ -70,7 +90,9 @@ export default function TestRepositoryPanel({ project, can, onError, focus = "" 
   const [savingNode, setSavingNode] = useState(false);
   const [savingStep, setSavingStep] = useState(false);
   const [expandedNodeIds, setExpandedNodeIds] = useState(() => new Set());
+  const loadGeneration = useRef(0);
   const load = useCallback(async () => {
+    const requestGeneration = ++loadGeneration.current;
     setLoading(true);
     setLoadFailed(false);
     setLoadError("");
@@ -79,18 +101,23 @@ export default function TestRepositoryPanel({ project, can, onError, focus = "" 
         testingApi.listTestRepository(project._id),
         testingApi.listReusableTestSteps(project._id),
       ]);
+      if (requestGeneration !== loadGeneration.current) return;
       setNodes(repository);
       setSteps(reusable);
     } catch (reason) {
+      if (requestGeneration !== loadGeneration.current) return;
       setLoadFailed(true);
       setLoadError(messageOf(reason));
     } finally {
-      setLoading(false);
+      if (requestGeneration === loadGeneration.current) setLoading(false);
     }
-  }, [project._id]);
+  }, [loadGeneration, project._id]);
   useEffect(() => {
     void load();
-  }, [load]);
+    return () => {
+      loadGeneration.current += 1;
+    };
+  }, [load, loadGeneration]);
   useEffect(() => {
     setExpandedNodeIds(new Set(nodes.filter((node) => !node.parent_id).map((node) => node._id)));
   }, [nodes]);
@@ -130,6 +157,61 @@ export default function TestRepositoryPanel({ project, can, onError, focus = "" 
     } finally {
       setSavingStep(false);
     }
+  };
+  const renameNode = async (node) => {
+    await ask({
+      title: "Đổi tên thư mục kiểm thử",
+      description: node.name,
+      confirmLabel: "Lưu tên mới",
+      fields: [{ name: "name", label: "Tên thư mục", initialValue: node.name, required: true }],
+      onConfirm: async ({ name }) => {
+        try {
+          await testingApi.updateTestRepositoryNode(node._id, {
+            expected_revision: node.revision,
+            name: name.trim(),
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
+    });
+  };
+  const editStep = async (step) => {
+    await ask({
+      title: "Tạo phiên bản bước dùng lại",
+      description: `Phiên bản hiện tại v${step.version} sẽ được giữ nguyên. Ca kiểm thử đã duyệt tiếp tục dùng phiên bản đã ghim.`,
+      confirmLabel: "Tạo phiên bản mới",
+      fields: [
+        { name: "name", label: "Tên bước", initialValue: step.name, required: true },
+        {
+          name: "action",
+          label: "Hành động",
+          initialValue: docText(step.action_doc),
+          required: true,
+          multiline: true,
+        },
+        {
+          name: "expected",
+          label: "Kết quả mong đợi",
+          initialValue: docText(step.expected_doc),
+          multiline: true,
+        },
+      ],
+      onConfirm: async ({ name, action, expected }) => {
+        try {
+          await testingApi.updateReusableTestStep(step._id, {
+            expected_revision: step.revision,
+            name: name.trim(),
+            action_doc: textDoc(action),
+            expected_doc: textDoc(expected || ""),
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
+    });
   };
   const childrenByParent = new Map();
   for (const node of nodes) {
@@ -191,6 +273,8 @@ export default function TestRepositoryPanel({ project, can, onError, focus = "" 
                   childrenByParent={childrenByParent}
                   expanded={expandedNodeIds}
                   onToggle={toggleNode}
+                  onRename={renameNode}
+                  canRename={can("testcase.update")}
                 />
               ))}
             </ul>
@@ -244,6 +328,21 @@ export default function TestRepositoryPanel({ project, can, onError, focus = "" 
                 { key: "name", label: "Tên bước" },
                 { key: "version", label: "Phiên bản" },
                 { key: "updated_at", label: "Cập nhật" },
+                {
+                  key: "actions",
+                  label: "Thao tác",
+                  hideWhenEmpty: true,
+                  render: (item) =>
+                    can("testcase.update") ? (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => void editStep(item)}
+                      >
+                        Tạo phiên bản mới
+                      </button>
+                    ) : null,
+                },
               ]}
             />
           )}

@@ -1,15 +1,13 @@
-from typing import Annotated, Any, List, Literal
+from typing import List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ImpactClassificationSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     test_case_version_id: str = Field(min_length=1, max_length=128)
-    classification: Literal["STILL_VALID", "POTENTIALLY_AFFECTED", "NEEDS_UPDATE", "OBSOLETE"] = Field(
-        description="Use NEEDS_UPDATE only when maintenance_patch contains at least one concrete evidence grounded revision"
-    )
+    classification: Literal["STILL_VALID", "POTENTIALLY_AFFECTED", "NEEDS_UPDATE", "OBSOLETE"]
     confidence: float = Field(ge=0, le=1)
     reason: str = Field(min_length=2, max_length=5000)
     maintenance_patch: "MaintenanceTestCasePatchOutput | None" = None
@@ -48,14 +46,21 @@ class MaintenanceTestCasePatchOutput(BaseModel):
     ] | None = None
     objective: str | None = Field(default=None, min_length=2, max_length=5000)
     preconditions: str | None = Field(default=None, min_length=2, max_length=5000)
-    steps: List[MaintenanceTestStepOutput] | None = Field(default=None, min_length=1, max_length=100)
+    steps: List[MaintenanceTestStepOutput] | None = Field(default=None, max_length=100)
     expected: str | None = Field(default=None, min_length=2, max_length=5000)
     test_data: dict | None = None
 
     @model_validator(mode="after")
     def require_patch_value(self):
-        if not any(value is not None for value in self.model_dump().values()):
-            raise ValueError("maintenance_patch_value_required")
+        if not any(
+            value is not None
+            and value != ""
+            and value != []
+            and value != {}
+            and not (isinstance(value, str) and not value.strip())
+            for value in self.model_dump().values()
+        ):
+            raise ValueError("patch_content_required")
         return self
 
 class NewTestCandidateOutput(BaseModel):
@@ -75,7 +80,7 @@ class NewTestCandidateOutput(BaseModel):
 ImpactClassificationSuggestionOutput.model_rebuild()
 
 class ImpactClassificationOutput(BaseModel):
-    """Classify each test case version present in the supplied evidence. A needs-update result contains only evidence grounded maintenance changes, missing coverage becomes a new test candidate, and no change is applied automatically. When the evidence contains no test case version or cannot support a classification, return empty suggestions and new_test_candidates with a concise warning describing the evidence limitation; do not infer that unobserved test cases do not exist."""
+    """Structured Test Case impact classifications and maintenance candidates."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["impact_analysis"]

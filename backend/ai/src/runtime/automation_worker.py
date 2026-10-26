@@ -1,11 +1,18 @@
 import asyncio
 import hashlib
+import time
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
+from fastapi import HTTPException
 from loguru import logger
 
 from src.agents.runner.automation_graph import automation_workflow
 from src.core.infrastructure.mq import mq
+from src.core.infrastructure.observability import (
+    SafeTraceMetadata,
+    langfuse_cloud_exporter,
+)
 from src.memory.long_term import long_term_memory
 from src.memory.short_term import run_store
 from src.repositories.automation import automation_repository
@@ -13,57 +20,179 @@ from src.runtime.limits import limits
 from src.schemas.agent import AgentRunStatus, VeriqRunState
 from src.schemas.automation import (
     AutomationCheckpointPhase,
+    AutomationEventRequest,
+    AutomationGraphSnapshot,
     AutomationKind,
+    AutomationRun,
     AutomationStatus,
+    AutomationTrigger,
     DerivationReceipt,
     DerivationStep,
+    EvidenceItem,
     SourceFact,
 )
-from src.tools.registry import registered_tools, tool_access
 from src.services.agent_metrics import agentops
 from src.services.automation import automation_service
-from src.services.project_access import project_access
+from src.services.automation_provenance import (
+    canonicalize_source_facts,
+    carry_source_fact_lineage,
+    has_provenance_gap,
+    missing_blueprint_artifact_coverage_count,
+    source_fact_identity,
+    verified_blueprint_artifact_lineage,
+    verified_blueprint_claim_lineage,
+    verified_blueprint_from_observations,
+    verified_source_span,
+)
 from src.services.inference import model_metadata
+from src.services.project_access import project_access
+from src.tools.registry import registered_tools, tool_access
 from src.utils.background import create_background_task
+
+
+def terminal_status_for_agent_run(completed: VeriqRunState) -> AutomationStatus:
+    if completed.status == AgentRunStatus.COMPLETED:
+        return AutomationStatus.COMPLETED
+    if completed.error_code == "AUTOMATION_WAITING_FOR_INPUT":
+        return AutomationStatus.AWAITING_INPUT
+    if (
+        completed.status == AgentRunStatus.FAILED
+        and completed.error_code == "INSUFFICIENT_EVIDENCE"
+    ):
+        return AutomationStatus.DEGRADED
+    if completed.status == AgentRunStatus.FAILED:
+        return AutomationStatus.FAILED
+    return AutomationStatus.DEGRADED
+
+
+def resume_run_with_live_permissions(snapshot, live_permissions):
+    if snapshot is None:
+        return None
+    return snapshot.run.model_copy(update={"permissions": list(live_permissions)})
 
 
 class AutomationWorker:
     def __init__(self):
         self._task = None
+        self._startup_recovery_task = None
         self._stopping = False
+        self._last_queue_retry_scan = 0.0
+        self._last_expired_run_recovery_scan = 0.0
+
+    @staticmethod
+    def _trace_retry_count(payload: dict) -> int:
+        try:
+            return max(0, min(int(payload.get("attempt") or 0), 100))
+        except (TypeError, ValueError, OverflowError):
+            return 0
+
+    async def _export_safe_run_trace(
+        self,
+        run_id: str,
+        started_at: float,
+        status: AutomationStatus,
+        retry_count: int,
+        model: str | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        normalized_status = (
+            "ok"
+            if status == AutomationStatus.COMPLETED
+            else "waiting_input"
+            if status in {
+                AutomationStatus.AWAITING_INPUT,
+                AutomationStatus.AWAITING_AUTHORIZATION,
+            }
+            else "cancelled"
+            if status == AutomationStatus.CANCELLED
+            else "error"
+        )
+        try:
+            await langfuse_cloud_exporter.export(
+                SafeTraceMetadata(
+                    run_id=run_id,
+                    step="automation_run",
+                    model=model,
+                    duration_ms=int((time.monotonic() - started_at) * 1000),
+                    status=normalized_status,
+                    retry_count=retry_count,
+                    error_code=error_code,
+                )
+            )
+        except Exception:
+            logger.warning("Optional cloud trace export failed")
 
     async def start(self) -> None:
         if self._task and not self._task.done():
             return
         self._stopping = False
-        for run in await automation_repository.recover_interrupted_runs():
+        startup_cutoff = datetime.now(timezone.utc)
+        self._task = create_background_task(
+            self._supervise_consumer(), "ai-automation-worker"
+        )
+        self._startup_recovery_task = create_background_task(
+            self._retry_startup_recovery(startup_cutoff),
+            "ai-automation-startup-recovery",
+        )
+
+    async def _retry_startup_recovery(self, startup_cutoff: datetime) -> None:
+        while not self._stopping:
+            try:
+                runs = await automation_repository.recover_interrupted_runs(
+                    startup_cutoff
+                )
+                await self._dispatch_recovered_runs(runs)
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "AI automation startup recovery failed; retrying without stopping consumer"
+                )
+                await asyncio.sleep(5)
+
+    async def _dispatch_recovered_runs(self, runs) -> None:
+        for run in runs:
             if run.status == AutomationStatus.QUEUED:
-                if not await mq.publish(
-                    "ai.automation", {"automation_run_id": run.automation_run_id}
-                ):
-                    updated = await automation_repository.transition(
+                try:
+                    published = await mq.publish(
+                        "ai.automation",
+                        {"automation_run_id": run.automation_run_id},
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "AI automation startup redelivery raised for run {}",
+                        run.automation_run_id,
+                    )
+                    published = False
+                if not published:
+                    latest_checkpoint = await automation_repository.latest_checkpoint(
+                        run.automation_run_id
+                    )
+                    await automation_repository.transition_with_checkpoint(
                         run.automation_run_id,
                         run.revision,
                         {
                             "status": AutomationStatus.DEGRADED,
                             "error_code": "AUTOMATION_QUEUE_UNAVAILABLE",
                         },
+                        phase=AutomationCheckpointPhase.FINALIZED,
+                        detail={
+                            "reason_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                            "retryable": True,
+                        },
+                        state_snapshot=(
+                            latest_checkpoint.state_snapshot if latest_checkpoint else None
+                        ),
                     )
-                    if updated:
-                        await automation_service._checkpoint(
-                            updated,
-                            AutomationCheckpointPhase.FINALIZED,
-                            {"reason_code": "AUTOMATION_QUEUE_UNAVAILABLE", "retryable": True},
-                        )
             else:
                 logger.warning(
                     "Interrupted AI automation cannot be replayed safely run_id={} error_code={}",
                     run.automation_run_id,
                     run.error_code,
                 )
-        self._task = create_background_task(
-            self._supervise_consumer(), "ai-automation-worker"
-        )
 
     async def _supervise_consumer(self) -> None:
         """Keep the durable queue consumer alive after an unexpected exit."""
@@ -81,13 +210,15 @@ class AutomationWorker:
 
     async def stop(self) -> None:
         self._stopping = True
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for task_name in ("_task", "_startup_recovery_task"):
+            task = getattr(self, task_name)
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                setattr(self, task_name, None)
 
     async def _consume(self) -> None:
         while not self._stopping:
@@ -97,9 +228,12 @@ class AutomationWorker:
                 raise
             except Exception:
                 logger.exception("AI automation worker could not receive a message")
+                await self._retry_queue_unavailable_runs()
                 await asyncio.sleep(1)
                 continue
             if not message:
+                await self._retry_queue_unavailable_runs()
+                await asyncio.sleep(0.25)
                 continue
             acknowledge = False
             requeue = False
@@ -122,30 +256,198 @@ class AutomationWorker:
                         await mq.ack(message["delivery_tag"])
                     else:
                         await mq.reject(message["delivery_tag"], requeue=requeue)
+            await self._retry_queue_unavailable_runs()
+
+    async def _retry_queue_unavailable_runs(self) -> None:
+        await self._recover_expired_running_runs()
+        loop_now = asyncio.get_running_loop().time()
+        if loop_now - self._last_queue_retry_scan < limits.queue_retry_scan_seconds:
+            return
+        self._last_queue_retry_scan = loop_now
+        now = datetime.now(timezone.utc)
+        base_delay = max(1, limits.queue_retry_base_seconds)
+        try:
+            candidates = await automation_repository.list_retryable_queue_runs(
+                now - timedelta(seconds=base_delay)
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("AI automation worker could not scan queue failures for recovery")
+            return
+        for run in candidates:
+            try:
+                checkpoints = await automation_repository.list_checkpoints(
+                    run.automation_run_id
+                )
+                latest_checkpoint = await automation_repository.latest_checkpoint(
+                    run.automation_run_id
+                )
+                resume_snapshot = (
+                    latest_checkpoint.state_snapshot if latest_checkpoint else None
+                )
+                dispatch_failures = sum(
+                    1
+                    for checkpoint in checkpoints
+                    if checkpoint.detail.get("reason_code")
+                    in {
+                        "AUTOMATION_QUEUE_UNAVAILABLE",
+                        "AUTOMATION_WORKER_RETRYABLE",
+                    }
+                )
+                if run.automatic_retry_count >= limits.retries:
+                    continue
+                delay = min(
+                    base_delay * (2 ** max(0, dispatch_failures - 1)),
+                    max(base_delay, limits.queue_retry_max_seconds),
+                )
+                last_updated = run.updated_at
+                if last_updated.tzinfo is None:
+                    last_updated = last_updated.replace(tzinfo=timezone.utc)
+                if now - last_updated < timedelta(seconds=delay):
+                    continue
+
+                queued = await automation_repository.transition_with_checkpoint(
+                    run.automation_run_id,
+                    run.revision,
+                    {
+                        "status": AutomationStatus.QUEUED,
+                        "error_code": None,
+                        "automatic_retry_count": run.automatic_retry_count + 1,
+                    },
+                    phase=AutomationCheckpointPhase.QUEUED,
+                    detail={
+                        "reason_code": "AUTOMATION_QUEUE_REDELIVERY",
+                        "dispatch_attempt": dispatch_failures + 1,
+                    },
+                    state_snapshot=resume_snapshot,
+                )
+                if not queued:
+                    continue
+
+                try:
+                    published = await mq.publish(
+                        "ai.automation",
+                        {"automation_run_id": queued.automation_run_id},
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "AI automation queue redelivery raised for run {}",
+                        queued.automation_run_id,
+                    )
+                    published = False
+                if published:
+                    continue
+
+                await automation_repository.transition_with_checkpoint(
+                    queued.automation_run_id,
+                    queued.revision,
+                    {
+                        "status": AutomationStatus.DEGRADED,
+                        "error_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                    },
+                    phase=AutomationCheckpointPhase.FINALIZED,
+                    detail={
+                        "reason_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                        "retryable": True,
+                        "dispatch_attempt": dispatch_failures + 1,
+                    },
+                    state_snapshot=resume_snapshot,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "AI automation recovery failed for run {}",
+                    run.automation_run_id,
+                )
+
+    async def _recover_expired_running_runs(self) -> None:
+        loop_now = asyncio.get_running_loop().time()
+        if loop_now - self._last_expired_run_recovery_scan < limits.queue_retry_scan_seconds:
+            return
+        self._last_expired_run_recovery_scan = loop_now
+        try:
+            recovered = await automation_repository.recover_interrupted_runs(
+                include_queued=False,
+                include_legacy_running=False,
+            )
+            await self._dispatch_recovered_runs(recovered)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("AI automation worker could not recover expired run leases")
 
     async def _record_worker_failure(self, payload: dict) -> bool:
         automation_run_id = str(payload.get("automation_run_id") or "")
         if not automation_run_id:
             return True
         run = await automation_repository.get_run(automation_run_id)
-        if not run or run.status not in {AutomationStatus.QUEUED, AutomationStatus.RUNNING}:
-            return run is None or run.status not in {AutomationStatus.QUEUED, AutomationStatus.RUNNING}
-        updated = await automation_repository.transition(
-            automation_run_id,
-            run.revision,
-            {
-                "status": AutomationStatus.FAILED,
-                "error_code": "AUTOMATION_WORKER_FAILED",
-            },
-        )
-        if updated:
-            await automation_service._checkpoint(
-                updated,
-                AutomationCheckpointPhase.FINALIZED,
-                {"reason_code": "AUTOMATION_WORKER_FAILED"},
-            )
+        if not run or run.status != AutomationStatus.QUEUED:
             return True
-        return False
+        latest_checkpoint = await automation_repository.latest_checkpoint(automation_run_id)
+        action_outcome_uncertain = bool(
+            latest_checkpoint
+            and latest_checkpoint.phase == AutomationCheckpointPhase.ACTION_STARTED
+            and (
+                latest_checkpoint.detail.get("action") != "READ"
+                or latest_checkpoint.detail.get("task_has_mutation") is True
+            )
+        )
+        resumable = bool(
+            latest_checkpoint
+            and latest_checkpoint.state_snapshot is not None
+            and not action_outcome_uncertain
+        )
+        automatic_retry_count = run.automatic_retry_count + 1
+        values = {
+            "status": (
+                AutomationStatus.DEGRADED
+                if resumable and automatic_retry_count <= limits.retries
+                else AutomationStatus.FAILED
+            ),
+            "worker_lease_expires_at": None,
+            "error_code": (
+                "AUTOMATION_ACTION_OUTCOME_UNCERTAIN"
+                if action_outcome_uncertain
+                else "AUTOMATION_WORKER_RETRYABLE"
+                if resumable and automatic_retry_count <= limits.retries
+                else "AUTOMATION_WORKER_FAILED"
+            ),
+            "automatic_retry_count": automatic_retry_count,
+        }
+        if action_outcome_uncertain:
+            updated = await automation_repository.transition_with_checkpoint(
+                automation_run_id,
+                run.revision,
+                values,
+                phase=latest_checkpoint.phase,
+                detail={
+                    **latest_checkpoint.detail,
+                    "reason_code": "AUTOMATION_ACTION_OUTCOME_UNCERTAIN",
+                    "retryable": False,
+                },
+                state_snapshot=latest_checkpoint.state_snapshot,
+            )
+        else:
+            updated = await automation_repository.transition_with_checkpoint(
+                automation_run_id,
+                run.revision,
+                values,
+                phase=AutomationCheckpointPhase.FINALIZED,
+                detail={
+                    "reason_code": values["error_code"],
+                    "resumable": resumable,
+                    "automatic_retry_count": automatic_retry_count,
+                    "retryable": values["error_code"] == "AUTOMATION_WORKER_RETRYABLE",
+                },
+                state_snapshot=(
+                    latest_checkpoint.state_snapshot if latest_checkpoint else None
+                ),
+            )
+        return updated is not None
 
     async def _process(self, payload: dict) -> None:
         automation_run_id = str(payload.get("automation_run_id") or "")
@@ -161,129 +463,129 @@ class AutomationWorker:
                 if not run.execution_user_id or not run.execution_role
                 else "AUTHORIZATION_EXPIRED"
             )
-            updated = await automation_repository.transition(
-                automation_run_id,
-                run.revision,
-                {"status": AutomationStatus.AWAITING_AUTHORIZATION, "error_code": reason_code},
-            )
-            if updated:
-                await automation_service._checkpoint(
-                    updated,
-                    AutomationCheckpointPhase.FINALIZED,
-                    {"reason_code": reason_code},
-                )
+            await self._await_authorization(run, reason_code)
             return
         try:
             live_role, live_permissions = await project_access(
-                run.project_id, token, run.automation_run_id
+                run.project_id,
+                token,
+                run.automation_run_id,
+                preferred_role=run.execution_role,
             )
         except Exception:
             logger.exception("AI automation principal is no longer authorized")
-            updated = await automation_repository.transition(
-                automation_run_id,
-                run.revision,
-                {
-                    "status": AutomationStatus.AWAITING_AUTHORIZATION,
-                    "error_code": "AUTOMATION_PRINCIPAL_UNAVAILABLE",
-                },
-            )
-            if updated:
-                await automation_service._checkpoint(
-                    updated,
-                    AutomationCheckpointPhase.FINALIZED,
-                    {"reason_code": "AUTOMATION_PRINCIPAL_UNAVAILABLE"},
-                )
+            await self._await_authorization(run, "AUTOMATION_PRINCIPAL_UNAVAILABLE")
             return
         expected_role = run.execution_role
         if live_role != expected_role:
-            updated = await automation_repository.transition(
+            await self._await_authorization(run, "AUTOMATION_PRINCIPAL_ROLE_CHANGED")
+            return
+        latest_checkpoint = await automation_repository.latest_checkpoint(automation_run_id)
+        snapshot = latest_checkpoint.state_snapshot if latest_checkpoint else None
+        resume_phase = snapshot.completed_phase.value if snapshot else None
+        if snapshot and (
+            snapshot.run.run_id != automation_run_id
+            or snapshot.run.project_id != run.project_id
+            or snapshot.run.user_id != (run.execution_user_id or run.requester_user_id)
+            or snapshot.run.role != live_role
+        ):
+            await self._fail(
                 automation_run_id,
                 run.revision,
-                {
-                    "status": AutomationStatus.AWAITING_AUTHORIZATION,
-                    "error_code": "AUTOMATION_PRINCIPAL_ROLE_CHANGED",
-                },
+                "AUTOMATION_CHECKPOINT_IDENTITY_MISMATCH",
             )
-            if updated:
-                await automation_service._checkpoint(
-                    updated,
-                    AutomationCheckpointPhase.FINALIZED,
-                    {"reason_code": "AUTOMATION_PRINCIPAL_ROLE_CHANGED"},
-                )
             return
-        running = await automation_repository.transition(
+        agent_run = resume_run_with_live_permissions(snapshot, live_permissions) or VeriqRunState(
+            run_id=run.automation_run_id,
+            project_id=run.project_id,
+            user_id=run.execution_user_id or run.requester_user_id,
+            role=live_role,
+            source_event_id=run.source_event_id,
+            permissions=live_permissions,
+            objective=run.objective,
+            intent=run.intent,
+            intent_arguments=run.intent_arguments,
+            model_metadata=model_metadata(),
+        )
+        graph_state = (
+            snapshot.model_dump(mode="python")
+            if snapshot
+            else {
+                "automatic": True,
+                "run": agent_run.model_dump(mode="python"),
+                "evidence": [item.model_dump(mode="python") for item in run.evidence],
+                "target_artifact_ids": run.target_artifact_ids,
+                "constraints": run.constraints,
+                "source_event_verified": run.source_event_verified,
+                "tasks": [],
+                "results": [],
+            }
+        )
+        graph_state["run"] = agent_run.model_dump(mode="python")
+        graph_state["token"] = ""
+        graph_state["automatic"] = True
+        graph_state["constraints"] = {
+            **graph_state.get("constraints", {}),
+            "change_simulation": run.kind == AutomationKind.CHANGE_SIMULATION,
+            **(
+                {"change_simulation_input": run.change_simulation.model_dump(mode="json")}
+                if run.change_simulation
+                else {}
+            ),
+        }
+        graph_state["resume_after_phase"] = resume_phase
+        graph_state["worker_revision"] = run.revision + 1
+        recovery_snapshot = AutomationGraphSnapshot.model_validate(
+            {
+                key: value
+                for key, value in graph_state.items()
+                if key in AutomationGraphSnapshot.model_fields and key != "completed_phase"
+            }
+            | {
+                "completed_phase": (
+                    snapshot.completed_phase if snapshot else AutomationCheckpointPhase.QUEUED
+                )
+            }
+        )
+        trace_id = str(uuid4())
+        running = await automation_repository.transition_with_checkpoint(
             automation_run_id,
             run.revision,
             {
                 "status": AutomationStatus.RUNNING,
                 "error_code": None,
                 "execution_permissions": live_permissions,
+                "trace_id": trace_id,
+                "worker_lease_expires_at": datetime.now(timezone.utc)
+                + timedelta(seconds=limits.message_ack_timeout_seconds),
             },
+            phase=AutomationCheckpointPhase.WORKER_STARTED,
+            detail={
+                "reason_code": "AUTOMATION_WORKER_CLAIMED",
+                "resume_after_phase": resume_phase,
+            },
+            state_snapshot=recovery_snapshot,
         )
         if not running:
             return
-        trace_id = str(uuid4())
-        traced = await automation_repository.transition(
-            automation_run_id,
-            running.revision,
-            {"trace_id": trace_id},
+        execution_token = await automation_service.token_for(
+            automation_run_id, worker_revision=running.revision
         )
-        if not traced:
-            return
-        running = traced
-        latest_checkpoint = await automation_repository.latest_checkpoint(automation_run_id)
-        snapshot = latest_checkpoint.state_snapshot if latest_checkpoint else None
-        resume_phase = snapshot.completed_phase.value if snapshot else None
-        if snapshot and (
-            snapshot.run.run_id != automation_run_id
-            or snapshot.run.project_id != running.project_id
-            or snapshot.run.user_id != (running.execution_user_id or running.requester_user_id)
-            or snapshot.run.role != live_role
-        ):
+        if not execution_token:
             await self._fail(
                 automation_run_id,
                 running.revision,
-                "AUTOMATION_CHECKPOINT_IDENTITY_MISMATCH",
+                "AUTHORIZATION_EXPIRED",
+                require_live_worker_lease=True,
             )
             return
-        agent_run = snapshot.run if snapshot else VeriqRunState(
-            run_id=running.automation_run_id,
-            project_id=running.project_id,
-            user_id=running.execution_user_id or running.requester_user_id,
-            role=live_role,
-            permissions=live_permissions,
-            objective=running.objective,
-            intent=running.intent,
-            model_metadata=model_metadata(),
-        )
+        graph_state["token"] = f"Bearer {execution_token}"
+        graph_state["worker_revision"] = running.revision
+        recovery_snapshot.worker_revision = running.revision
         agentops.record_session_start(agent_run.run_id, running.requester_user_id)
+        safe_trace_run_id = trace_id.replace("-", "").lower()
+        safe_trace_started_at = time.monotonic()
         try:
-            graph_state = (
-                snapshot.model_dump(mode="python")
-                if snapshot
-                else {
-                    "automatic": True,
-                    "run": agent_run.model_dump(mode="python"),
-                    "evidence": [item.model_dump(mode="python") for item in running.evidence],
-                    "target_artifact_ids": running.target_artifact_ids,
-                    "constraints": running.constraints,
-                    "source_event_verified": running.source_event_verified,
-                    "tasks": [],
-                    "results": [],
-                }
-            )
-            graph_state["token"] = f"Bearer {token}"
-            graph_state["automatic"] = True
-            graph_state["constraints"] = {
-                **graph_state.get("constraints", {}),
-                "change_simulation": running.kind == AutomationKind.CHANGE_SIMULATION,
-                **(
-                    {"change_simulation_input": running.change_simulation.model_dump(mode="json")}
-                    if running.change_simulation
-                    else {}
-                ),
-            }
-            graph_state["resume_after_phase"] = resume_phase
             result = await asyncio.wait_for(
                 automation_workflow.ainvoke(
                     graph_state,
@@ -292,8 +594,7 @@ class AutomationWorker:
                         "run_name": "veriq-ai-automation",
                         "tags": ["veriq", "automation", running.kind.value],
                         "metadata": {
-                            "automation_run_id": automation_run_id,
-                            "project_id": running.project_id,
+                            "automation_kind": running.kind.value,
                             "trigger": running.trigger.value if running.trigger else "ON_DEMAND",
                         },
                     },
@@ -301,14 +602,79 @@ class AutomationWorker:
                 timeout=limits.run_timeout_seconds,
             )
             completed = VeriqRunState(**result["run"])
-            if completed.status == AgentRunStatus.COMPLETED:
-                terminal_status = AutomationStatus.COMPLETED
-            elif completed.status == AgentRunStatus.FAILED:
-                terminal_status = AutomationStatus.FAILED
-            else:
+            terminal_status = terminal_status_for_agent_run(completed)
+            authorization_error = None
+            try:
+                final_role, final_permissions = await project_access(
+                    running.project_id,
+                    execution_token,
+                    running.automation_run_id,
+                    preferred_role=running.execution_role,
+                )
+                if final_role != running.execution_role:
+                    authorization_error = "AUTOMATION_PRINCIPAL_ROLE_CHANGED"
+                elif "project.read" not in final_permissions:
+                    authorization_error = "PROJECT_ACCESS_REVOKED_DURING_RUN"
+            except HTTPException as error:
+                detail = error.detail
+                authorization_error = (
+                    detail.get("code")
+                    if isinstance(detail, dict) and detail.get("code")
+                    else "PROJECT_ACCESS_REVOKED_DURING_RUN"
+                )
+            except Exception:
+                logger.exception("AI automation could not revalidate its principal after execution")
+                authorization_error = "PROJECT_AUTHORIZATION_CHECK_FAILED"
+            if authorization_error:
+                completed.status = AgentRunStatus.FAILED
+                completed.error_code = authorization_error
+                terminal_status = AutomationStatus.AWAITING_AUTHORIZATION
+            source_evidence = [
+                item.model_dump(mode="json")
+                for item in running.evidence
+            ]
+            source_evidence.extend(
+                item for item in result.get("evidence", []) if isinstance(item, dict)
+            )
+            for observation in completed.observations:
+                if (
+                    observation.get("tool_name") not in {
+                        "process_ingested_requirement_document",
+                        "process_changed_requirement_version",
+                    }
+                    or observation.get("status") != "COMPLETED"
+                    or (observation.get("verification") or {}).get("status") != "COMPLETED"
+                ):
+                    continue
+                source_evidence.extend(
+                    item
+                    for item in (observation.get("result") or {}).get("source_evidence", [])
+                    if isinstance(item, dict)
+                )
+            downstream_handoffs = (
+                await self._enqueue_requirement_test_design_handoffs(running, completed)
+                if not authorization_error
+                else []
+            )
+            handoff_blocked = any(
+                item.get("status") not in {"QUEUED", "RUNNING", "COMPLETED"}
+                for item in downstream_handoffs
+            )
+            if handoff_blocked and terminal_status == AutomationStatus.COMPLETED:
                 terminal_status = AutomationStatus.DEGRADED
-            source_facts = [
-                SourceFact(
+                completed.error_code = "QA_TEST_DESIGN_HANDOFF_PENDING"
+            raw_source_facts = [
+                item
+                for item in result.get("source_facts", [])
+                if isinstance(item, dict)
+            ]
+            source_facts = []
+            for item in raw_source_facts:
+                verified = verified_source_span(item, source_evidence)
+                if not verified:
+                    continue
+                quote = str(verified["quote"])
+                source_facts.append(SourceFact(
                     source_fact_id=(
                         "FACT-"
                         + hashlib.sha256(
@@ -318,67 +684,63 @@ class AutomationWorker:
                                     str(item.get("artifact_type") or "artifact"),
                                     str(item.get("artifact_id") or ""),
                                     str(item.get("artifact_version_id") or ""),
-                                    str(item.get("source_start") or ""),
-                                    str(item.get("source_end") or ""),
-                                    str(item.get("quote") or ""),
+                                    str(verified["source_start"]),
+                                    str(verified["source_end"]),
+                                    quote,
                                 )
                             ).encode("utf-8")
                         ).hexdigest()[:32]
                     ),
                     automation_run_id=automation_run_id,
                     project_id=running.project_id,
-                    artifact_type=str(item.get("artifact_type") or "artifact"),
-                    artifact_id=str(item.get("artifact_id") or ""),
-                    artifact_version_id=item.get("artifact_version_id"),
-                    source_start=item.get("source_start"),
-                    source_end=item.get("source_end"),
-                    source=str(item.get("source") or "database"),
-                    authority=str(item.get("authority") or "project"),
-                    quote=str(item["quote"]),
-                    fact_kind=str(item.get("fact_kind") or "source_evidence"),
-                    quote_sha256=hashlib.sha256(
-                        str(item["quote"]).encode("utf-8")
-                    ).hexdigest(),
-                )
-                for item in result.get("source_facts", [])
-                if item.get("artifact_id") and str(item.get("quote") or "").strip()
-            ]
-            # Mutation tools may return source citations read from the
-            # authoritative service during compilation. Accept those only
-            # after the tool's postcondition readback succeeded; an LLM
-            # narrative or an unverified tool response is not provenance.
+                    artifact_type=str(verified.get("artifact_type") or "artifact"),
+                    artifact_id=str(verified["artifact_id"]),
+                    artifact_version_id=str(verified["artifact_version_id"]),
+                    source_start=verified["source_start"],
+                    source_end=verified["source_end"],
+                    source=str(verified.get("source") or "database"),
+                    authority=str(verified.get("authority") or "project"),
+                    relationship_path=list(verified.get("relationship_path") or []),
+                    quote=quote,
+                    fact_kind=str(verified.get("fact_kind") or "source_evidence"),
+                    quote_sha256=hashlib.sha256(quote.encode("utf-8")).hexdigest(),
+                    source_chunk_id=verified.get("source_chunk_id"),
+                    source_chunk_index=verified.get("source_chunk_index"),
+                    source_chunk_type=verified.get("source_chunk_type"),
+                    source_page_numbers=list(verified.get("source_page_numbers") or []),
+                    source_spans=list(verified.get("source_spans") or []),
+                    source_hash=verified.get("source_hash"),
+                    source_offset_basis=verified.get("source_offset_basis", "UNKNOWN"),
+                ))
+            rejected_source_fact_count = len(raw_source_facts) - len(source_facts)
             seen_facts = {
-                (
-                    fact.artifact_type,
-                    fact.artifact_id,
-                    fact.artifact_version_id,
-                    fact.source_start,
-                    fact.source_end,
-                    fact.quote,
-                )
+                source_fact_identity(fact.model_dump(mode="python"))
                 for fact in source_facts
             }
             for observation in completed.observations:
                 if (
-                    observation.get("tool_name") != "process_ingested_requirement_document"
+                    observation.get("tool_name") not in {
+                        "process_ingested_requirement_document",
+                        "process_changed_requirement_version",
+                    }
                     or observation.get("status") != "COMPLETED"
                     or (observation.get("verification") or {}).get("status") != "COMPLETED"
                 ):
                     continue
                 operation_result = observation.get("result") or {}
                 for item in operation_result.get("source_facts", []):
-                    quote = str(item.get("quote") or "").strip()
-                    artifact_id = str(item.get("artifact_id") or "").strip()
-                    if not quote or not artifact_id:
+                    verified = verified_source_span(item, source_evidence)
+                    if not verified:
+                        rejected_source_fact_count += 1
                         continue
-                    key = (
-                        str(item.get("artifact_type") or "artifact"),
-                        artifact_id,
-                        str(item.get("artifact_version_id") or "") or None,
-                        item.get("source_start"),
-                        item.get("source_end"),
-                        quote,
-                    )
+                    quote = str(verified["quote"])
+                    artifact_id = str(verified["artifact_id"])
+                    fact_data = {
+                        **verified,
+                        "artifact_type": str(verified.get("artifact_type") or "artifact"),
+                        "artifact_id": artifact_id,
+                    }
+                    key = source_fact_identity(fact_data)
                     if key in seen_facts:
                         continue
                     seen_facts.add(key)
@@ -386,18 +748,33 @@ class AutomationWorker:
                         SourceFact(
                             automation_run_id=automation_run_id,
                             project_id=running.project_id,
-                            artifact_type=key[0],
+                            artifact_type=fact_data["artifact_type"],
                             artifact_id=artifact_id,
-                            artifact_version_id=key[2],
-                            source=str(item.get("source") or "document"),
-                            authority=str(item.get("authority") or "project"),
-                            quote=key[5],
-                            fact_kind=str(item.get("fact_kind") or "source_evidence"),
+                            artifact_version_id=str(verified["artifact_version_id"]),
+                            source=str(verified.get("source") or "document"),
+                            authority=str(verified.get("authority") or "project"),
+                            relationship_path=list(verified.get("relationship_path") or []),
+                            quote=quote,
+                            fact_kind=str(verified.get("fact_kind") or "source_evidence"),
                             quote_sha256=hashlib.sha256(quote.encode("utf-8")).hexdigest(),
-                            source_start=key[3],
-                            source_end=key[4],
+                            source_start=verified["source_start"],
+                            source_end=verified["source_end"],
+                            source_chunk_id=verified.get("source_chunk_id"),
+                            source_chunk_index=verified.get("source_chunk_index"),
+                            source_chunk_type=verified.get("source_chunk_type"),
+                            source_page_numbers=list(verified.get("source_page_numbers") or []),
+                            source_spans=list(verified.get("source_spans") or []),
+                            source_hash=verified.get("source_hash"),
+                            source_offset_basis=verified.get("source_offset_basis", "UNKNOWN"),
                         )
                     )
+            source_facts = [
+                SourceFact.model_validate(fact)
+                for fact in canonicalize_source_facts(
+                    [fact.model_dump(mode="python") for fact in source_facts],
+                    source_evidence,
+                )
+            ]
             verified_outputs = self._verified_output_refs(completed)
             all_verified_refs = set(completed.evidence_refs)
             verified_outputs = list(
@@ -417,7 +794,42 @@ class AutomationWorker:
                 facts_by_ref.setdefault(fact.artifact_id, []).append(fact)
                 if fact.artifact_version_id:
                     facts_by_ref.setdefault(fact.artifact_version_id, []).append(fact)
+            lineage_by_ref = {
+                reference: list(dict.fromkeys(fact.source_fact_id for fact in facts))
+                for reference, facts in facts_by_ref.items()
+            }
             derivation_steps = []
+            unlinked_mutation_count = 0
+            testability_blueprint, rejected_blueprint_count = (
+                verified_blueprint_from_observations(
+                    completed.observations,
+                    source_facts,
+                    project_id=running.project_id,
+                    automation_run_id=automation_run_id,
+                )
+            )
+            blueprint_claim_lineage = verified_blueprint_claim_lineage(
+                testability_blueprint,
+                source_facts,
+                project_id=running.project_id,
+                automation_run_id=automation_run_id,
+            )
+            if testability_blueprint is not None and blueprint_claim_lineage is None:
+                rejected_blueprint_count += 1
+                testability_blueprint = None
+                blueprint_claim_lineage = []
+            blueprint_artifact_lineage, rejected_artifact_lineage_count = (
+                verified_blueprint_artifact_lineage(
+                    testability_blueprint,
+                    blueprint_claim_lineage,
+                    completed.observations,
+                    running.project_id,
+                )
+            )
+            rejected_blueprint_count += rejected_artifact_lineage_count
+            unmapped_blueprint_obligation_count = missing_blueprint_artifact_coverage_count(
+                testability_blueprint, blueprint_artifact_lineage
+            )
             if source_facts:
                 derivation_steps.append(
                     DerivationStep(
@@ -480,17 +892,11 @@ class AutomationWorker:
                         ]
                     )
                 )
-                input_fact_ids = list(
-                    dict.fromkeys(
-                        fact.source_fact_id
-                        for reference in input_refs
-                        for fact in facts_by_ref.get(reference, [])
-                    )
-                )
                 verification = observation.get("verification") or {}
                 verified_mutation = (
                     record.get("mutation_fingerprint") is not None
                     and verification.get("status") == "COMPLETED"
+                    and verification.get("reason_code") != "SAFE_NO_MUTATION_OUTCOME"
                 )
                 evidence_ref = observation.get("evidence_ref")
                 output_refs = []
@@ -505,6 +911,13 @@ class AutomationWorker:
                     if verification.get("artifact_id"):
                         output_refs.append(str(verification["artifact_id"]))
                 output_refs = list(dict.fromkeys(output_refs))
+                input_fact_ids = carry_source_fact_lineage(
+                    input_refs,
+                    output_refs,
+                    lineage_by_ref,
+                )
+                if verified_mutation and output_refs and not input_fact_ids:
+                    unlinked_mutation_count += 1
                 output_versions = list(
                     dict.fromkeys(
                         fact.artifact_version_id
@@ -539,6 +952,14 @@ class AutomationWorker:
                         reason_code=observation.get("reason_code"),
                     )
                 )
+            if terminal_status == AutomationStatus.COMPLETED and has_provenance_gap(
+                rejected_source_fact_count,
+                unlinked_mutation_count,
+                rejected_blueprint_count,
+                unmapped_blueprint_obligation_count,
+            ):
+                terminal_status = AutomationStatus.DEGRADED
+                completed.error_code = "DERIVATION_RECEIPT_INCOMPLETE"
             transformation_steps = list(
                 dict.fromkeys(
                     [
@@ -559,6 +980,9 @@ class AutomationWorker:
                         transformation_steps=transformation_steps,
                         steps=derivation_steps,
                         output_evidence_refs=verified_outputs,
+                        testability_blueprint=testability_blueprint,
+                        blueprint_claim_lineage=blueprint_claim_lineage,
+                        blueprint_artifact_lineage=blueprint_artifact_lineage,
                         model_metadata=completed.model_metadata,
                         outcome=terminal_status.value,
                     ),
@@ -569,61 +993,282 @@ class AutomationWorker:
                     automation_run_id,
                     running.revision,
                     "AUTOMATION_PROVENANCE_PERSISTENCE_FAILED",
+                    require_live_worker_lease=True,
                 )
                 agentops.record_session_end(completed.run_id, "failed")
+                await self._export_safe_run_trace(
+                    safe_trace_run_id,
+                    safe_trace_started_at,
+                    AutomationStatus.FAILED,
+                    self._trace_retry_count(payload),
+                    model=str((completed.model_metadata or {}).get("model") or "") or None,
+                    error_code="unknown",
+                )
                 return
 
-            updated = await automation_repository.transition(
+            final_snapshot = None
+            if terminal_status in {
+                AutomationStatus.AWAITING_INPUT,
+                AutomationStatus.AWAITING_AUTHORIZATION,
+            }:
+                latest_checkpoint = await automation_repository.latest_checkpoint(
+                    automation_run_id
+                )
+                final_snapshot = latest_checkpoint.state_snapshot if latest_checkpoint else None
+            finalized_detail = {
+                "agent_run_id": completed.run_id,
+                "error_code": completed.error_code,
+                "provenance_rejections": {
+                    "source_facts": rejected_source_fact_count,
+                    "unlinked_mutations": unlinked_mutation_count,
+                    "testability_blueprints": rejected_blueprint_count,
+                },
+            }
+            updated = await automation_repository.transition_with_checkpoint(
                 automation_run_id,
                 running.revision,
                 {
                     "status": terminal_status,
+                    "worker_lease_expires_at": None,
                     "agent_run_id": completed.run_id,
                     "result": {
                         "proposal": completed.proposal,
                         "evidence_refs": completed.evidence_refs,
                         "observations": completed.observations,
+                        "downstream_workflows": downstream_handoffs,
                         "error_code": completed.error_code,
+                        "provenance_rejections": {
+                            "source_facts": rejected_source_fact_count,
+                            "unlinked_mutations": unlinked_mutation_count,
+                            "testability_blueprints": rejected_blueprint_count,
+                        },
                     },
                     "error_code": completed.error_code,
                 },
+                phase=AutomationCheckpointPhase.FINALIZED,
+                detail=finalized_detail,
+                state_snapshot=final_snapshot,
+                require_live_worker_lease=True,
             )
             if not updated:
                 agentops.record_session_end(completed.run_id, "failed")
                 return
+            await self._export_safe_run_trace(
+                safe_trace_run_id,
+                safe_trace_started_at,
+                terminal_status,
+                self._trace_retry_count(payload),
+                model=str((completed.model_metadata or {}).get("model") or "") or None,
+                error_code=completed.error_code,
+            )
             try:
                 await run_store.save(completed)
-                if completed.status == AgentRunStatus.COMPLETED:
+                if terminal_status == AutomationStatus.COMPLETED:
                     await long_term_memory.record_verified(completed)
             except Exception:
                 logger.exception(
                     "AI automation completed but optional agent memory could not be persisted"
                 )
-            await automation_service._checkpoint(
-                updated,
-                AutomationCheckpointPhase.FINALIZED,
-                {"agent_run_id": completed.run_id, "error_code": completed.error_code},
-            )
             agentops.record_session_end(
                 completed.run_id,
-                "done" if terminal_status == AutomationStatus.COMPLETED else "failed",
+                "done"
+                if terminal_status == AutomationStatus.COMPLETED
+                else "waiting_input"
+                if terminal_status == AutomationStatus.AWAITING_INPUT
+                else "failed",
             )
         except TimeoutError:
-            await self._fail(automation_run_id, running.revision, "AUTOMATION_LIMIT_REACHED")
+            await self._fail(
+                automation_run_id,
+                running.revision,
+                "AUTOMATION_LIMIT_REACHED",
+                require_live_worker_lease=True,
+            )
             agentops.record_session_end(agent_run.run_id, "failed")
+            await self._export_safe_run_trace(
+                safe_trace_run_id,
+                safe_trace_started_at,
+                AutomationStatus.FAILED,
+                self._trace_retry_count(payload),
+                model=str((agent_run.model_metadata or {}).get("model") or "") or None,
+                error_code="provider_timeout",
+            )
         except Exception:
             logger.exception("AI automation graph execution failed")
-            await self._fail(automation_run_id, running.revision, "AUTOMATION_EXECUTION_FAILED")
+            await self._fail(
+                automation_run_id,
+                running.revision,
+                "AUTOMATION_EXECUTION_FAILED",
+                require_live_worker_lease=True,
+            )
             agentops.record_session_end(agent_run.run_id, "failed")
+            await self._export_safe_run_trace(
+                safe_trace_run_id,
+                safe_trace_started_at,
+                AutomationStatus.FAILED,
+                self._trace_retry_count(payload),
+                model=str((agent_run.model_metadata or {}).get("model") or "") or None,
+                error_code="unknown",
+            )
 
-    async def _fail(self, automation_run_id: str, revision: int, code: str) -> None:
-        updated = await automation_repository.transition(
+    async def _await_authorization(self, run: AutomationRun, reason_code: str) -> None:
+        await automation_repository.transition_with_checkpoint(
+            run.automation_run_id,
+            run.revision,
+            {
+                "status": AutomationStatus.AWAITING_AUTHORIZATION,
+                "error_code": reason_code,
+                "worker_lease_expires_at": None,
+            },
+            phase=AutomationCheckpointPhase.FINALIZED,
+            detail={"reason_code": reason_code},
+            state_snapshot=None,
+        )
+
+    async def _fail(
+        self,
+        automation_run_id: str,
+        revision: int,
+        code: str,
+        *,
+        require_live_worker_lease: bool = False,
+    ) -> None:
+        latest_checkpoint = await automation_repository.latest_checkpoint(automation_run_id)
+        action_outcome_uncertain = bool(
+            latest_checkpoint
+            and latest_checkpoint.phase == AutomationCheckpointPhase.ACTION_STARTED
+            and (
+                latest_checkpoint.detail.get("action") != "READ"
+                or latest_checkpoint.detail.get("task_has_mutation") is True
+            )
+        )
+        effective_code = (
+            "AUTOMATION_ACTION_OUTCOME_UNCERTAIN"
+            if action_outcome_uncertain
+            else code
+        )
+        resume_snapshot = (
+            None
+            if code == "AUTOMATION_CHECKPOINT_IDENTITY_MISMATCH"
+            else latest_checkpoint.state_snapshot
+            if latest_checkpoint
+            else None
+        )
+        values = {
+            "status": AutomationStatus.FAILED,
+            "error_code": effective_code,
+            "worker_lease_expires_at": None,
+        }
+        if action_outcome_uncertain:
+            await automation_repository.transition_with_checkpoint(
+                automation_run_id,
+                revision,
+                values,
+                phase=latest_checkpoint.phase,
+                detail={
+                    **latest_checkpoint.detail,
+                    "reason_code": "AUTOMATION_ACTION_OUTCOME_UNCERTAIN",
+                    "retryable": False,
+                },
+                state_snapshot=latest_checkpoint.state_snapshot,
+                require_live_worker_lease=require_live_worker_lease,
+            )
+            return
+        await automation_repository.transition_with_checkpoint(
             automation_run_id,
             revision,
-            {"status": AutomationStatus.FAILED, "error_code": code},
+            values,
+            phase=AutomationCheckpointPhase.FINALIZED,
+            detail={"reason_code": code, "resumable": resume_snapshot is not None},
+            state_snapshot=resume_snapshot,
+            require_live_worker_lease=require_live_worker_lease,
         )
-        if updated:
-            await automation_service._checkpoint(updated, AutomationCheckpointPhase.FINALIZED)
+
+    async def _enqueue_requirement_test_design_handoffs(self, running, completed):
+        if running.trigger != AutomationTrigger.DOCUMENT_INGESTED:
+            return []
+        ingestion = next(
+            (
+                item
+                for item in completed.observations
+                if item.get("tool_name") == "process_ingested_requirement_document"
+                and item.get("status") == "COMPLETED"
+                and (item.get("verification") or {}).get("status") == "COMPLETED"
+            ),
+            None,
+        )
+        if not ingestion:
+            return []
+        result = ingestion.get("result") or {}
+        if result.get("status") != "COMPLETED":
+            return []
+        evidence_by_version = {
+            str(item.get("artifact_version_id")): item
+            for item in result.get("qa_test_design_handoff_evidence", [])
+            if isinstance(item, dict) and item.get("artifact_version_id")
+        }
+        workflows = []
+        for version_id in dict.fromkeys(
+            str(value)
+            for value in result.get("qa_test_design_handoff_version_ids", [])
+            if value
+        ):
+            source = evidence_by_version.get(version_id)
+            if not source or not str(source.get("text") or "").strip():
+                workflows.append(
+                    {
+                        "requirement_version_id": version_id,
+                        "status": "EVIDENCE_MISSING",
+                        "reason_code": "QA_TEST_DESIGN_SOURCE_EVIDENCE_MISSING",
+                    }
+                )
+                continue
+            evidence = [
+                EvidenceItem(
+                    artifact_type=str(source.get("artifact_type") or "requirement_version"),
+                    artifact_id=str(source.get("artifact_id") or version_id),
+                    artifact_version_id=str(source.get("artifact_version_id") or version_id),
+                    source="database",
+                    authority=str(source.get("authority") or "PROJECT_REQUIREMENT"),
+                    text=str(source["text"]),
+                    project_id=running.project_id,
+                )
+            ]
+            event = AutomationEventRequest(
+                event_id=f"requirement-version:{version_id}:INGESTED_TEST_DESIGN",
+                project_id=running.project_id,
+                requester_user_id=running.requester_user_id,
+                trigger=AutomationTrigger.REQUIREMENT_CHANGED,
+                parent_automation_run_id=running.automation_run_id,
+                target_artifact_ids=[version_id],
+                evidence=evidence,
+            )
+            try:
+                child_runs = await automation_service.enqueue_event(event)
+            except Exception:
+                logger.exception(
+                    "Could not enqueue QA test-design handoff parent_run={} requirement_version={}",
+                    running.automation_run_id,
+                    version_id,
+                )
+                workflows.append(
+                    {
+                        "requirement_version_id": version_id,
+                        "status": "DISPATCH_FAILED",
+                        "reason_code": "QA_TEST_DESIGN_HANDOFF_DISPATCH_FAILED",
+                    }
+                )
+                continue
+            workflows.extend(
+                {
+                    "requirement_version_id": version_id,
+                    "automation_run_id": child.automation_run_id,
+                    "status": child.status.value,
+                    "reason_code": child.error_code,
+                }
+                for child in child_runs
+            )
+        return workflows
 
     @staticmethod
     def _verified_output_refs(run) -> list[str]:

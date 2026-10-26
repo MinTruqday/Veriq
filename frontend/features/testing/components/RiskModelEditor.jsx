@@ -1,3 +1,5 @@
+import StructuredValueEditor from "./StructuredValueEditor";
+
 function updateScale(value, onChange, key, text) {
   const items = text
     .split("\n")
@@ -40,28 +42,25 @@ export default function RiskModelEditor({ value, onChange }) {
           required
         />
       </label>
-      <label className="field-label">
-        Ngưỡng dạng JSON
-        <textarea
-          className="apple-input mt-2 min-h-32 font-mono text-xs"
-          value={value.thresholds_text ?? JSON.stringify(value.thresholds || [], null, 2)}
-          onChange={(event) => onChange({ ...value, thresholds_text: event.target.value })}
-          required
+      <div className="min-w-0 space-y-2">
+        <span className="field-label">Ngưỡng rủi ro</span>
+        <StructuredValueEditor
+          label="Danh sách ngưỡng"
+          value={value.thresholds || []}
+          allowedTypes={["array"]}
+          itemTypes={["object"]}
+          onChange={(thresholds) => onChange({ ...value, thresholds })}
         />
-      </label>
-      <label className="field-label">
-        Độ sâu kiểm thử bắt buộc dạng JSON
-        <textarea
-          className="apple-input mt-2 min-h-32 font-mono text-xs"
-          value={
-            value.mandatory_test_depth_text ??
-            JSON.stringify(value.mandatory_test_depth || {}, null, 2)
-          }
-          onChange={(event) =>
-            onChange({ ...value, mandatory_test_depth_text: event.target.value })
-          }
+      </div>
+      <div className="min-w-0 space-y-2">
+        <span className="field-label">Độ sâu kiểm thử bắt buộc</span>
+        <StructuredValueEditor
+          label="Theo mức rủi ro"
+          value={value.mandatory_test_depth || {}}
+          fixedType="object"
+          onChange={(mandatory_test_depth) => onChange({ ...value, mandatory_test_depth })}
         />
-      </label>
+      </div>
       <label className="field-label md:col-span-2">
         Quy tắc ưu tiên hồi quy mỗi dòng một quy tắc
         <textarea

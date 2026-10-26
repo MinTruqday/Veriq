@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -6,8 +8,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from src.core.ai_streaming import AIStreamingMiddleware
 from src.clients.ai_automation import start_event_dispatcher, stop_event_dispatcher
+from src.core.ai_streaming import AIStreamingMiddleware
 from src.core.common import failure_metadata, new_id
 from src.core.configuration import settings
 from src.core.database import close_database, connect_database, database
@@ -19,13 +21,23 @@ from src.modules.operations.router import router as operations_router
 from src.modules.projects.router import router as projects_router
 from src.modules.quality.router import router as quality_router
 from src.modules.requirements.router import router as requirements_router
+from src.modules.requirements.services.requirement_document_worker import (
+    start_requirement_document_parse_worker,
+    stop_requirement_document_parse_worker,
+)
+from src.repositories.project_access import project_access_repository
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_database()
+    await project_access_repository.migrate_legacy()
     await start_event_dispatcher()
+    await start_requirement_document_parse_worker()
     yield
+    await stop_requirement_document_parse_worker()
     await stop_event_dispatcher()
     await close_database()
 
@@ -42,6 +54,86 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def release_ai_automation_access_lease(request: Request, call_next):
+    request_task = asyncio.current_task()
+    lease_lost = asyncio.Event()
+
+    async def maintain_leases():
+        while True:
+            await asyncio.sleep(15)
+            leases = getattr(request.state, "ai_automation_leases", None) or []
+            if not leases:
+                continue
+            from src.repositories.ai_automation_access import ai_automation_access_repository
+
+            for scope_key, lease_id in leases:
+                try:
+                    alive = await ai_automation_access_repository.heartbeat(
+                        scope_key, lease_id
+                    )
+                    if not alive:
+                        logger.error(
+                            "AI automation request lease disappeared scope=%s",
+                            scope_key,
+                        )
+                        lease_lost.set()
+                        if request_task and not request_task.done():
+                            request_task.cancel()
+                        return
+                except Exception:
+                    logger.exception(
+                        "Failed to renew AI automation request lease scope=%s",
+                        scope_key,
+                    )
+                    lease_lost.set()
+                    if request_task and not request_task.done():
+                        request_task.cancel()
+                    return
+
+    def lease_lost_response():
+        code = "AI_AUTOMATION_ACCESS_LEASE_LOST"
+        detail = {"code": code, "retryable": True}
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "code": code,
+                    "message": "Không thể xác nhận quyền truy cập trong khi xử lý",
+                    "details": {},
+                },
+                "trace_id": new_id("TRC"),
+                **failure_metadata(code, 503, detail),
+            },
+        )
+
+    heartbeat_task = asyncio.create_task(maintain_leases())
+    try:
+        response = await call_next(request)
+        return lease_lost_response() if lease_lost.is_set() else response
+    except asyncio.CancelledError:
+        if not lease_lost.is_set():
+            raise
+        return lease_lost_response()
+    finally:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        leases = getattr(request.state, "ai_automation_leases", None)
+        if leases:
+            from src.repositories.ai_automation_access import ai_automation_access_repository
+
+            for lease in leases:
+                try:
+                    await ai_automation_access_repository.release(*lease)
+                except Exception:
+                    logger.exception("Failed to release AI automation request lease")
+
+
 app.include_router(projects_router)
 app.include_router(requirements_router)
 app.include_router(execution_router)

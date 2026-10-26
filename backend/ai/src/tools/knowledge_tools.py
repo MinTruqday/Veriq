@@ -1,13 +1,11 @@
 import json
 from typing import Annotated
-from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from pydantic import Field
 
-from src.core.infrastructure.configuration import settings
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import call, parse
+from src.tools.testing_api import call
 
 
 @with_tool_access(("reporting",), "READ", "project.read")

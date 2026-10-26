@@ -51,5 +51,4 @@ class CrossDocumentQueries(StructuredRouting):
     queries: List[str] = Field(
         min_length=2,
         max_length=100,
-        description="One focused query for each document in input order",
     )

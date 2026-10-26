@@ -42,6 +42,8 @@ async def call(method, path, config, payload=None, timeout=60):
                 "code": body.get("error_code") or "UPSTREAM_REQUEST_FAILED",
                 "message": body.get("message") or body.get("description"),
             }
+        if not isinstance(error, dict):
+            error = {"code": "UPSTREAM_REQUEST_FAILED", "message": str(error)}
         return json.dumps(
             {
                 "status": "qa_operation_failed",
@@ -76,8 +78,9 @@ async def require_operation(method, path, config, payload=None, timeout=60):
         "qa_operation_failed",
     }:
         error = (result or {}).get("error") if isinstance(result, dict) else None
+        error_code = error.get("code") if isinstance(error, dict) else None
         raise AutomationOperationError(
-            (error or {}).get("code")
+            error_code
             or (result or {}).get("status")
             or "AUTOMATION_STEP_FAILED"
         )

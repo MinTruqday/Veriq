@@ -76,18 +76,22 @@ export default function TestGovernancePage({ project }) {
     );
   const transition = async (title, confirmLabel, action, field = "note") => {
     if (!selected) return;
-    const answer = await ask({
+    await ask({
       title,
       confirmLabel,
       fields: [{ name: field, label: "Lý do hoặc ghi chú", required: true, multiline: true }],
+      onConfirm: async (answer) => {
+        try {
+          await action(selected._id, {
+            expected_revision: selected.revision,
+            [field]: answer[field],
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      await action(selected._id, { expected_revision: selected.revision, [field]: answer[field] });
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const validateSelected = async () => {
     if (!selected) return;

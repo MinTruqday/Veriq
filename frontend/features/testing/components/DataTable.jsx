@@ -1,5 +1,6 @@
 "use client";
 import { isValidElement } from "react";
+import { useEffect, useRef } from "react";
 import HorizontalScrollCue from "@/shared/components/navigation/HorizontalScrollCue";
 import { EmptyState } from "./WorkspacePrimitives";
 
@@ -33,13 +34,25 @@ export default function DataTable({
   minTableWidth = 0,
   layout = "table",
 }) {
+  const selectable = Array.isArray(selectedIds) && typeof onSelectionChange === "function";
+  const itemId = (item) => item._id ?? item.id ?? item.key ?? item.code;
+  const pageIds = (items || []).map(itemId).filter((id) => id !== undefined && id !== null);
+  const allSelected =
+    selectable && pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+  const someSelected = selectable && pageIds.some((id) => selectedIds.includes(id));
+  const desktopSelectAllRef = useRef(null);
+  const mobileSelectAllRef = useRef(null);
+  useEffect(() => {
+    const indeterminate = someSelected && !allSelected;
+    if (desktopSelectAllRef.current) desktopSelectAllRef.current.indeterminate = indeterminate;
+    if (mobileSelectAllRef.current) mobileSelectAllRef.current.indeterminate = indeterminate;
+  }, [allSelected, someSelected]);
   if (!items?.length)
     return (
       <EmptyState actionHref={emptyActionHref} actionLabel={emptyActionLabel}>
         {empty}
       </EmptyState>
     );
-  const selectable = Array.isArray(selectedIds) && typeof onSelectionChange === "function";
   const visibleColumns = columns.filter(
     (column) =>
       !column.hideWhenEmpty ||
@@ -48,12 +61,8 @@ export default function DataTable({
         return hasRenderableContent(value);
       }),
   );
-  const itemId = (item) => item._id ?? item.id ?? item.key ?? item.code;
   const rowKey = (item, index) =>
     `${String(getRowKey?.(item, index) ?? itemId(item) ?? "dòng")}-${index}`;
-  const pageIds = items.map(itemId).filter((id) => id !== undefined && id !== null);
-  const allSelected =
-    selectable && pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
   const toggleAll = () =>
     onSelectionChange(
       allSelected
@@ -72,7 +81,8 @@ export default function DataTable({
     column.mobileRender ? column.mobileRender(item) : renderValue(column, item);
   const desktopTableWidth = Math.max(
     minTableWidth,
-    visibleColumns.length * 144 + (selectable ? 48 : 0),
+    visibleColumns.reduce((width, column) => width + (column.minWidth || 144), 0) +
+      (selectable ? 48 : 0),
   );
   const selectRow = (event, item) => {
     if (
@@ -110,13 +120,18 @@ export default function DataTable({
                     <input
                       aria-label="Chọn tất cả mục trên trang"
                       checked={allSelected}
+                      ref={desktopSelectAllRef}
                       type="checkbox"
                       onChange={toggleAll}
                     />
                   </th>
                 )}
                 {visibleColumns.map((column) => (
-                  <th className="whitespace-nowrap px-4 py-3 font-semibold" key={column.key}>
+                  <th
+                    className="whitespace-nowrap px-4 py-3 font-semibold"
+                    key={column.key}
+                    style={column.minWidth ? { minWidth: `${column.minWidth}px` } : undefined}
+                  >
                     {column.label}
                   </th>
                 ))}
@@ -148,6 +163,7 @@ export default function DataTable({
                     <td
                       className="min-w-0 break-words px-4 py-3 align-top [&_button]:whitespace-nowrap"
                       key={column.key}
+                      style={column.minWidth ? { minWidth: `${column.minWidth}px` } : undefined}
                     >
                       {renderValue(column, item)}
                     </td>
@@ -167,6 +183,7 @@ export default function DataTable({
             <input
               aria-label="Chọn tất cả mục trên trang"
               checked={allSelected}
+              ref={mobileSelectAllRef}
               type="checkbox"
               onChange={toggleAll}
             />
@@ -204,7 +221,7 @@ export default function DataTable({
                 if (value === null || value === undefined || value === "") return null;
                 return (
                   <div className="grid grid-cols-[minmax(0,40%)_1fr] gap-3" key={column.key}>
-                    <dt className="text-[12px] font-semibold leading-5 text-ink-muted">
+                    <dt className="min-w-0 break-words text-[12px] font-semibold leading-5 text-ink-muted">
                       {column.label}
                     </dt>
                     <dd className="min-w-0 break-words text-[13px] text-ink">{value}</dd>

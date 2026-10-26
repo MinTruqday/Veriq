@@ -1,28 +1,16 @@
 import {
-  agentReadRequest,
-  agentRequest,
   automationRequest,
   downloadTestingFile,
   listQuery,
   testingRequest,
-  testingStreamRequest,
 } from "./testing.transport";
 
 export const projectTestingApi = {
   getProjectCapabilities: () => testingRequest("/du-an/kha-nang"),
-  listAgentCapabilities: (projectId) => agentReadRequest(`/du-an/${projectId}/nang-luc`),
-  runAgent: (payload) =>
-    agentRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
-  getAgentRun: (runId) => agentRequest(`/luot-chay/${runId}`),
-  decideAgentRun: (runId, payload) =>
-    agentRequest(`/luot-chay/${runId}/quyet-dinh`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   runAutomation: (payload) =>
     automationRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
   getAutomationRun: (runId) => automationRequest(`/luot-chay/${runId}`),
-  getAutomationEvidence: (runId) => automationRequest(`/luot-chay/${runId}/bang-chung`),
+  getAutomationRunEvidence: (runId) => automationRequest(`/luot-chay/${runId}/bang-chung`),
   listAutomationRuns: (projectId) => automationRequest(`/du-an/${projectId}/luot-chay`),
   retryAutomationRun: (runId, payload) =>
     automationRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
@@ -53,6 +41,20 @@ export const projectTestingApi = {
     testingRequest("/du-an", { method: "POST", body: JSON.stringify(payload) }),
   getProject: (id) => testingRequest(`/du-an/${id}`),
   listMembers: (id) => testingRequest(`/du-an/${id}/thanh-vien`),
+  getMySkillProfile: (id) => testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi`),
+  saveMySkillProfile: (id, payload) =>
+    testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  extractMySkillProfileFromCV: (id, file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi/trich-xuat-cv`, {
+      method: "POST",
+      body,
+    });
+  },
   listInvitations: () => testingRequest("/loi-moi-du-an"),
   addMember: (id, payload) =>
     testingRequest(`/du-an/${id}/thanh-vien`, { method: "POST", body: JSON.stringify(payload) }),
@@ -262,11 +264,8 @@ export const projectTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  runTestAnalysisAi: (projectId, payload) =>
-    testingStreamRequest(`/du-an/${projectId}/phan-tich-kiem-thu/ai`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+  listTestAnalysisAiResults: (projectId, limit = 100) =>
+    testingRequest(`/du-an/${projectId}/phan-tich-kiem-thu/ai?limit=${limit}`),
   listTestAnalysisBasis: (projectId, filters = {}) => {
     const query = listQuery(filters);
     return testingRequest(
@@ -362,14 +361,11 @@ export const projectTestingApi = {
       body: JSON.stringify(payload),
     }),
   getTestStatusReport: (reportId) => testingRequest(`/bao-cao-trang-thai/${reportId}`),
+  getTestStatusReportNarrative: (reportId) =>
+    testingRequest(`/bao-cao-trang-thai/${reportId}/ai/ban-nhap`),
   updateTestStatusReport: (reportId, payload) =>
     testingRequest(`/bao-cao-trang-thai/${reportId}`, {
       method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  draftTestStatusReportNarrative: (reportId, payload) =>
-    testingStreamRequest(`/bao-cao-trang-thai/${reportId}/ai/ban-nhap`, {
-      method: "POST",
       body: JSON.stringify(payload),
     }),
   attachTestStatusReportEvidence: (reportId, payload) =>
@@ -426,16 +422,10 @@ export const projectTestingApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  draftTestCompletionNarrative: (reportId, payload) =>
-    testingStreamRequest(`/hoan-tat-kiem-thu/${reportId}/ai/ban-nhap`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  clusterTestCompletionLessons: (reportId, payload) =>
-    testingStreamRequest(`/hoan-tat-kiem-thu/${reportId}/ai/gom-bai-hoc`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+  getTestCompletionNarrative: (reportId) =>
+    testingRequest(`/hoan-tat-kiem-thu/${reportId}/ai/ban-nhap`),
+  getTestCompletionLessonClusters: (reportId) =>
+    testingRequest(`/hoan-tat-kiem-thu/${reportId}/ai/gom-bai-hoc`),
   addTestCompletionResidualRisk: (reportId, payload) =>
     testingRequest(`/hoan-tat-kiem-thu/${reportId}/rui-ro`, {
       method: "POST",

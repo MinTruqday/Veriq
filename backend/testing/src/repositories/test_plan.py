@@ -30,8 +30,10 @@ class TestPlanRepository:
             }
         )
 
-    async def insert_plan(self, value):
-        await database.value.test_plans.insert_one(value)
+    async def insert_plan(self, value, session=None):
+        await database.value.test_plans.insert_one(
+            value, **({"session": session} if session is not None else {})
+        )
         return value
 
     async def list_plans(self, query, sort_field, direction, limit):

@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel, Field
 
 
@@ -14,6 +15,11 @@ class ProjectQuotaChange(BaseModel):
 
 class ProjectDelete(BaseModel):
     confirmation: str
+
+
+class AutomationPrincipalResolve(BaseModel):
+    requester_user_id: str = Field(min_length=1, max_length=128)
+    required_role: Literal["BA", "QA"] = "QA"
 
 
 class BreakGlassGrant(BaseModel):

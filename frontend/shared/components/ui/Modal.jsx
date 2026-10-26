@@ -32,11 +32,19 @@ export function Modal({
         if (!dialog) return;
         const focusableSelector =
           'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-        const firstInput = dialog.querySelector(
-          'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])',
+        const visibleFocusable = Array.from(dialog.querySelectorAll(focusableSelector)).filter(
+          (element) =>
+            element.getClientRects().length > 0 &&
+            !element.closest('[aria-hidden="true"], [inert]'),
         );
-        const firstFocusable = dialog.querySelector(focusableSelector);
-        (dialog.querySelector("[autofocus]") || firstInput || firstFocusable || dialog).focus();
+        const initialFocus =
+          visibleFocusable.find((element) => element.hasAttribute("autofocus")) ||
+          visibleFocusable.find((element) =>
+            element.matches('input:not([type="hidden"]), select, textarea'),
+          ) ||
+          visibleFocusable[0] ||
+          dialog;
+        initialFocus.focus();
       });
       const handleKeyDown = (event) => {
         if (event.key === "Escape") {
@@ -51,8 +59,14 @@ export function Modal({
           onCloseRef.current();
         }
         if (event.key !== "Tab" || !dialogRef.current) return;
-        const focusable = dialogRef.current.querySelectorAll(
-          'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        const focusable = Array.from(
+          dialogRef.current.querySelectorAll(
+            'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter(
+          (element) =>
+            element.getClientRects().length > 0 &&
+            !element.closest('[aria-hidden="true"], [inert]'),
         );
         if (!focusable.length) {
           event.preventDefault();
@@ -123,7 +137,12 @@ export function ModalHeader({ children, className }) {
 }
 export function ModalTitle({ children, className }) {
   return (
-    <h3 className={cn("text-[20px] font-semibold tracking-[-0.02em] text-ink", className)}>
+    <h3
+      className={cn(
+        "min-w-0 break-words text-[20px] font-semibold tracking-[-0.02em] text-ink",
+        className,
+      )}
+    >
       {children}
     </h3>
   );

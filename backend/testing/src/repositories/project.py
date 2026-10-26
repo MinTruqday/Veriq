@@ -1,6 +1,7 @@
 from pymongo import ReturnDocument
 
 from src.core.database import database
+from src.repositories.common import common_repository
 
 
 class ProjectRepository:
@@ -20,11 +21,13 @@ class ProjectRepository:
     def tasks(self):
         return database.value.project_tasks
 
-    async def create_with_memberships(self, project, memberships):
+    async def create_with_memberships(self, project, memberships, audit_event=None):
         async with await database.client.start_session() as session:
             async with session.start_transaction():
                 await self.projects.insert_one(project, session=session)
                 await self.members.insert_many(memberships, session=session)
+                if audit_event is not None:
+                    await common_repository.insert_audit_event(audit_event, session=session)
 
     async def list_active_memberships(self, user_id, active_status, limit=5000):
         return await self.members.find(
@@ -72,8 +75,8 @@ class ProjectRepository:
             }
         )
 
-    async def list_members(self, project_id, limit=5000):
-        return await self.members.find({"project_id": project_id}).sort(
+    async def list_members(self, project_id, limit=5000, session=None):
+        return await self.members.find({"project_id": project_id}, session=session).sort(
             "created_at", 1
         ).to_list(limit)
 
@@ -116,6 +119,25 @@ class ProjectRepository:
             }
         )
 
+    async def fence_active_testers(self, project_id, user_ids, *, session):
+        for user_id in sorted(set(user_ids)):
+            result = await self.members.update_one(
+                {
+                    "project_id": project_id,
+                    "user_id": user_id,
+                    "status": "ACTIVE",
+                    "$or": [
+                        {"project_role": "TESTER"},
+                        {"project_roles": "TESTER"},
+                    ],
+                },
+                {"$inc": {"assignment_fence_revision": 1}},
+                session=session,
+            )
+            if result.matched_count != 1:
+                return [user_id]
+        return []
+
     async def update_member(self, project_id, user_id, revision, changes):
         return await self.members.find_one_and_update(
             {
@@ -150,16 +172,18 @@ class ProjectRepository:
             {"project_id": project_id, "user_id": user_id}
         )
 
-    async def list_tasks(self, project_id, status=None, limit=1000):
+    async def list_tasks(self, project_id, status=None, limit=None):
         query = {"project_id": project_id}
         if status:
             query["status"] = status
-        return await self.tasks.find(query).sort("updated_at", -1).to_list(limit)
+        return await self.tasks.find(query).sort("updated_at", -1).to_list(length=limit)
 
-    async def list_tasks_for_projects(self, project_ids, limit=10000):
+    async def list_tasks_for_projects(self, project_ids, limit=None):
         if not project_ids:
             return []
-        return await self.tasks.find({"project_id": {"$in": list(project_ids)}}).to_list(limit)
+        return await self.tasks.find(
+            {"project_id": {"$in": list(project_ids)}}
+        ).to_list(length=limit)
 
     async def find_task(self, project_id, task_id):
         return await self.tasks.find_one({"_id": task_id, "project_id": project_id})
@@ -167,6 +191,14 @@ class ProjectRepository:
     async def create_task(self, task):
         await self.tasks.insert_one(task)
         return task
+
+    async def lock_legacy_task_catalog(self, project_id, session):
+        """Serialize legacy task writes against their one-time Work Item migration."""
+        return await self.projects.update_one(
+            {"_id": project_id},
+            {"$inc": {"legacy_task_catalog_revision": 1}},
+            session=session,
+        )
 
     async def update_task(self, project_id, task_id, revision, changes):
         return await self.tasks.find_one_and_update(

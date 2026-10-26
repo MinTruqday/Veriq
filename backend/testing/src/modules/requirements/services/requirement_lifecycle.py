@@ -3,7 +3,9 @@ from dataclasses import dataclass
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
+from src.core.human_decisions import require_automation_publication_authority
 from src.core.common import audit, get_project_entity, now
+from src.core.database import database
 from src.repositories.requirement import requirement_repository
 from src.modules.design.services.linters import requirement_findings
 from src.modules.requirements.services.requirement_indexing import index_requirement_version
@@ -51,7 +53,19 @@ async def submit_requirement_for_review(
         requirement["current_version_id"], project_id
     )
     if version["status"] == 'IN_REVIEW':
-        return version
+        if (
+            version.get("revision") == expected_revision + 1
+            and version.get("review_submitted_by") == user.id
+            and version.get("review_note") == review_note
+        ):
+            return version
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": 'REVISION_CONFLICT',
+                "current_revision": version["revision"],
+            },
+        )
     if version["status"] != 'DRAFT':
         raise HTTPException(
             status_code=409,
@@ -66,7 +80,7 @@ async def submit_requirement_for_review(
             },
         )
     acceptance_criteria = await requirement_repository.list_acceptance_criteria(
-        version["_id"], 200
+        version["_id"], None
     )
     findings = requirement_findings(version, acceptance_criteria)
     project = await requirement_repository.find_project_settings(project_id)
@@ -81,36 +95,50 @@ async def submit_requirement_for_review(
             detail={"code": 'REQUIREMENT_LINT_BLOCKED', "findings": findings},
         )
     timestamp = now()
-    transitioned = await requirement_repository.transition_version(
-        version["_id"],
-        project_id,
-        expected_revision,
-        'DRAFT',
-        'IN_REVIEW',
-        {
-            "review_note": review_note,
-            "review_submitted_by": user.id,
-            "review_submitted_at": timestamp,
-            "updated_at": timestamp,
-        },
-    )
-    if not transitioned:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REVISION_CONFLICT'},
-        )
-    await requirement_repository.set_requirement_status(
-        requirement_id, project_id, 'IN_REVIEW', timestamp
-    )
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            transitioned = await requirement_repository.transition_version(
+                version["_id"],
+                project_id,
+                expected_revision,
+                'DRAFT',
+                'IN_REVIEW',
+                {
+                    "review_note": review_note,
+                    "review_submitted_by": user.id,
+                    "review_submitted_at": timestamp,
+                    "updated_at": timestamp,
+                },
+                session=session,
+            )
+            if not transitioned:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": 'REVISION_CONFLICT'},
+                )
+            requirement_updated = await requirement_repository.set_requirement_status(
+                requirement_id,
+                project_id,
+                version["_id"],
+                'IN_REVIEW',
+                timestamp,
+                session=session,
+            )
+            if not requirement_updated:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": 'REQUIREMENT_STATUS_CONFLICT'},
+                )
+            await audit(
+                user.id,
+                'requirement_review_submitted',
+                'RequirementVersion',
+                version["_id"],
+                project_id,
+                {"review_note": review_note},
+                session=session,
+            )
     version = await requirement_repository.find_version(version["_id"], project_id)
-    await audit(
-        user.id,
-        'requirement_review_submitted',
-        'RequirementVersion',
-        version["_id"],
-        project_id,
-        {"review_note": review_note},
-    )
     return version
 
 
@@ -136,6 +164,13 @@ async def return_requirement_for_changes(
         requirement["current_version_id"], project_id
     )
     if version["status"] != 'IN_REVIEW':
+        if (
+            version["status"] == 'DRAFT'
+            and version.get("revision") == expected_revision + 1
+            and version.get("changes_requested_by") == user.id
+            and version.get("review_note") == review_note
+        ):
+            return version
         raise HTTPException(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
@@ -149,36 +184,50 @@ async def return_requirement_for_changes(
             },
         )
     timestamp = now()
-    transitioned = await requirement_repository.transition_version(
-        version["_id"],
-        project_id,
-        expected_revision,
-        'IN_REVIEW',
-        'DRAFT',
-        {
-            "review_note": review_note,
-            "changes_requested_by": user.id,
-            "changes_requested_at": timestamp,
-            "updated_at": timestamp,
-        },
-    )
-    if not transitioned:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REVISION_CONFLICT'},
-        )
-    await requirement_repository.set_requirement_status(
-        requirement_id, project_id, 'DRAFT', timestamp
-    )
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            transitioned = await requirement_repository.transition_version(
+                version["_id"],
+                project_id,
+                expected_revision,
+                'IN_REVIEW',
+                'DRAFT',
+                {
+                    "review_note": review_note,
+                    "changes_requested_by": user.id,
+                    "changes_requested_at": timestamp,
+                    "updated_at": timestamp,
+                },
+                session=session,
+            )
+            if not transitioned:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": 'REVISION_CONFLICT'},
+                )
+            requirement_updated = await requirement_repository.set_requirement_status(
+                requirement_id,
+                project_id,
+                version["_id"],
+                'DRAFT',
+                timestamp,
+                session=session,
+            )
+            if not requirement_updated:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": 'REQUIREMENT_STATUS_CONFLICT'},
+                )
+            await audit(
+                user.id,
+                'requirement_changes_requested',
+                'RequirementVersion',
+                version["_id"],
+                project_id,
+                {"review_note": review_note},
+                session=session,
+            )
     version = await requirement_repository.find_version(version["_id"], project_id)
-    await audit(
-        user.id,
-        'requirement_changes_requested',
-        'RequirementVersion',
-        version["_id"],
-        project_id,
-        {"review_note": review_note},
-    )
     return version
 
 
@@ -188,6 +237,7 @@ async def baseline_requirement(
     review_note: str,
     user: CurrentUser,
 ):
+    require_automation_publication_authority(user, "requirement.approve")
     version = await get_project_entity(
         'requirement_versions',
         version_id,
@@ -195,7 +245,9 @@ async def baseline_requirement(
         'requirement.approve',
     )
     if version["status"] == 'BASELINED':
-        return RequirementBaselineResult(version, True)
+        indexed = await index_requirement_version(version)
+        latest = await requirement_repository.find_version(version_id, version["project_id"])
+        return RequirementBaselineResult(latest or version, indexed)
     if version["status"] != 'IN_REVIEW':
         raise HTTPException(
             status_code=409,
@@ -210,7 +262,7 @@ async def baseline_requirement(
             },
         )
     acceptance_criteria = await requirement_repository.list_acceptance_criteria(
-        version["_id"], 200
+        version["_id"], None
     )
     findings = requirement_findings(version, acceptance_criteria)
     project = await requirement_repository.find_project_settings(version["project_id"])
@@ -225,53 +277,67 @@ async def baseline_requirement(
             detail={"code": 'REQUIREMENT_LINT_BLOCKED', "findings": findings},
         )
     timestamp = now()
-    version = await requirement_repository.baseline_version(
-        version_id,
-        version["project_id"],
-        expected_revision,
-        'IN_REVIEW',
-        {
-            "status": 'BASELINED',
-            "review_note": review_note,
-            "baselined_at": timestamp,
-            "baselined_by": user.id,
-            "updated_at": timestamp,
-        },
-    )
-    if not version:
-        current = await requirement_repository.find_version(version_id)
-        if current and current.get("status") == 'BASELINED':
-            return RequirementBaselineResult(current, True)
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REVISION_CONFLICT'},
-        )
-    await requirement_repository.set_current_baseline(
-        version["requirement_id"],
-        version_id,
-        'BASELINED',
-        timestamp,
-    )
     from src.modules.design.services.test_adequacy import supersede_requirement_assessments
-    await supersede_requirement_assessments(
-        version["project_id"], version["requirement_id"], version_id, user.id
-    )
-    await requirement_repository.approve_acceptance_criteria(
-        version_id,
-        'draft',
-        'approved',
-        timestamp,
-        user.id,
-    )
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            version = await requirement_repository.baseline_version(
+                version_id,
+                version["project_id"],
+                expected_revision,
+                'IN_REVIEW',
+                {
+                    "status": 'BASELINED',
+                    "review_note": review_note,
+                    "baselined_at": timestamp,
+                    "baselined_by": user.id,
+                    "updated_at": timestamp,
+                },
+                session=session,
+            )
+            if not version:
+                current = await requirement_repository.find_version(version_id)
+                if current and current.get("status") == 'BASELINED':
+                    return RequirementBaselineResult(current, True)
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": 'REVISION_CONFLICT'},
+                )
+            current_baseline_changed = await requirement_repository.set_current_baseline(
+                version["requirement_id"],
+                version["project_id"],
+                version_id,
+                'BASELINED',
+                timestamp,
+                session=session,
+            )
+            if not current_baseline_changed:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": 'REQUIREMENT_CURRENT_VERSION_CHANGED'},
+                )
+            await supersede_requirement_assessments(
+                version["project_id"], version["requirement_id"], version_id, user.id,
+                session=session,
+            )
+            await requirement_repository.approve_acceptance_criteria(
+                version_id,
+                'draft',
+                'approved',
+                timestamp,
+                user.id,
+                session=session,
+            )
+            await audit(
+                user.id,
+                'requirement_version_baselined',
+                'RequirementVersion',
+                version_id,
+                version["project_id"],
+                session=session,
+            )
+            await queue_requirement_changed(version, user, session)
     indexed = await index_requirement_version(version)
     version = await requirement_repository.find_version(version_id)
-    await audit(
-        user.id,
-        'requirement_version_baselined',
-        'RequirementVersion',
-        version_id,
-        version["project_id"],
-    )
     return RequirementBaselineResult(version, indexed)
 
 
@@ -310,53 +376,50 @@ async def make_requirement_obsolete(
         )
     version_status = current_version["status"]
     timestamp = now()
-    updated = await requirement_repository.mark_requirement_obsolete(
-        requirement_id,
-        requirement["project_id"],
-        expected_current_version_id,
-        requirement["status"],
-        'OBSOLETE',
-        reason,
-        user.id,
-        timestamp,
-    )
-    if not updated:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REVISION_CONFLICT'},
-        )
-    version_updated = await requirement_repository.mark_version_obsolete(
-        expected_current_version_id,
-        requirement["project_id"],
-        requirement_id,
-        ['DRAFT', 'IN_REVIEW', 'BASELINED'],
-        'OBSOLETE',
-        version_status,
-        reason,
-        user.id,
-        timestamp,
-    )
-    if not version_updated:
-        await requirement_repository.rollback_requirement_obsolete(
-            requirement_id,
-            requirement["project_id"],
-            'OBSOLETE',
-            timestamp,
-            requirement["status"],
-            now(),
-        )
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REQUIREMENT_VERSION_CONFLICT'},
-        )
-    await audit(
-        user.id,
-        'requirement_marked_obsolete',
-        'Requirement',
-        requirement_id,
-        requirement["project_id"],
-        {"reason": reason, "version_id": expected_current_version_id},
-    )
+    from src.clients.ai_automation import queue_requirement_changed
+
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await requirement_repository.mark_requirement_obsolete(
+                requirement_id,
+                requirement["project_id"],
+                expected_current_version_id,
+                requirement["status"],
+                'OBSOLETE',
+                reason,
+                user.id,
+                timestamp,
+                session=session,
+            )
+            if not updated:
+                raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
+            version_updated = await requirement_repository.mark_version_obsolete(
+                expected_current_version_id,
+                requirement["project_id"],
+                requirement_id,
+                ['DRAFT', 'IN_REVIEW', 'BASELINED'],
+                'OBSOLETE',
+                version_status,
+                reason,
+                user.id,
+                timestamp,
+                expected_revision=current_version["revision"],
+                session=session,
+            )
+            if not version_updated:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": 'REQUIREMENT_VERSION_CONFLICT'},
+                )
+            await audit(
+                user.id,
+                'requirement_marked_obsolete',
+                'Requirement',
+                requirement_id,
+                requirement["project_id"],
+                {"reason": reason, "version_id": expected_current_version_id},
+                session=session,
+            )
     current_version = await requirement_repository.find_version(
         expected_current_version_id, requirement["project_id"]
     )
@@ -414,51 +477,47 @@ async def restore_obsolete_requirement(
             detail={"code": 'REQUIREMENT_RESTORE_STATE_INVALID'},
         )
     timestamp = now()
-    version_restored = await requirement_repository.restore_version(
-        version["_id"],
-        requirement["project_id"],
-        requirement_id,
-        'OBSOLETE',
-        restored_version_status,
-        reason,
-        user.id,
-        timestamp,
-    )
-    if not version_restored:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REQUIREMENT_VERSION_CONFLICT'},
-        )
-    updated = await requirement_repository.restore_requirement(
-        requirement_id,
-        requirement["project_id"],
-        expected_current_version_id,
-        'OBSOLETE',
-        restored_status,
-        reason,
-        user.id,
-        timestamp,
-    )
-    if not updated:
-        await requirement_repository.rollback_version_restore(
-            version["_id"],
-            requirement["project_id"],
-            'OBSOLETE',
-            restored_version_status,
-            now(),
-        )
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REVISION_CONFLICT'},
-        )
-    await audit(
-        user.id,
-        'requirement_restored',
-        'Requirement',
-        requirement_id,
-        requirement["project_id"],
-        {"reason": reason, "version_id": version["_id"]},
-    )
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            version_restored = await requirement_repository.restore_version(
+                version["_id"],
+                requirement["project_id"],
+                requirement_id,
+                'OBSOLETE',
+                restored_version_status,
+                reason,
+                user.id,
+                timestamp,
+                expected_revision=version["revision"],
+                session=session,
+            )
+            if not version_restored:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": 'REQUIREMENT_VERSION_CONFLICT'},
+                )
+            updated = await requirement_repository.restore_requirement(
+                requirement_id,
+                requirement["project_id"],
+                expected_current_version_id,
+                'OBSOLETE',
+                restored_status,
+                reason,
+                user.id,
+                timestamp,
+                session=session,
+            )
+            if not updated:
+                raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
+            await audit(
+                user.id,
+                'requirement_restored',
+                'Requirement',
+                requirement_id,
+                requirement["project_id"],
+                {"reason": reason, "version_id": version["_id"]},
+                session=session,
+            )
     restored_version = await requirement_repository.find_version(
         version["_id"], requirement["project_id"]
     )

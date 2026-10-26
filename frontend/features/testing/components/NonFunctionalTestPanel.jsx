@@ -2,7 +2,15 @@
 import { useCallback, useEffect, useState } from "react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
+import {
+  Modal,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "@/shared/components/ui/Modal";
 import { messageOf } from "../lib/testing";
+import StructuredValueEditor, { StructuredValueView } from "./StructuredValueEditor";
 import { testingApi } from "../services/testing.service";
 
 const splitLines = (value) =>
@@ -11,7 +19,297 @@ const splitLines = (value) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-const parseJson = (value, fallback) => (String(value || "").trim() ? JSON.parse(value) : fallback);
+function StructuredPlanFieldsModal({ planType, initialValues, saving, error, onClose, onSave }) {
+  const [values, setValues] = useState(() => structuredClone(initialValues));
+  const [responseTargetType, setResponseTargetType] = useState(
+    typeof initialValues.response_time_target === "object" &&
+      initialValues.response_time_target !== null
+      ? "object"
+      : "number",
+  );
+  const [concurrencyType, setConcurrencyType] = useState(
+    typeof initialValues.concurrency === "object" && initialValues.concurrency !== null
+      ? "object"
+      : "number",
+  );
+  const set = (key, value) => setValues((current) => ({ ...current, [key]: value }));
+  const submit = (event) => {
+    event.preventDefault();
+    onSave(values, { responseTargetType, concurrencyType });
+  };
+  const security = planType === "SECURITY_TEST_PLAN";
+  return (
+    <Modal
+      isOpen
+      ariaLabel={security ? "Kế hoạch kiểm thử bảo mật" : "Kế hoạch kiểm thử hiệu năng"}
+      className="max-h-[94dvh] max-w-5xl overflow-y-auto"
+      onClose={onClose}
+    >
+      <form onSubmit={submit}>
+        <ModalHeader>
+          <ModalTitle>
+            {security ? "Thông số kiểm thử bảo mật" : "Thông số kiểm thử hiệu năng"}
+          </ModalTitle>
+        </ModalHeader>
+        <ModalContent className="space-y-5">
+          {error && (
+            <div
+              className="rounded-control border border-danger/30 bg-danger/5 p-3 text-sm text-danger"
+              role="alert"
+            >
+              {error}
+            </div>
+          )}
+          <p className="text-sm text-ink-muted">
+            Mỗi nhóm thuộc tính giữ nguyên kiểu dữ liệu trong đặc tả. Có thể mở rộng danh sách lồng
+            nhau.
+          </p>
+          {security ? (
+            <div className="space-y-5">
+              <StructuredValueEditor
+                label="Môi trường"
+                value={values.environment || {}}
+                fixedType="object"
+                onChange={(value) => set("environment", value)}
+              />
+              <StructuredValueEditor
+                label="Bằng chứng"
+                value={values.evidence || []}
+                fixedType="array"
+                itemTypes={["string", "object"]}
+                onChange={(value) => set("evidence", value)}
+              />
+              <StructuredValueEditor
+                label="Rủi ro tồn dư"
+                value={values.residual_risk || []}
+                fixedType="array"
+                itemTypes={["string", "object"]}
+                onChange={(value) => set("residual_risk", value)}
+              />
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {[
+                ["workload_model", "Mô hình tải"],
+                ["baseline", "Đường cơ sở"],
+                ["load", "Tải thông thường"],
+                ["stress", "Tải cực hạn"],
+                ["spike", "Tải tăng đột biến"],
+                ["soak", "Tải kéo dài"],
+                ["data", "Dữ liệu tải"],
+                ["environment", "Môi trường"],
+              ].map(([key, label]) => (
+                <StructuredValueEditor
+                  key={key}
+                  label={label}
+                  value={values[key] || {}}
+                  fixedType="object"
+                  onChange={(value) => set(key, value)}
+                />
+              ))}
+              <label className="field-label block min-w-0">
+                Thời lượng cấu hình (phút)
+                <input
+                  className="apple-input mt-2 w-full"
+                  min="1"
+                  max="10080"
+                  step="1"
+                  type="number"
+                  value={values.duration_minutes ?? ""}
+                  onChange={(event) => set("duration_minutes", event.target.value)}
+                />
+              </label>
+              <label className="field-label block min-w-0">
+                Kiểu số người dùng đồng thời
+                <select
+                  className="apple-input mt-2 w-full"
+                  value={concurrencyType}
+                  onChange={(event) => {
+                    const type = event.target.value;
+                    setConcurrencyType(type);
+                    set("concurrency", type === "object" ? {} : "");
+                  }}
+                >
+                  <option value="number">Số nguyên</option>
+                  <option value="object">Nhóm thuộc tính</option>
+                </select>
+                {concurrencyType === "object" ? (
+                  <div className="mt-2">
+                    <StructuredValueEditor
+                      label="Số người dùng đồng thời"
+                      value={values.concurrency || {}}
+                      fixedType="object"
+                      onChange={(value) => set("concurrency", value)}
+                    />
+                  </div>
+                ) : (
+                  <input
+                    className="apple-input mt-2 w-full"
+                    min="0"
+                    step="1"
+                    type="number"
+                    value={values.concurrency ?? ""}
+                    onChange={(event) => set("concurrency", event.target.value)}
+                  />
+                )}
+              </label>
+              <label className="field-label block min-w-0">
+                Kiểu mục tiêu thời gian phản hồi
+                <select
+                  className="apple-input mt-2 w-full"
+                  value={responseTargetType}
+                  onChange={(event) => {
+                    const type = event.target.value;
+                    setResponseTargetType(type);
+                    set("response_time_target", type === "object" ? {} : "");
+                  }}
+                >
+                  <option value="number">Một giá trị số</option>
+                  <option value="object">Nhóm thuộc tính</option>
+                </select>
+                {responseTargetType === "object" ? (
+                  <div className="mt-2">
+                    <StructuredValueEditor
+                      label="Mục tiêu thời gian phản hồi"
+                      value={values.response_time_target || {}}
+                      fixedType="object"
+                      onChange={(value) => set("response_time_target", value)}
+                    />
+                  </div>
+                ) : (
+                  <input
+                    className="apple-input mt-2 w-full"
+                    min="0"
+                    step="any"
+                    type="number"
+                    value={values.response_time_target ?? ""}
+                    onChange={(event) => set("response_time_target", event.target.value)}
+                  />
+                )}
+              </label>
+            </div>
+          )}
+        </ModalContent>
+        <ModalFooter>
+          <button className="secondary-button" disabled={saving} type="button" onClick={onClose}>
+            Hủy
+          </button>
+          <button className="apple-button" disabled={saving} type="submit">
+            {saving ? "Đang lưu" : "Áp dụng thông số"}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+function ExternalEvidenceModal({ saving, error, onClose, onSave }) {
+  const [values, setValues] = useState({
+    provider: "GENERIC",
+    externalRunRef: "",
+    executedAt: "",
+    evidenceRefs: "",
+    resultSummary: {},
+    rawResultHash: "",
+  });
+  return (
+    <Modal
+      isOpen
+      ariaLabel="Nhập bằng chứng thực thi bên ngoài"
+      className="max-h-[94dvh] max-w-4xl overflow-y-auto"
+      onClose={onClose}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSave(values);
+        }}
+      >
+        <ModalHeader>
+          <ModalTitle>Nhập bằng chứng thực thi bên ngoài</ModalTitle>
+        </ModalHeader>
+        <ModalContent className="space-y-4">
+          {error && <ErrorState message={error} />}
+          <label className="field-label block">
+            Công cụ
+            <select
+              className="apple-input mt-2 w-full"
+              value={values.provider}
+              onChange={(event) =>
+                setValues((current) => ({ ...current, provider: event.target.value }))
+              }
+            >
+              {["GENERIC", "K6", "JMETER", "OWASP_ZAP", "PLAYWRIGHT"].map((provider) => (
+                <option key={provider} value={provider}>
+                  {provider}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label block">
+            Mã lần chạy
+            <input
+              className="apple-input mt-2 w-full"
+              required
+              value={values.externalRunRef}
+              onChange={(event) =>
+                setValues((current) => ({ ...current, externalRunRef: event.target.value }))
+              }
+            />
+          </label>
+          <label className="field-label block">
+            Thời điểm chạy
+            <input
+              className="apple-input mt-2 w-full"
+              type="datetime-local"
+              required
+              value={values.executedAt}
+              onChange={(event) =>
+                setValues((current) => ({ ...current, executedAt: event.target.value }))
+              }
+            />
+          </label>
+          <label className="field-label block">
+            Tham chiếu bằng chứng, mỗi dòng một mục
+            <textarea
+              className="apple-input mt-2 min-h-24 w-full"
+              required
+              value={values.evidenceRefs}
+              onChange={(event) =>
+                setValues((current) => ({ ...current, evidenceRefs: event.target.value }))
+              }
+            />
+          </label>
+          <StructuredValueEditor
+            label="Số liệu kết quả"
+            value={values.resultSummary}
+            fixedType="object"
+            onChange={(resultSummary) => setValues((current) => ({ ...current, resultSummary }))}
+          />
+          <label className="field-label block">
+            Mã kiểm tra tệp kết quả (SHA256)
+            <input
+              className="apple-input mt-2 w-full"
+              required
+              value={values.rawResultHash}
+              onChange={(event) =>
+                setValues((current) => ({ ...current, rawResultHash: event.target.value }))
+              }
+            />
+          </label>
+        </ModalContent>
+        <ModalFooter>
+          <button className="secondary-button" disabled={saving} type="button" onClick={onClose}>
+            Hủy
+          </button>
+          <button className="apple-button" disabled={saving} type="submit">
+            {saving ? "Đang nhập" : "Nhập bằng chứng"}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
 
 export default function NonFunctionalTestPanel({ project }) {
   const [items, setItems] = useState([]);
@@ -19,6 +317,12 @@ export default function NonFunctionalTestPanel({ project }) {
   const [cases, setCases] = useState([]);
   const [selected, setSelected] = useState(null);
   const [error, setError] = useState("");
+  const [planEditor, setPlanEditor] = useState(null);
+  const [planEditorError, setPlanEditorError] = useState("");
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [evidenceEditor, setEvidenceEditor] = useState(false);
+  const [evidenceError, setEvidenceError] = useState("");
+  const [savingEvidence, setSavingEvidence] = useState(false);
   const { ask, dialog } = useActionDialog();
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
@@ -46,6 +350,7 @@ export default function NonFunctionalTestPanel({ project }) {
     void load();
   }, [load]);
   const create = async () => {
+    setPlanEditorError("");
     const typeAnswer = await ask({
       title: "Tạo kế hoạch kiểm thử phi chức năng",
       confirmLabel: "Tiếp tục",
@@ -102,141 +407,42 @@ export default function NonFunctionalTestPanel({ project }) {
           ? [
               { name: "risk_refs", label: "Tham chiếu rủi ro mỗi dòng một mục", multiline: true },
               { name: "categories", label: "Nhóm kiểm thử mỗi dòng một mục", multiline: true },
-              {
-                name: "environment",
-                label: "Môi trường dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
-              {
-                name: "evidence",
-                label: "Bằng chứng dạng JSON",
-                multiline: true,
-                initialValue: "[]",
-              },
-              {
-                name: "residual_risk",
-                label: "Rủi ro tồn dư dạng JSON",
-                multiline: true,
-                initialValue: "[]",
-              },
             ]
           : [
-              {
-                name: "workload_model",
-                label: "Mô hình tải dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
-              {
-                name: "baseline",
-                label: "Đường cơ sở dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
-              {
-                name: "load",
-                label: "Tải thông thường dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
-              {
-                name: "stress",
-                label: "Tải cực hạn dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
-              {
-                name: "spike",
-                label: "Tải tăng đột biến dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
-              {
-                name: "soak",
-                label: "Tải kéo dài dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
-              { name: "concurrency", label: "Số người dùng đồng thời", type: "number" },
               { name: "throughput_target", label: "Mục tiêu thông lượng", type: "number" },
-              {
-                name: "response_time_target",
-                label: "Mục tiêu thời gian phản hồi dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
               { name: "error_rate_target", label: "Mục tiêu tỷ lệ lỗi phần trăm", type: "number" },
-              {
-                name: "environment",
-                label: "Môi trường dạng JSON",
-                multiline: true,
-                initialValue: "{}",
-              },
-              { name: "data", label: "Dữ liệu tải dạng JSON", multiline: true, initialValue: "{}" },
               { name: "external_tool_ref", label: "Tham chiếu công cụ bên ngoài" },
             ]),
       ],
     });
     if (!answer) return;
-    try {
-      const value = await testingApi.createNonFunctionalTestPlan(project._id, {
-        idempotency_key: crypto.randomUUID(),
-        plan_type: typeAnswer.plan_type,
-        name: answer.name,
-        objective: answer.objective,
-        scope: splitLines(answer.scope),
-        approach: answer.approach,
-        entry_criteria: splitLines(answer.entry_criteria),
-        exit_criteria: splitLines(answer.exit_criteria),
-        test_conditions: String(answer.condition_ids || "")
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-        test_cases: String(answer.case_ids || "")
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-        requirement_refs: String(answer.requirement_refs || "")
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-        source_ai_result_ids: [],
-        tool_refs: splitLines(answer.tool_refs),
-        environment: parseJson(answer.environment, {}),
-        ...(security
-          ? {
-              risk_refs: splitLines(answer.risk_refs),
-              categories: splitLines(answer.categories),
-              evidence: parseJson(answer.evidence, []),
-              residual_risk: parseJson(answer.residual_risk, []),
-            }
+    setPlanEditor({
+      mode: "create",
+      idempotencyKey: crypto.randomUUID(),
+      planType: typeAnswer.plan_type,
+      answer,
+      initialValues:
+        typeAnswer.plan_type === "SECURITY_TEST_PLAN"
+          ? { environment: {}, evidence: [], residual_risk: [] }
           : {
-              workload_model: parseJson(answer.workload_model, {}),
-              baseline: parseJson(answer.baseline, {}),
-              load: parseJson(answer.load, {}),
-              stress: parseJson(answer.stress, {}),
-              spike: parseJson(answer.spike, {}),
-              soak: parseJson(answer.soak, {}),
-              concurrency: answer.concurrency === "" ? null : Number(answer.concurrency),
-              throughput_target:
-                answer.throughput_target === "" ? null : Number(answer.throughput_target),
-              response_time_target: parseJson(answer.response_time_target, {}),
-              error_rate_target:
-                answer.error_rate_target === "" ? null : Number(answer.error_rate_target),
-              data: parseJson(answer.data, {}),
-              external_tool_ref: answer.external_tool_ref || null,
-            }),
-      });
-      setSelected(await testingApi.getNonFunctionalTestPlan(value._id));
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
+              workload_model: {},
+              baseline: {},
+              load: {},
+              stress: {},
+              spike: {},
+              soak: {},
+              concurrency: "",
+              duration_minutes: "",
+              response_time_target: "",
+              data: {},
+              environment: {},
+            },
+    });
   };
   const edit = async () => {
+    setPlanEditorError("");
     const answer = await ask({
-      title: "Cập nhật kế hoạch NFR",
+      title: "Cập nhật kế hoạch kiểm thử phi chức năng",
       confirmLabel: "Lưu",
       fields: [
         { name: "name", label: "Tên", required: true, initialValue: selected.name },
@@ -279,12 +485,6 @@ export default function NonFunctionalTestPanel({ project }) {
           multiline: true,
           initialValue: selected.tool_refs?.join("\n"),
         },
-        {
-          name: "environment",
-          label: "Môi trường dạng JSON",
-          multiline: true,
-          initialValue: JSON.stringify(selected.environment || {}, null, 2),
-        },
         ...(selected.plan_type === "SECURITY_TEST_PLAN"
           ? [
               {
@@ -299,62 +499,8 @@ export default function NonFunctionalTestPanel({ project }) {
                 multiline: true,
                 initialValue: selected.categories?.join("\n"),
               },
-              {
-                name: "evidence",
-                label: "Bằng chứng dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.evidence || [], null, 2),
-              },
-              {
-                name: "residual_risk",
-                label: "Rủi ro tồn dư dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.residual_risk || [], null, 2),
-              },
             ]
           : [
-              {
-                name: "workload_model",
-                label: "Mô hình tải dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.workload_model || {}, null, 2),
-              },
-              {
-                name: "baseline",
-                label: "Đường cơ sở dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.baseline || {}, null, 2),
-              },
-              {
-                name: "load",
-                label: "Tải thông thường dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.load || {}, null, 2),
-              },
-              {
-                name: "stress",
-                label: "Tải cực hạn dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.stress || {}, null, 2),
-              },
-              {
-                name: "spike",
-                label: "Tải tăng đột biến dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.spike || {}, null, 2),
-              },
-              {
-                name: "soak",
-                label: "Tải kéo dài dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.soak || {}, null, 2),
-              },
-              {
-                name: "concurrency",
-                label: "Số người dùng đồng thời",
-                type: "number",
-                initialValue: selected.concurrency ?? "",
-              },
               {
                 name: "throughput_target",
                 label: "Mục tiêu thông lượng",
@@ -362,22 +508,10 @@ export default function NonFunctionalTestPanel({ project }) {
                 initialValue: selected.throughput_target ?? "",
               },
               {
-                name: "response_time_target",
-                label: "Mục tiêu thời gian phản hồi dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.response_time_target || {}, null, 2),
-              },
-              {
                 name: "error_rate_target",
                 label: "Mục tiêu tỷ lệ lỗi phần trăm",
                 type: "number",
                 initialValue: selected.error_rate_target ?? "",
-              },
-              {
-                name: "data",
-                label: "Dữ liệu tải dạng JSON",
-                multiline: true,
-                initialValue: JSON.stringify(selected.data || {}, null, 2),
               },
               {
                 name: "external_tool_ref",
@@ -388,97 +522,164 @@ export default function NonFunctionalTestPanel({ project }) {
       ],
     });
     if (!answer) return;
-    try {
-      setSelected(
-        await testingApi.updateNonFunctionalTestPlan(selected._id, {
-          expected_revision: selected.revision,
-          name: answer.name,
-          objective: answer.objective,
-          scope: splitLines(answer.scope),
-          approach: answer.approach,
-          entry_criteria: splitLines(answer.entry_criteria),
-          exit_criteria: splitLines(answer.exit_criteria),
-          tool_refs: splitLines(answer.tool_refs),
-          environment: parseJson(answer.environment, {}),
-          ...(selected.plan_type === "SECURITY_TEST_PLAN"
-            ? {
-                risk_refs: splitLines(answer.risk_refs),
-                categories: splitLines(answer.categories),
-                evidence: parseJson(answer.evidence, []),
-                residual_risk: parseJson(answer.residual_risk, []),
-              }
-            : {
-                workload_model: parseJson(answer.workload_model, {}),
-                baseline: parseJson(answer.baseline, {}),
-                load: parseJson(answer.load, {}),
-                stress: parseJson(answer.stress, {}),
-                spike: parseJson(answer.spike, {}),
-                soak: parseJson(answer.soak, {}),
-                concurrency: answer.concurrency === "" ? null : Number(answer.concurrency),
-                throughput_target:
-                  answer.throughput_target === "" ? null : Number(answer.throughput_target),
-                response_time_target: parseJson(answer.response_time_target, {}),
-                error_rate_target:
-                  answer.error_rate_target === "" ? null : Number(answer.error_rate_target),
-                data: parseJson(answer.data, {}),
-                external_tool_ref: answer.external_tool_ref || null,
-              }),
-        }),
+    setPlanEditor({
+      mode: "edit",
+      planType: selected.plan_type,
+      answer,
+      initialValues: Object.fromEntries(
+        (selected.plan_type === "SECURITY_TEST_PLAN"
+          ? ["environment", "evidence", "residual_risk"]
+          : [
+              "workload_model",
+              "baseline",
+              "load",
+              "stress",
+              "spike",
+              "soak",
+              "concurrency",
+              "duration_minutes",
+              "response_time_target",
+              "data",
+              "environment",
+            ]
+        ).map((key) => [
+          key,
+          selected[key] ??
+            (key === "evidence" || key === "residual_risk"
+              ? []
+              : key === "concurrency" ||
+                  key === "duration_minutes" ||
+                  key === "response_time_target"
+                ? ""
+                : {}),
+        ]),
+      ),
+    });
+  };
+  const savePlanEditor = async (dataValues, modes) => {
+    if (!planEditor) return;
+    const { answer, mode, planType } = planEditor;
+    const security = planType === "SECURITY_TEST_PLAN";
+    const readIds = (value) =>
+      String(value || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    const numberOrNull = (value) => (value === "" || value == null ? null : Number(value));
+    const common = {
+      name: answer.name,
+      objective: answer.objective,
+      scope: splitLines(answer.scope),
+      approach: answer.approach,
+      entry_criteria: splitLines(answer.entry_criteria),
+      exit_criteria: splitLines(answer.exit_criteria),
+      tool_refs: splitLines(answer.tool_refs),
+      environment: dataValues.environment,
+    };
+    const typeSpecific = security
+      ? {
+          risk_refs: splitLines(answer.risk_refs),
+          categories: splitLines(answer.categories),
+          evidence: dataValues.evidence,
+          residual_risk: dataValues.residual_risk,
+        }
+      : {
+          workload_model: dataValues.workload_model,
+          baseline: dataValues.baseline,
+          load: dataValues.load,
+          stress: dataValues.stress,
+          spike: dataValues.spike,
+          soak: dataValues.soak,
+          concurrency:
+            modes.concurrencyType === "object"
+              ? dataValues.concurrency
+              : numberOrNull(dataValues.concurrency),
+          duration_minutes: numberOrNull(dataValues.duration_minutes),
+          throughput_target: numberOrNull(answer.throughput_target),
+          response_time_target:
+            modes.responseTargetType === "object"
+              ? dataValues.response_time_target
+              : numberOrNull(dataValues.response_time_target),
+          error_rate_target: numberOrNull(answer.error_rate_target),
+          data: dataValues.data,
+          external_tool_ref: answer.external_tool_ref || null,
+        };
+    if (
+      security &&
+      [dataValues.evidence, dataValues.residual_risk].some(
+        (items) =>
+          !Array.isArray(items) ||
+          items.some(
+            (item) =>
+              typeof item !== "string" &&
+              (!item || typeof item !== "object" || Array.isArray(item)),
+          ),
+      )
+    ) {
+      setPlanEditorError(
+        "Bằng chứng và rủi ro tồn dư chỉ nhận danh sách văn bản hoặc nhóm thuộc tính.",
       );
+      return;
+    }
+    setSavingPlan(true);
+    setPlanEditorError("");
+    try {
+      if (mode === "create") {
+        const value = await testingApi.createNonFunctionalTestPlan(project._id, {
+          idempotency_key: planEditor.idempotencyKey,
+          plan_type: planType,
+          ...common,
+          test_conditions: readIds(answer.condition_ids),
+          test_cases: readIds(answer.case_ids),
+          requirement_refs: readIds(answer.requirement_refs),
+          source_ai_result_ids: [],
+          ...typeSpecific,
+        });
+        setSelected(await testingApi.getNonFunctionalTestPlan(value._id));
+        await load();
+      } else {
+        const updated = await testingApi.updateNonFunctionalTestPlan(selected._id, {
+          expected_revision: selected.revision,
+          ...common,
+          ...(security
+            ? typeSpecific
+            : {
+                ...typeSpecific,
+                throughput_target: numberOrNull(answer.throughput_target),
+                error_rate_target: numberOrNull(answer.error_rate_target),
+              }),
+        });
+        setSelected(updated);
+      }
+      setPlanEditor(null);
       setError("");
     } catch (reason) {
-      setError(messageOf(reason));
+      setPlanEditorError(messageOf(reason));
+    } finally {
+      setSavingPlan(false);
     }
   };
-  const importEvidence = async () => {
-    const answer = await ask({
-      title: "Nhập bằng chứng thực thi bên ngoài",
-      confirmLabel: "Nhập",
-      fields: [
-        {
-          name: "provider",
-          label: "Công cụ",
-          options: ["GENERIC", "K6", "JMETER", "OWASP_ZAP", "PLAYWRIGHT"].map((value) => ({
-            value,
-            label: value,
-          })),
-        },
-        { name: "external_run_ref", label: "Mã lần chạy", required: true },
-        { name: "executed_at", label: "Thời điểm chạy", required: true, type: "datetime-local" },
-        {
-          name: "evidence_refs",
-          label: "Tham chiếu bằng chứng mỗi dòng một mục",
-          required: true,
-          multiline: true,
-        },
-        {
-          name: "result_summary",
-          label: "Tóm tắt kết quả JSON",
-          required: true,
-          multiline: true,
-          initialValue: "{}",
-        },
-        { name: "raw_result_hash", label: "SHA256 kết quả gốc", required: true },
-      ],
-    });
-    if (!answer) return;
+  const importEvidence = async (answer) => {
+    if (!selected || savingEvidence) return;
+    setSavingEvidence(true);
+    setEvidenceError("");
     try {
-      const resultSummary = JSON.parse(answer.result_summary);
       await testingApi.importNonFunctionalEvidence(selected._id, {
         idempotency_key: crypto.randomUUID(),
         provider: answer.provider,
-        external_run_ref: answer.external_run_ref,
-        executed_at: new Date(answer.executed_at).toISOString(),
-        evidence_refs: splitLines(answer.evidence_refs),
-        result_summary: resultSummary,
-        raw_result_hash: answer.raw_result_hash.trim(),
+        external_run_ref: answer.externalRunRef.trim(),
+        executed_at: new Date(answer.executedAt).toISOString(),
+        evidence_refs: splitLines(answer.evidenceRefs),
+        result_summary: answer.resultSummary,
+        raw_result_hash: answer.rawResultHash.trim(),
       });
       setSelected(await testingApi.getNonFunctionalTestPlan(selected._id));
       await load();
+      setEvidenceEditor(false);
     } catch (reason) {
-      setError(
-        reason instanceof SyntaxError ? "Tóm tắt kết quả phải là JSON hợp lệ" : messageOf(reason),
-      );
+      setEvidenceError(messageOf(reason));
+    } finally {
+      setSavingEvidence(false);
     }
   };
   const transition = async (approve) => {
@@ -504,12 +705,36 @@ export default function NonFunctionalTestPanel({ project }) {
       actions={
         can("nfrtest.manage") ? (
           <button className="apple-button" type="button" onClick={create}>
-            Tạo kế hoạch NFR
+            Tạo kế hoạch kiểm thử phi chức năng
           </button>
         ) : null
       }
     >
       {dialog}
+      {planEditor && (
+        <StructuredPlanFieldsModal
+          planType={planEditor.planType}
+          initialValues={planEditor.initialValues}
+          saving={savingPlan}
+          error={planEditorError}
+          onClose={() => {
+            if (savingPlan) return;
+            setPlanEditor(null);
+            setPlanEditorError("");
+          }}
+          onSave={savePlanEditor}
+        />
+      )}
+      {evidenceEditor && (
+        <ExternalEvidenceModal
+          saving={savingEvidence}
+          error={evidenceError}
+          onClose={() => {
+            if (!savingEvidence) setEvidenceEditor(false);
+          }}
+          onSave={importEvidence}
+        />
+      )}
       {error && (
         <div className="p-4">
           <ErrorState message={error} />
@@ -592,7 +817,14 @@ export default function NonFunctionalTestPanel({ project }) {
                 </button>
               )}
               {can("nfrtest.evidence.import") && (
-                <button className="apple-button" type="button" onClick={importEvidence}>
+                <button
+                  className="apple-button"
+                  type="button"
+                  onClick={() => {
+                    setEvidenceError("");
+                    setEvidenceEditor(true);
+                  }}
+                >
                   Nhập bằng chứng
                 </button>
               )}
@@ -609,9 +841,7 @@ export default function NonFunctionalTestPanel({ project }) {
             </div>
             <div>
               <p className="field-label">Kết quả gần nhất</p>
-              <pre className="whitespace-pre-wrap">
-                {JSON.stringify(selected.result_summary || {}, null, 2)}
-              </pre>
+              <StructuredValueView value={selected.result_summary || {}} />
             </div>
           </div>
           <DataTable

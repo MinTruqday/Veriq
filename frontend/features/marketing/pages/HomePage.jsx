@@ -17,7 +17,8 @@ const capabilities = [
   {
     icon: Sparkles,
     title: "Tự động hóa AI",
-    description: "Thiết lập quy tắc, sự kiện kích hoạt và mục tiêu AI",
+    description:
+      "Tự động tiếp nhận thay đổi tài liệu, yêu cầu và kiểm thử; lưu kết quả xử lý cùng nguồn dẫn và lịch sử lần chạy",
   },
 ];
 
@@ -83,11 +84,6 @@ export default function HomePage() {
 
       <section className="border-y border-brand/10 bg-white/70">
         <div className="mx-auto w-full max-w-[1200px] px-5 py-16 md:px-8 md:py-20">
-          <div className="max-w-2xl">
-            <h2 className="text-[32px] font-semibold leading-tight tracking-[-0.04em] md:text-[42px]">
-              Chức năng
-            </h2>
-          </div>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             {capabilities.map((item) => (
               <article
@@ -107,7 +103,9 @@ export default function HomePage() {
 
       <section className="mx-auto grid w-full max-w-[1200px] gap-10 px-5 py-16 md:px-8 md:py-20 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
         <div>
-          <h2 className="text-[32px] font-semibold leading-tight tracking-[-0.04em]">Quy trình</h2>
+          <h2 className="text-[32px] font-semibold leading-tight tracking-[-0.04em]">
+            Từ yêu cầu đến kết quả kiểm thử
+          </h2>
         </div>
         <ol className="space-y-3">
           {workflow.map((item, index) => (

@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope, get_project, get_project_entity
+from src.core.internal import require_internal_token
 from src.schemas.contracts.requirements import (
     RequirementAIAnalysisInput,
-    RequirementAISuggestionApply,
     RequirementCompareInput,
     RequirementDuplicateCheckInput,
     RequirementMergeInput,
@@ -12,7 +12,7 @@ from src.schemas.contracts.requirements import (
 )
 from src.modules.requirements.services.requirement_ai import (
     analyze_requirement_quality,
-    apply_requirement_quality_suggestion,
+    get_latest_requirement_quality_analysis,
 )
 from src.modules.requirements.services.requirement_analysis import (
     compare_requirement_versions,
@@ -28,46 +28,24 @@ from src.modules.requirements.services.requirement_transformations import (
 
 router = APIRouter(prefix="/kiem-thu", tags=["Yêu cầu kiểm thử"])
 
+@router.get("/phien-ban-yeu-cau/{version_id}/ai/ket-qua-moi-nhat")
+async def latest_requirement_quality_analysis(
+    version_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await get_latest_requirement_quality_analysis(version_id, user))
+
+
 @router.post("/phien-ban-yeu-cau/{version_id}/ai/kiem-tra")
-async def lint_requirement(
+async def analyze_requirement_quality_for_automation(
     version_id: str,
     payload: RequirementAIAnalysisInput,
+    _: None = Depends(require_internal_token),
     user: CurrentUser = Depends(get_current_user),
 ):
+    if not payload.idempotency_key.startswith("requirement-quality-event:"):
+        raise HTTPException(status_code=404, detail={"code": "AUTOMATIC_ANALYSIS_ONLY"})
     return envelope(await analyze_requirement_quality(version_id, payload, user))
-
-
-@router.post("/du-an/{project_id}/yeu-cau/{requirement_id}/kiem-tra")
-async def lint_requirement_draft(
-    project_id: str,
-    requirement_id: str,
-    payload: RequirementAIAnalysisInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    requirement = await get_project_entity("requirements", requirement_id, user, "ai.run_lint")
-    if requirement["project_id"] != project_id:
-        raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
-    return await lint_requirement(requirement["current_version_id"], payload, user)
-
-
-@router.post("/yeu-cau/{requirement_id}/kiem-tra")
-async def lint_requirement_alias(
-    requirement_id: str,
-    payload: RequirementAIAnalysisInput,
-    user: CurrentUser = Depends(get_current_user),
-):
-    requirement = await get_project_entity("requirements", requirement_id, user, "ai.run_lint")
-    return await lint_requirement(requirement["current_version_id"], payload, user)
-
-
-@router.post("/phien-ban-yeu-cau/{version_id}/ai/ap-dung-de-xuat")
-async def apply_requirement_ai_suggestion(
-    version_id: str,
-    payload: RequirementAISuggestionApply,
-    user: CurrentUser = Depends(get_current_user),
-):
-    updated = await apply_requirement_quality_suggestion(version_id, payload, user)
-    return envelope(updated, revision=updated["revision"])
 
 
 @router.post("/yeu-cau/{requirement_id}/so-sanh")

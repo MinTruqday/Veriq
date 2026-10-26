@@ -2,6 +2,7 @@ import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
+import { StructuredValueView } from "../../../components/StructuredValueEditor";
 
 export default function RequirementHistoryPanel({
   projectId,
@@ -109,8 +110,16 @@ export default function RequirementHistoryPanel({
                 render: (item) => valueLabel(item.type),
               },
               { key: "field", label: "Trường" },
-              { key: "before", label: "Trước", render: (item) => JSON.stringify(item.before) },
-              { key: "after", label: "Sau", render: (item) => JSON.stringify(item.after) },
+              {
+                key: "before",
+                label: "Trước",
+                render: (item) => <StructuredValueView value={item.before} />,
+              },
+              {
+                key: "after",
+                label: "Sau",
+                render: (item) => <StructuredValueView value={item.after} />,
+              },
             ]}
           />
         </Panel>

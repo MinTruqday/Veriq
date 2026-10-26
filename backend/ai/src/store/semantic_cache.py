@@ -4,6 +4,7 @@ from typing import Any
 
 from loguru import logger
 
+
 class SemanticCache:
     def __init__(self):
         self.similarity_minimum = 0.9

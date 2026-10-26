@@ -27,22 +27,32 @@ function applyToken(token) {
   localStorage.setItem("veriq_token", token);
   document.cookie = `token=${token}; path=/; max-age=604800; SameSite=Lax`;
 }
-export async function refreshAccessToken() {
+export async function refreshAccessToken(expectedToken) {
   if (typeof window === "undefined") return null;
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_URL}/xac-thuc/lam-moi-phien`, {
+    refreshPromise = fetchWithNetworkError(`${API_URL}/xac-thuc/lam-moi-phien`, {
       method: "POST",
       credentials: "include",
     })
       .then(async (response) => {
-        if (!response.ok) return null;
-        const body = await response.json();
+        if (response.status === 401 || response.status === 403) return null;
+        if (!response.ok) {
+          throw new Error("Không thể làm mới phiên đăng nhập. Vui lòng thử lại.");
+        }
+        let body;
+        try {
+          body = await response.json();
+        } catch (error) {
+          throw new Error("Máy chủ trả về phiên đăng nhập không hợp lệ", { cause: error });
+        }
         const token = body?.data?.access_token;
-        if (typeof token !== "string" || !token) return null;
+        if (typeof token !== "string" || !token) {
+          throw new Error("Máy chủ không trả về phiên đăng nhập mới");
+        }
+        if (expectedToken && getToken() !== expectedToken) return getToken();
         applyToken(token);
         return token;
       })
-      .catch(() => null)
       .finally(() => {
         refreshPromise = null;
       });
@@ -60,8 +70,13 @@ export async function authenticatedFetch(input, init = {}) {
   };
   const response = await fetchWithNetworkError(input, request);
   if (response.status !== 401) return response;
-  const replacement = await refreshAccessToken();
-  if (!replacement) return response;
+  const replacement = await refreshAccessToken(token);
+  if (!replacement) {
+    if (token && getToken() === token && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("veriq-session-expired"));
+    }
+    return response;
+  }
   headers.set("Authorization", `Bearer ${replacement}`);
   return fetchWithNetworkError(input, {
     ...request,

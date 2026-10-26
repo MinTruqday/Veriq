@@ -1,19 +1,5 @@
 import { API_URL, authenticatedFetch } from "@/shared/services/api-client";
 
-function characterCount(body) {
-  if (typeof body === "string") return body.length;
-  if (body instanceof URLSearchParams) {
-    return [...body].reduce((total, [key, value]) => total + key.length + value.length, 0);
-  }
-  if (body instanceof FormData) {
-    return [...body].reduce(
-      (total, [key, value]) => total + key.length + (typeof value === "string" ? value.length : 0),
-      0,
-    );
-  }
-  return 0;
-}
-
 function refreshProjectAccessAfterDenial(path, status, errorDetails = null, errorCode = "") {
   const projectPermissionDenied =
     errorCode === "PROJECT_PERMISSION_DENIED" && typeof errorDetails?.permission === "string";
@@ -67,52 +53,23 @@ export async function testingRequest(path, options = {}) {
   return body?.data;
 }
 
-export async function agentRequest(path, options = {}) {
-  const streamId = crypto.randomUUID();
-  const inputCharacters = characterCount(options.body);
-  const notify = (status) => {
-    window.dispatchEvent(
-      new CustomEvent("veriq-ai-stream", { detail: { id: streamId, status, inputCharacters } }),
-    );
-  };
-  notify("streaming");
-  try {
-    const response = await authenticatedFetch(`${API_URL}/tac-tu${path}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok) {
-      refreshProjectAccessAfterDenial(path, response.status, body?.detail, body?.detail?.code);
-      const detail = body?.detail;
-      const error = new Error(detail?.message || detail?.code || "Không thể hoàn tất yêu cầu AI");
-      error.status = response.status;
-      error.code = detail?.code;
-      throw error;
-    }
-    notify("complete");
-    return body;
-  } catch (error) {
-    notify("failed");
-    throw error;
-  }
-}
-
-export async function agentReadRequest(path) {
-  const response = await authenticatedFetch(`${API_URL}/tac-tu${path}`);
-  const body = await response.json().catch(() => null);
+export async function testingImageRequest(path) {
+  const response = await authenticatedFetch(`${API_URL}/kiem-thu${path}`, {
+    headers: { Accept: "image/png" },
+  });
   if (!response.ok) {
-    refreshProjectAccessAfterDenial(path, response.status, body?.detail, body?.detail?.code);
-    const detail = body?.detail;
-    const error = new Error(detail?.message || detail?.code || "Không thể tải năng lực AI");
+    const body = await response.json().catch(() => null);
+    refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
+    const error = new Error(body?.error?.message || "Không thể tải ảnh nguồn");
     error.status = response.status;
-    error.code = detail?.code;
+    error.code = body?.error?.code;
+    error.traceId = body?.trace_id;
     throw error;
   }
-  return body;
+  if (response.headers.get("content-type")?.split(";")[0]?.trim() !== "image/png") {
+    throw new Error("Ảnh nguồn trả về định dạng không được hỗ trợ");
+  }
+  return response.blob();
 }
 
 export async function automationRequest(path, options = {}) {
@@ -136,14 +93,37 @@ export async function automationRequest(path, options = {}) {
   return body;
 }
 
+export async function inferenceRequest(path, options = {}) {
+  const response = await authenticatedFetch(`${API_URL}/suy-luan${path}`, {
+    ...options,
+    headers: {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...options.headers,
+    },
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = body?.detail;
+    const error = new Error(
+      typeof detail === "string"
+        ? detail
+        : detail?.message || detail?.code || "Không thể hoàn tất yêu cầu đánh giá AI",
+    );
+    error.status = response.status;
+    error.code = detail?.code;
+    error.traceId = body?.trace_id;
+    throw error;
+  }
+  return body?.data ?? body;
+}
+
 export async function testingStreamRequest(path, options = {}) {
   const { onDelta, ...requestOptions } = options;
   const streamId = crypto.randomUUID();
-  const inputCharacters = characterCount(requestOptions.body);
-  const notify = (status, acceptedCharacters = inputCharacters, message = "") => {
+  const notify = (status, message = "") => {
     window.dispatchEvent(
       new CustomEvent("veriq-ai-stream", {
-        detail: { id: streamId, path, status, inputCharacters: acceptedCharacters, message },
+        detail: { id: streamId, path, status, message },
       }),
     );
   };
@@ -174,7 +154,7 @@ export async function testingStreamRequest(path, options = {}) {
     error.status = response.status;
     error.code = body?.error?.code || body?.detail?.code;
     error.details = body?.error?.details || body?.detail?.details;
-    notify("failed", inputCharacters, error.message);
+    notify("failed", error.message);
     throw error;
   }
   notify("streaming");
@@ -190,9 +170,6 @@ export async function testingStreamRequest(path, options = {}) {
       .join("\n");
     if (!data) return;
     const event = JSON.parse(data);
-    if (event.type === "accepted") {
-      notify("streaming", Number(event.characters) || inputCharacters);
-    }
     if (event.type === "delta") {
       const delta = event.delta || "";
       onDelta?.(delta);
@@ -224,7 +201,7 @@ export async function testingStreamRequest(path, options = {}) {
       try {
         consume(rawEvent);
       } catch (error) {
-        notify("failed", inputCharacters, error.message);
+        notify("failed", error.message);
         throw error;
       }
     }
@@ -233,7 +210,7 @@ export async function testingStreamRequest(path, options = {}) {
         try {
           consume(buffer);
         } catch (error) {
-          notify("failed", inputCharacters, error.message);
+          notify("failed", error.message);
           throw error;
         }
       }
@@ -241,7 +218,7 @@ export async function testingStreamRequest(path, options = {}) {
     }
   }
   if (!result) {
-    notify("failed", inputCharacters, "Luồng AI kết thúc nhưng không trả về kết quả");
+    notify("failed", "Luồng AI kết thúc nhưng không trả về kết quả");
     throw new Error("Luồng AI kết thúc nhưng không trả về kết quả");
   }
   notify("complete");

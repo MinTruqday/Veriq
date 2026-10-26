@@ -55,8 +55,17 @@ async def revoke_trace_link(
 
 
 @router.get("/du-an/{project_id}/truy-vet")
-async def traceability(project_id: str, user: CurrentUser = Depends(get_current_user)):
-    return envelope(await TraceabilityService.matrix(project_id, user))
+async def traceability(
+    project_id: str,
+    requirement_version_id: str | None = Query(default=None, max_length=200),
+    requirement_version_ids: list[str] = Query(default=[], max_length=200),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(
+        await TraceabilityService.matrix(
+            project_id, user, requirement_version_id, requirement_version_ids
+        )
+    )
 
 
 @router.get("/du-an/{project_id}/do-phu")

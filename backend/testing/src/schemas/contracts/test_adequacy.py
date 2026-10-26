@@ -56,6 +56,7 @@ class CoverageExecutionFeedbackInput(BaseModel):
         "NEEDS_TEST_ADDITION",
     ]
     test_result_id: str | None = Field(default=None, max_length=200)
+    test_result_revision: int | None = Field(default=None, ge=1)
     defect_id: str | None = Field(default=None, max_length=200)
     note: str = Field(default="", max_length=2000)
 

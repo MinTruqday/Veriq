@@ -110,7 +110,7 @@ export default function ScenariosPanel({
       <DataTable
         onSelect={async (item) => {
           if (item.status !== "draft" || !can("testscenario.update")) return;
-          const answer = await ask({
+          await ask({
             title: "Đổi tên kịch bản kiểm thử",
             description: item.scenario_key,
             confirmLabel: "Lưu tên",
@@ -123,17 +123,19 @@ export default function ScenariosPanel({
                 autoFocus: true,
               },
             ],
+            onConfirm: async (answer) => {
+              if (answer.title === item.title) return;
+              try {
+                await testingApi.updateScenario(item._id, {
+                  expected_revision: item.revision,
+                  title: answer.title,
+                });
+                await reload();
+              } catch (reason) {
+                throw new Error(messageOf(reason));
+              }
+            },
           });
-          if (!answer || answer.title === item.title) return;
-          try {
-            await testingApi.updateScenario(item._id, {
-              expected_revision: item.revision,
-              title: answer.title,
-            });
-            await reload();
-          } catch (reason) {
-            onError(messageOf(reason));
-          }
         }}
         items={scenarios}
         empty="Chưa có kịch bản"
@@ -171,7 +173,7 @@ export default function ScenariosPanel({
                     type="button"
                     onClick={async (event) => {
                       event.stopPropagation();
-                      const answer = await ask({
+                      await ask({
                         title: "Lưu trữ kịch bản",
                         description: item.title,
                         confirmLabel: "Lưu trữ",
@@ -185,17 +187,18 @@ export default function ScenariosPanel({
                             autoFocus: true,
                           },
                         ],
+                        onConfirm: async (answer) => {
+                          try {
+                            await testingApi.archiveScenario(item._id, {
+                              expected_revision: item.revision,
+                              reason: answer.reason,
+                            });
+                            await reload();
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
                       });
-                      if (!answer) return;
-                      try {
-                        await testingApi.archiveScenario(item._id, {
-                          expected_revision: item.revision,
-                          reason: answer.reason,
-                        });
-                        await reload();
-                      } catch (reason) {
-                        onError(messageOf(reason));
-                      }
                     }}
                   >
                     Lưu trữ

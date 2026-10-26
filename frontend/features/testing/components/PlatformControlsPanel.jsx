@@ -12,6 +12,14 @@ import {
 } from "./WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import {
+  Modal,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalTitle,
+} from "@/shared/components/ui/Modal";
+import StructuredValueEditor, { StructuredValueView } from "./StructuredValueEditor";
 
 const configGroups = [
   ["authPolicy", "Chính sách xác thực", "auth-policy"],
@@ -29,13 +37,13 @@ const configGroups = [
   ["importExport", "Nhập và xuất dữ liệu", "nhap-xuat"],
 ];
 
-function configValue(value) {
+function editableConfigValue(value) {
   const clean = Object.fromEntries(
     Object.entries(value || {}).filter(
       ([key]) => !["created_at", "updated_at", "updated_by"].includes(key),
     ),
   );
-  return JSON.stringify(clean, null, 2);
+  return clean;
 }
 
 export default function PlatformControlsPanel() {
@@ -44,6 +52,9 @@ export default function PlatformControlsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [usagePage, setUsagePage] = useState(1);
+  const [configEditor, setConfigEditor] = useState(null);
+  const [configEditorError, setConfigEditorError] = useState("");
+  const [savingConfig, setSavingConfig] = useState(false);
   const usagePageSize = 10;
 
   const load = useCallback(async () => {
@@ -151,29 +162,14 @@ export default function PlatformControlsPanel() {
     }
   };
 
-  const editConfig = async (key, label) => {
-    const answer = await ask({
-      title: `Cập nhật ${label}`,
-      confirmLabel: "Lưu cấu hình",
-      fields: [
-        {
-          name: "values",
-          label: "Cấu hình JSON",
-          required: true,
-          multiline: true,
-          initialValue: configValue(data[key]),
-        },
-        { name: "reason", label: "Lý do", required: true, multiline: true },
-      ],
-    });
-    if (!answer) return;
-    let values;
-    try {
-      values = JSON.parse(answer.values);
-    } catch {
-      setError("Cấu hình JSON không hợp lệ");
-      return;
-    }
+  const editConfig = (key, label) => {
+    setConfigEditorError("");
+    setConfigEditor({ key, label, values: editableConfigValue(data[key]), reason: "" });
+  };
+
+  const saveConfig = async (event) => {
+    event.preventDefault();
+    if (!configEditor || savingConfig) return;
     const updaters = {
       authPolicy: platformApi.updateAuthPolicy,
       rateLimits: platformApi.updateRateLimits,
@@ -184,12 +180,26 @@ export default function PlatformControlsPanel() {
       integrations: platformApi.updateIntegrations,
       storage: platformApi.updateStorage,
     };
-    const group = configGroups.find(([itemKey]) => itemKey === key)?.[2];
-    await run(() =>
-      updaters[key]
-        ? updaters[key](values, answer.reason)
-        : platformApi.updatePlatformConfigGroup(group, values, answer.reason),
-    );
+    const group = configGroups.find(([itemKey]) => itemKey === configEditor.key)?.[2];
+    setSavingConfig(true);
+    setConfigEditorError("");
+    try {
+      if (updaters[configEditor.key]) {
+        await updaters[configEditor.key](configEditor.values, configEditor.reason.trim());
+      } else {
+        await platformApi.updatePlatformConfigGroup(
+          group,
+          configEditor.values,
+          configEditor.reason.trim(),
+        );
+      }
+      setConfigEditor(null);
+      await load();
+    } catch (reason) {
+      setConfigEditorError(messageOf(reason));
+    } finally {
+      setSavingConfig(false);
+    }
   };
 
   if (loading && !data)
@@ -198,14 +208,34 @@ export default function PlatformControlsPanel() {
         <LoadingState />
       </Panel>
     );
+  if (error && !data)
+    return (
+      <Panel title="Cấu hình nền tảng">
+        <div className="space-y-3 p-5">
+          <ErrorState message={error} />
+          <button className="secondary-button" type="button" onClick={() => void load()}>
+            Thử tải lại
+          </button>
+        </div>
+      </Panel>
+    );
 
   return (
     <div className="space-y-5">
       {error && <ErrorState message={error} />}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {error && (
+        <button className="secondary-button" type="button" onClick={() => void load()}>
+          Thử tải lại dữ liệu
+        </button>
+      )}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <Metric label="Tác vụ đang chờ" value={data?.queue?.jobs_by_status?.queued || 0} />
         <Metric label="Tác vụ đang chạy" value={data?.queue?.jobs_by_status?.running || 0} />
         <Metric label="Tác vụ lỗi" value={data?.queue?.jobs_by_status?.failed || 0} />
+        <Metric
+          label="Cần đối soát"
+          value={data?.queue?.jobs_by_status?.reconciliation_required || 0}
+        />
         <Metric label="Dung lượng đã ghi nhận" value={data?.usage?.total_bytes || 0} />
       </div>
 
@@ -548,18 +578,14 @@ export default function PlatformControlsPanel() {
             _id: key,
             key,
             label,
-            value: configValue(data?.[key]),
+            value: editableConfigValue(data?.[key]),
           }))}
           columns={[
             { key: "label", label: "Nhóm" },
             {
               key: "value",
               label: "Giá trị",
-              render: (item) => (
-                <pre className="max-w-xl whitespace-pre-wrap break-all text-[11px]">
-                  {item.value}
-                </pre>
-              ),
+              render: (item) => <StructuredValueView value={item.value} />,
             },
             {
               key: "edit",
@@ -832,6 +858,55 @@ export default function PlatformControlsPanel() {
           Bản xuất chỉ gồm thời điểm hành động người thực hiện đối tượng và lý do
         </p>
       </Panel>
+      {configEditor && (
+        <Modal
+          isOpen
+          ariaLabel={`Cập nhật ${configEditor.label}`}
+          className="max-h-[94dvh] max-w-4xl overflow-y-auto"
+          onClose={() => {
+            if (!savingConfig) setConfigEditor(null);
+          }}
+        >
+          <form onSubmit={saveConfig}>
+            <ModalHeader>
+              <ModalTitle>Cập nhật {configEditor.label}</ModalTitle>
+            </ModalHeader>
+            <ModalContent className="space-y-4">
+              {configEditorError && <ErrorState message={configEditorError} />}
+              <StructuredValueEditor
+                label="Giá trị cấu hình"
+                value={configEditor.values}
+                fixedType="object"
+                onChange={(values) => setConfigEditor((current) => ({ ...current, values }))}
+              />
+              <label className="field-label block">
+                Lý do thay đổi
+                <textarea
+                  className="apple-input mt-2 min-h-20 w-full"
+                  required
+                  value={configEditor.reason}
+                  onChange={(event) =>
+                    setConfigEditor((current) => ({ ...current, reason: event.target.value }))
+                  }
+                />
+              </label>
+            </ModalContent>
+            <ModalFooter>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={savingConfig}
+                onClick={() => setConfigEditor(null)}
+              >
+                Hủy
+              </button>
+              <button className="apple-button" type="submit" disabled={savingConfig}>
+                {savingConfig ? "Đang lưu" : "Lưu cấu hình"}
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      )}
       {dialog}
     </div>
   );

@@ -9,6 +9,7 @@ import {
   passkeyLoginFinishAPI,
 } from "@/features/authentication/services/session.service";
 import { b64urlToBuffer, bufferToB64url } from "../lib/webauthn";
+import { authReturnPath, isSafeAuthReturnPath } from "../lib/authReturnPath.mjs";
 export function useLogin() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -18,12 +19,7 @@ export function useLogin() {
   const finish = async (token) => {
     await loginState(token);
     const requested = searchParams.get("next") || "";
-    const destination =
-      requested.startsWith("/") &&
-      !requested.startsWith("//") &&
-      !requested.startsWith("/dang-nhap")
-        ? requested
-        : "/du-an";
+    const destination = authReturnPath(requested);
     sessionStorage.removeItem("veriq_return_path");
     router.replace(destination);
   };
@@ -87,11 +83,8 @@ export function useLogin() {
     setError("");
     try {
       const requested = searchParams.get("next") || "";
-      if (
-        requested.startsWith("/") &&
-        !requested.startsWith("//") &&
-        !requested.startsWith("/dang-nhap")
-      ) {
+      sessionStorage.removeItem("veriq_return_path");
+      if (isSafeAuthReturnPath(requested)) {
         sessionStorage.setItem("veriq_return_path", requested);
       }
       window.location.assign(await getGoogleLoginUrlAPI());

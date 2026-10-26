@@ -1,9 +1,10 @@
 from fastapi import HTTPException
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now
-from src.repositories.requirement_analysis import requirement_analysis_repository
-from src.modules.quality.services.change_analysis import semantic_changes
+from src.core.configuration import settings
 from src.modules.design.services.linters import requirement_duplicate_score
+from src.modules.quality.services.change_analysis import semantic_changes
+from src.repositories.requirement_analysis import requirement_analysis_repository
 
 
 
@@ -48,25 +49,60 @@ async def find_requirement_duplicates(project_id, payload, user):
     selected_ids = list(dict.fromkeys(payload.requirement_ids))
     if selected_ids:
         query["_id"] = {"$in": selected_ids}
-    requirements = await requirement_analysis_repository.list_requirements(query)
+    requirement_limit = settings.REQUIREMENT_DUPLICATE_SCAN_MAX_ITEMS
+    requirements = await requirement_analysis_repository.list_requirements(
+        query, requirement_limit + 1
+    )
+    if len(requirements) > requirement_limit:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "REQUIREMENT_DUPLICATE_SCAN_LIMIT_EXCEEDED"},
+        )
     if selected_ids and {item["_id"] for item in requirements} != set(selected_ids):
         raise HTTPException(
             status_code=404,
             detail={"code": 'REQUIREMENT_SELECTION_NOT_FOUND'},
         )
+    current_version_ids = [item.get("current_version_id") for item in requirements]
+    if any(not version_id for version_id in current_version_ids):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "REQUIREMENT_DUPLICATE_SCAN_VERSION_SNAPSHOT_INCOMPLETE"},
+        )
     versions = await requirement_analysis_repository.list_versions(
         {
             "project_id": project_id,
-            "_id": {"$in": [item["current_version_id"] for item in requirements]},
+            "_id": {"$in": current_version_ids},
         },
-        500,
+        requirement_limit + 1,
     )
+    if {item["_id"] for item in versions} != set(current_version_ids):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "REQUIREMENT_DUPLICATE_SCAN_VERSION_SNAPSHOT_INCOMPLETE"},
+        )
+    version_by_id = {item["_id"]: item for item in versions}
+    if any(
+        version_by_id[requirement["current_version_id"]].get("requirement_id")
+        != requirement["_id"]
+        for requirement in requirements
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "REQUIREMENT_DUPLICATE_SCAN_VERSION_SNAPSHOT_INCOMPLETE"},
+        )
     criteria = await requirement_analysis_repository.list_acceptance_criteria(
         {
             "project_id": project_id,
             "requirement_version_id": {"$in": [item["_id"] for item in versions]},
-        }
+        },
+        settings.REQUIREMENT_DUPLICATE_SCAN_MAX_CRITERIA + 1,
     )
+    if len(criteria) > settings.REQUIREMENT_DUPLICATE_SCAN_MAX_CRITERIA:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "REQUIREMENT_DUPLICATE_SCAN_CRITERIA_LIMIT_EXCEEDED"},
+        )
     criteria_by_version = {}
     for criterion in criteria:
         criteria_by_version.setdefault(criterion["requirement_version_id"], []).append(criterion)
@@ -120,9 +156,14 @@ async def find_requirement_duplicates(project_id, payload, user):
         "candidates": candidates,
         "algorithm": {
             "name": "requirement_duplicate",
-            "lexical_weight": 0.65,
-            "term_weight": 0.25,
-            "business_rule_weight": 0.1,
+            "version": "1",
+            "score_signals": [
+                "content_similarity",
+                "business_rule_similarity",
+                "acceptance_criteria_similarity",
+            ],
+            "aggregation": "arithmetic_mean_of_available_signals",
+            "explanation_only_signals": ["actor_similarity"],
         },
         "status": 'COMPLETED',
         "created_by": user.id,

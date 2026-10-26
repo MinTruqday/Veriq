@@ -12,8 +12,11 @@ import {
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import PlatformControlsPanel from "./PlatformControlsPanel";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
 
 export default function PlatformOperationsPanel() {
+  const { user, isLoading: authLoading } = useAuth();
+  const isPlatformAdmin = user?.system_role === "ADMIN";
   const { ask, dialog } = useActionDialog();
   const [projects, setProjects] = useState([]);
   const [policy, setPolicy] = useState(null);
@@ -25,6 +28,7 @@ export default function PlatformOperationsPanel() {
   const [projectMemberships, setProjectMemberships] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [projectPage, setProjectPage] = useState(1);
   const [jobPage, setJobPage] = useState(1);
   const [modelPage, setModelPage] = useState(1);
@@ -33,6 +37,7 @@ export default function PlatformOperationsPanel() {
   const modelPageSize = 10;
 
   const load = useCallback(async () => {
+    if (!isPlatformAdmin) return;
     setLoading(true);
     setError("");
     try {
@@ -51,22 +56,45 @@ export default function PlatformOperationsPanel() {
       setModels(modelValues);
       setHealth(healthValue);
       setJobs(jobValues);
+      setHasLoaded(true);
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isPlatformAdmin]);
 
   useEffect(() => {
+    if (authLoading || !isPlatformAdmin) return;
     void load();
-  }, [load]);
+  }, [authLoading, isPlatformAdmin, load]);
+
+  if (authLoading || !isPlatformAdmin) return null;
 
   if (loading) return <LoadingState />;
+  if (error && !hasLoaded) {
+    return (
+      <Panel title="Cấu hình nền tảng">
+        <div className="space-y-3 p-5">
+          <ErrorState message={error} />
+          <button className="secondary-button" type="button" onClick={() => void load()}>
+            Thử tải lại
+          </button>
+        </div>
+      </Panel>
+    );
+  }
 
   return (
     <div className="space-y-5">
-      {error && <ErrorState message={error} />}
+      {error && (
+        <div className="space-y-3">
+          <ErrorState message={error} />
+          <button className="secondary-button" type="button" onClick={() => void load()}>
+            Thử tải lại
+          </button>
+        </div>
+      )}
       <Panel title="Trạng thái dịch vụ nền tảng">
         <DataTable
           items={health?.services || []}
@@ -412,6 +440,21 @@ export default function PlatformOperationsPanel() {
               key: "status",
               label: "Trạng thái",
               render: (item) => <StatusPill value={String(item.status).toUpperCase()} />,
+            },
+            {
+              key: "error_code",
+              label: "Chi tiết xử lý",
+              render: (item) =>
+                item.error_code ? (
+                  <span className="block max-w-72 whitespace-normal text-xs text-ink-muted">
+                    {valueLabel(item.error_code)}
+                    {item.status === "reconciliation_required"
+                      ? ". Cần đối soát trước khi thử lại; hệ thống không tự chạy lại job này."
+                      : ""}
+                  </span>
+                ) : (
+                  "—"
+                ),
             },
             {
               key: "updated_at",

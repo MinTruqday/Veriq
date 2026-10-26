@@ -30,14 +30,54 @@ class KnowledgeDocumentSummaryRequest(BaseModel):
         min_length=1, max_length=15000, description="Document content to summarize for knowledge retrieval"
     )
 
+
+class VerifiedSourceFactCitation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_fact_id: str | None = Field(default=None, min_length=1, max_length=200)
+    fact_kind: str = Field(min_length=1, max_length=100)
+    quote: str = Field(min_length=1, max_length=4000)
+    source_start: int | None = Field(default=None, ge=0)
+    source_end: int | None = Field(default=None, ge=0)
+    source_offset_basis: Literal[
+        "CANONICAL_TEXT", "RETRIEVED_CHUNK", "SOURCE_CITATION", "UNKNOWN"
+    ] = "UNKNOWN"
+
+    @model_validator(mode="after")
+    def validate_source_span(self):
+        if (self.source_start is None) != (self.source_end is None):
+            raise ValueError("verified_fact_span_requires_both_offsets")
+        if self.source_start is not None and self.source_end <= self.source_start:
+            raise ValueError("verified_fact_span_invalid")
+        return self
+
+
 class TestingEvidence(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     artifact_type: str = Field(min_length=1, max_length=100)
     artifact_id: str | None = Field(default=None, min_length=1, max_length=200)
     artifact_version_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_version: str | None = Field(default=None, max_length=100)
     authority: str | None = Field(default=None, min_length=1, max_length=100)
+    relationship_paths: list[list[str]] = Field(default_factory=list, max_length=100)
+    verified_facts: list[VerifiedSourceFactCitation] = Field(default_factory=list, max_length=500)
     text: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("relationship_paths")
+    @classmethod
+    def validate_relationship_paths(cls, values):
+        if any(
+            not path
+            or len(path) > 50
+            or any(
+                not isinstance(scope_id, str) or not scope_id or len(scope_id) > 200
+                for scope_id in path
+            )
+            for path in values
+        ):
+            raise ValueError("testing_evidence_relationship_path_invalid")
+        return values
 
     @model_validator(mode="after")
     def require_identifier(self):

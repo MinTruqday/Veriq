@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import DataTable from "../../../components/DataTable";
 import FilePicker from "../../../components/FilePicker";
 import { ErrorState } from "../../../components/WorkspacePrimitives";
@@ -7,7 +8,14 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { REQUIREMENT_IMPORT_FORMATS } from "./requirements.model";
 import RequirementTemplatePanel from "./RequirementTemplatePanel";
 
-function DocumentAccessControl({ access, members, onChange, privateLabel, name }) {
+function DocumentAccessControl({
+  access,
+  members,
+  onChange,
+  privateLabel,
+  name,
+  disabled = false,
+}) {
   const isPublic = access.visibility !== "private";
   const updateSharedWith = (userId, checked) =>
     onChange({
@@ -24,6 +32,7 @@ function DocumentAccessControl({ access, members, onChange, privateLabel, name }
         <label className="flex items-center gap-2 text-sm">
           <input
             checked={!isPublic}
+            disabled={disabled}
             name={`${name}-visibility`}
             type="radio"
             onChange={() => onChange({ ...access, visibility: "private", shared_with: [] })}
@@ -33,6 +42,7 @@ function DocumentAccessControl({ access, members, onChange, privateLabel, name }
         <label className="flex items-center gap-2 text-sm">
           <input
             checked={isPublic}
+            disabled={disabled}
             name={`${name}-visibility`}
             type="radio"
             onChange={() =>
@@ -52,6 +62,7 @@ function DocumentAccessControl({ access, members, onChange, privateLabel, name }
           <label className="flex items-center gap-2 text-sm">
             <input
               checked={access.visibility === "project"}
+              disabled={disabled}
               name={`${name}-scope`}
               type="radio"
               onChange={() => onChange({ ...access, visibility: "project", shared_with: [] })}
@@ -61,6 +72,7 @@ function DocumentAccessControl({ access, members, onChange, privateLabel, name }
           <label className="flex items-center gap-2 text-sm">
             <input
               checked={access.visibility === "shared"}
+              disabled={disabled}
               name={`${name}-scope`}
               type="radio"
               onChange={() =>
@@ -76,6 +88,7 @@ function DocumentAccessControl({ access, members, onChange, privateLabel, name }
                 <label className="flex items-center gap-2 text-sm" key={member.user_id}>
                   <input
                     type="checkbox"
+                    disabled={disabled}
                     checked={access.shared_with.includes(member.user_id)}
                     onChange={(event) => updateSharedWith(member.user_id, event.target.checked)}
                   />
@@ -90,7 +103,7 @@ function DocumentAccessControl({ access, members, onChange, privateLabel, name }
         <input
           type="checkbox"
           checked={Boolean(access.ai_enabled)}
-          disabled={Boolean(access.ai_enabled)}
+          disabled={disabled || Boolean(access.ai_enabled)}
           onChange={(event) => onChange({ ...access, ai_enabled: event.target.checked })}
         />
         {access.ai_enabled
@@ -98,6 +111,59 @@ function DocumentAccessControl({ access, members, onChange, privateLabel, name }
           : "Cho phép AI truy cập tài liệu này"}
       </label>
     </fieldset>
+  );
+}
+
+function SourceVersionParent({ access, documents, format, project, onChange, disabled = false }) {
+  const userId = project.current_membership?.user_id;
+  const parents = documents.filter(
+    (item) => item.format === format && item.status !== "ARCHIVED" && item.created_by === userId,
+  );
+  return (
+    <label className="field-label block px-5">
+      Phiên bản nguồn trước (không bắt buộc)
+      <select
+        className="apple-input mt-2"
+        value={access.supersedes_document_id || ""}
+        disabled={disabled}
+        onChange={(event) => {
+          const parent = parents.find((item) => item._id === event.target.value);
+          onChange(
+            parent
+              ? {
+                  ...access,
+                  supersedes_document_id: parent._id,
+                  visibility: parent.visibility || "private",
+                  shared_with: parent.shared_with || [],
+                  ai_enabled: Boolean(parent.ai_enabled),
+                  source_type: parent.source_type || "REFERENCE",
+                  ocr_language: parent.ocr_language || "",
+                }
+              : { ...access, supersedes_document_id: null },
+          );
+        }}
+      >
+        <option value="">Tài liệu mới, không nối phiên bản trước</option>
+        {parents.map((item) => (
+          <option value={item._id} key={item._id}>
+            {item.filename} · phiên bản {item.source_version || item.source_version_sequence}
+          </option>
+        ))}
+      </select>
+      <span className="mt-1 block text-xs font-normal text-ink-muted">
+        Chỉ tài liệu cùng dự án do bạn sở hữu; phiên bản cũ được giữ nguyên.
+      </span>
+      {access.supersedes_document_id && (
+        <button
+          className="secondary-button mt-2"
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange({ ...access, supersedes_document_id: null })}
+        >
+          Hủy liên kết phiên bản nguồn
+        </button>
+      )}
+    </label>
   );
 }
 
@@ -111,6 +177,7 @@ export default function RequirementImportModal({
   setUploadAccess,
   members,
   onUploadPreview,
+  sourceProcessing = false,
   importValue,
   setImportValue,
   onImportPreview,
@@ -132,10 +199,24 @@ export default function RequirementImportModal({
   sourceDocument,
   onRetrySource,
   project,
+  isPlatformAdmin,
   sourceDocuments,
   onTemplatePreview,
   onError,
 }) {
+  const [confirmingImport, setConfirmingImport] = useState(false);
+  const confirmingImportRef = useRef(false);
+  const confirmImport = async () => {
+    if (confirmingImportRef.current) return;
+    confirmingImportRef.current = true;
+    setConfirmingImport(true);
+    try {
+      await onConfirm();
+    } finally {
+      confirmingImportRef.current = false;
+      setConfirmingImport(false);
+    }
+  };
   const updateImportValue = (patch) => setImportValue((value) => ({ ...value, ...patch }));
   const blockingMatches = (index) =>
     importComparison?.comparisons
@@ -153,7 +234,7 @@ export default function RequirementImportModal({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={confirmingImport ? () => {} : onClose}
       ariaLabel="Nhập tài liệu"
       className="max-w-5xl max-h-[90dvh] overflow-y-auto"
     >
@@ -162,7 +243,9 @@ export default function RequirementImportModal({
       </ModalHeader>
       {error && <ErrorState message={error} />}
       <RequirementTemplatePanel
+        key={project._id}
         project={project}
+        isPlatformAdmin={isPlatformAdmin}
         members={members}
         sourceDocuments={sourceDocuments}
         onPreview={onTemplatePreview}
@@ -173,14 +256,32 @@ export default function RequirementImportModal({
         <FilePicker
           label="Tệp SRS, BRD hoặc bảng yêu cầu"
           accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.json,.yaml,.yml"
+          disabled={sourceProcessing}
           fileName={upload?.name || ""}
           onChange={(event) => setUpload(event.target.files?.[0] || null)}
         />
+        {upload && (
+          <SourceVersionParent
+            access={uploadAccess}
+            documents={sourceDocuments}
+            format={(() => {
+              const extension = upload.name.split(".").pop().toLowerCase();
+              return ["json", "yaml", "yml"].includes(extension) &&
+                uploadAccess.source_type === "API_SPEC"
+                ? uploadAccess.api_format || "openapi"
+                : extension;
+            })()}
+            project={project}
+            onChange={setUploadAccess}
+            disabled={sourceProcessing}
+          />
+        )}
         <label className="field-label">
           Loại tài liệu nguồn
           <select
             className="apple-input mt-2"
             value={uploadAccess.source_type || "REFERENCE"}
+            disabled={sourceProcessing || Boolean(uploadAccess.supersedes_document_id)}
             onChange={(event) =>
               setUploadAccess((value) => ({ ...value, source_type: event.target.value }))
             }
@@ -191,12 +292,32 @@ export default function RequirementImportModal({
             <option value="REFERENCE">Tài liệu khác</option>
           </select>
         </label>
+        {upload && upload.name.split(".").pop().toLowerCase() === "pdf" && (
+          <label className="field-label">
+            Ngôn ngữ OCR (không bắt buộc)
+            <input
+              className="apple-input mt-2"
+              autoComplete="off"
+              maxLength={32}
+              placeholder="Để trống để dùng cấu hình mặc định của hệ thống"
+              value={uploadAccess.ocr_language || ""}
+              disabled={sourceProcessing || Boolean(uploadAccess.supersedes_document_id)}
+              onChange={(event) =>
+                setUploadAccess((value) => ({ ...value, ocr_language: event.target.value }))
+              }
+            />
+            <span className="mt-1 block text-xs font-normal text-ink-muted">
+              Có thể nhập mã ngôn ngữ được bộ OCR hỗ trợ, ví dụ iso:vi. Tệp gốc không bị thay đổi.
+            </span>
+          </label>
+        )}
         {uploadAccess.source_type === "API_SPEC" && (
           <label className="field-label">
             Định dạng định nghĩa API
             <select
               className="apple-input mt-2"
               value={uploadAccess.api_format || "openapi"}
+              disabled={sourceProcessing || Boolean(uploadAccess.supersedes_document_id)}
               onChange={(event) =>
                 setUploadAccess((value) => ({ ...value, api_format: event.target.value }))
               }
@@ -211,6 +332,7 @@ export default function RequirementImportModal({
           members={members}
           name="upload-document"
           privateLabel="Riêng tư chỉ người tải lên"
+          disabled={sourceProcessing || Boolean(uploadAccess.supersedes_document_id)}
           onChange={setUploadAccess}
         />
         <div className="action-dialog-footer flex justify-end">
@@ -218,10 +340,12 @@ export default function RequirementImportModal({
             className="secondary-button"
             type="submit"
             disabled={
-              !upload || (uploadAccess.visibility === "shared" && !uploadAccess.shared_with.length)
+              sourceProcessing ||
+              !upload ||
+              (uploadAccess.visibility === "shared" && !uploadAccess.shared_with.length)
             }
           >
-            Tải lên và xem trước
+            {sourceProcessing ? "Đang xử lý tài liệu…" : "Tải lên và xem trước"}
           </button>
         </div>
       </form>
@@ -234,11 +358,19 @@ export default function RequirementImportModal({
             onChange={(event) => updateImportValue({ filename: event.target.value })}
           />
         </label>
+        <SourceVersionParent
+          access={importValue}
+          documents={sourceDocuments}
+          format={importValue.format}
+          project={project}
+          onChange={setImportValue}
+        />
         <DocumentAccessControl
           access={importValue}
           members={members}
           name="manual-document"
           privateLabel="Riêng tư chỉ người tạo"
+          disabled={Boolean(importValue.supersedes_document_id)}
           onChange={updateImportValue}
         />
         <label className="field-label">
@@ -246,6 +378,7 @@ export default function RequirementImportModal({
           <select
             className="apple-input mt-2"
             value={importValue.source_type || "REFERENCE"}
+            disabled={Boolean(importValue.supersedes_document_id)}
             onChange={(event) => updateImportValue({ source_type: event.target.value })}
           >
             <option value="SRS">Đặc tả yêu cầu</option>
@@ -259,6 +392,7 @@ export default function RequirementImportModal({
           <select
             className="apple-input mt-2"
             value={importValue.format}
+            disabled={Boolean(importValue.supersedes_document_id)}
             onChange={(event) => {
               const nextFormat = event.target.value;
               const nextIsApi = nextFormat === "openapi" || nextFormat === "postman";
@@ -341,16 +475,36 @@ export default function RequirementImportModal({
             </div>
             {preview.status === "PREVIEW_READY" && (
               <div className="flex flex-wrap gap-2">
-                <button className="secondary-button" type="button" onClick={onSaveReview}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={confirmingImport}
+                  onClick={onSaveReview}
+                >
                   Lưu chỉnh sửa
                 </button>
-                <button className="secondary-button" type="button" onClick={onSplit}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={confirmingImport}
+                  onClick={onSplit}
+                >
                   Tách mục đã chọn
                 </button>
-                <button className="secondary-button" type="button" onClick={onMerge}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={confirmingImport}
+                  onClick={onMerge}
+                >
                   Gộp các mục đã chọn
                 </button>
-                <button className="danger-button" type="button" onClick={onReject}>
+                <button
+                  className="danger-button"
+                  type="button"
+                  disabled={confirmingImport}
+                  onClick={onReject}
+                >
                   Từ chối mục đã chọn
                 </button>
               </div>
@@ -371,7 +525,7 @@ export default function RequirementImportModal({
                     aria-label={`Chọn ứng viên ${item.candidateIndex + 1}`}
                     type="checkbox"
                     checked={selectedIndexes.includes(item.candidateIndex)}
-                    disabled={preview.status !== "PREVIEW_READY"}
+                    disabled={preview.status !== "PREVIEW_READY" || confirmingImport}
                     onChange={(event) =>
                       setSelectedIndexes((values) =>
                         event.target.checked
@@ -390,7 +544,7 @@ export default function RequirementImportModal({
                     aria-label={`Mã ứng viên ${item.candidateIndex + 1}`}
                     className="apple-input w-full min-w-0 xl:min-w-40"
                     value={item.requirement_key || ""}
-                    disabled={preview.status !== "PREVIEW_READY"}
+                    disabled={preview.status !== "PREVIEW_READY" || confirmingImport}
                     onChange={(event) =>
                       onEditCandidate(item.candidateIndex, {
                         requirement_key: event.target.value || null,
@@ -407,7 +561,7 @@ export default function RequirementImportModal({
                     aria-label={`Tên ứng viên ${item.candidateIndex + 1}`}
                     className="apple-input w-full min-w-0 xl:min-w-64"
                     value={item.title}
-                    disabled={preview.status !== "PREVIEW_READY"}
+                    disabled={preview.status !== "PREVIEW_READY" || confirmingImport}
                     onChange={(event) =>
                       onEditCandidate(item.candidateIndex, { title: event.target.value })
                     }
@@ -422,7 +576,7 @@ export default function RequirementImportModal({
                     <DocumentEditor
                       label={`nội dung ứng viên ${item.candidateIndex + 1}`}
                       minHeight="min-h-40"
-                      readOnly={preview.status !== "PREVIEW_READY"}
+                      readOnly={preview.status !== "PREVIEW_READY" || confirmingImport}
                       value={item.content_doc}
                       onChange={(content_doc) =>
                         onEditCandidate(item.candidateIndex, { content_doc })
@@ -508,6 +662,7 @@ export default function RequirementImportModal({
                                   <button
                                     className="secondary-button"
                                     type="button"
+                                    disabled={confirmingImport}
                                     onClick={() =>
                                       onResolveMatch(item.candidateIndex, match, "link_source")
                                     }
@@ -518,6 +673,7 @@ export default function RequirementImportModal({
                                 <button
                                   className="secondary-button"
                                   type="button"
+                                  disabled={confirmingImport}
                                   onClick={() =>
                                     onResolveMatch(item.candidateIndex, match, "create_version")
                                   }
@@ -535,6 +691,7 @@ export default function RequirementImportModal({
                             checked={separateIndexes.includes(item.candidateIndex)}
                             disabled={
                               preview.status !== "PREVIEW_READY" ||
+                              confirmingImport ||
                               keyCollision(item.candidateIndex)
                             }
                             onChange={(event) =>
@@ -554,6 +711,7 @@ export default function RequirementImportModal({
                             Lý do giữ thành yêu cầu riêng
                             <input
                               className="apple-input mt-1"
+                              disabled={confirmingImport}
                               value={separateReasons[item.candidateIndex] || ""}
                               onChange={(event) =>
                                 setSeparateReasons((current) => ({
@@ -603,6 +761,7 @@ export default function RequirementImportModal({
                 className="apple-button"
                 type="button"
                 disabled={
+                  confirmingImport ||
                   selectedIndexes.length === 0 ||
                   !importComparison ||
                   selectedIndexes.some(
@@ -613,9 +772,11 @@ export default function RequirementImportModal({
                   )
                 }
                 aria-busy={!importComparison}
-                onClick={onConfirm}
+                onClick={confirmImport}
               >
-                Xác nhận nhập {selectedIndexes.length} yêu cầu
+                {confirmingImport
+                  ? "Đang xác nhận nhập…"
+                  : `Xác nhận nhập ${selectedIndexes.length} yêu cầu`}
               </button>
               {selectedIndexes.some((index) => keyCollision(index)) && (
                 <p className="text-sm text-danger">Cần sửa mã yêu cầu hoặc bỏ chọn mục trùng mã</p>
@@ -639,9 +800,21 @@ export default function RequirementImportModal({
           <p>Nguồn {sourceDocument.filename}</p>
           <p>Trạng thái {valueLabel(sourceDocument.status)}</p>
           <p className="break-all">SHA256 {sourceDocument.content_hash}</p>
-          {sourceDocument.status === "PARSE_FAILED" && (
-            <button className="secondary-button mt-3" type="button" onClick={onRetrySource}>
-              Thử phân tích lại từ tệp gốc
+          {(["UPLOADED", "PARSE_FAILED"].includes(sourceDocument.status) ||
+            (sourceDocument.status === "READY" && !preview)) && (
+            <button
+              className="secondary-button mt-3"
+              type="button"
+              disabled={sourceProcessing}
+              onClick={onRetrySource}
+            >
+              {sourceProcessing
+                ? "Đang phân tích tài liệu…"
+                : sourceDocument.status === "READY"
+                  ? "Tạo bản xem trước lại"
+                  : sourceDocument.status === "UPLOADED"
+                    ? "Tiếp tục xử lý tệp đã tải lên"
+                    : "Thử phân tích lại từ tệp gốc"}
             </button>
           )}
         </div>

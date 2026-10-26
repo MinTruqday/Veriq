@@ -3,6 +3,22 @@ from fastapi.responses import StreamingResponse
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
+from src.modules.execution.services.test_completion import (
+    add_completion_lesson,
+    add_completion_residual_risk,
+    cluster_completion_lessons,
+    create_completion_report,
+    decide_residual_risk,
+    generate_completion_narrative,
+    get_completion_for_user,
+    latest_completion_ai_result,
+    list_completion_reports,
+    manage_completion_handover,
+    sign_off_completion,
+    transition_completion,
+    update_completion_report,
+)
+from src.modules.execution.services.test_completion_export import export_completion_report
 from src.schemas.test_completion import (
     CompletionSignOff,
     CompletionTransition,
@@ -14,21 +30,6 @@ from src.schemas.test_completion import (
     TestCompletionPatch,
     TestwareHandoverManage,
 )
-from src.modules.execution.services.test_completion import (
-    add_completion_lesson,
-    add_completion_residual_risk,
-    cluster_completion_lessons,
-    create_completion_report,
-    decide_residual_risk,
-    generate_completion_narrative,
-    get_completion_for_user,
-    list_completion_reports,
-    manage_completion_handover,
-    sign_off_completion,
-    transition_completion,
-    update_completion_report,
-)
-from src.modules.execution.services.test_completion_export import export_completion_report
 
 router = APIRouter(prefix="/kiem-thu", tags=["Hoàn tất kiểm thử"])
 
@@ -106,16 +107,29 @@ async def cluster_test_completion_lessons(
     return envelope(await cluster_completion_lessons(report_id, payload, user))
 
 
+@router.get("/hoan-tat-kiem-thu/{report_id}/ai/ban-nhap")
+async def get_test_completion_narrative(
+    report_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(
+        await latest_completion_ai_result(report_id, "COMPLETION_REPORT_NARRATIVE", user)
+    )
+
+
+@router.get("/hoan-tat-kiem-thu/{report_id}/ai/gom-bai-hoc")
+async def get_test_completion_lesson_clusters(
+    report_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(
+        await latest_completion_ai_result(report_id, "LESSONS_LEARNED_CLUSTERING", user)
+    )
+
+
 @router.post("/hoan-tat-kiem-thu/{report_id}/gui-ra-soat")
 async def submit_test_completion_review(
     report_id: str, payload: CompletionTransition, user: CurrentUser = Depends(get_current_user)
 ):
-    value = await transition_completion(
-        report_id,
-        payload,
-        user,
-        "submit_review",
-    )
+    value = await transition_completion(report_id, payload, user, "submit_review")
     return envelope(value, revision=value["revision"])
 
 
@@ -123,12 +137,7 @@ async def submit_test_completion_review(
 async def request_test_completion_changes(
     report_id: str, payload: CompletionTransition, user: CurrentUser = Depends(get_current_user)
 ):
-    value = await transition_completion(
-        report_id,
-        payload,
-        user,
-        "request_changes",
-    )
+    value = await transition_completion(report_id, payload, user, "request_changes")
     return envelope(value, revision=value["revision"])
 
 
@@ -155,12 +164,7 @@ async def decide_test_completion_residual_risk(
 async def approve_test_completion_report(
     report_id: str, payload: CompletionTransition, user: CurrentUser = Depends(get_current_user)
 ):
-    value = await transition_completion(
-        report_id,
-        payload,
-        user,
-        "approve",
-    )
+    value = await transition_completion(report_id, payload, user, "approve")
     return envelope(value, revision=value["revision"])
 
 
@@ -168,12 +172,7 @@ async def approve_test_completion_report(
 async def close_test_completion_report(
     report_id: str, payload: CompletionTransition, user: CurrentUser = Depends(get_current_user)
 ):
-    value = await transition_completion(
-        report_id,
-        payload,
-        user,
-        "close",
-    )
+    value = await transition_completion(report_id, payload, user, "close")
     return envelope(value, revision=value["revision"])
 
 

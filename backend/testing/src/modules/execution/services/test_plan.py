@@ -3,6 +3,7 @@ import json
 import re
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from src.core.common import (
     audit,
@@ -14,56 +15,37 @@ from src.core.common import (
     require_action_policy,
     sort_spec,
 )
-from src.schemas.contracts.planning import TestPlanCreate
+from src.core.database import database
+from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
 from src.repositories.test_plan import test_plan_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
 
 
+LEGACY_PLAN_SNAPSHOT_FIELDS = (
+    'project_id', 'name', 'objective', 'scope_in', 'scope_out',
+    'requirement_version_ids', 'test_suite_ids', 'test_case_version_ids',
+    'environment', 'environment_id', 'entry_criteria', 'exit_criteria', 'risks',
+    'test_types', 'members', 'release', 'release_id', 'build', 'build_id',
+    'strategy_version_id', 'strategy_id', 'strategy_version',
+    'strategy_snapshot_hash', 'test_level', 'test_approach', 'assumptions',
+    'constraints', 'dependencies', 'stakeholders', 'responsibility_matrix',
+    'estimation', 'schedule', 'milestones', 'deliverables', 'tools',
+    'suspension_criteria', 'resumption_criteria', 'monitoring_metrics',
+    'quality_targets', 'risk_register', 'communication_plan',
+)
+LEGACY_DEVICE_PLAN_SNAPSHOT_FIELDS = (
+    *LEGACY_PLAN_SNAPSHOT_FIELDS,
+    'device_matrix_id', 'device_profile_keys', 'device_matrix_snapshot',
+)
+PLAN_SNAPSHOT_FIELDS = (
+    *LEGACY_PLAN_SNAPSHOT_FIELDS,
+    'test_suite_snapshots',
+    'device_matrix_id', 'device_profile_keys', 'device_matrix_snapshot',
+)
+
+
 def plan_snapshot(plan):
-    return {
-        field: plan.get(field)
-        for field in ['project_id',
- 'name',
- 'objective',
- 'scope_in',
- 'scope_out',
- 'requirement_version_ids',
- 'test_suite_ids',
- 'test_case_version_ids',
- 'environment',
- 'environment_id',
- 'entry_criteria',
- 'exit_criteria',
- 'risks',
- 'test_types',
- 'members',
- 'release',
- 'release_id',
- 'build',
- 'build_id',
- 'strategy_version_id',
- 'strategy_id',
- 'strategy_version',
- 'strategy_snapshot_hash',
- 'test_level',
- 'test_approach',
- 'assumptions',
- 'constraints',
- 'dependencies',
- 'stakeholders',
- 'responsibility_matrix',
- 'estimation',
- 'schedule',
- 'milestones',
- 'deliverables',
- 'tools',
- 'suspension_criteria',
- 'resumption_criteria',
- 'monitoring_metrics',
- 'quality_targets',
- 'risk_register',
- 'communication_plan']
-    }
+    return {field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS}
 
 
 def plan_snapshot_hash(plan):
@@ -71,6 +53,73 @@ def plan_snapshot_hash(plan):
         plan_snapshot(plan), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _legacy_plan_snapshot_hash(snapshot):
+    canonical_snapshot = {
+        field: snapshot.get(field) for field in LEGACY_PLAN_SNAPSHOT_FIELDS
+    }
+    canonical = json.dumps(
+        canonical_snapshot,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def verified_approved_plan_snapshot(plan, project_id):
+    """Return the immutable approved scope only when its stored digest matches."""
+    if not plan or plan.get("status") != "APPROVED":
+        raise HTTPException(status_code=409, detail={"code": "TEST_PLAN_NOT_APPROVED"})
+    snapshot = plan.get("approved_snapshot")
+    if not isinstance(snapshot, dict):
+        snapshot = {
+            field: plan.get(field) for field in LEGACY_PLAN_SNAPSHOT_FIELDS
+        }
+    approved_digest = plan.get("approved_snapshot_hash") or plan.get("baseline_hash")
+    device_snapshot_fields = (
+        "device_matrix_id",
+        "device_profile_keys",
+        "device_matrix_snapshot",
+    )
+    has_any_device_snapshot = any(field in snapshot for field in device_snapshot_fields)
+    has_device_snapshot = all(field in snapshot for field in device_snapshot_fields)
+    if 'test_suite_snapshots' in snapshot:
+        digest = plan_snapshot_hash(snapshot)
+    elif has_device_snapshot:
+        legacy_snapshot = {
+            field: snapshot.get(field)
+            for field in LEGACY_DEVICE_PLAN_SNAPSHOT_FIELDS
+        }
+        canonical = json.dumps(
+            legacy_snapshot,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(',', ':'),
+            default=str,
+        )
+        digest = hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+    else:
+        digest = _legacy_plan_snapshot_hash(snapshot)
+    if (
+        snapshot.get("project_id") != project_id
+        or not approved_digest
+        or digest != approved_digest
+        or (plan.get("approved_snapshot_hash") and plan["approved_snapshot_hash"] != digest)
+        or (plan.get("baseline_hash") and plan["baseline_hash"] != digest)
+        or (has_any_device_snapshot and not has_device_snapshot)
+        or (
+            not has_device_snapshot
+            and plan.get("device_matrix_id")
+        )
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_PLAN_APPROVED_SNAPSHOT_INVALID"},
+        )
+    return snapshot, digest
 
 
 def plan_completeness(plan, settings=None):
@@ -125,10 +174,44 @@ async def validate_plan_scope(project_id, requirement_version_ids, test_suite_id
     suites = await test_plan_repository.list_suites(project_id, suite_ids) if suite_ids else []
     if len(suites) != len(suite_ids):
         raise HTTPException(status_code=422, detail={"code": "INVALID_TEST_SET_SCOPE"})
-    versions = list(dict.fromkeys([*(test_case_version_ids or []), *[version_id for suite in suites for version_id in suite.get("test_case_version_ids", [])]]))
+    suites_by_id = {str(suite.get('_id')): suite for suite in suites}
+    if any(
+        not isinstance(suites_by_id[suite_id].get('revision'), int)
+        or isinstance(suites_by_id[suite_id].get('revision'), bool)
+        for suite_id in suite_ids
+    ):
+        raise HTTPException(status_code=409, detail={"code": "TEST_SET_REVISION_INVALID"})
+    try:
+        suite_snapshots = [
+            TestPlanSuiteSnapshot(
+                test_suite_id=suite_id,
+                revision=suites_by_id[suite_id].get('revision'),
+                test_case_version_ids=list(
+                    dict.fromkeys(suites_by_id[suite_id].get('test_case_version_ids', []))
+                ),
+            ).model_dump()
+            for suite_id in suite_ids
+        ]
+    except ValidationError as error:
+        raise HTTPException(
+            status_code=409, detail={"code": "TEST_SET_REVISION_INVALID"}
+        ) from error
+    versions = list(dict.fromkeys([
+        *(test_case_version_ids or []),
+        *[
+            version_id
+            for suite in suite_snapshots
+            for version_id in suite['test_case_version_ids']
+        ],
+    ]))
     if versions and await test_plan_repository.count_test_case_versions(project_id, versions) != len(versions):
         raise HTTPException(status_code=422, detail={"code": "INVALID_TEST_CASE_SCOPE"})
-    return {"requirement_version_ids": requirement_ids, "test_suite_ids": suite_ids, "test_case_version_ids": versions}
+    return {
+        "requirement_version_ids": requirement_ids,
+        "test_suite_ids": suite_ids,
+        "test_case_version_ids": versions,
+        "test_suite_snapshots": suite_snapshots,
+    }
 
 
 async def resolve_strategy_binding(project_id, strategy_version_id, auto_bind=False):
@@ -212,11 +295,20 @@ async def create_test_plan_record(payload, project_id, user):
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    await test_plan_repository.insert_plan(plan)
-    await audit(user.id, "test_plan_created", "TestPlan", plan["_id"], payload.project_id)
     from src.clients.ai_automation import emit_test_plan_changed
 
-    await emit_test_plan_changed(plan, user)
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            await test_plan_repository.insert_plan(plan, session=session)
+            await audit(
+                user.id,
+                "test_plan_created",
+                "TestPlan",
+                plan["_id"],
+                payload.project_id,
+                session=session,
+            )
+            await emit_test_plan_changed(plan, user, session=session)
     return plan
 
 
@@ -319,17 +411,27 @@ async def update_test_plan_record(plan_id, payload, user):
         elif field in plan:
             validation_data[field] = plan[field]
     TestPlanCreate.model_validate(validation_data)
-    updated = await optimistic_patch(
-        "test_plans",
-        plan_id,
-        plan["project_id"],
-        payload.expected_revision,
-        changes,
-    )
-    await audit(user.id, "test_plan_updated", "TestPlan", plan_id, plan["project_id"])
     from src.clients.ai_automation import emit_test_plan_changed
 
-    await emit_test_plan_changed(updated, user)
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await optimistic_patch(
+                "test_plans",
+                plan_id,
+                plan["project_id"],
+                payload.expected_revision,
+                changes,
+                session=session,
+            )
+            await audit(
+                user.id,
+                "test_plan_updated",
+                "TestPlan",
+                plan_id,
+                plan["project_id"],
+                session=session,
+            )
+            await emit_test_plan_changed(updated, user, session=session)
     return updated
 
 
@@ -338,14 +440,27 @@ async def submit_test_plan_record(plan_id, payload, user):
     plan = await get_test_plan_record(plan_id, user, "testplan.submit_review")
     if plan.get("status") != 'DRAFT':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
-    updated = await optimistic_patch(
-        "test_plans",
-        plan_id,
-        plan["project_id"],
-        payload.expected_revision,
-        {"status": 'IN_REVIEW', "review_note": payload.review_note},
-    )
-    await audit(user.id, "test_plan_submitted", "TestPlan", plan_id, plan["project_id"])
+    from src.clients.ai_automation import emit_test_plan_changed
+
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await optimistic_patch(
+                "test_plans",
+                plan_id,
+                plan["project_id"],
+                payload.expected_revision,
+                {"status": 'IN_REVIEW', "review_note": payload.review_note},
+                session=session,
+            )
+            await audit(
+                user.id,
+                "test_plan_submitted",
+                "TestPlan",
+                plan_id,
+                plan["project_id"],
+                session=session,
+            )
+            await emit_test_plan_changed(updated, user, session=session)
     return updated
 
 
@@ -354,6 +469,21 @@ async def approve_test_plan_record(plan_id, payload, user):
     plan = await get_test_plan_record(plan_id, user, "testplan.approve")
     if plan.get("status") not in ['DRAFT', 'IN_REVIEW']:
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
+    scope = await validate_plan_scope(
+        plan['project_id'],
+        plan.get('requirement_version_ids', []),
+        plan.get('test_suite_ids', []),
+        plan.get('test_case_version_ids', []),
+    )
+    if (
+        'test_suite_snapshots' in plan
+        and plan['test_suite_snapshots'] != scope['test_suite_snapshots']
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_SET_CHANGED_REVIEW_REQUIRED"},
+        )
+    plan = {**plan, **scope}
     settings = await test_plan_repository.find_project_settings(plan["project_id"])
     completeness = plan_completeness(plan, settings)
     scope_findings = [
@@ -375,45 +505,69 @@ async def approve_test_plan_record(plan_id, payload, user):
         "note": payload.review_note,
         "at": timestamp,
     }
-    updated = await optimistic_patch(
-        "test_plans",
-        plan_id,
-        plan["project_id"],
-        payload.expected_revision,
-        {
-            "status": 'APPROVED',
-            "approved_by": user.id,
-            "approved_at": timestamp,
-            "approved_snapshot": plan_snapshot(plan),
-            "approved_snapshot_hash": approved_hash,
-            "baseline_hash": approved_hash,
-            "approval_history": [*plan.get("approval_history", []), approval],
-            "review_note": payload.review_note,
-        },
-    )
-    await audit(user.id, "test_plan_approved", "TestPlan", plan_id, plan["project_id"])
     from src.clients.ai_automation import emit_test_plan_approved
 
-    await emit_test_plan_approved(updated, user)
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await optimistic_patch(
+                "test_plans",
+                plan_id,
+                plan["project_id"],
+                payload.expected_revision,
+                {
+                    **scope,
+                    "status": 'APPROVED',
+                    "approved_by": user.id,
+                    "approved_at": timestamp,
+                    "approved_snapshot": plan_snapshot(plan),
+                    "approved_snapshot_hash": approved_hash,
+                    "baseline_hash": approved_hash,
+                    "approval_history": [*plan.get("approval_history", []), approval],
+                    "review_note": payload.review_note,
+                },
+                session=session,
+            )
+            await audit(
+                user.id,
+                "test_plan_approved",
+                "TestPlan",
+                plan_id,
+                plan["project_id"],
+                session=session,
+            )
+            await emit_test_plan_approved(updated, user, session=session)
     return updated
 
 
 async def archive_test_plan_record(plan_id, payload, user):
     
     plan = await get_test_plan_record(plan_id, user, "testplan.archive")
-    updated = await optimistic_patch(
-        "test_plans",
-        plan_id,
-        plan["project_id"],
-        payload.expected_revision,
-        {
-            "status": 'ARCHIVED',
-            "archive_reason": payload.reason,
-            "archived_by": user.id,
-            "archived_at": now(),
-        },
-    )
-    await audit(user.id, "test_plan_archived", "TestPlan", plan_id, plan["project_id"])
+    from src.clients.ai_automation import emit_test_plan_changed
+
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await optimistic_patch(
+                "test_plans",
+                plan_id,
+                plan["project_id"],
+                payload.expected_revision,
+                {
+                    "status": 'ARCHIVED',
+                    "archive_reason": payload.reason,
+                    "archived_by": user.id,
+                    "archived_at": now(),
+                },
+                session=session,
+            )
+            await audit(
+                user.id,
+                "test_plan_archived",
+                "TestPlan",
+                plan_id,
+                plan["project_id"],
+                session=session,
+            )
+            await emit_test_plan_changed(updated, user, session=session)
     return updated
 
 
@@ -446,13 +600,19 @@ async def clone_test_plan_record(plan_id, user):
     ):
         cloned.pop(field, None)
     cloned["approval_history"] = []
-    await test_plan_repository.insert_plan(cloned)
-    await audit(
-        user.id,
-        "test_plan_cloned",
-        "TestPlan",
-        cloned["_id"],
-        plan["project_id"],
-        {"source_plan_id": plan_id},
-    )
+    from src.clients.ai_automation import emit_test_plan_changed
+
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            await test_plan_repository.insert_plan(cloned, session=session)
+            await audit(
+                user.id,
+                "test_plan_cloned",
+                "TestPlan",
+                cloned["_id"],
+                plan["project_id"],
+                {"source_plan_id": plan_id},
+                session=session,
+            )
+            await emit_test_plan_changed(cloned, user, session=session)
     return cloned

@@ -76,11 +76,41 @@ async def setup_indexes():
                 IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("user_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("status", ASCENDING), ("updated_at", DESCENDING)]),
+                IndexModel(
+                    [
+                        ("project_id", ASCENDING),
+                        ("requester_user_id", ASCENDING),
+                        ("constraints.parent_automation_run_id", ASCENDING),
+                        ("created_at", ASCENDING),
+                    ],
+                    name="automation_workflow_children",
+                ),
             ],
             "automation_runs": [
                 IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("requester_user_id", ASCENDING), ("updated_at", DESCENDING)]),
                 IndexModel([("status", ASCENDING), ("updated_at", DESCENDING)]),
+                IndexModel(
+                    [("status", ASCENDING), ("worker_lease_expires_at", ASCENDING)],
+                    name="automation_worker_lease_recovery_scan",
+                ),
+                IndexModel(
+                    [
+                        ("status", ASCENDING),
+                        ("error_code", ASCENDING),
+                        ("updated_at", ASCENDING),
+                        ("_id", ASCENDING),
+                    ],
+                    name="automation_queue_recovery_scan",
+                ),
+                IndexModel(
+                    [
+                        ("trigger", ASCENDING),
+                        ("source_event_id", ASCENDING),
+                        ("status", ASCENDING),
+                    ],
+                    name="automation_document_revocation_scan",
+                ),
                 IndexModel(
                     [("project_id", ASCENDING), ("source_event_id", ASCENDING)],
                     unique=True,
@@ -101,7 +131,32 @@ async def setup_indexes():
                 ),
             ],
             "automation_checkpoints": [
-                IndexModel([("automation_run_id", ASCENDING), ("created_at", ASCENDING)]),
+                IndexModel(
+                    [
+                        ("automation_run_id", ASCENDING),
+                        ("checkpoint_sequence", ASCENDING),
+                        ("created_at", ASCENDING),
+                    ],
+                    name="automation_run_checkpoint_sequence",
+                ),
+            ],
+            "mcp_tool_call_audits": [
+                IndexModel(
+                    [("project_id", ASCENDING), ("completed_at", DESCENDING)],
+                    name="project_mcp_call_audit_history",
+                ),
+                IndexModel(
+                    [("automation_run_id", ASCENDING), ("completed_at", ASCENDING)],
+                    name="automation_run_mcp_call_audit_history",
+                ),
+                IndexModel(
+                    [
+                        ("automation_run_id", ASCENDING),
+                        ("task_id", ASCENDING),
+                        ("completed_at", ASCENDING),
+                    ],
+                    name="automation_task_mcp_call_audit_history",
+                ),
             ],
             "automation_source_facts": [
                 IndexModel([("automation_run_id", ASCENDING), ("created_at", ASCENDING)]),
@@ -110,6 +165,57 @@ async def setup_indexes():
             "automation_derivation_receipts": [
                 IndexModel([("automation_run_id", ASCENDING)], unique=True),
                 IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)]),
+            ],
+            "automation_project_blueprints": [
+                IndexModel(
+                    [("project_id", ASCENDING), ("version", ASCENDING)],
+                    unique=True,
+                    name="one_project_testability_blueprint_version",
+                ),
+                IndexModel(
+                    [("project_id", ASCENDING), ("source_digest", ASCENDING)],
+                    unique=True,
+                    name="one_project_blueprint_per_compilation",
+                ),
+                IndexModel(
+                    [("project_id", ASCENDING), ("automation_run_ids", ASCENDING)],
+                    unique=True,
+                    name="one_project_blueprint_per_automation_run",
+                ),
+            ],
+            "testability_benchmark_datasets": [
+                IndexModel(
+                    [("created_at", DESCENDING), ("_id", ASCENDING)],
+                    name="benchmark_dataset_history",
+                ),
+            ],
+            "testability_benchmark_runs": [
+                IndexModel(
+                    [("dataset_id", ASCENDING), ("created_at", DESCENDING), ("_id", ASCENDING)],
+                    name="benchmark_run_history",
+                ),
+            ],
+            "document_ingestion_page_checkpoints": [
+                IndexModel(
+                    [
+                        ("document_id", ASCENDING),
+                        ("project_id", ASCENDING),
+                        ("owner_id", ASCENDING),
+                        ("source_hash", ASCENDING),
+                        ("parser_name", ASCENDING),
+                        ("parser_version", ASCENDING),
+                        ("parser_contract_version", ASCENDING),
+                        ("ocr_language", ASCENDING),
+                        ("page_no", ASCENDING),
+                    ],
+                    unique=True,
+                    name="one_checkpoint_per_document_source_parser_language_page",
+                ),
+                IndexModel(
+                    [("expires_at", ASCENDING)],
+                    expireAfterSeconds=0,
+                    name="document_ingestion_page_checkpoint_ttl",
+                ),
             ],
             "long_term_memory": [
                 IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)]),
@@ -127,6 +233,12 @@ async def setup_indexes():
         }
         for collection_name, indexes in index_sets.items():
             await db[collection_name].create_indexes(indexes)
+        checkpoint_collection = db["document_ingestion_page_checkpoints"]
+        existing_checkpoint_indexes = await checkpoint_collection.index_information()
+        if "one_checkpoint_per_document_source_parser_page" in existing_checkpoint_indexes:
+            await checkpoint_collection.drop_index(
+                "one_checkpoint_per_document_source_parser_page"
+            )
         logger.info("MongoDB index creation completed")
     except Exception:
         logger.exception("MongoDB index creation failed")

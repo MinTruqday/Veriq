@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 
@@ -95,11 +96,23 @@ class AutomationScriptService:
     @staticmethod
     async def generate(project_id, payload, user):
         await get_project(project_id, user, 'ai.generate_automation_script')
-        existing = await execution_asset_repository.find_script_by_idempotency_key(
-            project_id, payload.idempotency_key
+        if (
+            not getattr(user, "_ai_automation_run_id", "")
+            or getattr(user, "_ai_automation_trigger", "") != "TEST_CASE_APPROVED"
+        ):
+            raise HTTPException(
+                403,
+                detail={"code": "VERIFIED_TEST_CASE_APPROVAL_EVENT_REQUIRED"},
+            )
+        expected_event_key = (
+            f"test-case-version:{payload.test_case_version_id}:"
+            f"{payload.source_event_revision}:TEST_CASE_APPROVED"
         )
-        if existing:
-            return existing, {}
+        if payload.source_event_key != expected_event_key:
+            raise HTTPException(
+                409,
+                detail={"code": "TEST_CASE_APPROVAL_EVENT_MISMATCH"},
+            )
         version = await execution_asset_repository.find_test_case_version(
             project_id, payload.test_case_version_id
         )
@@ -108,6 +121,39 @@ class AutomationScriptService:
                 status_code=422,
                 detail={"code": 'INVALID_TEST_CASE_VERSION'},
             )
+        if (
+            version.get("status") != "ACTIVE"
+            or version.get("revision") != payload.source_event_revision
+            or version.get("automation_status") != "automated"
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_CASE_AUTOMATION_SOURCE_CHANGED"},
+            )
+        project = await get_project(project_id, user, "project.read")
+        if (
+            project.get("automation_framework") != payload.framework
+            or project.get("automation_language") != payload.language
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "PROJECT_AUTOMATION_RUNTIME_CHANGED"},
+            )
+        expected_idempotency_key = "approved-test-case-script:" + hashlib.sha256(
+            f"{payload.source_event_key}:{version['_id']}:{payload.framework}:{payload.language}".encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        if payload.idempotency_key != expected_idempotency_key:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AUTOMATION_SCRIPT_IDEMPOTENCY_KEY_MISMATCH"},
+            )
+        existing = await execution_asset_repository.find_script_by_idempotency_key(
+            project_id, payload.idempotency_key
+        )
+        if existing:
+            return existing, {}
         evidence = [
             {
                 "artifact_type": 'test_case_version',
@@ -145,6 +191,8 @@ class AutomationScriptService:
             "_id": new_id('AUTOSCR'),
             "project_id": project_id,
             "test_case_version_id": version["_id"],
+            "source_event_key": payload.source_event_key,
+            "source_event_revision": payload.source_event_revision,
             "test_case_id": version.get("test_case_id"),
             "test_case_key": version.get("test_case_key"),
             "framework": payload.framework,

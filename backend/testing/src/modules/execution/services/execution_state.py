@@ -1,6 +1,7 @@
 import hashlib
 from bson.json_util import dumps as bson_dumps
 from fastapi import HTTPException
+from src.core.auth import roles_for_membership
 from src.repositories.execution_state import execution_state_repository
 
 def defect_transitions():
@@ -12,7 +13,7 @@ def execution_transitions():
 
 
 def frozen_run_scope(run):
-    return {
+    scope = {
         field: run.get(field)
         for field in (
             'test_plan_id',
@@ -29,6 +30,10 @@ def frozen_run_scope(run):
             'device_matrix_snapshot',
         )
     }
+    for field in ('test_plan_snapshot_hash', 'requirement_version_ids'):
+        if field in run:
+            scope[field] = run[field]
+    return scope
 
 
 def frozen_run_scope_hash(scope):
@@ -61,7 +66,7 @@ async def select_resume_execution(run, user):
     assignments = run.get("test_case_assignments") or {}
     eligible_ids = version_ids
     
-    if membership and membership.get("project_role") == 'TESTER':
+    if "TESTER" in roles_for_membership(membership):
         explicit_ids = [
             version_id for version_id in version_ids if assignments.get(version_id) == user.id
         ]

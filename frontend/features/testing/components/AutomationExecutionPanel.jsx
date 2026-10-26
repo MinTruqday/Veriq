@@ -1,9 +1,13 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
+import {
+  operationForRetry,
+  shouldReloadAfterAmbiguousMutation,
+} from "../lib/executionRecovery.logic.mjs";
 
 export default function AutomationExecutionPanel({ project }) {
   const { ask, dialog } = useActionDialog();
@@ -15,13 +19,25 @@ export default function AutomationExecutionPanel({ project }) {
   const [selected, setSelected] = useState(null);
   const [evidence, setEvidence] = useState(null);
   const [error, setError] = useState("");
+  const createOperation = useRef(null);
+  const loadGeneration = useRef(0);
+  const selectionGeneration = useRef(0);
   const permissions = useMemo(
     () => project.current_permissions || [],
     [project.current_permissions],
   );
   const can = (permission) => permissions.includes(permission);
   const load = useCallback(async () => {
-    if (!permissions.includes("automation.read")) return;
+    const requestGeneration = ++loadGeneration.current;
+    if (!permissions.includes("automation.read")) {
+      setItems([]);
+      setArtifacts([]);
+      setScripts([]);
+      setEnvironments([]);
+      setSelected(null);
+      setEvidence(null);
+      return;
+    }
     try {
       const [executionValues, artifactValues, scriptValues, environmentValues] = await Promise.all([
         testingApi.listAutomationExecutions(project._id),
@@ -35,6 +51,7 @@ export default function AutomationExecutionPanel({ project }) {
           ? testingApi.listEnvironments(project._id)
           : Promise.resolve([]),
       ]);
+      if (requestGeneration !== loadGeneration.current) return;
       setItems(executionValues);
       setArtifacts(
         artifactValues.filter((item) => item.format === "postman" && item.status === "CONFIRMED"),
@@ -50,15 +67,27 @@ export default function AutomationExecutionPanel({ project }) {
       );
       setError("");
     } catch (reason) {
+      if (requestGeneration !== loadGeneration.current) return;
       setError(messageOf(reason));
     }
-  }, [permissions, project._id]);
+  }, [permissions, project._id, loadGeneration]);
   useEffect(() => {
+    selectionGeneration.current += 1;
+    setItems([]);
+    setArtifacts([]);
+    setScripts([]);
+    setEnvironments([]);
+    setSelected(null);
+    setEvidence(null);
     void load();
-  }, [load]);
+    return () => {
+      loadGeneration.current += 1;
+      selectionGeneration.current += 1;
+    };
+  }, [load, loadGeneration, selectionGeneration]);
   const create = async () => {
     const choices = runner === "newman" ? artifacts : scripts;
-    const answer = await ask({
+    await ask({
       title: runner === "newman" ? "Tạo lần chạy Postman" : "Tạo lần chạy Playwright",
       description:
         runner === "newman"
@@ -87,32 +116,54 @@ export default function AutomationExecutionPanel({ project }) {
           initialValue: "",
         },
       ],
+      onConfirm: async (answer) => {
+        const payload = {
+          name: answer.name.trim(),
+          runner,
+          ...(runner === "newman"
+            ? { postman_artifact_id: answer.artifactId }
+            : { automation_script_id: answer.artifactId }),
+          environment_id: answer.environmentId || null,
+        };
+        const signature = JSON.stringify(payload);
+        createOperation.current = operationForRetry(
+          createOperation.current,
+          signature,
+          crypto.randomUUID(),
+        );
+        try {
+          const value = await testingApi.createAutomationExecution(project._id, {
+            ...payload,
+            idempotency_key: createOperation.current.idempotencyKey,
+          });
+          createOperation.current = null;
+          setSelected(value);
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
     });
-    if (!answer) return;
-    try {
-      const value = await testingApi.createAutomationExecution(project._id, {
-        name: answer.name.trim(),
-        runner,
-        ...(runner === "newman"
-          ? { postman_artifact_id: answer.artifactId }
-          : { automation_script_id: answer.artifactId }),
-        environment_id: answer.environmentId || null,
-        idempotency_key: crypto.randomUUID(),
-      });
-      setSelected(value);
-      await load();
-    } catch (reason) {
-      setError(messageOf(reason));
-    }
   };
   const open = async (item) => {
+    const requestGeneration = ++selectionGeneration.current;
     try {
       const value = await testingApi.getAutomationExecution(item._id);
+      if (requestGeneration !== selectionGeneration.current || value.project_id !== project._id)
+        return;
       setSelected(value);
-      setEvidence(await testingApi.getAutomationEvidence(item._id));
+      const evidenceValue = await testingApi.getAutomationEvidence(item._id);
+      if (requestGeneration === selectionGeneration.current) setEvidence(evidenceValue);
     } catch (reason) {
-      setError(messageOf(reason));
+      if (requestGeneration === selectionGeneration.current) setError(messageOf(reason));
     }
+  };
+  const reconcileAfterFailure = async (executionId, reason) => {
+    if (!shouldReloadAfterAmbiguousMutation(reason)) return;
+    try {
+      setSelected(await testingApi.getAutomationExecution(executionId));
+      await load();
+    } catch {}
   };
   const start = async () => {
     try {
@@ -123,6 +174,7 @@ export default function AutomationExecutionPanel({ project }) {
       setSelected(value);
       await load();
     } catch (reason) {
+      await reconcileAfterFailure(selected._id, reason);
       setError(messageOf(reason));
     }
   };
@@ -135,6 +187,7 @@ export default function AutomationExecutionPanel({ project }) {
       setSelected(value);
       await load();
     } catch (reason) {
+      await reconcileAfterFailure(selected._id, reason);
       setError(messageOf(reason));
     }
   };

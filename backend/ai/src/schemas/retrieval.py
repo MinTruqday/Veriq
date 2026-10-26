@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class ArtifactFilters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -55,11 +56,18 @@ class RetrievedDocument(BaseModel):
 
 
 class CitationItem(BaseModel):
+    point_id: str = ""
     chunk_id: str = ""
     document_id: str = ""
     title: str = ""
     chunk_index: Any = ""
     label: str = ""
+    artifact_type: str = ""
+    artifact_id: str = ""
+    artifact_version_id: str = ""
+    source_version: str | int | float | None = None
+    page_numbers: List[int] = Field(default_factory=list)
+    source_spans: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class RetrieveResponse(BaseModel):
