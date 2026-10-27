@@ -5,10 +5,13 @@ from unittest.mock import AsyncMock, patch
 
 import jwt
 from fastapi import HTTPException
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
 from src.core import auth, common
 from src.core.human_decisions import require_automation_publication_authority
 from src.clients import ai_automation
+from src.modules.execution.api import execution_context as execution_context_api
 from src.modules.requirements.services.requirement_lifecycle import baseline_requirement
 from src.modules.design.services.test_case_lifecycle import approve_test_case_draft_record
 from src.modules.quality.services.proposal_application import apply_maintenance_proposal
@@ -84,7 +87,7 @@ class HumanReviewBoundaryTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ):
                 user = await auth.get_current_user(
-                    SimpleNamespace(state=SimpleNamespace()),
+                    SimpleNamespace(state=SimpleNamespace(), method="GET"),
                     token,
                     "run-1",
                     secret,
@@ -155,6 +158,118 @@ class HumanReviewBoundaryTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as error:
                 await common.get_project("project", SimpleNamespace(id="tester"), "testcase.update")
         self.assertEqual(error.exception.status_code, 403)
+
+    async def test_release_close_is_qa_only_even_with_permission_override(self):
+        repository = common.common_repository
+        project = {"_id": "project-1", "administrative_status": "ACTIVE"}
+        cases = [
+            ("BA", ["BA"], "USER", False),
+            ("TESTER", ["TESTER"], "USER", False),
+            ("DEVELOPER", ["DEVELOPER"], "USER", False),
+            ("VIEWER", ["VIEWER"], "USER", False),
+            ("BA", ["BA", "QA"], "USER", True),
+            ("QA", ["QA"], "USER", True),
+            ("BA", ["BA"], "ADMIN", False),
+        ]
+        with (
+            patch.object(repository, "find_project", new=AsyncMock(return_value=project)),
+            patch.object(repository, "find_active_grant", new=AsyncMock(return_value=None)),
+            patch.object(common, "project_permissions", return_value={"release.close"}),
+            patch.object(common, "permissions_for_membership", return_value={"release.close"}),
+            patch.object(common, "audit", new=AsyncMock()),
+        ):
+            for primary_role, roles, system_role, allowed in cases:
+                membership = {
+                    "project_role": primary_role,
+                    "project_roles": roles,
+                    "status": "ACTIVE",
+                }
+                with (
+                    self.subTest(roles=roles, system_role=system_role),
+                    patch.object(
+                        repository,
+                        "find_membership",
+                        new=AsyncMock(return_value=membership),
+                    ),
+                ):
+                    user = SimpleNamespace(
+                        id="user-1",
+                        system_role=SimpleNamespace(value=system_role),
+                    )
+                    if allowed:
+                        result = await common.get_project(
+                            "project-1", user, "release.close"
+                        )
+                        self.assertEqual(result, project)
+                    else:
+                        with self.assertRaises(HTTPException) as error:
+                            await common.get_project("project-1", user, "release.close")
+                        self.assertEqual(error.exception.status_code, 403)
+                        self.assertEqual(
+                            error.exception.detail["code"],
+                            "PROJECT_PERMISSION_DENIED",
+                        )
+
+    async def test_release_close_http_rejects_non_qa_project_roles(self):
+        app = FastAPI()
+        app.include_router(execution_context_api.router)
+        user_holder = {"user": None}
+
+        async def current_user():
+            return user_holder["user"]
+
+        app.dependency_overrides[auth.get_current_user] = current_user
+        repository = common.common_repository
+        project = {"_id": "project-1", "administrative_status": "ACTIVE"}
+        cases = [
+            ("BA", ["BA"], "USER"),
+            ("TESTER", ["TESTER"], "USER"),
+            ("DEVELOPER", ["DEVELOPER"], "USER"),
+            ("VIEWER", ["VIEWER"], "USER"),
+            ("BA", ["BA"], "ADMIN"),
+        ]
+        with (
+            patch.object(
+                repository,
+                "find_entity_identity",
+                new=AsyncMock(return_value={"project_id": "project-1"}),
+            ),
+            patch.object(repository, "find_project", new=AsyncMock(return_value=project)),
+            patch.object(repository, "find_active_grant", new=AsyncMock(return_value=None)),
+            patch.object(common, "project_permissions", return_value={"release.close"}),
+            patch.object(common, "permissions_for_membership", return_value={"release.close"}),
+            patch.object(common, "audit", new=AsyncMock()),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                for primary_role, roles, system_role in cases:
+                    membership = {
+                        "project_role": primary_role,
+                        "project_roles": roles,
+                        "status": "ACTIVE",
+                    }
+                    user_holder["user"] = SimpleNamespace(
+                        id="user-1",
+                        system_role=SimpleNamespace(value=system_role),
+                    )
+                    with (
+                        self.subTest(roles=roles, system_role=system_role),
+                        patch.object(
+                            repository,
+                            "find_membership",
+                            new=AsyncMock(return_value=membership),
+                        ),
+                    ):
+                        response = await client.post(
+                            "/kiem-thu/ban-phat-hanh/release-1/dong",
+                            json={"expected_revision": 1, "reason": "Kiểm tra quyền"},
+                        )
+                    self.assertEqual(response.status_code, 403)
+                    self.assertEqual(
+                        response.json()["detail"]["code"],
+                        "PROJECT_PERMISSION_DENIED",
+                    )
 
     async def test_approval_is_a_new_event_not_the_previous_draft_event(self):
         user = SimpleNamespace(id="qa", _ai_automation_run_id=None)

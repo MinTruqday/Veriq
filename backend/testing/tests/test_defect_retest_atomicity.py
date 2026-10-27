@@ -1,6 +1,6 @@
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -69,6 +69,9 @@ def _setup_retest(monkeypatch, *, apply_result=None, mark_error=None):
         AsyncMock(side_effect=mark_error),
     )
     monkeypatch.setattr(service, "audit", AsyncMock())
+    monkeypatch.setattr(
+        service.defect_search_index_repository, "enqueue", AsyncMock(return_value="queued")
+    )
     monkeypatch.setattr(service, "new_id", lambda prefix: f"{prefix}-a")
     monkeypatch.setattr(service, "now", lambda: "2026-10-26T00:00:00Z")
     payload = SimpleNamespace(
@@ -88,7 +91,14 @@ def test_retest_persists_event_defect_transition_and_audit_in_one_transaction(mo
 
         assert result["defect"] == updated
         assert result["retest"]["application_status"] == "APPLIED"
+        assert "idempotency_key" not in result["retest"]
+        assert "idempotency_request_hash" not in result["retest"]
         service.defect_repository.insert_retest.assert_awaited_once()
+        inserted_event = service.defect_repository.insert_retest.await_args.args[0]
+        assert inserted_event["expected_revision"] == 4
+        assert inserted_event["idempotency_request_hash"] == service._retest_request_fingerprint(
+            payload
+        )
         service.defect_repository.apply_retest.assert_awaited_once()
         service.defect_repository.mark_retest_applied.assert_awaited_once_with(
             "DRT-a", "APPLIED", session=session
@@ -96,6 +106,9 @@ def test_retest_persists_event_defect_transition_and_audit_in_one_transaction(mo
         assert service.defect_repository.insert_retest.await_args.kwargs["session"] is session
         assert service.defect_repository.apply_retest.await_args.kwargs["session"] is session
         assert service.audit.await_args.kwargs["session"] is session
+        service.defect_search_index_repository.enqueue.assert_awaited_once_with(
+            updated, session=session
+        )
 
     asyncio.run(run())
 
@@ -136,6 +149,130 @@ def test_retest_audit_failure_aborts_transaction_after_state_write_attempt(monke
         assert service.defect_repository.apply_retest.await_args.kwargs["session"] is session
         assert service.defect_repository.mark_retest_applied.await_args.kwargs["session"] is session
         assert service.audit.await_args.kwargs["session"] is session
+
+    asyncio.run(run())
+
+
+def test_retest_replay_returns_same_result_without_exposing_idempotency_fields(monkeypatch):
+    async def run():
+        _, defect, _, payload, user = _setup_retest(monkeypatch)
+        request_hash = service._retest_request_fingerprint(payload)
+        existing = {
+            "_id": "DRT-existing",
+            "project_id": "project-a",
+            "defect_id": "defect-a",
+            "test_result_id": "result-a",
+            "note": "Rerun passed",
+            "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": request_hash,
+            "application_status": "APPLIED",
+        }
+        service.defect_repository.find_retest.return_value = existing
+        service.defect_repository.find_defect = AsyncMock(return_value=defect)
+
+        result = await service.retest_defect_record(
+            "project-a", "defect-a", payload, user
+        )
+
+        assert result["retest"]["_id"] == "DRT-existing"
+        assert "idempotency_key" not in result["retest"]
+        assert "idempotency_request_hash" not in result["retest"]
+        service.defect_repository.find_test_result.assert_not_awaited()
+        service.defect_repository.insert_retest.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_retest_rejects_reusing_key_for_a_different_request(monkeypatch):
+    async def run():
+        _, _, _, payload, user = _setup_retest(monkeypatch)
+        service.defect_repository.find_retest.return_value = {
+            "_id": "DRT-existing",
+            "project_id": "project-a",
+            "defect_id": "defect-a",
+            "idempotency_key": payload.idempotency_key,
+            "test_result_id": "result-other",
+            "note": "Different retest",
+            "idempotency_request_hash": "different-request",
+            "application_status": "APPLIED",
+        }
+
+        with pytest.raises(HTTPException) as raised:
+            await service.retest_defect_record(
+                "project-a", "defect-a", payload, user
+            )
+
+        assert raised.value.status_code == 409
+        assert raised.value.detail["code"] == "IDEMPOTENCY_KEY_REUSED"
+        service.defect_repository.find_test_result.assert_not_awaited()
+        service.defect_repository.insert_retest.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_retest_rejects_idempotency_record_from_another_scope(monkeypatch):
+    async def run():
+        _, _, _, payload, user = _setup_retest(monkeypatch)
+        monkeypatch.setattr(service.defect_repository, "find_defect", AsyncMock())
+        service.defect_repository.find_retest.return_value = {
+            "_id": "DRT-existing",
+            "project_id": "project-other",
+            "defect_id": "defect-other",
+            "idempotency_key": "retry-a",
+            "test_result_id": "result-a",
+            "idempotency_request_hash": service._retest_request_fingerprint(
+                SimpleNamespace(
+                    test_result_id="result-a",
+                    expected_revision=4,
+                    note="Rerun passed",
+                )
+            ),
+            "application_status": "APPLIED",
+        }
+
+        with pytest.raises(HTTPException) as raised:
+            await service.retest_defect_record(
+                "project-a", "defect-a", payload, user
+            )
+
+        assert raised.value.status_code == 409
+        assert raised.value.detail["code"] == "DEFECT_RETEST_IDEMPOTENCY_RECORD_INVALID"
+        service.defect_repository.find_defect.assert_not_awaited()
+        service.defect_repository.find_test_result.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_retest_does_not_replay_an_unapplied_idempotency_record(monkeypatch):
+    async def run():
+        _, _, _, payload, user = _setup_retest(monkeypatch)
+        monkeypatch.setattr(service.defect_repository, "find_defect", AsyncMock())
+        service.defect_repository.find_retest.return_value = {
+            "_id": "DRT-existing",
+            "project_id": "project-a",
+            "defect_id": "defect-a",
+            "idempotency_key": "retry-a",
+            "test_result_id": "result-a",
+            "idempotency_request_hash": service._retest_request_fingerprint(
+                SimpleNamespace(
+                    test_result_id="result-a",
+                    expected_revision=4,
+                    note="Rerun passed",
+                )
+            ),
+            "application_status": "PENDING",
+        }
+
+        with pytest.raises(HTTPException) as raised:
+            await service.retest_defect_record(
+                "project-a", "defect-a", payload, user
+            )
+
+        assert raised.value.status_code == 409
+        assert raised.value.detail["code"] == "DEFECT_RETEST_IDEMPOTENCY_RECORD_INCOMPLETE"
+        service.defect_repository.find_defect.assert_not_awaited()
+        service.defect_repository.find_test_result.assert_not_awaited()
+        service.defect_repository.insert_retest.assert_not_awaited()
 
     asyncio.run(run())
 

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import TestConditionEditor from "../../components/TestConditionEditor";
 import TestConditionTable from "../../components/TestConditionTable";
 import TestabilityFindingsPanel from "../../components/TestabilityFindingsPanel";
@@ -218,13 +219,16 @@ export default function TestAnalysisPage({ project }) {
         <div className="space-y-5" hidden={visibleTab !== "ai"}>
           <Panel title="Ứng viên điều kiện từ lượt AI tự động">
             <div className="space-y-4 p-5">
+              <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
+                <ContentOriginBadge origin="ai_generated" />
+              </div>
               <p className="text-sm text-ink-muted">
-                Ứng viên được tạo khi phiên bản Requirement được baseline. Mỗi ứng viên phải có
-                trích dẫn nguồn; trang này chỉ hiển thị kết quả và không tự tạo Test Case.
+                Ứng viên được tạo khi phiên bản yêu cầu được đặt làm phiên bản chuẩn. Mỗi ứng viên
+                phải có trích dẫn nguồn; trang này chỉ hiển thị kết quả và không tự tạo Test Case.
               </p>
               <DataTable
                 items={aiCandidateItems}
-                empty="Chưa có ứng viên từ các Requirement đã baseline"
+                empty="Chưa có ứng viên từ các yêu cầu đã được đặt làm phiên bản chuẩn"
                 columns={[
                   { key: "title", label: "Ứng viên" },
                   {
@@ -249,7 +253,7 @@ export default function TestAnalysisPage({ project }) {
                   },
                   {
                     key: "requirement_version_id",
-                    label: "Phiên bản Requirement",
+                    label: "Phiên bản yêu cầu",
                     render: (item) => (
                       <span className="break-all">{item.requirement_version_id}</span>
                     ),

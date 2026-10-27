@@ -7,6 +7,7 @@ import { ErrorState, Metric, Panel, StatusPill, useActionDialog } from "./Worksp
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { StructuredValueView } from "./StructuredValueEditor";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
 function lines(value) {
   return String(value || "")
@@ -499,6 +500,13 @@ export default function TestStatusReportPanel({ project }) {
               {narrativeResult?.suggestions?.[0] && (
                 <Panel title="Diễn giải được tạo tự động">
                   <div className="space-y-4 text-sm">
+                    <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
+                      <ContentOriginBadge origin="ai_generated" />
+                      <p className="mt-2 text-violet-950">
+                        Phần này do AI đề xuất riêng; không thay đổi số liệu hoặc nội dung người
+                        dùng đã nhập.
+                      </p>
+                    </div>
                     {narrativeResult.stale && (
                       <p className="text-amber-700" role="status">
                         Báo cáo đã đổi sau khi AI tạo phần diễn giải; kết quả này thuộc phiên bản

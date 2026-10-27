@@ -7,6 +7,10 @@ from pydantic import ValidationError
 
 from src.api.automation import receive_automation_event
 from src.schemas.automation import (
+    AutomationAction,
+    AutomationDefinition,
+    AutomationDefinitionRequest,
+    AutomationEventConditions,
     AutomationEventAcceptedResponse,
     AutomationEventRequest,
     AutomationEventSuppressedResponse,
@@ -60,6 +64,39 @@ class AutomationEventEnqueueTests(unittest.IsolatedAsyncioTestCase):
             evidence=list(event.evidence),
         )
 
+    async def test_manual_trigger_cannot_be_configured_as_automation(self):
+        service = AutomationService()
+        payload = AutomationDefinitionRequest(
+            project_id="project-1",
+            name="Manual AI run",
+            trigger=AutomationTrigger.MANUAL,
+            objective="Run AI after a button click",
+        )
+        with patch(
+            "src.services.automation.automation_repository.create_definition",
+            new=AsyncMock(),
+        ) as create_definition:
+            with self.assertRaises(HTTPException) as error:
+                await service.create_definition(payload, "qa-user", "QA", ["automation.create"])
+
+        self.assertEqual(error.exception.status_code, 422)
+        self.assertEqual(
+            error.exception.detail["code"], "AUTOMATION_TRIGGER_MUST_BE_DOMAIN_EVENT"
+        )
+        create_definition.assert_not_awaited()
+
+    async def test_manual_trigger_cannot_be_enqueued_as_a_domain_event(self):
+        service = AutomationService()
+        event = self.make_event().model_copy(update={"trigger": AutomationTrigger.MANUAL})
+
+        with self.assertRaises(HTTPException) as error:
+            await service.enqueue_event(event)
+
+        self.assertEqual(error.exception.status_code, 422)
+        self.assertEqual(
+            error.exception.detail["code"], "AUTOMATION_TRIGGER_MUST_BE_DOMAIN_EVENT"
+        )
+
     async def test_new_event_is_persisted_and_published_for_the_project_qa_executor(self):
         service = AutomationService()
         with (
@@ -107,6 +144,63 @@ class AutomationEventEnqueueTests(unittest.IsolatedAsyncioTestCase):
         publish.assert_awaited_once_with(
             "ai.automation", {"automation_run_id": run.automation_run_id}
         )
+
+    async def test_event_run_carries_typed_definition_conditions_and_actions(self):
+        service = AutomationService()
+        event = self.make_event()
+        definition = AutomationDefinition(
+            project_id=event.project_id,
+            owner_user_id="ba-user",
+            owner_role="BA",
+            name="Tạo đề xuất test khi có thay đổi",
+            trigger=event.trigger,
+            objective="Phân tích thay đổi và tạo candidate có dẫn chứng",
+            actions=[AutomationAction.CREATE_TEST_CASE_CANDIDATES],
+            conditions=AutomationEventConditions(
+                minimum_evidence_count=1,
+                required_artifact_types=["test_case_draft"],
+                requester_roles=["BA"],
+                require_versioned_evidence=True,
+            ),
+        )
+        with (
+            patch(
+                "src.services.automation.project_access",
+                new=AsyncMock(return_value=("BA", ["project.read"])),
+            ),
+            patch.object(
+                service,
+                "_default_execution_principal",
+                new=AsyncMock(return_value=("qa-user", "QA", ["testcase.lint"])),
+            ),
+            patch(
+                "src.services.automation.automation_repository.find_event_run",
+                new=AsyncMock(side_effect=[None, None]),
+            ),
+            patch(
+                "src.services.automation.automation_repository.list_definitions",
+                new=AsyncMock(return_value=[definition]),
+            ),
+            patch(
+                "src.services.automation.automation_repository.create_run_with_checkpoint",
+                new=AsyncMock(side_effect=lambda run, **_: run),
+            ),
+            patch(
+                "src.services.automation.mq.publish", new=AsyncMock(return_value=True)
+            ),
+        ):
+            runs = await service.enqueue_event(event)
+
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(
+            runs[0].constraints["automation_actions"],
+            [AutomationAction.CREATE_TEST_CASE_CANDIDATES.value],
+        )
+        self.assertEqual(
+            runs[0].constraints["automation_conditions"]["required_artifact_types"],
+            ["test_case_draft"],
+        )
+        self.assertEqual(runs[0].constraints["requester_role"], "BA")
 
     async def test_duplicate_completed_event_is_not_queued_twice(self):
         service = AutomationService()

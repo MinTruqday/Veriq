@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../components/DataTable";
 import PlatformOperationsPanel from "../components/PlatformOperationsPanel";
 import PlatformUsersPanel from "../components/PlatformUsersPanel";
+import PayrollImportPanel from "../components/PayrollImportPanel";
 import TestabilityBenchmarkPanel from "../components/TestabilityBenchmarkPanel";
 import {
   ErrorState,
@@ -125,8 +126,9 @@ export default function OperationsPage() {
         {[
           ["overview", "Tổng quan"],
           ["users", "Tài khoản"],
+          ["payroll", "Bảng lương"],
           ["platform", "Cấu hình nền tảng"],
-          ["benchmark", "Benchmark AI"],
+          ["benchmark", "Đánh giá AI"],
         ].map(([value, label]) => (
           <button
             key={value}
@@ -147,6 +149,8 @@ export default function OperationsPage() {
       {error && <ErrorState message={error} />}
       {section === "users" ? (
         <PlatformUsersPanel />
+      ) : section === "payroll" ? (
+        <PayrollImportPanel />
       ) : section === "platform" ? (
         <PlatformOperationsPanel />
       ) : section === "benchmark" ? (

@@ -330,6 +330,9 @@ async def exchange_internal_document(req: dict):
         indexing_attempt_id = str(req.get("indexing_attempt_id") or "")
         indexing_lease_token = str(req.get("indexing_lease_token") or "")
         index_generation = str(req.get("index_generation") or "")
+        document_index_contract_version = req.get(
+            "document_index_contract_version"
+        )
         source_snapshot = req.get("source_snapshot")
         if not indexing_attempt_id or not indexing_lease_token:
             raise HTTPException(status_code=422, detail="Thiếu mã lượt lập chỉ mục")
@@ -342,6 +345,14 @@ async def exchange_internal_document(req: dict):
             character not in "0123456789abcdef" for character in index_generation
         ):
             raise HTTPException(status_code=422, detail="Mã thế hệ chỉ mục không hợp lệ")
+        if (
+            not isinstance(document_index_contract_version, int)
+            or isinstance(document_index_contract_version, bool)
+            or document_index_contract_version < 1
+        ):
+            raise HTTPException(status_code=422, detail="Phiên bản hợp đồng chỉ mục không hợp lệ")
+        if document_index_contract_version != settings.DOCUMENT_INDEX_CONTRACT_VERSION:
+            raise HTTPException(status_code=409, detail="Phiên bản hợp đồng chỉ mục không đồng nhất")
         query = {
             "_id": document_id,
             "is_deleted": {"$ne": True},
@@ -352,13 +363,14 @@ async def exchange_internal_document(req: dict):
         query["indexing_lease_token"] = indexing_lease_token
         query["indexing_status"] = "indexing"
         query["indexing_lease_until"] = {"$gt": datetime.now(timezone.utc)}
-        query.update(source_snapshot)
+        query["$and"] = [{field: value} for field, value in source_snapshot.items()]
         result = await documents.update_one(
             query,
             {
                 "$set": {
                     "indexing_status": indexing_status,
                     "active_index_generation": index_generation,
+                    "document_index_contract_version": document_index_contract_version,
                     "is_indexed": True,
                     "chunks_count": int(req.get("indexed_chunks", 0)),
                     "indexed_chunks": int(req.get("indexed_chunks", 0)),

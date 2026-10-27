@@ -1,4 +1,6 @@
 import math
+import hashlib
+import random
 import statistics
 import time
 import unicodedata
@@ -24,6 +26,7 @@ from src.schemas.evaluation import (
     validate_unique_benchmark_case_ids,
 )
 from src.schemas.inference_requests import TestingAutomationRequest, TestingEvidence
+from src.core.text_matching import source_quote_spans
 from src.services.ai_automation import generate_ai_automation
 from src.services.inference import model_metadata
 from src.services.testability_blueprint import compile_testability_blueprint
@@ -42,6 +45,62 @@ class TestabilityBenchmarkService:
         "direct_generation",
         "clarification_without_obligation_planning",
     )
+    PAIRED_BOOTSTRAP_RESAMPLES = 10000
+
+    @classmethod
+    def paired_case_bootstrap_effect(cls, differences, seed_material):
+        values = [
+            float(value)
+            for value in differences
+            if isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        ]
+        mean = statistics.fmean(values) if values else None
+        if len(values) < 2:
+            return {
+                "case_count": len(values),
+                "mean_left_minus_right": round(mean, 4) if mean is not None else None,
+                "interval_low": None,
+                "interval_high": None,
+                "interval_method": "paired_case_percentile_bootstrap",
+                "confidence_level": 0.95,
+                "resamples": cls.PAIRED_BOOTSTRAP_RESAMPLES,
+                "scope": "Biến động khi lấy mẫu lại các ca trong chính bộ dữ liệu này; không đo biến động giữa các lần gọi mô hình.",
+            }
+
+        seed = int.from_bytes(
+            hashlib.sha256(str(seed_material).encode("utf-8")).digest()[:8], "big"
+        )
+        generator = random.Random(seed)
+        sample_count = len(values)
+        bootstrap_means = sorted(
+            statistics.fmean(generator.choice(values) for _ in range(sample_count))
+            for _ in range(cls.PAIRED_BOOTSTRAP_RESAMPLES)
+        )
+
+        def percentile(probability):
+            position = probability * (len(bootstrap_means) - 1)
+            lower_index = math.floor(position)
+            upper_index = math.ceil(position)
+            if lower_index == upper_index:
+                return bootstrap_means[lower_index]
+            weight = position - lower_index
+            return (
+                bootstrap_means[lower_index] * (1 - weight)
+                + bootstrap_means[upper_index] * weight
+            )
+
+        return {
+            "case_count": sample_count,
+            "mean_left_minus_right": round(mean, 4),
+            "interval_low": round(percentile(0.025), 4),
+            "interval_high": round(percentile(0.975), 4),
+            "interval_method": "paired_case_percentile_bootstrap",
+            "confidence_level": 0.95,
+            "resamples": cls.PAIRED_BOOTSTRAP_RESAMPLES,
+            "scope": "Biến động khi lấy mẫu lại các ca trong chính bộ dữ liệu này; không đo biến động giữa các lần gọi mô hình và không xác nhận answer key.",
+        }
 
     @classmethod
     def synthetic_cases(cls):
@@ -157,6 +216,7 @@ class TestabilityBenchmarkService:
                     "text": quote,
                 }],
                 expected_source_quotes=[quote],
+                expected_source_quote_sources={quote: [source_ref]},
                 expected_obligation_keys=[obligation_key],
                 expected_obligation_sources={obligation_key: quote},
                 expected_obligation_source_refs={obligation_key: source_ref},
@@ -176,6 +236,7 @@ class TestabilityBenchmarkService:
                     "text": quote,
                 }],
                 expected_source_quotes=[quote],
+                expected_source_quote_sources={quote: [f"{case_id}-SOURCE-V1"]},
                 expected_clarification_categories=categories,
                 expected_clarification_priorities=priorities,
             ))
@@ -204,6 +265,9 @@ class TestabilityBenchmarkService:
                     },
                 ],
                 expected_source_quotes=[quote],
+                expected_source_quote_sources={
+                    quote: [f"{case_id}-SRS-V1", f"{case_id}-API-V1"]
+                },
                 expected_obligation_keys=[obligation_key],
                 expected_obligation_sources={obligation_key: quote},
             ))
@@ -231,6 +295,10 @@ class TestabilityBenchmarkService:
                     },
                 ],
                 expected_source_quotes=[first_quote, second_quote],
+                expected_source_quote_sources={
+                    first_quote: [f"{case_id}-SRS-V1"],
+                    second_quote: [f"{case_id}-API-V1"],
+                },
                 expected_clarification_categories=["CONTRADICTION"],
                 expected_clarification_priorities=["CONTRADICTION"],
             ))
@@ -258,7 +326,8 @@ class TestabilityBenchmarkService:
             "pipelines": list(cls.SYNTHETIC_PIPELINE_NAMES),
             "requested_repetitions": 3,
             "metrics": [
-                "source quote validity and precision/recall",
+                "source quote validity and quote precision/recall",
+                "exact source-version citation precision/recall when the oracle maps quote sources",
                 "obligation precision/recall with source-version grounding",
                 "clarification-category precision/recall and priority NDCG",
                 "pipeline acceptance, rejection, failure, and latency",
@@ -280,7 +349,7 @@ class TestabilityBenchmarkService:
     @staticmethod
     def _scoring_method():
         return {
-            "version": "testability-benchmark-v2",
+            "version": "testability-benchmark-v3",
             "aggregation": (
                 "Macro average: average each applicable case score equally; metrics with no "
                 "defined gold value are null and omitted from that metric's denominator. "
@@ -289,6 +358,12 @@ class TestabilityBenchmarkService:
             "source_quote_validity": (
                 "Unique normalized candidate quotes that occur contiguously in one supplied source "
                 "/ all unique normalized candidate quotes."
+            ),
+            "source_quote_source_precision_recall": (
+                "When source-version gold mappings are provided, compare cited (quote, version) pairs; "
+                "a citation is counted only if the quote occurs in the exact cited source version. "
+                "Recall counts a gold quote covered when at least one permitted source version is cited. "
+                "Null when the answer key has no source-version mapping."
             ),
             "source_quote_precision_recall": (
                 "Set precision and recall over normalized candidate quotes and human-authored gold quotes."
@@ -299,7 +374,8 @@ class TestabilityBenchmarkService:
             ),
             "obligation_precision_recall": (
                 "Set precision and recall over obligation keys. When the answer key includes source quotes, "
-                "a match also requires grounded quote evidence and any specified source-version reference."
+                "a match also requires grounded quote evidence and any specified source-version reference; "
+                "a citation quote must occur in the exact source version it names."
             ),
             "clarification_count": (
                 "Number of predicted clarification questions (codes when present, otherwise categories); "
@@ -327,6 +403,11 @@ class TestabilityBenchmarkService:
                 "restricted per metric to cases with a defined score in every repetition. If there "
                 "is no common applicable case, the repeated metric is null rather than mixing cohorts."
             ),
+            "paired_effect_interval": (
+                "The 95% percentile bootstrap resamples paired case IDs after averaging each paired "
+                "case across completed repetitions. It describes case-sampling variability inside "
+                "this dataset, not model-call variability, statistical significance, or generalization."
+            ),
             "limitations": [
                 "Answer-key quality still depends on human authorship and independent review.",
                 "Macro averages and repeated-run population standard deviation are descriptive; they do not establish statistical significance.",
@@ -346,6 +427,13 @@ class TestabilityBenchmarkService:
                 "matched": [],
                 "unexpected": [],
                 "missing": [],
+                "source_reference": {
+                    "precision": None,
+                    "recall": None,
+                    "matched": [],
+                    "unexpected": [],
+                    "missing": [],
+                },
             },
             "clarification": {
                 "precision": None,
@@ -373,10 +461,40 @@ class TestabilityBenchmarkService:
         return normalized.rstrip(".!?。！？").rstrip()
 
     @classmethod
+    def _contains_quote_at_word_boundaries(cls, quote: str, source_text: str) -> bool:
+        normalized_quote = cls._normalize_source_quote(quote).casefold()
+        normalized_source = cls._normalize_source_quote(source_text).casefold()
+        if not normalized_quote:
+            return False
+
+        def is_word_character(value):
+            return value.isalnum() or value == "_"
+
+        offset = 0
+        while True:
+            match_start = normalized_source.find(normalized_quote, offset)
+            if match_start < 0:
+                break
+            match_end = match_start + len(normalized_quote)
+            left_is_word = match_start > 0 and is_word_character(
+                normalized_source[match_start - 1]
+            )
+            right_is_word = match_end < len(normalized_source) and is_word_character(
+                normalized_source[match_end]
+            )
+            quote_starts_with_word = is_word_character(normalized_quote[0])
+            quote_ends_with_word = is_word_character(normalized_quote[-1])
+            if not (quote_starts_with_word and left_is_word) and not (
+                quote_ends_with_word and right_is_word
+            ):
+                return True
+            offset = match_start + 1
+        return False
+
+    @classmethod
     def _quote_is_grounded_in_one_source(cls, quote: str, source_texts: list[str]) -> bool:
-        normalized_quote = cls._normalize_source_quote(quote)
-        return bool(normalized_quote) and any(
-            normalized_quote in cls._normalize_source_quote(source_text)
+        return any(
+            cls._contains_quote_at_word_boundaries(quote, source_text)
             for source_text in source_texts
         )
 
@@ -420,12 +538,18 @@ class TestabilityBenchmarkService:
         covered = {
             expected_quote
             for expected_quote in expected_set
-            if any(expected_quote in actual_quote for actual_quote in actual_set)
+            if any(
+                cls._contains_quote_at_word_boundaries(expected_quote, actual_quote)
+                for actual_quote in actual_set
+            )
         }
         supporting = {
             actual_quote
             for actual_quote in actual_set
-            if any(expected_quote in actual_quote for expected_quote in expected_set)
+            if any(
+                cls._contains_quote_at_word_boundaries(expected_quote, actual_quote)
+                for expected_quote in expected_set
+            )
         }
         return {
             "precision": (
@@ -439,6 +563,62 @@ class TestabilityBenchmarkService:
             "matched": sorted(covered),
             "unexpected": sorted(actual_set - supporting),
             "missing": sorted(set(expected_values) - covered),
+        }
+
+    @classmethod
+    def _source_quote_reference_scores(cls, case, candidate) -> dict:
+        expected = {
+            cls._normalize_source_quote(quote): set(source_refs)
+            for quote, source_refs in case.expected_source_quote_sources.items()
+            if cls._normalize_source_quote(quote) and source_refs
+        }
+        if not expected:
+            return {
+                "precision": None,
+                "recall": None,
+                "matched": [],
+                "unexpected": [],
+                "missing": [],
+            }
+
+        source_text_by_ref = {
+            source.artifact_version_id: source.text for source in case.sources
+        }
+        actual = {
+            (cls._normalize_source_quote(item.quote), item.source_ref)
+            for item in candidate.source_quote_citations
+            if cls._normalize_source_quote(item.quote) and item.source_ref
+        }
+
+        def citation_matches_gold(quote, source_ref):
+            source_text = source_text_by_ref.get(source_ref)
+            if source_text is None or not cls._quote_is_grounded_in_one_source(
+                quote, [source_text]
+            ):
+                return False
+            return any(
+                source_ref in source_refs
+                and cls._contains_quote_at_word_boundaries(gold_quote, quote)
+                for gold_quote, source_refs in expected.items()
+            )
+
+        supported = {item for item in actual if citation_matches_gold(*item)}
+        covered = {
+            gold_quote
+            for gold_quote, source_refs in expected.items()
+            if any(
+                source_ref in source_refs
+                and cls._contains_quote_at_word_boundaries(gold_quote, quote)
+                and citation_matches_gold(quote, source_ref)
+                for quote, source_ref in actual
+            )
+        }
+        return {
+            "precision": round(len(supported) / len(actual), 4) if actual else 0.0,
+            "recall": round(len(covered) / len(expected), 4),
+            "matched": sorted(covered),
+            "unexpected": sorted(actual - supported),
+            "missing": sorted(set(expected) - covered),
         }
 
     @staticmethod
@@ -552,9 +732,15 @@ class TestabilityBenchmarkService:
             return [value.strip() for value in values if isinstance(value, str) and value.strip()]
 
         source_texts = cls._case_source_texts(case)
+        source_text_by_ref = {
+            source.artifact_version_id: source.text for source in case.sources
+        }
         quote_scores = cls._source_quote_scores(
             case.expected_source_quotes,
             candidate.source_quotes,
+        )
+        quote_scores["source_reference"] = cls._source_quote_reference_scores(
+            case, candidate
         )
         grounded_quotes = [
             quote for quote in candidate.source_quotes
@@ -603,7 +789,12 @@ class TestabilityBenchmarkService:
                 grounded_versioned[predicted_key] = [
                     (cls._normalize_source_quote(citation.quote), citation.source_ref)
                     for citation in candidate.obligation_citations.get(predicted_key, [])
-                    if cls._quote_is_grounded_in_one_source(citation.quote, source_texts)
+                    if cls._quote_is_grounded_in_one_source(
+                        citation.quote,
+                        [source_text_by_ref[citation.source_ref]]
+                        if citation.source_ref in source_text_by_ref
+                        else source_texts if not case.sources else [],
+                    )
                 ]
             adjacency = []
             for expected_key in expected_keys:
@@ -753,6 +944,14 @@ class TestabilityBenchmarkService:
                     [{"metric": value["source_quote"]["recall"]} for value in values],
                     "metric",
                 ),
+                "source_quote_source_precision": average_metric(
+                    [{"metric": value["source_quote"]["source_reference"]["precision"]} for value in values],
+                    "metric",
+                ),
+                "source_quote_source_recall": average_metric(
+                    [{"metric": value["source_quote"]["source_reference"]["recall"]} for value in values],
+                    "metric",
+                ),
                 "clarification_precision": average_metric(
                     [{"metric": value["clarification"]["precision"]} for value in values],
                     "metric",
@@ -787,6 +986,8 @@ class TestabilityBenchmarkService:
             "source_quote_validity": ("source_quote_validity",),
             "source_quote_precision": ("source_quote", "precision"),
             "source_quote_recall": ("source_quote", "recall"),
+            "source_quote_source_precision": ("source_quote", "source_reference", "precision"),
+            "source_quote_source_recall": ("source_quote", "source_reference", "recall"),
             "clarification_precision": ("clarification", "precision"),
             "clarification_recall": ("clarification", "recall"),
             "obligation_precision": ("obligation", "precision"),
@@ -888,6 +1089,23 @@ class TestabilityBenchmarkService:
                 [item.get("source_quote", "") for item in obligations]
                 + [item.get("source_quote", "") for item in clarifications]
             )),
+            source_quote_citations=[
+                {
+                    "quote": str(item.get("source_quote", "")),
+                    "source_ref": str(item.get("source_ref", "")),
+                }
+                for item in obligations
+                if item.get("source_quote") and item.get("source_ref")
+            ] + [
+                {
+                    "quote": str(item.get("source_quote", "")),
+                    "source_ref": str(source_ref),
+                }
+                for item in clarifications
+                if item.get("source_quote")
+                for source_ref in item.get("evidence_refs", [])
+                if source_ref
+            ],
             clarification_codes=[item.get("code", "") for item in clarifications],
             clarification_categories=[item.get("category", "") for item in clarifications],
             obligation_keys=[item.get("key", "") for item in obligations],
@@ -908,6 +1126,16 @@ class TestabilityBenchmarkService:
             source_quotes=[
                 item.get("source_quote", "") for item in output.get("clarifications", [])
             ],
+            source_quote_citations=[
+                {
+                    "quote": str(item.get("source_quote", "")),
+                    "source_ref": str(source_ref),
+                }
+                for item in output.get("clarifications", [])
+                if item.get("source_quote")
+                for source_ref in item.get("evidence_refs", [])
+                if source_ref
+            ],
             clarification_codes=[
                 item.get("code", "") for item in output.get("clarifications", [])
             ],
@@ -920,6 +1148,7 @@ class TestabilityBenchmarkService:
     def _candidate_from_direct_generation(output):
         cases = output.get("suggestions", [])
         quotes = []
+        quote_citations = []
         obligations = []
         obligation_evidence = {}
         obligation_citations = {}
@@ -944,6 +1173,7 @@ class TestabilityBenchmarkService:
                 for item in case.get("evidence_quotes", [])
                 if item.get("quote") and item.get("evidence_ref")
             ]
+            quote_citations.extend(case_citations)
             for mapping in case.get("obligation_evidence", []):
                 obligation = str(mapping.get("obligation_key") or "")
                 linked_quotes = [
@@ -984,6 +1214,10 @@ class TestabilityBenchmarkService:
         }
         return TestabilityBenchmarkCandidate(
             source_quotes=list(dict.fromkeys(quotes)),
+            source_quote_citations=list({
+                (item["quote"], item["source_ref"]): item
+                for item in quote_citations
+            }.values()),
             obligation_keys=list(dict.fromkeys(obligations)),
             obligation_evidence=obligation_evidence,
             obligation_citations=obligation_citations,
@@ -1026,6 +1260,7 @@ class TestabilityBenchmarkService:
                 or end <= start
                 or end - start != len(quote)
                 or source_text[start:end] != quote
+                or (start, end) not in source_quote_spans(source_text, quote)
             ):
                 continue
             entry = grouped.setdefault(reference, {
@@ -1223,6 +1458,8 @@ class TestabilityBenchmarkService:
                     "source_quote_validity": None,
                     "source_quote_precision": None,
                     "source_quote_recall": None,
+                    "source_quote_source_precision": None,
+                    "source_quote_source_recall": None,
                     "clarification_precision": None,
                     "clarification_recall": None,
                     "obligation_precision": None,
@@ -1237,6 +1474,8 @@ class TestabilityBenchmarkService:
                         "source_quote_validity",
                         "source_quote_precision",
                         "source_quote_recall",
+                        "source_quote_source_precision",
+                        "source_quote_source_recall",
                         "clarification_precision",
                         "clarification_recall",
                         "obligation_precision",
@@ -1449,6 +1688,8 @@ class TestabilityBenchmarkService:
             "source_quote_validity",
             "source_quote_precision",
             "source_quote_recall",
+            "source_quote_source_precision",
+            "source_quote_source_recall",
             "clarification_precision",
             "clarification_recall",
             "obligation_precision",
@@ -1462,6 +1703,8 @@ class TestabilityBenchmarkService:
             "source_quote_validity": ("source_quote_validity",),
             "source_quote_precision": ("source_quote", "precision"),
             "source_quote_recall": ("source_quote", "recall"),
+            "source_quote_source_precision": ("source_quote", "source_reference", "precision"),
+            "source_quote_source_recall": ("source_quote", "source_reference", "recall"),
             "clarification_precision": ("clarification", "precision"),
             "clarification_recall": ("clarification", "recall"),
             "obligation_precision": ("obligation", "precision"),
@@ -1544,12 +1787,7 @@ class TestabilityBenchmarkService:
                     for case_map in case_maps
                     if (value := run_metric_values(
                         case_map,
-                        {
-                            case_id
-                            for case_id in stable_case_ids
-                            if case_metric(case_map[case_id], pipeline_name, metric_name)
-                            is not None
-                        },
+                        metric_case_ids,
                         pipeline_name,
                         metric_name,
                     )) is not None
@@ -1705,6 +1943,35 @@ class TestabilityBenchmarkService:
                     entry[side][metric_name] = metric_statistics(
                         values, metric_case_ids
                     ).model_dump(mode="json")
+            entry["paired_effects"] = {}
+            for metric_name in metric_names:
+                case_differences = []
+                for case_id in stable_comparison_case_ids:
+                    left_values = [
+                        case_metric(case_map[case_id], entry["left_pipeline"], metric_name)
+                        for case_map in comparison_case_maps
+                    ]
+                    right_values = [
+                        case_metric(case_map[case_id], entry["right_pipeline"], metric_name)
+                        for case_map in comparison_case_maps
+                    ]
+                    if all(value is not None for value in [*left_values, *right_values]):
+                        case_differences.append(
+                            statistics.fmean(left_values) - statistics.fmean(right_values)
+                        )
+                entry["paired_effects"][metric_name] = (
+                    TestabilityBenchmarkService.paired_case_bootstrap_effect(
+                        case_differences,
+                        ":".join(
+                            [
+                                dataset_id,
+                                comparison_key,
+                                metric_name,
+                                *sorted(stable_comparison_case_ids),
+                            ]
+                        ),
+                    )
+                )
             paired_pipeline_statistics[comparison_key] = entry
 
         completed = sum(report.execution_status == "COMPLETE" for report in reports)

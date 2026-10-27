@@ -9,6 +9,7 @@ from loguru import logger
 from uuid6 import uuid7
 
 from src.utils.background import create_background_task
+from src.runtime.queue_names import DOCUMENT_INGESTION_QUEUE
 
 
 class EventType(str, Enum):
@@ -332,7 +333,7 @@ async def _handle_document_uploaded(event: AgentEvent) -> Optional[str]:
         raise ValueError("document_ingestion_event_missing_document_id")
     logger.info(f"Event processor document uploaded event for doc_id={doc_id}")
     published = await mq.publish(
-        "ai.document_ingestion",
+        DOCUMENT_INGESTION_QUEUE,
         {
             "event_id": event.event_id,
             "document_id": doc_id,

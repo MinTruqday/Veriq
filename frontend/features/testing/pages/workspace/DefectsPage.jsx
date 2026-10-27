@@ -18,6 +18,7 @@ import { testingApi } from "../../services/testing.service";
 import { messageOf, textDoc, valueLabel } from "../../lib/testing";
 import { shouldReloadAfterAmbiguousMutation } from "../../lib/executionRecovery.logic.mjs";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { eligibleRetestResults } from "./defectRetest.logic.mjs";
 
 const nextStates = {
@@ -63,12 +64,16 @@ export default function DefectsPage({ project }) {
   const [traceSuggestions, setTraceSuggestions] = useState({});
   const [traceReview, setTraceReview] = useState(null);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
   const loadedProjectId = useRef(project._id);
   const loadGeneration = useRef(0);
   const [creating, setCreating] = useState(false);
+  const [savingDefect, setSavingDefect] = useState(false);
+  const savingDefectRef = useRef(false);
+  const defectCreateOperation = useRef(null);
   const [form, setForm] = useState({
     title: "",
     severity: "major",
@@ -247,25 +252,43 @@ export default function DefectsPage({ project }) {
   }, [items, project._id, project.current_permissions]);
   const create = async (event) => {
     event.preventDefault();
+    if (savingDefectRef.current) return;
+    savingDefectRef.current = true;
+    setSavingDefect(true);
+    setError("");
+    setSuccess("");
+    const payload = {
+      project_id: project._id,
+      title: form.title,
+      description_doc: textDoc(form.description),
+      steps_to_reproduce: [],
+      actual_result_doc: textDoc(form.actual),
+      expected_result_doc: textDoc(form.expected),
+      severity: form.severity,
+      priority: form.priority,
+      environment: form.environment,
+      environment_id: can("environment.read") ? form.environmentId || null : null,
+      release: form.release,
+      release_id: can("release.read") ? form.releaseId || null : null,
+      build: form.build,
+      build_id: can("build.read") && can("release.read") ? form.buildId || null : null,
+      attachments: form.attachments,
+      linked_requirement_version_ids: [],
+    };
+    const requestFingerprint = JSON.stringify(payload);
+    if (defectCreateOperation.current?.requestFingerprint !== requestFingerprint) {
+      defectCreateOperation.current = {
+        requestFingerprint,
+        idempotencyKey: crypto.randomUUID(),
+      };
+    }
     try {
       await testingApi.createDefect(project._id, {
-        project_id: project._id,
-        title: form.title,
-        description_doc: textDoc(form.description),
-        steps_to_reproduce: [],
-        actual_result_doc: textDoc(form.actual),
-        expected_result_doc: textDoc(form.expected),
-        severity: form.severity,
-        priority: form.priority,
-        environment: form.environment,
-        environment_id: can("environment.read") ? form.environmentId || null : null,
-        release: form.release,
-        release_id: can("release.read") ? form.releaseId || null : null,
-        build: form.build,
-        build_id: can("build.read") && can("release.read") ? form.buildId || null : null,
-        attachments: form.attachments,
-        linked_requirement_version_ids: [],
+        ...payload,
+        idempotency_key: defectCreateOperation.current.idempotencyKey,
       });
+      defectCreateOperation.current = null;
+      setSuccess("Đã tạo lỗi. Danh sách đang được làm mới.");
       setForm({
         title: "",
         severity: "major",
@@ -285,6 +308,9 @@ export default function DefectsPage({ project }) {
       await load();
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      savingDefectRef.current = false;
+      setSavingDefect(false);
     }
   };
   const transition = async (item, to_status) => {
@@ -414,7 +440,14 @@ export default function DefectsPage({ project }) {
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
           {can("defect.create") && (
-            <button className="apple-button" type="button" onClick={() => setCreating(true)}>
+            <button
+              className="apple-button"
+              type="button"
+              onClick={() => {
+                setSuccess("");
+                setCreating(true);
+              }}
+            >
               Tạo lỗi
             </button>
           )}
@@ -447,7 +480,19 @@ export default function DefectsPage({ project }) {
         </div>
       }
     >
-      {error && <ErrorState message={error} />}
+      {success && (
+        <p role="status" className="rounded-control bg-brand-soft p-4 text-[13px] text-brand">
+          {success}
+        </p>
+      )}
+      {error && (
+        <div className="space-y-2">
+          <ErrorState message={error} />
+          <button className="secondary-button" type="button" onClick={() => void load()}>
+            Tải lại danh sách lỗi
+          </button>
+        </div>
+      )}
       {can("defect.create") && (
         <Modal
           isOpen={creating}
@@ -649,11 +694,16 @@ export default function DefectsPage({ project }) {
               ))}
             </div>
             <div className="action-dialog-footer flex justify-end gap-3 md:col-span-2">
-              <button className="secondary-button" type="button" onClick={() => setCreating(false)}>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={savingDefect}
+                onClick={() => setCreating(false)}
+              >
                 Hủy
               </button>
-              <button className="apple-button" type="submit">
-                Lưu lỗi
+              <button className="apple-button" type="submit" disabled={savingDefect}>
+                {savingDefect ? "Đang lưu…" : "Lưu lỗi"}
               </button>
             </div>
           </form>
@@ -690,8 +740,9 @@ export default function DefectsPage({ project }) {
             Kết quả {traceReview.result._id} · Mô hình {traceReview.result.model?.model} · Không tự
             động thay đổi lỗi
           </div>
-          <div className="border-b border-border px-5 py-3 text-sm font-semibold text-ink">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm font-semibold text-ink">
             Yêu cầu được đề xuất
+            <ContentOriginBadge origin="ai_suggested" />
           </div>
           <DataTable
             items={traceReview.result.requirement_candidates}
@@ -722,8 +773,9 @@ export default function DefectsPage({ project }) {
               },
             ]}
           />
-          <div className="border-y border-border px-5 py-3 text-sm font-semibold text-ink">
+          <div className="flex flex-wrap items-center gap-2 border-y border-border px-5 py-3 text-sm font-semibold text-ink">
             Ca kiểm thử được đề xuất
+            <ContentOriginBadge origin="ai_suggested" />
           </div>
           <DataTable
             items={traceReview.result.test_case_candidates}

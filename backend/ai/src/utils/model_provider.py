@@ -49,8 +49,24 @@ class HostedModelClient:
     def __init__(self):
         self._runtime_status = "unverified"
 
-    def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {settings.HF_TOKEN}", "Content-Type": "application/json"}
+    def _headers(self, token: str | None = None) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {token or settings.HF_TOKEN}",
+            "Content-Type": "application/json",
+        }
+
+    def _fallback(self, requested_model: str) -> tuple[str, str, str] | None:
+        if (
+            requested_model != settings.LLM_MODEL
+            or not settings.FALLBACK_MODEL_URL
+            or not settings.FALLBACK_LLM_MODEL
+        ):
+            return None
+        return (
+            settings.FALLBACK_MODEL_URL,
+            settings.FALLBACK_MODEL_TOKEN or settings.HF_TOKEN,
+            settings.FALLBACK_LLM_MODEL,
+        )
 
     def _can_retry(self, error: Exception) -> bool:
         if isinstance(error, httpx.TransportError):
@@ -92,6 +108,8 @@ class HostedModelClient:
         temperature: float,
         response_schema: dict[str, Any] | None = None,
         timeout_seconds: float | None = None,
+        endpoint: str | None = None,
+        token: str | None = None,
     ):
         payload = self._payload(model, messages, max_tokens, temperature, response_schema)
         maximum_attempts = 3
@@ -101,7 +119,9 @@ class HostedModelClient:
                     timeout=timeout_seconds or settings.MODEL_TIMEOUT_SECONDS
                 ) as client:
                     response = await client.post(
-                        settings.PRIMARY_MODEL_URL, headers=self._headers(), json=payload
+                        endpoint or settings.PRIMARY_MODEL_URL,
+                        headers=self._headers(token),
+                        json=payload,
                     )
                 response.raise_for_status()
                 break
@@ -156,6 +176,32 @@ class HostedModelClient:
                 timeout_seconds,
             )
         except Exception as provider_error:
+            fallback = self._fallback(effective_model)
+            if fallback and self._can_retry(provider_error):
+                endpoint, token, fallback_model = fallback
+                try:
+                    response = await self._completion(
+                        fallback_model,
+                        messages,
+                        max_tokens,
+                        temperature,
+                        response_schema,
+                        timeout_seconds,
+                        endpoint,
+                        token,
+                    )
+                    logger.warning(
+                        "Configured model fallback used primary_model={} fallback_model={}",
+                        effective_model,
+                        fallback_model,
+                    )
+                    return response
+                except Exception as fallback_error:
+                    logger.warning(
+                        "Configured model fallback failed error_type={} model={}",
+                        type(fallback_error).__name__,
+                        fallback_model,
+                    )
             self._runtime_status = "unavailable"
             logger.warning(
                 "Configured model failed error_type={} model={}",
@@ -166,8 +212,11 @@ class HostedModelClient:
 
     async def warm_primary(self) -> bool:
         try:
-            await self._completion(
-                settings.LLM_MODEL, [{"role": "user", "content": "Reply OK"}], 4, 0
+            await self.chat_completion(
+                [{"role": "user", "content": "Reply OK"}],
+                model=settings.LLM_MODEL,
+                max_tokens=4,
+                temperature=0,
             )
             return True
         except Exception:
@@ -182,69 +231,98 @@ class HostedModelClient:
         temperature: float,
         response_schema: dict[str, Any] | None = None,
     ) -> AsyncIterator[Any]:
-        payload = self._payload(model, messages, max_tokens, temperature, response_schema)
-        payload["stream"] = True
-        payload["stream_options"] = {"include_usage": True}
+        fallback = self._fallback(model)
+        endpoints = [(settings.PRIMARY_MODEL_URL, settings.HF_TOKEN, model)]
+        if fallback:
+            endpoints.append(fallback)
         emitted = False
         prompt_tokens = 0
         completion_tokens = 0
+        used_model = model
         maximum_attempts = 3
-        for attempt in range(maximum_attempts):
-            try:
-                async with httpx.AsyncClient(timeout=settings.MODEL_TIMEOUT_SECONDS) as client:
-                    async with client.stream(
-                        "POST", settings.PRIMARY_MODEL_URL, headers=self._headers(), json=payload
-                    ) as response:
-                        response.raise_for_status()
-                        async for line in response.aiter_lines():
-                            if not line.startswith("data: "):
-                                continue
-                            value = line[6:]
-                            if value == "[DONE]":
-                                break
-                            body = json.loads(value)
-                            usage = body.get("usage") or {}
-                            prompt_tokens = int(
-                                usage.get("prompt_tokens", prompt_tokens) or prompt_tokens
-                            )
-                            completion_tokens = int(
-                                usage.get("completion_tokens", completion_tokens)
-                                or completion_tokens
-                            )
-                            choices = body.get("choices") or []
-                            token = (
-                                str(choices[0].get("delta", {}).get("content", ""))
-                                if choices
-                                else ""
-                            )
-                            if token:
-                                emitted = True
-                                delta = SimpleNamespace(content=token)
-                                yield SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
+        last_error = None
+        for endpoint, token_value, active_model in endpoints:
+            payload = self._payload(
+                active_model, messages, max_tokens, temperature, response_schema
+            )
+            payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
+            for attempt in range(maximum_attempts):
+                try:
+                    async with httpx.AsyncClient(
+                        timeout=settings.MODEL_TIMEOUT_SECONDS
+                    ) as client:
+                        async with client.stream(
+                            "POST",
+                            endpoint,
+                            headers=self._headers(token_value),
+                            json=payload,
+                        ) as response:
+                            response.raise_for_status()
+                            async for line in response.aiter_lines():
+                                if not line.startswith("data: "):
+                                    continue
+                                value = line[6:]
+                                if value == "[DONE]":
+                                    break
+                                body = json.loads(value)
+                                usage = body.get("usage") or {}
+                                prompt_tokens = int(
+                                    usage.get("prompt_tokens", prompt_tokens) or prompt_tokens
+                                )
+                                completion_tokens = int(
+                                    usage.get("completion_tokens", completion_tokens)
+                                    or completion_tokens
+                                )
+                                choices = body.get("choices") or []
+                                token = (
+                                    str(choices[0].get("delta", {}).get("content", ""))
+                                    if choices
+                                    else ""
+                                )
+                                if token:
+                                    emitted = True
+                                    delta = SimpleNamespace(content=token)
+                                    yield SimpleNamespace(
+                                        choices=[SimpleNamespace(delta=delta)]
+                                    )
+                    last_error = None
+                    break
+                except Exception as provider_error:
+                    last_error = provider_error
+                    if emitted or not self._can_retry(provider_error):
+                        break
+                    if attempt < maximum_attempts - 1:
+                        logger.warning(
+                            "Hosted model stream retry attempt={} error_type={} model={}",
+                            attempt + 1,
+                            type(provider_error).__name__,
+                            active_model,
+                        )
+                        await asyncio.sleep(_retry_delay(provider_error, attempt))
+                    else:
+                        break
+            if last_error is None:
+                used_model = active_model
+                if active_model != model:
+                    logger.warning(
+                        "Configured model stream fallback used primary_model={} fallback_model={}",
+                        model,
+                        active_model,
+                    )
                 break
-            except Exception as provider_error:
-                if (
-                    emitted
-                    or attempt == maximum_attempts - 1
-                    or not self._can_retry(provider_error)
-                ):
-                    self._runtime_status = "unavailable"
-                    raise ModelProviderUnavailable(
-                        "configured_model_unavailable"
-                    ) from provider_error
-                logger.warning(
-                    "Hosted model stream retry attempt={} error_type={}",
-                    attempt + 1,
-                    type(provider_error).__name__,
-                )
-                await asyncio.sleep(_retry_delay(provider_error, attempt))
+            if emitted or not self._can_retry(last_error):
+                break
+        if last_error is not None:
+            self._runtime_status = "unavailable"
+            raise ModelProviderUnavailable("configured_model_unavailable") from last_error
         if not emitted:
             self._runtime_status = "unavailable"
             raise ModelProviderUnavailable("hosted_model_empty_response")
         from src.services.token_accounting import record_usage
 
         record_usage(
-            _response("", prompt_tokens, completion_tokens, model),
+            _response("", prompt_tokens, completion_tokens, used_model),
             sum(len(str(message.get("content", ""))) for message in messages),
             0,
         )
@@ -252,21 +330,32 @@ class HostedModelClient:
 
     async def readiness(self) -> dict[str, str]:
         checks = {"model": "unavailable"}
-        try:
-            async with httpx.AsyncClient(timeout=settings.MODEL_TIMEOUT_SECONDS) as client:
-                response = await client.get(
-                    settings.PRIMARY_MODEL_HEALTH_URL, headers=self._headers()
-                )
-            response.raise_for_status()
-            target = settings.LLM_MODEL.lower()
-            available = any(
-                str(item.get("id", "")).lower() == target
-                for item in response.json().get("data", [])
+        configured_models = [
+            (settings.PRIMARY_MODEL_HEALTH_URL, settings.HF_TOKEN, settings.LLM_MODEL)
+        ]
+        fallback = self._fallback(settings.LLM_MODEL)
+        if fallback:
+            configured_models.append(
+                (settings.FALLBACK_MODEL_HEALTH_URL, fallback[1], fallback[2])
             )
-            if available:
-                self._runtime_status = "ready"
-                checks["model"] = "ready"
-        except Exception:
+        for index, (health_url, token, target_model) in enumerate(configured_models):
+            try:
+                async with httpx.AsyncClient(timeout=settings.MODEL_TIMEOUT_SECONDS) as client:
+                    response = await client.get(health_url, headers=self._headers(token))
+                response.raise_for_status()
+                available = any(
+                    str(item.get("id", "")).lower() == target_model.lower()
+                    for item in response.json().get("data", [])
+                )
+                if available:
+                    self._runtime_status = "ready"
+                    checks["model"] = "ready"
+                    break
+            except Exception as error:
+                if index == 0 and fallback and not self._can_retry(error):
+                    break
+                continue
+        if checks["model"] != "ready":
             self._runtime_status = "unavailable"
         return checks
 

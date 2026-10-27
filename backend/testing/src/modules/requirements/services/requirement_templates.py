@@ -5,7 +5,11 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_automation import (
+    ai_contract_metadata,
+    request_ai_automation,
+    require_document_ingestion_event,
+)
 from src.core.common import audit, get_project, get_project_role, get_project_roles, new_id, now, plain_text
 from src.modules.requirements.services.requirement_documents import require_document_access
 from src.modules.requirements.services.requirement_import import api_operation_identifiers
@@ -601,6 +605,19 @@ async def review_template(project_id, template_id, user):
         raise HTTPException(status_code=404, detail={"code": "TEMPLATE_NOT_FOUND"})
     document_ids = await validate_template_ai_sources(project_id, template, user)
     documents = await validate_template_documents(project_id, sorted(document_ids), user, ai_required=True)
+    if getattr(user, "_ai_automation_run_id", None):
+        triggering_document_id, triggering_revision = require_document_ingestion_event(
+            user, document_ids
+        )
+        triggering_document = next(
+            (item for item in documents if str(item.get("_id") or "") == triggering_document_id),
+            None,
+        )
+        if (
+            triggering_document is None
+            or int(triggering_document.get("revision") or 0) != triggering_revision
+        ):
+            raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EVENT_SOURCE_CHANGED"})
     template_evidence = []
     document_evidence = []
     document_text = {}
@@ -685,6 +702,21 @@ async def review_template(project_id, template_id, user):
 async def synthesize_template(project_id, payload, user):
     await get_project(project_id, user, "requirement.create")
     documents = await validate_template_documents(project_id, payload.source_document_ids, user, ai_required=True)
+    triggering_document_id = None
+    triggering_revision = None
+    if getattr(user, "_ai_automation_run_id", None):
+        triggering_document_id, triggering_revision = require_document_ingestion_event(
+            user, payload.source_document_ids
+        )
+        triggering_document = next(
+            (item for item in documents if str(item.get("_id") or "") == triggering_document_id),
+            None,
+        )
+        if (
+            triggering_document is None
+            or int(triggering_document.get("revision") or 0) != triggering_revision
+        ):
+            raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EVENT_SOURCE_CHANGED"})
     templates = [await visible_template(item, project_id, user) for item in payload.source_template_ids]
     template_document_ids = set()
     for template in templates:
@@ -715,6 +747,16 @@ async def synthesize_template(project_id, payload, user):
             payload.source_document_ids, documents, templates
         )
         return await create_template(project_id, data, user, synthesis={"status": "REVIEW_REQUIRED", "conflicts": conflicts, "warnings": ["SOURCE_TEMPLATES_HAVE_NO_REQUIREMENTS"], "evidence_refs": payload.source_template_ids, "source_snapshot": source_snapshot})
+    if triggering_document_id:
+        triggering_document = next(
+            (item for item in documents if str(item.get("_id") or "") == triggering_document_id),
+            None,
+        )
+        if (
+            triggering_document is None
+            or int(triggering_document.get("revision") or 0) != triggering_revision
+        ):
+            raise HTTPException(status_code=409, detail={"code": "DOCUMENT_EVENT_SOURCE_CHANGED"})
     evidence = []
     evidence_lookup = {}
     total_chunks = 0

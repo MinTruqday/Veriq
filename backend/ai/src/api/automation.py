@@ -6,6 +6,7 @@ from src.core.dependency import get_current_user, oauth2_scheme, verify_internal
 from src.repositories.automation import automation_repository
 from src.schemas.auth import CurrentUser, SystemRole
 from src.schemas.automation import (
+    AutomationAction,
     AutomationCancelRequest,
     AutomationClarificationResponseRequest,
     AutomationDefinitionPatch,
@@ -175,7 +176,16 @@ async def create_automation_definition(
 
 @router.get("/triggers")
 async def list_automation_triggers():
-    return [trigger.value for trigger in AutomationTrigger]
+    return [
+        trigger.value
+        for trigger in AutomationTrigger
+        if trigger != AutomationTrigger.MANUAL
+    ]
+
+
+@router.get("/hanh-dong")
+async def list_automation_actions():
+    return [action.value for action in AutomationAction]
 
 
 @router.get("/du-an/{project_id}/dinh-nghia")
@@ -259,10 +269,13 @@ async def create_automation_run(
     token: str = Depends(oauth2_scheme),
     user: CurrentUser = Depends(get_current_user),
 ):
-    role, permissions = await project_access(payload.project_id, token)
+    _, permissions = await project_access(payload.project_id, token)
     if "automation.create" not in permissions:
         raise HTTPException(status_code=403, detail={"code": "AUTOMATION_CAPABILITY_DENIED"})
-    return await automation_service.create(payload, user.id, role, permissions)
+    raise HTTPException(
+        status_code=410,
+        detail={"code": "DIRECT_AUTOMATION_RUN_RETIRED", "replacement": "noi-bo/su-kien"},
+    )
 
 
 @router.get("/luot-chay/{automation_run_id}")

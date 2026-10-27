@@ -19,6 +19,7 @@ class RequirementSourceImpactTests(unittest.IsolatedAsyncioTestCase):
         versions = [
             {
                 "_id": "DOC-1",
+                "source_series_id": "SERIES-1",
                 "source_version": "1",
                 "source_version_sequence": 1,
                 "previous_source_version_id": None,
@@ -55,6 +56,15 @@ class RequirementSourceImpactTests(unittest.IsolatedAsyncioTestCase):
                 "current_version": {"requirement_version_ids": ["REQV-2"]},
             }
         ]
+        case_versions = [
+            {
+                "_id": "TCV-1",
+                "test_case_id": "TC-1",
+                "version": 1,
+                "status": "APPROVED",
+                "requirement_version_ids": ["REQV-2"],
+            }
+        ]
         with (
             patch.object(
                 requirement_documents,
@@ -82,6 +92,16 @@ class RequirementSourceImpactTests(unittest.IsolatedAsyncioTestCase):
                 "list_cases_linked_to_requirement",
                 new=AsyncMock(return_value=cases),
             ) as list_cases,
+            patch.object(
+                requirement_documents.test_design_repository,
+                "list_case_versions_linked_to_requirements",
+                new=AsyncMock(return_value=case_versions),
+            ) as list_case_versions,
+            patch.object(
+                requirement_documents.test_design_repository,
+                "list_cases_by_ids",
+                new=AsyncMock(return_value=cases),
+            ) as list_case_records,
         ):
             result = await requirement_documents.get_requirement_source_impact(
                 "DOC-2", user
@@ -94,6 +114,8 @@ class RequirementSourceImpactTests(unittest.IsolatedAsyncioTestCase):
             "PROJECT-1", ["DOC-1", "DOC-2"]
         )
         list_cases.assert_awaited_once_with("PROJECT-1", ["REQV-1", "REQV-2"])
+        list_case_versions.assert_awaited_once_with("PROJECT-1", ["REQV-1", "REQV-2"])
+        list_case_records.assert_awaited_once_with("PROJECT-1", ["TC-1"])
         self.assertEqual(result["latest_document_id"], "DOC-2")
         self.assertEqual(result["impact_status"], "HAS_DOWNSTREAM_ARTIFACTS")
         self.assertEqual(
@@ -149,6 +171,16 @@ class RequirementSourceImpactTests(unittest.IsolatedAsyncioTestCase):
                 "list_cases_linked_to_requirement",
                 new=AsyncMock(return_value=[]),
             ) as list_cases,
+            patch.object(
+                requirement_documents.test_design_repository,
+                "list_case_versions_linked_to_requirements",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                requirement_documents.test_design_repository,
+                "list_cases_by_ids",
+                new=AsyncMock(return_value=[]),
+            ),
         ):
             result = await requirement_documents.get_requirement_source_impact(
                 "DOC-1", user

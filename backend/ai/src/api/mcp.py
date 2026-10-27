@@ -71,9 +71,31 @@ async def list_mcp_call_audits(
     project_id: str,
     token: str = Depends(oauth2_scheme),
     user: CurrentUser = Depends(get_current_user),
+    automation_run_id: str | None = None,
+    task_id: str | None = None,
+    limit: int = 100,
 ):
     await _require_project_read(project_id, token)
-    values = await mcp_repository.list_call_audits(project_id)
+    if automation_run_id is not None and (
+        not automation_run_id.strip() or len(automation_run_id) > 128
+    ):
+        raise HTTPException(
+            status_code=422, detail={"code": "MCP_AUDIT_RUN_FILTER_INVALID"}
+        )
+    if task_id is not None and (not task_id.strip() or len(task_id) > 128):
+        raise HTTPException(
+            status_code=422, detail={"code": "MCP_AUDIT_TASK_FILTER_INVALID"}
+        )
+    if isinstance(limit, bool) or not 1 <= limit <= 500:
+        raise HTTPException(
+            status_code=422, detail={"code": "MCP_AUDIT_LIMIT_INVALID"}
+        )
+    values = await mcp_repository.list_call_audits(
+        project_id,
+        limit=limit,
+        automation_run_id=automation_run_id,
+        task_id=task_id,
+    )
     return [item.model_dump(mode="json") for item in values]
 
 

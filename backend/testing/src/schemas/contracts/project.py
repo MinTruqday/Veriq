@@ -9,7 +9,12 @@ class ProjectCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     description: str = Field(default="", max_length=5000)
     project_type: Literal["web", "mobile", "api", "desktop", "embedded", "other"] = "web"
-    locale: str = Field(default="vi-VN", min_length=2, max_length=20)
+    locale: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=35,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+    )
     timezone: str = Field(default="Asia/Ho_Chi_Minh", min_length=2, max_length=80)
     settings: dict[str, Any] = Field(default_factory=dict)
     initial_qa_user_id: str = Field(min_length=1, max_length=320)

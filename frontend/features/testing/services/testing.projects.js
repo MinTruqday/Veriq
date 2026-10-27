@@ -6,6 +6,39 @@ import {
 } from "./testing.transport";
 
 export const projectTestingApi = {
+  downloadPayrollTemplate: () =>
+    downloadTestingFile("/quan-tri/tai-chinh/bang-luong/mau.csv", "veriq-payroll-template.csv"),
+  readPayrollHeaders: (file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return testingRequest("/quan-tri/tai-chinh/bang-luong/cot", { method: "POST", body }).then(
+      (result) => result.headers || [],
+    );
+  },
+  previewPayrollImport: (file, mapping) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("mapping", JSON.stringify(mapping));
+    return testingRequest("/quan-tri/tai-chinh/bang-luong/xem-truoc", { method: "POST", body });
+  },
+  applyPayrollImport: (previewId, payload) =>
+    testingRequest(`/quan-tri/tai-chinh/bang-luong/${previewId}/ap-dung`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listPayrollRates: () => testingRequest("/quan-tri/tai-chinh/bang-luong"),
+  listFinancialProjects: () => testingRequest("/quan-tri/tai-chinh/du-an"),
+  getProjectCommercialTerms: (projectId) =>
+    testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/dieu-khoan`),
+  setProjectCommercialTerms: (projectId, payload) =>
+    testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/dieu-khoan`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  listFinancialTestPlans: (projectId) =>
+    testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/ke-hoach`),
+  forecastPlanLaborCost: (projectId, testPlanId) =>
+    testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/ke-hoach/${testPlanId}/du-toan`),
   getProjectCapabilities: () => testingRequest("/du-an/kha-nang"),
   runAutomation: (payload) =>
     automationRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
@@ -14,6 +47,11 @@ export const projectTestingApi = {
   listAutomationRuns: (projectId) => automationRequest(`/du-an/${projectId}/luot-chay`),
   retryAutomationRun: (runId, payload) =>
     automationRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  answerAutomationClarification: (runId, payload) =>
+    automationRequest(`/luot-chay/${runId}/tra-loi-lam-ro`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -42,6 +80,11 @@ export const projectTestingApi = {
   getProject: (id) => testingRequest(`/du-an/${id}`),
   listMembers: (id) => testingRequest(`/du-an/${id}/thanh-vien`),
   getMySkillProfile: (id) => testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi`),
+  recommendTestCaseOwner: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/ca-kiem-thu/goi-y-nguoi-phu-trach`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   saveMySkillProfile: (id, payload) =>
     testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi`, {
       method: "PUT",

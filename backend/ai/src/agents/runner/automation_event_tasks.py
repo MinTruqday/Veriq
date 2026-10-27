@@ -1,3 +1,4 @@
+import json
 import re
 
 from src.agents.runner.automation_validation import validated_tasks
@@ -313,6 +314,72 @@ def simulation_baseline_trace_links(observations, baseline_version_id, stage=Non
                 continue
             links.append(link)
     return links
+
+
+def simulation_baseline_trace_snapshot(observations, baseline_version_id, stage):
+    candidates = [
+        item
+        for item in observations or []
+        if item.get("tool_name") == "get_traceability_links"
+        and item.get("status") == ToolExecutionStatus.COMPLETED
+        and (
+            item.get("change_simulation_stage") == stage
+            or stage == "DISCOVERY" and item.get("change_simulation_stage") is None
+        )
+    ]
+    if not candidates:
+        return None
+
+    snapshots = []
+    for observation in candidates:
+        if observation.get("output_security"):
+            return None
+        result = observation.get("result")
+        if not isinstance(result, dict):
+            return None
+        requirement_versions = result.get("requirement_versions")
+        acceptance_criteria = result.get("acceptance_criteria")
+        trace_links = result.get("trace_links")
+        if not all(isinstance(value, list) for value in (requirement_versions, acceptance_criteria, trace_links)):
+            return None
+        matching_versions = [
+            item
+            for item in requirement_versions
+            if isinstance(item, dict) and str(item.get("_id") or "") == baseline_version_id
+        ]
+        if len(matching_versions) != 1:
+            return None
+        if any(
+            not isinstance(item, dict)
+            or str(item.get("requirement_version_id") or "") != baseline_version_id
+            or not str(item.get("_id") or "").strip()
+            for item in acceptance_criteria
+        ):
+            return None
+        if any(not isinstance(item, dict) for item in trace_links):
+            return None
+
+        scoped_links = simulation_baseline_trace_links(
+            [observation], baseline_version_id, stage=stage
+        )
+        snapshots.append(
+            {
+                "requirement_version": json.dumps(
+                    matching_versions[0], sort_keys=True, ensure_ascii=False, default=str
+                ),
+                "acceptance_criteria": sorted(
+                    json.dumps(item, sort_keys=True, ensure_ascii=False, default=str)
+                    for item in acceptance_criteria
+                ),
+                "trace_links": sorted(
+                    json.dumps(item, sort_keys=True, ensure_ascii=False, default=str)
+                    for item in scoped_links
+                ),
+            }
+        )
+    if any(snapshot != snapshots[0] for snapshot in snapshots[1:]):
+        return None
+    return snapshots[0]
 
 
 def direct_document_ingestion_task(run, state, evidence_refs):
@@ -657,9 +724,31 @@ def direct_approved_plan_task(run, state, evidence_refs):
             if item.get("artifact_type") == "test_plan"
             and item.get("project_id") == run.project_id
             and item.get("artifact_id")
+            and type(item.get("artifact_revision")) is int
+            and item["artifact_revision"] >= 1
         ),
         None,
     )
+    source = next(
+        (
+            item
+            for item in state.get("evidence", [])
+            if item.get("artifact_type") == "test_plan"
+            and item.get("project_id") == run.project_id
+            and str(item.get("artifact_id") or "") == plan_id
+            and type(item.get("artifact_revision")) is int
+            and item["artifact_revision"] >= 1
+        ),
+        None,
+    )
+    expected_revision = source.get("artifact_revision") if source else None
+    expected_event_id = (
+        f"test-plan:{plan_id}:{expected_revision}:TEST_PLAN_APPROVED"
+        if plan_id and expected_revision
+        else ""
+    )
+    if not expected_event_id or str(run.source_event_id or "") != expected_event_id:
+        return None
     tool_name = "process_approved_test_plan"
     access = tool_access(registered_tools().get(tool_name))
     if not plan_id or not access or access.permission not in run.permissions:
@@ -674,7 +763,12 @@ def direct_approved_plan_task(run, state, evidence_refs):
                 tool_calls=[
                     ToolCall(
                         tool_name=tool_name,
-                        arguments={"project_id": run.project_id, "test_plan_id": plan_id},
+                        arguments={
+                            "project_id": run.project_id,
+                            "test_plan_id": plan_id,
+                            "expected_revision": expected_revision,
+                            "source_event_id": expected_event_id,
+                        },
                     )
                 ],
             )
@@ -682,7 +776,7 @@ def direct_approved_plan_task(run, state, evidence_refs):
         run,
         evidence_refs,
         maximum=1,
-        known_identifiers=[plan_id, *evidence_refs],
+        known_identifiers=[plan_id, expected_event_id, *evidence_refs],
     )
     return tasks[0] if tasks and tasks[0].tool_calls else None
 
@@ -999,6 +1093,15 @@ def direct_event_observation_task(run, state, evidence_refs):
             return None
         arguments["source_event_id"] = expected_event_id
         arguments["source_event_revision"] = source["artifact_revision"]
+    if trigger == "WORK_ITEM_CHANGED":
+        relationship = source.get("relationship")
+        expected_event_id = (
+            f"work-item-dependency:{relationship['relationship_id']}:{identifier}:WORK_ITEM_CHANGED"
+            if isinstance(relationship, dict) and dependency_edge is not None
+            else f"work-item:{identifier}:{source['artifact_revision']}:WORK_ITEM_CHANGED"
+        )
+        if str(run.source_event_id or "") != expected_event_id:
+            return None
     if trigger == "API_OPERATION_CONFIRMED":
         arguments["expected_revision"] = source["artifact_revision"]
     if trigger == "RELEASE_CHANGED":

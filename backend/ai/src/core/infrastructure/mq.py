@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 from typing import Any, Dict, Optional
 
 import aio_pika
@@ -8,6 +9,7 @@ from uuid6 import uuid7
 
 from src.core.infrastructure.configuration import settings
 from src.runtime.limits import limits
+from src.runtime.queue_names import DEAD_LETTER_QUEUE
 from src.utils.background import create_background_task
 
 
@@ -54,9 +56,12 @@ class RabbitMQClient:
             channel = self.channel
 
         dlx = await channel.declare_exchange("dlx", aio_pika.ExchangeType.DIRECT)
-        dlq = await channel.declare_queue("dlq", durable=True)
-        await dlq.bind(dlx, "dlq")
-        queue_args = {"x-dead-letter-exchange": "dlx", "x-dead-letter-routing-key": "dlq"}
+        dlq = await channel.declare_queue(DEAD_LETTER_QUEUE, durable=True)
+        await dlq.bind(dlx, DEAD_LETTER_QUEUE)
+        queue_args = {
+            "x-dead-letter-exchange": "dlx",
+            "x-dead-letter-routing-key": DEAD_LETTER_QUEUE,
+        }
         return await channel.declare_queue(queue_name, durable=True, arguments=queue_args)
 
     async def publish(self, queue_name: str, payload: dict) -> bool:
@@ -72,6 +77,55 @@ class RabbitMQClient:
             return True
         except Exception:
             logger.exception("Error distributing message to RabbitMQ")
+            return False
+
+    async def publish_delayed(
+        self, queue_name: str, payload: dict, delay_seconds: float
+    ) -> bool:
+        if (
+            not queue_name
+            or isinstance(delay_seconds, bool)
+            or not isinstance(delay_seconds, (int, float))
+        ):
+            return False
+        try:
+            normalized_delay_seconds = float(delay_seconds)
+        except (OverflowError, ValueError):
+            return False
+        if not math.isfinite(normalized_delay_seconds) or normalized_delay_seconds <= 0:
+            return False
+        try:
+            delay_bucket_seconds = math.ceil(normalized_delay_seconds)
+            await self._ensure_publisher_channel()
+            target_queue = await self.get_queue(queue_name)
+            retry_exchange = await self.channel.declare_exchange(
+                f"{queue_name}.retry",
+                aio_pika.ExchangeType.DIRECT,
+                durable=True,
+            )
+            await target_queue.bind(retry_exchange, routing_key=queue_name)
+            delayed_queue_name = (
+                f"{queue_name}.delayed.{delay_bucket_seconds}s"
+            )
+            delayed_queue = await self.channel.declare_queue(
+                delayed_queue_name,
+                durable=True,
+                arguments={
+                    "x-message-ttl": delay_bucket_seconds * 1000,
+                    "x-dead-letter-exchange": retry_exchange.name,
+                    "x-dead-letter-routing-key": queue_name,
+                },
+            )
+            message = aio_pika.Message(
+                body=json.dumps(payload).encode(),
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            )
+            await self.channel.default_exchange.publish(
+                message, routing_key=delayed_queue.name, mandatory=True
+            )
+            return True
+        except Exception:
+            logger.exception("Error scheduling delayed RabbitMQ message queue={}", queue_name)
             return False
 
     async def consume(

@@ -6,12 +6,52 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import audit, new_id, now
 from src.repositories.causal_analysis import causal_analysis_repository
 from src.modules.quality.services.causal_analysis_query import get_analysis
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_automation import (
+    ai_contract_metadata,
+    request_ai_automation,
+    require_ai_automation_event,
+)
 
 
 async def generate_hypotheses(analysis_id, payload, user):
-    
     value = await get_analysis(analysis_id, user, "causalanalysis.update")
+    automation = require_ai_automation_event(
+        user, {"DEFECT_RECORDED", "DEFECT_CHANGED"}
+    )
+    if (
+        not value.get("source_event_id")
+        or value.get("source_event_id") != automation["source_event_id"]
+        or value.get("source_event_trigger") != automation["trigger"]
+        or value.get("source_automation_run_id") != automation["run_id"]
+        or len(value.get("defect_ids") or []) != 1
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "VERIFIED_DEFECT_EVENT_REQUIRED"},
+        )
+    expected_event_id = (
+        f"defect:{value['defect_ids'][0]}:{value.get('source_event_revision')}"
+    )
+    if value["source_event_id"] != expected_event_id:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DEFECT_EVENT_IDENTITY_MISMATCH"},
+        )
+    current_defects = await causal_analysis_repository.list_defects(
+        {
+            "_id": value["defect_ids"][0],
+            "project_id": value["project_id"],
+        },
+        1,
+    )
+    if (
+        not current_defects
+        or current_defects[0].get("revision") != value.get("source_event_revision")
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DEFECT_EVENT_SUPERSEDED"},
+        )
     existing = await causal_analysis_repository.find_ai_result_by_idempotency(
         value["project_id"], payload.idempotency_key
     )

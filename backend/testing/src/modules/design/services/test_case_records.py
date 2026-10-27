@@ -33,17 +33,56 @@ def project_test_text(value):
         f"{plain_text(step.get('action_doc', {}))} {plain_text(step.get('expected_doc', {}))}"
         for step in value.get("steps", [])
     )
+    bdd = value.get("bdd") or {}
+    bdd_text = " ".join(
+        str(item or "")
+        for item in (
+            bdd.get("feature"),
+            bdd.get("scenario"),
+            *(part for step in bdd.get("steps", []) for part in (step.get("keyword"), step.get("text"))),
+        )
+    )
+    data_fields = " ".join(str(key) for key in (value.get("test_data") or {}))
     return " ".join(
         [
             value.get("title", ""),
+            str(value.get("type") or ""),
+            str(value.get("test_level") or ""),
+            str(value.get("test_kind") or ""),
+            " ".join(value.get("techniques", [])),
+            " ".join(value.get("tags", [])),
+            " ".join(value.get("required_skills", [])),
             plain_text(value.get("objective_doc", {})),
             plain_text(value.get("preconditions_doc", {})),
             steps,
+            data_fields,
+            bdd_text,
             plain_text(value.get("expected_result_doc", {})),
             plain_text(value.get("postconditions_doc", {})),
             " ".join(str(item) for item in (value.get("custom_values") or {}).values()),
         ]
     ).strip()
+
+
+def project_test_index_metadata(value):
+    return {
+        "test_case_key": value.get("test_case_key"),
+        "test_case_type": value.get("type"),
+        "test_level": value.get("test_level"),
+        "test_kind": value.get("test_kind"),
+        "expected_impact": value.get("expected_impact"),
+        "priority": value.get("priority"),
+        "risk": value.get("risk"),
+        "techniques": value.get("techniques", []),
+        "tags": value.get("tags", []),
+        "required_skills": value.get("required_skills", []),
+        "automation_status": value.get("automation_status"),
+        "repository_node_id": value.get("repository_node_id"),
+        "requirement_version_ids": value.get("requirement_version_ids", []),
+        "acceptance_criterion_ids": value.get("acceptance_criterion_ids", []),
+        "coverage_item_ids": value.get("coverage_item_ids", []),
+        "data_set_version_ids": value.get("data_set_version_ids", []),
+    }
 
 
 def active_suite_signature(cases, requirement_version_ids):

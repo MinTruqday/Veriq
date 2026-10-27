@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -8,15 +7,14 @@ from fastapi import HTTPException
 from loguru import logger
 
 from src.agents.runner.automation_graph import automation_workflow
+from src.agents.runner.automation_validation import tool_call_records_for_observations
 from src.core.infrastructure.mq import mq
-from src.core.infrastructure.observability import (
-    SafeTraceMetadata,
-    langfuse_cloud_exporter,
-)
 from src.memory.long_term import long_term_memory
 from src.memory.short_term import run_store
 from src.repositories.automation import automation_repository
+from src.repositories.mcp import mcp_repository
 from src.runtime.limits import limits
+from src.runtime.queue_names import AUTOMATION_QUEUE
 from src.schemas.agent import AgentRunStatus, VeriqRunState
 from src.schemas.automation import (
     AutomationCheckpointPhase,
@@ -39,6 +37,7 @@ from src.services.automation_provenance import (
     has_provenance_gap,
     missing_blueprint_artifact_coverage_count,
     source_fact_identity,
+    verified_release_gate_mutation_refs,
     verified_blueprint_artifact_lineage,
     verified_blueprint_claim_lineage,
     verified_blueprint_from_observations,
@@ -48,6 +47,22 @@ from src.services.inference import model_metadata
 from src.services.project_access import project_access
 from src.tools.registry import registered_tools, tool_access
 from src.utils.background import create_background_task
+
+
+def _automation_retry_delay_seconds(dispatch_failures: int) -> int:
+    base_delay = limits.queue_retry_base_seconds
+    maximum_delay = limits.queue_retry_max_seconds
+    if (
+        isinstance(dispatch_failures, bool)
+        or not isinstance(dispatch_failures, int)
+        or dispatch_failures < 0
+        or base_delay < 1
+        or maximum_delay < base_delay
+    ):
+        raise ValueError("automation_retry_delay_configuration_invalid")
+    doublings = max(0, dispatch_failures - 1)
+    maximum_doublings = (maximum_delay // base_delay).bit_length()
+    return min(base_delay * (1 << min(doublings, maximum_doublings)), maximum_delay)
 
 
 def terminal_status_for_agent_run(completed: VeriqRunState) -> AutomationStatus:
@@ -79,49 +94,6 @@ class AutomationWorker:
         self._last_queue_retry_scan = 0.0
         self._last_expired_run_recovery_scan = 0.0
 
-    @staticmethod
-    def _trace_retry_count(payload: dict) -> int:
-        try:
-            return max(0, min(int(payload.get("attempt") or 0), 100))
-        except (TypeError, ValueError, OverflowError):
-            return 0
-
-    async def _export_safe_run_trace(
-        self,
-        run_id: str,
-        started_at: float,
-        status: AutomationStatus,
-        retry_count: int,
-        model: str | None = None,
-        error_code: str | None = None,
-    ) -> None:
-        normalized_status = (
-            "ok"
-            if status == AutomationStatus.COMPLETED
-            else "waiting_input"
-            if status in {
-                AutomationStatus.AWAITING_INPUT,
-                AutomationStatus.AWAITING_AUTHORIZATION,
-            }
-            else "cancelled"
-            if status == AutomationStatus.CANCELLED
-            else "error"
-        )
-        try:
-            await langfuse_cloud_exporter.export(
-                SafeTraceMetadata(
-                    run_id=run_id,
-                    step="automation_run",
-                    model=model,
-                    duration_ms=int((time.monotonic() - started_at) * 1000),
-                    status=normalized_status,
-                    retry_count=retry_count,
-                    error_code=error_code,
-                )
-            )
-        except Exception:
-            logger.warning("Optional cloud trace export failed")
-
     async def start(self) -> None:
         if self._task and not self._task.done():
             return
@@ -138,10 +110,19 @@ class AutomationWorker:
     async def _retry_startup_recovery(self, startup_cutoff: datetime) -> None:
         while not self._stopping:
             try:
-                runs = await automation_repository.recover_interrupted_runs(
-                    startup_cutoff
-                )
-                await self._dispatch_recovered_runs(runs)
+                cursor = None
+                while not self._stopping:
+                    runs = await automation_repository.recover_interrupted_runs(
+                        startup_cutoff,
+                        after_automation_run_id=cursor,
+                        limit=limits.automation_recovery_batch_size,
+                    )
+                    if not runs:
+                        break
+                    await self._dispatch_recovered_runs(runs)
+                    cursor = runs[-1].automation_run_id
+                    if len(runs) < limits.automation_recovery_batch_size:
+                        break
                 return
             except asyncio.CancelledError:
                 raise
@@ -156,7 +137,7 @@ class AutomationWorker:
             if run.status == AutomationStatus.QUEUED:
                 try:
                     published = await mq.publish(
-                        "ai.automation",
+                        AUTOMATION_QUEUE,
                         {"automation_run_id": run.automation_run_id},
                     )
                 except asyncio.CancelledError:
@@ -223,7 +204,7 @@ class AutomationWorker:
     async def _consume(self) -> None:
         while not self._stopping:
             try:
-                message = await mq.consume("ai.automation", timeout=5)
+                message = await mq.consume(AUTOMATION_QUEUE, timeout=5)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -264,7 +245,14 @@ class AutomationWorker:
         if loop_now - self._last_queue_retry_scan < limits.queue_retry_scan_seconds:
             return
         self._last_queue_retry_scan = loop_now
+        try:
+            await mcp_repository.recover_interrupted_call_audits()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("AI automation worker could not recover interrupted MCP audit records")
         now = datetime.now(timezone.utc)
+        await self._dispatch_stale_queued_runs(now)
         base_delay = max(1, limits.queue_retry_base_seconds)
         try:
             candidates = await automation_repository.list_retryable_queue_runs(
@@ -277,7 +265,7 @@ class AutomationWorker:
             return
         for run in candidates:
             try:
-                checkpoints = await automation_repository.list_checkpoints(
+                dispatch_failures = await automation_repository.count_retry_checkpoints(
                     run.automation_run_id
                 )
                 latest_checkpoint = await automation_repository.latest_checkpoint(
@@ -286,21 +274,9 @@ class AutomationWorker:
                 resume_snapshot = (
                     latest_checkpoint.state_snapshot if latest_checkpoint else None
                 )
-                dispatch_failures = sum(
-                    1
-                    for checkpoint in checkpoints
-                    if checkpoint.detail.get("reason_code")
-                    in {
-                        "AUTOMATION_QUEUE_UNAVAILABLE",
-                        "AUTOMATION_WORKER_RETRYABLE",
-                    }
-                )
                 if run.automatic_retry_count >= limits.retries:
                     continue
-                delay = min(
-                    base_delay * (2 ** max(0, dispatch_failures - 1)),
-                    max(base_delay, limits.queue_retry_max_seconds),
-                )
+                delay = _automation_retry_delay_seconds(dispatch_failures)
                 last_updated = run.updated_at
                 if last_updated.tzinfo is None:
                     last_updated = last_updated.replace(tzinfo=timezone.utc)
@@ -327,7 +303,7 @@ class AutomationWorker:
 
                 try:
                     published = await mq.publish(
-                        "ai.automation",
+                        AUTOMATION_QUEUE,
                         {"automation_run_id": queued.automation_run_id},
                     )
                 except asyncio.CancelledError:
@@ -364,17 +340,75 @@ class AutomationWorker:
                     run.automation_run_id,
                 )
 
+    async def _dispatch_stale_queued_runs(self, now: datetime) -> None:
+        dispatch_window = max(1, limits.message_ack_timeout_seconds)
+        try:
+            runs = await automation_repository.claim_stale_queued_runs(
+                now - timedelta(seconds=dispatch_window),
+                now + timedelta(seconds=dispatch_window),
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("AI automation worker could not claim stale queued runs")
+            return
+
+        for run in runs:
+            try:
+                published = await mq.publish(
+                    AUTOMATION_QUEUE,
+                    {"automation_run_id": run.automation_run_id},
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "AI automation stale queued dispatch raised for run {}",
+                    run.automation_run_id,
+                )
+                published = False
+            if published:
+                continue
+            checkpoint = await automation_repository.latest_checkpoint(
+                run.automation_run_id
+            )
+            await automation_repository.transition_with_checkpoint(
+                run.automation_run_id,
+                run.revision,
+                {
+                    "status": AutomationStatus.DEGRADED,
+                    "error_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                    "queue_dispatch_lease_expires_at": None,
+                },
+                phase=AutomationCheckpointPhase.FINALIZED,
+                detail={
+                    "reason_code": "AUTOMATION_QUEUE_UNAVAILABLE",
+                    "retryable": True,
+                    "recovered_stale_queued_dispatch": True,
+                },
+                state_snapshot=checkpoint.state_snapshot if checkpoint else None,
+            )
+
     async def _recover_expired_running_runs(self) -> None:
         loop_now = asyncio.get_running_loop().time()
         if loop_now - self._last_expired_run_recovery_scan < limits.queue_retry_scan_seconds:
             return
         self._last_expired_run_recovery_scan = loop_now
         try:
-            recovered = await automation_repository.recover_interrupted_runs(
-                include_queued=False,
-                include_legacy_running=False,
-            )
-            await self._dispatch_recovered_runs(recovered)
+            cursor = None
+            while True:
+                recovered = await automation_repository.recover_interrupted_runs(
+                    include_queued=False,
+                    include_legacy_running=False,
+                    after_automation_run_id=cursor,
+                    limit=limits.automation_recovery_batch_size,
+                )
+                if not recovered:
+                    break
+                await self._dispatch_recovered_runs(recovered)
+                cursor = recovered[-1].automation_run_id
+                if len(recovered) < limits.automation_recovery_batch_size:
+                    break
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -554,6 +588,7 @@ class AutomationWorker:
             {
                 "status": AutomationStatus.RUNNING,
                 "error_code": None,
+                "queue_dispatch_lease_expires_at": None,
                 "execution_permissions": live_permissions,
                 "trace_id": trace_id,
                 "worker_lease_expires_at": datetime.now(timezone.utc)
@@ -583,24 +618,57 @@ class AutomationWorker:
         graph_state["worker_revision"] = running.revision
         recovery_snapshot.worker_revision = running.revision
         agentops.record_session_start(agent_run.run_id, running.requester_user_id)
-        safe_trace_run_id = trace_id.replace("-", "").lower()
-        safe_trace_started_at = time.monotonic()
         try:
-            result = await asyncio.wait_for(
-                automation_workflow.ainvoke(
-                    graph_state,
-                    config={
-                        "run_id": UUID(trace_id),
-                        "run_name": "veriq-ai-automation",
-                        "tags": ["veriq", "automation", running.kind.value],
-                        "metadata": {
-                            "automation_kind": running.kind.value,
-                            "trigger": running.trigger.value if running.trigger else "ON_DEMAND",
-                        },
-                    },
-                ),
-                timeout=limits.run_timeout_seconds,
-            )
+            from src.core.infrastructure.observability import trace_span
+
+            with trace_span(
+                "automation.run",
+                {
+                    "automation.run_id": running.automation_run_id,
+                    "automation.kind": running.kind.value,
+                    "automation.trigger": running.trigger.value if running.trigger else "ON_DEMAND",
+                },
+            ) as automation_span:
+                try:
+                    result = await asyncio.wait_for(
+                        automation_workflow.ainvoke(
+                            graph_state,
+                            config={
+                                "run_id": UUID(trace_id),
+                                "run_name": "veriq-ai-automation",
+                                "tags": ["veriq", "automation", running.kind.value],
+                                "metadata": {
+                                    "automation_kind": running.kind.value,
+                                    "trigger": running.trigger.value if running.trigger else "ON_DEMAND",
+                                },
+                            },
+                        ),
+                        timeout=limits.run_timeout_seconds,
+                    )
+                except asyncio.CancelledError:
+                    if automation_span is not None:
+                        automation_span.set_attribute("event.status", "cancelled")
+                    raise
+                except Exception:
+                    if automation_span is not None:
+                        automation_span.set_attribute("event.status", "failed")
+                    raise
+                graph_status = str(
+                    ((result.get("run") or {}).get("status") or "")
+                ).strip().lower()
+                if graph_status not in {
+                    "queued",
+                    "running",
+                    "awaiting_authorization",
+                    "awaiting_input",
+                    "completed",
+                    "degraded",
+                    "failed",
+                    "cancelled",
+                }:
+                    graph_status = "failed"
+                if automation_span is not None:
+                    automation_span.set_attribute("event.status", graph_status)
             completed = VeriqRunState(**result["run"])
             terminal_status = terminal_status_for_agent_run(completed)
             authorization_error = None
@@ -864,15 +932,14 @@ class AutomationWorker:
                         verification_status="VERIFIED_EXACT_SOURCE_QUOTE",
                     )
                 )
-            records_by_tool = {}
-            for record in completed.tool_calls:
-                records_by_tool.setdefault(record.get("tool_name"), []).append(record)
-            for observation in completed.observations:
+            matched_tool_calls = tool_call_records_for_observations(
+                completed.tool_calls, completed.observations
+            )
+            for observation_index, observation in enumerate(completed.observations):
                 tool_name = observation.get("tool_name")
                 if not tool_name:
                     continue
-                records = records_by_tool.get(tool_name) or []
-                record = records.pop(0) if records else {}
+                record = matched_tool_calls[observation_index]
                 task = next(
                     (
                         item for item in completed.completed_tasks
@@ -916,7 +983,23 @@ class AutomationWorker:
                     output_refs,
                     lineage_by_ref,
                 )
-                if verified_mutation and output_refs and not input_fact_ids:
+                control_event_refs = (
+                    verified_release_gate_mutation_refs(
+                        automatic=True,
+                        source_event_verified=running.source_event_verified,
+                        trigger=str((running.constraints or {}).get("trigger") or ""),
+                        project_id=running.project_id,
+                        source_event_id=running.source_event_id,
+                        control_evidence=source_evidence,
+                        tool_name=str(tool_name),
+                        arguments=record.get("arguments") or {},
+                        input_refs=input_refs,
+                        output_refs=output_refs,
+                    )
+                    if verified_mutation
+                    else []
+                )
+                if verified_mutation and output_refs and not input_fact_ids and not control_event_refs:
                     unlinked_mutation_count += 1
                 output_versions = list(
                     dict.fromkeys(
@@ -930,6 +1013,7 @@ class AutomationWorker:
                     DerivationStep(
                         name="TOOL_TRANSFORMATION",
                         source_fact_ids=input_fact_ids,
+                        control_event_refs=control_event_refs,
                         input_artifact_refs=input_refs,
                         input_artifact_version_ids=list(
                             dict.fromkeys(
@@ -996,14 +1080,6 @@ class AutomationWorker:
                     require_live_worker_lease=True,
                 )
                 agentops.record_session_end(completed.run_id, "failed")
-                await self._export_safe_run_trace(
-                    safe_trace_run_id,
-                    safe_trace_started_at,
-                    AutomationStatus.FAILED,
-                    self._trace_retry_count(payload),
-                    model=str((completed.model_metadata or {}).get("model") or "") or None,
-                    error_code="unknown",
-                )
                 return
 
             final_snapshot = None
@@ -1053,14 +1129,6 @@ class AutomationWorker:
             if not updated:
                 agentops.record_session_end(completed.run_id, "failed")
                 return
-            await self._export_safe_run_trace(
-                safe_trace_run_id,
-                safe_trace_started_at,
-                terminal_status,
-                self._trace_retry_count(payload),
-                model=str((completed.model_metadata or {}).get("model") or "") or None,
-                error_code=completed.error_code,
-            )
             try:
                 await run_store.save(completed)
                 if terminal_status == AutomationStatus.COMPLETED:
@@ -1085,14 +1153,6 @@ class AutomationWorker:
                 require_live_worker_lease=True,
             )
             agentops.record_session_end(agent_run.run_id, "failed")
-            await self._export_safe_run_trace(
-                safe_trace_run_id,
-                safe_trace_started_at,
-                AutomationStatus.FAILED,
-                self._trace_retry_count(payload),
-                model=str((agent_run.model_metadata or {}).get("model") or "") or None,
-                error_code="provider_timeout",
-            )
         except Exception:
             logger.exception("AI automation graph execution failed")
             await self._fail(
@@ -1102,14 +1162,6 @@ class AutomationWorker:
                 require_live_worker_lease=True,
             )
             agentops.record_session_end(agent_run.run_id, "failed")
-            await self._export_safe_run_trace(
-                safe_trace_run_id,
-                safe_trace_started_at,
-                AutomationStatus.FAILED,
-                self._trace_retry_count(payload),
-                model=str((agent_run.model_metadata or {}).get("model") or "") or None,
-                error_code="unknown",
-            )
 
     async def _await_authorization(self, run: AutomationRun, reason_code: str) -> None:
         await automation_repository.transition_with_checkpoint(

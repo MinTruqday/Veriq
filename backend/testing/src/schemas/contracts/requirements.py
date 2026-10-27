@@ -144,7 +144,7 @@ class RequirementTemplateSynthesis(BaseModel):
     product_types: list[Literal["web", "mobile", "api", "desktop", "embedded", "other"]] = Field(min_length=1, max_length=6)
     source_document_ids: list[str] = Field(default_factory=list, max_length=100)
     source_template_ids: list[str] = Field(default_factory=list, max_length=20)
-    instruction: str = Field(default="", max_length=3000)
+    instruction: str = Field(default="", max_length=5000)
 
     @model_validator(mode="after")
     def require_source(self):
@@ -371,10 +371,20 @@ class ImportConfirm(BaseModel):
 
 class RequirementImportResolution(BaseModel):
     expected_revision: int = Field(ge=1)
-    target_requirement_id: str = Field(min_length=1, max_length=200)
-    expected_target_version_id: str = Field(min_length=1, max_length=200)
-    action: Literal["link_source", "create_version"]
+    target_requirement_id: str | None = Field(default=None, min_length=1, max_length=200)
+    expected_target_version_id: str | None = Field(default=None, min_length=1, max_length=200)
+    action: Literal["link_source", "create_version", "create_requirement"]
     reason: str = Field(min_length=2, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_target(self):
+        if self.action == "create_requirement":
+            if self.target_requirement_id or self.expected_target_version_id:
+                raise ValueError("Creating a Requirement candidate cannot target an existing Requirement")
+            return self
+        if not self.target_requirement_id or not self.expected_target_version_id:
+            raise ValueError("Resolving a Requirement match requires its current version")
+        return self
 
 
 class APIArtifactReview(BaseModel):

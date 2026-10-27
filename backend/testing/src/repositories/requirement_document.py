@@ -162,19 +162,26 @@ class RequirementDocumentRepository:
         return await self.documents.find(query).sort("_id", 1).limit(limit).to_list(limit)
 
     async def set_index_result(
-        self, document_id, project_id, index_status, indexed_at, expected_revision=None
+        self,
+        document_id,
+        project_id,
+        index_status,
+        indexed_at,
+        expected_revision=None,
+        index_contract_version=None,
     ):
         query = {"_id": document_id, "project_id": project_id}
         if expected_revision is not None:
             query["revision"] = expected_revision
+        changes = {
+            "index_status": index_status,
+            "indexed_at": indexed_at,
+        }
+        if index_contract_version is not None:
+            changes["index_contract_version"] = index_contract_version
         return await self.documents.update_one(
             query,
-            {
-                "$set": {
-                    "index_status": index_status,
-                    "indexed_at": indexed_at,
-                }
-            },
+            {"$set": changes},
         )
 
     async def update(self, document_id, project_id, changes, increment_revision=False):

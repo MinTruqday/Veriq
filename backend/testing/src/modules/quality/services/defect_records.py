@@ -1,8 +1,11 @@
 import csv
+import hashlib
 import io
+import json
 import re
 
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from src.core.common import (
     audit,
@@ -24,32 +27,136 @@ from src.modules.execution.services.execution_context import (
     resolve_execution_context,
     serialize_release_gate,
 )
-from src.clients.project_knowledge import index_artifact
 from src.clients.ai_automation import emit_defect_recorded
+from src.repositories.defect_search_index import defect_search_index_repository
+
+
+def _defect_request_fingerprint(payload):
+    request = payload.model_dump(exclude={"idempotency_key"})
+    return hashlib.sha256(
+        json.dumps(
+            request,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _public_defect(defect):
+    return {
+        key: value
+        for key, value in defect.items()
+        if key not in {"idempotency_key", "idempotency_request_hash"}
+    }
 
 
 async def create_defect_record(project_id, payload, user):
-    
     if project_id != payload.project_id:
-        raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
+        raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
     await get_project(project_id, user, "defect.create")
+    if not payload.idempotency_key:
+        return _public_defect(await _create_defect_record(project_id, payload, user))
+
+    request_hash = _defect_request_fingerprint(payload)
+    existing = await defect_repository.find_defect_by_idempotency(
+        project_id, user.id, payload.idempotency_key
+    )
+    if existing:
+        if existing.get("idempotency_request_hash") != request_hash:
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+        await defect_search_index_repository.enqueue(existing)
+        return _public_defect(existing)
+
+    try:
+        created = await _create_defect_record(project_id, payload, user)
+        return _public_defect(created)
+    except DuplicateKeyError:
+        existing = await defect_repository.find_defect_by_idempotency(
+            project_id, user.id, payload.idempotency_key
+        )
+        if not existing:
+            raise
+        if existing.get("idempotency_request_hash") != request_hash:
+            raise HTTPException(
+                status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"}
+            )
+        await defect_search_index_repository.enqueue(existing)
+        return _public_defect(existing)
+
+
+async def _create_defect_record(project_id, payload, user):
     linked_result = None
     linked_run = None
+    requirement_version_ids = list(payload.linked_requirement_version_ids)
+    if len(requirement_version_ids) != len(set(requirement_version_ids)):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "DEFECT_REQUIREMENT_VERSION_DUPLICATE"},
+        )
+    if requirement_version_ids:
+        linked_requirement_count = await defect_repository.count_requirement_versions(
+            project_id, requirement_version_ids
+        )
+        if linked_requirement_count != len(requirement_version_ids):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_REQUIREMENT_VERSION"},
+            )
     if payload.linked_test_result_id:
         linked_result = await defect_repository.find_test_result(
             payload.linked_test_result_id, project_id
         )
         if not linked_result or linked_result["status"] != 'FAIL':
             raise HTTPException(status_code=422, detail={"code": 'DEFECT_REQUIRES_FAILED_RESULT'})
+        result_case_version_id = linked_result.get("test_case_version_id")
+        if not result_case_version_id:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "DEFECT_TEST_CASE_CONTEXT_UNAVAILABLE"},
+            )
+        if (
+            payload.linked_test_case_version_id
+            and payload.linked_test_case_version_id != result_case_version_id
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "DEFECT_TEST_CASE_CONTEXT_MISMATCH",
+                    "field": "linked_test_case_version_id",
+                },
+            )
         linked_run = await defect_repository.find_test_run(
             linked_result.get("test_run_id"), project_id
         )
         if not linked_run:
             raise HTTPException(status_code=409, detail={"code": "DEFECT_TEST_RUN_CONTEXT_UNAVAILABLE"})
+        if result_case_version_id not in linked_run.get("test_case_version_ids", []):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "DEFECT_TEST_CASE_OUTSIDE_RUN_SCOPE"},
+            )
+        if not await defect_repository.find_test_case_version(
+            result_case_version_id, project_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "DEFECT_TEST_CASE_CONTEXT_UNAVAILABLE"},
+            )
+    elif payload.linked_test_case_version_id:
+        linked_test_case_version = await defect_repository.find_test_case_version(
+            payload.linked_test_case_version_id, project_id
+        )
+        if not linked_test_case_version:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_TEST_CASE_VERSION"},
+            )
     for field in ("release_id", "build_id", "environment_id"):
         supplied = getattr(payload, field)
         run_value = linked_run.get(field) if linked_run else None
-        if supplied and run_value and supplied != run_value:
+        if supplied and linked_run and supplied != run_value:
             raise HTTPException(
                 status_code=422,
                 detail={"code": "DEFECT_EXECUTION_CONTEXT_MISMATCH", "field": field},
@@ -68,7 +175,14 @@ async def create_defect_record(project_id, payload, user):
     defect = {
         "_id": new_id('DEF'),
         **payload.model_dump(),
+        "idempotency_request_hash": (
+            _defect_request_fingerprint(payload) if payload.idempotency_key else None
+        ),
         **context,
+        "linked_test_case_version_id": (
+            (linked_result or {}).get("test_case_version_id")
+            or payload.linked_test_case_version_id
+        ),
         "defect_key": payload.defect_key
         or await next_key(project_id, 'defect', 'DEF'),
         "status": 'NEW',
@@ -79,6 +193,89 @@ async def create_defect_record(project_id, payload, user):
     }
     async with await database.client.start_session() as session:
         async with session.start_transaction():
+            if requirement_version_ids:
+                current_requirement_count = (
+                    await defect_repository.count_requirement_versions(
+                        project_id, requirement_version_ids, session=session
+                    )
+                )
+                if current_requirement_count != len(requirement_version_ids):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "DEFECT_REQUIREMENT_CONTEXT_CHANGED"},
+                    )
+            if not linked_result and payload.linked_test_case_version_id:
+                current_test_case_version = (
+                    await defect_repository.find_test_case_version(
+                        payload.linked_test_case_version_id,
+                        project_id,
+                        session=session,
+                    )
+                )
+                if not current_test_case_version:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "DEFECT_TEST_CASE_CONTEXT_CHANGED"},
+                    )
+            if linked_result:
+                current_result = await defect_repository.find_test_result(
+                    payload.linked_test_result_id,
+                    project_id,
+                    session=session,
+                )
+                current_run = await defect_repository.find_test_run(
+                    linked_result.get("test_run_id"),
+                    project_id,
+                    session=session,
+                )
+                run_context_fields = (
+                    "release_id",
+                    "build_id",
+                    "environment_id",
+                )
+                if (
+                    not current_result
+                    or current_result.get("status") != "FAIL"
+                    or current_result.get("revision") != linked_result.get("revision")
+                    or current_result.get("test_run_id") != linked_result.get("test_run_id")
+                    or current_result.get("test_case_version_id")
+                    != linked_result.get("test_case_version_id")
+                    or not current_run
+                    or current_result.get("test_case_version_id")
+                    not in current_run.get("test_case_version_ids", [])
+                    or any(
+                        current_run.get(field) != linked_run.get(field)
+                        for field in run_context_fields
+                    )
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "DEFECT_TEST_RESULT_CONTEXT_CHANGED"},
+                    )
+                if not await defect_repository.find_test_case_version(
+                    current_result["test_case_version_id"],
+                    project_id,
+                    session=session,
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "DEFECT_TEST_CASE_CONTEXT_CHANGED"},
+                    )
+                linked = await defect_repository.link_failed_result_to_defect(
+                    current_result["_id"],
+                    project_id,
+                    current_result.get("revision"),
+                    current_run["_id"],
+                    current_result["test_case_version_id"],
+                    defect["_id"],
+                    timestamp,
+                    session,
+                )
+                if not linked:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "DEFECT_TEST_RESULT_CONTEXT_CHANGED"},
+                    )
             if defect_blocks_release(defect):
                 await serialize_release_gate(
                     project_id,
@@ -96,25 +293,11 @@ async def create_defect_record(project_id, payload, user):
                 session=session,
             )
             await emit_defect_recorded(defect, user, session=session)
+            await defect_search_index_repository.enqueue(defect, session=session)
             if defect_blocks_release(defect):
                 await recheck_release_gates_for_defect(
                     project_id, [defect.get("release_id")], defect, user, session
                 )
-    await index_artifact(
-        project_id,
-        "defect",
-        defect["_id"],
-        defect["_id"],
-        defect["title"],
-        " ".join(
-            [defect["title"], str(defect.get("environment", "")), str(defect.get("build", ""))]
-        ),
-        defect["status"],
-        'PROJECT_REFERENCE',
-        1,
-        linked_test_result_id=defect.get("linked_test_result_id"),
-        linked_requirement_version_ids=defect.get("linked_requirement_version_ids", []),
-    )
     return defect
 
 

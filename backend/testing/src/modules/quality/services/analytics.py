@@ -3,8 +3,8 @@ import re
 from src.core.common import get_project, load_user_identities, now
 from src.schemas.contracts.utility import SearchInput
 from src.repositories.analytics import analytics_repository
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.clients.project_knowledge import search_project_with_status
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 
 
 
@@ -379,31 +379,59 @@ class AnalyticsService:
         await get_project(project_id, user, "knowledge.read")
         search_result, _ = await cls.search_knowledge(
             project_id,
-            SearchInput(query=payload.question, artifact_types=payload.artifact_types, limit=payload.evidence_limit),
+            SearchInput(
+                query=payload.question,
+                artifact_types=payload.artifact_types,
+                limit=payload.evidence_limit,
+            ),
             user,
         )
         evidence = search_result["items"]
         if not evidence:
-            missing = ai_contract_metadata({
-                "capability": "project_question",
-                "status": 'DEGRADED',
-                "degraded_mode": 'DEGRADED_KNOWLEDGE',
-                "provider": "none",
-                "model": {"provider": "none", "model": "none", "retrieval_version": search_result["retrieval_version"]},
-                "warnings": ['PROJECT_EVIDENCE_NOT_FOUND'],
-                "reason_codes": ['PROJECT_EVIDENCE_NOT_FOUND'],
-            })
-            return {"answer": "Không có đủ bằng chứng trong dự án để trả lời câu hỏi này", "evidence": [], **missing}, {"status": missing["status"], "degraded_mode": missing["degraded_mode"]}
-        result = await request_ai_automation("project_question", project_id, payload.question, evidence)
+            missing = ai_contract_metadata(
+                {
+                    "capability": "project_question",
+                    "status": "DEGRADED",
+                    "degraded_mode": "DEGRADED_KNOWLEDGE",
+                    "provider": "none",
+                    "model": {
+                        "provider": "none",
+                        "model": "none",
+                        "retrieval_version": search_result["retrieval_version"],
+                    },
+                    "warnings": ["PROJECT_EVIDENCE_NOT_FOUND"],
+                    "reason_codes": ["PROJECT_EVIDENCE_NOT_FOUND"],
+                }
+            )
+            return (
+                {
+                    "answer": "Không có đủ bằng chứng trong dự án để trả lời câu hỏi này",
+                    "evidence": [],
+                    **missing,
+                },
+                {"status": missing["status"], "degraded_mode": missing["degraded_mode"]},
+            )
+        result = await request_ai_automation(
+            "project_question", project_id, payload.question, evidence
+        )
         contract = ai_contract_metadata(result)
-        await analytics_repository.insert_ai_audit({
-            "_id": f"{'ASK-'}{trace_id}",
-            "project_id": project_id,
-            "requested_by": user.id,
-            **contract,
-            "created_at": now(),
-        })
-        return {"answer": result.get("answer") or "Không có câu trả lời có căn cứ", "evidence": evidence, **contract}, {"status": contract["status"], "degraded_mode": contract["degraded_mode"]}
+        await analytics_repository.insert_ai_audit(
+            {
+                "_id": f"ASK-{trace_id}",
+                "project_id": project_id,
+                "requested_by": user.id,
+                **contract,
+                "created_at": now(),
+            }
+        )
+        return (
+            {
+                "answer": result.get("answer") or "Không có câu trả lời có căn cứ",
+                "evidence": evidence,
+                **contract,
+            },
+            {"status": contract["status"], "degraded_mode": contract["degraded_mode"]},
+        )
 
     @staticmethod
     async def project_audit(project_id, limit, user):

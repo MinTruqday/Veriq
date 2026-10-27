@@ -127,19 +127,31 @@ class WorkItemRepository:
             session=session,
         )
 
-    async def find_workflow(self, project_id):
-        return await self.workflows.find_one({"project_id": project_id})
+    async def find_workflow(self, project_id, session=None):
+        return await self.workflows.find_one(
+            {"project_id": project_id},
+            **({"session": session} if session is not None else {}),
+        )
 
     async def create_workflow(self, workflow):
         await self.workflows.insert_one(workflow)
         return workflow
 
-    async def patch_workflow(self, project_id, revision, changes):
+    async def patch_workflow(self, project_id, revision, changes, session=None):
         return await self.workflows.find_one_and_update(
             {"project_id": project_id, "revision": revision},
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
+
+    async def guard_workflow_transition(self, project_id, revision, session=None):
+        result = await self.workflows.update_one(
+            {"project_id": project_id, "revision": revision},
+            {"$inc": {"transition_revision": 1}},
+            **({"session": session} if session is not None else {}),
+        )
+        return result.modified_count == 1
 
     async def find_migration(self, project_id):
         return await self.migrations.find_one({"project_id": project_id})

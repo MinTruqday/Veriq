@@ -14,6 +14,7 @@ from pydantic import Field
 
 from src.core.security.guardrails import guardrails_engine
 from src.core.security.scanning import security
+from src.core.infrastructure.observability import trace_span
 from src.repositories.mcp import mcp_repository
 from src.runtime.limits import limits
 from src.schemas.mcp import (
@@ -642,37 +643,66 @@ async def call_mcp_read_tool(
             {"status": "degraded", "reason_code": "MCP_AUDIT_PERSISTENCE_FAILED"}
         )
 
-    try:
-        output = await _call_mcp_read_tool(
-            connection_id, tool_name, safe_arguments, config
-        )
-    except asyncio.CancelledError:
-        interrupted_output = json.dumps(
-            {"status": "degraded", "reason_code": "MCP_TOOL_CALL_CANCELLED"}
-        )
+    with trace_span(
+        "automation.mcp_read_tool",
+        {
+            "automation.run_id": str(automation_run_id) if automation_run_id else None,
+            "automation.task_id": str(task_id) if task_id else None,
+            "mcp.tool_name": tool_name,
+            "mcp.operation": "read_tool",
+        },
+    ) as mcp_span:
         try:
-            await mcp_repository.complete_call_audit(
-                audit.audit_id,
-                status="degraded",
-                reason_code="MCP_TOOL_CALL_CANCELLED",
-                connection_revision=None,
-                output_sha256=hashlib.sha256(
-                    interrupted_output.encode("utf-8")
-                ).hexdigest(),
-                completed_at=datetime.now(timezone.utc),
+            async with asyncio.timeout(limits.task_timeout_seconds):
+                output = await _call_mcp_read_tool(
+                    connection_id, tool_name, safe_arguments, config
+                )
+        except asyncio.CancelledError:
+            interrupted_output = json.dumps(
+                {"status": "degraded", "reason_code": "MCP_TOOL_CALL_CANCELLED"}
+            )
+            try:
+                await mcp_repository.complete_call_audit(
+                    audit.audit_id,
+                    status="degraded",
+                    reason_code="MCP_TOOL_CALL_CANCELLED",
+                    connection_revision=None,
+                    output_sha256=hashlib.sha256(
+                        interrupted_output.encode("utf-8")
+                    ).hexdigest(),
+                    completed_at=datetime.now(timezone.utc),
+                )
+            except Exception:
+                logger.exception("Could not persist cancelled MCP call audit")
+            if mcp_span is not None:
+                mcp_span.set_attribute("mcp.status", "degraded")
+            raise
+        except TimeoutError:
+            output = json.dumps(
+                {"status": "degraded", "reason_code": "MCP_TOOL_TIMEOUT"}
             )
         except Exception:
-            logger.exception("Could not persist cancelled MCP call audit")
-        raise
-    except Exception:
-        logger.exception(
-            "MCP read tool failed before returning a result connection_id={} tool_name={}",
-            connection_id,
-            tool_name,
-        )
-        output = json.dumps(
-            {"status": "degraded", "reason_code": "MCP_TOOL_CALL_FAILED"}
-        )
+            logger.exception(
+                "MCP read tool failed before returning a result connection_id={} tool_name={}",
+                connection_id,
+                tool_name,
+            )
+            output = json.dumps(
+                {"status": "degraded", "reason_code": "MCP_TOOL_CALL_FAILED"}
+            )
+        if mcp_span is not None:
+            try:
+                traced_result = json.loads(output)
+                traced_status = (
+                    traced_result.get("status")
+                    if isinstance(traced_result, dict)
+                    else "failed"
+                )
+            except (TypeError, json.JSONDecodeError):
+                traced_status = "failed"
+            if traced_status not in {"completed", "denied", "degraded", "failed", "blocked"}:
+                traced_status = "failed"
+            mcp_span.set_attribute("mcp.status", traced_status)
 
     try:
         result = json.loads(output)
@@ -691,22 +721,32 @@ async def call_mcp_read_tool(
         final_status = "failed"
         result = {"status": final_status, "reason_code": "MCP_TOOL_RESULT_INVALID"}
         user_visible_output = json.dumps(result, ensure_ascii=False)
-    try:
-        audit_completed = await mcp_repository.complete_call_audit(
-            audit.audit_id,
-            status=final_status,
-            reason_code=(
-                str(result["reason_code"]) if result.get("reason_code") else None
-            ),
-            connection_revision=connection_revision,
-            output_sha256=hashlib.sha256(user_visible_output.encode("utf-8")).hexdigest(),
-            completed_at=datetime.now(timezone.utc),
-        )
-    except Exception:
-        logger.exception(
-            "MCP result withheld because its audit record could not be persisted"
-        )
-        audit_completed = False
+    with trace_span(
+        "automation.mcp_audit_finalize",
+        {
+            "automation.run_id": str(automation_run_id) if automation_run_id else None,
+            "automation.task_id": str(task_id) if task_id else None,
+            "mcp.operation": "audit_finalize",
+        },
+    ) as audit_span:
+        try:
+            audit_completed = await mcp_repository.complete_call_audit(
+                audit.audit_id,
+                status=final_status,
+                reason_code=(
+                    str(result["reason_code"]) if result.get("reason_code") else None
+                ),
+                connection_revision=connection_revision,
+                output_sha256=hashlib.sha256(user_visible_output.encode("utf-8")).hexdigest(),
+                completed_at=datetime.now(timezone.utc),
+            )
+        except Exception:
+            logger.exception(
+                "MCP result withheld because its audit record could not be persisted"
+            )
+            audit_completed = False
+        if audit_span is not None:
+            audit_span.set_attribute("mcp.audit_persisted", audit_completed)
     if not audit_completed:
         return json.dumps(
             {"status": "degraded", "reason_code": "MCP_AUDIT_PERSISTENCE_FAILED"}
@@ -714,7 +754,7 @@ async def call_mcp_read_tool(
     return user_visible_output
 
 
-async def discover_project_tools_with_diagnostics(
+async def _discover_project_tools_with_diagnostics(
     project_id: str,
     permissions: list[str],
     token: str | None = None,
@@ -822,6 +862,31 @@ async def discover_project_tools_with_diagnostics(
                 "reason_code": "MCP_ALLOWED_TOOLS_NOT_ADVERTISED",
             })
     return {"tools": values, "issues": issues}
+
+
+async def discover_project_tools_with_diagnostics(
+    project_id: str,
+    permissions: list[str],
+    token: str | None = None,
+    automation_run_id: str | None = None,
+):
+    with trace_span(
+        "automation.mcp_tool_discovery",
+        {
+            "automation.run_id": automation_run_id,
+            "mcp.operation": "tool_discovery",
+        },
+    ) as span:
+        result = await _discover_project_tools_with_diagnostics(
+            project_id,
+            permissions,
+            token,
+            automation_run_id,
+        )
+        if span is not None:
+            issues = result.get("issues") or []
+            span.set_attribute("mcp.status", "degraded" if issues else "completed")
+        return result
 
 
 async def discover_project_tools(

@@ -3,6 +3,7 @@ import unicodedata
 
 from fastapi import HTTPException
 
+from src.core.text_matching import source_quote_spans
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.skill_profile import build_skill_profile_extraction_prompt
 from src.schemas.inference_skill_profile import (
@@ -47,7 +48,7 @@ async def extract_skill_profile_candidates(
     block_by_id = {item["block_id"]: item for item in source_blocks}
     for candidate in [*output.skills, *output.experiences]:
         source = block_by_id.get(candidate.source_block_id)
-        if not source or candidate.evidence_quote not in source["text"]:
+        if not source or not source_quote_spans(source["text"], candidate.evidence_quote):
             raise HTTPException(status_code=422, detail={"code": "CV_EVIDENCE_NOT_FOUND"})
         if candidate.page_no != source["page_no"]:
             raise HTTPException(status_code=422, detail={"code": "CV_PAGE_REFERENCE_MISMATCH"})
@@ -56,6 +57,7 @@ async def extract_skill_profile_candidates(
             if isinstance(candidate, ExtractedSkillCandidate)
             else [
                 candidate.title,
+                candidate.period,
                 candidate.domain,
                 *candidate.technologies,
                 candidate.responsibilities,

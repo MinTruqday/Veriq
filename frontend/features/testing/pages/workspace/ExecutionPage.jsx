@@ -63,6 +63,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const [requirements, setRequirements] = useState([]);
   const [members, setMembers] = useState([]);
   const [run, setRun] = useState(null);
+  const [creatingDefectResultIds, setCreatingDefectResultIds] = useState(() => new Set());
   const [error, setError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
@@ -79,6 +80,8 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const savingExecutionRef = useRef(false);
   const runCreationInFlight = useRef(false);
   const runCreateOperation = useRef(null);
+  const defectCreateOperations = useRef(new Map());
+  const defectCreateInFlight = useRef(new Set());
   const [runSubsection, setRunSubsection] = useState("runs");
   const [automationSubsection, setAutomationSubsection] = useState("results");
   const [runForm, setRunForm] = useState({
@@ -92,7 +95,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     testPlanId: "",
     suiteIds: [],
     versionIds: [],
-    assignmentStrategy: "CONFIRMED_SKILLS",
+    assignmentStrategy: "MANUAL",
   });
   const [actuals, setActuals] = useState({});
   const [stepResults, setStepResults] = useState({});
@@ -108,6 +111,8 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     () => project.current_permissions || [],
     [project.current_permissions],
   );
+  const canReadAiRuns =
+    permissions.includes("automation.read") || permissions.includes("proposal.read");
   const terminalResultStatuses = project.settings?.allow_not_applicable_results
     ? ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]
     : ["PASS", "FAIL", "BLOCKED", "SKIPPED"];
@@ -267,7 +272,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         testPlanId: "",
         suiteIds: [],
         versionIds: [],
-        assignmentStrategy: "CONFIRMED_SKILLS",
+        assignmentStrategy: "MANUAL",
       });
       setCreatingRun(false);
       await load();
@@ -363,8 +368,18 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     setRun(await testingApi.getRun(run._id));
   };
   const createDefectFromResult = async (result, version) => {
+    if (defectCreateInFlight.current.has(result._id)) return;
+    defectCreateInFlight.current.add(result._id);
+    setCreatingDefectResultIds((current) => new Set(current).add(result._id));
+    const operationKey = `${project._id}:${result._id}`;
+    let idempotencyKey = defectCreateOperations.current.get(operationKey);
+    if (!idempotencyKey) {
+      idempotencyKey = crypto.randomUUID();
+      defectCreateOperations.current.set(operationKey, idempotencyKey);
+    }
     try {
       await testingApi.createDefect(project._id, {
+        idempotency_key: idempotencyKey,
         project_id: project._id,
         title: `Lỗi khi thực thi ${version.test_case_key} ${version.title}`,
         description_doc: textDoc(`Phát hiện trong lần chạy ${run.name}`),
@@ -380,9 +395,18 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         linked_test_case_version_id: version._id,
         linked_requirement_version_ids: version.requirement_version_ids || [],
       });
-      setRun(await testingApi.getRun(run._id));
+      const refreshedRun = await testingApi.getRun(run._id);
+      setRun(refreshedRun);
+      defectCreateOperations.current.delete(operationKey);
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      defectCreateInFlight.current.delete(result._id);
+      setCreatingDefectResultIds((current) => {
+        const next = new Set(current);
+        next.delete(result._id);
+        return next;
+      });
     }
   };
   const updatePlan = async (item) => {
@@ -526,6 +550,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         onError={setError}
         onTransition={transition}
         onCreateDefect={createDefectFromResult}
+        creatingDefectResultIds={creatingDefectResultIds}
         stepResults={stepResults}
         onStepResultsChange={setStepResults}
         terminalResultStatuses={terminalResultStatuses}
@@ -600,6 +625,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               requirements={requirements}
               suites={suites}
               tests={tests}
+              members={members}
               onCancel={() => setCreatingPlan(false)}
               onSave={async (payload) => {
                 await testingApi.createPlan(payload);
@@ -788,12 +814,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                       setRunForm({ ...runForm, assignmentStrategy: event.target.value })
                     }
                   >
-                    <option value="CONFIRMED_SKILLS">Tự động theo kỹ năng đã xác nhận</option>
                     <option value="MANUAL">Để trống để phân công thủ công</option>
                   </select>
                   <p className="text-xs text-ink-muted">
-                    Hệ thống giữ nguyên phân công thủ công; ca không tìm được người phù hợp sẽ để
-                    trống và ghi rõ lý do.
+                    Tạo lần chạy không tự ghi người thực hiện. Sau khi tạo, QA có thể yêu cầu AI đề
+                    xuất theo kỹ năng và tải rồi duyệt đề xuất, hoặc chọn từng Tester thủ công.
                   </p>
                 </div>
                 <MultiSelect
@@ -857,7 +882,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               ...(can("automation.read") || can("device_matrix.read")
                 ? [{ id: "integrations", label: "Kịch bản và thiết bị" }]
                 : []),
-              { id: "ai", label: "AI tự động hóa" },
+              ...(canReadAiRuns ? [{ id: "ai", label: "AI tự động hóa" }] : []),
             ]}
           />
           {automationSubsection === "results" && can("automation.read") && (
@@ -877,7 +902,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               {can("automation.read") && <AutomationExecutionPanel project={project} />}
             </div>
           )}
-          {automationSubsection === "ai" && <AgentRunPanel project={project} />}
+          {automationSubsection === "ai" && canReadAiRuns && <AgentRunPanel project={project} />}
         </div>
       )}
       {workspaceView === "" && (can("device_matrix.read") || can("automation.read")) && (

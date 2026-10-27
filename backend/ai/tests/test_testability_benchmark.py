@@ -28,7 +28,94 @@ class TestBenchmarkPromptContracts(unittest.TestCase):
         self.assertNotEqual(clarification, direct_generation)
 
 
+class TestBenchmarkPairedUncertainty(unittest.TestCase):
+    def test_case_bootstrap_interval_is_repeatable_and_scoped_to_paired_cases(self):
+        values = [0.1, 0.2, 0.6, 0.7]
+        first = TestabilityBenchmarkService.paired_case_bootstrap_effect(
+            values, "dataset-a:compiler_vs_direct:source_quote_precision"
+        )
+        second = TestabilityBenchmarkService.paired_case_bootstrap_effect(
+            values, "dataset-a:compiler_vs_direct:source_quote_precision"
+        )
+
+        self.assertEqual(first, second)
+        self.assertEqual(first["case_count"], 4)
+        self.assertEqual(first["mean_left_minus_right"], 0.4)
+        self.assertLessEqual(first["interval_low"], first["mean_left_minus_right"])
+        self.assertGreaterEqual(first["interval_high"], first["mean_left_minus_right"])
+        self.assertIn("không đo biến động giữa các lần gọi mô hình", first["scope"])
+
+    def test_case_bootstrap_does_not_claim_interval_for_one_case(self):
+        result = TestabilityBenchmarkService.paired_case_bootstrap_effect(
+            [0.25], "dataset-a:single-case"
+        )
+
+        self.assertEqual(result["case_count"], 1)
+        self.assertEqual(result["mean_left_minus_right"], 0.25)
+        self.assertIsNone(result["interval_low"])
+        self.assertIsNone(result["interval_high"])
+
+
 class TestBenchmarkCandidateLineage(unittest.TestCase):
+    def test_source_quote_grounding_does_not_accept_the_wrong_source_version(self):
+        quote = "SRS: Mã xác minh có hiệu lực trong 5 phút."
+        case = BenchmarkCaseSchema(
+            case_id="source-quote-wrong-version",
+            sources=[
+                {"source_id": "srs", "artifact_version_id": "srs-v1", "text": quote},
+                {"source_id": "api", "artifact_version_id": "api-v1", "text": quote},
+            ],
+            expected_source_quotes=[quote],
+            expected_source_quote_sources={quote: ["srs-v1"]},
+            expected_clarification_categories=["CONTRADICTION"],
+        )
+        candidate = BenchmarkCandidateSchema(
+            source_quotes=[quote],
+            source_quote_citations=[{"quote": quote, "source_ref": "api-v1"}],
+        )
+
+        scores = TestabilityBenchmarkService._candidate_scores(case, candidate)
+
+        self.assertEqual(scores["source_quote_validity"], 1.0)
+        self.assertEqual(scores["source_quote"]["source_reference"]["precision"], 0.0)
+        self.assertEqual(scores["source_quote"]["source_reference"]["recall"], 0.0)
+
+    def test_all_pipeline_adapters_preserve_source_quote_version_citations(self):
+        quote = "Mật khẩu tối thiểu 12 ký tự."
+        compiler = TestabilityBenchmarkService._candidate_from_blueprint({
+            "obligations": [{
+                "key": "password-minimum",
+                "source_ref": "source-v1",
+                "source_quote": quote,
+            }],
+            "clarifications": [{
+                "code": "missing-boundary",
+                "category": "MISSING_BOUNDARY",
+                "evidence_refs": ["source-v1"],
+                "source_quote": quote,
+            }],
+        })
+        clarification = TestabilityBenchmarkService._candidate_from_clarification({
+            "clarifications": [{
+                "code": "missing-boundary",
+                "category": "MISSING_BOUNDARY",
+                "evidence_refs": ["source-v1"],
+                "source_quote": quote,
+            }],
+        })
+        direct = TestabilityBenchmarkService._candidate_from_direct_generation({
+            "suggestions": [{
+                "coverage_obligations": ["password-minimum"],
+                "evidence_quotes": [{"evidence_ref": "source-v1", "quote": quote}],
+            }],
+        })
+
+        for candidate in (compiler, clarification, direct):
+            self.assertIn(
+                (quote, "source-v1"),
+                {(citation.quote, citation.source_ref) for citation in candidate.source_quote_citations},
+            )
+
     def test_obligation_citation_without_duplicate_key_fields_is_scored(self):
         quote = "Tài khoản bị khóa sau năm lần đăng nhập sai."
         candidate = BenchmarkCandidateSchema(
@@ -237,6 +324,12 @@ class TestSyntheticBenchmarkDataset(unittest.TestCase):
         self.assertEqual(len(design["pipelines"]), 3)
         self.assertTrue(any("not establish" in item for item in design["limitations"]))
 
+    def test_scoring_version_changes_when_source_version_citation_metrics_are_added(self):
+        scoring_method = TestabilityBenchmarkService._scoring_method()
+
+        self.assertEqual(scoring_method["version"], "testability-benchmark-v3")
+        self.assertIn("source_quote_source_precision_recall", scoring_method)
+
 class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase):
     async def test_maximum_matching_uses_stable_tie_breaking(self):
         matching = TestabilityBenchmarkService._maximum_obligation_matching(
@@ -399,6 +492,24 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
                 expected_clarification_categories=["security_policy"],
             )
 
+    def test_gold_source_quote_references_must_cover_all_expected_quotes(self):
+        first_quote = "SRS: Mã xác minh có hiệu lực trong 5 phút."
+        second_quote = "API: Mã xác minh có hiệu lực trong 10 phút."
+        with self.assertRaisesRegex(
+            ValueError,
+            "benchmark_quote_source_answer_key_must_cover_all_expected_quotes",
+        ):
+            BenchmarkGoldCaseSchema(
+                case_id="partial-quote-source-map",
+                sources=[
+                    {"source_id": "srs", "artifact_version_id": "srs-v1", "text": first_quote},
+                    {"source_id": "api", "artifact_version_id": "api-v1", "text": second_quote},
+                ],
+                expected_source_quotes=[first_quote, second_quote],
+                expected_source_quote_sources={first_quote: ["srs-v1"]},
+                expected_clarification_categories=["CONTRADICTION"],
+            )
+
     def test_gold_answer_key_rejects_priority_labels_scoring_would_normalize_as_duplicates(self):
         quote = "Mật khẩu phải đáp ứng chính sách bảo mật."
         with self.assertRaisesRegex(
@@ -469,6 +580,17 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
                     },
                 ],
                 expected_source_quotes=["Mật khẩu phải ít nhất 12 ký tự."],
+            )
+
+    def test_gold_quote_inside_another_word_is_rejected(self):
+        with self.assertRaisesRegex(
+            ValueError, "benchmark_expected_quote_must_appear_in_source"
+        ):
+            BenchmarkGoldCaseSchema(
+                case_id="subword-source-quote",
+                source_text="invalid",
+                expected_source_quotes=["valid"],
+                expected_clarification_categories=["missing_rule"],
             )
 
     def test_gold_answer_key_cannot_use_source_text_ignored_by_explicit_sources(self):
@@ -645,24 +767,37 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
         self.assertEqual(summary.clarification_savings_vs_baseline.paired_case_ids, ["case-a", "case-b"])
         self.assertEqual(summary.clarification_savings_vs_baseline.mean, 0.75)
         self.assertEqual(summary.clarification_savings_vs_baseline.population_stddev, 0.25)
+        effect = summary.paired_pipeline_statistics[
+            "compiler_vs_clarification_without_obligation_planning"
+        ]["paired_effects"]["source_quote_recall"]
+        self.assertEqual(effect["case_count"], 2)
+        self.assertEqual(effect["mean_left_minus_right"], -0.5)
+        self.assertLessEqual(effect["interval_low"], -0.5)
+        self.assertGreaterEqual(effect["interval_high"], -0.5)
 
-    def test_repeated_report_counts_runs_with_any_metric_not_max_metric_denominator(self):
+    def test_repeated_metrics_use_same_cases_for_each_run_and_denominator(self):
         reports = []
-        for run_id, first, second in (
+        for run_id, metric_values in (
             (
                 "run-1",
-                {"source_quote_validity": 1.0},
-                {},
+                {
+                    "case-a": {"source_quote_validity": 0.2},
+                    "case-b": {"source_quote_validity": 1.0},
+                    "case-c": {"clarification_count": 1},
+                },
             ),
             (
                 "run-2",
-                {},
-                {"clarification_count": 1},
+                {
+                    "case-a": {"source_quote_validity": 0.8},
+                    "case-b": {"clarification_count": 2},
+                    "case-c": {"source_quote_validity": 0.6},
+                },
             ),
         ):
             reports.append(
                 BenchmarkReportSchema(
-                    total_cases=2,
+                    total_cases=3,
                     clarification_without_obligation_planning={},
                     compiler={},
                     direct_generation={},
@@ -672,7 +807,7 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
                             "compiler": metrics,
                             "pipeline_outcomes": {"compiler": "ACCEPTED"},
                         }
-                        for case_id, metrics in (("case-a", first), ("case-b", second))
+                        for case_id, metrics in metric_values.items()
                     ],
                     run_id=run_id,
                     dataset_id="dataset-1",
@@ -685,8 +820,13 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
 
         compiler = summary.pipeline_statistics["compiler"]
         self.assertEqual(compiler.runs_with_scores, 2)
-        self.assertEqual(compiler.metrics["source_quote_validity"].observed_runs, 1)
-        self.assertEqual(compiler.metrics["average_clarification_count"].observed_runs, 1)
+        self.assertEqual(compiler.metrics["source_quote_validity"].observed_runs, 2)
+        self.assertEqual(compiler.metrics["source_quote_validity"].mean, 0.5)
+        self.assertEqual(compiler.metrics["source_quote_validity"].paired_case_count, 1)
+        self.assertEqual(compiler.metrics["source_quote_validity"].paired_case_ids, ["case-a"])
+        self.assertEqual(compiler.metrics["average_clarification_count"].observed_runs, 0)
+        self.assertIsNone(compiler.metrics["average_clarification_count"].mean)
+        self.assertEqual(compiler.metrics["average_clarification_count"].paired_case_count, 0)
 
     async def test_repeated_run_count_is_bounded(self):
         with self.assertRaisesRegex(ValueError, "BENCHMARK_REPETITIONS_OUT_OF_RANGE"):
@@ -797,7 +937,7 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
         }])
 
     def test_benchmark_facts_require_a_version_and_exact_source_span(self):
-        source_text = "Thanh toán phải hoàn tất trước khi xác nhận đơn hàng."
+        source_text = "Thanh toán phải hoàn tất trước khi xác nhận đơn hàng. invalid"
         source = {
             "artifact_id": "doc-1",
             "artifact_version_id": "doc-1-v1",
@@ -812,9 +952,16 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
         }
         invalid_fact = {**valid_fact, "source_start": 1}
         missing_revision = {**valid_fact, "artifact_version_id": None}
+        subword_start = source_text.index("valid")
+        subword_fact = {
+            **valid_fact,
+            "quote": "valid",
+            "source_start": subword_start,
+            "source_end": subword_start + len("valid"),
+        }
 
         result = TestabilityBenchmarkService._verified_fact_evidence(
-            [invalid_fact, missing_revision, valid_fact], [source]
+            [invalid_fact, missing_revision, subword_fact, valid_fact], [source]
         )
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["artifact_version_id"], "doc-1-v1")
@@ -890,6 +1037,28 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
 
         self.assertEqual(scores["source_quote_validity"], 0.0)
 
+    async def test_candidate_quote_inside_another_word_is_not_grounded(self):
+        case = BenchmarkCaseSchema(
+            case_id="quote-word-boundary",
+            source_text="The system rejects invalid credentials.",
+            expected_source_quotes=["The system rejects invalid credentials"],
+            compiler=BenchmarkCandidateSchema(source_quotes=["valid"]),
+        )
+
+        scores = TestabilityBenchmarkService._candidate_scores(
+            case, case.compiler, score_obligations=False
+        )
+
+        self.assertEqual(scores["source_quote_validity"], 0.0)
+
+    def test_source_quote_metrics_do_not_match_inside_another_word(self):
+        scores = TestabilityBenchmarkService._source_quote_scores(
+            ["valid"], ["invalid"]
+        )
+
+        self.assertEqual(scores["precision"], 0.0)
+        self.assertEqual(scores["recall"], 0.0)
+
     async def test_candidate_cannot_ground_against_source_text_ignored_by_runtime(self):
         visible_quote = "Yêu cầu chưa nêu quy tắc mật khẩu."
         hidden_quote = "Mật khẩu phải có ít nhất 12 ký tự."
@@ -951,6 +1120,37 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
         scores = TestabilityBenchmarkService._candidate_scores(case, case.compiler)
 
         self.assertEqual(scores["source_quote_validity"], 1.0)
+        self.assertEqual(scores["obligation"]["precision"], 0.0)
+        self.assertEqual(scores["obligation"]["recall"], 0.0)
+
+    def test_obligation_citation_quote_must_exist_in_the_cited_source(self):
+        quote = "Tài khoản bị khóa sau năm lần đăng nhập sai."
+        case = BenchmarkCaseSchema(
+            case_id="citation-quote-in-wrong-source",
+            sources=[
+                {
+                    "source_id": "policy",
+                    "artifact_version_id": "policy-v1",
+                    "text": "Chính sách chưa xác định giới hạn đăng nhập sai.",
+                },
+                {
+                    "source_id": "api",
+                    "artifact_version_id": "api-v1",
+                    "text": quote,
+                },
+            ],
+            expected_source_quotes=[quote],
+            expected_obligation_sources={"account_lockout": quote},
+            expected_obligation_source_refs={"account_lockout": "policy-v1"},
+            compiler=BenchmarkCandidateSchema(
+                obligation_citations={
+                    "account_lockout": [{"quote": quote, "source_ref": "policy-v1"}]
+                }
+            ),
+        )
+
+        scores = TestabilityBenchmarkService._candidate_scores(case, case.compiler)
+
         self.assertEqual(scores["obligation"]["precision"], 0.0)
         self.assertEqual(scores["obligation"]["recall"], 0.0)
 

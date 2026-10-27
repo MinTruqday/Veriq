@@ -145,24 +145,38 @@ async def assess_changed_requirement_quality(project_id, version, config):
     ):
         raise AutomationOperationError("REQUIREMENT_QUALITY_READBACK_INVALID")
     findings = result.get("findings")
-    if not isinstance(findings, list) or any(not isinstance(item, dict) for item in findings):
+    if not isinstance(findings, list) or any(
+        not isinstance(item, dict)
+        or item.get("severity") not in {"error", "warning", "info"}
+        for item in findings
+    ):
         raise AutomationOperationError("REQUIREMENT_QUALITY_FINDINGS_INVALID")
     status = result.get("status")
     if status not in {"SUCCESS", "DEGRADED", "FAILED"}:
         raise AutomationOperationError("REQUIREMENT_QUALITY_STATUS_INVALID")
     degraded_mode = result.get("degraded_mode")
-    if degraded_mode is not None and not isinstance(degraded_mode, bool):
+    if not isinstance(result.get("valid"), bool) or not isinstance(degraded_mode, bool):
         raise AutomationOperationError("REQUIREMENT_QUALITY_STATUS_INVALID")
     return {
         "analysis_id": str(result["_id"]),
         "status": status,
-        "valid": result.get("valid") is True,
+        "valid": result["valid"],
         "degraded_mode": degraded_mode,
         "finding_count": len(findings),
         "blocking_finding_count": sum(
             item.get("severity") == "error" for item in findings
         ),
     }
+
+
+def requirement_quality_allows_automatic_publication(assessment):
+    return (
+        isinstance(assessment, dict)
+        and assessment.get("status") == "SUCCESS"
+        and assessment.get("valid") is True
+        and assessment.get("degraded_mode") is not True
+        and assessment.get("blocking_finding_count") == 0
+    )
 
 
 async def list_all_impact_proposals(project_id, impact_analysis_id, config, page_size=500):
@@ -476,6 +490,37 @@ async def process_changed_requirement_version(
                 "reason_code": error.reason_code,
                 "requirement_version_id": requirement_version_id,
                 "unresolved": [{"reason": error.reason_code}],
+            },
+            ensure_ascii=False,
+        )
+    if not requirement_quality_allows_automatic_publication(requirement_quality):
+        return json.dumps(
+            {
+                "status": "automation_partial_failure",
+                "reason_code": "REQUIREMENT_QUALITY_GATE_FAILED",
+                "requirement_version_id": requirement_version_id,
+                "requirement_quality": requirement_quality,
+                "unresolved": [
+                    {
+                        "reason": "REQUIREMENT_QUALITY_GATE_FAILED",
+                        "analysis_id": requirement_quality["analysis_id"],
+                    }
+                ],
+                "verification": {
+                    "status": "INCOMPLETE",
+                    "project_id": project_id,
+                    "artifact_ids": [requirement_version_id, requirement_quality["analysis_id"]],
+                    "checks": [
+                        {
+                            "artifact_id": requirement_version_id,
+                            "artifact_type": "requirement_version",
+                        },
+                        {
+                            "artifact_id": requirement_quality["analysis_id"],
+                            "artifact_type": "requirement_quality_analysis",
+                        },
+                    ],
+                },
             },
             ensure_ascii=False,
         )

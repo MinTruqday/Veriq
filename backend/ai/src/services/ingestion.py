@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import math
+import random
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -12,13 +13,32 @@ from loguru import logger
 
 from src.clients.content import ContentClient
 from src.core.infrastructure.configuration import settings
+from src.core.infrastructure.observability import trace_span
 from src.schemas.project import validate_project_source_structure
-from src.services.chunking import chunker
-from src.services.conversion import document_parser
+from src.services.chunking import SemanticChunkingError, chunker
+from src.services.conversion import IndexingAttemptSupersededError, document_parser
 from src.services.embedding import embedder
 from src.services.inference import inspect_chunks, summarize_document
 from src.store.bm25 import bm25_store
 from src.store.vector import vector_store
+
+
+class BoundedIngestionDiagnostics(list):
+    def __init__(self, limit):
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValueError("document_ingestion_diagnostic_limit_invalid")
+        super().__init__()
+        self.limit = limit
+        self.total_count = 0
+
+    def append(self, value):
+        self.total_count += 1
+        if len(self) < self.limit:
+            super().append(value)
+
+    def clear(self):
+        super().clear()
+        self.total_count = 0
 
 
 def source_timestamp(value):
@@ -92,6 +112,21 @@ SOURCE_SNAPSHOT_FIELDS = (
 )
 
 
+async def _iter_chunk_batches(chunks, batch_size):
+    if hasattr(chunks, "__aiter__"):
+        batch = []
+        async for chunk in chunks:
+            batch.append(chunk)
+            if len(batch) == batch_size:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
+        return
+    for batch_start in range(0, len(chunks), batch_size):
+        yield chunks[batch_start : batch_start + batch_size]
+
+
 def source_snapshot_values(document):
     return {field: document.get(field) for field in SOURCE_SNAPSHOT_FIELDS}
 
@@ -111,7 +146,12 @@ def source_snapshot_fingerprint(document):
     return sha256(canonical.encode("utf-8")).hexdigest()
 
 
-async def embed_and_index_chunks(chunks, verify_source_snapshot, stage_id="default"):
+async def embed_and_index_chunks(
+    chunks, verify_source_snapshot, *, document_id: str, stage_id="default"
+):
+    document_id = str(document_id or "").strip()
+    if not document_id:
+        raise ValueError("document_index_document_id_invalid")
     embedding_batch_size = getattr(embedder, "_batch_size", None)
     index_batch_size = getattr(vector_store, "upsert_batch_size", None)
     if (
@@ -129,11 +169,19 @@ async def embed_and_index_chunks(chunks, verify_source_snapshot, stage_id="defau
         raise ValueError("document_index_generation_invalid")
 
     indexed_chunk_count = 0
-    failed_chunks = []
-    indexed_ids = []
+    failed_chunks = BoundedIngestionDiagnostics(
+        settings.DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS
+    )
     try:
-        for batch_start in range(0, len(chunks), index_batch_size):
-            batch = chunks[batch_start : batch_start + index_batch_size]
+        async for batch in _iter_chunk_batches(chunks, index_batch_size):
+            if any(
+                not isinstance(chunk, dict)
+                or not isinstance(chunk.get("metadata"), dict)
+                or str(chunk["metadata"].get("document_id") or "") != document_id
+                or str(chunk["metadata"].get("index_generation") or "") != stage_id
+                for chunk in batch
+            ):
+                raise ValueError("document_index_chunk_scope_mismatch")
             vectors = None
             try:
                 vectors = await embedder.embed_batch([chunk["text"] for chunk in batch])
@@ -177,7 +225,6 @@ async def embed_and_index_chunks(chunks, verify_source_snapshot, stage_id="defau
                 }
                 for chunk in batch
             ]
-            indexed_ids.extend(batch_ids)
             await verify_source_snapshot()
             await vector_store.upsert(
                 ids=batch_ids,
@@ -203,20 +250,21 @@ async def embed_and_index_chunks(chunks, verify_source_snapshot, stage_id="defau
         await verify_source_snapshot()
     except BaseException as index_error:
         rollback_results = await asyncio.gather(
-            vector_store.delete_ids(indexed_ids),
-            bm25_store.delete_ids(indexed_ids),
+            vector_store.delete_document_generation(document_id, stage_id),
+            bm25_store.delete_document_generation(document_id, stage_id),
             bm25_store.discard_staged(stage_id),
             return_exceptions=True,
         )
         if any(isinstance(result, BaseException) for result in rollback_results):
             logger.exception(
-                "Batched document index rollback is incomplete point_count={}",
-                len(indexed_ids),
+                "Batched document index rollback is incomplete document_id={} generation={}",
+                document_id,
+                stage_id,
             )
             raise RuntimeError("index_generation_rollback_incomplete") from index_error
         raise
 
-    return indexed_chunk_count, failed_chunks, indexed_ids
+    return indexed_chunk_count, failed_chunks
 
 
 def validated_indexing_status(index_result: dict | None) -> str:
@@ -238,7 +286,10 @@ async def publish_index_generation(
     indexing_lease_token,
     index_generation,
     source_snapshot,
+    document_index_contract_version=None,
 ):
+    if document_index_contract_version is None:
+        document_index_contract_version = settings.DOCUMENT_INDEX_CONTRACT_VERSION
     expected_status = (
         "degraded"
         if any(
@@ -263,6 +314,7 @@ async def publish_index_generation(
             indexing_lease_token,
             index_generation,
             source_snapshot,
+            document_index_contract_version,
         )
         return validated_indexing_status(result)
     except Exception:
@@ -285,6 +337,8 @@ async def publish_index_generation(
             and str(current.get("indexing_attempt_id") or "") == indexing_attempt_id
             and str(current.get("indexing_lease_token") or "") == indexing_lease_token
             and str(current.get("indexing_status") or "") == expected_status
+            and current.get("document_index_contract_version")
+            == document_index_contract_version
             and current_chunk_count == indexed_chunk_count
             and current.get("index_report") == index_report
         ):
@@ -332,6 +386,123 @@ def select_summary_chunks(chunks: list[dict], max_chars: int) -> tuple[str, list
         selected_chars += separator + len(text_parts[-1])
 
     return "\n\n".join(text_parts), selected
+
+
+class DocumentSummarySampler:
+    def __init__(self, max_chars: int, seed_material: str):
+        if not isinstance(max_chars, int) or isinstance(max_chars, bool) or max_chars < 1:
+            raise ValueError("document_summary_input_limit_invalid")
+        target_chars = max(1, int(chunker.target_chars))
+        self.max_chars = max_chars
+        self.reservoir_limit = max(
+            2,
+            min(max_chars, math.ceil(max_chars / target_chars) * 2),
+        )
+        seed = int.from_bytes(sha256(seed_material.encode("utf-8")).digest()[:8], "big")
+        self.random = random.Random(seed)
+        self.total_chunks = 0
+        self.total_chars = 0
+        self.all_chunks = []
+        self.reservoir = None
+        self.reservoir_seen = 0
+
+    @staticmethod
+    def _compact(chunk, index):
+        metadata = chunk.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        return index, {
+            "id": chunk.get("id"),
+            "text": chunk.get("text", ""),
+            "metadata": {
+                key: metadata[key]
+                for key in ("logical_chunk_id", "chunk_id", "page_numbers")
+                if key in metadata
+            },
+        }
+
+    def _add_to_reservoir(self, item):
+        self.reservoir_seen += 1
+        if len(self.reservoir) < self.reservoir_limit:
+            self.reservoir.append(item)
+            return
+        replacement_index = self.random.randrange(self.reservoir_seen)
+        if replacement_index < self.reservoir_limit:
+            self.reservoir[replacement_index] = item
+
+    def add(self, chunk):
+        text = str(chunk.get("text") or "")
+        if not text.strip():
+            return
+        self.total_chunks += 1
+        self.total_chars += len(text)
+        item = self._compact(chunk, self.total_chunks - 1)
+        if self.reservoir is None and self.total_chars <= self.max_chars:
+            self.all_chunks.append(item)
+            return
+        if self.reservoir is None:
+            self.reservoir = []
+            for existing in self.all_chunks:
+                self._add_to_reservoir(existing)
+            self.all_chunks.clear()
+        self._add_to_reservoir(item)
+
+    def select(self):
+        if self.reservoir is None:
+            candidates = self.all_chunks
+            scope = "ALL_EXTRACTED_CHUNKS"
+        else:
+            candidates = sorted(self.reservoir, key=lambda item: item[0])
+            scope = "UNIFORM_RESERVOIR_SAMPLE"
+        chunks = [chunk for _, chunk in candidates]
+        summary_input, selected_chunks = select_summary_chunks(chunks, self.max_chars)
+        return summary_input, selected_chunks, scope
+
+
+async def inspect_chunk_stream(chunks, quarantined):
+    batch_size = settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE
+    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
+        raise ValueError("document_chunk_inspection_batch_size_invalid")
+    async for batch in _iter_chunk_batches(chunks, batch_size):
+        accepted_indexes = await inspect_chunks([chunk["text"] for chunk in batch])
+        for local_index, chunk in enumerate(batch):
+            if local_index in accepted_indexes:
+                yield chunk
+            else:
+                quarantined.append(
+                    {
+                        "chunk_id": chunk.get("metadata", {}).get("chunk_id")
+                        or chunk.get("id"),
+                        "flags": ["ai_safety_rejection"],
+                    }
+                )
+
+
+async def inspect_and_quarantine_chunks(chunks: list[dict]) -> tuple[list[dict], list[dict]]:
+    batch_size = settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE
+    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
+        raise ValueError("document_chunk_inspection_batch_size_invalid")
+
+    quarantined = []
+    accepted_count = 0
+    for batch_start in range(0, len(chunks), batch_size):
+        batch = chunks[batch_start : batch_start + batch_size]
+        accepted_indexes = await inspect_chunks(
+            [chunk["text"] for chunk in batch]
+        )
+        for local_index, chunk in enumerate(batch):
+            if local_index in accepted_indexes:
+                chunks[accepted_count] = chunk
+                accepted_count += 1
+            else:
+                quarantined.append(
+                    {
+                        "chunk_id": chunk.get("metadata", {}).get("chunk_id")
+                        or chunk.get("id"),
+                        "flags": ["ai_safety_rejection"],
+                    }
+                )
+    del chunks[accepted_count:]
+    return chunks, quarantined
 
 
 class IngestionPipelineService:
@@ -414,9 +585,6 @@ class IngestionPipelineService:
             current_doc = await ContentClient.authorize_document(
                 document_id, requester_id, is_admin
             )
-            lease_until = parsed_utc_datetime(
-                current_doc.get("indexing_lease_until")
-            )
             if (
                 source_snapshot_fingerprint(current_doc) != source_snapshot
                 or current_doc.get("file_url") != file_url
@@ -424,12 +592,6 @@ class IngestionPipelineService:
                 or str(current_doc.get("owner_id") or current_doc.get("creator_id") or "")
                 != owner_id
                 or (current_doc.get("visibility") or "private") != visibility
-                or str(current_doc.get("indexing_attempt_id") or "")
-                != indexing_attempt_id
-                or str(current_doc.get("indexing_lease_token") or "")
-                != indexing_lease_token
-                or not lease_until
-                or lease_until <= datetime.now(timezone.utc)
                 or (
                     doc.get("ai_enabled") is True
                     and (
@@ -439,6 +601,20 @@ class IngestionPipelineService:
                 )
             ):
                 raise PermissionError("document_source_changed_during_ingestion")
+            lease_until = parsed_utc_datetime(
+                current_doc.get("indexing_lease_until")
+            )
+            if (
+                str(current_doc.get("indexing_attempt_id") or "")
+                != indexing_attempt_id
+                or str(current_doc.get("indexing_lease_token") or "")
+                != indexing_lease_token
+                or not lease_until
+                or lease_until <= datetime.now(timezone.utc)
+            ):
+                raise IndexingAttemptSupersededError(
+                    "document_indexing_attempt_superseded"
+                )
 
         async def report_page_progress(
             processed_pages: int, total_pages: int, unprocessed_pages: int
@@ -454,22 +630,30 @@ class IngestionPipelineService:
             if not progress_result or progress_result.get("updated") is not True:
                 raise RuntimeError("document_index_progress_attempt_superseded")
 
-        parse_result = await document_parser.parse_document_checkpointed(
-            file_url,
-            visibility,
-            document_id,
-            str(artifact_value("project_id") or ""),
-            owner_id,
-            authorization_check=verify_source_snapshot,
-            progress_callback=report_page_progress,
-            ocr_language=metadata.get("ocr_language"),
-        )
+        with trace_span(
+            "document.ingestion.parse",
+            {
+                "document.id": document_id,
+                "document.revision": doc.get("revision"),
+            },
+        ):
+            parse_result = await document_parser.parse_document_checkpointed(
+                file_url,
+                visibility,
+                document_id,
+                str(artifact_value("project_id") or ""),
+                owner_id,
+                authorization_check=verify_source_snapshot,
+                progress_callback=report_page_progress,
+                ocr_language=metadata.get("ocr_language"),
+            )
         if parse_result.get("error"):
             raise ValueError("Failed to convert document with Docling")
-        raw_markdown = str(parse_result.get("markdown") or "")
+        raw_markdown = str(parse_result.pop("markdown", None) or "")
         source_structure = parse_result.pop("structure", None)
         document_structure = validate_project_source_structure(
-            source_structure or []
+            source_structure if isinstance(source_structure, list) else [],
+            reuse_input_list=True,
         )
         del source_structure
         unprocessed_blocks = parse_result.get("unprocessed_blocks", [])
@@ -477,6 +661,9 @@ class IngestionPipelineService:
         parser_name = str(parse_result.get("parser") or "unknown")
         parser_version = str(parse_result.get("parser_version") or "unknown")
         generation_metadata = dict(metadata)
+        generation_metadata["document_index_contract_version"] = (
+            settings.DOCUMENT_INDEX_CONTRACT_VERSION
+        )
         generation_metadata["shared_with"] = sorted(
             set(map(str, generation_metadata.get("shared_with") or []))
         )
@@ -484,6 +671,9 @@ class IngestionPipelineService:
             {
                 "document_id": document_id,
                 "indexing_attempt_id": indexing_attempt_id or None,
+                "document_index_contract_version": (
+                    settings.DOCUMENT_INDEX_CONTRACT_VERSION
+                ),
                 "source_version": metadata.get("source_version"),
                 "source_hash": source_hash,
                 "normalized_content_hash": sha256(
@@ -512,6 +702,9 @@ class IngestionPipelineService:
                 "page_count": parse_result.get("page_count"),
                 "source_block_count": len(document_structure),
                 "indexing_attempt_id": indexing_attempt_id or None,
+                "document_index_contract_version": (
+                    settings.DOCUMENT_INDEX_CONTRACT_VERSION
+                ),
                 "extraction_status": "DEGRADED" if unprocessed_blocks else "COMPLETE",
                 "unprocessed_block_count": len(unprocessed_blocks),
                 "extraction_warning_count": len(parse_result.get("extraction_warnings") or []),
@@ -532,35 +725,36 @@ class IngestionPipelineService:
         if not raw_markdown.strip():
             raise ValueError("Failed to extract document text")
         extraction_method = "docling_structure_semantic"
-        chunks = await chunker.chunk_document(
-            raw_markdown,
-            {**metadata, "extraction_method": extraction_method},
-            structure=document_structure,
-        )
-        quarantined_chunks = []
+        diagnostic_limit = settings.DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS
+        quarantined_chunks = BoundedIngestionDiagnostics(diagnostic_limit)
 
-        if chunks:
-            safe_indices = await inspect_chunks([chunk["text"] for chunk in chunks])
-            rejected = [chunk for index, chunk in enumerate(chunks) if index not in safe_indices]
-            quarantined_chunks.extend(
-                {"chunk_id": chunk["metadata"].get("chunk_id"), "flags": ["ai_safety_rejection"]}
-                for chunk in rejected
+        async def indexed_chunks(semantic=True):
+            sampler = DocumentSummarySampler(
+                settings.DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT,
+                f"{document_id}:{metadata['index_generation']}",
             )
-            chunks = [chunk for index, chunk in enumerate(chunks) if index in safe_indices]
+            source_chunks = chunker.iter_chunk_document(
+                raw_markdown,
+                {**metadata, "extraction_method": extraction_method},
+                structure=document_structure,
+                semantic=semantic,
+            )
+            async for chunk in inspect_chunk_stream(source_chunks, quarantined_chunks):
+                sampler.add(chunk)
+                yield chunk
 
-        summary_input, summary_chunks = select_summary_chunks(
-            chunks, settings.DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT
-        )
+            summary_input, summary_chunks, summary_scope = sampler.select()
+            if len(summary_input) < 500:
+                summary = summary_input.strip()
+            else:
+                try:
+                    summary = await summarize_document(summary_input)
+                except Exception:
+                    logger.exception("Document summary generation error")
+                    summary = ""
+            if not summary:
+                return
 
-        if len(summary_input) < 500:
-            summary = summary_input.strip()
-        else:
-            try:
-                summary = await summarize_document(summary_input)
-            except Exception:
-                logger.exception("Document summary generation error")
-                summary = ""
-        if summary:
             summary_text = (
                 "[SUMMARY OF EXTRACTED DOCUMENT CONTENT; "
                 "VERIFY SOURCE BLOCKS FOR AUTHORITATIVE DETAILS]\n"
@@ -606,77 +800,104 @@ class IngestionPipelineService:
                     ),
                 )
             )
-            chunks.insert(
-                0,
-                {
-                    "id": summary_point_id,
-                    "text": summary_text,
-                    "metadata": {
-                        **metadata,
-                        "chunk_id": "summary_001",
-                        "logical_chunk_id": str(
-                            uuid5(NAMESPACE_URL, summary_logical_identity)
-                        ),
-                        "chunk_hash": summary_chunk_hash,
-                        "chunk_type": "summary",
-                        "chunk_index": -1,
-                        "summary_scope": (
-                            "ALL_EXTRACTED_CHUNKS"
-                            if len(summary_chunks) == len(chunks)
-                            else "DISTRIBUTED_CHUNK_SAMPLE"
-                        ),
-                        "summary_sample_chunk_ids": [
-                            str(
-                                chunk.get("metadata", {}).get("chunk_id")
-                                or chunk.get("id")
-                            )
+            yield {
+                "id": summary_point_id,
+                "text": summary_text,
+                "metadata": {
+                    **metadata,
+                    "chunk_id": "summary_001",
+                    "logical_chunk_id": str(
+                        uuid5(NAMESPACE_URL, summary_logical_identity)
+                    ),
+                    "chunk_hash": summary_chunk_hash,
+                    "chunk_type": "summary",
+                    "chunk_index": -1,
+                    "summary_scope": summary_scope,
+                    "summary_sample_chunk_ids": [
+                        str(
+                            chunk.get("metadata", {}).get("chunk_id")
+                            or chunk.get("id")
+                        )
+                        for chunk in summary_chunks
+                    ],
+                    "summary_sample_page_numbers": sorted(
+                        {
+                            page
                             for chunk in summary_chunks
-                        ],
-                        "summary_sample_page_numbers": sorted(
-                            {
-                                page
-                                for chunk in summary_chunks
-                                for page in (
-                                    chunk.get("metadata", {}).get("page_numbers") or []
-                                )
-                                if isinstance(page, int)
-                                and not isinstance(page, bool)
-                                and page > 0
-                            }
-                        ),
-                        "summary_sample_char_count": len(summary_input),
-                        "document_chunk_count": len(chunks),
-                        "extraction_method": f"{extraction_method}_llm",
-                    },
+                            for page in (
+                                chunk.get("metadata", {}).get("page_numbers") or []
+                            )
+                            if isinstance(page, int)
+                            and not isinstance(page, bool)
+                            and page > 0
+                        }
+                    ),
+                    "summary_sample_char_count": len(summary_input),
+                    "document_chunk_count": sampler.total_chunks,
+                    "extraction_method": f"{extraction_method}_llm",
                 },
-            )
+            }
 
-        if not chunks:
-            raise ValueError("No chunks extracted from document")
-
-        previous_vector_ids, previous_bm25_ids = await asyncio.gather(
-            vector_store.ids_by_document(document_id), bm25_store.ids_by_document(document_id)
-        )
-        indexed_chunk_count, failed_chunks, ids = await embed_and_index_chunks(
-            chunks, verify_source_snapshot, str(metadata["index_generation"])
-        )
-        current_ids = set(ids)
+        with trace_span(
+            "document.ingestion.index",
+            {
+                "document.id": document_id,
+                "index.generation": str(metadata["index_generation"]),
+            },
+        ) as index_span:
+            try:
+                indexed_chunk_count, failed_chunks = await embed_and_index_chunks(
+                    indexed_chunks(),
+                    verify_source_snapshot,
+                    document_id=document_id,
+                    stage_id=str(metadata["index_generation"]),
+                )
+            except SemanticChunkingError:
+                if index_span is not None:
+                    index_span.set_attribute("event.status", "chunking_fallback")
+                quarantined_chunks.clear()
+                extraction_method = "docling_structure_fallback"
+                indexed_chunk_count, failed_chunks = await embed_and_index_chunks(
+                    indexed_chunks(semantic=False),
+                    verify_source_snapshot,
+                    document_id=document_id,
+                    stage_id=str(metadata["index_generation"]),
+                )
+        extracted_text_preview = raw_markdown[:200000]
+        del indexed_chunks
+        del raw_markdown
         index_report = {
             "failed_chunks": failed_chunks, "quarantined_chunks": quarantined_chunks,
+            "failed_chunk_count": failed_chunks.total_count,
+            "failed_chunk_details_truncated": failed_chunks.total_count > len(failed_chunks),
+            "quarantined_chunk_count": quarantined_chunks.total_count,
+            "quarantined_chunk_details_truncated": (
+                quarantined_chunks.total_count > len(quarantined_chunks)
+            ),
             "unprocessed_blocks": unprocessed_blocks,
             "extraction_warnings": parse_result.get("extraction_warnings", []),
         }
-        indexing_status = await publish_index_generation(
-            document_id,
-            indexed_chunk_count,
-            index_report,
-            raw_markdown,
-            extraction_method,
-            indexing_attempt_id,
-            indexing_lease_token,
-            str(metadata["index_generation"]),
-            source_snapshot_values_at_start,
-        )
+        with trace_span(
+            "document.ingestion.publish",
+            {
+                "document.id": document_id,
+                "index.generation": str(metadata["index_generation"]),
+                "index.chunk_count": indexed_chunk_count,
+                "index.extraction_status": metadata["extraction_status"],
+            },
+        ):
+            indexing_status = await publish_index_generation(
+                document_id,
+                indexed_chunk_count,
+                index_report,
+                extracted_text_preview,
+                extraction_method,
+                indexing_attempt_id,
+                indexing_lease_token,
+                str(metadata["index_generation"]),
+                source_snapshot_values_at_start,
+                settings.DOCUMENT_INDEX_CONTRACT_VERSION,
+            )
         if not indexing_status:
             error = RuntimeError("document_index_status_update_failed")
             try:
@@ -693,28 +914,25 @@ class IngestionPipelineService:
                 raise RuntimeError(
                     "index_generation_published_but_attempt_state_changed"
                 ) from error
-            await self._rollback_generation(document_id, ids, error)
+            await self._rollback_generation(
+                document_id, str(metadata["index_generation"]), error
+            )
             raise error
 
-        stale_vector_ids = [
-            point_id for point_id in previous_vector_ids if point_id not in current_ids
-        ]
-        stale_bm25_ids = [
-            point_id for point_id in previous_bm25_ids if point_id not in current_ids
-        ]
+        await verify_source_snapshot()
         cleanup_results = await asyncio.gather(
-            vector_store.delete_ids(stale_vector_ids),
-            bm25_store.delete_ids(stale_bm25_ids),
+            vector_store.delete_stale_document_generations(
+                document_id, str(metadata["index_generation"])
+            ),
+            bm25_store.delete_stale_document_generations(
+                document_id, str(metadata["index_generation"])
+            ),
             return_exceptions=True,
         )
         cleanup_pending = [
             store_name
-            for store_name, stale_ids, result in zip(
-                ("qdrant", "bm25"),
-                (stale_vector_ids, stale_bm25_ids),
-                cleanup_results,
-            )
-            if stale_ids and isinstance(result, BaseException)
+            for store_name, result in zip(("qdrant", "bm25"), cleanup_results)
+            if isinstance(result, BaseException)
         ]
         if cleanup_pending:
             logger.warning(
@@ -727,12 +945,13 @@ class IngestionPipelineService:
                 document_id,
                 indexed_chunk_count,
                 index_report,
-                raw_markdown,
+                extracted_text_preview,
                 extraction_method,
                 indexing_attempt_id,
                 indexing_lease_token,
                 str(metadata["index_generation"]),
                 source_snapshot_values_at_start,
+                settings.DOCUMENT_INDEX_CONTRACT_VERSION,
             )
             if not indexing_status:
                 raise RuntimeError("document_index_status_update_failed")
@@ -765,6 +984,13 @@ class IngestionPipelineService:
             "extraction_method": extraction_method,
             "status": indexing_status,
             "quarantined_chunks": quarantined_chunks,
+            "quarantined_chunk_count": quarantined_chunks.total_count,
+            "quarantined_chunk_details_truncated": (
+                quarantined_chunks.total_count > len(quarantined_chunks)
+            ),
+            "failed_chunks": failed_chunks,
+            "failed_chunk_count": failed_chunks.total_count,
+            "failed_chunk_details_truncated": failed_chunks.total_count > len(failed_chunks),
             "failed_chunks": failed_chunks,
             "unprocessed_blocks": unprocessed_blocks,
             "extraction_warnings": parse_result.get("extraction_warnings", []),
@@ -772,10 +998,12 @@ class IngestionPipelineService:
         }
 
     @staticmethod
-    async def _rollback_generation(document_id: str, point_ids: list[str], cause: Exception):
+    async def _rollback_generation(
+        document_id: str, index_generation: str, cause: Exception
+    ):
         results = await asyncio.gather(
-            vector_store.delete_ids(point_ids),
-            bm25_store.delete_ids(point_ids),
+            vector_store.delete_document_generation(document_id, index_generation),
+            bm25_store.delete_document_generation(document_id, index_generation),
             return_exceptions=True,
         )
         if any(isinstance(result, BaseException) for result in results):
@@ -811,7 +1039,19 @@ async def index_document(
         )
         claim_status = str((claim or {}).get("status") or "")
         if claim_status == "busy":
-            return {"document_id": document_id, "status": "busy"}
+            lease_until = parsed_utc_datetime((claim or {}).get("lease_until"))
+            retry_after_seconds = float(settings.DOCUMENT_INDEXING_LEASE_SECONDS)
+            if lease_until:
+                lease_remaining = max(
+                    1.0,
+                    (lease_until - datetime.now(timezone.utc)).total_seconds(),
+                )
+                retry_after_seconds = min(retry_after_seconds, lease_remaining)
+            return {
+                "document_id": document_id,
+                "status": "busy",
+                "retry_after_seconds": retry_after_seconds,
+            }
         if claim_status == "superseded":
             return {"document_id": document_id, "status": "superseded"}
         if claim_status == "already_indexed":

@@ -1,9 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from pymongo import DESCENDING, ReturnDocument
 
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import database
+from src.runtime.limits import limits
 from src.schemas.mcp import MCPConnection, MCPToolCallAudit
 
 
@@ -46,10 +47,41 @@ class MCPRepository:
         )
         return result.modified_count == 1
 
+    async def recover_interrupted_call_audits(self) -> int:
+        now = datetime.now(timezone.utc)
+        stale_after_seconds = (
+            limits.task_timeout_seconds + limits.message_ack_timeout_seconds
+        )
+        result = await self._audit_collection.update_many(
+            {
+                "status": "running",
+                "started_at": {
+                    "$lte": now - timedelta(seconds=stale_after_seconds)
+                },
+            },
+            {
+                "$set": {
+                    "status": "degraded",
+                    "reason_code": "MCP_CALL_INTERRUPTED_DURING_WORKER_RESTART",
+                    "completed_at": now,
+                }
+            },
+        )
+        return result.modified_count
+
     async def list_call_audits(
-        self, project_id: str, limit: int = 100
+        self,
+        project_id: str,
+        limit: int = 100,
+        automation_run_id: str | None = None,
+        task_id: str | None = None,
     ) -> list[MCPToolCallAudit]:
-        values = await self._audit_collection.find({"project_id": project_id}).sort(
+        query = {"project_id": project_id}
+        if automation_run_id is not None:
+            query["automation_run_id"] = automation_run_id
+        if task_id is not None:
+            query["task_id"] = task_id
+        values = await self._audit_collection.find(query).sort(
             [("completed_at", DESCENDING), ("_id", DESCENDING)]
         ).to_list(length=max(1, min(limit, 500)))
         for value in values:

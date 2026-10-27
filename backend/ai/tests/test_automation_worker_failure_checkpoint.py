@@ -3,7 +3,10 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
-from src.runtime.automation_worker import AutomationWorker
+from src.runtime.automation_worker import (
+    AutomationWorker,
+    _automation_retry_delay_seconds,
+)
 from src.runtime.limits import limits
 from src.schemas.agent import VeriqRunState
 from src.schemas.automation import (
@@ -17,6 +20,20 @@ from src.schemas.automation import (
 
 
 class AutomationWorkerFailureCheckpointTests(unittest.IsolatedAsyncioTestCase):
+    def test_retry_delay_caps_the_exponent_before_calculation(self):
+        with patch(
+            "src.runtime.automation_worker.limits",
+            type(
+                "RetryLimits",
+                (),
+                {"queue_retry_base_seconds": 15, "queue_retry_max_seconds": 300},
+            )(),
+        ):
+            self.assertEqual(
+                [_automation_retry_delay_seconds(value) for value in (0, 1, 2, 3, 4, 5, 10**9)],
+                [15, 15, 30, 60, 120, 240, 300],
+            )
+
     async def test_idle_queue_yields_before_next_consume(self):
         worker = AutomationWorker()
         sleeps = []
@@ -33,6 +50,103 @@ class AutomationWorkerFailureCheckpointTests(unittest.IsolatedAsyncioTestCase):
             await worker._consume()
 
         self.assertEqual(sleeps, [0.25])
+
+    async def test_interrupted_mcp_audits_recover_only_on_queue_scan_interval(self):
+        worker = AutomationWorker()
+        worker._last_queue_retry_scan = asyncio.get_running_loop().time()
+        with (
+            patch.object(worker, "_recover_expired_running_runs", new=AsyncMock()),
+            patch(
+                "src.runtime.automation_worker.mcp_repository.recover_interrupted_call_audits",
+                new=AsyncMock(return_value=0),
+            ) as recover_audits,
+            patch(
+                "src.runtime.automation_worker.automation_repository.list_retryable_queue_runs",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            await worker._retry_queue_unavailable_runs()
+            recover_audits.assert_not_awaited()
+
+            worker._last_queue_retry_scan -= limits.queue_retry_scan_seconds + 1
+            await worker._retry_queue_unavailable_runs()
+
+        recover_audits.assert_awaited_once()
+
+    async def test_stale_queued_run_is_republished_after_dispatch_crash_window(self):
+        worker = AutomationWorker()
+        run = self.make_run().model_copy(update={"status": AutomationStatus.QUEUED})
+        current_time = datetime.now(timezone.utc)
+        with (
+            patch(
+                "src.runtime.automation_worker.automation_repository.claim_stale_queued_runs",
+                new=AsyncMock(return_value=[run]),
+            ) as claim,
+            patch(
+                "src.runtime.automation_worker.mq.publish",
+                new=AsyncMock(return_value=True),
+            ) as publish,
+            patch(
+                "src.runtime.automation_worker.automation_repository.transition_with_checkpoint",
+                new=AsyncMock(),
+            ) as transition,
+        ):
+            await worker._dispatch_stale_queued_runs(current_time)
+
+        dispatch_window = max(1, limits.message_ack_timeout_seconds)
+        stale_before, lease_expires_at = claim.await_args.args
+        self.assertLessEqual(
+            abs((stale_before - (current_time - timedelta(seconds=dispatch_window))).total_seconds()),
+            0.001,
+        )
+        self.assertEqual(
+            lease_expires_at, current_time + timedelta(seconds=dispatch_window)
+        )
+        publish.assert_awaited_once_with(
+            "ai.automation", {"automation_run_id": run.automation_run_id}
+        )
+        transition.assert_not_awaited()
+
+    async def test_stale_queued_publish_failure_returns_run_to_retryable_state(self):
+        worker = AutomationWorker()
+        run = self.make_run().model_copy(update={"status": AutomationStatus.QUEUED})
+        checkpoint = self.make_checkpoint(
+            AutomationCheckpointPhase.TASKS_PLANNED,
+            {"reason_code": "AUTOMATION_QUEUE_REDELIVERY"},
+        )
+        with (
+            patch(
+                "src.runtime.automation_worker.automation_repository.claim_stale_queued_runs",
+                new=AsyncMock(return_value=[run]),
+            ),
+            patch(
+                "src.runtime.automation_worker.mq.publish",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "src.runtime.automation_worker.automation_repository.latest_checkpoint",
+                new=AsyncMock(return_value=checkpoint),
+            ),
+            patch(
+                "src.runtime.automation_worker.automation_repository.transition_with_checkpoint",
+                new=AsyncMock(return_value=run),
+            ) as transition,
+        ):
+            await worker._dispatch_stale_queued_runs(datetime.now(timezone.utc))
+
+        self.assertEqual(
+            transition.await_args.args[2]["status"], AutomationStatus.DEGRADED
+        )
+        self.assertEqual(
+            transition.await_args.args[2]["error_code"],
+            "AUTOMATION_QUEUE_UNAVAILABLE",
+        )
+        self.assertIsNone(
+            transition.await_args.args[2]["queue_dispatch_lease_expires_at"]
+        )
+        self.assertEqual(
+            transition.await_args.kwargs["state_snapshot"], checkpoint.state_snapshot
+        )
 
     def make_run(self):
         return AutomationRun(
@@ -515,6 +629,8 @@ class AutomationWorkerFailureCheckpointTests(unittest.IsolatedAsyncioTestCase):
         recover.assert_awaited_once_with(
             include_queued=False,
             include_legacy_running=False,
+            after_automation_run_id=None,
+            limit=limits.automation_recovery_batch_size,
         )
         dispatch.assert_awaited_once_with(recovered)
 
@@ -573,8 +689,8 @@ class AutomationWorkerFailureCheckpointTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=[run]),
             ),
             patch(
-                "src.runtime.automation_worker.automation_repository.list_checkpoints",
-                new=AsyncMock(return_value=[failed_checkpoint, stale_checkpoint]),
+                "src.runtime.automation_worker.automation_repository.count_retry_checkpoints",
+                new=AsyncMock(return_value=1),
             ),
             patch(
                 "src.runtime.automation_worker.automation_repository.latest_checkpoint",
@@ -645,8 +761,8 @@ class AutomationWorkerFailureCheckpointTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=[run]),
             ),
             patch(
-                "src.runtime.automation_worker.automation_repository.list_checkpoints",
-                new=AsyncMock(return_value=[failed_checkpoint]),
+                "src.runtime.automation_worker.automation_repository.count_retry_checkpoints",
+                new=AsyncMock(return_value=1),
             ),
             patch(
                 "src.runtime.automation_worker.automation_repository.latest_checkpoint",
@@ -693,8 +809,8 @@ class AutomationWorkerFailureCheckpointTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=[run]),
             ),
             patch(
-                "src.runtime.automation_worker.automation_repository.list_checkpoints",
-                new=AsyncMock(return_value=prior_failures),
+                "src.runtime.automation_worker.automation_repository.count_retry_checkpoints",
+                new=AsyncMock(return_value=2),
             ),
             patch(
                 "src.runtime.automation_worker.automation_repository.latest_checkpoint",
@@ -734,8 +850,8 @@ class AutomationWorkerFailureCheckpointTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=[run]),
             ),
             patch(
-                "src.runtime.automation_worker.automation_repository.list_checkpoints",
-                new=AsyncMock(return_value=[checkpoint]),
+                "src.runtime.automation_worker.automation_repository.count_retry_checkpoints",
+                new=AsyncMock(return_value=1),
             ),
             patch(
                 "src.runtime.automation_worker.automation_repository.latest_checkpoint",

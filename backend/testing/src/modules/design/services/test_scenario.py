@@ -14,7 +14,7 @@ from src.core.common import (
     sort_spec,
 )
 from src.repositories.test_design import test_design_repository
-from src.core.ai_automation import ai_contract_metadata
+from src.core.ai_automation import ai_contract_metadata, require_ai_automation_event
 from src.modules.design.services.generation import generate_requirement_drafts, select_generation_criteria
 from src.modules.design.services.test_case_records import validate_design_sources
 
@@ -163,6 +163,10 @@ async def archive_test_scenario_record(scenario_id, payload, user):
 
 
 async def generate_test_scenario_records(version_id, payload, user):
+    require_ai_automation_event(
+        user,
+        {"DOCUMENT_INGESTED", "REQUIREMENT_BASELINED", "REQUIREMENT_CHANGED"},
+    )
     version = await get_project_entity(
         "requirement_versions", version_id, user, "ai.generate_scenario"
     )

@@ -3,6 +3,8 @@ from typing import Annotated, Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+TESTING_AUTOMATION_MAX_EVIDENCE_ITEMS = 100
+
 
 class TestingAutomationStatus(str, Enum):
     SUCCESS = "SUCCESS"
@@ -93,9 +95,16 @@ class TestingAutomationRequest(BaseModel):
     instruction: str = Field(
         default="", max_length=5000, description="Additional user business instruction"
     )
+    output_language: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=35,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+        description="Trusted user or project locale for generated natural-language fields",
+    )
     evidence: List[TestingEvidence] = Field(
         min_length=1,
-        max_length=100,
+        max_length=TESTING_AUTOMATION_MAX_EVIDENCE_ITEMS,
         description="Artifact evidence already bounded to the project",
     )
 

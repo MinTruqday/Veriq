@@ -11,9 +11,83 @@ from src.repositories.skill_profile import SkillProfileRepository
 from src.schemas.contracts.skill_profile import (
     AssignmentRecommendationInput,
     ConfirmedSkill,
+    RelevantExperience,
     SkillProfilePatch,
 )
 from src.schemas.contracts.execution import TestRunCreate as RunCreateInput
+
+
+def test_test_run_defaults_to_source_grounded_profile_assignment():
+    payload = RunCreateInput(project_id="project-a", name="Run kiểm thử")
+
+    assert payload.assignment_strategy == "PROFILE_EVIDENCE"
+    assert RunCreateInput(
+        project_id="project-a",
+        name="Run thủ công",
+        assignment_strategy="MANUAL",
+    ).assignment_strategy == "MANUAL"
+
+
+def test_test_case_owner_recommendation_does_not_require_price_or_payroll(monkeypatch):
+    class Projects:
+        async def find_one(self, *_args, **_kwargs):
+            return {"_id": "project-a", "locale": "vi-VN"}
+
+    class PayrollRates:
+        def find(self, *_args, **_kwargs):
+            raise AssertionError("Payroll query must not run without project currency")
+
+    monkeypatch.setattr(
+        type(skill_profiles.database),
+        "value",
+        property(lambda _self: SimpleNamespace(projects=Projects(), payroll_rates=PayrollRates())),
+    )
+    monkeypatch.setattr(skill_profiles, "get_project", _async_value({}))
+    monkeypatch.setattr(
+        skill_profiles.project_repository,
+        "list_members",
+        _async_value([{"user_id": "tester-a", "status": "ACTIVE", "project_role": "TESTER"}]),
+    )
+    monkeypatch.setattr(
+        skill_profiles.skill_profile_repository,
+        "list_for_members",
+        _async_value([{"user_id": "tester-a", "availability": "AVAILABLE", "skills": []}]),
+    )
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", _async_iter([]))
+    monkeypatch.setattr(
+        skill_profiles,
+        "load_user_identities",
+        _async_value({"tester-a": {"label": "Tester A"}}),
+    )
+    monkeypatch.setattr(
+        skill_profiles.ai_automation_client,
+        "recommend_test_case_owners",
+        AsyncMock(return_value={
+            "recommendations": [{
+                "candidate_id": "tester-a",
+                "reason": "Đang khả dụng và có tải công việc hiện tại thấp.",
+                "supporting_facts": ["availability", "active-cases"],
+            }],
+            "warnings": ["Chưa có bảng lương theo tiền tệ của dự án."],
+        }),
+    )
+
+    result = asyncio.run(
+        skill_profiles.recommend_test_case_owner(
+            "project-a",
+            SimpleNamespace(draft_id=None, required_skills=[]),
+            SimpleNamespace(id="qa"),
+        )
+    )
+
+    assert result["status"] == "CANDIDATES_FOUND"
+    assert result["payroll_data_status"] == "MISSING_PROJECT_CURRENCY"
+    assert result["recommended_user_id"] == "tester-a"
+    assert result["candidates"][0]["payroll_rate_available"] is False
+    assert result["candidates"][0]["score_0_to_1"] == 0.833
+    assert result["candidates"][0]["ai_supporting_facts"]
+    assert result["recommendation_engine"] == "AI"
+    assert result["applies_automatically"] is False
 
 
 def test_assignment_only_uses_explicitly_confirmed_skills_and_availability():
@@ -58,6 +132,9 @@ def test_assignment_only_uses_explicitly_confirmed_skills_and_availability():
         "evidence": "Designed API regression suites",
         "source_block_id": "cv-block-3",
         "source_page_no": 2,
+        "source_sha256": None,
+        "source_kind": "MEMBER_DECLARED",
+        "confirmed": True,
     }]
     assert ranked[0]["active_run_count"] == 2
 
@@ -90,6 +167,17 @@ def test_profile_schema_defaults_unassessed_skills_and_requires_confirmation():
     assert profile.skills[0].level == "NOT_ASSESSED"
     with pytest.raises(ValidationError):
         ConfirmedSkill(name="", level="EXPERT")
+
+
+def test_profile_schema_rejects_duplicate_skill_names_case_insensitively():
+    with pytest.raises(ValidationError, match="skill_profile_duplicate_skill_name"):
+        SkillProfilePatch(
+            expected_revision=0,
+            skills=[
+                {"name": "API Testing", "confirmed": True},
+                {"name": " api   testing ", "confirmed": False},
+            ],
+        )
 
 
 def test_profile_schema_preserves_structured_cv_source_provenance():
@@ -202,8 +290,10 @@ def test_cv_extraction_claim_requires_a_token_boundary():
 
 def test_test_run_assignment_strategy_preserves_manual_default_and_supports_agent_mode():
     common = {"project_id": "project-a", "name": "Run kiểm thử"}
-    assert RunCreateInput(**common).assignment_strategy == "MANUAL"
+    assert RunCreateInput(**common).assignment_strategy == "PROFILE_EVIDENCE"
+    assert RunCreateInput(**common, assignment_strategy="MANUAL").assignment_strategy == "MANUAL"
     assert RunCreateInput(**common, assignment_strategy="CONFIRMED_SKILLS").assignment_strategy == "CONFIRMED_SKILLS"
+    assert RunCreateInput(**common, assignment_strategy="PROFILE_EVIDENCE").assignment_strategy == "PROFILE_EVIDENCE"
     with pytest.raises(ValidationError):
         RunCreateInput(**common, assignment_strategy="GUESS_FROM_CV")
 
@@ -227,9 +317,189 @@ def test_public_profile_does_not_expose_unrecognized_private_fields():
     assert "raw_cv_text" not in public
 
 
+def test_profile_patch_preserves_exact_persisted_cv_sources_when_member_confirms_them():
+    source_hash = "a" * 64
+    existing = {
+        "skills": [{
+            "name": "Playwright",
+            "evidence": "Used Playwright for browser testing",
+            "source_block_id": "cv:4:2",
+            "source_page_no": 4,
+            "source_sha256": source_hash,
+            "source_kind": "CV_EXTRACTED",
+            "confirmed": False,
+        }],
+        "experiences": [{
+            "title": "QA Engineer",
+            "period": "2022-2024",
+            "domain": "Banking",
+            "technologies": ["Playwright"],
+            "responsibilities": "Validated releases",
+            "evidence": "QA Engineer in Banking validated releases",
+            "source_block_id": "cv:5:1",
+            "source_page_no": 5,
+            "source_sha256": source_hash,
+            "source_kind": "CV_EXTRACTED",
+            "confirmed": False,
+        }],
+    }
+    changes = {
+        "skills": [{
+            "name": "Playwright",
+            "level": "INTERMEDIATE",
+            "evidence": "Used Playwright for browser testing",
+            "source_block_id": "cv:4:2",
+            "source_page_no": 4,
+            "source_sha256": source_hash,
+            "source_kind": "MEMBER_DECLARED",
+            "confirmed": True,
+        }],
+        "experiences": [{
+            **{key: value for key, value in existing["experiences"][0].items() if key != "confirmed"},
+            "confirmed": True,
+        }],
+    }
+
+    updated = skill_profiles._profile_patch_with_trusted_sources(changes, existing)
+
+    assert updated["skills"][0]["source_kind"] == "CV_EXTRACTED"
+    assert updated["skills"][0]["confirmed"] is True
+    assert updated["experiences"][0]["source_kind"] == "CV_EXTRACTED"
+    assert updated["experiences"][0]["confirmed"] is True
+
+
+@pytest.mark.parametrize("field,value", [
+    ("evidence", "I claim Playwright without a source quote"),
+    ("source_block_id", "other-document:1"),
+    ("source_sha256", "b" * 64),
+])
+def test_profile_patch_downgrades_modified_or_spoofed_cv_skill_provenance(field, value):
+    stored = {
+        "name": "Playwright",
+        "evidence": "Used Playwright for browser testing",
+        "source_block_id": "cv:4:2",
+        "source_page_no": 4,
+        "source_sha256": "a" * 64,
+        "source_kind": "CV_EXTRACTED",
+    }
+    submitted = {**stored, field: value, "source_kind": "CV_EXTRACTED"}
+    changes = {"skills": [submitted], "experiences": []}
+
+    updated = skill_profiles._profile_patch_with_trusted_sources(
+        changes, {"skills": [stored], "experiences": []}
+    )
+
+    assert updated["skills"][0]["source_kind"] == "MEMBER_DECLARED"
+    assert updated["skills"][0]["source_block_id"] is None
+    assert updated["skills"][0]["source_page_no"] is None
+    assert updated["skills"][0]["source_sha256"] is None
+
+
+def test_profile_patch_cannot_claim_cv_source_without_a_persisted_source():
+    changes = {
+        "skills": [{
+            "name": "Python",
+            "evidence": "Python testing",
+            "source_block_id": "invented:1",
+            "source_page_no": 1,
+            "source_sha256": "a" * 64,
+            "source_kind": "CV_EXTRACTED",
+        }],
+        "experiences": [],
+    }
+
+    updated = skill_profiles._profile_patch_with_trusted_sources(changes, None)
+
+    assert updated["skills"][0]["source_kind"] == "MEMBER_DECLARED"
+    assert updated["skills"][0]["source_block_id"] is None
+    assert updated["skills"][0]["source_page_no"] is None
+    assert updated["skills"][0]["source_sha256"] is None
+
+
+def test_new_cv_without_extractable_facts_replaces_old_cv_facts_and_keeps_declared_skills(monkeypatch):
+    existing = {
+        "project_id": "project-a",
+        "user_id": "member-a",
+        "skills": [
+            {"name": "Python", "source_kind": "MEMBER_DECLARED", "confirmed": True},
+            {"name": "Selenium", "source_kind": "CV_EXTRACTED", "source_sha256": "a" * 64},
+        ],
+        "experiences": [{
+            "title": "Old QA role",
+            "source_kind": "CV_EXTRACTED",
+            "source_sha256": "a" * 64,
+        }],
+        "availability": "LIMITED",
+        "revision": 4,
+    }
+    calls = {}
+
+    class Transaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, error_type, error, traceback):
+            return False
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, error_type, error, traceback):
+            return False
+
+        def start_transaction(self):
+            return Transaction()
+
+    session = Session()
+
+    async def start_session():
+        return session
+
+    async def find(project_id, user_id):
+        assert (project_id, user_id) == ("project-a", "member-a")
+        return existing
+
+    async def upsert(project_id, user_id, expected_revision, changes, timestamp, *, session):
+        calls.update(changes=changes, expected_revision=expected_revision, session=session)
+        return {
+            "project_id": project_id,
+            "user_id": user_id,
+            **changes,
+            "revision": expected_revision + 1,
+            "updated_at": timestamp,
+        }
+
+    async def audit(*args, session=None, **kwargs):
+        calls["audit_session"] = session
+
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "find", find)
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "upsert", upsert)
+    monkeypatch.setattr(skill_profiles.database, "client", SimpleNamespace(start_session=start_session))
+    monkeypatch.setattr(skill_profiles, "audit", audit)
+
+    updated, changed = asyncio.run(
+        skill_profiles._persist_cv_profile(
+            "project-a",
+            SimpleNamespace(id="member-a"),
+            {"skills": [], "experiences": []},
+            "b" * 64,
+        )
+    )
+
+    assert changed is True
+    assert updated["skills"] == [existing["skills"][0]]
+    assert updated["experiences"] == []
+    assert updated["availability"] == "LIMITED"
+    assert calls["expected_revision"] == 4
+    assert calls["session"] is session
+    assert calls["audit_session"] is session
+
+
 def test_profile_update_uses_optimistic_revision_and_only_own_identity(monkeypatch):
     calls = {}
     monkeypatch.setattr(skill_profiles, "get_project", _async_value(None))
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "find", _async_value(None))
 
     class Transaction:
         async def __aenter__(self):
@@ -317,7 +587,7 @@ def test_assignment_recommendation_is_project_scoped_and_only_considers_testers(
     )
     monkeypatch.setattr(
         skill_profiles.skill_profile_repository,
-        "iter_active_runs",
+        "iter_active_runs_for_members",
         _async_iter([]),
     )
     monkeypatch.setattr(skill_profiles.test_run_repository, "list_versions", _async_value([]))
@@ -460,7 +730,7 @@ def test_case_assignment_plan_uses_frozen_case_skills_balances_load_and_preserve
             {"user_id": "tester-sec", "availability": "AVAILABLE", "skills": [{"name": "Security", "confirmed": True}]},
         ]),
     )
-    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs", _async_iter([]))
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", _async_iter([]))
     monkeypatch.setattr(
         skill_profiles.test_run_repository, "list_versions",
         _async_value([
@@ -483,6 +753,7 @@ def test_case_assignment_plan_uses_frozen_case_skills_balances_load_and_preserve
     assert by_case["v-api"]["matched_skill_evidence"] == [{
         "name": "API", "level": "ADVANCED", "evidence": "Built API test strategy",
         "source_block_id": "cv-block-api", "source_page_no": 5,
+        "source_sha256": None, "source_kind": "MEMBER_DECLARED", "confirmed": True,
     }]
     assert by_case["v-sec"]["assignee_id"] == "tester-sec"
     assert by_case["v-manual"]["assignee_id"] == "tester-sec"
@@ -504,7 +775,7 @@ def test_case_assignment_plan_leaves_case_unassigned_without_full_confirmed_matc
         skill_profiles.skill_profile_repository, "list_for_members",
         _async_value([{"user_id": "tester", "availability": "AVAILABLE", "skills": [{"name": "API", "confirmed": True}]}]),
     )
-    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs", _async_iter([]))
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", _async_iter([]))
     monkeypatch.setattr(
         skill_profiles.test_run_repository, "list_versions",
         _async_value([{"_id": "v-api", "project_id": "project-a", "required_skills": ["API", "Security"]}]),
@@ -541,7 +812,7 @@ def test_case_assignment_recommendation_uses_active_run_load_after_case_load(mon
         ]),
     )
     monkeypatch.setattr(
-        skill_profiles.skill_profile_repository, "iter_active_runs",
+        skill_profiles.skill_profile_repository, "iter_active_runs_for_members",
         _async_iter([
             {
                 "assignee_id": "tester-a",
@@ -595,7 +866,7 @@ def test_automatic_assignment_allocates_restricted_cases_first_and_excludes_unav
             {"user_id": "unavailable-security", "availability": "UNAVAILABLE", "skills": [{"name": "Security", "confirmed": True}]},
         ]),
     )
-    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs", _async_iter([]))
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", _async_iter([]))
 
     assignments, unresolved, decisions = asyncio.run(skill_profiles.automatically_assign_test_cases(
         "project-a",
@@ -615,6 +886,134 @@ def test_automatic_assignment_allocates_restricted_cases_first_and_excludes_unav
     assert decisions["flexible"]["active_run_count_before_assignment"] == 0
 
 
+def test_automatic_assignment_distinguishes_unconfirmed_profile_from_skill_mismatch(monkeypatch):
+    monkeypatch.setattr(
+        skill_profiles.project_repository,
+        "list_members",
+        _async_value([
+            {"user_id": "tester-a", "status": "ACTIVE", "project_role": "TESTER"},
+        ]),
+    )
+    monkeypatch.setattr(
+        skill_profiles.skill_profile_repository,
+        "list_for_members",
+        _async_value([
+            {
+                "user_id": "tester-a",
+                "availability": "AVAILABLE",
+                "skills": [{"name": "API", "confirmed": False}],
+            },
+        ]),
+    )
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", _async_iter([]))
+
+    assignments, unresolved, decisions = asyncio.run(
+        skill_profiles.automatically_assign_test_cases(
+            "project-a",
+            [{"_id": "version-a", "required_skills": ["API"]}],
+        )
+    )
+
+    assert assignments == {}
+    assert decisions == {}
+    assert unresolved == [{"test_case_version_id": "version-a", "reason": "PROFILE_NOT_CONFIRMED"}]
+
+
+def test_profile_evidence_assignment_requires_member_confirmation(monkeypatch):
+    monkeypatch.setattr(
+        skill_profiles.project_repository,
+        "list_members",
+        _async_value([{"user_id": "tester-a", "status": "ACTIVE", "project_role": "TESTER"}]),
+    )
+    monkeypatch.setattr(
+        skill_profiles.skill_profile_repository,
+        "list_for_members",
+        _async_value([{
+            "user_id": "tester-a",
+            "revision": 3,
+            "availability": "AVAILABLE",
+            "skills": [{
+                "name": "Postman",
+                "confirmed": False,
+                "source_kind": "CV_EXTRACTED",
+                "source_block_id": "page-1-block-2",
+                "source_sha256": "c" * 64,
+                "evidence": "Used Postman for API tests",
+            }],
+        }]),
+    )
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", _async_iter([]))
+    version = {"_id": "version-a", "required_skills": ["Postman"]}
+
+    assignments, unresolved, _ = asyncio.run(
+        skill_profiles.automatically_assign_test_cases(
+            "project-a", [version]
+        )
+    )
+
+    assert assignments == {}
+    assert unresolved == [{"test_case_version_id": "version-a", "reason": "PROFILE_NOT_CONFIRMED"}]
+
+    monkeypatch.setattr(
+        skill_profiles.skill_profile_repository,
+        "list_for_members",
+        _async_value([{
+            "user_id": "tester-a",
+            "revision": 4,
+            "availability": "AVAILABLE",
+            "skills": [{
+                "name": "Postman",
+                "confirmed": True,
+                "source_kind": "CV_EXTRACTED",
+                "source_block_id": "page-1-block-2",
+                "source_sha256": "c" * 64,
+                "evidence": "Used Postman for API tests",
+            }],
+        }]),
+    )
+    assignments, unresolved, _ = asyncio.run(
+        skill_profiles.automatically_assign_test_cases("project-a", [version])
+    )
+
+    assert assignments == {"version-a": "tester-a"}
+    assert unresolved == []
+
+
+def test_automatic_assignment_keeps_legacy_confirmed_duplicate_skill(monkeypatch):
+    monkeypatch.setattr(
+        skill_profiles.project_repository,
+        "list_members",
+        _async_value([
+            {"user_id": "tester-a", "status": "ACTIVE", "project_role": "TESTER"},
+        ]),
+    )
+    monkeypatch.setattr(
+        skill_profiles.skill_profile_repository,
+        "list_for_members",
+        _async_value([
+            {
+                "user_id": "tester-a",
+                "availability": "AVAILABLE",
+                "skills": [
+                    {"name": "API", "confirmed": True},
+                    {"name": "api", "confirmed": False},
+                ],
+            },
+        ]),
+    )
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", _async_iter([]))
+
+    assignments, unresolved, _ = asyncio.run(
+        skill_profiles.automatically_assign_test_cases(
+            "project-a",
+            [{"_id": "version-a", "required_skills": ["API"]}],
+        )
+    )
+
+    assert assignments == {"version-a": "tester-a"}
+    assert unresolved == []
+
+
 def test_automatic_assignment_reads_members_profiles_and_load_from_run_transaction(monkeypatch):
     session = object()
     calls = []
@@ -632,14 +1031,14 @@ def test_automatic_assignment_reads_members_profiles_and_load_from_run_transacti
             "skills": [{"name": "API", "confirmed": True}],
         }]
 
-    async def active_runs(project_id, user_ids, *, session):
-        calls.append(("runs", project_id, session))
-        async for run in _async_iter([])(project_id, user_ids, session=session):
+    async def active_runs(user_ids, *, session):
+        calls.append(("runs", "project-a", session))
+        async for run in _async_iter([])(user_ids, session=session):
             yield run
 
     monkeypatch.setattr(skill_profiles.project_repository, "list_members", list_members)
     monkeypatch.setattr(skill_profiles.skill_profile_repository, "list_for_members", list_profiles)
-    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs", active_runs)
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", active_runs)
 
     assignments, unresolved, decisions = asyncio.run(
         skill_profiles.automatically_assign_test_cases(
@@ -668,7 +1067,7 @@ def test_automatic_assignment_counts_run_load_for_case_assignees_once_per_run(mo
     monkeypatch.setattr(skill_profiles.skill_profile_repository, "list_for_members", _async_value(profiles))
     monkeypatch.setattr(
         skill_profiles.skill_profile_repository,
-        "iter_active_runs",
+        "iter_active_runs_for_members",
         _async_iter([
             {
                 "assignee_id": None,
@@ -687,7 +1086,34 @@ def test_automatic_assignment_counts_run_load_for_case_assignees_once_per_run(mo
     assert assignments == {"new-version-a": "tester-b"}
     assert unresolved == []
     assert decisions["new-version-a"]["active_run_count_before_assignment"] == 0
-    assert decisions["new-version-a"]["active_case_count_before_assignment"] == 2
+    assert decisions["new-version-a"]["active_case_count_before_assignment"] == 0
+
+
+def test_automatic_assignment_balances_new_cases_against_existing_run_assignments(monkeypatch):
+    members = [
+        {"user_id": "tester-a", "status": "ACTIVE", "project_role": "TESTER"},
+        {"user_id": "tester-b", "status": "ACTIVE", "project_role": "TESTER"},
+    ]
+    profiles = [
+        {"user_id": "tester-a", "availability": "AVAILABLE", "skills": []},
+        {"user_id": "tester-b", "availability": "AVAILABLE", "skills": []},
+    ]
+    monkeypatch.setattr(skill_profiles.project_repository, "list_members", _async_value(members))
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "list_for_members", _async_value(profiles))
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "iter_active_runs_for_members", _async_iter([]))
+
+    assignments, unresolved, decisions = asyncio.run(
+        skill_profiles.automatically_assign_test_cases(
+            "project-a",
+            [{"_id": "new-version", "required_skills": []}],
+            existing_case_assignments={"existing-version": "tester-a"},
+            existing_assignee_id="tester-a",
+        )
+    )
+
+    assert assignments == {"new-version": "tester-b"}
+    assert unresolved == []
+    assert decisions["new-version"]["assignee_id"] == "tester-b"
 
 
 def test_cv_source_blocks_preserve_parser_page_and_split_long_blocks():
@@ -830,6 +1256,36 @@ def test_cv_experience_with_verbatim_claims_and_matching_citation_is_grounded():
     )
 
 
+def test_cv_experience_period_must_be_explicitly_grounded_in_its_quote():
+    source_blocks = [{
+        "block_id": "block-period",
+        "page_no": 3,
+        "text": "QA Engineer, 2020–2022, used Postman. QA Engineer used Postman for API testing.",
+    }]
+    grounded = {
+        "skills": [],
+        "experiences": [{
+            "title": "QA Engineer",
+            "period": "2020–2022",
+            "technologies": ["Postman"],
+            "evidence_quote": "QA Engineer, 2020–2022, used Postman.",
+            "source_block_id": "block-period",
+            "page_no": 3,
+        }],
+    }
+    inferred_period = {
+        "skills": [],
+        "experiences": [{
+            **grounded["experiences"][0],
+            "period": "2018–2020",
+            "evidence_quote": "QA Engineer used Postman for API testing.",
+        }],
+    }
+
+    assert skill_profiles._validate_cv_candidate_evidence(source_blocks, grounded)
+    assert not skill_profiles._validate_cv_candidate_evidence(source_blocks, inferred_period)
+
+
 def test_cv_candidate_evidence_rejects_ambiguous_duplicate_source_block_ids():
     from src.modules.projects.services.skill_profiles import _validate_cv_candidate_evidence
 
@@ -961,6 +1417,17 @@ def test_cv_extraction_requires_project_access_supported_file_and_keeps_file_eph
         }], "experiences": [], "warnings": []}
 
     monkeypatch.setattr(service.ai_automation_client, "extract_skill_profile", extract)
+    async def persist_profile(_project_id, _user, _extracted, source_sha256):
+        return ({
+            "project_id": "project-a",
+            "user_id": "member-a",
+            "skills": [{"name": "Postman", "source_kind": "CV_EXTRACTED", "source_sha256": source_sha256}],
+            "experiences": [],
+            "availability": "AVAILABLE",
+            "revision": 4,
+        }, True)
+
+    monkeypatch.setattr(service, "_persist_cv_profile", persist_profile)
     upload = type("Upload", (), {
         "filename": "candidate.pdf", "read": _async_value(b"cv bytes"),
         "close": _async_value(None),
@@ -975,7 +1442,166 @@ def test_cv_extraction_requires_project_access_supported_file_and_keeps_file_eph
     assert len(result["source_sha256"]) == 64
     assert "level" not in result["skills"][0]
     assert result["cv_persisted"] is False
+    assert result["profile_facts_persisted"] is True
+    assert result["profile_changed"] is True
+    assert result["profile_revision"] == 4
+    assert result["profile"]["revision"] == 4
     assert result["indexed_in_project_knowledge"] is False
+
+
+def test_cv_extracted_skill_evidence_requires_confirmation_for_assignment():
+    source_skill = {
+        "name": "Postman",
+        "level": "NOT_ASSESSED",
+        "evidence": "Used Postman for API tests",
+        "source_block_id": "page-1-block-2",
+        "source_page_no": 1,
+        "source_sha256": "a" * 64,
+        "source_kind": "CV_EXTRACTED",
+        "confirmed": False,
+    }
+    assert skill_profiles._assignment_skills({"skills": [source_skill]}) == {}
+    confirmed_skill = {**source_skill, "confirmed": True}
+    assert skill_profiles._assignment_skills({"skills": [confirmed_skill]})["postman"] == confirmed_skill
+
+
+def test_cv_extraction_entries_keep_quote_and_source_coordinates_without_assessing_level():
+    skills, experiences = skill_profiles._cv_profile_entries(
+        {
+            "skills": [{
+                "name": "Postman",
+                "evidence_quote": "Used Postman for API tests",
+                "source_block_id": "page-1-block-2",
+                "page_no": 1,
+            }],
+            "experiences": [{
+                "title": "QA Engineer",
+                "period": "2022-2024",
+                "domain": "Banking",
+                "technologies": ["Postman"],
+                "responsibilities": "Tested APIs",
+                "evidence_quote": "QA Engineer 2022-2024 Banking Postman Tested APIs",
+                "source_block_id": "page-2-block-1",
+                "page_no": 2,
+            }],
+        },
+        "b" * 64,
+    )
+
+    assert skills == [{
+        "name": "Postman",
+        "level": "NOT_ASSESSED",
+        "evidence": "Used Postman for API tests",
+        "source_block_id": "page-1-block-2",
+        "source_page_no": 1,
+        "source_sha256": "b" * 64,
+        "source_kind": "CV_EXTRACTED",
+        "confirmed": False,
+    }]
+    assert experiences[0]["source_kind"] == "CV_EXTRACTED"
+    assert experiences[0]["source_sha256"] == "b" * 64
+    assert experiences[0]["source_page_no"] == 2
+
+
+def test_cv_profile_persistence_replaces_prior_cv_facts_and_preserves_member_profile(monkeypatch):
+    calls = {}
+    existing = {
+        "project_id": "project-a",
+        "user_id": "member-a",
+        "revision": 5,
+        "availability": "LIMITED",
+        "skills": [
+            {"name": "API", "confirmed": True, "source_kind": "MEMBER_DECLARED"},
+            {
+                "name": "Old CV skill",
+                "confirmed": False,
+                "source_kind": "CV_EXTRACTED",
+                "source_sha256": "a" * 64,
+            },
+        ],
+        "experiences": [{
+            "title": "Legacy CV role",
+            "source_kind": "CV_EXTRACTED",
+            "source_sha256": "a" * 64,
+        }],
+    }
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "find", _async_value(existing))
+
+    class Transaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, error_type, error, traceback):
+            return False
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, error_type, error, traceback):
+            return False
+
+        def start_transaction(self):
+            return Transaction()
+
+    session = Session()
+    monkeypatch.setattr(
+        skill_profiles.database,
+        "client",
+        SimpleNamespace(start_session=_async_value(session)),
+    )
+
+    async def upsert(project_id, user_id, expected_revision, changes, timestamp, *, session):
+        calls.update(
+            project_id=project_id,
+            user_id=user_id,
+            expected_revision=expected_revision,
+            changes=changes,
+            session=session,
+        )
+        return {
+            "project_id": project_id,
+            "user_id": user_id,
+            **changes,
+            "revision": 6,
+            "updated_at": timestamp,
+        }
+
+    monkeypatch.setattr(skill_profiles.skill_profile_repository, "upsert", upsert)
+
+    async def audit(*args, session=None, **kwargs):
+        calls["audit_session"] = session
+
+    monkeypatch.setattr(skill_profiles, "audit", audit)
+    extracted = {
+        "skills": [{
+            "name": "Postman",
+            "evidence_quote": "Used Postman for API tests",
+            "source_block_id": "page-1-block-1",
+            "page_no": 1,
+        }],
+        "experiences": [],
+    }
+
+    saved, changed = asyncio.run(
+        skill_profiles._persist_cv_profile(
+            "project-a",
+            type("User", (), {"id": "member-a"})(),
+            extracted,
+            "d" * 64,
+        )
+    )
+
+    assert changed is True
+    assert calls["expected_revision"] == 5
+    assert calls["session"] is session
+    assert calls["audit_session"] is session
+    assert calls["changes"]["availability"] == "LIMITED"
+    assert calls["changes"]["skills"][0] == existing["skills"][0]
+    assert [item["name"] for item in calls["changes"]["skills"]] == ["API", "Postman"]
+    assert calls["changes"]["skills"][1]["source_sha256"] == "d" * 64
+    assert calls["changes"]["experiences"] == []
+    assert saved["revision"] == 6
 
 
 def test_cv_extraction_rejects_unsupported_file_before_conversion(monkeypatch):

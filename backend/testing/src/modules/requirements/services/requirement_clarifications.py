@@ -311,10 +311,29 @@ async def decide_clarification(clarification_id, payload, user):
     clarification = await requirement_clarification_repository.find(clarification_id)
     if not clarification:
         raise HTTPException(status_code=404, detail={"code": "CLARIFICATION_NOT_FOUND"})
-    await get_project_entity("requirements", clarification["requirement_id"], user, "requirement.review")
+    requirement = await get_project_entity(
+        "requirements",
+        clarification["requirement_id"],
+        user,
+        "requirement.review",
+    )
     await _require_role(clarification["project_id"], user, "QA")
     if clarification["status"] not in {"OPEN", "ANSWERED"}:
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
+    version = await requirement_repository.find_version(
+        clarification["requirement_version_id"],
+        clarification["project_id"],
+        clarification["requirement_id"],
+    )
+    if (
+        not version
+        or requirement.get("current_version_id") != version["_id"]
+        or version.get("status") == "SUPERSEDED"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CLARIFICATION_VERSION_NOT_CURRENT"},
+        )
     timestamp = now()
     return await _replace_and_audit(
         clarification,
@@ -331,6 +350,8 @@ async def decide_clarification(clarification_id, payload, user):
         user,
         "requirement_clarification_decided",
         {"status": payload.status},
+        requirement_current_version_id=version["_id"],
+        requirement_version_revision=version.get("revision"),
     )
 
 

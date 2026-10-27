@@ -599,7 +599,11 @@ class AutomationEventTaskTests(unittest.TestCase):
                     permissions=[permission],
                     tool_calls=[],
                     source_event_id=(
-                        "defect:defect-1:1" if trigger == "DEFECT_RECORDED" else None
+                        "defect:defect-1:1"
+                        if trigger == "DEFECT_RECORDED"
+                        else "test-plan:plan-approved-1:1:TEST_PLAN_APPROVED"
+                        if trigger == "TEST_PLAN_APPROVED"
+                        else None
                     ),
                 )
                 state = {
@@ -643,11 +647,17 @@ class AutomationEventTaskTests(unittest.TestCase):
                 self.assertEqual(len(task.tool_calls), 1)
                 self.assertEqual(task.tool_calls[0].tool_name, tool_name)
                 self.assertEqual(task.tool_calls[0].arguments[argument_name], artifact_id)
+                if trigger == "TEST_PLAN_APPROVED":
+                    self.assertEqual(task.tool_calls[0].arguments["expected_revision"], 1)
+                    self.assertEqual(
+                        task.tool_calls[0].arguments["source_event_id"],
+                        "test-plan:plan-approved-1:1:TEST_PLAN_APPROVED",
+                    )
                 self.assertTrue(task.constraints["workflow_terminal"])
 
     def task_for(
         self, trigger, artifact_type, artifact_id, permission, tool_name,
-        tool_properties, artifact_revision=None,
+        tool_properties, artifact_revision=None, source_event_id=None, relationship=None,
     ):
         tool = SimpleNamespace(
             name=tool_name,
@@ -680,8 +690,10 @@ class AutomationEventTaskTests(unittest.TestCase):
             project_id="project-1",
             permissions=run_permissions,
             tool_calls=[],
-            source_event_id=(
-                f"defect:{artifact_id}:{artifact_revision}"
+            source_event_id=source_event_id or (
+                f"work-item:{artifact_id}:{artifact_revision}:WORK_ITEM_CHANGED"
+                if trigger == "WORK_ITEM_CHANGED" and artifact_revision is not None
+                else f"defect:{artifact_id}:{artifact_revision}"
                 if trigger == "DEFECT_RECORDED" and artifact_revision is not None
                 else None
             ),
@@ -696,6 +708,7 @@ class AutomationEventTaskTests(unittest.TestCase):
                     "artifact_id": artifact_id,
                     "artifact_version_id": artifact_id,
                     "project_id": "project-1",
+                    **({"relationship": relationship} if relationship is not None else {}),
                     **(
                         {"artifact_revision": artifact_revision}
                         if artifact_revision is not None
@@ -1235,6 +1248,46 @@ class AutomationEventTaskTests(unittest.TestCase):
             {"work_item_id": {}, "project_id": {}, "expected_revision": {}},
         )
         self.assertIsNone(task)
+
+    def test_work_item_event_with_an_unmatched_event_id_is_not_processed(self):
+        task = self.task_for(
+            "WORK_ITEM_CHANGED",
+            "work_item",
+            "work-item-1",
+            "project.read",
+            "get_work_item_impact_context",
+            {"work_item_id": {}, "project_id": {}, "expected_revision": {}},
+            artifact_revision=4,
+            source_event_id="work-item:work-item-1:3:WORK_ITEM_CHANGED",
+        )
+        self.assertIsNone(task)
+
+    def test_dependency_event_id_is_bound_to_the_affected_work_item(self):
+        relationship = {
+            "relationship_id": "dependency-1",
+            "relationship_type": "BLOCKS",
+            "project_id": "project-1",
+            "source_artifact_id": "work-item-1",
+            "target_artifact_id": "work-item-2",
+        }
+        task = self.task_for(
+            "WORK_ITEM_CHANGED",
+            "work_item",
+            "work-item-1",
+            "project.read",
+            "get_work_item_impact_context",
+            {"work_item_id": {}, "project_id": {}, "expected_revision": {}},
+            artifact_revision=4,
+            source_event_id=(
+                "work-item-dependency:dependency-1:work-item-1:WORK_ITEM_CHANGED"
+            ),
+            relationship=relationship,
+        )
+        self.assertIsNotNone(task)
+        self.assertEqual(
+            task.constraints["dependency_edge"]["relationship_id"],
+            "dependency-1",
+        )
 
     def test_work_item_event_finishes_after_read_and_reports_observed_links(self):
         run = VeriqRunState(

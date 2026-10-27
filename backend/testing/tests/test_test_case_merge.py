@@ -33,6 +33,35 @@ class TestCaseMergeTests(unittest.IsolatedAsyncioTestCase):
         self.context = {"draft": self.draft, "proposal": self.draft["ai_proposal_snapshot"], "proposal_available": True, "original": None, "stale_reasons": [], "comparison_token": "a" * 64}
         self.payload = MergeSave(expected_revision=3, comparison_token="a" * 64, operation_id="operation-1", result={**self.draft, "title": "Bản QA đã ghép"}, choices=[{"field": "title", "source": "MANUAL"}])
 
+    def test_test_case_search_projection_contains_meaningful_fields_without_test_data_values(self):
+        case = {
+            "title": "Khóa tài khoản sau nhiều lần sai",
+            "type": "security",
+            "test_level": "SYSTEM",
+            "test_kind": "security",
+            "techniques": ["Boundary Value"],
+            "tags": ["login", "lockout"],
+            "required_skills": ["Security testing"],
+            "test_data": {"failed_attempt_count": "SECRET_VALUE"},
+            "bdd": {
+                "feature": "Đăng nhập",
+                "scenario": "Khóa sau số lần sai được cấu hình",
+                "steps": [{"keyword": "When", "text": "Nhập sai mật khẩu"}],
+            },
+            "steps": [
+                {"action_doc": document("Nhập sai mật khẩu"), "expected_doc": document("Tài khoản bị khóa")}
+            ],
+        }
+
+        text = records.project_test_text(case)
+        metadata = records.project_test_index_metadata(case)
+
+        for expected in ("Boundary Value", "login", "failed_attempt_count", "Đăng nhập", "Tài khoản bị khóa"):
+            self.assertIn(expected, text)
+        self.assertNotIn("SECRET_VALUE", text)
+        self.assertEqual(metadata["test_case_type"], "security")
+        self.assertEqual(metadata["techniques"], ["Boundary Value"])
+
     async def test_duplicate_preflight_reads_all_active_versions_across_pages(self):
         pages = [
             [{"_id": "version-first", "test_case_id": "case-first"}],
@@ -222,6 +251,42 @@ class TestCaseMergeTests(unittest.IsolatedAsyncioTestCase):
                 None,
                 proposal,
             )
+
+    def test_whole_step_source_choice_cannot_claim_modified_step_fields(self):
+        proposal = {
+            "steps": [
+                {
+                    "id": "step-ai",
+                    "action_doc": document("Bước AI"),
+                    "expected_doc": document("Kết quả AI"),
+                }
+            ]
+        }
+        with self.assertRaises(HTTPException) as error:
+            review.validate_merge_choices(
+                [
+                    {"field": "steps", "step_id": "step-ai", "source": "AI"},
+                    {
+                        "field": "steps.action_doc",
+                        "step_id": "step-ai",
+                        "source": "AI",
+                    },
+                ],
+                {
+                    "steps": [
+                        {
+                            "id": "step-ai",
+                            "action_doc": document("Bước bị sửa"),
+                            "expected_doc": document("Kết quả AI"),
+                        }
+                    ]
+                },
+                None,
+                proposal,
+            )
+        self.assertEqual(
+            error.exception.detail["code"], "MERGE_CHOICE_VALUE_MISMATCH"
+        )
 
     def test_step_absence_can_be_an_explicit_merge_choice(self):
         original = {"steps": [{"id": "step-original", "action_doc": document("Bước gốc")}]}

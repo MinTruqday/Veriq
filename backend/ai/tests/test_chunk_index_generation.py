@@ -167,6 +167,28 @@ class ChunkIndexGenerationTests(unittest.TestCase):
             payload.text[mapped_cell.chunk_start : mapped_cell.chunk_end], "ID"
         )
 
+    def test_generated_table_offsets_do_not_subtract_trim_from_trimmed_text(self):
+        raw_table = "\n  | ID | Value |\n  | --- | --- |\n  | 1 | alpha |\n"
+        expected_cells = {"ID", "Value", "1", "alpha"}
+        legacy_units = chunker._structure_units(
+            "",
+            [{"block_id": "table-generated", "type": "table", "text": raw_table}],
+        )
+        streamed_units = list(
+            chunker._iter_plain_structure_units(
+                [{"block_id": "table-generated", "type": "table", "text": raw_table}]
+            )
+        )
+
+        for unit in (legacy_units[0], streamed_units[0]):
+            table_text = unit["text"]
+            cells = unit["table_metadata"]["cell_spans"]
+            self.assertEqual(
+                {table_text[cell["source_start"] : cell["source_end"]] for cell in cells},
+                expected_cells,
+            )
+            self.assertTrue(all(cell["source_start"] >= 0 for cell in cells))
+
     def test_source_segments_use_absolute_offsets_when_multiple_tables_share_chunk(self):
         service = ChunkingService()
         units = []
@@ -261,12 +283,21 @@ class ChunkIndexGenerationTests(unittest.TestCase):
                     "text": "Page two text",
                 },
                 {
+                    "block_id": "text-page-3",
+                    "parent_block_id": "document-root",
+                    "type": "text",
+                    "level": 1,
+                    "page_no": 3,
+                    "locations": [],
+                    "text": "Page three text",
+                },
+                {
                     "block_id": "image-page-3",
                     "parent_block_id": "document-root",
                     "type": "picture",
                     "level": 1,
                     "page_no": 3,
-                    "locations": [{"page_no": 3}],
+                    "locations": [],
                     "text": "",
                     "image_metadata": {"asset_available": True},
                 },
@@ -281,12 +312,30 @@ class ChunkIndexGenerationTests(unittest.TestCase):
             [image["block_id"] for image in units[1].get("related_images", [])],
             ["image-page-2"],
         )
+        self.assertEqual(
+            [image["block_id"] for image in units[2].get("related_images", [])],
+            ["image-page-3"],
+        )
+        self.assertEqual(
+            units[2]["related_images"][0]["locations"],
+            [{"page_no": 3, "bbox": None}],
+        )
+        serialized = service._serialize_groups([[units[2]]], {}, "test")
+        image_span = next(
+            span
+            for span in serialized[0]["metadata"]["source_spans"]
+            if span.get("block_id") == "image-page-3"
+        )
+        self.assertEqual(
+            image_span["locations"],
+            [{"page_no": 3, "bbox": None}],
+        )
         linked_image_ids = {
             image["block_id"]
             for unit in units
             for image in unit.get("related_images", [])
         }
-        self.assertNotIn("image-page-3", linked_image_ids)
+        self.assertEqual(linked_image_ids, {"image-page-2", "image-page-3"})
 
     def test_page_ocr_confidence_survives_source_block_to_qdrant_span(self):
         service = ChunkingService()

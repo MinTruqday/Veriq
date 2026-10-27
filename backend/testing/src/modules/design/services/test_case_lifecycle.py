@@ -9,7 +9,10 @@ from src.core.database import database
 from src.repositories.test_design import test_design_repository
 from src.modules.design.services.linters import has_verifiable_steps, lint_test_case
 from src.clients.project_knowledge import index_artifact
-from src.modules.design.services.test_case_records import project_test_text
+from src.modules.design.services.test_case_records import (
+    project_test_index_metadata,
+    project_test_text,
+)
 from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
 
 
@@ -406,8 +409,7 @@ async def finalize_test_case_derivatives(draft, version, user):
                 version["status"],
                 'APPROVED_SOURCE',
                 version["version"],
-                requirement_version_ids=version.get("requirement_version_ids", []),
-                acceptance_criterion_ids=version.get("acceptance_criterion_ids", []),
+                **project_test_index_metadata(version),
             )
         except Exception:
             indexed = False

@@ -153,6 +153,27 @@ async def publish_grounded_requirement(
     project_id, requirement, version, config, before_write=None
 ):
     """Publish a Requirement after the Testing service's deterministic gates pass."""
+    requirement_id = str(requirement.get("_id") or "")
+    version_id = str(version.get("_id") or "")
+    if not requirement_id or not version_id:
+        raise AutomationOperationError("REQUIREMENT_PUBLICATION_SCOPE_INVALID")
+
+    async def verify_current_version():
+        current_requirement = await require_operation(
+            "GET", f"/yeu-cau/{requirement_id}", config
+        )
+        if (
+            not isinstance(current_requirement, dict)
+            or current_requirement.get("_id") != requirement_id
+            or current_requirement.get("project_id") != project_id
+            or current_requirement.get("current_version_id") != version_id
+            or version.get("requirement_id") != requirement_id
+            or version.get("project_id") != project_id
+        ):
+            raise AutomationOperationError("REQUIREMENT_VERSION_SUPERSEDED")
+        return current_requirement
+
+    await verify_current_version()
     if version.get("status") == "BASELINED":
         return version
     if version.get("status") == "DRAFT":
@@ -180,10 +201,11 @@ async def publish_grounded_requirement(
             "review_note": "Tự động công bố sau khi kiểm tra nguồn, câu hỏi làm rõ và chất lượng đều đạt",
         },
     )
+    current_requirement = await verify_current_version()
     if (
         version.get("status") != "BASELINED"
-        or version.get("_id") != requirement.get("current_version_id", version.get("_id"))
-        or version.get("requirement_id") != requirement.get("_id")
+        or version.get("_id") != current_requirement.get("current_version_id")
+        or version.get("requirement_id") != requirement_id
         or version.get("project_id") != project_id
     ):
         raise RuntimeError("REQUIREMENT_PUBLICATION_READBACK_INVALID")
@@ -193,7 +215,9 @@ async def publish_grounded_requirement(
 async def publish_grounded_test_case(project_id, draft, config, before_write=None):
     """Freeze an AI-created draft after independent source and quality checks."""
     draft_status = draft.get("status", "DRAFT")
-    if draft_status == "IN_REVIEW":
+    if draft_status == "APPROVED" and not draft.get("frozen_version_id"):
+        raise AutomationOperationError("TEST_CASE_APPROVAL_INCOMPLETE")
+    if draft_status in {"IN_REVIEW", "APPROVED"}:
         reviewed = draft
     elif draft_status == "DRAFT":
         if before_write is not None:
@@ -209,7 +233,8 @@ async def publish_grounded_test_case(project_id, draft, config, before_write=Non
         )
     else:
         raise AutomationOperationError("TEST_CASE_DRAFT_STATE_NOT_RESUMABLE")
-    if reviewed.get("status") != "IN_REVIEW":
+    expected_review_status = "APPROVED" if draft_status == "APPROVED" else "IN_REVIEW"
+    if reviewed.get("status") != expected_review_status:
         raise RuntimeError("TEST_CASE_REVIEW_READBACK_INVALID")
     if (
         reviewed.get("_id") != draft.get("_id")
@@ -245,6 +270,10 @@ async def publish_grounded_test_case(project_id, draft, config, before_write=Non
         or version.get("_id") != case.get("current_version_id")
         or version.get("test_case_id") != case.get("_id")
         or version.get("status") != "ACTIVE"
+        or (
+            draft_status == "APPROVED"
+            and draft.get("frozen_version_id") != version.get("_id")
+        )
         or not _same_unique_values(
             draft.get("requirement_version_ids", []),
             version.get("requirement_version_ids", []),

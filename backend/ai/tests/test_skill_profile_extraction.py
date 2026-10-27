@@ -97,6 +97,36 @@ class SkillProfileExtractionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.status_code, 422)
         self.assertEqual(raised.exception.detail["code"], "CV_EVIDENCE_NOT_FOUND")
 
+    async def test_rejects_quote_found_only_inside_another_word(self):
+        request = SkillProfileExtractionRequest(
+            project_id="project-a",
+            source_blocks=[{"block_id": "cv-token", "page_no": 1, "text": "invalid"}],
+        )
+        generated = SkillProfileExtractionOutput.model_validate({
+            "skills": [{
+                "name": "valid",
+                "evidence_quote": "valid",
+                "source_block_id": "cv-token",
+                "page_no": 1,
+            }],
+            "experiences": [],
+            "warnings": [],
+        })
+        with (
+            patch(
+                "src.services.skill_profile_extraction.guardrails_engine.async_inspect_input",
+                new=AsyncMock(return_value={"is_safe": True}),
+            ),
+            patch(
+                "src.services.skill_profile_extraction.structured",
+                new=AsyncMock(return_value=generated),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await extract_skill_profile_candidates(request)
+
+        self.assertEqual(raised.exception.detail["code"], "CV_EVIDENCE_NOT_FOUND")
+
     async def test_rejects_experience_claim_supported_elsewhere_but_not_by_cited_quote(self):
         request = SkillProfileExtractionRequest(
             project_id="project-a",
@@ -130,6 +160,77 @@ class SkillProfileExtractionTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as raised:
                 await extract_skill_profile_candidates(request)
         self.assertEqual(raised.exception.status_code, 422)
+        self.assertEqual(raised.exception.detail["code"], "CV_CLAIM_NOT_GROUNDED")
+
+    async def test_preserves_only_an_explicit_time_period_grounded_in_the_quote(self):
+        request = SkillProfileExtractionRequest(
+            project_id="project-a",
+            source_blocks=[{
+                "block_id": "cv-period",
+                "page_no": 3,
+                "text": "QA Engineer, 2020–2022, used Postman for API testing.",
+            }],
+        )
+        generated = SkillProfileExtractionOutput.model_validate({
+            "skills": [],
+            "experiences": [{
+                "title": "QA Engineer",
+                "period": "2020–2022",
+                "technologies": ["Postman"],
+                "evidence_quote": "QA Engineer, 2020–2022, used Postman for API testing.",
+                "source_block_id": "cv-period",
+                "page_no": 3,
+            }],
+            "warnings": [],
+        })
+        with (
+            patch(
+                "src.services.skill_profile_extraction.guardrails_engine.async_inspect_input",
+                new=AsyncMock(return_value={"is_safe": True}),
+            ),
+            patch(
+                "src.services.skill_profile_extraction.structured",
+                new=AsyncMock(return_value=generated),
+            ),
+        ):
+            output = await extract_skill_profile_candidates(request)
+
+        self.assertEqual(output.experiences[0].period, "2020–2022")
+
+    async def test_rejects_inferred_time_period_absent_from_cited_quote(self):
+        request = SkillProfileExtractionRequest(
+            project_id="project-a",
+            source_blocks=[{
+                "block_id": "cv-no-period",
+                "page_no": 3,
+                "text": "QA Engineer used Postman for API testing.",
+            }],
+        )
+        generated = SkillProfileExtractionOutput.model_validate({
+            "skills": [],
+            "experiences": [{
+                "title": "QA Engineer",
+                "period": "2020–2022",
+                "technologies": ["Postman"],
+                "evidence_quote": "QA Engineer used Postman for API testing.",
+                "source_block_id": "cv-no-period",
+                "page_no": 3,
+            }],
+            "warnings": [],
+        })
+        with (
+            patch(
+                "src.services.skill_profile_extraction.guardrails_engine.async_inspect_input",
+                new=AsyncMock(return_value={"is_safe": True}),
+            ),
+            patch(
+                "src.services.skill_profile_extraction.structured",
+                new=AsyncMock(return_value=generated),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await extract_skill_profile_candidates(request)
+
         self.assertEqual(raised.exception.detail["code"], "CV_CLAIM_NOT_GROUNDED")
 
     async def test_rejects_skill_name_that_only_matches_inside_a_longer_name(self):

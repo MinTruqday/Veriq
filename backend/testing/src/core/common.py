@@ -68,9 +68,18 @@ async def get_project_roles(project_id, user_id):
 
 
 def visible_defect(defect, role):
+    public_defect = {
+        key: value
+        for key, value in defect.items()
+        if key not in {"idempotency_key", "idempotency_request_hash"}
+    }
     if role != 'VIEWER':
-        return defect
-    return {key: value for key, value in defect.items() if key in VIEWER_DEFECT_FIELDS}
+        return public_defect
+    return {
+        key: value
+        for key, value in public_defect.items()
+        if key in VIEWER_DEFECT_FIELDS
+    }
 
 
 async def load_user_identities(user_ids):

@@ -5,6 +5,7 @@ from unittest.mock import patch
 from src.agents.runner.automation_event_tasks import (
     direct_change_simulation_task,
     simulation_baseline_trace_links,
+    simulation_baseline_trace_snapshot,
     simulation_linked_test_case_version_ids,
 )
 from src.services.change_simulation import simulation_trace_scope_is_current
@@ -51,6 +52,57 @@ class ChangeSimulationScopeFreshnessTests(unittest.TestCase):
 
     def test_missing_revalidation_never_confirms_scope(self):
         self.assertFalse(simulation_trace_scope_is_current(self.discovery, self.discovery, False))
+
+    def _scope_observation(self, stage, criterion_content="Nội dung AC"):
+        return {
+            "tool_name": "get_traceability_links",
+            "status": "COMPLETED",
+            "change_simulation_stage": stage,
+            "result": {
+                "requirement_versions": [
+                    {
+                        "_id": "REQV-1",
+                        "requirement_id": "REQ-1",
+                        "version": 1,
+                        "content_doc": {"text": "Yêu cầu gốc"},
+                    }
+                ],
+                "acceptance_criteria": [
+                    {
+                        "_id": "AC-1",
+                        "requirement_version_id": "REQV-1",
+                        "content_doc": {"text": criterion_content},
+                        "status": "approved",
+                    }
+                ],
+                "trace_links": list(self.discovery),
+            },
+        }
+
+    def test_criterion_change_invalidates_report_even_when_links_are_unchanged(self):
+        discovery = simulation_baseline_trace_snapshot(
+            [self._scope_observation("DISCOVERY")], "REQV-1", "DISCOVERY"
+        )
+        revalidated = simulation_baseline_trace_snapshot(
+            [self._scope_observation("SCOPE_REVALIDATION", "Nội dung AC đã đổi")],
+            "REQV-1",
+            "SCOPE_REVALIDATION",
+        )
+
+        self.assertFalse(
+            simulation_trace_scope_is_current(discovery, revalidated, True)
+        )
+
+    def test_trace_readback_missing_scoped_criteria_fails_closed(self):
+        observation = self._scope_observation("SCOPE_REVALIDATION")
+        del observation["result"]["acceptance_criteria"]
+
+        snapshot = simulation_baseline_trace_snapshot(
+            [observation], "REQV-1", "SCOPE_REVALIDATION"
+        )
+
+        self.assertIsNone(snapshot)
+        self.assertFalse(simulation_trace_scope_is_current({}, snapshot, True))
 
     def test_suggested_links_are_reported_but_not_read_as_confirmed_test_cases(self):
         observations = [

@@ -1,6 +1,107 @@
 import hashlib
 import math
-from collections.abc import Iterable
+import re
+from collections.abc import Iterable, Mapping
+
+from src.core.text_matching import source_quote_spans
+
+
+def is_source_fact_evidence(item) -> bool:
+    if not isinstance(item, Mapping):
+        return False
+    artifact_type = str(item.get("artifact_type") or "").strip().casefold()
+    authority = str(item.get("authority") or "").strip().casefold()
+    return artifact_type != "automation_clarification" and authority not in {
+        "user_clarification",
+        "user_answer",
+    }
+
+
+def verified_release_gate_control_evidence(state) -> list[dict]:
+    if not isinstance(state, Mapping):
+        return []
+    run = state.get("run") or {}
+    if not isinstance(run, Mapping):
+        return []
+    constraints = state.get("constraints") or {}
+    if (
+        state.get("automatic") is not True
+        or state.get("source_event_verified") is not True
+        or not isinstance(constraints, Mapping)
+        or constraints.get("trigger") != "RELEASE_CHANGED"
+    ):
+        return []
+    project_id = str(run.get("project_id") or "")
+    event_id = str(run.get("source_event_id") or "")
+    if not project_id or not event_id:
+        return []
+    output = []
+    for item in state.get("evidence") or []:
+        if not isinstance(item, Mapping):
+            continue
+        artifact_id = str(item.get("artifact_id") or "")
+        revision = item.get("artifact_revision")
+        if (
+            item.get("artifact_type") == "release"
+            and item.get("authority") == "release_gate"
+            and str(item.get("project_id") or "") == project_id
+            and artifact_id
+            and event_id.startswith(f"release-gate:{artifact_id}:")
+            and re.fullmatch(
+                rf"release-gate:{re.escape(artifact_id)}:(?:test-result|defect):.+:r[1-9][0-9]*",
+                event_id,
+            )
+            and type(revision) is int
+            and revision >= 1
+        ):
+            output.append(item)
+    return output
+
+
+def verified_release_gate_mutation_refs(
+    *,
+    automatic: bool,
+    source_event_verified: bool,
+    trigger: str,
+    project_id: str,
+    source_event_id: str,
+    control_evidence: Iterable[dict],
+    tool_name: str,
+    arguments: Mapping,
+    input_refs: Iterable[str],
+    output_refs: Iterable[str],
+) -> list[str]:
+    if (
+        tool_name != "process_changed_release"
+        or automatic is not True
+        or source_event_verified is not True
+        or trigger != "RELEASE_CHANGED"
+        or not project_id
+    ):
+        return []
+    inputs = {str(value) for value in input_refs if value}
+    outputs = {str(value) for value in output_refs if value}
+    release_ids = {
+        str(item.get("artifact_id") or "")
+        for item in control_evidence
+        if isinstance(item, Mapping)
+        and item.get("artifact_type") == "release"
+        and item.get("authority") == "release_gate"
+        and str(item.get("project_id") or "") == project_id
+        and type(item.get("artifact_revision")) is int
+        and item.get("artifact_revision") >= 1
+        and str(item.get("artifact_id") or "") in inputs
+        and str(item.get("artifact_id") or "") in outputs
+    }
+    if len(release_ids) != 1:
+        return []
+    release_id = next(iter(release_ids))
+    if not re.fullmatch(
+        rf"release-gate:{re.escape(release_id)}:(?:test-result|defect):.+:r[1-9][0-9]*",
+        source_event_id,
+    ):
+        return []
+    return [source_event_id]
 
 
 def source_fact_identity(fact: dict) -> tuple:
@@ -30,7 +131,7 @@ def source_location_metadata(item: dict) -> dict:
         page_numbers = []
     page_numbers = list(dict.fromkeys(
         page for page in page_numbers
-        if isinstance(page, int) and not isinstance(page, bool) and page >= 0
+        if isinstance(page, int) and not isinstance(page, bool) and page >= 1
     ))
     source_spans = item.get("source_spans")
     if not isinstance(source_spans, list):
@@ -90,6 +191,8 @@ def canonicalize_source_facts(facts: Iterable[dict], evidence: Iterable[dict]) -
     seen = set()
     for raw_fact in facts:
         fact = dict(raw_fact)
+        if not is_source_fact_evidence(fact):
+            continue
         parent_id = parent_ids_by_version.get(
             (
                 str(fact.get("artifact_type") or ""),
@@ -119,7 +222,8 @@ def verified_source_span(fact: dict, evidence: Iterable[dict]) -> dict | None:
     matching_evidence = [
         item
         for item in evidence
-        if str(item.get("artifact_id") or "") == artifact_id
+        if is_source_fact_evidence(item)
+        and str(item.get("artifact_id") or "") == artifact_id
         and str(item.get("artifact_version_id") or "") == version_id
         and (
             not item.get("artifact_type")
@@ -146,55 +250,44 @@ def verified_source_span(fact: dict, evidence: Iterable[dict]) -> dict | None:
             and end - start == len(quote)
         )
         full_document_match = valid_range and any(
-            text[start:end] == quote for text in matching_texts
+            (start, end) in source_quote_spans(text, quote)
+            for text in matching_texts
         )
         if full_document_match:
             matched_source = next(
                 item
                 for item in matching_evidence
                 if str(item.get("text") or "")[start:end] == quote
+                and (start, end)
+                in source_quote_spans(str(item.get("text") or ""), quote)
             )
-        verified_citation_match = valid_range and any(
-            item.get("source_verification") in {
-                "VERIFIED_REQUIREMENT_SOURCE_CITATION",
-                "VERIFIED_BLUEPRINT_SOURCE_FACT",
-            }
-            and item.get("source_start") == start
-            and item.get("source_end") == end
-            and str(item.get("text") or "") == quote
-            and len(quote) == end - start
-            for item in evidence
-            if str(item.get("artifact_id") or "") == artifact_id
-            and str(item.get("artifact_version_id") or "") == version_id
-            and (
-                not item.get("artifact_type")
-                or not artifact_type
-                or str(item.get("artifact_type")) == artifact_type
-            )
-        )
-        if not matched_source and verified_citation_match:
-            matched_source = next(
+        verified_citation_source = next(
+            (
                 item
                 for item in matching_evidence
-                if item.get("source_verification")
-                == "VERIFIED_REQUIREMENT_SOURCE_CITATION"
+                if item.get("source_verification") in {
+                    "VERIFIED_REQUIREMENT_SOURCE_CITATION",
+                    "VERIFIED_BLUEPRINT_SOURCE_FACT",
+                }
                 and item.get("source_start") == start
                 and item.get("source_end") == end
                 and str(item.get("text") or "") == quote
-            )
+                and len(quote) == end - start
+            ),
+            None,
+        ) if valid_range else None
+        verified_citation_match = verified_citation_source is not None
+        if not matched_source and verified_citation_source:
+            matched_source = verified_citation_source
         if not full_document_match and not verified_citation_match:
             return None
     else:
         matches = []
         for item in matching_evidence:
             text = str(item.get("text") or "")
-            cursor = 0
-            while True:
-                position = text.find(quote, cursor)
-                if position < 0:
-                    break
-                matches.append((item, position, position + len(quote)))
-                cursor = position + 1
+            matches.extend(
+                (item, start, end) for start, end in source_quote_spans(text, quote)
+            )
         if len(matches) != 1:
             return None
         matched_source, start, end = matches[0]
@@ -273,7 +366,13 @@ def _verified_facts_by_reference(
         quote = str(getattr(fact, "quote", "") or "")
         quote_sha256 = str(getattr(fact, "quote_sha256", "") or "")
         if (
-            not artifact_type
+            not is_source_fact_evidence(
+                {
+                    "artifact_type": artifact_type,
+                    "authority": getattr(fact, "authority", ""),
+                }
+            )
+            or not artifact_type
             or not artifact_id
             or not version_id
             or not quote
@@ -396,7 +495,7 @@ def verified_blueprint_snapshot(
         source_ref = str(item.get("source_ref") or "")
         quote = str(item.get("source_quote") or "")
         if source_ref not in refs or not quote or not any(
-            quote in str(getattr(fact, "quote", "") or "")
+            source_quote_spans(str(getattr(fact, "quote", "") or ""), quote)
             for fact in facts_by_reference.get(source_ref, [])
         ):
             return None
@@ -412,7 +511,7 @@ def verified_blueprint_snapshot(
             or not evidence_refs.issubset(refs)
             or not quote
             or not any(
-                quote in str(getattr(fact, "quote", "") or "")
+                source_quote_spans(str(getattr(fact, "quote", "") or ""), quote)
                 for ref in evidence_refs
                 for fact in facts_by_reference.get(ref, [])
             )
@@ -516,7 +615,12 @@ def verified_blueprint_claim_lineage(
                 } - {""}
                 fact_quote = str(getattr(fact, "quote", "") or "")
                 fact_id = str(getattr(fact, "source_fact_id", "") or "")
-                if reference in artifact_refs and quote and quote in fact_quote and fact_id:
+                if (
+                    reference in artifact_refs
+                    and quote
+                    and source_quote_spans(fact_quote, quote)
+                    and fact_id
+                ):
                     fact_ids.append(fact_id)
         if not fact_ids:
             return None

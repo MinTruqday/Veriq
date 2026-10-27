@@ -1,3 +1,4 @@
+from src.core.text_matching import source_quote_spans
 from src.schemas.inference_change_simulation import ChangeSimulationReportOutput
 
 
@@ -48,6 +49,13 @@ def _trace_scope_signature(links):
 
 
 def simulation_trace_scope_is_current(discovery_links, revalidation_links, revalidation_present):
+    if isinstance(discovery_links, dict) or isinstance(revalidation_links, dict):
+        if not isinstance(discovery_links, dict) or not isinstance(revalidation_links, dict):
+            return False
+        required_fields = {"requirement_version", "acceptance_criteria", "trace_links"}
+        if not required_fields.issubset(discovery_links) or not required_fields.issubset(revalidation_links):
+            return False
+        return bool(revalidation_present) and discovery_links == revalidation_links
     return bool(revalidation_present) and _trace_scope_signature(
         discovery_links
     ) == _trace_scope_signature(revalidation_links)
@@ -120,7 +128,7 @@ def validate_change_simulation_report(
                 raise ValueError("change_simulation_quote_source_out_of_scope")
             if quote.source_type == "TEST_CASE_VERSION" and key[1] != classification.test_case_version_id:
                 raise ValueError("change_simulation_quote_test_case_mismatch")
-            if not any(quote.quote in source for source in sources[key]):
+            if not any(source_quote_spans(source, quote.quote) for source in sources[key]):
                 raise ValueError("change_simulation_quote_not_found_in_source")
 
     return report.model_dump(mode="json")

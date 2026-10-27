@@ -32,14 +32,7 @@ class SessionService:
         )
 
     @staticmethod
-    async def register_user(user_in: UserCreate, client_ip: str):
-        config = await IdentityRepository.get_system_config()
-        if config and (not config.get("registration_enabled", True)):
-            raise HTTPException(
-                status_code=403,
-                detail="Tính năng đăng ký tài khoản mới tạm thời bị vô hiệu hóa trên hệ thống",
-            )
-
+    async def create_platform_user(user_in: UserCreate, client_ip: str):
         if await IdentityRepository.get_auth_credential_by_email(user_in.email):
             raise HTTPException(
                 status_code=400, detail="Địa chỉ thư điện tử đã được sử dụng cho một tài khoản khác"

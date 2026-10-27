@@ -4,20 +4,164 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 from src.api.indexing import ingest_document
+from src.core.infrastructure.configuration import settings
 from src.schemas.ingestion import IngestRequest, IngestResponse
 from src.services.ingestion import (
+    BoundedIngestionDiagnostics,
     IngestionPipelineService,
     SOURCE_SNAPSHOT_FIELDS,
+    DocumentSummarySampler,
     embed_and_index_chunks,
     index_document,
+    inspect_chunk_stream,
+    inspect_and_quarantine_chunks,
     remove_document,
     publish_index_generation,
     select_summary_chunks,
     validated_indexing_status,
 )
+from src.services.conversion import IndexingAttemptSupersededError
+
+
+def chunk_stream(chunks, calls=None):
+    async def generate(*args, **kwargs):
+        if calls is not None:
+            calls.append((args, kwargs))
+        source_metadata = (
+            args[1]
+            if len(args) > 1 and isinstance(args[1], dict)
+            else {}
+        )
+        for chunk in chunks:
+            yield {
+                **chunk,
+                "metadata": {
+                    **(chunk.get("metadata") or {}),
+                    **source_metadata,
+                },
+            }
+
+    return generate
 
 
 class IngestionIndexStatusTests(unittest.TestCase):
+    def test_document_chunk_inspection_keeps_text_batches_bounded(self):
+        async def invoke():
+            chunks = [
+                {"id": f"point-{index}", "text": f"chunk text {index}", "metadata": {}}
+                for index in range(5)
+            ]
+            original_chunks = chunks
+            seen_batches = []
+
+            async def inspect(texts):
+                seen_batches.append(texts)
+                return {0}
+
+            with (
+                patch("src.services.ingestion.settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE", 2),
+                patch("src.services.ingestion.inspect_chunks", new=AsyncMock(side_effect=inspect)),
+            ):
+                accepted, quarantined = await inspect_and_quarantine_chunks(chunks)
+
+            self.assertEqual([len(batch) for batch in seen_batches], [2, 2, 1])
+            self.assertTrue(all(len(batch) <= 2 for batch in seen_batches))
+            self.assertIs(accepted, original_chunks)
+            self.assertEqual([item["id"] for item in accepted], ["point-0", "point-2", "point-4"])
+            self.assertEqual(
+                [item["chunk_id"] for item in quarantined], ["point-1", "point-3"]
+            )
+
+        asyncio.run(invoke())
+
+    def test_document_chunk_stream_is_inspected_in_bounded_batches(self):
+        async def invoke():
+            chunks = [
+                {"id": f"stream-{index}", "text": f"content {index}", "metadata": {}}
+                for index in range(5)
+            ]
+            seen_batches = []
+            quarantined = BoundedIngestionDiagnostics(10)
+
+            async def stream():
+                for chunk in chunks:
+                    yield chunk
+
+            async def inspect(texts):
+                seen_batches.append(texts)
+                return {0}
+
+            with (
+                patch("src.services.ingestion.settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE", 2),
+                patch("src.services.ingestion.inspect_chunks", new=AsyncMock(side_effect=inspect)),
+            ):
+                accepted = [
+                    chunk
+                    async for chunk in inspect_chunk_stream(stream(), quarantined)
+                ]
+
+            self.assertEqual([len(batch) for batch in seen_batches], [2, 2, 1])
+            self.assertEqual([chunk["id"] for chunk in accepted], ["stream-0", "stream-2", "stream-4"])
+            self.assertEqual([item["chunk_id"] for item in quarantined], ["stream-1", "stream-3"])
+            self.assertEqual(quarantined.total_count, 2)
+
+        asyncio.run(invoke())
+
+    def test_quarantine_diagnostics_keep_count_and_bound_sample_size(self):
+        async def invoke():
+            chunks = [
+                {"id": f"stream-{index}", "text": f"content {index}", "metadata": {}}
+                for index in range(5)
+            ]
+            quarantined = BoundedIngestionDiagnostics(2)
+
+            async def stream():
+                for chunk in chunks:
+                    yield chunk
+
+            with (
+                patch("src.services.ingestion.settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE", 2),
+                patch("src.services.ingestion.settings.DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS", 2),
+                patch("src.services.ingestion.inspect_chunks", new=AsyncMock(return_value=set())),
+            ):
+                accepted = [
+                    chunk
+                    async for chunk in inspect_chunk_stream(stream(), quarantined)
+                ]
+
+            self.assertEqual(accepted, [])
+            self.assertEqual(len(quarantined), 2)
+            self.assertEqual(quarantined.total_count, 5)
+            self.assertEqual(quarantined, [
+                {"chunk_id": "stream-0", "flags": ["ai_safety_rejection"]},
+                {"chunk_id": "stream-1", "flags": ["ai_safety_rejection"]},
+            ])
+
+        asyncio.run(invoke())
+
+    def test_document_summary_sampler_is_bounded_and_repeatable(self):
+        with patch("src.services.ingestion.chunker.target_chars", 5):
+            samplers = [
+                DocumentSummarySampler(20, "document-version-generation")
+                for _ in range(2)
+            ]
+            for index in range(100):
+                chunk = {
+                    "id": f"chunk-{index}",
+                    "text": f"{index:03d}xx",
+                    "metadata": {"chunk_id": f"chunk-{index}", "page_numbers": [index + 1]},
+                }
+                for sampler in samplers:
+                    sampler.add(chunk)
+
+        first = samplers[0].select()
+        second = samplers[1].select()
+        self.assertLessEqual(len(samplers[0].reservoir), samplers[0].reservoir_limit)
+        self.assertEqual(first, second)
+        self.assertEqual(first[2], "UNIFORM_RESERVOIR_SAMPLE")
+        self.assertLessEqual(len(first[0]), 20)
+        self.assertLessEqual(len(first[1]), samplers[0].reservoir_limit)
+
     def test_long_document_summary_samples_chunks_across_the_document(self):
         chunks = [
             {
@@ -108,6 +252,36 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
             "index_status": "indexing",
         }
 
+    async def test_busy_index_claim_returns_a_durable_retry_delay(self):
+        lease_until = datetime.now(timezone.utc) + timedelta(seconds=60)
+        with (
+            patch(
+                "src.services.ingestion.ContentClient.authorize_document",
+                new=AsyncMock(return_value={"file_url": "private/source.pdf"}),
+            ),
+            patch(
+                "src.services.ingestion.ContentClient.mark_indexing",
+                new=AsyncMock(
+                    return_value={"updated": False, "status": "busy", "lease_until": lease_until}
+                ),
+            ),
+            patch(
+                "src.services.ingestion.ingestion_pipeline.ingest_document",
+                new=AsyncMock(),
+            ) as ingest,
+            patch(
+                "src.services.ingestion.ContentClient.mark_index_failed",
+                new=AsyncMock(),
+            ) as mark_failed,
+        ):
+            result = await index_document("document-1", "user-1", False, "event-1")
+
+        self.assertEqual(result["status"], "busy")
+        self.assertGreater(result["retry_after_seconds"], 0)
+        self.assertLessEqual(result["retry_after_seconds"], 60)
+        ingest.assert_not_awaited()
+        mark_failed.assert_not_awaited()
+
     async def test_superseded_outbox_dispatch_does_not_claim_or_parse_current_source(self):
         with (
             patch(
@@ -147,7 +321,11 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_index_batch_respects_the_smaller_embedding_and_store_limit(self):
         chunks = [
-            {"id": f"chunk-{index}", "text": f"source {index}", "metadata": {}}
+            {
+                "id": f"chunk-{index}",
+                "text": f"source {index}",
+                "metadata": {"document_id": "doc-1", "index_generation": "default"},
+            }
             for index in range(7)
         ]
         embed_calls = []
@@ -172,15 +350,14 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
             patch("src.services.ingestion.bm25_store.stage_upsert", new=AsyncMock()) as bm25_stage,
             patch("src.services.ingestion.bm25_store.publish_staged", new=AsyncMock()) as bm25_publish,
         ):
-            indexed, failed, indexed_ids = await embed_and_index_chunks(
-                chunks, AsyncMock()
+            indexed, failed = await embed_and_index_chunks(
+                chunks, AsyncMock(), document_id="doc-1"
             )
 
         self.assertEqual([len(batch) for batch in embed_calls], [2, 2, 2, 1])
         self.assertEqual([len(call["ids"]) for call in upsert_calls], [2, 2, 2, 1])
         self.assertEqual(indexed, 7)
         self.assertEqual(failed, [])
-        self.assertEqual(indexed_ids, [f"chunk-{index}" for index in range(7)])
         self.assertEqual(bm25_stage.await_count, 4)
         bm25_publish.assert_awaited_once()
 
@@ -254,27 +431,27 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                     "parser_version": "1",
                     "source_sha256": "source-hash",
                 })),
-                patch("src.services.ingestion.chunker.chunk_document", new=AsyncMock(return_value=[chunk])),
+                patch("src.services.ingestion.chunker.iter_chunk_document", new=chunk_stream([chunk])),
                 patch("src.services.ingestion.inspect_chunks", new=AsyncMock(return_value=[0])),
                 patch("src.services.ingestion.summarize_document", new=AsyncMock(return_value="")),
                 patch("src.services.ingestion.embedder._batch_size", 1),
                 patch("src.services.ingestion.embedder.embed_batch", new=AsyncMock(return_value=[[0.1]])),
-                patch("src.services.ingestion.vector_store.ids_by_document", new=AsyncMock(return_value=["chunk-old-generation"])),
-                patch("src.services.ingestion.bm25_store.ids_by_document", new=AsyncMock(return_value=["chunk-old-generation"])),
                 patch("src.services.ingestion.vector_store.upsert", new=AsyncMock()) as vector_upsert,
                 patch("src.services.ingestion.vector_store.wait_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.stage_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.publish_staged", new=AsyncMock(side_effect=RuntimeError("BM25 unavailable"))),
-                patch("src.services.ingestion.vector_store.delete_ids", new=AsyncMock()) as vector_delete,
-                patch("src.services.ingestion.bm25_store.delete_ids", new=AsyncMock()) as bm25_delete,
+                patch("src.services.ingestion.vector_store.delete_document_generation", new=AsyncMock()) as vector_delete,
+                patch("src.services.ingestion.bm25_store.delete_document_generation", new=AsyncMock()) as bm25_delete,
                 patch("src.services.ingestion.ContentClient.mark_indexed", new=AsyncMock()) as mark_indexed,
             ):
                 with self.assertRaisesRegex(RuntimeError, "BM25 unavailable"):
                     await IngestionPipelineService().ingest_document("doc-1", "user-1")
 
             self.assertEqual(vector_upsert.await_args.kwargs["ids"], ["chunk-new-generation"])
-            vector_delete.assert_awaited_once_with(["chunk-new-generation"])
-            bm25_delete.assert_awaited_once_with(["chunk-new-generation"])
+            vector_delete.assert_awaited_once()
+            bm25_delete.assert_awaited_once()
+            self.assertEqual(vector_delete.await_args.args[0], "doc-1")
+            self.assertEqual(bm25_delete.await_args.args[0], "doc-1")
             mark_indexed.assert_not_awaited()
 
         asyncio.run(invoke())
@@ -282,9 +459,21 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
     def test_cancelled_batched_indexing_rolls_back_partial_vector_generation(self):
         async def invoke():
             chunks = [
-                {"id": f"chunk-{index}", "text": f"source {index}", "metadata": {}}
+                {
+                    "id": f"chunk-{index}",
+                    "text": f"source {index}",
+                    "metadata": {
+                        "document_id": "doc-1",
+                        "index_generation": "default",
+                    },
+                }
                 for index in range(2)
             ]
+
+            async def chunk_source():
+                for chunk in chunks:
+                    yield chunk
+
             verify_source = AsyncMock()
             with (
                 patch("src.services.ingestion.embedder._batch_size", 1),
@@ -301,19 +490,21 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                 patch("src.services.ingestion.bm25_store.stage_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.publish_staged", new=AsyncMock()),
                 patch(
-                    "src.services.ingestion.vector_store.delete_ids",
+                    "src.services.ingestion.vector_store.delete_document_generation",
                     new=AsyncMock(),
                 ) as vector_delete,
                 patch(
-                    "src.services.ingestion.bm25_store.delete_ids",
+                    "src.services.ingestion.bm25_store.delete_document_generation",
                     new=AsyncMock(),
                 ) as bm25_delete,
             ):
                 with self.assertRaises(asyncio.CancelledError):
-                    await embed_and_index_chunks(chunks, verify_source)
+                    await embed_and_index_chunks(
+                        chunk_source(), verify_source, document_id="doc-1"
+                    )
 
-            vector_delete.assert_awaited_once_with(["chunk-0", "chunk-1"])
-            bm25_delete.assert_awaited_once_with(["chunk-0", "chunk-1"])
+            vector_delete.assert_awaited_once_with("doc-1", "default")
+            bm25_delete.assert_awaited_once_with("doc-1", "default")
             self.assertEqual(verify_source.await_count, 2)
 
         asyncio.run(invoke())
@@ -346,8 +537,8 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                     }),
                 ),
                 patch(
-                    "src.services.ingestion.chunker.chunk_document",
-                    new=AsyncMock(return_value=[chunk]),
+                    "src.services.ingestion.chunker.iter_chunk_document",
+                    new=chunk_stream([chunk]),
                 ),
                 patch("src.services.ingestion.inspect_chunks", new=AsyncMock(return_value=[0])),
                 patch("src.services.ingestion.summarize_document", new=AsyncMock(return_value="")),
@@ -356,14 +547,12 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                     1,
                 ),
                 patch("src.services.ingestion.embedder.embed_batch", new=AsyncMock(return_value=[[0.1]])),
-                patch("src.services.ingestion.vector_store.ids_by_document", new=AsyncMock(return_value=[])),
-                patch("src.services.ingestion.bm25_store.ids_by_document", new=AsyncMock(return_value=[])),
                 patch("src.services.ingestion.vector_store.upsert", new=AsyncMock()),
                 patch("src.services.ingestion.vector_store.wait_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.stage_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.publish_staged", new=AsyncMock()),
-                patch("src.services.ingestion.vector_store.delete_ids", new=AsyncMock()) as vector_delete,
-                patch("src.services.ingestion.bm25_store.delete_ids", new=AsyncMock()) as bm25_delete,
+                patch("src.services.ingestion.vector_store.delete_document_generation", new=AsyncMock()) as vector_delete,
+                patch("src.services.ingestion.bm25_store.delete_document_generation", new=AsyncMock()) as bm25_delete,
                 patch(
                     "src.services.ingestion.ContentClient.mark_indexed",
                     new=AsyncMock(return_value={"updated": False, "indexing_status": "indexed"}),
@@ -378,8 +567,10 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                         "doc-1", "user-1", False, attempt_id
                     )
 
-            vector_delete.assert_awaited_once_with(["chunk-old-attempt"])
-            bm25_delete.assert_awaited_once_with(["chunk-old-attempt"])
+            vector_delete.assert_awaited_once()
+            bm25_delete.assert_awaited_once()
+            self.assertEqual(vector_delete.await_args.args[0], "doc-1")
+            self.assertEqual(bm25_delete.await_args.args[0], "doc-1")
 
         asyncio.run(invoke())
 
@@ -425,21 +616,19 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                     }),
                 ),
                 patch(
-                    "src.services.ingestion.chunker.chunk_document",
-                    new=AsyncMock(return_value=[chunk]),
+                    "src.services.ingestion.chunker.iter_chunk_document",
+                    new=chunk_stream([chunk]),
                 ),
                 patch("src.services.ingestion.inspect_chunks", new=AsyncMock(return_value=[0])),
                 patch("src.services.ingestion.summarize_document", new=AsyncMock(return_value="")),
                 patch("src.services.ingestion.embedder._batch_size", 1),
                 patch("src.services.ingestion.embedder.embed_batch", new=AsyncMock(return_value=[[0.1]])),
-                patch("src.services.ingestion.vector_store.ids_by_document", new=AsyncMock(return_value=[])),
-                patch("src.services.ingestion.bm25_store.ids_by_document", new=AsyncMock(return_value=[])),
                 patch("src.services.ingestion.vector_store.upsert", new=AsyncMock()) as vector_upsert,
                 patch("src.services.ingestion.vector_store.wait_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.stage_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.publish_staged", new=AsyncMock()),
-                patch("src.services.ingestion.vector_store.delete_ids", new=AsyncMock()) as vector_delete,
-                patch("src.services.ingestion.bm25_store.delete_ids", new=AsyncMock()) as bm25_delete,
+                patch("src.services.ingestion.vector_store.delete_document_generation", new=AsyncMock()) as vector_delete,
+                patch("src.services.ingestion.bm25_store.delete_document_generation", new=AsyncMock()) as bm25_delete,
                 patch("src.services.ingestion.bm25_store.discard_staged", new=AsyncMock()),
                 patch("src.services.ingestion.ContentClient.mark_indexed", new=AsyncMock()) as mark_indexed,
             ):
@@ -452,8 +641,56 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
 
             vector_upsert.assert_not_awaited()
             mark_indexed.assert_not_awaited()
-            vector_delete.assert_awaited_once_with(["chunk-new-generation"])
-            bm25_delete.assert_awaited_once_with(["chunk-new-generation"])
+            vector_delete.assert_awaited_once()
+            bm25_delete.assert_awaited_once()
+
+        asyncio.run(invoke())
+
+    def test_superseded_indexing_lease_does_not_become_source_revocation(self):
+        async def invoke():
+            document = {
+                **DocumentRemovalReliabilityTests.source_document(
+                    "attempt-1", "g" * 64
+                ),
+                "revision": 4,
+                "ai_enabled": True,
+                "artifact_metadata": {"project_id": "project-1"},
+            }
+            newer_attempt = {
+                **document,
+                "indexing_attempt_id": "attempt-2",
+                "indexing_lease_token": "h" * 64,
+                "indexing_lease_until": (
+                    datetime.now(timezone.utc) + timedelta(minutes=5)
+                ).isoformat(),
+            }
+            authorization = AsyncMock(
+                side_effect=[document, document, newer_attempt]
+            )
+
+            async def parse_with_snapshot_check(*args, **kwargs):
+                await kwargs["authorization_check"]()
+                await kwargs["authorization_check"]()
+
+            with (
+                patch(
+                    "src.services.ingestion.ContentClient.authorize_document",
+                    new=authorization,
+                ),
+                patch(
+                    "src.services.ingestion.document_parser.parse_document_checkpointed",
+                    new=AsyncMock(side_effect=parse_with_snapshot_check),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    IndexingAttemptSupersededError,
+                    "document_indexing_attempt_superseded",
+                ):
+                    await IngestionPipelineService().ingest_document(
+                        "doc-1", "user-1", False, "attempt-1", "g" * 64
+                    )
+
+            self.assertEqual(authorization.await_count, 3)
 
         asyncio.run(invoke())
 
@@ -471,6 +708,7 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                         "indexing_attempt_id": "attempt-1",
                         "indexing_lease_token": "lease-token",
                         "indexing_status": "indexed",
+                        "document_index_contract_version": settings.DOCUMENT_INDEX_CONTRACT_VERSION,
                         "indexed_chunks": 3,
                         "index_report": {},
                     }
@@ -533,19 +771,17 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                     "parser_version": "1",
                     "source_sha256": "source-hash",
                 })),
-                patch("src.services.ingestion.chunker.chunk_document", new=AsyncMock(return_value=[chunk])),
+                patch("src.services.ingestion.chunker.iter_chunk_document", new=chunk_stream([chunk])),
                 patch("src.services.ingestion.inspect_chunks", new=AsyncMock(return_value=[0])),
                 patch("src.services.ingestion.summarize_document", new=AsyncMock(return_value="")),
                 patch("src.services.ingestion.embedder._batch_size", 1),
                 patch("src.services.ingestion.embedder.embed_batch", new=AsyncMock(return_value=[[0.1]])),
-                patch("src.services.ingestion.vector_store.ids_by_document", new=AsyncMock(return_value=["chunk-old-generation"])),
-                patch("src.services.ingestion.bm25_store.ids_by_document", new=AsyncMock(return_value=["chunk-old-generation"])),
                 patch("src.services.ingestion.vector_store.upsert", new=AsyncMock()),
                 patch("src.services.ingestion.vector_store.wait_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.stage_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.publish_staged", new=AsyncMock()),
-                patch("src.services.ingestion.vector_store.delete_ids", new=AsyncMock(side_effect=RuntimeError("Qdrant unavailable"))),
-                patch("src.services.ingestion.bm25_store.delete_ids", new=AsyncMock()) as bm25_delete,
+                patch("src.services.ingestion.vector_store.delete_stale_document_generations", new=AsyncMock(side_effect=RuntimeError("Qdrant unavailable"))),
+                patch("src.services.ingestion.bm25_store.delete_stale_document_generations", new=AsyncMock()) as bm25_delete,
                 patch("src.services.ingestion.ContentClient.mark_indexed", new=AsyncMock(side_effect=mark_indexed)) as mark,
             ):
                 result = await IngestionPipelineService().ingest_document("doc-1", "user-1")
@@ -554,7 +790,8 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 mark.await_args_list[1].args[2]["index_cleanup_pending"], ["qdrant"]
             )
-            bm25_delete.assert_awaited_once_with(["chunk-old-generation"])
+            bm25_delete.assert_awaited_once()
+            self.assertEqual(bm25_delete.await_args.args[0], "doc-1")
 
         asyncio.run(invoke())
 
@@ -575,7 +812,7 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                 "locations": [],
             }]
             document = {
-                "file_url": "private/source.pdf",
+                **self.source_document("attempt-1", "f" * 64),
                 "title": "source",
                 "shared_with": ["reader-1"],
                 "created_at": "2026-10-24T08:15:00Z",
@@ -586,6 +823,12 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                 "text": "Source text that remains searchable.",
                 "metadata": {"chunk_id": "chunk-1"},
             }
+
+            async def async_consume_chunks(chunks, *_args, **_kwargs):
+                ids = []
+                async for chunk in chunks:
+                    ids.append(chunk["id"])
+                return len(ids), BoundedIngestionDiagnostics(1)
 
             with (
                 patch("src.services.ingestion.ContentClient.authorize_document", new=AsyncMock(return_value=document)),
@@ -600,29 +843,28 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
                     "source_sha256": "verified-source-hash",
                 })),
                 patch(
-                    "src.services.ingestion.chunker.chunk_document",
-                    new=AsyncMock(return_value=[parsed_chunk]),
-                ) as chunker_mock,
+                    "src.services.ingestion.chunker.iter_chunk_document",
+                    new=chunk_stream([parsed_chunk], chunker_calls := []),
+                ),
                 patch("src.services.ingestion.inspect_chunks", new=AsyncMock(return_value=[0])),
                 patch(
                     "src.services.ingestion.embed_and_index_chunks",
-                    new=AsyncMock(return_value=(1, [], ["chunk-1"])),
+                    new=AsyncMock(side_effect=async_consume_chunks),
                 ),
-                patch("src.services.ingestion.vector_store.ids_by_document", new=AsyncMock(return_value=[])),
-                patch("src.services.ingestion.bm25_store.ids_by_document", new=AsyncMock(return_value=[])),
                 patch("src.services.ingestion.vector_store.upsert", new=AsyncMock()),
                 patch("src.services.ingestion.vector_store.wait_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.stage_upsert", new=AsyncMock()),
                 patch("src.services.ingestion.bm25_store.publish_staged", new=AsyncMock()),
-                patch("src.services.ingestion.vector_store.delete_ids", new=AsyncMock()),
-                patch("src.services.ingestion.bm25_store.delete_ids", new=AsyncMock()),
+                patch("src.services.ingestion.vector_store.delete_stale_document_generations", new=AsyncMock()),
+                patch("src.services.ingestion.bm25_store.delete_stale_document_generations", new=AsyncMock()),
+                patch("src.services.ingestion.ContentClient.complete_indexing", new=AsyncMock(return_value={"updated": True})),
                 patch("src.services.ingestion.ContentClient.mark_indexed", new=AsyncMock(return_value={
                     "updated": True,
                     "indexing_status": "degraded",
                 })) as mark_indexed,
             ):
                 result = await IngestionPipelineService().ingest_document(
-                    "document-1", "requester-1", False
+                    "document-1", "requester-1", False, "attempt-1", "f" * 64
                 )
 
             self.assertEqual(result["status"], "degraded")
@@ -630,7 +872,7 @@ class DocumentRemovalReliabilityTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["extraction_warnings"], warnings)
             self.assertEqual(mark_indexed.await_args.args[2]["unprocessed_blocks"], unprocessed)
             self.assertEqual(mark_indexed.await_args.args[2]["extraction_warnings"], warnings)
-            indexed_metadata = chunker_mock.await_args.args[1]
+            indexed_metadata = chunker_calls[0][0][1]
             self.assertEqual(indexed_metadata["source_hash"], "verified-source-hash")
             self.assertEqual(indexed_metadata["parser_name"], "docling")
             self.assertEqual(indexed_metadata["parser_version"], "2.142.1")

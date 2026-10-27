@@ -1,20 +1,19 @@
 import asyncio
 from contextlib import suppress
-from datetime import datetime, timezone
 from uuid import uuid4
 
 from loguru import logger
 
 from src.clients.knowledge import knowledge_client
 from src.core.infrastructure.configuration import settings
-from src.core.infrastructure.database import database
-from src.repositories.document_ingestion_outbox import document_ingestion_outbox
+from src.repositories.document_ingestion_outbox import (
+    DocumentIngestionOutboxRepository,
+    DocumentIngestionSourceChanged,
+    document_ingestion_outbox,
+)
 
 
 class DocumentIngestionDispatcher:
-    RECONCILE_INTERVAL_SECONDS = 30
-    POLL_INTERVAL_SECONDS = 1
-
     def __init__(self):
         self._task: asyncio.Task | None = None
         self._stopping = False
@@ -40,19 +39,26 @@ class DocumentIngestionDispatcher:
                 loop_time = asyncio.get_running_loop().time()
                 if loop_time >= next_reconcile:
                     await self._reconcile_unqueued_documents()
-                    next_reconcile = loop_time + self.RECONCILE_INTERVAL_SECONDS
+                    next_reconcile = (
+                        loop_time
+                        + settings.DOCUMENT_INGESTION_RECONCILE_INTERVAL_SECONDS
+                    )
 
                 lease_token = str(uuid4())
                 event = await document_ingestion_outbox.claim(lease_token)
                 if event:
                     await self._dispatch(event, lease_token)
                 else:
-                    await asyncio.sleep(self.POLL_INTERVAL_SECONDS)
+                    await asyncio.sleep(
+                        settings.DOCUMENT_INGESTION_POLL_INTERVAL_SECONDS
+                    )
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("Document ingestion outbox worker iteration failed")
-                await asyncio.sleep(self.RECONCILE_INTERVAL_SECONDS)
+                await asyncio.sleep(
+                    settings.DOCUMENT_INGESTION_RECONCILE_INTERVAL_SECONDS
+                )
 
     async def _reconcile_unqueued_documents(self):
         recovered = await document_ingestion_outbox.recover_expired_indexing_claims()
@@ -65,27 +71,22 @@ class DocumentIngestionDispatcher:
             document_id = str(document.get("_id") or "")
             if not document_id:
                 continue
-            await document_ingestion_outbox.enqueue(
-                document,
-                user_id=str(document.get("creator_id") or ""),
-                superseded_document_id=str(document.get("previous_version_id") or ""),
-                force_new=True,
+            source_snapshot = DocumentIngestionOutboxRepository.source_snapshot_from_document(
+                document
             )
-            await database.mongodb[settings.CONTENT_DB_NAME]["documents"].update_one(
-                {
-                    "_id": document["_id"],
-                    "is_deleted": {"$ne": True},
-                    "indexing_status": {"$in": [None, "not_started", "queued"]},
-                },
-                {
-                    "$set": {
-                        "indexing_status": "queued",
-                        "is_indexed": False,
-                        "updated_at": datetime.now(timezone.utc),
-                    },
-                    "$unset": {"indexing_error": ""},
-                },
-            )
+            try:
+                await document_ingestion_outbox.enqueue(
+                    document,
+                    user_id=str(document.get("creator_id") or ""),
+                    superseded_document_id=str(document.get("previous_version_id") or ""),
+                    force_new=True,
+                    expected_source_snapshot=source_snapshot,
+                )
+            except DocumentIngestionSourceChanged:
+                logger.info(
+                    "Skipped stale document during ingestion reconciliation document_id={}",
+                    document_id,
+                )
 
     async def _dispatch(self, event: dict, lease_token: str):
         try:

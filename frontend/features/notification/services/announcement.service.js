@@ -1,4 +1,12 @@
 import { API_URL, authenticatedFetch, getToken } from "@/shared/services/api-client";
+function responseError(data, fallback) {
+  const detail = data?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail.message === "string") return detail.message;
+  if (typeof data?.message === "string" && data.message.trim()) return data.message;
+  return fallback;
+}
+
 export const getAnnouncementsAPI = async () => {
   const token = getToken();
   if (!token) throw new Error("Yêu cầu xác thực tài khoản để thực hiện thao tác");
@@ -34,8 +42,9 @@ export const deleteAnnouncementAPI = async (id) => {
 export const getAnnouncementSettingsAPI = async () => {
   if (!getToken()) throw new Error("Yêu cầu xác thực tài khoản để thực hiện thao tác");
   const res = await authenticatedFetch(`${API_URL}/thong-bao/cai-dat`);
-  if (!res.ok) throw new Error("Không thể tải cấu hình hệ thống thông báo");
-  return await res.json();
+  const resultData = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(responseError(resultData, "Không thể tải cài đặt thông báo"));
+  return resultData.data ?? resultData;
 };
 export const updateAnnouncementSettingsAPI = async (settings) => {
   if (!getToken()) throw new Error("Yêu cầu xác thực tài khoản để thực hiện thao tác");
@@ -46,6 +55,7 @@ export const updateAnnouncementSettingsAPI = async (settings) => {
     },
     body: JSON.stringify(settings),
   });
-  if (!res.ok) throw new Error("Không thể lưu cấu hình hệ thống thông báo");
-  return await res.json();
+  const resultData = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(responseError(resultData, "Không thể lưu cài đặt thông báo"));
+  return resultData.data ?? resultData;
 };

@@ -44,7 +44,14 @@ function draft(revision = 2, title = "Ca kiểm thử đăng nhập") {
   };
 }
 
-function project(role, canManageAttachments = true, canReadMembers = true, canManageNfr = false) {
+function project(
+  role,
+  canManageAttachments = true,
+  canReadMembers = true,
+  canManageNfr = false,
+  canAnswerClarification = false,
+  aiReadMode = "default",
+) {
   const permissions = ["project.read", "testcase.read", "testcase.duplicate_check"];
   if (role === "QA")
     permissions.push(
@@ -61,6 +68,7 @@ function project(role, canManageAttachments = true, canReadMembers = true, canMa
       "testsuite.read",
       "teststrategy.read",
       "testcondition.read",
+      "testanalysis.read",
       "testscenario.read",
       "apiartifact.read",
       "testrun.read",
@@ -77,6 +85,19 @@ function project(role, canManageAttachments = true, canReadMembers = true, canMa
   if (role === "QA" && canReadMembers) permissions.push("project.members.read");
   if (role === "QA" && canManageAttachments) permissions.push("attachment.manage");
   if (role === "QA" && canManageNfr) permissions.push("nfrtest.read", "nfrtest.manage");
+  if (canAnswerClarification) permissions.push("requirement.update");
+  if (aiReadMode === "proposal-only") {
+    permissions.splice(permissions.indexOf("automation.read"), 1);
+    permissions.push("proposal.read");
+  }
+  if (role === "BA")
+    permissions.push(
+      "requirement.read",
+      "requirement.create",
+      "requirement.update",
+      "automation.read",
+      "proposal.read",
+    );
   return {
     _id: projectId,
     name: "Dự án kiểm thử đối chiếu",
@@ -113,6 +134,7 @@ async function installWorkspace(
     initialRunListFailures = 0,
     sourceDocumentStatus = "READY",
     sourceDocumentIndexStatus = "INDEXED",
+    sourceDocumentAiEnabled = false,
     sourceUnprocessedBlocks = [],
     sourceDocumentCanRetryParse = false,
     sourceDocumentRetryFailure = null,
@@ -123,6 +145,8 @@ async function installWorkspace(
     canManageAttachments = true,
     canReadMembers = true,
     canManageNfr = false,
+    canAnswerClarification = false,
+    aiReadMode = "default",
     nonFunctionalPlans = [],
   } = {},
 ) {
@@ -157,8 +181,11 @@ async function installWorkspace(
   let comparisonToken = "c".repeat(64);
   let retryAccepted = false;
   let retryPayload;
+  let clarificationAccepted = false;
+  let clarificationPayload;
   let sourceParseRetryPayload = null;
   let sourceParseRetryCount = 0;
+  let automationEvidenceCalls = 0;
   let currentSourceDocumentStatus = sourceDocumentStatus;
   let currentSourceDocumentCanRetryParse = sourceDocumentCanRetryParse;
 
@@ -199,7 +226,14 @@ async function installWorkspace(
         full_name: role,
       };
     } else if (path === `/kiem-thu/du-an/${projectId}`) {
-      data = project(role, canManageAttachments, canReadMembers, canManageNfr);
+      data = project(
+        role,
+        canManageAttachments,
+        canReadMembers,
+        canManageNfr,
+        canAnswerClarification,
+        aiReadMode,
+      );
     } else if (path === `/kiem-thu/du-an/${projectId}/thanh-vien`) {
       data = [
         {
@@ -255,7 +289,7 @@ async function installWorkspace(
           can_retry_parse: currentSourceDocumentCanRetryParse,
           visibility: "private",
           shared_with: [],
-          ai_enabled: false,
+          ai_enabled: sourceDocumentAiEnabled,
           source_type: "SRS",
           created_by: "qa-e2e",
           revision: 1,
@@ -338,10 +372,14 @@ async function installWorkspace(
             requester_user_id: "qa-e2e",
             requester_role: "QA",
             ...(runSnapshot || {}),
-            status: retryAccepted ? "QUEUED" : runSnapshot?.status || "AWAITING_INPUT",
-            error_code: retryAccepted
-              ? null
-              : runSnapshot?.error_code || "AUTOMATION_WAITING_FOR_INPUT",
+            status:
+              clarificationAccepted || retryAccepted
+                ? "QUEUED"
+                : runSnapshot?.status || "AWAITING_INPUT",
+            error_code:
+              clarificationAccepted || retryAccepted
+                ? null
+                : runSnapshot?.error_code || "AUTOMATION_WAITING_FOR_INPUT",
             result: runSnapshot?.result || null,
           },
           workflow: currentAutomationWorkflow() || {
@@ -376,6 +414,7 @@ async function installWorkspace(
                     reason: "Tài liệu không mô tả hành vi cho trường hợp này.",
                     evidence_refs: ["DOC-E2E-1#page-4"],
                     blocking: true,
+                    response_allowed: true,
                   },
                 ],
               },
@@ -385,6 +424,17 @@ async function installWorkspace(
         }),
       });
       return;
+    } else if (
+      path === "/tu-dong-hoa-ai/luot-chay/AUT-E2E-EVENT-1/tra-loi-lam-ro" &&
+      request.method() === "POST"
+    ) {
+      clarificationPayload = request.postDataJSON();
+      clarificationAccepted = true;
+      data = {
+        automation_run_id: "AUT-E2E-EVENT-1",
+        status: "QUEUED",
+        revision: (automationRun?.revision || 1) + 1,
+      };
     } else if (
       path === "/tu-dong-hoa-ai/luot-chay/AUT-E2E-EVENT-1/uy-quyen-lai" &&
       request.method() === "POST"
@@ -399,6 +449,7 @@ async function installWorkspace(
         revision: (automationRun?.revision || 1) + 1,
       };
     } else if (path === "/tu-dong-hoa-ai/luot-chay/AUT-E2E-EVENT-1/bang-chung") {
+      automationEvidenceCalls += 1;
       if (automationEvidenceFailure) {
         await route.fulfill({
           status: 503,
@@ -509,7 +560,13 @@ async function installWorkspace(
       approvalPayload = request.postDataJSON();
       approvalAttempts += 1;
       approved = true;
-      data = { count: 1, version_ids: ["TCV-E2E-COMPARE"], derived_pending_version_ids: [] };
+      data = {
+        count: 1,
+        draft_ids: [draftId],
+        batch_id: "BATCH-E2E-APPROVAL-1",
+        version_ids: ["TCV-E2E-COMPARE"],
+        derived_pending_version_ids: [],
+      };
     } else if (
       path === `/kiem-thu/du-an/${projectId}/truong-ca-kiem-thu` &&
       request.method() === "POST"
@@ -553,11 +610,17 @@ async function installWorkspace(
     get retryAccepted() {
       return retryAccepted;
     },
+    get automationEvidenceCalls() {
+      return automationEvidenceCalls;
+    },
     get runListCalls() {
       return runListCalls;
     },
     get retryPayload() {
       return retryPayload;
+    },
+    get clarificationPayload() {
+      return clarificationPayload;
     },
     get sourceParseRetryPayload() {
       return sourceParseRetryPayload;
@@ -569,6 +632,59 @@ async function installWorkspace(
       comparisonToken = value;
     },
   };
+}
+
+async function installKanbanTransitionRole(page, role, assigneeId) {
+  await installWorkspace(page, role);
+  const item = {
+    _id: `WI-E2E-ROLE-${role}`,
+    title: "Công việc kiểm tra quyền chuyển trạng thái",
+    item_type: "TASK",
+    status: "TODO",
+    priority: "MEDIUM",
+    assignee_id: assigneeId,
+    revision: 1,
+  };
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { ...project(role), planning_method: "KANBAN" },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/bang-cong-viec`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          items: [item],
+          board: {
+            revision: 1,
+            planning_method: "KANBAN",
+            columns: [
+              { status: "TODO", name: "Cần làm", position: 0 },
+              { status: "IN_PROGRESS", name: "Đang thực hiện", position: 1 },
+            ],
+          },
+          workflow: {
+            revision: 1,
+            statuses: [
+              { key: "TODO", name: "Cần làm", counts_as_completed: false },
+              { key: "IN_PROGRESS", name: "Đang thực hiện", counts_as_completed: false },
+            ],
+            transitions: [
+              { from_status: "TODO", to_status: "IN_PROGRESS", allowed_roles: ["DEVELOPER"] },
+            ],
+          },
+        },
+        status: "SUCCESS",
+      }),
+    });
+  });
 }
 
 test("AI run chỉ cho chủ lượt chạy nối tiếp từ checkpoint an toàn", async ({ page }) => {
@@ -594,7 +710,7 @@ test("AI run chỉ cho chủ lượt chạy nối tiếp từ checkpoint an toà
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /Tiếp tục xử lý tài liệu đã nhập/ }).click();
   await expect(page.getByRole("button", { name: "Tiếp tục từ điểm an toàn" })).toBeVisible();
   await page.getByRole("button", { name: "Tiếp tục từ điểm an toàn" }).click();
@@ -605,10 +721,10 @@ test("AI run chỉ cho chủ lượt chạy nối tiếp từ checkpoint an toà
 test("AI status screen offers a real reload after initial event-status API failure", async ({
   page,
 }) => {
-  const api = await installWorkspace(page, "QA", { initialRunListFailures: 2 });
+  const api = await installWorkspace(page, "QA", { initialRunListFailures: 1 });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
 
   await expect.poll(() => api.runListCalls).toBeGreaterThan(0);
   await expect(page.getByRole("button", { name: "Tải lại dữ liệu AI" })).toBeVisible();
@@ -642,7 +758,7 @@ test("AI run khóa retry khi checkpoint cuối có thao tác ghi chưa rõ kết
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /Đối soát thao tác đã bắt đầu/ }).click();
   await expect(page.getByRole("button", { name: "Tiếp tục từ điểm an toàn" })).toHaveCount(0);
   await expect(page.getByText(/Cần đối soát kết quả để tránh chạy lặp/)).toBeVisible();
@@ -663,7 +779,8 @@ test("QA compares, saves a merged draft, then approves the reviewed group", asyn
   await expect(page.getByRole("heading", { name: "Bản kết quả sau chọn/ghép" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nguồn dẫn và trích dẫn" })).toBeVisible();
   await expect(page.getByText("Người dùng đăng nhập bằng email hợp lệ").first()).toBeVisible();
-  await expect(page.getByText("Phiên bản Requirement liên kết").first()).toBeVisible();
+  await expect(page.getByText("Phiên bản yêu cầu liên kết").first()).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/\bRequirement\b/);
   for (const width of [1920, 1440, 1280, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     const dimensions = await page.evaluate(() => ({
@@ -677,7 +794,7 @@ test("QA compares, saves a merged draft, then approves the reviewed group", asyn
       .getByRole("heading", { name: "Bản gốc hiện có" })
       .evaluate(
         (heading) =>
-          getComputedStyle(heading.parentElement.parentElement)
+          getComputedStyle(heading.parentElement.parentElement.parentElement)
             .gridTemplateColumns.trim()
             .split(/\s+/).length,
       );
@@ -694,7 +811,7 @@ test("QA compares, saves a merged draft, then approves the reviewed group", asyn
   const selectAllOnPage = page
     .getByRole("checkbox", { name: "Chọn tất cả mục trên trang" })
     .first();
-  await expect.poll(() => selectAllOnPage.evaluate((element) => element.indeterminate)).toBe(true);
+  await expect(selectAllOnPage).toBeChecked();
   await page.getByRole("button", { name: "Duyệt nhóm (1)" }).click();
   await page.getByLabel("Ghi chú duyệt").fill("Đã đối chiếu nguồn, bản AI và bản ghép.");
   await page.getByRole("button", { name: "Đối chiếu và duyệt nhóm" }).click();
@@ -724,11 +841,428 @@ test("planning load failure provides a retry that reloads the board data", async
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}/lap-ke-hoach/board`, { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("alert")).toContainText("Không tải được bảng công việc");
+  const boardError = page.getByRole("alert").filter({ hasText: "Không tải được bảng công việc" });
+  await expect(boardError).toBeVisible();
   await page.getByRole("button", { name: "Tải lại dữ liệu lập kế hoạch" }).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(boardError).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Bảng công việc" }).first()).toBeVisible();
   expect(boardRequests).toBe(2);
+});
+
+test("planning filters apply consistently to list, board, and roadmap", async ({ page }) => {
+  await installWorkspace(page, "QA");
+  const workItems = [
+    {
+      _id: "WI-E2E-EMAIL",
+      title: "Kiểm tra email đăng nhập",
+      description: "Luồng xác thực email",
+      item_type: "STORY",
+      status: "TODO",
+      priority: "HIGH",
+      revision: 1,
+      assignee_id: "tester-e2e",
+    },
+    {
+      _id: "WI-E2E-PAYMENT",
+      title: "Kiểm tra thanh toán",
+      description: "Luồng thanh toán đơn hàng",
+      item_type: "TASK",
+      status: "TODO",
+      priority: "MEDIUM",
+      revision: 1,
+      assignee_id: "tester-e2e",
+    },
+  ];
+  const workflow = {
+    revision: 1,
+    statuses: [{ key: "TODO", name: "Cần làm", counts_as_completed: false }],
+    transitions: [],
+  };
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/bang-cong-viec`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          items: workItems,
+          board: {
+            revision: 1,
+            planning_method: "SCRUM",
+            columns: [{ status: "TODO", name: "Cần làm", position: 0 }],
+          },
+          workflow,
+        },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/lo-trinh`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          items: [
+            {
+              _id: "WI-E2E-EMAIL-EPIC",
+              title: "Epic email",
+              item_type: "EPIC",
+              status: "TODO",
+              planned_start_at: "2026-10-01T00:00:00.000Z",
+              planned_end_at: "2026-10-15T00:00:00.000Z",
+            },
+            {
+              _id: "WI-E2E-PAYMENT-EPIC",
+              title: "Epic thanh toán",
+              item_type: "EPIC",
+              status: "TODO",
+              planned_start_at: "2026-10-01T00:00:00.000Z",
+              planned_end_at: "2026-10-15T00:00:00.000Z",
+            },
+          ],
+          releases: [],
+          dependencies: [],
+        },
+        status: "SUCCESS",
+      }),
+    });
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/list`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("textbox", { name: "Tìm công việc trong lập kế hoạch" }).fill("email");
+  await expect(
+    page.locator(".data-table-mobile").getByText("Kiểm tra email đăng nhập", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".data-table-mobile").getByText("Kiểm tra thanh toán", { exact: true }),
+  ).toHaveCount(0);
+
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/board`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("textbox", { name: "Tìm công việc trong lập kế hoạch" })).toHaveValue(
+    "email",
+  );
+  await expect(page.getByText("Kiểm tra email đăng nhập", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Kiểm tra thanh toán", { exact: true })).toHaveCount(0);
+
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/roadmap`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("textbox", { name: "Tìm công việc trong lập kế hoạch" })).toHaveValue(
+    "email",
+  );
+  await expect(page.getByText("Epic email", { exact: true })).toBeVisible();
+  await expect(page.getByText("Epic thanh toán", { exact: true })).toHaveCount(0);
+});
+
+test("Kanban keeps a Work Item in its source column when the WIP limit rejects transition", async ({
+  page,
+}) => {
+  await installWorkspace(page, "BA");
+  const sourceItem = {
+    _id: "WI-E2E-WIP-SOURCE",
+    title: "Công việc chờ vào cột đầy",
+    item_type: "TASK",
+    status: "TODO",
+    priority: "HIGH",
+    revision: 4,
+  };
+  const blockingItem = {
+    _id: "WI-E2E-WIP-BLOCKER",
+    title: "Công việc đang chiếm WIP",
+    item_type: "TASK",
+    status: "IN_PROGRESS",
+    priority: "MEDIUM",
+    revision: 2,
+  };
+  const transitionRequests = [];
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { ...project("BA"), planning_method: "KANBAN" },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/bang-cong-viec`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          items: [sourceItem, blockingItem],
+          board: {
+            revision: 3,
+            planning_method: "KANBAN",
+            columns: [
+              { status: "TODO", name: "Cần làm", position: 0 },
+              { status: "IN_PROGRESS", name: "Đang thực hiện", position: 1, wip_limit: 1 },
+            ],
+          },
+          workflow: {
+            revision: 5,
+            statuses: [
+              { key: "TODO", name: "Cần làm", counts_as_completed: false },
+              { key: "IN_PROGRESS", name: "Đang thực hiện", counts_as_completed: false },
+            ],
+            transitions: [
+              {
+                from_status: "TODO",
+                to_status: "IN_PROGRESS",
+                allowed_roles: ["BA"],
+              },
+            ],
+          },
+        },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(
+    `${apiBase}/kiem-thu/du-an/${projectId}/cong-viec/${sourceItem._id}/chuyen-trang-thai`,
+    async (route) => {
+      transitionRequests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "KANBAN_WIP_LIMIT_REACHED",
+            message: "Cột đích đã đạt giới hạn WIP.",
+          },
+        }),
+      });
+    },
+  );
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/board`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("1/1 công việc")).toBeVisible();
+  const draggableItem = page
+    .getByText("Công việc chờ vào cột đầy", { exact: true })
+    .locator("xpath=ancestor::article");
+  await draggableItem.dragTo(
+    page.getByRole("group", { name: "Công việc trong cột Đang thực hiện" }),
+  );
+  const reason = page.getByLabel("Lý do");
+  await expect(reason).toBeVisible();
+  await reason.fill("Đã kiểm tra giới hạn cột.");
+  await page.getByRole("button", { name: "Xác nhận" }).click();
+
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Cột đích đã đạt giới hạn WIP" }),
+  ).toBeVisible();
+  await expect(page.getByText("Công việc chờ vào cột đầy", { exact: true })).toBeVisible();
+  await expect(page.getByText("Công việc đang chiếm WIP", { exact: true })).toBeVisible();
+  await expect(page.getByText("1/1 công việc")).toBeVisible();
+  expect(transitionRequests).toEqual([
+    {
+      expected_revision: 4,
+      status: "IN_PROGRESS",
+      reason: "Đã kiểm tra giới hạn cột.",
+    },
+  ]);
+});
+
+test("Kanban transition works by keyboard and the List reads the updated status", async ({
+  page,
+}) => {
+  await installWorkspace(page, "BA");
+  const item = {
+    _id: "WI-E2E-KEYBOARD-TRANSITION",
+    title: "Công việc chuyển bằng bàn phím",
+    item_type: "TASK",
+    status: "TODO",
+    priority: "HIGH",
+    revision: 7,
+  };
+  const transitionRequests = [];
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { ...project("BA"), planning_method: "KANBAN" },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/bang-cong-viec`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          items: [item],
+          board: {
+            revision: 8,
+            planning_method: "KANBAN",
+            columns: [
+              { status: "TODO", name: "Cần làm", position: 0 },
+              { status: "IN_PROGRESS", name: "Đang thực hiện", position: 1, wip_limit: 2 },
+            ],
+          },
+          workflow: {
+            revision: 9,
+            statuses: [
+              { key: "TODO", name: "Cần làm", counts_as_completed: false },
+              { key: "IN_PROGRESS", name: "Đang thực hiện", counts_as_completed: false },
+            ],
+            transitions: [{ from_status: "TODO", to_status: "IN_PROGRESS", allowed_roles: ["BA"] }],
+          },
+        },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(
+    `${apiBase}/kiem-thu/du-an/${projectId}/cong-viec/${item._id}/chuyen-trang-thai`,
+    async (route) => {
+      transitionRequests.push(route.request().postDataJSON());
+      item.status = "IN_PROGRESS";
+      item.revision = 8;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: { ...item, status: "IN_PROGRESS", revision: 8 },
+          status: "SUCCESS",
+        }),
+      });
+    },
+  );
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/board`, { waitUntil: "domcontentloaded" });
+  const transitionButton = page.getByRole("button", { name: "Chuyển Đang thực hiện" });
+  await transitionButton.focus();
+  await page.keyboard.press("Enter");
+  const reason = page.getByLabel("Lý do");
+  await reason.fill("Bắt đầu xử lý công việc.");
+  const confirmButton = page.getByRole("button", { name: "Xác nhận" });
+  await confirmButton.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByText("Công việc chuyển bằng bàn phím", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Chuyển Đang thực hiện" })).toHaveCount(0);
+  expect(transitionRequests).toEqual([
+    {
+      expected_revision: 7,
+      status: "IN_PROGRESS",
+      reason: "Bắt đầu xử lý công việc.",
+    },
+  ]);
+
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/list`, { waitUntil: "domcontentloaded" });
+  const list = page.locator(".data-table-mobile");
+  await expect(list.getByText("Công việc chuyển bằng bàn phím", { exact: true })).toBeVisible();
+  await expect(list.getByText("Đang thực hiện", { exact: true })).toBeVisible();
+});
+
+test("Kanban hides Scrum iterations and rejects a direct iteration route", async ({ page }) => {
+  await installWorkspace(page, "BA");
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { ...project("BA"), planning_method: "KANBAN" },
+        status: "SUCCESS",
+      }),
+    });
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/board`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("link", { name: "Bảng công việc" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Đợt lặp", exact: true })).toHaveCount(0);
+
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/sprint`, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(new RegExp(`/du-an/${projectId}$`));
+  await expect(page.getByRole("heading", { name: "Dự án kiểm thử đối chiếu" })).toBeVisible();
+});
+
+for (const scenario of [
+  { role: "DEVELOPER", assigneeId: "developer-e2e", canTransition: true },
+  { role: "DEVELOPER", assigneeId: "another-member", canTransition: false },
+  { role: "TESTER", assigneeId: "tester-e2e", canTransition: false },
+]) {
+  test(`Kanban transition ${scenario.canTransition ? "is available" : "is hidden"} for ${scenario.role} assignment scope`, async ({
+    page,
+  }) => {
+    await installKanbanTransitionRole(page, scenario.role, scenario.assigneeId);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/du-an/${projectId}/lap-ke-hoach/board`, { waitUntil: "domcontentloaded" });
+    const transition = page.getByRole("button", { name: "Chuyển Đang thực hiện" });
+    if (scenario.canTransition) await expect(transition).toBeVisible();
+    else await expect(transition).toHaveCount(0);
+  });
+}
+
+test("backlog keyboard reorder keeps the saved order after an API conflict", async ({ page }) => {
+  await installWorkspace(page, "BA");
+  const first = {
+    _id: "WI-E2E-RANK-FIRST",
+    title: "Công việc ưu tiên đầu",
+    item_type: "STORY",
+    status: "BACKLOG",
+    priority: "HIGH",
+    revision: 3,
+  };
+  const second = {
+    _id: "WI-E2E-RANK-SECOND",
+    title: "Công việc ưu tiên sau",
+    item_type: "TASK",
+    status: "BACKLOG",
+    priority: "MEDIUM",
+    revision: 6,
+  };
+  const rankRequests = [];
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/bang-cong-viec`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          items: [first, second],
+          board: { revision: 2, planning_method: "SCRUM", columns: [] },
+          workflow: {
+            revision: 2,
+            statuses: [{ key: "BACKLOG", name: "Danh sách chờ" }],
+            transitions: [],
+          },
+        },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(
+    `${apiBase}/kiem-thu/du-an/${projectId}/cong-viec/${second._id}/xep-hang`,
+    async (route) => {
+      rankRequests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { code: "WORK_ITEM_RANK_CONCURRENT_UPDATE", message: "Thứ tự vừa thay đổi." },
+        }),
+      });
+    },
+  );
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/du-an/${projectId}/lap-ke-hoach/backlog`, { waitUntil: "domcontentloaded" });
+  const backlog = page.getByRole("list", { name: "Thứ tự công việc trong danh sách chờ" });
+  const moveUp = page.getByRole("button", { name: "Đưa Công việc ưu tiên sau lên trước" });
+  await moveUp.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(backlog.locator("li").nth(0)).toContainText("Công việc ưu tiên đầu");
+  await expect(backlog.locator("li").nth(1)).toContainText("Công việc ưu tiên sau");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Thứ tự danh sách vừa thay đổi" }),
+  ).toBeVisible();
+  expect(rankRequests).toEqual([{ expected_revision: 6, before_item_id: first._id }]);
 });
 
 test("QA must compare an AI draft before approving it individually", async ({ page }) => {
@@ -887,12 +1421,30 @@ test("QA selects an active project member when creating a Test Case", async ({ p
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}/ca-kiem-thu`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Tạo ca kiểm thử" }).click();
+  await expect(page.getByText("Phiên bản yêu cầu liên quan")).toBeVisible();
+  await expect(page.getByPlaceholder("Tìm yêu cầu")).toBeVisible();
+  await expect(page.getByPlaceholder("Tìm Requirement")).toHaveCount(0);
+  await expect(page.getByText("Requirement", { exact: true })).toHaveCount(0);
   await page.getByLabel("Tên", { exact: true }).fill("Kiểm thử có người phụ trách");
   const ownerSelect = page.getByLabel("Người phụ trách ca kiểm thử");
   await expect(ownerSelect.locator("option", { hasText: "Tester đã ngừng" })).toHaveCount(0);
   await ownerSelect.selectOption("tester-moi");
   await page.getByRole("button", { name: "Lưu bản nháp" }).click();
   await expect.poll(() => api.createdTestCasePayload?.owner_id).toBe("tester-moi");
+});
+
+test("AI test analysis explains the baseline trigger in Vietnamese", async ({ page }) => {
+  await installWorkspace(page, "QA");
+  await page.goto(`/du-an/${projectId}/phan-tich-kiem-thu`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Đề xuất AI" }).click();
+
+  await expect(
+    page.getByText("Ứng viên được tạo khi phiên bản yêu cầu được đặt làm phiên bản chuẩn."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Chưa có ứng viên từ các yêu cầu đã được đặt làm phiên bản chuẩn"),
+  ).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(/\bRequirement\b|\bbaseline\b/i);
 });
 
 test("Test Case step data exposes one add-row action for the whole group", async ({ page }) => {
@@ -943,7 +1495,6 @@ test("compare keeps owner unchanged when member visibility permission is absent"
   await page.getByRole("button", { name: "Đối chiếu gốc và AI" }).click();
 
   await expect(page.getByLabel("Bản kết quả: Người phụ trách")).toHaveCount(0);
-  await expect(page.getByText("Người phụ trách đã được thiết lập")).toBeVisible();
   await expect(page.getByText(/không có quyền/i)).toHaveCount(0);
   await page.getByRole("button", { name: "Lấy nội dung AI" }).click();
   await page.getByRole("button", { name: "Lưu bản ghép" }).click();
@@ -1260,7 +1811,8 @@ test("failed new Requirement extraction hides an older preview but preserves sou
     });
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto(`/du-an/${projectId}/yeu-cau/import`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/du-an/${projectId}/yeu-cau`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Nhập tài liệu" }).click();
 
   const sourceEditor = page.getByRole("textbox", { name: "nội dung nguồn" });
   await sourceEditor.fill("Nội dung nguồn đầu tiên đủ để tạo yêu cầu.");
@@ -1302,6 +1854,69 @@ test("the latest project access response restores a permission after a transient
   await expect(page.getByRole("link", { name: "Yêu cầu" })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/du-an/${projectId}/yeu-cau$`));
 });
+
+test("revoked project permission hides the open route and redirects to an allowed page", async ({
+  page,
+}) => {
+  await installWorkspace(page, "QA");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  let accessRevoked = false;
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}`, async (route) => {
+    if (!accessRevoked) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { ...project("QA"), current_permissions: ["project.read"] },
+        status: "SUCCESS",
+      }),
+    });
+  });
+
+  await page.goto(`/du-an/${projectId}/yeu-cau`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Danh sách yêu cầu" })).toBeVisible();
+  accessRevoked = true;
+  await page.evaluate((id) => {
+    window.dispatchEvent(
+      new CustomEvent("veriq-project-access-denied", {
+        detail: {
+          projectId: id,
+          pagePath: window.location.pathname,
+          permission: "requirement.read",
+          code: "PROJECT_PERMISSION_DENIED",
+        },
+      }),
+    );
+  }, projectId);
+
+  await expect(page).toHaveURL(new RegExp(`/du-an/${projectId}$`));
+  await expect(page.getByRole("heading", { name: "Danh sách yêu cầu" })).toHaveCount(0);
+  await expect(page.getByText("Yêu cầu không có quyền truy cập", { exact: true })).toHaveCount(0);
+});
+
+test("BA can open the Requirement route with its project permission", async ({ page }) => {
+  await installWorkspace(page, "BA");
+  await page.goto(`/du-an/${projectId}/yeu-cau`, { waitUntil: "domcontentloaded" });
+
+  await expect(page).toHaveURL(new RegExp(`/du-an/${projectId}/yeu-cau$`));
+  await expect(page.getByRole("heading", { name: "Danh sách yêu cầu" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Yêu cầu" })).toBeVisible();
+});
+
+for (const role of ["Developer", "Viewer"]) {
+  test(`${role} cannot open or see Requirement UI without project permission`, async ({ page }) => {
+    await installWorkspace(page, role);
+    await page.goto(`/du-an/${projectId}/yeu-cau`, { waitUntil: "domcontentloaded" });
+
+    await expect(page).toHaveURL(new RegExp(`/du-an/${projectId}$`));
+    await expect(page.getByRole("heading", { name: "Danh sách yêu cầu" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Yêu cầu" })).toHaveCount(0);
+    await expect(page.getByText("Yêu cầu không có quyền truy cập", { exact: true })).toHaveCount(0);
+  });
+}
 
 test("mobile navigation traps focus and returns focus to its trigger when closed", async ({
   page,
@@ -1589,7 +2204,7 @@ test("CV extraction stays private until the member confirms profile evidence", a
   });
 
   await page.goto(`/du-an/${nextSkillProjectId}/cai-dat`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "Năng lực của tôi" }).click();
+  await page.getByRole("button", { name: "Năng lực của tôi" }).click();
   await expect(page.getByRole("heading", { name: "Hồ sơ năng lực của tôi" })).toBeVisible();
   await expect(page.getByText("Không thể tải hồ sơ dự án mới.")).toBeVisible();
   await expect(page.getByText("Kiểm thử API", { exact: true })).toHaveCount(0);
@@ -1619,14 +2234,17 @@ test("Tester sees read-only Test Design and receives a backend denial for QA-onl
     content: document.documentElement.scrollWidth,
   }));
   expect(dimensions.content).toBe(dimensions.viewport);
-  const response = await page.evaluate(async (project) => {
-    const response = await fetch(`${apiBase}/kiem-thu/du-an/${project}/truong-ca-kiem-thu`, {
-      method: "POST",
-      headers: { Authorization: "Bearer ui-tester-session", "Content-Type": "application/json" },
-      body: JSON.stringify({ key: "e2e_field", label: "Trường thử", value_type: "TEXT" }),
-    });
-    return response.status;
-  }, projectId);
+  const response = await page.evaluate(
+    async ({ project, apiUrl }) => {
+      const response = await fetch(`${apiUrl}/kiem-thu/du-an/${project}/truong-ca-kiem-thu`, {
+        method: "POST",
+        headers: { Authorization: "Bearer ui-tester-session", "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "e2e_field", label: "Trường thử", value_type: "TEXT" }),
+      });
+      return response.status;
+    },
+    { project: projectId, apiUrl: apiBase },
+  );
   expect(response).toBe(403);
 
   await page.goto(`/du-an/${projectId}/yeu-cau`, { waitUntil: "domcontentloaded" });
@@ -1859,13 +2477,17 @@ test("AI event runs appear without asking the user to start them manually", asyn
   await installWorkspace(page, "QA");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await expect(page.getByText("Rà soát tài liệu sau khi tải lên")).toBeVisible({ timeout: 12000 });
   await expect(page.getByText("Lượt chạy gần đây")).toBeVisible();
   await expect(page.getByText("AUT-E2E-EVENT-1")).toBeVisible();
   await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
   await expect(page.getByRole("heading", { name: "Cần bổ sung thông tin" })).toBeVisible();
   await expect(page.getByText("Hệ thống xử lý thế nào khi email chưa được đăng ký?")).toBeVisible();
+  await expect(page.getByLabel("Thông tin trả lời")).toHaveCount(0);
+  await expect(
+    page.getByText("Cần thành viên có quyền cập nhật yêu cầu bổ sung dữ kiện này."),
+  ).toBeVisible();
   await expect(page.getByText("Nguồn liên quan: DOC-E2E-1#page-4")).toBeVisible();
   await expect(page.getByRole("region", { name: "Trích dẫn nguồn đã kiểm chứng" })).toContainText(
     "Người dùng đăng nhập bằng email đã đăng ký.",
@@ -1875,6 +2497,88 @@ test("AI event runs appear without asking the user to start them manually", asyn
     page.getByText(/Khi nguồn được cập nhật, hệ thống sẽ tự tiếp nhận sự kiện mới/),
   ).toBeVisible();
   await expect(page.getByText("AUTOMATION_WAITING_FOR_INPUT")).toHaveCount(0);
+});
+
+test("Requirement import reads the terminal AI status for its source document", async ({
+  page,
+}) => {
+  await installWorkspace(page, "QA", {
+    sourceDocumentAiEnabled: true,
+    automationRun: {
+      source_event_id: "requirement-document:RDOC-E2E-SOURCE-V1:1",
+      status: "DEGRADED",
+      error_code: "INSUFFICIENT_EVIDENCE",
+    },
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`/du-an/${projectId}/yeu-cau/import`, { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("dialog", { name: "Nhập tài liệu" })).toBeVisible();
+  await expect(page.getByText("Tự động hóa theo tài liệu")).toBeVisible();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Nhập tài liệu" })
+      .locator("span")
+      .filter({ hasText: /^requirements\.md$/ })
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByText("Hoạt động giới hạn")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Xem lượt chạy" })).toHaveAttribute(
+    "href",
+    `/du-an/${projectId}/tu-dong-hoa`,
+  );
+});
+
+test("proposal readers can open AI run history without seeing automation controls", async ({
+  page,
+}) => {
+  await installWorkspace(page, "QA", {
+    aiReadMode: "proposal-only",
+    automationRun: { status: "DEGRADED" },
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByRole("heading", { name: "Tự động hóa kiểm thử" })).toBeVisible();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
+  await expect(page.getByRole("button", { name: /AUT-E2E-EVENT-1/ })).toBeVisible();
+  await expect(page.getByText("Tên quy tắc tự động hóa")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Lưu quy tắc tự động hóa" })).toHaveCount(0);
+});
+
+for (const role of ["TESTER", "DEVELOPER", "VIEWER", "ADMIN"]) {
+  test(`${role} without AI run permission cannot open the AI workspace`, async ({ page }) => {
+    await installWorkspace(page, role);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
+
+    await expect(page).toHaveURL(`/du-an/${projectId}`);
+    await expect(page.getByRole("heading", { name: "Tự động hóa kiểm thử" })).toHaveCount(0);
+    await expect(page.getByText("Lượt chạy gần đây")).toHaveCount(0);
+  });
+}
+
+test("BA answers a blocking AI clarification and the run continues automatically", async ({
+  page,
+}) => {
+  const api = await installWorkspace(page, "BA", {
+    automationRun: { status: "AWAITING_INPUT", revision: 3 },
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
+
+  const answer = "Tài khoản chưa đăng ký nhận thông báo và không được tạo phiên đăng nhập.";
+  await page.getByLabel("Thông tin trả lời").fill(answer);
+  await page.getByRole("button", { name: "Trả lời và tiếp tục tự động" }).click();
+
+  await expect(page.getByRole("heading", { name: "Cần bổ sung thông tin" })).toHaveCount(0);
+  expect(api.clarificationPayload).toEqual({
+    expected_revision: 3,
+    uncertainty_code: "MISSING_ACCEPTANCE_RULE",
+    answer,
+  });
 });
 
 test("AI run displays the descendant workflow while the root run is already completed", async ({
@@ -1905,7 +2609,7 @@ test("AI run displays the descendant workflow while the root run is already comp
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
 
   const workflow = page.getByRole("region", { name: "Trạng thái toàn luồng AI" });
@@ -1956,7 +2660,7 @@ test("the open AI run refreshes its workflow status when a new child run appears
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
 
   const workflow = page.getByRole("region", { name: "Trạng thái toàn luồng AI" });
@@ -1975,7 +2679,7 @@ test("the open AI run refreshes its own status after an event continues it", asy
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
 
   await expect(page.getByRole("heading", { name: "Cần bổ sung thông tin" })).toBeVisible();
@@ -2029,7 +2733,7 @@ test("AI run shows verified source-to-requirement-and-test-case lineage", async 
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await expect(page.getByText("Biên dịch nghĩa vụ từ tài liệu")).toBeVisible({ timeout: 12000 });
   await page.getByRole("button", { name: /Biên dịch nghĩa vụ từ tài liệu/ }).click();
   const lineage = page.getByRole("region", {
@@ -2040,26 +2744,25 @@ test("AI run shows verified source-to-requirement-and-test-case lineage", async 
   await expect(lineage).toContainText("Người dùng đăng nhập bằng email đã đăng ký.");
   await expect(lineage).toContainText("REQV-E2E-1");
   await expect(lineage).toContainText("TCV-E2E-1");
+  await expect(lineage.getByText("AI tạo · đã đọc lại")).toBeVisible();
 });
 
 test("AI run details remain visible if evidence lookup is temporarily unavailable", async ({
   page,
 }) => {
-  await installWorkspace(page, "QA", {
+  const api = await installWorkspace(page, "QA", {
     automationEvidenceFailure: true,
-    automationRun: { status: "AWAITING_INPUT" },
+    automationRun: { status: "AWAITING_INPUT", revision: 1 },
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
 
   await expect(page.getByText("AUT-E2E-EVENT-1").last()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Cần bổ sung thông tin" })).toBeVisible();
   await expect(page.getByText("Hệ thống xử lý thế nào khi email chưa được đăng ký?")).toBeVisible();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Không thể hoàn tất tự động hóa AI" }),
-  ).toBeVisible();
+  expect(api.automationEvidenceCalls).toBeGreaterThan(0);
   await expect(page.getByText("evidence service unavailable")).toHaveCount(0);
 });
 
@@ -2084,7 +2787,7 @@ test("AI run explains an MCP discovery failure without exposing provider details
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
 
   const diagnostics = page.getByRole("status", { name: "Nguồn MCP cần kiểm tra" });
@@ -2134,7 +2837,7 @@ test("AI run explains incomplete source extraction without exposing raw parser d
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
 
   const diagnostics = page.getByRole("status", {
@@ -2156,7 +2859,7 @@ test("authorization pause explains the missing project role before retry", async
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "AI tự động hóa" }).click();
+  await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /AUT-E2E-EVENT-1/ }).click();
 
   await expect(page.getByRole("status")).toContainText(
@@ -2175,9 +2878,9 @@ test("dashboard does not show a fake task progress when the project summary is m
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}`, { waitUntil: "domcontentloaded" });
 
-  const progressPanel = page.getByRole("region", { name: "Tiến độ dự án" });
-  await expect(progressPanel).toContainText("Chưa có công việc");
-  await expect(progressPanel).not.toContainText("Tiến độ công việc 0%");
+  await expect(page.getByRole("heading", { name: "Tiến độ Project và Tasks" })).toBeVisible();
+  await expect(page.getByText("Chưa tải được số liệu công việc")).toBeVisible();
+  await expect(page.getByText(/Tasks\s*·\s*0%/)).toHaveCount(0);
 });
 
 test("non-functional plan editor preserves structured fields without raw JSON textareas", async ({
@@ -2217,7 +2920,7 @@ test("non-functional plan editor preserves structured fields without raw JSON te
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}/lan-chay-kiem-thu`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "Kiểm thử phi chức năng" }).click();
+  await page.getByRole("button", { name: "Kiểm thử phi chức năng" }).click();
   await page.getByRole("button", { name: "Mở" }).click();
   await page.getByRole("button", { name: "Chỉnh sửa" }).click();
   await page

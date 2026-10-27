@@ -18,6 +18,7 @@ from src.core.common import (
 from src.core.database import database
 from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
 from src.repositories.test_plan import test_plan_repository
+from src.repositories.project import project_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
 
 
@@ -166,6 +167,26 @@ def plan_completeness(plan, settings=None):
     return {"ready_for_approval": not findings, "findings": findings}
 
 
+async def validate_effort_allocation_members(project_id, estimation, session=None):
+    allocation_ids = {
+        item.user_id for item in (estimation.effort_allocations or [])
+    }
+    if not allocation_ids:
+        return
+    members = await project_repository.list_members(project_id, session=session)
+    active_ids = {
+        item.get("user_id")
+        for item in members
+        if item.get("status") == "ACTIVE"
+    }
+    unknown = sorted(allocation_ids - active_ids)
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "TEST_PLAN_EFFORT_MEMBER_NOT_ACTIVE", "user_ids": unknown},
+        )
+
+
 async def validate_plan_scope(project_id, requirement_version_ids, test_suite_ids, test_case_version_ids):
     requirement_ids = list(dict.fromkeys(requirement_version_ids or []))
     if requirement_ids and await test_plan_repository.count_requirement_versions(project_id, requirement_ids) != len(requirement_ids):
@@ -270,6 +291,7 @@ async def create_test_plan_record(payload, project_id, user):
             "testplan.assignments",
             set(['QA']),
         )
+    await validate_effort_allocation_members(payload.project_id, payload.estimation)
     strategy_binding = await resolve_strategy_binding(
         payload.project_id,
         payload.strategy_version_id,
@@ -373,6 +395,10 @@ async def update_test_plan_record(plan_id, payload, user):
         )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
+    if "estimation" in changes:
+        await validate_effort_allocation_members(
+            plan["project_id"], TestPlanCreate.model_validate({**plan, **changes}).estimation
+        )
     if "strategy_version_id" in changes:
         changes.update(
             await resolve_strategy_binding(

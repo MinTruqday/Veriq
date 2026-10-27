@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aio_pika
+
 from src.core.infrastructure.mq import RabbitMQClient
 
 
@@ -54,6 +56,112 @@ class RabbitMQPublishReliabilityTests(unittest.IsolatedAsyncioTestCase):
         client.get_queue = AsyncMock()
 
         self.assertFalse(await client.publish("ai.automation", {"automation_run_id": "AUT-1"}))
+
+    async def test_delayed_publish_uses_durable_dead_letter_queue(self):
+        client = RabbitMQClient()
+        exchange = MagicMock()
+        exchange.publish = AsyncMock()
+        delayed_queue = MagicMock(name="ai.document_ingestion.delayed.48s")
+        delayed_queue.name = "ai.document_ingestion.delayed.48s"
+        retry_exchange = MagicMock()
+        retry_exchange.name = "ai.document_ingestion.retry"
+        channel = MagicMock(
+            default_exchange=exchange,
+            is_closed=False,
+            declare_queue=AsyncMock(return_value=delayed_queue),
+            declare_exchange=AsyncMock(return_value=retry_exchange),
+        )
+        client.channel = channel
+        target_queue = MagicMock()
+        target_queue.bind = AsyncMock()
+        client.get_queue = AsyncMock(return_value=target_queue)
+
+        published = await client.publish_delayed(
+            "ai.document_ingestion",
+            {"document_id": "doc-1", "event_id": "event-1"},
+            47.5,
+        )
+
+        self.assertTrue(published)
+        client.get_queue.assert_awaited_once_with("ai.document_ingestion")
+        channel.declare_exchange.assert_awaited_once_with(
+            "ai.document_ingestion.retry",
+            aio_pika.ExchangeType.DIRECT,
+            durable=True,
+        )
+        target_queue.bind.assert_awaited_once_with(
+            retry_exchange, routing_key="ai.document_ingestion"
+        )
+        channel.declare_queue.assert_awaited_once_with(
+            "ai.document_ingestion.delayed.48s",
+            durable=True,
+            arguments={
+                "x-message-ttl": 48000,
+                "x-dead-letter-exchange": "ai.document_ingestion.retry",
+                "x-dead-letter-routing-key": "ai.document_ingestion",
+            },
+        )
+        message = exchange.publish.await_args.args[0]
+        self.assertIsNone(message.expiration)
+        self.assertEqual(
+            exchange.publish.await_args.kwargs["routing_key"],
+            delayed_queue.name,
+        )
+        self.assertTrue(exchange.publish.await_args.kwargs["mandatory"])
+
+    async def test_delayed_publish_rejects_invalid_delay(self):
+        client = RabbitMQClient()
+        client.channel = MagicMock(is_closed=False)
+        client.get_queue = AsyncMock()
+
+        self.assertFalse(
+            await client.publish_delayed("ai.document_ingestion", {}, float("inf"))
+        )
+        self.assertFalse(
+            await client.publish_delayed("ai.document_ingestion", {}, 10**1000)
+        )
+        client.get_queue.assert_not_awaited()
+
+    async def test_delayed_publish_uses_separate_fixed_ttl_queues(self):
+        client = RabbitMQClient()
+        exchange = MagicMock()
+        exchange.publish = AsyncMock()
+        retry_exchange = MagicMock()
+        retry_exchange.name = "ai.document_ingestion.retry"
+        delayed_queue = MagicMock()
+        delayed_queue.name = "ai.document_ingestion.delayed.6s"
+        target_queue = MagicMock()
+        target_queue.bind = AsyncMock()
+        channel = MagicMock(
+            default_exchange=exchange,
+            is_closed=False,
+            declare_queue=AsyncMock(return_value=delayed_queue),
+            declare_exchange=AsyncMock(return_value=retry_exchange),
+        )
+        client.channel = channel
+        client.get_queue = AsyncMock(return_value=target_queue)
+
+        short_delay_queued = await client.publish_delayed(
+            "ai.document_ingestion", {"event_id": "short"}, 5.1
+        )
+        long_delay_queued = await client.publish_delayed(
+            "ai.document_ingestion", {"event_id": "long"}, 47.5
+        )
+
+        self.assertTrue(short_delay_queued)
+        self.assertTrue(long_delay_queued)
+        queue_declarations = channel.declare_queue.await_args_list
+        self.assertEqual(
+            [entry.args[0] for entry in queue_declarations],
+            [
+                "ai.document_ingestion.delayed.6s",
+                "ai.document_ingestion.delayed.48s",
+            ],
+        )
+        self.assertEqual(
+            [entry.kwargs["arguments"]["x-message-ttl"] for entry in queue_declarations],
+            [6000, 48000],
+        )
 
     async def test_publish_reopens_a_closed_channel_without_reconnecting(self):
         client = RabbitMQClient()

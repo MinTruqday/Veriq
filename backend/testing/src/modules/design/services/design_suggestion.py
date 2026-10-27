@@ -6,7 +6,11 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
 from src.repositories.test_design import test_design_repository
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.ai_automation import (
+    ai_contract_metadata,
+    request_ai_automation,
+    require_ai_automation_event,
+)
 from src.modules.quality.services.non_functional_test import get_plan as get_non_functional_plan
 from src.modules.design.services.generation import validated_suggestions
 from src.schemas.contracts.environment import PerformancePlanDraftInput
@@ -102,49 +106,41 @@ class DesignSuggestionService:
 
     @staticmethod
     async def generate_security(project_id, payload, user):
-        
+        automation = require_ai_automation_event(user, {"REQUIREMENT_CHANGED"})
         await get_project(project_id, user, "ai.generate_security_tests")
         versions, evidence = await requirement_evidence(project_id, payload.requirement_version_ids)
-        event_scoped = bool(payload.source_event_id or payload.source_event_revision)
         if (
-            getattr(user, "_ai_automation_trigger", "") == "REQUIREMENT_CHANGED"
-            and not event_scoped
+            not payload.source_event_id
+            or payload.source_event_revision is None
+            or payload.source_event_id != automation["source_event_id"]
+            or len(versions) != 1
         ):
             raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
-        if event_scoped:
-            if (
-                not payload.source_event_id
-                or payload.source_event_revision is None
-                or not getattr(user, "_ai_automation_run_id", "")
-                or getattr(user, "_ai_automation_trigger", "") != "REQUIREMENT_CHANGED"
-                or len(versions) != 1
-            ):
-                raise HTTPException(403, detail={"code": "VERIFIED_REQUIREMENT_EVENT_REQUIRED"})
-            version = versions[0]
-            requirement = await test_design_repository.find_current_requirement(
-                project_id, version.get("requirement_id")
-            )
-            expected_event_id = (
-                f"requirement-version:{version['_id']}:{payload.source_event_revision}:BASELINED"
-            )
-            if (
-                version.get("status") != "BASELINED"
-                or requirement is None
-                or requirement.get("current_version_id") != version["_id"]
-                or int(version.get("revision") or 0) != payload.source_event_revision
-                or payload.source_event_id != expected_event_id
-            ):
-                raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
-            expected_key = "security-requirement:" + hashlib.sha256(
-                f"{payload.source_event_id}:{version['_id']}".encode("utf-8")
-            ).hexdigest()
-            if payload.idempotency_key != expected_key:
-                raise HTTPException(422, detail={"code": "SECURITY_SUGGESTION_EVENT_KEY_INVALID"})
+        version = versions[0]
+        requirement = await test_design_repository.find_current_requirement(
+            project_id, version.get("requirement_id")
+        )
+        expected_event_id = (
+            f"requirement-version:{version['_id']}:{payload.source_event_revision}:BASELINED"
+        )
+        if (
+            version.get("status") != "BASELINED"
+            or requirement is None
+            or requirement.get("current_version_id") != version["_id"]
+            or int(version.get("revision") or 0) != payload.source_event_revision
+            or payload.source_event_id != expected_event_id
+        ):
+            raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
+        expected_key = "security-requirement:" + hashlib.sha256(
+            f"{payload.source_event_id}:{version['_id']}".encode("utf-8")
+        ).hexdigest()
+        if payload.idempotency_key != expected_key:
+            raise HTTPException(422, detail={"code": "SECURITY_SUGGESTION_EVENT_KEY_INVALID"})
         existing = await test_design_repository.find_security_suggestion(
             project_id, payload.idempotency_key
         )
         if existing:
-            if event_scoped and (
+            if (
                 existing.get("source_event_id") != payload.source_event_id
                 or existing.get("source_event_revision") != payload.source_event_revision
                 or existing.get("requirement_version_ids") != [versions[0]["_id"]]
@@ -270,7 +266,12 @@ class DesignSuggestionService:
 
     @staticmethod
     async def generate_performance(project_id, payload, user, source_configuration=None):
-        
+        automation = require_ai_automation_event(user, {"PERFORMANCE_CONFIGURATION_APPROVED"})
+        if (
+            not source_configuration
+            or source_configuration.get("event_id") != automation["source_event_id"]
+        ):
+            raise HTTPException(status_code=403, detail={"code": "VERIFIED_PERFORMANCE_CONFIGURATION_EVENT_REQUIRED"})
         await get_project(project_id, user, "ai.generate_performance_plan")
         existing = await test_design_repository.find_performance_draft(
             project_id, payload.idempotency_key

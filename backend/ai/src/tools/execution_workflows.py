@@ -487,12 +487,15 @@ async def process_created_test_completion_report(
 async def process_approved_test_plan(
     project_id: Annotated[str, Field(description="Testing project identifier")],
     test_plan_id: Annotated[str, Field(min_length=1, description="Approved Test Plan identifier")],
+    expected_revision: Annotated[int, Field(ge=1, description="Revision captured by the approval event")],
+    source_event_id: Annotated[str, Field(min_length=1, max_length=240)],
     config: RunnableConfig = None,
 ) -> str:
     """Create an idempotent Test Run from an approved immutable Test Plan and verify the run"""
     configurable = (config or {}).get("configurable", {})
     automation_run_id = configurable.get("automation_run_id")
     permissions = set(configurable.get("permissions", []))
+    expected_event_id = f"test-plan:{test_plan_id}:{expected_revision}:TEST_PLAN_APPROVED"
     if not automation_run_id:
         return json.dumps(
             {"status": "automation_blocked", "reason_code": "AUTOMATION_RUN_REQUIRED"}
@@ -505,17 +508,45 @@ async def process_approved_test_plan(
             and item.get("project_id") == project_id
             and item.get("artifact_type") == "test_plan"
             and str(item.get("artifact_id") or "") == test_plan_id
+            and item.get("artifact_revision") == expected_revision
         ),
         None,
     )
-    if not plan_source:
+    if not plan_source or source_event_id != expected_event_id:
         return json.dumps(
             {"status": "automation_blocked", "reason_code": "TEST_PLAN_EVENT_EVIDENCE_REQUIRED"}
         )
     plan = parse(await call("GET", f"/ke-hoach-kiem-thu/{test_plan_id}", config))
-    if not plan or plan.get("project_id") != project_id or plan.get("status") != "APPROVED":
+    if not plan or plan.get("project_id") != project_id:
+        return json.dumps(
+            {"status": "automation_blocked", "reason_code": "TEST_PLAN_PROJECT_SCOPE_INVALID"}
+        )
+    if plan.get("revision") != expected_revision:
+        return json.dumps(
+            {
+                "status": "completed",
+                "test_plan_id": test_plan_id,
+                "action": "SKIPPED",
+                "reason_code": "TEST_PLAN_APPROVAL_EVENT_SUPERSEDED",
+                "event_revision": expected_revision,
+                "observed_revision": plan.get("revision"),
+                "verification": {
+                    "status": "COMPLETED",
+                    "project_id": project_id,
+                    "artifact_ids": [test_plan_id],
+                    "checks": ["project_scope", "approval_event_revision", "superseded_event_noop"],
+                },
+            },
+            ensure_ascii=False,
+        )
+    if plan.get("status") != "APPROVED":
         return json.dumps(
             {"status": "automation_blocked", "reason_code": "APPROVED_TEST_PLAN_REQUIRED"}
+        )
+    expected_snapshot_hash = str(plan.get("approved_snapshot_hash") or "")
+    if not expected_snapshot_hash:
+        return json.dumps(
+            {"status": "automation_blocked", "reason_code": "APPROVED_TEST_PLAN_SNAPSHOT_HASH_REQUIRED"}
         )
     snapshot = plan.get("approved_snapshot") or plan
     version_ids = list(dict.fromkeys(snapshot.get("test_case_version_ids") or []))
@@ -531,7 +562,13 @@ async def process_approved_test_plan(
             }
         )
     return await _start_test_run_from_approved_plan(
-        project_id, test_plan_id, plan, snapshot, automation_run_id, config
+        project_id,
+        test_plan_id,
+        plan,
+        snapshot,
+        automation_run_id,
+        expected_snapshot_hash,
+        config,
     )
 
 
@@ -715,6 +752,7 @@ async def _start_test_run_from_approved_plan(
     plan: dict,
     snapshot: dict,
     automation_run_id: str,
+    expected_snapshot_hash: str,
     config: RunnableConfig,
 ) -> str:
     configurable = (config or {}).get("configurable", {})
@@ -733,7 +771,7 @@ async def _start_test_run_from_approved_plan(
         "name": f"{plan.get('name') or test_plan_id} - lần chạy tự động",
         "test_plan_id": test_plan_id,
         "test_case_version_ids": version_ids,
-        "assignment_strategy": "CONFIRMED_SKILLS",
+        "assignment_strategy": "PROFILE_EVIDENCE",
         "environment": snapshot.get("environment") or "",
         "environment_id": snapshot.get("environment_id"),
         "release": snapshot.get("release") or "",
@@ -741,6 +779,7 @@ async def _start_test_run_from_approved_plan(
         "build": snapshot.get("build") or "",
         "build_id": snapshot.get("build_id"),
         "idempotency_key": f"ai-automation-{automation_run_id}",
+        "expected_test_plan_snapshot_hash": expected_snapshot_hash,
     }
     run = parse(await call("POST", f"/du-an/{project_id}/lan-chay-kiem-thu", config, payload))
     if not run or not run.get("_id"):
@@ -785,6 +824,7 @@ async def _start_test_run_from_approved_plan(
         or readback.get("_id") != run_id
         or readback.get("project_id") != project_id
         or readback.get("test_plan_id") != test_plan_id
+        or readback.get("test_plan_snapshot_hash") != expected_snapshot_hash
         or readback.get("status") not in {"IN_PROGRESS", "COMPLETED"}
         or set(readback.get("test_case_version_ids", [])) != set(version_ids)
         or not _valid_confirmed_assignment_snapshot(readback, version_ids)
@@ -948,7 +988,13 @@ async def process_changed_test_plan(
     snapshot = readback["approved_snapshot"]
     result = parse(
         await _start_test_run_from_approved_plan(
-            project_id, test_plan_id, readback, snapshot, automation_run_id, config
+            project_id,
+            test_plan_id,
+            readback,
+            snapshot,
+            automation_run_id,
+            str(readback["approved_snapshot_hash"]),
+            config,
         )
     )
     if not result or result.get("status") != "completed":

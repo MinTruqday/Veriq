@@ -30,6 +30,7 @@ from src.tools.requirement_document_workflow import (
     requirement_document_synthesis_snapshot,
     requirement_template_source_snapshot_matches,
     requirement_import_has_unresolved_matches,
+    resumable_draft_matches_blueprint_scope,
     safe_requirement_import_resolution,
     source_extraction_gaps,
     source_extraction_warnings,
@@ -301,13 +302,29 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_requirement_is_auto_published_only_through_review_and_baseline_checks(self):
         responses = [
-            {"_id": "REQV-1", "status": "IN_REVIEW", "revision": 2},
+            {
+                "_id": "REQ-1",
+                "project_id": "project-1",
+                "current_version_id": "REQV-1",
+            },
+            {
+                "_id": "REQV-1",
+                "requirement_id": "REQ-1",
+                "project_id": "project-1",
+                "status": "IN_REVIEW",
+                "revision": 2,
+            },
             {
                 "_id": "REQV-1",
                 "status": "BASELINED",
                 "revision": 3,
                 "requirement_id": "REQ-1",
                 "project_id": "project-1",
+            },
+            {
+                "_id": "REQ-1",
+                "project_id": "project-1",
+                "current_version_id": "REQV-1",
             },
         ]
         with patch(
@@ -316,14 +333,53 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         ) as operation:
             version = await publish_grounded_requirement(
                 "project-1",
-                {"_id": "REQ-1"},
-                {"_id": "REQV-1", "status": "DRAFT", "revision": 1},
+                {
+                    "_id": "REQ-1",
+                    "project_id": "project-1",
+                    "current_version_id": "REQV-1",
+                },
+                {
+                    "_id": "REQV-1",
+                    "requirement_id": "REQ-1",
+                    "project_id": "project-1",
+                    "status": "DRAFT",
+                    "revision": 1,
+                },
                 {},
             )
         self.assertEqual(version["status"], "BASELINED")
-        self.assertEqual(operation.await_count, 2)
-        self.assertIn("gui-ra-soat", operation.await_args_list[0].args[1])
-        self.assertIn("chot-chuan", operation.await_args_list[1].args[1])
+        self.assertEqual(operation.await_count, 4)
+        self.assertEqual(operation.await_args_list[0].args[:2], ("GET", "/yeu-cau/REQ-1"))
+        self.assertIn("gui-ra-soat", operation.await_args_list[1].args[1])
+        self.assertIn("chot-chuan", operation.await_args_list[2].args[1])
+        self.assertEqual(operation.await_args_list[3].args[:2], ("GET", "/yeu-cau/REQ-1"))
+
+    async def test_already_baselined_stale_requirement_version_is_not_reported_as_current(self):
+        with patch(
+            "src.tools.automation_publication.require_operation",
+            new=AsyncMock(return_value={
+                "_id": "REQ-1",
+                "project_id": "project-1",
+                "current_version_id": "REQV-2",
+            }),
+        ) as operation:
+            with self.assertRaisesRegex(AutomationOperationError, "REQUIREMENT_VERSION_SUPERSEDED"):
+                await publish_grounded_requirement(
+                    "project-1",
+                    {
+                        "_id": "REQ-1",
+                        "project_id": "project-1",
+                        "current_version_id": "REQV-1",
+                    },
+                    {
+                        "_id": "REQV-1",
+                        "requirement_id": "REQ-1",
+                        "project_id": "project-1",
+                        "status": "BASELINED",
+                    },
+                    {},
+                )
+        operation.assert_awaited_once_with("GET", "/yeu-cau/REQ-1", {})
 
     async def test_compilation_sources_are_revalidated_before_artifact_writes(self):
         documents = {
@@ -728,6 +784,95 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, "SUCCESS")
         operation.assert_awaited_once()
         self.assertIn("/DRAFT-1/phe-duyet", operation.await_args.args[1])
+
+    async def test_ai_test_case_publication_recovers_after_approval_response_was_lost(self):
+        draft = {
+            "_id": "DRAFT-APPROVED",
+            "project_id": "project-1",
+            "status": "APPROVED",
+            "revision": 4,
+            "frozen_version_id": "TCV-1",
+            "title": "Đăng nhập có căn cứ",
+            "requirement_version_ids": ["REQV-1"],
+            "coverage_obligations": ["LOGIN_ACCESS"],
+            "evidence_refs": ["REQV-1"],
+            "evidence_quotes": [{"evidence_ref": "REQV-1", "quote": "Người dùng đăng nhập."}],
+        }
+        final = {
+            "data": {
+                "test_case": {
+                    "_id": "TC-1",
+                    "project_id": "project-1",
+                    "status": "ACTIVE",
+                    "current_version_id": "TCV-1",
+                },
+                "version": {
+                    "_id": "TCV-1",
+                    "test_case_id": "TC-1",
+                    "project_id": "project-1",
+                    "status": "ACTIVE",
+                    "title": "Đăng nhập có căn cứ",
+                    "requirement_version_ids": ["REQV-1"],
+                    "coverage_obligations": ["LOGIN_ACCESS"],
+                    "evidence_refs": ["REQV-1"],
+                    "evidence_quotes": [{"evidence_ref": "REQV-1", "quote": "Người dùng đăng nhập."}],
+                },
+            },
+            "status": "SUCCESS",
+        }
+        operation = AsyncMock(return_value=final)
+
+        with patch("src.tools.automation_publication.require_operation", operation):
+            case, version, status = await publish_grounded_test_case(
+                "project-1", draft, {}
+            )
+
+        self.assertEqual(case["current_version_id"], "TCV-1")
+        self.assertEqual(version["_id"], "TCV-1")
+        self.assertEqual(status, "SUCCESS")
+        operation.assert_awaited_once()
+        self.assertIn("/DRAFT-APPROVED/phe-duyet", operation.await_args.args[1])
+
+    async def test_approved_test_case_retry_rejects_a_different_current_version(self):
+        draft = {
+            "_id": "DRAFT-APPROVED",
+            "project_id": "project-1",
+            "status": "APPROVED",
+            "revision": 4,
+            "frozen_version_id": "TCV-1",
+            "title": "Đăng nhập có căn cứ",
+            "requirement_version_ids": ["REQV-1"],
+            "coverage_obligations": ["LOGIN_ACCESS"],
+            "evidence_refs": ["REQV-1"],
+            "evidence_quotes": [{"evidence_ref": "REQV-1", "quote": "Người dùng đăng nhập."}],
+        }
+        final = {
+            "test_case": {
+                "_id": "TC-1",
+                "project_id": "project-1",
+                "status": "ACTIVE",
+                "current_version_id": "TCV-2",
+            },
+            "version": {
+                "_id": "TCV-2",
+                "test_case_id": "TC-1",
+                "project_id": "project-1",
+                "status": "ACTIVE",
+                "title": "Đăng nhập có căn cứ",
+                "requirement_version_ids": ["REQV-1"],
+                "coverage_obligations": ["LOGIN_ACCESS"],
+                "evidence_refs": ["REQV-1"],
+                "evidence_quotes": [{"evidence_ref": "REQV-1", "quote": "Người dùng đăng nhập."}],
+            },
+        }
+        with patch(
+            "src.tools.automation_publication.require_operation",
+            new=AsyncMock(return_value=final),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "TEST_CASE_PUBLICATION_READBACK_INVALID"
+            ):
+                await publish_grounded_test_case("project-1", draft, {})
 
     async def test_ai_test_case_publication_rejects_review_readback_without_project_scope(self):
         responses = [
@@ -1346,6 +1491,28 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 [fact.artifact_id],
             )
 
+    def test_repeated_source_sentence_preserves_each_canonical_span(self):
+        repeated = "Người dùng phải xác nhận email."
+        source_text = f"{repeated}\n{repeated}"
+
+        facts, evidence = verified_document_facts(
+            ["DOC-1"],
+            {"DOC-1": {"_id": "DOC-1", "normalized_content": source_text}},
+        )
+
+        self.assertEqual([fact.quote for fact in facts], [repeated, repeated])
+        self.assertEqual(
+            [(fact.source_start, fact.source_end) for fact in facts],
+            [(0, len(repeated)), (len(repeated) + 1, (len(repeated) * 2) + 1)],
+        )
+        self.assertTrue(
+            all(
+                evidence[fact.artifact_version_id]["text"][fact.source_start:fact.source_end]
+                == fact.quote
+                for fact in facts
+            )
+        )
+
     def test_blueprint_source_lineage_returns_only_verified_claim_facts(self):
         documents = {
             "DOC-1": {
@@ -1392,6 +1559,21 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(source_facts, [])
         self.assertEqual(source_evidence, [])
 
+    def test_blueprint_source_lineage_rejects_quote_inside_another_word(self):
+        facts, _ = verified_document_facts(
+            ["DOC-1"],
+            {"DOC-1": {"_id": "DOC-1", "normalized_content": "invalid"}},
+        )
+        blueprint = {
+            "obligations": [{"key": "VALID", "source_ref": "DOC-1", "source_quote": "valid"}],
+            "clarifications": [],
+        }
+
+        source_facts, source_evidence = blueprint_source_lineage(blueprint, facts)
+
+        self.assertEqual(source_facts, [])
+        self.assertEqual(source_evidence, [])
+
     def test_generated_obligation_coverage_requires_the_compiled_quote(self):
         obligation = {
             "key": "LOCKOUT",
@@ -1420,6 +1602,38 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(generated_obligation_evidence_matches(
             ["LOCKOUT"], [], [obligation]
         ))
+
+    def test_generated_obligation_evidence_rejects_quote_inside_another_word(self):
+        self.assertFalse(
+            generated_obligation_evidence_matches(
+                ["VALID"],
+                [{
+                    "obligation_key": "VALID",
+                    "evidence_quotes": [{"evidence_ref": "REQ-V1", "quote": "invalid"}],
+                }],
+                [{"key": "VALID", "source_quote": "valid"}],
+            )
+        )
+
+    def test_resumable_draft_rejects_quote_inside_another_word(self):
+        draft = {
+            "_id": "DRAFT-1",
+            "origin": "ai_generated",
+            "requirement_version_ids": ["REQ-V1"],
+            "coverage_obligations": ["VALID"],
+            "evidence_refs": ["REQ-V1"],
+            "source_evidence": [{"artifact_version_id": "REQ-V1", "text": "invalid"}],
+            "evidence_quotes": [{"evidence_ref": "REQ-V1", "quote": "valid"}],
+        }
+
+        self.assertFalse(
+            resumable_draft_matches_blueprint_scope(
+                draft,
+                "REQ-V1",
+                [],
+                [{"key": "VALID", "source_quote": "valid"}],
+            )
+        )
 
     def test_independent_documents_with_same_display_version_keep_separate_evidence(self):
         documents = {
@@ -1844,6 +2058,20 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(
             existing_test_case_supports_obligation(
                 "REQV-1", self.obligation, self.test_case, self.test_case_version
+            )
+        )
+
+    def test_requirement_coverage_rejects_quote_inside_another_word(self):
+        obligation = {"key": "VALID", "source_quote": "valid"}
+        version = {
+            **self.test_case_version,
+            "source_evidence": [{"artifact_version_id": "REQV-1", "text": "invalid"}],
+            "evidence_quotes": [{"evidence_ref": "REQV-1", "quote": "valid"}],
+        }
+
+        self.assertFalse(
+            existing_test_case_supports_obligation(
+                "REQV-1", obligation, self.test_case, version
             )
         )
 

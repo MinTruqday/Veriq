@@ -12,10 +12,9 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.mq import mq
-from src.core.security.guardrails import guardrails_engine
 from src.prompts.automation_events import generic_event_objective
 from src.repositories.automation import automation_repository
-from src.repositories.mcp import mcp_repository
+from src.runtime.queue_names import AUTOMATION_QUEUE
 from src.runtime.limits import limits
 from src.schemas.automation import (
     AutomationCheckpointPhase,
@@ -40,7 +39,7 @@ async def publish_automation_run(automation_run_id: str) -> bool:
     try:
         return bool(
             await mq.publish(
-                "ai.automation", {"automation_run_id": automation_run_id}
+                AUTOMATION_QUEUE, {"automation_run_id": automation_run_id}
             )
         )
     except Exception:
@@ -102,6 +101,11 @@ class AutomationService:
     ) -> AutomationDefinition:
         if role not in {"BA", "QA"}:
             raise HTTPException(status_code=403, detail={"code": "AUTOMATION_DEFINITION_DENIED"})
+        if payload.trigger == AutomationTrigger.MANUAL:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "AUTOMATION_TRIGGER_MUST_BE_DOMAIN_EVENT"},
+            )
         if payload.enabled and await automation_repository.list_enabled_definitions(
             payload.project_id, payload.trigger
         ):
@@ -117,6 +121,8 @@ class AutomationService:
             trigger=payload.trigger,
             objective=payload.objective,
             intent=payload.intent,
+            actions=payload.actions,
+            conditions=payload.conditions,
             enabled=payload.enabled,
         )
         try:
@@ -130,6 +136,11 @@ class AutomationService:
     async def update_definition(
         self, definition: AutomationDefinition, payload: AutomationDefinitionPatch
     ) -> AutomationDefinition:
+        if payload.trigger == AutomationTrigger.MANUAL:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "AUTOMATION_TRIGGER_MUST_BE_DOMAIN_EVENT"},
+            )
         if definition.revision != payload.expected_revision:
             raise HTTPException(
                 status_code=409,
@@ -159,89 +170,17 @@ class AutomationService:
     async def create(
         self, payload: AutomationRunRequest, user_id: str, role: str, permissions: list[str]
     ) -> AutomationRun:
-        if any(item.project_id != payload.project_id for item in payload.evidence):
-            raise HTTPException(
-                status_code=422, detail={"code": "AUTOMATION_EVIDENCE_PROJECT_MISMATCH"}
-            )
-        if payload.change_simulation:
-            inspection = await guardrails_engine.async_inspect_input(
-                payload.change_simulation.proposed_source_text
-            )
-            if not inspection.get("is_safe", False):
-                raise HTTPException(
-                    status_code=422, detail={"code": "CHANGE_SIMULATION_SOURCE_REJECTED"}
-                )
-        if payload.intent:
-            capability = registered_tools().get(payload.intent)
-            access = tool_access(capability)
-            if not access:
-                raise HTTPException(
-                    status_code=422, detail={"code": "AUTOMATION_CAPABILITY_UNKNOWN"}
-                )
-            if access.permission not in permissions:
-                raise HTTPException(
-                    status_code=403, detail={"code": "AUTOMATION_CAPABILITY_DENIED"}
-                )
-            if access.name == "call_mcp_read_tool":
-                connection = await mcp_repository.get(
-                    str(payload.intent_arguments.get("connection_id") or "")
-                )
-                tool_name = str(payload.intent_arguments.get("tool_name") or "")
-                if (
-                    not connection
-                    or not connection.enabled
-                    or connection.project_id not in {None, payload.project_id}
-                    or tool_name not in connection.allowed_read_tools
-                ):
-                    raise HTTPException(
-                        status_code=422, detail={"code": "MCP_TOOL_SCOPE_OR_ALLOWLIST_DENIED"}
-                    )
-            try:
-                capability.args_schema.model_validate(payload.intent_arguments)
-            except Exception as error:
-                raise HTTPException(
-                    status_code=422, detail={"code": "AUTOMATION_CAPABILITY_ARGUMENTS_INVALID"}
-                ) from error
-        elif payload.intent_arguments:
-            raise HTTPException(
-                status_code=422, detail={"code": "AUTOMATION_CAPABILITY_ARGUMENTS_WITHOUT_INTENT"}
-            )
-        run = AutomationRun(
-            project_id=payload.project_id,
-            requester_user_id=user_id,
-            requester_role=role,
-            requester_permissions=permissions,
-            execution_user_id=user_id,
-            execution_role=role,
-            execution_permissions=permissions,
-            kind=payload.kind,
-            objective=payload.objective,
-            intent=payload.intent,
-            intent_arguments=payload.intent_arguments,
-            target_artifact_ids=payload.target_artifact_ids,
-            evidence=payload.evidence,
-            constraints=payload.constraints,
-            change_simulation=payload.change_simulation,
+        raise HTTPException(
+            status_code=410,
+            detail={"code": "DIRECT_AUTOMATION_RUN_RETIRED", "replacement": "enqueue_event"},
         )
-        run = await automation_repository.create_run_with_checkpoint(
-            run, phase=AutomationCheckpointPhase.QUEUED
-        )
-        if not await publish_automation_run(run.automation_run_id):
-            updated = await automation_repository.transition_with_checkpoint(
-                run.automation_run_id,
-                run.revision,
-                {"status": AutomationStatus.DEGRADED, "error_code": "AUTOMATION_QUEUE_UNAVAILABLE"},
-                phase=AutomationCheckpointPhase.FINALIZED,
-                detail={"reason_code": "AUTOMATION_QUEUE_UNAVAILABLE", "retryable": True},
-            )
-            if updated:
-                return updated
-            latest = await automation_repository.get_run(run.automation_run_id)
-            if latest:
-                return latest
-        return run
 
     async def enqueue_event(self, event: AutomationEventRequest) -> list[AutomationRun]:
+        if event.trigger == AutomationTrigger.MANUAL:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "AUTOMATION_TRIGGER_MUST_BE_DOMAIN_EVENT"},
+            )
         if any(item.project_id != event.project_id for item in event.evidence):
             raise HTTPException(
                 status_code=422, detail={"code": "AUTOMATION_EVIDENCE_PROJECT_MISMATCH"}
@@ -349,11 +288,6 @@ class AutomationService:
         )
 
     async def _default_execution_principal(self, event, role=None, permissions=None):
-        """Select the business owner for this stage, retaining the initiator.
-
-        Document drafting uses an active BA; downstream test design uses QA.
-        This delegates preparation only and never grants publication authority.
-        """
         trigger = getattr(event, "trigger", None)
         trigger_value = getattr(trigger, "value", trigger)
         if trigger_value == "WORK_ITEM_CHANGED":
@@ -392,6 +326,8 @@ class AutomationService:
             stage_permission = "ai.generate_api_testcase"
         elif trigger_value == "PERFORMANCE_CONFIGURATION_APPROVED":
             stage_permission = "ai.generate_performance_plan"
+        elif trigger_value == "RELEASE_CHANGED":
+            stage_permission = "release.close"
         else:
             stage_permission = "ai.generate_testcase"
         if execution_role != required_role and stage_permission not in execution_permissions:
@@ -443,6 +379,17 @@ class AutomationService:
                 evidence=event.evidence,
                 constraints={
                     "trigger": event.trigger.value,
+                    "requester_role": role,
+                    **(
+                        {"automation_conditions": definition.conditions.model_dump(mode="json")}
+                        if definition
+                        else {}
+                    ),
+                    **(
+                        {"automation_actions": [action.value for action in definition.actions]}
+                        if definition and definition.actions
+                        else {}
+                    ),
                     **(
                         {"parent_automation_run_id": event.parent_automation_run_id}
                         if event.parent_automation_run_id

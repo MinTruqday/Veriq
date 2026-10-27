@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 from datetime import datetime, timezone
 
@@ -33,33 +32,43 @@ class ProjectArtifactGenerationRepository:
         return database.mongodb[settings.AI_DB_NAME][self.collection_name]
 
     async def _legacy_manifest(self, project_id: str, artifact_version_id: str) -> dict:
-        vector_points, bm25_points = await asyncio.gather(
-            vector_store.list_artifact_version_points(project_id, artifact_version_id),
-            bm25_store.list_artifact_version_points(project_id, artifact_version_id),
+        bm25_snapshot = await bm25_store.artifact_version_summary_snapshot(
+            project_id, artifact_version_id, self.legacy_generation
         )
+
         vector_by_generation = {}
-        bm25_by_generation = {}
-        for point in vector_points:
-            generation = str(
-                point.get("metadata", {}).get("index_generation") or self.legacy_generation
+        async for point in vector_store.iter_artifact_version_summaries(
+            project_id, artifact_version_id
+        ):
+            point_id = str(point["id"])
+            generation = str(point.get("index_generation") or self.legacy_generation)
+            summary = vector_by_generation.setdefault(
+                generation,
+                {"count": 0, "all_ids_in_bm25": True, "latest": ""},
             )
-            vector_by_generation.setdefault(generation, []).append(point)
-        for point in bm25_points:
-            generation = str(
-                point.get("metadata", {}).get("index_generation") or self.legacy_generation
+            summary["count"] += 1
+            if not bm25_snapshot.contains(point_id, generation):
+                summary["all_ids_in_bm25"] = False
+            summary["latest"] = max(
+                summary["latest"], str(point.get("indexed_at") or "")
             )
-            bm25_by_generation.setdefault(generation, []).append(point)
 
         coherent = []
-        for generation in vector_by_generation.keys() & bm25_by_generation.keys():
-            vector_ids = {str(point["id"]) for point in vector_by_generation[generation]}
-            bm25_ids = {str(point["id"]) for point in bm25_by_generation[generation]}
-            if vector_ids and vector_ids == bm25_ids:
-                latest = max(
-                    str(point.get("metadata", {}).get("indexed_at") or "")
-                    for point in vector_by_generation[generation]
+        for generation, vector_summary in vector_by_generation.items():
+            bm25_count = bm25_snapshot.generation_counts.get(generation, 0)
+            if (
+                bm25_count > 0
+                and vector_summary["count"] > 0
+                and vector_summary["all_ids_in_bm25"]
+                and vector_summary["count"] == bm25_count
+            ):
+                coherent.append(
+                    (
+                        vector_summary["latest"],
+                        generation,
+                        vector_summary["count"],
+                    )
                 )
-                coherent.append((latest, generation, len(vector_ids)))
 
         if coherent:
             _, generation, point_count = max(coherent)
@@ -181,7 +190,10 @@ class ProjectArtifactGenerationRepository:
         identities = set()
         for document in documents:
             metadata = document.get("metadata") or document
-            if metadata.get("document_id"):
+            if (
+                metadata.get("document_id")
+                and metadata.get("artifact_type") != "requirement_document"
+            ):
                 continue
             project_id = str(metadata.get("project_id") or "").strip()
             artifact_version_id = str(metadata.get("artifact_version_id") or "").strip()
@@ -226,7 +238,7 @@ class ProjectArtifactGenerationRepository:
         filtered = []
         for document in documents:
             metadata = document.get("metadata") or document
-            if metadata.get("document_id"):
+            if metadata.get("document_id") and metadata.get("artifact_type") != "requirement_document":
                 filtered.append(document)
                 continue
             project_id = str(metadata.get("project_id") or "").strip()

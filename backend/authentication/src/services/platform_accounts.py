@@ -26,7 +26,7 @@ class PlatformAccountService:
     async def create(
         payload: UserCreateRequest, client_ip: str, current_user: CurrentUser
     ):
-        user = await SessionService.register_user(
+        user = await SessionService.create_platform_user(
             UserCreate(
                 email=payload.email,
                 full_name=payload.full_name,

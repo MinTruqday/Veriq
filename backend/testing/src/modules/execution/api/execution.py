@@ -411,7 +411,7 @@ async def create_defect(
     project_id: str, payload: DefectCreate, user: CurrentUser = Depends(get_current_user)
 ):
     defect = await create_defect_record(project_id, payload, user)
-    return envelope(defect, revision=1)
+    return envelope(defect, revision=defect.get("revision", 1))
 
 
 @router.get("/du-an/{project_id}/loi")

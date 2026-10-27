@@ -130,6 +130,7 @@ class ContentClient:
         indexing_lease_token: str = "",
         index_generation: str = "",
         source_snapshot: dict | None = None,
+        document_index_contract_version: int | None = None,
     ):
         return await cls.exchange(
             "update_index",
@@ -137,6 +138,7 @@ class ContentClient:
             indexing_attempt_id=indexing_attempt_id,
             indexing_lease_token=indexing_lease_token,
             index_generation=index_generation,
+            document_index_contract_version=document_index_contract_version,
             source_snapshot=source_snapshot,
             indexed_chunks=indexed_chunks,
             extraction_method=extraction_method,
@@ -157,6 +159,7 @@ class ContentClient:
         indexing_lease_token: str = "",
         index_generation: str = "",
         source_snapshot: dict | None = None,
+        document_index_contract_version: int | None = None,
     ):
         return await cls.update_index(
             document_id,
@@ -168,6 +171,7 @@ class ContentClient:
             indexing_lease_token,
             index_generation,
             source_snapshot,
+            document_index_contract_version,
         )
 
     @classmethod

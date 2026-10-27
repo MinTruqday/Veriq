@@ -62,6 +62,7 @@ class EvidenceItem(BaseModel):
     relationship: EvidenceRelationship | None = None
     project_id: str
     artifact_revision: int | None = Field(default=None, ge=1, strict=True)
+    artifact_status: str | None = Field(default=None, max_length=100)
     chunk_id: str | None = None
     chunk_index: int | None = None
     chunk_type: str | None = None

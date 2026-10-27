@@ -40,6 +40,7 @@ from src.repositories.requirement import requirement_repository
 from src.repositories.test_design import test_design_repository
 
 logger = logging.getLogger(__name__)
+REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -111,7 +112,11 @@ async def recover_document_ingestion(document, user):
         return False
     if document.get("status") != "READY" or document.get("ai_enabled") is not True:
         return True
-    if document.get("index_status") not in {"INDEXED", "DEGRADED"}:
+    if (
+        document.get("index_status") not in {"INDEXED", "DEGRADED"}
+        or document.get("index_contract_version")
+        != REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION
+    ):
         indexed = await index_requirement_document(document)
         document = await requirement_document_repository.find(
             document["_id"], document["project_id"]
@@ -728,6 +733,7 @@ async def index_requirement_document(document, _stale_retries=0):
         created_by=document.get("created_by"),
         visibility=document.get("visibility") or "private",
         shared_with=document.get("shared_with") or [],
+        ai_enabled=document.get("ai_enabled") is True,
         approved_by=document.get("approved_by"),
         approved_at=document.get("approved_at"),
         effective_from=document.get("effective_from"),
@@ -749,6 +755,9 @@ async def index_requirement_document(document, _stale_retries=0):
         index_status,
         now(),
         expected_revision=document.get("revision"),
+        index_contract_version=(
+            REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION if indexed else None
+        ),
     )
     if result.matched_count:
         return indexed
@@ -1308,9 +1317,7 @@ async def get_requirement_source_impact(document_id, user):
                 ],
             }
         )
-    latest = await requirement_document_repository.latest_in_source_series(
-        project_id, series_id
-    ) or versions[-1]
+    latest = versions[-1]
     source_versions = []
     for item in versions:
         previous_id = item.get("previous_source_version_id")

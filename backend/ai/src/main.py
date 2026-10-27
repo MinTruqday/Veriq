@@ -184,6 +184,12 @@ async def agent_status():
 
 async def startup_event():
     logger.info("AI system initialized")
+    try:
+        from src.core.infrastructure.observability import initialize_tracing
+
+        initialize_tracing()
+    except Exception as error:
+        logger.warning("AI trace initialization unavailable: {}", type(error).__name__)
     from src.prompts.testing import validate_prompt_contract_registry
 
     validate_prompt_contract_registry()
@@ -248,7 +254,7 @@ async def initialize_ai_runtime_background():
         from src.utils.model_provider import model_client
 
         if await model_client.warm_primary():
-            logger.info("Primary model warmup completed")
+            logger.info("Configured model warmup completed")
         else:
             logger.warning("Primary model unavailable")
     except Exception:
@@ -259,12 +265,6 @@ async def initialize_ai_runtime_background():
 async def shutdown_event():
     global retrieval_ready
     retrieval_ready = False
-    try:
-        from src.core.infrastructure.observability import langfuse_cloud_exporter
-
-        await langfuse_cloud_exporter.close()
-    except Exception:
-        logger.exception("Optional cloud trace exporter shutdown failed")
     try:
         from src.runtime.document_ingestion_worker import document_ingestion_worker
 
@@ -314,6 +314,12 @@ async def shutdown_event():
         await close_db()
     except Exception:
         logger.exception("Database shutdown failed")
+    try:
+        from src.core.infrastructure.observability import shutdown_tracing
+
+        shutdown_tracing()
+    except Exception as error:
+        logger.warning("AI trace shutdown issue: {}", type(error).__name__)
 
 
 @asynccontextmanager

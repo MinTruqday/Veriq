@@ -76,37 +76,9 @@ class GoogleService:
 
         user_doc = await IdentityRepository.get_auth_credential_by_email(email)
         if not user_doc:
-            config = await IdentityRepository.get_system_config()
-            if config and not config.get("registration_enabled", True):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Tính năng đăng ký tài khoản mới tạm thời bị vô hiệu hóa",
-                )
-            slug = f"{email.split('@')[0]}_{secrets.token_hex(4)}"
-            created_at = datetime.now(timezone.utc)
-            user_id = str(uuid.uuid4())
-            user_doc = {
-                "_id": user_id,
-                "email": email,
-                "full_name": google_user.get("name") or email.split("@")[0],
-                "slug": slug,
-                "system_role": "USER",
-                "permissions": [],
-                "is_active": True,
-                "password_hash": None,
-                "passkeys": [],
-                "provider": "google",
-                "created_at": created_at,
-                "updated_at": created_at,
-            }
-            try:
-                await IdentityRepository.create_auth_credential(user_doc)
-            except HTTPException:
-                raise
-            except Exception:
-                logger.exception("Federated user provisioning failed")
-                raise HTTPException(
-                    status_code=503, detail="Không thể thiết lập tài khoản liên kết"
-                )
+            raise HTTPException(
+                status_code=403,
+                detail="Tài khoản chưa được quản trị viên cấp quyền đăng nhập",
+            )
 
         return await SessionService.issue_token_for_user(user_doc, client_ip)

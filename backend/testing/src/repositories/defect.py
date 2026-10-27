@@ -4,15 +4,41 @@ from src.core.database import database
 
 
 class DefectRepository:
-    async def find_test_result(self, result_id, project_id, status=None):
+    async def find_test_result(self, result_id, project_id, status=None, session=None):
         query = {"_id": result_id, "project_id": project_id}
         if status is not None:
             query["status"] = status
-        return await database.value.test_results.find_one(query)
+        return await database.value.test_results.find_one(
+            query, **({"session": session} if session is not None else {})
+        )
 
-    async def find_test_run(self, run_id, project_id):
+    async def find_test_run(self, run_id, project_id, session=None):
         return await database.value.test_runs.find_one(
-            {"_id": run_id, "project_id": project_id}
+            {"_id": run_id, "project_id": project_id},
+            **({"session": session} if session is not None else {}),
+        )
+
+    async def link_failed_result_to_defect(
+        self, result_id, project_id, expected_revision, test_run_id,
+        test_case_version_id, defect_id, updated_at, session,
+    ):
+        query = {
+            "_id": result_id,
+            "project_id": project_id,
+            "test_run_id": test_run_id,
+            "test_case_version_id": test_case_version_id,
+            "status": "FAIL",
+            "revision": expected_revision,
+        }
+        return await database.value.test_results.find_one_and_update(
+            query,
+            {
+                "$addToSet": {"linked_defect_ids": defect_id},
+                "$set": {"updated_at": updated_at},
+                "$inc": {"revision": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+            session=session,
         )
 
     async def insert_defect(self, value, session=None):
@@ -20,6 +46,18 @@ class DefectRepository:
             value, **({"session": session} if session is not None else {})
         )
         return value
+
+    async def find_defect_by_idempotency(
+        self, project_id, user_id, idempotency_key, session=None
+    ):
+        return await database.value.defects.find_one(
+            {
+                "project_id": project_id,
+                "created_by": user_id,
+                "idempotency_key": idempotency_key,
+            },
+            **({"session": session} if session is not None else {}),
+        )
 
     async def list_requirement_version_ids(self, project_id, requirement_id, limit):
         values = await database.value.requirement_versions.find(
@@ -76,14 +114,16 @@ class DefectRepository:
             }
         ).sort("created_at", -1).to_list(limit)
 
-    async def find_test_case_version(self, version_id, project_id):
+    async def find_test_case_version(self, version_id, project_id, session=None):
         return await database.value.test_case_versions.find_one(
-            {"_id": version_id, "project_id": project_id}
+            {"_id": version_id, "project_id": project_id},
+            **({"session": session} if session is not None else {}),
         )
 
-    async def count_requirement_versions(self, project_id, version_ids):
+    async def count_requirement_versions(self, project_id, version_ids, session=None):
         return await database.value.requirement_versions.count_documents(
-            {"project_id": project_id, "_id": {"$in": version_ids}}
+            {"project_id": project_id, "_id": {"$in": version_ids}},
+            **({"session": session} if session is not None else {}),
         )
 
     async def transition_defect(

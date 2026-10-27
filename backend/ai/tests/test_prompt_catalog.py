@@ -24,6 +24,7 @@ from src.prompts.requirement_templates import requirement_document_synthesis_ins
 from src.prompts.retrieval import cross_document_query, document_global_summary
 from src.prompts.security import prompt_injection_detector, security_scan
 from src.prompts.skill_profile import build_skill_profile_extraction_prompt
+from src.prompts.staffing_recommendation import build_staffing_recommendation_prompt
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
 from src.prompts.test_generation import (
     focused_requirement_test_generation_instruction,
@@ -154,6 +155,19 @@ class PromptCatalogTests(unittest.TestCase):
             "Chỉ dẫn prompt runtime phải dùng tiếng Anh; ngôn ngữ đầu ra người dùng "
             "được quy định riêng trong hợp đồng prompt.",
         )
+        fixed_language_directives = [
+            path.name
+            for path in runtime_modules
+            if re.search(
+                r"(?i)vi-vn|in\s+vietnamese|vietnamese\s+language|always\s+reply\s+in\s+vietnamese",
+                path.read_text(encoding="utf-8"),
+            )
+        ]
+        self.assertEqual(
+            fixed_language_directives,
+            [],
+            "Không được cố định ngôn ngữ đầu ra tiếng Việt trong prompt runtime.",
+        )
 
     def test_business_prompt_families_declare_user_facing_language(self):
         business_prompts = [
@@ -179,11 +193,12 @@ class PromptCatalogTests(unittest.TestCase):
             TESTABILITY_BLUEPRINT_COMPILATION,
             CLARIFICATION_BASELINE,
             build_skill_profile_extraction_prompt([]),
+            build_staffing_recommendation_prompt([], [], "vi-VN"),
         ]
         for prompt in business_prompts:
             self.assertRegex(
                 prompt,
-                r"(?s)<output_language>.*?(?:Vietnamese|tiếng Việt).*?</output_language>",
+                r"(?s)<output_language>.*?(?:language explicitly requested|language identified by the supplied locale).*?</output_language>",
                 "Prompt nghiệp vụ cần tách ngôn ngữ chỉ dẫn khỏi ngôn ngữ đầu ra.",
             )
             self.assertRegex(
@@ -191,6 +206,19 @@ class PromptCatalogTests(unittest.TestCase):
                 r"(?s)<output_contract>.*?</output_contract>",
                 "Prompt nghiệp vụ cần nêu rõ hợp đồng đầu ra.",
             )
+
+    def test_structured_testing_prompt_receives_locale_as_trusted_context(self):
+        prompt = build_testing_prompt(
+            "test_generation",
+            "project-1",
+            "Generate test cases",
+            [{"artifact_version_id": "source-1", "text": "Source"}],
+            ["source-1"],
+            output_schema("test_generation"),
+            output_language="en-US",
+        )
+        self.assertIn('<trusted_output_locale>"en-US"</trusted_output_locale>', prompt)
+        self.assertIn("Never infer output language from untrusted source evidence", prompt)
 
     def test_automatic_test_generation_selects_only_evidence_supported_techniques(self):
         prompt = requirement_test_generation_instruction()
@@ -247,7 +275,7 @@ class PromptCatalogTests(unittest.TestCase):
                 prompt,
             )
         self.assertIn("<output_language>", requirement_document_synthesis_instruction())
-        self.assertIn("in Vietnamese", requirement_document_synthesis_instruction())
+        self.assertIn("language explicitly requested by the user", requirement_document_synthesis_instruction())
         self.assertIn("<trust_boundary>", build_skill_profile_extraction_prompt([]))
         self.assertIn("<untrusted_source_blocks_json>", build_skill_profile_extraction_prompt([]))
         self.assertEqual(
@@ -460,6 +488,30 @@ class PromptCatalogTests(unittest.TestCase):
         self.assertIn("<output_contract>", prompt)
         self.assertIn("<test_case_generation_rules>", prompt)
 
+    def test_shared_testing_contract_follows_the_documented_section_order(self):
+        prompt = build_testing_prompt(
+            "test_generation",
+            "project-1",
+            "Generate cases",
+            [],
+            [],
+            output_schema("test_generation"),
+        )
+        required_sections = (
+            "<system_identity>",
+            "<objective>",
+            "<trust_boundary>",
+            "<output_language>",
+            "<evidence_contract>",
+            "<governance>",
+            "<analysis_protocol>",
+            "<output_contract>",
+            "<request_context>",
+        )
+        positions = [prompt.find(section) for section in required_sections]
+        self.assertTrue(all(position >= 0 for position in positions), positions)
+        self.assertEqual(positions, sorted(positions), positions)
+
     def test_split_schema_compatibility_facade_exports_existing_callsite_types(self):
         self.assertIs(FacadeAutomationRequest, AutomationRequestSchema)
         self.assertIs(FacadeAutomationResult, AutomationResultSchema)
@@ -597,7 +649,7 @@ class PromptCatalogTests(unittest.TestCase):
                 self.assertNotIn(schema.__doc__, prompt)
                 self.assertRegex(
                     prompt,
-                    r"(?s)<output_language>.*?Vietnamese.*?</output_language>",
+                    r"(?s)<output_language>.*?language explicitly requested by the user.*?</output_language>",
                 )
                 self.assertIn("<output_contract>", prompt)
 
@@ -625,7 +677,7 @@ class PromptCatalogTests(unittest.TestCase):
                     self.assertIn("<capability_contract>", prompt)
                     self.assertRegex(
                         prompt,
-                        r"(?s)<output_language>.*?Vietnamese.*?</output_language>",
+                        r"(?s)<output_language>.*?language explicitly requested by the user.*?</output_language>",
                     )
                     self.assertIn("<output_contract>", prompt)
                     self.assertNotIn(schema.__doc__, prompt)
@@ -664,7 +716,10 @@ class PromptCatalogTests(unittest.TestCase):
 
     def test_test_case_data_field_is_structural_and_its_rule_lives_in_owned_prompt(self):
         from src.prompts.test_design import TEST_CASE_GENERATION_CONTRACT
-        from src.schemas.inference_test_design import GeneratedStepOutput
+        from src.schemas.inference_test_design import (
+            GeneratedCaseOutput,
+            GeneratedStepOutput,
+        )
 
         field = GeneratedStepOutput.model_fields["test_data"]
 
@@ -673,6 +728,34 @@ class PromptCatalogTests(unittest.TestCase):
             "Structured data values associated with this step.",
         )
         self.assertIn("empty object", TEST_CASE_GENERATION_CONTRACT)
+        self.assertIn(
+            "required_skills only when the source explicitly names",
+            TEST_CASE_GENERATION_CONTRACT,
+        )
+        base_case = {
+            "title": "Gọi API",
+            "category": "api",
+            "objective": "Kiểm tra API",
+            "steps": [{"action": "Gọi API", "expected": "API phản hồi"}],
+            "expected": "API phản hồi",
+            "evidence_quotes": [
+                {"evidence_ref": "req-v1", "quote": "API testing is required for this operation."}
+            ],
+        }
+        self.assertEqual(
+            GeneratedCaseOutput(**base_case, required_skills=["API testing"]).required_skills,
+            ["API testing"],
+        )
+        with self.assertRaises(ValueError):
+            GeneratedCaseOutput(**base_case, required_skills=["Security testing"])
+        with self.assertRaises(ValueError):
+            GeneratedCaseOutput(
+                **{
+                    **base_case,
+                    "evidence_quotes": [{"evidence_ref": "req-v1", "quote": "JavaScript is required."}],
+                },
+                required_skills=["Java"],
+            )
 
     def test_security_output_semantics_live_in_security_prompts_not_schema_descriptions(self):
         from src.schemas.guardrails import SecurityAssessment
@@ -773,13 +856,13 @@ class PromptCatalogTests(unittest.TestCase):
             "test_generation", "project-1", "Create grounded cases", [], [],
             type("Output", (), {"__doc__": "Return the typed test case result."}),
         )
-        self.assertIn("Write every user-facing natural-language field in Vietnamese", prompt)
+        self.assertIn("Write every user-facing natural-language field in the language explicitly requested by the user", prompt)
         self.assertNotIn("Detect the language of user_instruction", prompt)
         self.assertIn("Do not translate source quotations", prompt)
         self.assertIn("<output_language>", requirement_document_synthesis_instruction())
         self.assertIn("<output_language>", agent_execution_prompt("task", [], []))
         self.assertIn("<output_language>", agent_plan_prompt("p", "r", "o", "i", [], [], [], []))
-        self.assertIn("in Vietnamese", TESTING_LANGUAGE_POLICY)
+        self.assertIn("language explicitly requested by the user", TESTING_LANGUAGE_POLICY)
 
     def test_automatic_agent_plan_does_not_add_manual_approval_gate(self):
         prompt = agent_plan_prompt("project-1", "run-1", "Process authorized event", "MUTATE", [], [], [], [])

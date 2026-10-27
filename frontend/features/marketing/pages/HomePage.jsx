@@ -16,9 +16,9 @@ const capabilities = [
   },
   {
     icon: Sparkles,
-    title: "Tự động hóa AI",
+    title: "Xử lý tự động theo sự kiện",
     description:
-      "Tự động tiếp nhận thay đổi tài liệu, yêu cầu và kiểm thử; lưu kết quả xử lý cùng nguồn dẫn và lịch sử lần chạy",
+      "Tạo lượt xử lý khi tài liệu, yêu cầu hoặc kiểm thử thay đổi; lưu kết quả cùng nguồn dẫn và lịch sử lượt chạy",
   },
 ];
 
@@ -47,6 +47,7 @@ export default function HomePage() {
               height={36}
               className="h-9 w-9 rounded-xl object-cover"
               priority
+              unoptimized
             />
             <span>Veriq</span>
           </Link>
@@ -57,8 +58,8 @@ export default function HomePage() {
             >
               Đăng nhập
             </Link>
-            <Link href="/dang-ky" className="apple-button">
-              Tạo tài khoản
+            <Link href="/dang-nhap" className="apple-button">
+              Đăng nhập
               <ArrowRight size={16} />
             </Link>
           </div>
@@ -71,8 +72,8 @@ export default function HomePage() {
             Quản lý yêu cầu và kiểm thử
           </h1>
           <div className="mt-9 flex flex-wrap gap-3">
-            <Link href="/dang-ky" className="apple-button px-6">
-              Tạo tài khoản
+            <Link href="/dang-nhap" className="apple-button px-6">
+              Đăng nhập
               <ArrowRight size={17} />
             </Link>
             <Link href="/dang-nhap" className="secondary-button px-6">
@@ -84,7 +85,7 @@ export default function HomePage() {
 
       <section className="border-y border-brand/10 bg-white/70">
         <div className="mx-auto w-full max-w-[1200px] px-5 py-16 md:px-8 md:py-20">
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-3">
             {capabilities.map((item) => (
               <article
                 key={item.title}

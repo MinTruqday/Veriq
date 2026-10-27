@@ -4,6 +4,7 @@ import io
 import math
 import os
 import re
+import subprocess
 import tempfile
 from collections import Counter
 from collections.abc import Mapping
@@ -17,8 +18,19 @@ from src.core.infrastructure.configuration import settings
 from src.services.table_spans import markdown_table_metadata
 
 
+class IndexingAttemptSupersededError(RuntimeError):
+    pass
+
+
 class ConversionService:
-    CHECKPOINT_CONTRACT_VERSION = 5
+    CHECKPOINT_CONTRACT_VERSION = 6
+    INVALID_PAGE_CHECKPOINT_ERRORS = frozenset(
+        {
+            "document_page_checkpoint_page_count_mismatch",
+            "document_page_checkpoint_order_invalid",
+            "document_page_checkpoint_set_incomplete",
+        }
+    )
     OCR_LANGUAGE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:_-]{0,31}$")
     MINIMUM_EXTRACTABLE_PAGE_TEXT = 32
 
@@ -106,6 +118,18 @@ class ConversionService:
         paginator = client.get_paginator("list_objects_v2")
         deleted_count = 0
         pending_keys = []
+
+        def delete_batch(keys):
+            response = client.delete_objects(
+                Bucket=self._storage_private_bucket,
+                Delete={"Objects": keys, "Quiet": False},
+            )
+            errors = response.get("Errors", []) if isinstance(response, dict) else []
+            deleted = response.get("Deleted", []) if isinstance(response, dict) else []
+            if errors or len(deleted) != len(keys):
+                raise RuntimeError("document_image_cleanup_incomplete")
+            return len(deleted)
+
         for page in paginator.paginate(
             Bucket=self._storage_private_bucket,
             Prefix=prefix,
@@ -116,18 +140,10 @@ class ConversionService:
                     continue
                 pending_keys.append({"Key": key})
                 if len(pending_keys) == 1000:
-                    client.delete_objects(
-                        Bucket=self._storage_private_bucket,
-                        Delete={"Objects": pending_keys, "Quiet": True},
-                    )
-                    deleted_count += len(pending_keys)
+                    deleted_count += delete_batch(pending_keys)
                     pending_keys = []
         if pending_keys:
-            client.delete_objects(
-                Bucket=self._storage_private_bucket,
-                Delete={"Objects": pending_keys, "Quiet": True},
-            )
-            deleted_count += len(pending_keys)
+            deleted_count += delete_batch(pending_keys)
         return deleted_count
 
     async def delete_picture_assets(
@@ -283,6 +299,127 @@ class ConversionService:
         finally:
             if "document" in locals():
                 document.close()
+
+    @staticmethod
+    def _tesseract_language(language: str | None) -> str | None:
+        normalized = str(language or "").strip().casefold()
+        if normalized == "iso:vi":
+            return "vie"
+        return None
+
+    def _tesseract_pdf_page_text(
+        self,
+        file_path: Path,
+        page_no: int,
+        language: str,
+    ) -> str:
+        import fitz
+
+        document = fitz.open(file_path)
+        try:
+            if page_no < 1 or page_no > document.page_count:
+                raise ValueError("document_ocr_fallback_page_invalid")
+            page = document[page_no - 1]
+            pixmap = page.get_pixmap(dpi=300, alpha=False)
+            completed = subprocess.run(
+                ["tesseract", "stdin", "stdout", "-l", language, "--psm", "6"],
+                input=pixmap.tobytes("png"),
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise RuntimeError("document_ocr_fallback_provider_failed")
+            return completed.stdout.decode("utf-8", errors="replace").strip()
+        finally:
+            document.close()
+
+    def _tesseract_pdf_fallback(
+        self,
+        file_path: Path,
+        page_range: tuple[int, int] | None,
+        page_count: int,
+        language: str | None,
+    ) -> tuple[str, list[dict], list[dict], list[dict]]:
+        tesseract_language = self._tesseract_language(language)
+        if not tesseract_language:
+            return "", [], [], []
+
+        first_page, last_page = page_range or (1, page_count)
+        fallback_blocks = []
+        warnings = []
+        unprocessed_blocks = []
+        markdown_pages = []
+        for page_no in range(first_page, last_page + 1):
+            try:
+                text = self._tesseract_pdf_page_text(
+                    file_path,
+                    page_no,
+                    tesseract_language,
+                )
+            except (
+                OSError,
+                RuntimeError,
+                subprocess.SubprocessError,
+                ValueError,
+            ) as error:
+                unprocessed_blocks.append(
+                    {
+                        "block_id": None,
+                        "type": "ocr_fallback",
+                        "page_no": page_no,
+                        "locations": [{"page_no": page_no}],
+                        "reason_code": "OCR_FALLBACK_FAILED",
+                        "error_type": type(error).__name__,
+                    }
+                )
+                continue
+            if not text:
+                unprocessed_blocks.append(
+                    {
+                        "block_id": None,
+                        "type": "ocr_fallback",
+                        "page_no": page_no,
+                        "locations": [{"page_no": page_no}],
+                        "reason_code": "OCR_FALLBACK_NO_TEXT",
+                    }
+                )
+                continue
+            markdown_pages.append(text)
+            fallback_blocks.append(
+                {
+                    "block_id": f"tesseract-ocr-page-{page_no}",
+                    "parent_block_id": None,
+                    "text": text,
+                    "type": "ocr_fallback_page_text",
+                    "level": 0,
+                    "page_no": page_no,
+                    "locations": [{"page_no": page_no}],
+                    "extraction_status": "EXTRACTED",
+                }
+            )
+            warnings.extend(
+                [
+                    {
+                        "block_id": None,
+                        "type": "ocr_text",
+                        "page_no": page_no,
+                        "reason_code": "OCR_TEXT_REQUIRES_ACCURACY_VALIDATION",
+                    },
+                    {
+                        "block_id": None,
+                        "type": "ocr_fallback",
+                        "page_no": page_no,
+                        "reason_code": "OCR_FALLBACK_ENGINE_USED",
+                    },
+                ]
+            )
+        return (
+            "\n\n".join(markdown_pages),
+            fallback_blocks,
+            warnings,
+            unprocessed_blocks,
+        )
 
     @staticmethod
     def _parse_text_pdf(
@@ -691,6 +828,69 @@ class ConversionService:
                     }
                     for confidence_page, confidence in diagnostics
                 )
+                confidence = self._ocr_page_confidence(conversion, page_no)
+                if (
+                    page_no is not None
+                    and confidence is not None
+                    and confidence < settings.DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE
+                    and self._tesseract_language(language)
+                ):
+                    (
+                        fallback_markdown,
+                        fallback_blocks,
+                        fallback_warnings,
+                        fallback_unprocessed_blocks,
+                    ) = self._tesseract_pdf_fallback(
+                        file_path,
+                        (page_no, page_no),
+                        page_count or self._pdf_page_count(file_path),
+                        language,
+                    )
+                    if fallback_markdown:
+                        def belongs_to_page(block):
+                            if block.get("page_no") == page_no:
+                                return True
+                            locations = block.get("locations")
+                            if not isinstance(locations, list):
+                                return False
+                            return any(
+                                isinstance(location, dict)
+                                and location.get("page_no") == page_no
+                                for location in locations
+                            )
+
+                        structure = [
+                            block
+                            for block in structure
+                            if not (
+                                str(block.get("text") or "").strip()
+                                and belongs_to_page(block)
+                                and str(block.get("type") or "").casefold()
+                                not in {"picture", "image"}
+                            )
+                        ]
+                        structure.extend(fallback_blocks)
+                        markdown = fallback_markdown
+                        extraction_warnings.extend(fallback_warnings)
+                        extraction_warnings.append({
+                            "block_id": None,
+                            "type": "ocr_fallback",
+                            "page_no": page_no,
+                            "docling_ocr_confidence": confidence,
+                            "fallback_min_confidence": settings.DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE,
+                            "reason_code": "OCR_FALLBACK_LOW_CONFIDENCE",
+                        })
+                        unprocessed_blocks.extend(fallback_unprocessed_blocks)
+                        unprocessed_blocks = [
+                            item
+                            for item in unprocessed_blocks
+                            if not (
+                                item.get("reason_code") == "OCR_NO_TEXT_EXTRACTED"
+                                and item.get("page_no") == page_no
+                            )
+                        ]
+                    else:
+                        unprocessed_blocks.extend(fallback_unprocessed_blocks)
             elif not any(
                 item.get("extraction_status") != "EXTRACTED" for item in structure
             ):
@@ -704,6 +904,33 @@ class ConversionService:
                     "locations": [],
                     "reason_code": "OCR_NO_TEXT_EXTRACTED",
                 })
+
+            if not markdown.strip() and not any(
+                str(item.get("text") or "").strip() for item in structure
+            ):
+                (
+                    fallback_markdown,
+                    fallback_blocks,
+                    fallback_warnings,
+                    fallback_unprocessed_blocks,
+                ) = (
+                    self._tesseract_pdf_fallback(
+                        file_path,
+                        page_range,
+                        page_count or self._pdf_page_count(file_path),
+                        language,
+                    )
+                )
+                unprocessed_blocks.extend(fallback_unprocessed_blocks)
+                if fallback_markdown:
+                    markdown = fallback_markdown
+                    structure.extend(fallback_blocks)
+                    extraction_warnings.extend(fallback_warnings)
+                    unprocessed_blocks = [
+                        item
+                        for item in unprocessed_blocks
+                        if item.get("reason_code") != "OCR_NO_TEXT_EXTRACTED"
+                    ]
 
         from importlib.metadata import version
 
@@ -801,13 +1028,49 @@ class ConversionService:
                             document_id,
                         )
                     raise
+                except IndexingAttemptSupersededError:
+                    raise
                 except Exception:
                     logger.exception("Docling document conversion failed")
+                    try:
+                        await self.delete_picture_assets(
+                            project_id, document_id, source_hash
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed document parse image assets retained for cleanup document_id={}",
+                            document_id,
+                        )
                     result = {"error": "document_parsing_failed"}
                 if not result.get("error"):
                     result["source_sha256"] = source_hash
                 return result
             try:
+                return await self._parse_pdf_with_page_checkpoints(
+                    temporary_path,
+                    source_hash,
+                    document_id,
+                    project_id,
+                    owner_id,
+                    authorization_check,
+                    progress_callback,
+                    ocr_language,
+                )
+            except RuntimeError as error:
+                reason_code = str(error)
+                if reason_code not in self.INVALID_PAGE_CHECKPOINT_ERRORS:
+                    raise
+                await self.clear_document_checkpoints(
+                    document_id, project_id, owner_id, source_hash
+                )
+                await self.delete_picture_assets(project_id, document_id, source_hash)
+                if authorization_check:
+                    await authorization_check()
+                logger.warning(
+                    "Discarded invalid PDF page checkpoints and restarting parse document_id={} reason_code={}",
+                    document_id,
+                    reason_code,
+                )
                 return await self._parse_pdf_with_page_checkpoints(
                     temporary_path,
                     source_hash,
@@ -865,16 +1128,40 @@ class ConversionService:
             temporary.write(file_bytes)
             temporary_path = Path(temporary.name)
         try:
-            return await self._parse_pdf_with_page_checkpoints(
-                temporary_path,
-                source_hash,
-                document_id,
-                project_id,
-                owner_id,
-                authorization_check=None,
-                progress_callback=None,
-                ocr_language=ocr_language,
-            )
+            try:
+                return await self._parse_pdf_with_page_checkpoints(
+                    temporary_path,
+                    source_hash,
+                    document_id,
+                    project_id,
+                    owner_id,
+                    authorization_check=None,
+                    progress_callback=None,
+                    ocr_language=ocr_language,
+                )
+            except RuntimeError as error:
+                reason_code = str(error)
+                if reason_code not in self.INVALID_PAGE_CHECKPOINT_ERRORS:
+                    raise
+                await self.clear_document_checkpoints(
+                    document_id, project_id, owner_id, source_hash
+                )
+                await self.delete_picture_assets(project_id, document_id, source_hash)
+                logger.warning(
+                    "Discarded invalid PDF byte checkpoints and restarting parse document_id={} reason_code={}",
+                    document_id,
+                    reason_code,
+                )
+                return await self._parse_pdf_with_page_checkpoints(
+                    temporary_path,
+                    source_hash,
+                    document_id,
+                    project_id,
+                    owner_id,
+                    authorization_check=None,
+                    progress_callback=None,
+                    ocr_language=ocr_language,
+                )
         finally:
             await asyncio.to_thread(temporary_path.unlink, missing_ok=True)
 

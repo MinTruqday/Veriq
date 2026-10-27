@@ -11,18 +11,33 @@ from pydantic import (
 )
 
 
+DOCUMENT_INDEXED_ARTIFACT_TYPES = frozenset(
+    {"requirement_document", "project_document", "source_document"}
+)
+
+
+def is_document_indexed_payload(metadata: dict) -> bool:
+    artifact_type = str(metadata.get("artifact_type") or "").strip()
+    if artifact_type in DOCUMENT_INDEXED_ARTIFACT_TYPES:
+        return True
+    return not artifact_type and any(
+        str(metadata.get(field) or "").strip()
+        for field in ("document_id", "source_document_id")
+    )
+
+
 class ProjectSourceLocation(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    page_no: int | None = Field(default=None, ge=1)
+    page_no: int | None = Field(default=None, ge=1, strict=True)
     bbox: dict[str, Any] | None = None
 
 
 class ProjectSourceTableCellSpan(BaseModel):
-    row_index: int = Field(ge=0)
-    column_index: int = Field(ge=0)
-    source_start: int = Field(ge=0)
-    source_end: int = Field(gt=0)
+    row_index: int = Field(ge=0, strict=True)
+    column_index: int = Field(ge=0, strict=True)
+    source_start: int = Field(ge=0, strict=True)
+    source_end: int = Field(gt=0, strict=True)
 
     @model_validator(mode="after")
     def validate_source_range(self):
@@ -64,8 +79,8 @@ class ProjectSourceBlock(BaseModel):
     parent_block_id: str | None = None
     text: str = ""
     type: str = Field(min_length=1)
-    level: int | None = None
-    page_no: int | None = Field(default=None, ge=1)
+    level: int | None = Field(default=None, strict=True)
+    page_no: int | None = Field(default=None, ge=1, strict=True)
     locations: list[ProjectSourceLocation] = Field(default_factory=list)
     extraction_status: Literal["EXTRACTED", "NO_TEXT_EXTRACTED"] | None = None
     ocr_page_confidence: float | None = Field(default=None, ge=0, le=1)
@@ -73,8 +88,16 @@ class ProjectSourceBlock(BaseModel):
     image_metadata: ProjectSourceImageMetadata | None = None
 
 
-def validate_project_source_structure(value: Any) -> list[ProjectSourceBlock]:
-    blocks = TypeAdapter(list[ProjectSourceBlock]).validate_python(value)
+def validate_project_source_structure(
+    value: Any, *, reuse_input_list: bool = False
+) -> list[ProjectSourceBlock]:
+    if reuse_input_list and isinstance(value, list):
+        block_adapter = TypeAdapter(ProjectSourceBlock)
+        blocks = value
+        for index, block in enumerate(blocks):
+            blocks[index] = block_adapter.validate_python(block)
+    else:
+        blocks = TypeAdapter(list[ProjectSourceBlock]).validate_python(value)
     for block in blocks:
         if block.table_metadata:
             for cell in block.table_metadata.cell_spans:
@@ -90,19 +113,21 @@ def validate_project_source_structure(value: Any) -> list[ProjectSourceBlock]:
                     and cell.column_index >= block.table_metadata.column_count
                 ):
                     raise ValueError("source_structure_table_cell_column_invalid")
-    block_ids = [block.block_id.strip() for block in blocks if block.block_id and block.block_id.strip()]
-    if len(block_ids) != len(set(block_ids)):
-        raise ValueError("source_structure_block_id_ambiguous")
-
+    known_block_ids = set()
     parent_by_block = {
         block.block_id.strip(): block.parent_block_id.strip()
         for block in blocks
         if block.block_id and block.block_id.strip() and block.parent_block_id and block.parent_block_id.strip()
     }
+    for block in blocks:
+        block_id = block.block_id.strip() if block.block_id else ""
+        if block_id:
+            if block_id in known_block_ids:
+                raise ValueError("source_structure_block_id_ambiguous")
+            known_block_ids.add(block_id)
     if any(block_id == parent_id for block_id, parent_id in parent_by_block.items()):
         raise ValueError("source_structure_block_cannot_parent_itself")
 
-    known_block_ids = set(block_ids)
     completed = set()
     for start in known_block_ids:
         path = set()
@@ -163,13 +188,13 @@ class ProjectKnowledgeSearchRequest(BaseModel):
 
 
 class ProjectChunkSourceLocation(BaseModel):
-    page_no: int | None = Field(default=None, ge=1)
+    page_no: int | None = Field(default=None, ge=1, strict=True)
     bbox: dict[str, Any] | None = None
 
 
 class ProjectChunkTableCellSpan(ProjectSourceTableCellSpan):
-    chunk_start: int = Field(ge=0)
-    chunk_end: int = Field(gt=0)
+    chunk_start: int = Field(ge=0, strict=True)
+    chunk_end: int = Field(gt=0, strict=True)
 
     @model_validator(mode="after")
     def validate_chunk_range(self):
@@ -241,10 +266,10 @@ class ProjectChunkImageMetadata(BaseModel):
 
 class ProjectChunkTextSegment(BaseModel):
     role: str
-    source_start: int = Field(ge=0)
-    source_end: int = Field(gt=0)
-    chunk_start: int = Field(ge=0)
-    chunk_end: int = Field(gt=0)
+    source_start: int = Field(ge=0, strict=True)
+    source_end: int = Field(gt=0, strict=True)
+    chunk_start: int = Field(ge=0, strict=True)
+    chunk_end: int = Field(gt=0, strict=True)
 
     @model_validator(mode="after")
     def validate_offset_mapping(self):
@@ -258,8 +283,10 @@ class ProjectChunkTextSegment(BaseModel):
 class ProjectChunkSourceSpan(BaseModel):
     block_id: str | None = None
     parent_block_id: str | None = None
-    block_index: int | None = None
-    block_level: int | None = None
+    ancestor_block_ids: list[str] = Field(default_factory=list)
+    ancestor_chain_status: Literal["ROOT", "COMPLETE", "PARTIAL"] | None = None
+    block_index: int | None = Field(default=None, strict=True)
+    block_level: int | None = Field(default=None, strict=True)
     content_type: str | None = None
     extraction_status: str | None = None
     ocr_page_confidence: float | None = Field(default=None, ge=0, le=1)
@@ -268,11 +295,60 @@ class ProjectChunkSourceSpan(BaseModel):
     table_metadata: ProjectChunkTableMetadata | None = None
     image_metadata: ProjectChunkImageMetadata | None = None
     source_segments: list[ProjectChunkTextSegment] = Field(default_factory=list)
-    source_start: int | None = None
-    source_end: int | None = None
+    source_start: int | None = Field(default=None, strict=True)
+    source_end: int | None = Field(default=None, strict=True)
     offset_basis: str | None = None
-    chunk_start: int | None = None
-    chunk_end: int | None = None
+    chunk_start: int | None = Field(default=None, strict=True)
+    chunk_end: int | None = Field(default=None, strict=True)
+
+    @field_validator("block_id", "parent_block_id", mode="before")
+    @classmethod
+    def normalize_block_reference(cls, value):
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @field_validator("ancestor_block_ids", mode="before")
+    @classmethod
+    def normalize_ancestor_block_ids(cls, value):
+        if not isinstance(value, list) or any(
+            not isinstance(item, str) or not item.strip() for item in value
+        ):
+            raise ValueError("qdrant_point_ancestor_block_id_invalid")
+        return [item.strip() for item in value]
+
+    @model_validator(mode="after")
+    def validate_ancestor_chain(self):
+        block_id = self.block_id.strip() if self.block_id else None
+        parent_block_id = (
+            self.parent_block_id.strip() if self.parent_block_id else None
+        )
+        ancestors = [value.strip() for value in self.ancestor_block_ids]
+        if any(not value for value in ancestors):
+            raise ValueError("qdrant_point_ancestor_block_id_blank")
+        if len(ancestors) != len(set(ancestors)):
+            raise ValueError("qdrant_point_ancestor_block_id_duplicate")
+        if block_id and block_id in ancestors:
+            raise ValueError("qdrant_point_ancestor_chain_cycle")
+        if self.ancestor_chain_status == "ROOT":
+            if not block_id or parent_block_id or ancestors:
+                raise ValueError("qdrant_point_root_ancestor_chain_invalid")
+        elif self.ancestor_chain_status == "COMPLETE":
+            if (
+                not block_id
+                or not parent_block_id
+                or not ancestors
+                or ancestors[-1] != parent_block_id
+            ):
+                raise ValueError("qdrant_point_complete_ancestor_chain_invalid")
+        elif self.ancestor_chain_status == "PARTIAL":
+            if (
+                not block_id
+                or not parent_block_id
+                or (ancestors and ancestors[-1] != parent_block_id)
+            ):
+                raise ValueError("qdrant_point_partial_ancestor_chain_invalid")
+        return self
 
 
 class ProjectArtifactChunkMetadata(BaseModel):
@@ -318,6 +394,19 @@ class ProjectArtifactChunkMetadata(BaseModel):
     test_case_version_ids: list[str] = Field(default_factory=list)
     test_run_id: str | None = None
     linked_test_result_id: str | None = None
+    test_case_key: str | None = None
+    test_case_type: str | None = None
+    test_level: str | None = None
+    test_kind: str | None = None
+    expected_impact: str | None = None
+    priority: str | None = None
+    risk: str | None = None
+    techniques: list[str] = Field(default_factory=list)
+    required_skills: list[str] = Field(default_factory=list)
+    automation_status: str | None = None
+    repository_node_id: str | None = None
+    coverage_item_ids: list[str] = Field(default_factory=list)
+    data_set_version_ids: list[str] = Field(default_factory=list)
     content_format: str | None = None
     content_type: str | None = None
     source_document_id: str | None = None
@@ -325,8 +414,8 @@ class ProjectArtifactChunkMetadata(BaseModel):
     parser_version: str | None = None
     ocr_enabled: bool | None = None
     ocr_language: str | None = None
-    page_count: int | None = None
-    source_block_count: int | None = None
+    page_count: int | None = Field(default=None, strict=True)
+    source_block_count: int | None = Field(default=None, strict=True)
     extraction_status: str | None = None
     unprocessed_block_count: int | None = None
     extraction_warning_count: int | None = None
@@ -340,6 +429,7 @@ class ProjectArtifactChunkMetadata(BaseModel):
     summary_sample_char_count: int | None = None
     document_chunk_count: int | None = None
     index_generation: str | None = None
+    document_index_contract_version: int | None = Field(default=None, ge=1, strict=True)
     indexing_attempt_id: str | None = None
     indexed_at: str | None = None
     embedding_model: str | None = None
@@ -354,9 +444,19 @@ class ProjectArtifactChunkMetadata(BaseModel):
     char_count: int | None = None
     word_count: int | None = None
     source_spans: list[ProjectChunkSourceSpan] = Field(default_factory=list)
-    page_numbers: list[int] = Field(default_factory=list)
-    page_start: int | None = None
-    page_end: int | None = None
+    page_numbers: list[int] = Field(default_factory=list, strict=True)
+    page_start: int | None = Field(default=None, strict=True)
+    page_end: int | None = Field(default=None, strict=True)
+
+    @field_validator("page_numbers", mode="before")
+    @classmethod
+    def validate_page_numbers_are_integers(cls, value):
+        if not isinstance(value, list) or any(
+            not isinstance(page, int) or isinstance(page, bool) or page < 1
+            for page in value
+        ):
+            raise ValueError("qdrant_point_page_numbers_invalid")
+        return value
 
 
 def validate_qdrant_payload_integrity(payload: BaseModel) -> None:
@@ -460,4 +560,67 @@ class QdrantPointPayload(ProjectArtifactChunkMetadata):
     @model_validator(mode="after")
     def validate_point_integrity(self):
         validate_qdrant_payload_integrity(self)
+        if self.artifact_type in DOCUMENT_INDEXED_ARTIFACT_TYPES:
+            required_values = (
+                self.document_id,
+                self.project_id,
+                self.artifact_id,
+                self.artifact_version_id,
+                self.source_hash,
+                self.normalized_content_hash,
+                self.parser_name,
+                self.index_generation,
+                self.document_index_contract_version,
+                self.extraction_status,
+                self.extraction_method,
+                self.embedding_model,
+                self.embedding_input_mode,
+                self.embedding_input_hash,
+                self.chunk_id,
+                self.logical_chunk_id,
+                self.chunk_hash,
+                self.chunk_type,
+                self.chunk_index,
+            )
+            if any(value is None or value == "" for value in required_values):
+                raise ValueError("qdrant_document_chunk_metadata_incomplete")
+            for digest in (
+                self.source_hash,
+                self.normalized_content_hash,
+                self.chunk_hash,
+                self.embedding_input_hash,
+            ):
+                if len(digest) != 64 or any(
+                    character not in "0123456789abcdef" for character in digest
+                ):
+                    raise ValueError("qdrant_document_digest_invalid")
+            if self.index_generation and (
+                len(self.index_generation) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in self.index_generation
+                )
+            ):
+                raise ValueError("qdrant_document_index_generation_invalid")
+            if self.chunk_type == "summary":
+                if (
+                    self.chunk_index != -1
+                    or not self.summary_sample_chunk_ids
+                    or any(not value.strip() for value in self.summary_sample_chunk_ids)
+                    or len(set(self.summary_sample_chunk_ids))
+                    != len(self.summary_sample_chunk_ids)
+                ):
+                    raise ValueError("qdrant_document_summary_lineage_missing")
+            elif self.chunk_index < 0 or not self.source_spans:
+                raise ValueError("qdrant_document_source_spans_missing")
+            if self.chunk_type != "summary":
+                for span in self.source_spans:
+                    if (
+                        span.source_start is not None
+                        and span.source_end is not None
+                        and span.source_start == span.source_end
+                        and str(span.content_type or "").casefold()
+                        not in {"image", "picture"}
+                    ):
+                        raise ValueError("qdrant_document_source_range_empty")
         return self

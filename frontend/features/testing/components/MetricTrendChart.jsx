@@ -5,7 +5,7 @@ export default function MetricTrendChart({ snapshots = [] }) {
     <div
       className="flex h-32 items-end gap-2 rounded-xl border border-border p-3"
       role="img"
-      aria-label="Xu hướng metric"
+      aria-label="Xu hướng chỉ số"
     >
       {values.length ? (
         values.map((item) => (

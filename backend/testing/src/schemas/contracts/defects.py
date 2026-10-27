@@ -7,6 +7,7 @@ from src.schemas.contracts.common import empty_doc
 
 class DefectCreate(BaseModel):
     project_id: str
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     defect_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
     description_doc: dict[str, Any] = Field(default_factory=empty_doc)

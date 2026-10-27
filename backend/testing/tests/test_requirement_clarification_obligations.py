@@ -105,6 +105,99 @@ class RequirementClarificationObligationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.detail["code"], "RESOLUTION_VERSION_NOT_CURRENT")
         replace.assert_not_awaited()
 
+    async def test_historical_requirement_version_cannot_be_decided(self):
+        clarification = {
+            "_id": "RCL-1",
+            "project_id": "PRJ-1",
+            "requirement_id": "REQ-1",
+            "requirement_version_id": "REQV-1",
+            "status": "ANSWERED",
+        }
+        payload = SimpleNamespace(
+            expected_revision=3,
+            status="WAIVED",
+            reason="Đã ghi nhận rủi ro trong phiên bản mới.",
+        )
+        with (
+            patch.object(requirement_clarifications, "require_automation_publication_authority"),
+            patch.object(
+                requirement_clarifications.requirement_clarification_repository,
+                "find",
+                new=AsyncMock(return_value=clarification),
+            ),
+            patch.object(
+                requirement_clarifications,
+                "get_project_entity",
+                new=AsyncMock(return_value={"current_version_id": "REQV-2"}),
+            ),
+            patch.object(requirement_clarifications, "_require_role", new=AsyncMock()),
+            patch.object(
+                requirement_clarifications.requirement_repository,
+                "find_version",
+                new=AsyncMock(return_value={"_id": "REQV-1", "revision": 4}),
+            ),
+            patch.object(
+                requirement_clarifications,
+                "_replace_and_audit",
+                new=AsyncMock(),
+            ) as replace,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await requirement_clarifications.decide_clarification(
+                    "RCL-1", payload, SimpleNamespace(id="qa-1")
+                )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(raised.exception.detail["code"], "CLARIFICATION_VERSION_NOT_CURRENT")
+        replace.assert_not_awaited()
+
+    async def test_clarification_decision_fences_current_requirement_revision(self):
+        clarification = {
+            "_id": "RCL-1",
+            "project_id": "PRJ-1",
+            "requirement_id": "REQ-1",
+            "requirement_version_id": "REQV-1",
+            "status": "ANSWERED",
+        }
+        version = {"_id": "REQV-1", "revision": 7, "status": "DRAFT"}
+        payload = SimpleNamespace(
+            expected_revision=3,
+            status="NOT_APPLICABLE",
+            reason="Bằng chứng mới cho thấy mục này không áp dụng.",
+        )
+        with (
+            patch.object(requirement_clarifications, "require_automation_publication_authority"),
+            patch.object(
+                requirement_clarifications.requirement_clarification_repository,
+                "find",
+                new=AsyncMock(return_value=clarification),
+            ),
+            patch.object(
+                requirement_clarifications,
+                "get_project_entity",
+                new=AsyncMock(return_value={"current_version_id": "REQV-1"}),
+            ),
+            patch.object(requirement_clarifications, "_require_role", new=AsyncMock()),
+            patch.object(
+                requirement_clarifications.requirement_repository,
+                "find_version",
+                new=AsyncMock(return_value=version),
+            ),
+            patch.object(
+                requirement_clarifications,
+                "_replace_and_audit",
+                new=AsyncMock(return_value={"_id": "RCL-1", "status": "NOT_APPLICABLE"}),
+            ) as replace,
+        ):
+            await requirement_clarifications.decide_clarification(
+                "RCL-1", payload, SimpleNamespace(id="qa-1")
+            )
+
+        self.assertEqual(
+            replace.await_args.kwargs["requirement_current_version_id"], "REQV-1"
+        )
+        self.assertEqual(replace.await_args.kwargs["requirement_version_revision"], 7)
+
     async def test_resolution_current_version_check_shares_transaction_with_audit(self):
         session = _AsyncSession()
         client = SimpleNamespace(start_session=AsyncMock(return_value=session))

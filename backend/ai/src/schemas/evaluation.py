@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.core.text_matching import source_quote_spans
+
 
 def validate_unique_benchmark_case_ids(cases):
     case_ids = [case.case_id for case in cases]
@@ -167,6 +169,9 @@ class TestabilityBenchmarkCandidate(BaseModel):
     """One system's observable output for a benchmark case."""
 
     source_quotes: list[str] = Field(default_factory=list, max_length=500)
+    source_quote_citations: list[TestabilityBenchmarkCitation] = Field(
+        default_factory=list, max_length=500
+    )
     clarification_codes: list[str] = Field(default_factory=list, max_length=500)
     clarification_categories: list[str] = Field(default_factory=list, max_length=500)
     obligation_keys: list[str] = Field(default_factory=list, max_length=1000)
@@ -199,6 +204,10 @@ class TestabilityBenchmarkGoldCase(BaseModel):
     sources: list[TestabilityBenchmarkSource] = Field(default_factory=list, max_length=20)
     task_instruction: str = Field(default="", max_length=5000)
     expected_source_quotes: list[str] = Field(default_factory=list, max_length=500)
+    expected_source_quote_sources: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Optional answer key mapping a source quote to the source versions that support it",
+    )
     expected_clarification_codes: list[str] = Field(
         default_factory=list,
         max_length=500,
@@ -262,7 +271,7 @@ class TestabilityBenchmarkGoldCase(BaseModel):
             self.expected_source_quotes = list(dict.fromkeys(self.expected_obligation_sources.values()))
         if any(
             not quote.strip()
-            or not any(quote in source_text for source_text in source_texts)
+            or not any(source_quote_spans(source_text, quote) for source_text in source_texts)
             for quote in self.expected_source_quotes
         ):
             raise ValueError("benchmark_expected_quote_must_appear_in_source")
@@ -273,7 +282,7 @@ class TestabilityBenchmarkGoldCase(BaseModel):
                 raise ValueError("benchmark_obligation_sources_must_match_expected_obligations")
             if any(
                 not quote.strip()
-                or not any(quote in source_text for source_text in source_texts)
+                or not any(source_quote_spans(source_text, quote) for source_text in source_texts)
                 for quote in self.expected_obligation_sources.values()
             ):
                 raise ValueError("benchmark_obligation_quote_must_appear_in_source")
@@ -289,6 +298,35 @@ class TestabilityBenchmarkGoldCase(BaseModel):
                 allowed_source_refs
             ):
                 raise ValueError("benchmark_expected_source_reference_not_found")
+        if self.expected_source_quote_sources:
+            if not self.sources:
+                raise ValueError("benchmark_quote_source_answer_key_requires_explicit_sources")
+            expected_quotes = {
+                " ".join(quote.split()).rstrip(".!?。！？").casefold()
+                for quote in self.expected_source_quotes
+            }
+            mapped_quotes = {
+                " ".join(quote.split()).rstrip(".!?。！？").casefold()
+                for quote in self.expected_source_quote_sources
+            }
+            if mapped_quotes != expected_quotes:
+                raise ValueError("benchmark_quote_source_answer_key_must_cover_all_expected_quotes")
+            allowed_source_refs = {source.artifact_version_id for source in self.sources}
+            source_text_by_ref = {
+                source.artifact_version_id: source.text for source in self.sources
+            }
+            for quote, source_refs in self.expected_source_quote_sources.items():
+                normalized_quote = " ".join(quote.split()).rstrip(".!?。！？").casefold()
+                if normalized_quote not in expected_quotes:
+                    raise ValueError("benchmark_quote_source_answer_key_quote_not_expected")
+                if not source_refs or len(source_refs) != len(set(source_refs)):
+                    raise ValueError("benchmark_quote_source_answer_key_refs_must_be_unique")
+                for source_ref in source_refs:
+                    source_text = source_text_by_ref.get(source_ref)
+                    if source_text is None:
+                        raise ValueError("benchmark_expected_source_reference_not_found")
+                    if not source_quote_spans(source_text, quote):
+                        raise ValueError("benchmark_expected_quote_not_in_cited_source")
         clarification_codes = set(
             self.expected_clarification_categories or self.expected_clarification_codes
         )

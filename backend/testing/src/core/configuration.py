@@ -30,6 +30,12 @@ class Settings:
     REQUIREMENT_DOCUMENT_PARSE_POLL_SECONDS: int = _positive_int_environment(
         "REQUIREMENT_DOCUMENT_PARSE_POLL_SECONDS", "3"
     )
+    DEFECT_SEARCH_INDEX_POLL_SECONDS: int = _positive_int_environment(
+        "DEFECT_SEARCH_INDEX_POLL_SECONDS", "3"
+    )
+    DEFECT_SEARCH_INDEX_LEASE_SECONDS: int = _positive_int_environment(
+        "DEFECT_SEARCH_INDEX_LEASE_SECONDS", "120"
+    )
     REQUIREMENT_DUPLICATE_SCAN_MAX_ITEMS: int = _positive_int_environment(
         "REQUIREMENT_DUPLICATE_SCAN_MAX_ITEMS", "500"
     )

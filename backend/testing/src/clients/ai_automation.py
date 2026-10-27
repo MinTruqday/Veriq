@@ -50,6 +50,25 @@ def _requirement_event_text(version: dict) -> str:
 
 
 class AIAutomationClient:
+    async def convert_attachment(self, filename: str, content: bytes) -> dict:
+        import base64
+
+        async with httpx.AsyncClient(timeout=300) as client:
+            response = await client.post(
+                f"{settings.AI_URL.rstrip('/')}/tri-thuc/tiep-nap/chuyen-doi",
+                headers={"X-Internal-Token": settings.SECRET_KEY},
+                json={
+                    "data": base64.b64encode(content).decode("ascii"),
+                    "filename": filename,
+                },
+            )
+            response.raise_for_status()
+        payload = response.json()
+        value = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(value, dict) or not isinstance(value.get("markdown"), str):
+            raise RuntimeError("DOCUMENT_CONVERSION_RESPONSE_INVALID")
+        return value
+
     async def extract_skill_profile(self, project_id: str, source_blocks: list[dict]) -> dict:
         async with httpx.AsyncClient(timeout=300) as client:
             response = await client.post(
@@ -62,6 +81,31 @@ class AIAutomationClient:
         value = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(value, dict):
             raise RuntimeError("AI_CV_EXTRACTION_RESPONSE_INVALID")
+        return value
+
+    async def recommend_test_case_owners(
+        self,
+        project_id: str,
+        output_language: str,
+        required_skills: list[str],
+        candidates: list[dict],
+    ) -> dict:
+        async with httpx.AsyncClient(timeout=180) as client:
+            response = await client.post(
+                f"{settings.AI_URL.rstrip('/')}/tri-thuc/kiem-thu/goi-y-phan-cong",
+                headers={"X-Internal-Token": settings.SECRET_KEY},
+                json={
+                    "project_id": project_id,
+                    "output_language": output_language,
+                    "required_skills": required_skills,
+                    "candidates": candidates,
+                },
+            )
+            response.raise_for_status()
+        payload = response.json()
+        value = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(value, dict):
+            raise RuntimeError("OWNER_RECOMMENDATION_RESPONSE_INVALID")
         return value
 
     async def request(
@@ -119,6 +163,7 @@ async def emit_requirement_changed(version: dict, user) -> bool:
         _requirement_event_text(version),
         user.id,
         artifact_revision=version.get("revision", 1),
+        artifact_status=str(version.get("status") or "DRAFT"),
     )
 
 
@@ -142,6 +187,7 @@ async def queue_requirement_changed(version: dict, user, session) -> str | None:
         user.id,
         session,
         artifact_revision=version.get("revision", 1),
+        artifact_status=str(version.get("status") or "DRAFT"),
     )
 
 
@@ -164,8 +210,13 @@ async def emit_test_execution_recorded(result: dict, user, session=None) -> bool
             *event,
             session=session,
             artifact_revision=result.get("revision", 1),
+            artifact_status=str(result.get("status") or ""),
         )
-    return await emit_event(*event, artifact_revision=result.get("revision", 1))
+    return await emit_event(
+        *event,
+        artifact_revision=result.get("revision", 1),
+        artifact_status=str(result.get("status") or ""),
+    )
 
 
 async def emit_defect_recorded(defect: dict, user, session=None) -> bool:
@@ -184,8 +235,17 @@ async def emit_defect_recorded(defect: dict, user, session=None) -> bool:
         user.id,
     )
     if session is not None:
-        return await queue_event(*event, session=session, artifact_revision=revision)
-    return await emit_event(*event, artifact_revision=revision)
+        return await queue_event(
+            *event,
+            session=session,
+            artifact_revision=revision,
+            artifact_status=str(defect.get("status") or ""),
+        )
+    return await emit_event(
+        *event,
+        artifact_revision=revision,
+        artifact_status=str(defect.get("status") or ""),
+    )
 
 
 async def emit_defect_changed(defect: dict, user, session=None) -> bool:
@@ -218,8 +278,17 @@ async def emit_defect_changed(defect: dict, user, session=None) -> bool:
         user.id,
     )
     if session is not None:
-        return await queue_event(*event, session=session, artifact_revision=revision)
-    return await emit_event(*event, artifact_revision=revision)
+        return await queue_event(
+            *event,
+            session=session,
+            artifact_revision=revision,
+            artifact_status=str(defect.get("status") or ""),
+        )
+    return await emit_event(
+        *event,
+        artifact_revision=revision,
+        artifact_status=str(defect.get("status") or ""),
+    )
 
 
 async def queue_api_operation_confirmed(operation: dict, user, session) -> str | None:
@@ -248,6 +317,7 @@ async def queue_api_operation_confirmed(operation: dict, user, session) -> str |
         user.id,
         session=session,
         artifact_revision=revision,
+        artifact_status="CONFIRMED",
     )
 
 
@@ -277,8 +347,17 @@ async def emit_document_ingested(document: dict, user, session=None) -> bool:
         )
     )
     if session is not None:
-        return await queue_event(*event, session=session, relationship_path=relationship_path)
-    return await emit_event(*event, relationship_path=relationship_path)
+        return await queue_event(
+            *event,
+            session=session,
+            relationship_path=relationship_path,
+            artifact_status=str(document.get("status") or "INGESTED"),
+        )
+    return await emit_event(
+        *event,
+        relationship_path=relationship_path,
+        artifact_status=str(document.get("status") or "INGESTED"),
+    )
 
 
 async def cancel_pending_document_ingestion(document_id: str, reason: str) -> int:
@@ -422,6 +501,7 @@ async def emit_work_item_dependency_changed(
                     relationship_path=[source_id, target_id],
                     relationship=relationship,
                     artifact_revision=item.get("revision"),
+                    artifact_status=str(item.get("status") or ""),
                 )
             )
         else:
@@ -431,6 +511,7 @@ async def emit_work_item_dependency_changed(
                     relationship_path=[source_id, target_id],
                     relationship=relationship,
                     artifact_revision=item.get("revision"),
+                    artifact_status=str(item.get("status") or ""),
                 )
             )
     return all(results)
@@ -528,9 +609,16 @@ async def emit_test_case_changed(
     )
     if session is not None:
         return await queue_event(
-            *event, session=session, artifact_revision=revision
+            *event,
+            session=session,
+            artifact_revision=revision,
+            artifact_status=str(case.get("status") or "DRAFT"),
         )
-    return await emit_event(*event, artifact_revision=revision)
+    return await emit_event(
+        *event,
+        artifact_revision=revision,
+        artifact_status=str(case.get("status") or "DRAFT"),
+    )
 
 
 async def emit_test_case_approved(version: dict, user) -> bool:
@@ -570,6 +658,7 @@ async def queue_test_case_approved(version: dict, user, session) -> str | None:
         user.id,
         session=session,
         artifact_revision=revision if type(revision) is int else None,
+        artifact_status=str(version.get("status") or "APPROVED"),
     )
 
 
@@ -714,8 +803,17 @@ async def emit_release_gate_recheck(
     if type(revision) is not int or revision < 1:
         return False
     if session is not None:
-        return await queue_event(*event, session=session, artifact_revision=revision)
-    return await emit_event(*event, artifact_revision=revision)
+        return await queue_event(
+            *event,
+            session=session,
+            artifact_revision=revision,
+            artifact_status=str(release.get("status") or ""),
+        )
+    return await emit_event(
+        *event,
+        artifact_revision=revision,
+        artifact_status=str(release.get("status") or ""),
+    )
 
 
 async def emit_artifact_event(
@@ -751,8 +849,17 @@ async def emit_artifact_event(
         user.id,
     )
     if session is not None:
-        return await queue_event(*event, session=session, artifact_revision=verified_revision)
-    return await emit_event(*event, artifact_revision=verified_revision)
+        return await queue_event(
+            *event,
+            session=session,
+            artifact_revision=verified_revision,
+            artifact_status=str(artifact.get("status") or ""),
+        )
+    return await emit_event(
+        *event,
+        artifact_revision=verified_revision,
+        artifact_status=str(artifact.get("status") or ""),
+    )
 
 
 async def emit_event(
@@ -768,6 +875,7 @@ async def emit_event(
     relationship_path: list[str] | None = None,
     relationship: dict | None = None,
     artifact_revision: int | None = None,
+    artifact_status: str | None = None,
 ) -> bool:
     await queue_event(
         trigger,
@@ -782,6 +890,7 @@ async def emit_event(
         relationship_path=relationship_path,
         relationship=relationship,
         artifact_revision=artifact_revision,
+        artifact_status=artifact_status,
     )
     existing = await database.value.ai_automation_outbox.find_one({"_id": event_id})
     if existing and existing.get("status") in {"DELIVERED", "SUPPRESSED"}:
@@ -803,6 +912,7 @@ async def queue_event(
     relationship_path: list[str] | None = None,
     relationship: dict | None = None,
     artifact_revision: int | None = None,
+    artifact_status: str | None = None,
 ) -> str:
     """Idempotently persist an event; pass a session to make it atomic with domain writes."""
     payload = {
@@ -828,6 +938,7 @@ async def queue_event(
                     if type(artifact_revision) is int and artifact_revision >= 1
                     else {}
                 ),
+                **({"artifact_status": artifact_status} if artifact_status else {}),
             }
         ],
     }

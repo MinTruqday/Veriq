@@ -162,12 +162,16 @@ class RequirementSourceStructureTests(unittest.IsolatedAsyncioTestCase):
         document = {"_id": "doc", "project_id": "project", "normalized_content": "Rule A", "source_version": "2", "content_hash": "sourcehash", "source_structure": [{"block_id": "#/texts/2", "text": "Rule A"}], "parse_report": {"page_count": 200}}
         with (
             patch.object(requirement_documents, "index_artifact", new=AsyncMock(return_value=True)) as index,
-            patch.object(requirement_documents.requirement_document_repository, "set_index_result", new=AsyncMock(return_value=SimpleNamespace(matched_count=1))),
+            patch.object(requirement_documents.requirement_document_repository, "set_index_result", new=AsyncMock(return_value=SimpleNamespace(matched_count=1))) as save_status,
         ):
             await requirement_documents.index_requirement_document(document)
         self.assertEqual(index.await_args.kwargs["source_structure"], document["source_structure"])
         self.assertEqual(index.await_args.kwargs["document_id"], "doc")
         self.assertEqual(index.await_args.kwargs["source_version"], "2")
+        self.assertEqual(
+            save_status.await_args.kwargs["index_contract_version"],
+            requirement_documents.REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION,
+        )
 
     async def test_stale_revision_reindexes_latest_source_once(self):
         old_document = {

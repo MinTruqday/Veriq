@@ -105,10 +105,7 @@ def validate_merge_choices(choices, result, original, proposal):
         if identity in identities:
             raise HTTPException(422, detail={"code": "MERGE_CHOICE_DUPLICATE", "field": field})
         identities.add(identity)
-        if field == "steps" and (
-            (step_id and step_id in scoped_step_choices)
-            or (not step_id and scoped_step_choices)
-        ):
+        if field == "steps" and not step_id and scoped_step_choices:
             continue
         if source_name == "MANUAL":
             continue

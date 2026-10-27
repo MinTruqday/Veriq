@@ -13,6 +13,7 @@ from src.schemas.inference_skill_profile import (
     SkillProfileExtractionOutput,
     SkillProfileExtractionRequest,
 )
+from src.schemas.inference_staffing import StaffingRecommendationRequest
 from src.schemas.ingestion import (
     AttachmentConversionRequest,
     ConversionCheckpointCleanupRequest,
@@ -26,6 +27,7 @@ from src.services.ingestion import index_document as index_document_data
 from src.services.ingestion import remove_document as remove_document_data
 from src.services.conversion import document_parser
 from src.services.skill_profile_extraction import extract_skill_profile_candidates
+from src.services.staffing_recommendation import recommend_staffing
 
 router = APIRouter(prefix="/tiep-nap")
 indexing_router = APIRouter(dependencies=[Depends(verify_internal_token)])
@@ -222,6 +224,15 @@ async def read_document_picture_asset(
 async def extract_skill_profile(req: SkillProfileExtractionRequest):
     result = await extract_skill_profile_candidates(req)
     return APIResponse(data=result, message="Đã trích xuất ứng viên hồ sơ năng lực")
+
+
+@indexing_router.post(
+    "/kiem-thu/goi-y-phan-cong",
+    description="Xếp hạng người thực hiện từ dữ liệu năng lực, tải việc và chi phí đã xác thực",
+)
+async def staffing_recommendation(req: StaffingRecommendationRequest):
+    result = await recommend_staffing(req)
+    return APIResponse(data=result, message="Đã tạo đề xuất phân công có căn cứ")
 
 
 @indexing_router.delete(

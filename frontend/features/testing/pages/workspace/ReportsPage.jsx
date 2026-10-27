@@ -321,9 +321,9 @@ export default function ReportsPage({ project }) {
                       Độ phủ truy vết và thực thi
                     </h2>
                     <p className="mt-1 text-sm text-ink-muted">
-                      Độ phủ Requirement, tiêu chí, hiệu lực và kỹ thuật tính trên toàn dự án. Độ
-                      phủ thực thi chỉ lọc theo bản phát hành và bản dựng; API hiện chưa lọc chỉ số
-                      này theo môi trường.
+                      Độ phủ yêu cầu, tiêu chí, hiệu lực và kỹ thuật tính trên toàn dự án. Độ phủ
+                      thực thi chỉ lọc theo bản phát hành và bản dựng; API hiện chưa lọc chỉ số này
+                      theo môi trường.
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

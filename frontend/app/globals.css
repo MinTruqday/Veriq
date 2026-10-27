@@ -179,24 +179,29 @@
 
   .workspace-panel-header-with-actions {
     display: grid;
-    grid-template-columns: minmax(14rem, 0.9fr) minmax(0, 1.6fr);
+    grid-template-columns: minmax(14rem, 0.8fr) minmax(0, 1.5fr);
     align-items: start;
   }
 
   .workspace-panel-header-with-actions .workspace-panel-heading {
     min-width: 0;
+    width: 100%;
   }
 
   .workspace-panel-header-with-actions .workspace-panel-actions {
-    width: 100%;
     min-width: 0;
+    width: auto;
   }
 
   .requirements-list-panel .workspace-panel-header-with-actions {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-heading {
+  .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-heading,
+  .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-actions {
+    grid-column: 1 / -1;
     width: 100%;
     min-width: 0;
   }
@@ -629,6 +634,11 @@
 @container (max-width: 72rem) {
   .workspace-panel-header-with-actions {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-panel-header-with-actions .workspace-panel-heading,
+  .workspace-panel-header-with-actions .workspace-panel-actions {
+    width: 100%;
   }
 
   .workspace-panel-header-with-actions .workspace-panel-actions {

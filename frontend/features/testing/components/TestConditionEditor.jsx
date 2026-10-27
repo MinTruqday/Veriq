@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import TestBasisPanel from "./TestBasisPanel";
+import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { textDoc, valueLabel } from "../lib/testing";
 
 const defaults = {
@@ -65,6 +66,9 @@ export default function TestConditionEditor({ initialValue, requirements, onSave
       }}
     >
       {error && <p className="text-sm text-danger">{error}</p>}
+      <div>
+        <ContentOriginBadge origin={value.origin || "manual"} />
+      </div>
       <TestBasisPanel
         refs={value.basis_refs}
         onChange={(refs) => setField("basis_refs", refs)}

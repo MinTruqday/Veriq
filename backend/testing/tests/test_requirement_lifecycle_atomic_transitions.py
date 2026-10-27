@@ -202,8 +202,8 @@ class RequirementLifecycleAtomicTransitionTests(unittest.IsolatedAsyncioTestCase
         self.assertEqual(transition_version.await_args.args[4], target_status)
         self.assertIs(transition_version.await_args.kwargs["session"], session)
         set_requirement_status.assert_awaited_once_with(
-            "requirement-1", "project-1", target_status,
-            set_requirement_status.await_args.args[3], session=session,
+            "requirement-1", "project-1", "version-1", target_status,
+            set_requirement_status.await_args.args[4], session=session,
         )
         audit.assert_awaited_once()
         self.assertEqual(audit.await_args.args[1], audit_action)
@@ -269,8 +269,9 @@ class RequirementLifecycleAtomicTransitionTests(unittest.IsolatedAsyncioTestCase
                 new=AsyncMock(),
             ),
             patch.object(requirement_lifecycle, "audit", new=AsyncMock()),
-            patch(
-                "src.clients.ai_automation.queue_requirement_changed",
+            patch.object(
+                requirement_lifecycle,
+                "queue_requirement_changed",
                 new=AsyncMock(),
             ),
             patch.object(
@@ -293,6 +294,69 @@ class RequirementLifecycleAtomicTransitionTests(unittest.IsolatedAsyncioTestCase
         lint.assert_called_once_with(version, criteria)
         baseline_version.assert_awaited_once()
         self.assertEqual(result.version["status"], "BASELINED")
+
+    async def test_baseline_race_retries_failed_index_instead_of_claiming_ready(self):
+        user = SimpleNamespace(id="qa-1")
+        version = {
+            "_id": "version-1",
+            "requirement_id": "requirement-1",
+            "project_id": "project-1",
+            "status": "IN_REVIEW",
+            "revision": 3,
+        }
+        current = {
+            **version,
+            "status": "BASELINED",
+            "revision": 4,
+            "index_status": "FAILED",
+        }
+        indexed = {**current, "index_status": "READY"}
+        session = _AsyncSession()
+        client = SimpleNamespace(start_session=AsyncMock(return_value=session))
+        index_requirement = AsyncMock(return_value=True)
+
+        with (
+            patch.object(requirement_lifecycle.database, "client", client),
+            patch.object(requirement_lifecycle, "require_automation_publication_authority"),
+            patch.object(
+                requirement_lifecycle,
+                "get_project_entity",
+                new=AsyncMock(return_value=version),
+            ),
+            patch.object(
+                requirement_lifecycle.requirement_repository,
+                "list_acceptance_criteria",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(requirement_lifecycle, "requirement_findings", return_value=[]),
+            patch.object(
+                requirement_lifecycle.requirement_repository,
+                "find_project_settings",
+                new=AsyncMock(return_value={"settings": {"requirement_lint_blocking": False}}),
+            ),
+            patch.object(
+                requirement_lifecycle.requirement_repository,
+                "baseline_version",
+                new=AsyncMock(return_value=None),
+            ),
+            patch.object(
+                requirement_lifecycle.requirement_repository,
+                "find_version",
+                new=AsyncMock(side_effect=[current, indexed]),
+            ),
+            patch.object(
+                requirement_lifecycle,
+                "index_requirement_version",
+                new=index_requirement,
+            ),
+        ):
+            result = await requirement_lifecycle.baseline_requirement(
+                "version-1", 3, "Đã rà soát", user
+            )
+
+        index_requirement.assert_awaited_once_with(current)
+        self.assertTrue(result.indexed)
+        self.assertEqual(result.version["index_status"], "READY")
 
 
 class _AsyncContext:

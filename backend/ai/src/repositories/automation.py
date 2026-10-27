@@ -245,7 +245,11 @@ class AutomationRepository:
         *,
         include_queued: bool = True,
         include_legacy_running: bool = True,
+        after_automation_run_id: str | None = None,
+        limit: int = 100,
     ) -> list[AutomationRun]:
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValueError("automation_recovery_batch_size_invalid")
         now = datetime.now(timezone.utc)
         legacy_cutoff = startup_cutoff or now
         query: dict[str, Any] = {"status": {"$in": [AutomationStatus.RUNNING.value]}}
@@ -272,7 +276,11 @@ class AutomationRepository:
                 }
             )
         query["$or"] = recovery_branches
-        values = await self._database.automation_runs.find(query).to_list(length=None)
+        if after_automation_run_id:
+            query["_id"] = {"$gt": str(after_automation_run_id)}
+        values = await self._database.automation_runs.find(query).sort(
+            [("_id", 1)]
+        ).to_list(length=limit)
         recovered = []
         for value in values:
             if value.get("status") == AutomationStatus.QUEUED.value:
@@ -370,6 +378,36 @@ class AutomationRepository:
             value["automation_run_id"] = str(value.pop("_id"))
         return [AutomationRun.model_validate(value) for value in values]
 
+    async def claim_stale_queued_runs(
+        self,
+        stale_before: datetime,
+        lease_expires_at: datetime,
+        limit: int = 100,
+    ) -> list[AutomationRun]:
+        now = datetime.now(timezone.utc)
+        claimed = []
+        query = {
+            "status": AutomationStatus.QUEUED.value,
+            "updated_at": {"$lte": stale_before},
+            "$or": [
+                {"queue_dispatch_lease_expires_at": {"$lte": now}},
+                {"queue_dispatch_lease_expires_at": None},
+                {"queue_dispatch_lease_expires_at": {"$exists": False}},
+            ],
+        }
+        for _ in range(max(0, limit)):
+            value = await self._database.automation_runs.find_one_and_update(
+                query,
+                {"$set": {"queue_dispatch_lease_expires_at": lease_expires_at}},
+                sort=[("updated_at", 1), ("_id", 1)],
+                return_document=ReturnDocument.AFTER,
+            )
+            if value is None:
+                break
+            value["automation_run_id"] = str(value.pop("_id"))
+            claimed.append(AutomationRun.model_validate(value))
+        return claimed
+
     async def latest_checkpoint(self, automation_run_id: str) -> AutomationCheckpoint | None:
         value = await self._database.automation_checkpoints.find_one(
             {"automation_run_id": automation_run_id},
@@ -455,6 +493,19 @@ class AutomationRepository:
         for value in values:
             value["checkpoint_id"] = str(value.pop("_id"))
         return [AutomationCheckpoint.model_validate(value) for value in values]
+
+    async def count_retry_checkpoints(self, automation_run_id: str) -> int:
+        return await self._database.automation_checkpoints.count_documents(
+            {
+                "automation_run_id": automation_run_id,
+                "detail.reason_code": {
+                    "$in": [
+                        "AUTOMATION_QUEUE_UNAVAILABLE",
+                        "AUTOMATION_WORKER_RETRYABLE",
+                    ]
+                },
+            }
+        )
 
     async def save_source_facts(self, facts: list[SourceFact]) -> None:
         if not facts:

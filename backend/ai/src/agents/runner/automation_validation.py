@@ -59,9 +59,23 @@ def proposal_fingerprint(tool_name, arguments):
     }
     return mutation_fingerprint(tool_name, scoped_arguments or arguments)
 
+
+def tool_evidence_reference(task_id, batch_id, call_index, tool_name):
+    return ":".join(
+        (
+            str(task_id),
+            str(batch_id),
+            str(call_index),
+            str(tool_name or "tool"),
+        )
+    )
+
+
 def verified_tool_call_records(task, observations):
     records = []
-    for call, observation in zip(task.tool_calls, observations):
+    for tool_call_index, (call, observation) in enumerate(
+        zip(task.tool_calls, observations)
+    ):
         access = tool_access(registered_tools().get(call.tool_name))
         if observation.get("status") != ToolExecutionStatus.COMPLETED or not access:
             continue
@@ -71,9 +85,12 @@ def verified_tool_call_records(task, observations):
             continue
         record = {
             "task_id": task.task_id,
+            "tool_call_index": tool_call_index,
             "tool_name": call.tool_name,
             "arguments": audit_arguments(call.arguments),
         }
+        if observation.get("tool_call_batch_id"):
+            record["tool_call_batch_id"] = observation["tool_call_batch_id"]
         if access.action == "MUTATE":
             record["mutation_fingerprint"] = mutation_fingerprint(
                 call.tool_name, call.arguments
@@ -88,6 +105,64 @@ def verified_tool_call_records(task, observations):
             )
         records.append(record)
     return records
+
+
+def tool_call_records_for_observations(tool_calls, observations):
+    indexed_records = {}
+    ambiguous_records = set()
+    legacy_records = {}
+    for record in tool_calls:
+        task_id = record.get("task_id")
+        call_index = record.get("tool_call_index")
+        batch_id = record.get("tool_call_batch_id")
+        if (
+            isinstance(task_id, str)
+            and task_id
+            and isinstance(call_index, int)
+            and not isinstance(call_index, bool)
+            and call_index >= 0
+        ):
+            identity = (
+                ("batch", batch_id, call_index)
+                if isinstance(batch_id, str) and batch_id
+                else ("task", task_id, call_index)
+            )
+            if identity in indexed_records:
+                ambiguous_records.add(identity)
+            else:
+                indexed_records[identity] = record
+        else:
+            legacy_records.setdefault(str(record.get("tool_name") or ""), []).append(record)
+
+    matched = []
+    for observation in observations:
+        task_id = observation.get("task_id")
+        call_index = observation.get("tool_call_index")
+        batch_id = observation.get("tool_call_batch_id")
+        if (
+            isinstance(task_id, str)
+            and task_id
+            and isinstance(call_index, int)
+            and not isinstance(call_index, bool)
+            and call_index >= 0
+        ):
+            identity = (
+                ("batch", batch_id, call_index)
+                if isinstance(batch_id, str) and batch_id
+                else ("task", task_id, call_index)
+            )
+            record = indexed_records.get(identity, {})
+            if (
+                identity in ambiguous_records
+                or record.get("tool_name") != observation.get("tool_name")
+            ):
+                record = {}
+            matched.append(record)
+            continue
+        records = legacy_records.get(str(observation.get("tool_name") or ""), [])
+        matched.append(records.pop(0) if records else {})
+    return matched
+
 
 def validated_tasks(
     tasks,

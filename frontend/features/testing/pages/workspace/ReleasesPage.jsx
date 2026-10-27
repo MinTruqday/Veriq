@@ -336,7 +336,7 @@ function readinessGateLabel(gate) {
       GATE_REVISION: "Phiên bản điều kiện",
       COMPLETION_REPORT: "Báo cáo hoàn tất",
       BLOCKING_DEFECTS: "Lỗi chặn phát hành",
-      REQUIREMENT_ASSURANCE: "Hồ sơ đảm bảo Requirement",
+      REQUIREMENT_ASSURANCE: "Hồ sơ đảm bảo yêu cầu",
     }[gate] || "Điều kiện phát hành"
   );
 }
@@ -355,7 +355,7 @@ function readinessCodeLabel(code) {
       RELEASE_COMPLETION_GATE_FAILED: "Chưa đạt điều kiện báo cáo hoàn tất",
       RELEASE_TEST_PLAN_SCOPE_REQUIRED: "Cần phạm vi Test Plan",
       RELEASE_TEST_PLAN_SNAPSHOT_INVALID: "Ảnh chụp Test Plan không hợp lệ",
-      RELEASE_REQUIREMENT_SCOPE_REQUIRED: "Cần Requirement trong phạm vi phát hành",
+      RELEASE_REQUIREMENT_SCOPE_REQUIRED: "Cần có yêu cầu trong phạm vi phát hành",
       RELEASE_REQUIREMENT_ASSURANCE_GATE_FAILED: "Hồ sơ đảm bảo chưa đạt",
     }[code] ||
     code ||

@@ -72,12 +72,23 @@ class GeneratedCase(BaseModel):
     steps: list[GeneratedStep] = Field(min_length=1, max_length=50)
     expected: str = Field(min_length=2, max_length=5000)
     acceptance_criterion_ids: list[str] = Field(default_factory=list)
+    required_skills: list[str] = Field(default_factory=list, max_length=50)
     techniques: list[str] = Field(default_factory=list)
     challenge_techniques: list[str] = Field(default_factory=list)
     coverage_obligations: list[str] = Field(default_factory=list)
     obligation_evidence: list[GeneratedObligationEvidence] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     evidence_quotes: list[GeneratedEvidenceQuote] = Field(min_length=1, max_length=20)
+
+    @field_validator("required_skills")
+    @classmethod
+    def validate_required_skills(cls, values):
+        normalized = [" ".join(value.split()) for value in values]
+        if any(not value or len(value) > 120 for value in normalized):
+            raise ValueError("test_case_required_skill_invalid")
+        if len({value.casefold() for value in normalized}) != len(normalized):
+            raise ValueError("test_case_required_skills_must_be_unique")
+        return normalized
 
     @field_validator("coverage_obligations")
     @classmethod
@@ -112,6 +123,9 @@ class GeneratedCase(BaseModel):
             raise ValueError("test_case_obligation_evidence_must_reference_case_evidence")
         if self.coverage_obligations and evidence_keys != coverage_obligations:
             raise ValueError("test_case_obligation_evidence_must_cover_each_obligation")
+        quote_text = " ".join(item.quote.casefold() for item in self.evidence_quotes)
+        if any(skill.casefold() not in quote_text for skill in self.required_skills):
+            raise ValueError("test_case_required_skill_must_appear_in_cited_evidence")
         return self
 
 

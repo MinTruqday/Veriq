@@ -9,6 +9,59 @@ from src.schemas.contracts.requirements import ImportCreate
 
 
 class RequirementDocumentCreateRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.deduplication_lookup = patch.object(
+            requirement_documents.requirement_document_repository,
+            "find_by_deduplication_key",
+            new=AsyncMock(return_value=None),
+        )
+        self.deduplication_lookup.start()
+        self.addCleanup(self.deduplication_lookup.stop)
+
+    async def test_indexed_legacy_document_is_reindexed_to_current_payload_contract(self):
+        user = SimpleNamespace(id="ba-user", is_system_admin=False)
+        legacy = {
+            "_id": "RDOC-legacy-index",
+            "project_id": "project-1",
+            "status": "READY",
+            "revision": 4,
+            "ai_enabled": True,
+            "index_status": "INDEXED",
+        }
+        current = {
+            **legacy,
+            "index_contract_version": requirement_documents.REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION,
+        }
+        with (
+            patch.object(
+                requirement_documents,
+                "index_requirement_document",
+                new=AsyncMock(return_value=True),
+            ) as reindex,
+            patch.object(
+                requirement_documents.requirement_document_repository,
+                "find",
+                new=AsyncMock(return_value=current),
+            ),
+            patch.object(
+                requirement_documents.ai_automation_access_repository,
+                "allow_source",
+                new=AsyncMock(return_value=True),
+            ),
+            patch.object(
+                requirement_documents,
+                "queue_document_ingestion",
+                new=AsyncMock(),
+            ) as enqueue,
+        ):
+            recovered = await requirement_documents.recover_document_ingestion(
+                legacy, user
+            )
+
+        self.assertTrue(recovered)
+        reindex.assert_awaited_once_with(legacy)
+        enqueue.assert_awaited_once_with(current, user)
+
     async def test_shared_duplicate_still_parsing_is_not_reused_as_complete(self):
         user = SimpleNamespace(id="ba-user", is_system_admin=False)
         shared = {
@@ -119,6 +172,7 @@ class RequirementDocumentCreateRecoveryTests(unittest.IsolatedAsyncioTestCase):
             "revision": 2,
             "ai_enabled": True,
             "index_status": "INDEXED",
+            "index_contract_version": requirement_documents.REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION,
         }
         with (
             patch.object(requirement_documents.ai_automation_access_repository, "allow_source", new=AsyncMock(return_value=False)),

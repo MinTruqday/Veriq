@@ -43,6 +43,43 @@ const authorityLevels = [
   ["UNVERIFIED", "Chưa xác minh"],
 ];
 
+const sourceHierarchyFor = (blocks) => {
+  const normalizedId = (value) => (typeof value === "string" ? value.trim() : "");
+  const byId = new Map(
+    (blocks || [])
+      .map((block) => [normalizedId(block.block_id), block])
+      .filter(([blockId]) => blockId),
+  );
+  const hierarchy = new Map();
+
+  for (const block of blocks || []) {
+    const blockId = normalizedId(block.block_id);
+    const key = blockId || `${block.block_index}`;
+    let parentId = normalizedId(block.parent_block_id);
+    let depth = 0;
+    const visited = new Set([blockId].filter(Boolean));
+    let parentLoaded = !parentId;
+    let cycle = false;
+
+    while (parentId) {
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      parentLoaded = true;
+      if (visited.has(parentId)) {
+        cycle = true;
+        break;
+      }
+      visited.add(parentId);
+      depth += 1;
+      parentId = normalizedId(parent.parent_block_id);
+    }
+
+    hierarchy.set(key, { depth: Math.min(depth, 8), parentLoaded, cycle });
+  }
+
+  return hierarchy;
+};
+
 export default function KnowledgePage({ project, initialQuery = "", useGlobalSearch = false }) {
   const { ask, dialog } = useActionDialog();
   const [query, setQuery] = useState(initialQuery);
@@ -71,6 +108,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   const projectSearchRequestGeneration = useRef(0);
   const sourceProjectId = useRef(project._id);
   const canManage = project.current_permissions?.includes("knowledge.manage");
+  const sourceHierarchy = sourceHierarchyFor(sourceStructurePage?.items);
   const loadSources = useCallback(async () => {
     const requestGeneration = ++sourceListRequestGeneration.current;
     if (!sourcesLoaded.current) setSourcesLoading(true);
@@ -618,7 +656,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
               <p className="font-semibold">1. Mã điểm</p>
               <p className="mt-1 text-ink-muted">
                 ID để đọc, cập nhật hoặc xóa đúng point. Khi tạo thế hệ chỉ mục mới, ID có thể đổi;
-                không dùng nó làm mã tài liệu hay mã Requirement.
+                không dùng nó làm mã tài liệu hay mã yêu cầu.
               </p>
             </div>
             <div className="min-w-0 rounded-md bg-surface p-3">
@@ -643,6 +681,11 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
             tóm tắt riêng, được đánh dấu là tóm tắt chứ không thay cho đoạn nguồn. Ảnh gốc không nằm
             trong payload; đoạn chỉ giữ siêu dữ liệu hoặc tham chiếu ảnh khi có. Ngoài mã định danh
             (ID), véc-tơ và payload, Veriq hiện không thêm một vùng dữ liệu thứ tư cho điểm.
+          </p>
+          <p className="mt-2 text-ink-muted">
+            Payload nguồn có thể mang thông tin quyền sở hữu và chia sẻ để backend lọc quyền. API
+            xem các đoạn chủ động loại bỏ mã người sở hữu, người tạo và danh sách người nhận chia
+            sẻ; quyền hiện hành vẫn được kiểm tra ở backend.
           </p>
         </div>
         {metadataSource && (
@@ -677,7 +720,8 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                 <p className="text-ink-muted">
                   Đây là danh sách khối mà bộ phân tích lưu trong tài liệu chuẩn. Mã khối cha và cấp
                   chỉ được hiển thị khi nguồn cung cấp; một số tài liệu có thể chỉ tạo thành rừng
-                  khối hoặc không có cấu trúc.
+                  khối hoặc không có cấu trúc. Qdrant giữ liên kết cha và danh sách tổ tiên trong
+                  payload của đoạn, không tạo cây riêng.
                 </p>
                 {!sourceStructurePage && !sourceStructureLoading && (
                   <button
@@ -712,12 +756,17 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             "\n",
                             1,
                           )[0];
+                          const hierarchy = sourceHierarchy.get(
+                            typeof block.block_id === "string" && block.block_id.trim()
+                              ? block.block_id.trim()
+                              : `${block.block_index}`,
+                          );
                           return (
                             <li
                               className="min-w-0 rounded-md bg-surface-quiet p-3"
                               key={`${block.block_index}-${block.block_id || "source-block"}`}
                               style={{
-                                marginInlineStart: `${Math.min(Number(block.level) || 0, 8) * 12}px`,
+                                marginInlineStart: `${(hierarchy?.depth || 0) * 16}px`,
                               }}
                             >
                               <div className="flex flex-wrap items-center gap-2">
@@ -730,6 +779,26 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                                 <span className="break-all text-xs text-ink-muted">
                                   {block.block_id || "Không có mã khối"}
                                 </span>
+                                {block.parent_block_id && (
+                                  <span className="break-all text-xs text-ink-muted">
+                                    Khối cha: {block.parent_block_id}
+                                  </span>
+                                )}
+                                {block.level != null && (
+                                  <span className="text-xs text-ink-muted">
+                                    Cấp bộ phân tích {block.level}
+                                  </span>
+                                )}
+                                {hierarchy?.cycle && (
+                                  <span className="text-xs text-danger">
+                                    Quan hệ cha–con bị vòng lặp
+                                  </span>
+                                )}
+                                {block.parent_block_id && !hierarchy?.parentLoaded && (
+                                  <span className="text-xs text-ink-muted">
+                                    Khối cha chưa nằm trong phần đã tải
+                                  </span>
+                                )}
                               </div>
                               <p className="mt-1 break-words">
                                 {firstLine || "Khối không có văn bản trích xuất"}
@@ -866,19 +935,21 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                           ["Loại đối tượng nguồn", valueLabel(metadata.artifact_type)],
                           ["Mã đối tượng nguồn", metadata.artifact_id],
                           ["Mã phiên bản đối tượng", metadata.artifact_version_id],
+                          ["Tên nguồn", metadata.source_name],
+                          ["Tác giả nguồn", metadata.author],
                           ["Mức độ thẩm quyền nguồn", valueLabel(metadata.authority)],
                           ["Trạng thái nguồn", valueLabel(metadata.status)],
                           ["Phạm vi hiển thị", valueLabel(metadata.visibility)],
                           ["Loại nội dung", valueLabel(metadata.content_type)],
                           ["Tình trạng duyệt nguồn", valueLabel(metadata.approval_status)],
                           ["Lĩnh vực sản phẩm", metadata.product_area],
+                          ["Module", metadata.module],
                           ["Thành phần", metadata.component],
+                          ["Mục nguồn", metadata.section],
+                          ["Trang khai báo", metadata.page],
                           ["Mã bản phát hành", metadata.release_id],
                           ["Mã nguồn bên ngoài", metadata.external_source_id],
                           ["Thẻ", (metadata.tags || []).join(", ")],
-                          ["Người sở hữu nguồn", metadata.owner_id],
-                          ["Người tạo nguồn", metadata.creator_id],
-                          ["Số người được chia sẻ riêng", metadata.shared_with?.length ?? null],
                           ["Người duyệt nguồn", metadata.approved_by],
                           [
                             "Thời điểm duyệt",
@@ -893,7 +964,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                               : null,
                           ],
                           [
-                            "Requirement liên quan",
+                            "Yêu cầu liên quan",
                             [
                               ...(metadata.requirement_ids || []),
                               ...(metadata.requirement_version_ids || []),
@@ -938,6 +1009,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                           ["Mã phiên bản chỉ mục", metadata.index_generation],
                           ["Mã lần xử lý tài liệu", metadata.indexing_attempt_id],
                           ["Mô hình biểu diễn", metadata.embedding_model],
+                          ["Cách tạo đầu vào biểu diễn", valueLabel(metadata.embedding_input_mode)],
                           ["Dấu băm đầu vào mô hình biểu diễn", metadata.embedding_input_hash],
                           ["Phạm vi điểm tóm tắt", valueLabel(metadata.summary_scope)],
                           ["Số đoạn nguồn của tài liệu", metadata.document_chunk_count],
@@ -1042,6 +1114,17 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                                 <p>
                                   <strong>Khối cha:</strong>{" "}
                                   {span.parent_block_id || "Không có mã khối cha"}
+                                </p>
+                                <p>
+                                  <strong>Chuỗi tổ tiên trong tài liệu:</strong>{" "}
+                                  {span.ancestor_chain_status === "ROOT"
+                                    ? "Khối gốc"
+                                    : span.ancestor_chain_status === "COMPLETE"
+                                      ? span.ancestor_block_ids?.join(" → ") ||
+                                        "Không có mã khối tổ tiên"
+                                      : span.ancestor_chain_status === "PARTIAL"
+                                        ? `${span.ancestor_block_ids?.join(" → ") || "Chưa có tổ tiên nội bộ"} · nguồn còn thiếu khối cha được tham chiếu`
+                                        : "Point cũ chưa ghi nhận trạng thái chuỗi tổ tiên"}
                                 </p>
                                 <p>
                                   <strong>Loại:</strong> {valueLabel(span.content_type)}

@@ -102,6 +102,39 @@ class AutomationOutboxTests(unittest.IsolatedAsyncioTestCase):
             "artifact_revision", outbox.record["payload"]["evidence"][0]
         )
 
+    async def test_queue_event_captures_artifact_status_in_fingerprinted_evidence(self):
+        class OutboxCollection:
+            def __init__(self):
+                self.record = None
+
+            async def update_one(self, query, update, **kwargs):
+                self.record = {"_id": query["_id"], **update["$setOnInsert"]}
+                return SimpleNamespace(upserted_id=query["_id"])
+
+            async def find_one(self, query, projection, **kwargs):
+                return {key: self.record[key] for key in projection if key in self.record}
+
+        outbox = OutboxCollection()
+        db = SimpleNamespace(value=SimpleNamespace(ai_automation_outbox=outbox))
+        event = (
+            "TEST_CASE_APPROVED",
+            "test-case-version:v1:1:TEST_CASE_APPROVED",
+            "project-1",
+            "test_case_version",
+            "case-1",
+            "v1",
+            "database",
+            "Approved test case",
+            "qa-1",
+        )
+
+        with patch.object(ai_automation, "database", db):
+            await ai_automation.queue_event(*event, artifact_status="APPROVED")
+
+        evidence = outbox.record["payload"]["evidence"][0]
+        self.assertEqual(evidence["artifact_status"], "APPROVED")
+        self.assertEqual(len(outbox.record["event_fingerprint"]), 64)
+
     async def test_event_id_reuse_with_different_project_or_content_is_rejected(self):
         class OutboxCollection:
             def __init__(self):
@@ -296,7 +329,10 @@ class AutomationOutboxTests(unittest.IsolatedAsyncioTestCase):
         }
 
     async def test_event_delivery_marks_outbox_delivered_and_sends_source_payload(self):
-        self.outbox.find_one.return_value = {"_id": self.payload["event_id"], "status": "PENDING"}
+        self.outbox.find_one.side_effect = [
+            {"_id": self.payload["event_id"], "status": "PENDING"},
+            {"_id": self.payload["event_id"], "status": "DELIVERED"},
+        ]
         self.outbox.find_one_and_update.return_value = {
             "_id": self.payload["event_id"],
             "payload": self.payload,
@@ -322,9 +358,17 @@ class AutomationOutboxTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(client.posts), 1)
         self.assertEqual(client.posts[0][1]["json"]["trigger"], "WORK_ITEM_CHANGED")
         self.assertEqual(client.posts[0][1]["json"]["evidence"][0]["text"], "Thay đổi đã lưu")
+        dispatch_token = self.outbox.find_one_and_update.await_args.args[1]["$set"][
+            "dispatch_token"
+        ]
         delivered_update = self.outbox.update_one.await_args_list[-1]
         self.assertEqual(
-            delivered_update.args[0], {"_id": self.payload["event_id"], "status": "DISPATCHING"}
+            delivered_update.args[0],
+            {
+                "_id": self.payload["event_id"],
+                "status": "DISPATCHING",
+                "dispatch_token": dispatch_token,
+            },
         )
         self.assertEqual(delivered_update.args[1]["$set"]["status"], "DELIVERED")
         self.assertIn("payload", delivered_update.args[1]["$unset"])
@@ -352,6 +396,10 @@ class AutomationOutboxTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(retry_update["next_attempt_at"], datetime.now(timezone.utc))
 
     async def test_stale_dispatching_event_can_be_reclaimed_after_worker_restart(self):
+        self.outbox.find_one.return_value = {
+            "_id": self.payload["event_id"],
+            "status": "DELIVERED",
+        }
         self.outbox.find_one_and_update.return_value = {
             "_id": self.payload["event_id"],
             "payload": self.payload,
@@ -429,6 +477,10 @@ class AutomationOutboxTests(unittest.IsolatedAsyncioTestCase):
         self.outbox.find_one_and_update.assert_not_awaited()
 
     async def test_suppressed_event_is_recorded_and_not_dispatched_again(self):
+        self.outbox.find_one.return_value = {
+            "_id": self.payload["event_id"],
+            "status": "SUPPRESSED",
+        }
         self.outbox.find_one_and_update.return_value = {
             "_id": self.payload["event_id"],
             "payload": self.payload,
@@ -718,6 +770,7 @@ class AutomationOutboxTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Update login behavior", args[7])
         self.assertIn("Stored description", args[7])
         self.assertEqual(emit.await_args.kwargs["artifact_revision"], 7)
+        self.assertEqual(emit.await_args.kwargs["artifact_status"], "IN_PROGRESS")
 
     async def test_dependency_change_queues_scoped_events_for_both_endpoints(self):
         user = SimpleNamespace(id="ba-1", _ai_automation_run_id=None)

@@ -39,6 +39,44 @@ class AutomationTrigger(str, Enum):
     RELEASE_CHANGED = "RELEASE_CHANGED"
 
 
+class AutomationAction(str, Enum):
+    COMPILE_BLUEPRINT = "COMPILE_BLUEPRINT"
+    CREATE_REQUIREMENT_CANDIDATES = "CREATE_REQUIREMENT_CANDIDATES"
+    CREATE_TEST_CASE_CANDIDATES = "CREATE_TEST_CASE_CANDIDATES"
+    CREATE_FINDINGS = "CREATE_FINDINGS"
+    REQUEST_CLARIFICATION = "REQUEST_CLARIFICATION"
+    PROPOSE_ASSIGNMENT = "PROPOSE_ASSIGNMENT"
+    PROPOSE_TRANSITION = "PROPOSE_TRANSITION"
+    RUN_CHANGE_SIMULATION = "RUN_CHANGE_SIMULATION"
+
+
+class AutomationEventConditions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    minimum_evidence_count: int = Field(default=0, ge=0, le=100)
+    required_artifact_types: list[str] = Field(default_factory=list, max_length=30)
+    required_authorities: list[str] = Field(default_factory=list, max_length=30)
+    workflow_states_any_of: list[str] = Field(default_factory=list, max_length=30)
+    requester_roles: list[
+        Literal["BA", "QA", "TESTER", "DEVELOPER", "VIEWER", "ADMIN"]
+    ] = Field(
+        default_factory=list, max_length=6
+    )
+    minimum_evidence_score: float | None = Field(default=None, ge=0, le=1)
+    require_versioned_evidence: bool = False
+    require_trace_link: bool = False
+
+    @field_validator(
+        "required_artifact_types", "required_authorities", "workflow_states_any_of"
+    )
+    @classmethod
+    def normalize_condition_values(cls, values):
+        normalized = [str(value).strip() for value in values]
+        if any(not value for value in normalized) or len(set(normalized)) != len(normalized):
+            raise ValueError("automation_condition_values_must_be_nonblank_and_unique")
+        return normalized
+
+
 class AutomationStatus(str, Enum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
@@ -216,7 +254,16 @@ class AutomationDefinitionRequest(BaseModel):
     trigger: AutomationTrigger
     objective: str = Field(min_length=3, max_length=4000)
     intent: str = Field(default="", max_length=100)
+    actions: list[AutomationAction] = Field(default_factory=list, max_length=8)
+    conditions: AutomationEventConditions = Field(default_factory=AutomationEventConditions)
     enabled: bool = True
+
+    @field_validator("actions")
+    @classmethod
+    def unique_actions(cls, actions):
+        if len(set(actions)) != len(actions):
+            raise ValueError("automation_actions_must_be_unique")
+        return actions
 
 
 class AutomationDefinitionPatch(BaseModel):
@@ -224,7 +271,16 @@ class AutomationDefinitionPatch(BaseModel):
     name: str | None = Field(default=None, min_length=3, max_length=160)
     objective: str | None = Field(default=None, min_length=3, max_length=4000)
     intent: str | None = Field(default=None, max_length=100)
+    actions: list[AutomationAction] | None = Field(default=None, max_length=8)
+    conditions: AutomationEventConditions | None = None
     enabled: bool | None = None
+
+    @field_validator("actions")
+    @classmethod
+    def unique_actions(cls, actions):
+        if actions is not None and len(set(actions)) != len(actions):
+            raise ValueError("automation_actions_must_be_unique")
+        return actions
 
 
 class AutomationEventRequest(BaseModel):
@@ -308,6 +364,7 @@ class SourceFact(BaseModel):
 class DerivationStep(BaseModel):
     name: str
     source_fact_ids: list[str] = Field(default_factory=list)
+    control_event_refs: list[str] = Field(default_factory=list)
     input_artifact_refs: list[str] = Field(default_factory=list)
     input_artifact_version_ids: list[str] = Field(default_factory=list)
     output_evidence_refs: list[str] = Field(default_factory=list)
@@ -411,6 +468,7 @@ class AutomationRun(BaseModel):
     revision: int = 1
     checkpoint_sequence: int = Field(default=0, ge=0, strict=True, exclude=True)
     worker_lease_expires_at: datetime | None = None
+    queue_dispatch_lease_expires_at: datetime | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
@@ -462,6 +520,8 @@ class AutomationDefinition(BaseModel):
     trigger: AutomationTrigger
     objective: str
     intent: str = ""
+    actions: list[AutomationAction] = Field(default_factory=list, max_length=8)
+    conditions: AutomationEventConditions = Field(default_factory=AutomationEventConditions)
     enabled: bool = True
     revision: int = 1
     created_at: datetime = Field(default_factory=utc_now)

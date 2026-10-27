@@ -7,7 +7,9 @@ from src.services.automation_provenance import (
     carry_source_fact_lineage,
     has_provenance_gap,
     missing_blueprint_artifact_coverage_count,
+    source_location_metadata,
     source_fact_identity,
+    verified_release_gate_mutation_refs,
     verified_blueprint_artifact_lineage,
     verified_blueprint_claim_lineage,
     verified_blueprint_from_observations,
@@ -41,6 +43,26 @@ class VerifiedSourceSpanTests(unittest.TestCase):
         )
         self.assertEqual(result["source_start"], start)
         self.assertEqual(result["source_end"], start + len(quote))
+
+    def test_rejects_quote_that_matches_only_inside_another_word(self):
+        evidence = [
+            {
+                "artifact_id": "doc-1",
+                "artifact_version_id": "doc-1-v2",
+                "text": "The credential is invalid.",
+            }
+        ]
+        fact = {
+            "artifact_id": "doc-1",
+            "artifact_version_id": "doc-1-v2",
+            "quote": "valid",
+            "source_start": evidence[0]["text"].index("valid"),
+            "source_end": evidence[0]["text"].index("valid") + len("valid"),
+        }
+
+        result = verified_source_span(fact, evidence)
+
+        self.assertIsNone(result)
 
     def test_accepts_verified_blueprint_fact_excerpt_with_canonical_span(self):
         quote = "Người dùng đăng nhập bằng mật khẩu hợp lệ."
@@ -140,6 +162,15 @@ class VerifiedSourceSpanTests(unittest.TestCase):
         self.assertEqual(verified["source_chunk_id"], "chunk-8")
         self.assertEqual(verified["source_chunk_index"], 3)
         self.assertEqual(verified["source_page_numbers"], [2])
+
+    def test_source_location_metadata_rejects_invalid_page_numbers(self):
+        location = source_location_metadata(
+            {
+                "page_numbers": [3, 0, -1, True, 2, 3, "4"],
+            }
+        )
+
+        self.assertEqual(location["source_page_numbers"], [3, 2])
 
     def test_canonical_text_basis_requires_explicit_server_source_evidence(self):
         quote = "đăng nhập bằng mật khẩu hợp lệ"
@@ -292,8 +323,21 @@ class VerifiedSourceSpanTests(unittest.TestCase):
         self.assertEqual(verified["source_end"], fact["source_end"])
         self.assertEqual(verified["source_offset_basis"], "SOURCE_CITATION")
         self.assertEqual(verified["relationship_path"], [])
+        blueprint_evidence = [{
+            **evidence[0],
+            "source_verification": "VERIFIED_BLUEPRINT_SOURCE_FACT",
+        }]
+        blueprint_verified = verified_source_span(fact, blueprint_evidence)
+        self.assertEqual(blueprint_verified["source_offset_basis"], "UNKNOWN")
+        self.assertEqual(blueprint_verified["source_start"], fact["source_start"])
         self.assertIsNone(
             verified_source_span(fact, [{**evidence[0], "source_verification": ""}])
+        )
+        self.assertIsNone(
+            verified_source_span(
+                fact,
+                [{**evidence[0], "source_verification": "VERIFIED_BLUEPRINT_SOURCE_FACT", "source_end": fact["source_end"] + 1}],
+            )
         )
         self.assertIsNone(
             verified_source_span(fact, [{**evidence[0], "source_end": fact["source_end"] + 1}])
@@ -406,11 +450,155 @@ class VerifiedSourceSpanTests(unittest.TestCase):
         self.assertEqual(len(facts), 1)
         self.assertEqual(facts[0]["artifact_id"], "REQ-1")
 
+    def test_user_clarification_cannot_be_canonicalized_as_a_source_fact(self):
+        clarification = {
+            "artifact_type": "automation_clarification",
+            "artifact_id": "clarification-1",
+            "artifact_version_id": "clarification-1",
+            "source": "user",
+            "authority": "user_clarification",
+            "quote": "Dùng mã một lần để đăng nhập.",
+            "source_start": 0,
+            "source_end": len("Dùng mã một lần để đăng nhập."),
+        }
+
+        self.assertEqual(
+            canonicalize_source_facts([clarification], [clarification]), []
+        )
+        self.assertIsNone(
+            verified_source_span(
+                clarification,
+                [
+                    {
+                        **clarification,
+                        "text": clarification["quote"],
+                    }
+                ],
+            )
+        )
+
     def test_unverified_source_facts_or_unlinked_mutations_are_a_provenance_gap(self):
         self.assertTrue(has_provenance_gap(1, 0))
         self.assertTrue(has_provenance_gap(0, 1))
         self.assertTrue(has_provenance_gap(0, 0, 1))
         self.assertFalse(has_provenance_gap(0, 0))
+
+    def test_release_gate_control_event_can_ground_only_its_verified_release_mutation(self):
+        state = {
+            "automatic": True,
+            "source_event_verified": True,
+            "run": {
+                "project_id": "project-1",
+                "source_event_id": "release-gate:release-1:test-result:result-1:r2",
+            },
+            "constraints": {"trigger": "RELEASE_CHANGED"},
+            "evidence": [
+                {
+                    "artifact_type": "release",
+                    "artifact_id": "release-1",
+                    "artifact_revision": 4,
+                    "project_id": "project-1",
+                    "authority": "release_gate",
+                    "text": "Verified release gate recheck event.",
+                }
+            ],
+        }
+
+        refs = verified_release_gate_mutation_refs(
+            automatic=True,
+            source_event_verified=True,
+            trigger="RELEASE_CHANGED",
+            project_id="project-1",
+            source_event_id="release-gate:release-1:test-result:result-1:r2",
+            control_evidence=state["evidence"],
+            tool_name="process_changed_release",
+            arguments={"release_id": "release-1"},
+            input_refs=["release-1"],
+            output_refs=["release-1"],
+        )
+
+        self.assertEqual(
+            refs,
+            ["release-gate:release-1:test-result:result-1:r2"],
+        )
+        self.assertEqual(
+            verified_release_gate_mutation_refs(
+                automatic=True,
+                source_event_verified=True,
+                trigger="RELEASE_CHANGED",
+                project_id="project-1",
+                source_event_id="release-gate:release-1:test-result:result-1:r2",
+                control_evidence=[*state["evidence"], *state["evidence"]],
+                tool_name="process_changed_release",
+                arguments={"release_id": "release-1"},
+                input_refs=["release-1"],
+                output_refs=["release-1"],
+            ),
+            ["release-gate:release-1:test-result:result-1:r2"],
+        )
+        self.assertEqual(
+            verified_release_gate_mutation_refs(
+                automatic=True,
+                source_event_verified=True,
+                trigger="RELEASE_CHANGED",
+                project_id="project-1",
+                source_event_id="release-gate:release-1:test-result:result-1:r2",
+                control_evidence=[
+                    *state["evidence"],
+                    {**state["evidence"][0], "artifact_id": "release-2"},
+                ],
+                tool_name="process_changed_release",
+                arguments={"release_id": "release-1"},
+                input_refs=["release-1", "release-2"],
+                output_refs=["release-1", "release-2"],
+            ),
+            [],
+        )
+        self.assertEqual(
+            verified_release_gate_mutation_refs(
+                automatic=True,
+                source_event_verified=True,
+                trigger="RELEASE_CHANGED",
+                project_id="project-1",
+                source_event_id="release-gate:release-1:test-result:result-1:r2",
+                control_evidence=state["evidence"],
+                tool_name="process_changed_release",
+                arguments={"release_id": "release-2"},
+                input_refs=["release-1", "release-2"],
+                output_refs=["release-2"],
+            ),
+            [],
+        )
+        self.assertEqual(
+            verified_release_gate_mutation_refs(
+                automatic=True,
+                source_event_verified=False,
+                trigger="RELEASE_CHANGED",
+                project_id="project-1",
+                source_event_id="release-gate:release-1:test-result:result-1:r2",
+                control_evidence=state["evidence"],
+                tool_name="process_changed_release",
+                arguments={"release_id": "release-1"},
+                input_refs=["release-1"],
+                output_refs=["release-1"],
+            ),
+            [],
+        )
+        self.assertEqual(
+            verified_release_gate_mutation_refs(
+                automatic=True,
+                source_event_verified=True,
+                trigger="RELEASE_CHANGED",
+                project_id="project-1",
+                source_event_id="release-gate:release-1:test-result:result-1:r2",
+                control_evidence=state["evidence"],
+                tool_name="close_release",
+                arguments={"release_id": "release-1"},
+                input_refs=["release-1"],
+                output_refs=["release-1"],
+            ),
+            [],
+        )
 
     def test_blueprint_receipt_requires_every_obligation_and_clarification_to_resolve_to_facts(self):
         source_fact = type(
@@ -559,6 +747,30 @@ class VerifiedSourceSpanTests(unittest.TestCase):
 
         self.assertIsNone(verified_blueprint_claim_lineage(blueprint, []))
 
+    def test_blueprint_claim_lineage_rejects_quote_inside_another_word(self):
+        fact = SourceFact(
+            source_fact_id="FACT-invalid",
+            automation_run_id="run-1",
+            project_id="project-1",
+            artifact_type="requirement_document",
+            artifact_id="doc-1",
+            artifact_version_id="doc-1-v1",
+            source="document",
+            authority="project",
+            quote="invalid",
+            quote_sha256=hashlib.sha256(b"invalid").hexdigest(),
+        )
+        blueprint = {
+            "obligations": [{
+                "key": "valid-token",
+                "source_ref": "doc-1-v1",
+                "source_quote": "valid",
+            }],
+            "clarifications": [],
+        }
+
+        self.assertIsNone(verified_blueprint_claim_lineage(blueprint, [fact]))
+
     def test_blueprint_receipt_excludes_facts_from_another_project_or_run(self):
         fact = SourceFact(
             source_fact_id="FACT-other-scope",
@@ -689,6 +901,37 @@ class VerifiedSourceSpanTests(unittest.TestCase):
                 blueprint, [fact.model_copy(update={"quote_sha256": None})]
             )
         )
+
+    def test_user_clarification_fact_cannot_support_a_blueprint_receipt(self):
+        quote = "Dùng mã một lần để đăng nhập."
+        fact = SourceFact(
+            source_fact_id="FACT-user-clarification",
+            automation_run_id="run-1",
+            project_id="project-1",
+            artifact_type="automation_clarification",
+            artifact_id="clarification-1",
+            artifact_version_id="clarification-1",
+            source="user",
+            authority="user_clarification",
+            quote=quote,
+            quote_sha256=hashlib.sha256(quote.encode("utf-8")).hexdigest(),
+        )
+        blueprint = {
+            "capability": "testability_blueprint_compilation",
+            "evidence_refs": ["clarification-1"],
+            "confidence": 1.0,
+            "warnings": [],
+            "obligations": [
+                {
+                    "key": "login-otp",
+                    "source_ref": "clarification-1",
+                    "source_quote": quote,
+                }
+            ],
+            "clarifications": [],
+        }
+
+        self.assertIsNone(verified_blueprint_snapshot(blueprint, [fact]))
 
     def test_blueprint_artifact_lineage_requires_same_project_readback(self):
         blueprint = {"obligations": [{"key": "login-valid"}]}

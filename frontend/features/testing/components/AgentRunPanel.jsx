@@ -14,6 +14,7 @@ import {
 import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { EmptyState, ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitives";
+import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
 
@@ -44,6 +45,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const [checkpoints, setCheckpoints] = useState([]);
   const [receipt, setReceipt] = useState(null);
   const [sourceFacts, setSourceFacts] = useState([]);
+  const [clarificationAnswers, setClarificationAnswers] = useState({});
+  const [submittingClarification, setSubmittingClarification] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -73,6 +76,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
     setCheckpoints([]);
     setReceipt(null);
     setSourceFacts([]);
+    setClarificationAnswers({});
+    setSubmittingClarification("");
     Promise.allSettled([
       canReadDefinitions ? testingApi.listAutomationDefinitions(project._id) : Promise.resolve([]),
       canManageDefinitions ? testingApi.listAutomationTriggers() : Promise.resolve([]),
@@ -141,6 +146,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
 
   const loadRun = async (runId) => {
     const requestVersion = ++detailRequestVersion.current;
+    if (selectedRunIdRef.current !== runId) setClarificationAnswers({});
     selectedRunIdRef.current = runId;
     selectedRunSnapshotRef.current = null;
     setSourceFacts([]);
@@ -440,6 +446,44 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
     }
   };
 
+  const answerClarification = async (uncertainty) => {
+    if (!run || !uncertainty?.code || !uncertainty.response_allowed || submittingClarification) {
+      return;
+    }
+    const answer = clarificationAnswers[uncertainty.code]?.trim();
+    if (!answer) return;
+    const runId = run.automation_run_id;
+    setSubmittingClarification(uncertainty.code);
+    setError("");
+    try {
+      await testingApi.answerAutomationClarification(runId, {
+        expected_revision: run.revision,
+        uncertainty_code: uncertainty.code,
+        answer,
+      });
+      setClarificationAnswers((current) => ({ ...current, [uncertainty.code]: "" }));
+      try {
+        await refreshRuns();
+      } catch (reason) {
+        setRunsRefreshError(messageOf(reason));
+      }
+      try {
+        await loadRun(runId);
+      } catch (reason) {
+        setDetailRefreshError(messageOf(reason));
+      }
+    } catch (reason) {
+      setError(messageOf(reason));
+      try {
+        await loadRun(runId);
+      } catch (refreshReason) {
+        setDetailRefreshError(messageOf(refreshReason));
+      }
+    } finally {
+      setSubmittingClarification("");
+    }
+  };
+
   const proposal = run?.result?.proposal;
   const blueprintClaims = receipt?.blueprint_claim_lineage || [];
   const blueprintArtifacts = receipt?.blueprint_artifact_lineage || [];
@@ -448,6 +492,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const visibleRuns = recentRuns.filter(canViewRun);
   const visibleDefinitions = canReadDefinitions ? definitions : [];
   const canControlRun = run?.requester_user_id === currentUserId;
+  const canAnswerClarification = permissions.includes("requirement.update");
   const canResumeRun = canControlRun && canResumeAutomationRun(run, checkpoints, currentUserId);
   const uncertainties = latestAutomationUncertainties(checkpoints);
   const mcpDiscoveryIssues = automationMcpDiscoveryIssues(run);
@@ -788,9 +833,9 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                     AI đã tạm dừng vì dữ liệu hiện có chưa đủ căn cứ để tiếp tục an toàn.
                   </p>
                   <p className="mt-1 text-ink-muted">
-                    Hãy bổ sung thông tin vào Requirement hoặc tài liệu nguồn liên quan. Khi nguồn
-                    được cập nhật, hệ thống sẽ tự tiếp nhận sự kiện mới để xử lý tiếp; không cần
-                    khởi chạy lại từng bước.
+                    Hãy bổ sung thông tin vào yêu cầu hoặc tài liệu nguồn liên quan. Khi nguồn được
+                    cập nhật, hệ thống sẽ tự tiếp nhận sự kiện mới để xử lý tiếp; không cần khởi
+                    chạy lại từng bước.
                   </p>
                 </div>
                 {uncertainties.length > 0 ? (
@@ -807,13 +852,67 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                             Nguồn liên quan: {item.evidence_refs.join(", ")}
                           </p>
                         )}
+                        {item.blocking && item.response_allowed && canAnswerClarification && (
+                          <form
+                            className="mt-2 grid gap-2"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void answerClarification(item);
+                            }}
+                          >
+                            <label className="grid gap-1 text-sm font-medium text-ink">
+                              Thông tin trả lời
+                              <textarea
+                                className="apple-input min-h-24"
+                                maxLength={4000}
+                                required
+                                value={clarificationAnswers[item.code] || ""}
+                                onChange={(event) =>
+                                  setClarificationAnswers((current) => ({
+                                    ...current,
+                                    [item.code]: event.target.value,
+                                  }))
+                                }
+                                placeholder="Bổ sung dữ kiện nghiệp vụ để AI tiếp tục xử lý"
+                              />
+                            </label>
+                            <button
+                              className="primary-button justify-self-start"
+                              disabled={
+                                busy ||
+                                Boolean(submittingClarification) ||
+                                !clarificationAnswers[item.code]?.trim()
+                              }
+                              type="submit"
+                            >
+                              {submittingClarification === item.code
+                                ? "Đang gửi và tiếp tục…"
+                                : "Trả lời và tiếp tục tự động"}
+                            </button>
+                          </form>
+                        )}
+                        {item.blocking && item.response_allowed && !canAnswerClarification && (
+                          <p className="mt-1 text-sm text-ink-muted">
+                            Cần thành viên có quyền cập nhật yêu cầu bổ sung dữ kiện này.
+                          </p>
+                        )}
+                        {item.blocking && !item.response_allowed && (
+                          <p className="mt-1 text-sm text-ink-muted">
+                            Cần cập nhật tài liệu hoặc khôi phục nguồn trước khi AI có thể tiếp tục.
+                          </p>
+                        )}
+                        {!item.blocking && item.resolution_status && (
+                          <p className="mt-1 text-sm text-ink-muted">
+                            Mục làm rõ này đã được xử lý trong lượt chạy.
+                          </p>
+                        )}
                       </li>
                     ))}
                   </ul>
                 ) : (
                   <p className="text-sm text-ink-muted">
-                    Lượt chạy chưa lưu câu hỏi cụ thể. Hãy mở Requirement hoặc tài liệu nguồn liên
-                    quan để bổ sung thông tin còn thiếu.
+                    Lượt chạy chưa lưu câu hỏi cụ thể. Hãy mở yêu cầu hoặc tài liệu nguồn liên quan
+                    để bổ sung thông tin còn thiếu.
                   </p>
                 )}
               </section>
@@ -839,7 +938,10 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             )}
             {proposal?.summary && (
               <div>
-                <h3 className="font-semibold text-ink">Kết quả của lượt tự động hóa</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-ink">Kết quả của lượt tự động hóa</h3>
+                  <ContentOriginBadge origin="ai_generated" />
+                </div>
                 <p className="mt-1 whitespace-pre-wrap text-ink-muted">{proposal.summary}</p>
               </div>
             )}
@@ -971,9 +1073,17 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                         </div>
                         {claim.claim_type === "OBLIGATION" && (
                           <div className="grid gap-2">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                              Kết quả đã xác minh trong dự án
-                            </h4>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                Kết quả đã xác minh trong dự án
+                              </h4>
+                              {linkedArtifacts.length > 0 && (
+                                <ContentOriginBadge
+                                  origin="ai_generated"
+                                  aiLabel="AI tạo · đã đọc lại"
+                                />
+                              )}
+                            </div>
                             {linkedArtifacts.length > 0 ? (
                               <ul className="grid gap-1">
                                 {linkedArtifacts.map((artifact) => (

@@ -20,6 +20,14 @@ class VectorStorePayloadContractTests(unittest.IsolatedAsyncioTestCase):
             VectorStore.PAYLOAD_INDEX_FIELDS["indexed_at"],
             PayloadSchemaType.DATETIME,
         )
+        self.assertEqual(
+            VectorStore.PAYLOAD_INDEX_FIELDS["document_index_contract_version"],
+            PayloadSchemaType.INTEGER,
+        )
+        self.assertEqual(
+            VectorStore.PAYLOAD_INDEX_FIELDS["source_document_id"],
+            PayloadSchemaType.KEYWORD,
+        )
         self.assertNotIn("source_version", VectorStore.PAYLOAD_INDEX_FIELDS)
 
     async def test_upsert_persists_content_with_metadata_and_preserves_extensions(self):
@@ -56,6 +64,20 @@ class VectorStorePayloadContractTests(unittest.IsolatedAsyncioTestCase):
 
         store.client.upsert.assert_not_awaited()
 
+    async def test_upsert_rejects_document_point_without_artifact_type(self):
+        store = VectorStore()
+        store.client.upsert = AsyncMock()
+
+        with self.assertRaisesRegex(ValueError, "document_artifact_type_missing"):
+            await store.upsert(
+                ["point-legacy-document"],
+                [[0.1, 0.2]],
+                ["legacy document content"],
+                [{"document_id": "doc-1"}],
+            )
+
+        store.client.upsert.assert_not_awaited()
+
     async def test_upsert_requires_matching_batch_lengths(self):
         store = VectorStore()
         store.client.upsert = AsyncMock()
@@ -64,3 +86,31 @@ class VectorStorePayloadContractTests(unittest.IsolatedAsyncioTestCase):
             await store.upsert(["point-1"], [[0.1]], [], [{}])
 
         store.client.upsert.assert_not_awaited()
+
+    async def test_artifact_generation_deletion_requires_complete_scope(self):
+        store = VectorStore()
+        store.client.delete = AsyncMock()
+
+        with self.assertRaisesRegex(ValueError, "project_artifact_cleanup_scope_invalid"):
+            await store.delete_artifact_generation(
+                "project-1", "requirement_version", "req-1", "version-1", ""
+            )
+        with self.assertRaisesRegex(ValueError, "project_artifact_cleanup_scope_invalid"):
+            await store.delete_stale_artifact_generations(
+                "project-1", "requirement_version", "req-1", "version-1", " "
+            )
+
+        store.client.delete.assert_not_awaited()
+
+    async def test_document_and_artifact_deletion_require_complete_scope(self):
+        store = VectorStore()
+        store.client.delete = AsyncMock()
+
+        with self.assertRaisesRegex(ValueError, "document_index_cleanup_scope_invalid"):
+            await store.delete_by_document(" ")
+        with self.assertRaisesRegex(ValueError, "project_artifact_cleanup_scope_invalid"):
+            await store.delete_artifact_version("project-1", "requirement", "req-1", "")
+        with self.assertRaisesRegex(ValueError, "project_artifact_cleanup_scope_invalid"):
+            await store.delete_project_artifact_version("", "version-1")
+
+        store.client.delete.assert_not_awaited()

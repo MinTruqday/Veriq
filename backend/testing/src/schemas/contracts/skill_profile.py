@@ -24,6 +24,7 @@ class ConfirmedSkill(BaseModel):
     source_block_id: str | None = Field(default=None, min_length=1, max_length=300)
     source_page_no: int | None = Field(default=None, ge=1)
     source_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    source_kind: Literal["MEMBER_DECLARED", "CV_EXTRACTED"] = "MEMBER_DECLARED"
     confirmed: bool = False
 
     @field_validator("name")
@@ -48,6 +49,7 @@ class ConfirmedSkill(BaseModel):
 
 class RelevantExperience(BaseModel):
     title: str = Field(min_length=1, max_length=160)
+    period: str = Field(default="", max_length=120)
     domain: str = Field(default="", max_length=120)
     technologies: list[str] = Field(default_factory=list, max_length=50)
     responsibilities: str = Field(default="", max_length=2000)
@@ -55,6 +57,7 @@ class RelevantExperience(BaseModel):
     source_block_id: str | None = Field(default=None, min_length=1, max_length=300)
     source_page_no: int | None = Field(default=None, ge=1)
     source_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    source_kind: Literal["MEMBER_DECLARED", "CV_EXTRACTED"] = "MEMBER_DECLARED"
     confirmed: bool = False
 
     @model_validator(mode="after")
@@ -67,7 +70,7 @@ class RelevantExperience(BaseModel):
             raise ValueError("skill_profile_source_hash_requires_block")
         if self.source_block_id is not None:
             evidence = _normalized_evidence(self.evidence)
-            claims = [self.title, self.domain, *self.technologies, self.responsibilities]
+            claims = [self.title, self.period, self.domain, *self.technologies, self.responsibilities]
             if any(
                 not _evidence_supports_claim(claim, evidence)
                 for claim in claims
@@ -83,7 +86,21 @@ class SkillProfilePatch(BaseModel):
     experiences: list[RelevantExperience] = Field(default_factory=list, max_length=50)
     availability: Literal["AVAILABLE", "LIMITED", "UNAVAILABLE"] = "AVAILABLE"
 
+    @model_validator(mode="after")
+    def validate_unique_skill_names(self):
+        normalized_names = [
+            _normalized_evidence(skill.name) for skill in self.skills
+        ]
+        if len(normalized_names) != len(set(normalized_names)):
+            raise ValueError("skill_profile_duplicate_skill_name")
+        return self
+
 
 class AssignmentRecommendationInput(BaseModel):
     expected_run_revision: int | None = Field(default=None, ge=1)
     required_skills: list[str] = Field(default_factory=list, max_length=50)
+
+
+class TestCaseOwnerRecommendationInput(BaseModel):
+    required_skills: list[str] = Field(default_factory=list, max_length=50)
+    draft_id: str | None = Field(default=None, min_length=1, max_length=200)

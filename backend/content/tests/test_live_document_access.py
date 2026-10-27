@@ -8,20 +8,23 @@ from src.services.document.internal import (
     INDEX_SOURCE_SNAPSHOT_FIELDS,
     exchange_internal_document,
 )
+from src.core.infrastructure.configuration import settings
 
 
 class LiveDocumentAccessTests(unittest.IsolatedAsyncioTestCase):
     async def test_index_completion_publishes_active_generation_with_status(self):
         with patch(
             "src.services.document.internal.DocumentRepository.update_one",
-            new=AsyncMock(matched_count=1),
+            new=AsyncMock(return_value=SimpleNamespace(matched_count=1)),
         ) as update_one:
             result = await exchange_internal_document(
                 {
                     "action": "update_index",
                     "document_id": "doc-1",
                     "indexing_attempt_id": "attempt-1",
+                    "indexing_lease_token": "lease-1",
                     "index_generation": "a" * 64,
+                    "document_index_contract_version": settings.DOCUMENT_INDEX_CONTRACT_VERSION,
                     "indexed_chunks": 4,
                     "index_report": {},
                     "extraction_method": "docling",
@@ -48,6 +51,7 @@ class LiveDocumentAccessTests(unittest.IsolatedAsyncioTestCase):
                         "document_id": "doc-1",
                         "indexing_attempt_id": "attempt-1",
                         "index_generation": "not-a-generation",
+                        "document_index_contract_version": settings.DOCUMENT_INDEX_CONTRACT_VERSION,
                         "index_report": {},
                         "source_snapshot": {
                             field: None for field in INDEX_SOURCE_SNAPSHOT_FIELDS

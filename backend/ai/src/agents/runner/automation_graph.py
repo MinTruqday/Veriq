@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import re
@@ -16,6 +17,7 @@ from src.agents.runner.nodes import (
     verify,
 )
 from src.core.infrastructure.configuration import settings
+from src.core.infrastructure.observability import trace_span
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.automation import automation_fact_extraction_prompt
 from src.repositories.automation import automation_repository
@@ -28,7 +30,10 @@ from src.schemas.automation import (
     AutomationStatus,
 )
 from src.services.automation_provenance import (
+    is_source_fact_evidence,
     source_location_metadata,
+    source_quote_spans,
+    verified_release_gate_control_evidence,
     verified_source_offset_basis,
 )
 from src.services.inference import structured
@@ -198,15 +203,17 @@ def bind_extracted_facts(extraction, evidence):
         }
         quote = fact.quote.strip()
         source = None
+        source_start = None
         if candidates and len(source_versions) == 1 and quote:
-            source = next(
-                (item for item in candidates if quote in str(item.get("text") or "")),
-                None,
-            )
-        source_text = str(source.get("text") or "") if source else ""
+            for item in candidates:
+                text = str(item.get("text") or "")
+                matching_spans = source_quote_spans(text, quote)
+                if matching_spans:
+                    source = item
+                    source_start = matching_spans[0][0]
+                    break
         if not source:
             continue
-        source_start = source_text.index(quote)
         facts.append(
             {
                 "artifact_type": str(source.get("artifact_type") or fact.artifact_type),
@@ -233,6 +240,8 @@ def complete_source_segments(facts, evidence):
         (
             str(item.get("artifact_id") or ""),
             str(item.get("artifact_version_id") or item.get("artifact_id") or ""),
+            item.get("source_start"),
+            item.get("source_end"),
             str(item.get("quote") or ""),
         )
         for item in output
@@ -247,13 +256,17 @@ def complete_source_segments(facts, evidence):
         for line in text.splitlines() or [text]:
             for segment in re.split(r"(?<=[.!?。！？])\s+", line):
                 quote = segment.strip()
-                identity = (source_id, source_version_id, quote)
-                if not quote or identity in seen:
+                if not quote:
                     continue
                 start = text.find(quote, cursor)
                 if start < 0:
                     start = text.find(quote)
                 if start < 0:
+                    continue
+                end = start + len(quote)
+                identity = (source_id, source_version_id, start, end, quote)
+                if identity in seen:
+                    cursor = end
                     continue
                 output.append(
                     {
@@ -266,12 +279,12 @@ def complete_source_segments(facts, evidence):
                         "quote": quote,
                         "fact_kind": "source_text_segment",
                         "source_start": start,
-                        "source_end": start + len(quote),
+                        "source_end": end,
                         **source_location_metadata(source),
                         "source_offset_basis": verified_source_offset_basis(source),
                     }
                 )
-                cursor = start + len(quote)
+                cursor = end
                 seen.add(identity)
     return output
 
@@ -281,13 +294,26 @@ async def extract_source_facts(state: AutomationGraphState):
         item for item in state.get("evidence", [])
         if str(item.get("text") or "").strip() and item.get("artifact_id")
     ]
+    release_controls = verified_release_gate_control_evidence(state)
+    release_control_ids = {id(item) for item in release_controls}
+    source_evidence = [
+        item
+        for item in evidence
+        if is_source_fact_evidence(item)
+        and id(item) not in release_control_ids
+    ]
+    safety_evidence = [
+        item
+        for item in evidence
+        if id(item) not in release_control_ids
+    ]
     facts = []
     uncertainties = []
     degraded_flags = list(state.get("degraded_flags", []))
-    if evidence:
+    if safety_evidence:
         try:
             inspected = await guardrails_engine.async_inspect_input(
-                "\n".join(str(item.get("text") or "") for item in evidence)
+                "\n".join(str(item.get("text") or "") for item in safety_evidence)
             )
         except Exception:
             inspected = None
@@ -313,47 +339,62 @@ async def extract_source_facts(state: AutomationGraphState):
                 }
             )
         elif inspected is not None:
-            try:
-                extraction_prompt = automation_fact_extraction_prompt(evidence)
-                extraction = await structured(
-                    extraction_prompt,
-                    AutomationFactExtraction,
-                    max_tokens=1200,
-                    timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                    provider_schema=False,
-                    initial_temperature=0,
-                )
-                facts = complete_source_segments(
-                    bind_extracted_facts(extraction, evidence), evidence
-                )
-                uncertainties = distinct_uncertainty_codes(
-                    [
-                        item.model_copy(update={"blocking": False})
-                        for item in extraction.uncertainties
-                        if set(item.evidence_refs).issubset(
+            if source_evidence:
+                try:
+                    extraction_prompt = automation_fact_extraction_prompt(source_evidence)
+                    extraction = await structured(
+                        extraction_prompt,
+                        AutomationFactExtraction,
+                        max_tokens=1200,
+                        timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                        provider_schema=False,
+                        initial_temperature=0,
+                    )
+                    facts = complete_source_segments(
+                        bind_extracted_facts(extraction, source_evidence), source_evidence
+                    )
+                    source_refs = {
+                        str(value.get("artifact_version_id") or value.get("artifact_id"))
+                        for value in source_evidence
+                    }
+                    uncertainties = distinct_uncertainty_codes(
+                        [
+                            item.model_copy(update={"blocking": False})
+                            for item in extraction.uncertainties
+                            if set(item.evidence_refs).issubset(source_refs)
+                        ]
+                    )
+                except Exception:
+                    facts = complete_source_segments([], source_evidence)
+                    if facts:
+                        degraded_flags.append("FACT_EXTRACTION_FALLBACK_USED")
+                    else:
+                        uncertainties.append(
                             {
-                                str(value.get("artifact_version_id") or value.get("artifact_id"))
-                                for value in evidence
+                                "code": "FACT_EXTRACTION_UNAVAILABLE",
+                                "question": "Có thể tiếp tục sau khi dịch vụ phân tích nguồn hoạt động lại không?",
+                                "reason": "Không trích xuất được facts và cũng không có đoạn nguồn đủ điều kiện làm căn cứ",
+                                "evidence_refs": [],
+                                "blocking": True,
+                                "response_allowed": False,
                             }
                         )
-                    ]
+            elif not release_controls:
+                uncertainties.append(
+                    {
+                        "code": "NO_PERMITTED_SOURCE_EVIDENCE",
+                        "question": "Có tài liệu hoặc Requirement được phép AI đọc để làm căn cứ không?",
+                        "reason": "Câu trả lời làm rõ của người dùng không thay thế tài liệu hoặc Requirement có nguồn",
+                        "evidence_refs": [],
+                        "blocking": True,
+                        "response_allowed": False,
+                    }
                 )
-            except Exception:
-                facts = complete_source_segments([], evidence)
-                if facts:
-                    degraded_flags.append("FACT_EXTRACTION_FALLBACK_USED")
-                else:
-                    uncertainties.append(
-                        {
-                            "code": "FACT_EXTRACTION_UNAVAILABLE",
-                            "question": "Có thể tiếp tục sau khi dịch vụ phân tích nguồn hoạt động lại không?",
-                            "reason": "Không trích xuất được facts và cũng không có đoạn nguồn đủ điều kiện làm căn cứ",
-                            "evidence_refs": [],
-                            "blocking": True,
-                            "response_allowed": False,
-                        }
-                    )
-            if not facts and not any(item.get("blocking") for item in uncertainties):
+            if (
+                not facts
+                and not release_controls
+                and not any(item.get("blocking") for item in uncertainties)
+            ):
                 uncertainties.append(
                     {
                         "code": "NO_VERIFIABLE_SOURCE_FACTS",
@@ -363,7 +404,7 @@ async def extract_source_facts(state: AutomationGraphState):
                         "blocking": True,
                     }
                 )
-    else:
+    elif not release_controls:
         uncertainties.append(
             {
                 "code": "NO_PERMITTED_SOURCE_EVIDENCE",
@@ -416,8 +457,12 @@ async def assess_uncertainty(state: AutomationGraphState):
         else item
         for item in uncertainties
     ]
-    if not state.get("source_facts") and not any(
+    if (
+        not state.get("source_facts")
+        and not verified_release_gate_control_evidence(state)
+        and not any(
         item.get("blocking") for item in uncertainties
+        )
     ):
         uncertainties.append(
             {
@@ -593,17 +638,44 @@ async def verify_automation(state: AutomationGraphState):
     }
 
 
+def traced_node(name, node):
+    async def invoke(state):
+        run = state.get("run") or {}
+        with trace_span(
+            f"automation.node.{name}",
+            {
+                "automation.run_id": run.get("run_id"),
+                "automation.node": name,
+            },
+        ) as span:
+            try:
+                result = await node(state)
+            except asyncio.CancelledError:
+                if span is not None:
+                    span.set_attribute("event.status", "cancelled")
+                raise
+            except Exception:
+                if span is not None:
+                    span.set_attribute("event.status", "failed")
+                raise
+            if span is not None:
+                span.set_attribute("event.status", "completed")
+            return result
+
+    return invoke
+
+
 workflow = StateGraph(AutomationGraphState)
-workflow.add_node("resume_dispatch", resume_dispatch)
-workflow.add_node("observe_sources", observe_sources)
-workflow.add_node("extract_source_facts", extract_source_facts)
-workflow.add_node("assess_uncertainty", assess_uncertainty)
-workflow.add_node("create_action_plan", create_action_plan)
-workflow.add_node("replan_after_observation", replan_after_observation)
-workflow.add_node("execute_action", execute_action)
-workflow.add_node("finalize_automation", finalize_automation)
-workflow.add_node("aggregate", aggregate)
-workflow.add_node("verify_automation", verify_automation)
+workflow.add_node("resume_dispatch", traced_node("resume_dispatch", resume_dispatch))
+workflow.add_node("observe_sources", traced_node("observe_sources", observe_sources))
+workflow.add_node("extract_source_facts", traced_node("extract_source_facts", extract_source_facts))
+workflow.add_node("assess_uncertainty", traced_node("assess_uncertainty", assess_uncertainty))
+workflow.add_node("create_action_plan", traced_node("create_action_plan", create_action_plan))
+workflow.add_node("replan_after_observation", traced_node("replan_after_observation", replan_after_observation))
+workflow.add_node("execute_action", traced_node("execute_action", execute_action))
+workflow.add_node("finalize_automation", traced_node("finalize_automation", finalize_automation))
+workflow.add_node("aggregate", traced_node("aggregate", aggregate))
+workflow.add_node("verify_automation", traced_node("verify_automation", verify_automation))
 workflow.set_entry_point("resume_dispatch")
 workflow.add_conditional_edges(
     "resume_dispatch",

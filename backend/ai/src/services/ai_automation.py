@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from loguru import logger
 
 from src.core.infrastructure.configuration import settings
+from src.core.infrastructure.observability import trace_span
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
 from src.prompts.testability_blueprint_review import build_testability_blueprint_grounding_prompt
@@ -25,6 +26,7 @@ from src.schemas.inference_requests import (
 )
 from src.schemas.inference_requirements import TestabilityBlueprintGroundingReview
 from src.schemas.inference_test_design import GeneratedCasesGroundingReview
+from src.services.automation_provenance import source_quote_spans
 from src.services.inference import model_metadata, structured
 
 
@@ -110,7 +112,9 @@ def performance_targets_have_evidence(suggestions, evidence):
             for quote in quotes
             if quote.get("evidence_ref") in source_text
             and quote.get("quote", "").strip()
-            and quote["quote"].strip() in source_text[quote["evidence_ref"]]
+            and source_quote_spans(
+                source_text[quote["evidence_ref"]], quote["quote"].strip()
+            )
         ]
         if not valid_quotes:
             return False
@@ -142,7 +146,56 @@ def performance_targets_have_evidence(suggestions, evidence):
     return True
 
 
+def generated_cases_have_grounded_citations(cases, evidence):
+    source_text = {
+        str(item.get("artifact_version_id") or item.get("artifact_id")): str(
+            item.get("text") or ""
+        )
+        for item in evidence
+        if item.get("artifact_version_id") or item.get("artifact_id")
+    }
+    for case in cases:
+        evidence_refs = set(case.get("evidence_refs") or [])
+        quotes = case.get("evidence_quotes") or []
+        if not quotes:
+            return False
+        valid_quotes = []
+        for item in quotes:
+            reference = item.get("evidence_ref")
+            quote = str(item.get("quote") or "").strip()
+            if (
+                reference not in evidence_refs
+                or reference not in source_text
+                or not quote
+                or not source_quote_spans(source_text[reference], quote)
+            ):
+                return False
+            valid_quotes.append(quote.casefold())
+        quoted_text = " ".join(valid_quotes)
+        if any(
+            not source_quote_spans(quoted_text, str(skill).strip())
+            for skill in case.get("required_skills") or []
+        ):
+            return False
+    return True
+
+
 async def generate_ai_automation(req: TestingAutomationRequest):
+    with trace_span(
+        "ai.testing_automation",
+        {
+            "project.id": req.project_id,
+            "ai.capability": req.capability,
+            "ai.evidence_count": len(req.evidence),
+        },
+    ) as span:
+        result = await _generate_ai_automation(req)
+        if span is not None:
+            span.set_attribute("ai.result.status", str(result.status))
+        return result
+
+
+async def _generate_ai_automation(req: TestingAutomationRequest):
     evidence = evidence_payload(req.evidence)
     source_text = evidence_text(
         evidence,
@@ -162,6 +215,7 @@ async def generate_ai_automation(req: TestingAutomationRequest):
         source_text,
         allowed_evidence_refs,
         schema,
+        req.output_language,
     )
     model = {
         **model_metadata(),
@@ -185,14 +239,18 @@ async def generate_ai_automation(req: TestingAutomationRequest):
 
     unsupported_details = []
     try:
-        generated = await structured(
-            prompt,
-            schema,
-            max_tokens=4096,
-            timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-            provider_schema=False,
-            prompt_attempt_observer=observe_prompt_attempt("generation"),
-        )
+        with trace_span(
+            "ai.model_generation",
+            {"ai.capability": req.capability},
+        ):
+            generated = await structured(
+                prompt,
+                schema,
+                max_tokens=4096,
+                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                provider_schema=False,
+                prompt_attempt_observer=observe_prompt_attempt("generation"),
+            )
         generated_data = normalize_narrative_payload(generated.model_dump())
         generated_data["capability"] = req.capability
         generated_data.setdefault("confidence", 0)
@@ -208,15 +266,21 @@ async def generate_ai_automation(req: TestingAutomationRequest):
             raise ValueError("AI_PERFORMANCE_TARGET_EVIDENCE_INVALID")
         if req.capability == "test_generation" and generated_data.get("suggestions"):
             cases = generated_data["suggestions"]
+            if not generated_cases_have_grounded_citations(cases, evidence):
+                raise ValueError("AI_TEST_CASE_CITATION_INVALID")
             grounding_prompt = build_generated_cases_grounding_prompt(evidence, cases)
-            review = await structured(
-                grounding_prompt,
-                GeneratedCasesGroundingReview,
-                max_tokens=4096,
-                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                provider_schema=False,
-                prompt_attempt_observer=observe_prompt_attempt("grounding"),
-            )
+            with trace_span(
+                "ai.grounding_review",
+                {"ai.review_type": "test_case", "ai.candidate_count": len(cases)},
+            ):
+                review = await structured(
+                    grounding_prompt,
+                    GeneratedCasesGroundingReview,
+                    max_tokens=4096,
+                    timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                    provider_schema=False,
+                    prompt_attempt_observer=observe_prompt_attempt("grounding"),
+                )
             if [item.index for item in review.cases] != list(range(len(cases))):
                 raise ValueError("AI_GROUNDING_REVIEW_INVALID")
             unsupported = [item for item in review.cases if item.unsupported_claims]
@@ -252,14 +316,22 @@ async def generate_ai_automation(req: TestingAutomationRequest):
                 generated_data.get("obligations", []),
                 generated_data.get("clarifications", []),
             )
-            review = await structured(
-                review_prompt,
-                TestabilityBlueprintGroundingReview,
-                max_tokens=4096,
-                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                provider_schema=False,
-                prompt_attempt_observer=observe_prompt_attempt("blueprint_grounding"),
-            )
+            with trace_span(
+                "ai.grounding_review",
+                {
+                    "ai.review_type": "testability_blueprint",
+                    "ai.obligation_count": len(generated_data.get("obligations", [])),
+                    "ai.clarification_count": len(generated_data.get("clarifications", [])),
+                },
+            ):
+                review = await structured(
+                    review_prompt,
+                    TestabilityBlueprintGroundingReview,
+                    max_tokens=4096,
+                    timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                    provider_schema=False,
+                    prompt_attempt_observer=observe_prompt_attempt("blueprint_grounding"),
+                )
             expected_obligation_indexes = list(range(len(generated_data.get("obligations", []))))
             expected_clarification_indexes = list(range(len(generated_data.get("clarifications", []))))
             if (
@@ -299,12 +371,7 @@ async def generate_ai_automation(req: TestingAutomationRequest):
         )
         result = TestingAutomationResult(**generated_data)
     except Exception as error:
-        logger.warning(
-            "AI automation result rejected capability={} error_type={} error={}",
-            req.capability,
-            type(error).__name__,
-            str(error),
-        )
+        error_message = str(error)
         output_invalid = type(error).__name__ in {
             "StructuredOutputError",
             "ValidationError",
@@ -312,10 +379,18 @@ async def generate_ai_automation(req: TestingAutomationRequest):
         }
         failure_code = (
             "AI_UNGROUNDED_OUTPUT"
-            if str(error) in {"AI_UNGROUNDED_OUTPUT", "AI_BLUEPRINT_UNGROUNDED_OUTPUT"}
+            if error_message in {"AI_UNGROUNDED_OUTPUT", "AI_BLUEPRINT_UNGROUNDED_OUTPUT"}
+            else "AI_TEST_CASE_CITATION_INVALID"
+            if error_message == "AI_TEST_CASE_CITATION_INVALID"
             else "AI_GROUNDING_REVIEW_INVALID"
-            if str(error) == "AI_BLUEPRINT_GROUNDING_REVIEW_INVALID"
+            if error_message == "AI_BLUEPRINT_GROUNDING_REVIEW_INVALID"
             else "AI_OUTPUT_INVALID" if output_invalid else "AI_PROVIDER_UNAVAILABLE"
+        )
+        logger.warning(
+            "AI automation result rejected capability={} error_type={} error_code={}",
+            req.capability,
+            type(error).__name__,
+            failure_code,
         )
         degraded_mode = (
             TestingAutomationDegradedMode.OUTPUT

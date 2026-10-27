@@ -278,6 +278,8 @@ def test_release_completion_gate_requires_intact_qa_approved_snapshot(monkeypatc
         "test_plan_id": "plan-a",
         "monitoring_snapshot_id": "snapshot-a",
         "scope_snapshot": {"runs": []},
+        "exit_criteria_evaluations": [{"criterion_id": "exit-a", "status": "PASS"}],
+        "recommendation": "READY_FOR_RELEASE",
     }
     report["approved_snapshot"] = completion_snapshot(report)
     report["approved_snapshot_hash"] = completion_hash(report)
@@ -362,6 +364,8 @@ def test_release_completion_gate_rejects_blocker_added_after_report_approval(mon
         "test_plan_id": "plan-a",
         "monitoring_snapshot_id": "snapshot-a",
         "scope_snapshot": {"runs": [{"run_id": "run-a"}]},
+        "exit_criteria_evaluations": [{"criterion_id": "exit-a", "status": "PASS"}],
+        "recommendation": "READY_FOR_RELEASE",
     }
     report["approved_snapshot"] = completion_snapshot(report)
     report["approved_snapshot_hash"] = completion_hash(report)
@@ -396,6 +400,8 @@ def test_release_completion_gate_rejects_report_stale_after_execution_change(mon
         "test_plan_id": "plan-a",
         "monitoring_snapshot_id": "snapshot-a",
         "scope_snapshot": {"runs": [{"run_id": "run-a"}]},
+        "exit_criteria_evaluations": [{"criterion_id": "exit-a", "status": "PASS"}],
+        "recommendation": "READY_FOR_RELEASE",
     }
     report["approved_snapshot"] = completion_snapshot(report)
     report["approved_snapshot_hash"] = completion_hash(report)
@@ -425,6 +431,8 @@ def test_release_completion_gate_rejects_revision_change_even_when_timestamp_che
         "test_plan_id": "plan-a",
         "monitoring_snapshot_id": "snapshot-a",
         "scope_snapshot": {"runs": [{"run_id": "run-a"}]},
+        "exit_criteria_evaluations": [{"criterion_id": "exit-a", "status": "PASS"}],
+        "recommendation": "READY_FOR_RELEASE",
     }
     report["approved_snapshot"] = completion_snapshot(report)
     report["approved_snapshot_hash"] = completion_hash(report)
@@ -713,6 +721,7 @@ def test_release_gates_and_close_audit_share_transaction_session():
             patch.object(service, "get_project_entity", new=AsyncMock(return_value=release)),
             patch.object(service, "ensure_release_completion_gate", new=AsyncMock(return_value=True)) as completion,
             patch.object(service, "ensure_release_assurance_gate", new=AsyncMock(return_value=2)) as assurance,
+            patch.object(service, "serialize_release_gate", new=AsyncMock()) as serialize_gate,
             patch.object(service, "optimistic_patch", new=AsyncMock(return_value=updated)) as patch_release,
             patch.object(service, "audit", new=AsyncMock()) as audit,
             patch("src.clients.ai_automation.emit_release_changed", new=AsyncMock()) as emit,
@@ -725,6 +734,7 @@ def test_release_gates_and_close_audit_share_transaction_session():
             )
 
         assert result["status"] == "CLOSED"
+        assert serialize_gate.await_args.args[2] is session
         assert completion.await_args.kwargs["session"] is session
         assert assurance.await_args.kwargs["session"] is session
         assert patch_release.await_args.kwargs["session"] is session
@@ -755,6 +765,7 @@ def test_invalid_test_plan_snapshot_blocks_close_and_is_audited_after_rollback()
             patch.object(service, "get_project_entity", new=AsyncMock(return_value=release)),
             patch.object(service, "ensure_release_completion_gate", new=AsyncMock(return_value={"approved_at": service.now()})),
             patch.object(service, "ensure_release_assurance_gate", new=reject_snapshot),
+            patch.object(service, "serialize_release_gate", new=AsyncMock()),
             patch.object(service, "optimistic_patch", new=AsyncMock()) as patch_release,
             patch.object(service, "audit", new=AsyncMock()) as audit,
             patch("src.clients.ai_automation.emit_release_changed", new=AsyncMock()) as emit,

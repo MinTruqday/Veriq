@@ -11,6 +11,7 @@ from src.agents.runner.automation_event_tasks import (
     direct_requirement_change_task,
     direct_test_case_change_impact_task,
     simulation_baseline_trace_links,
+    simulation_baseline_trace_snapshot,
     simulation_linked_test_case_version_ids,
 )
 from src.agents.runner.automation_validation import (
@@ -19,6 +20,7 @@ from src.agents.runner.automation_validation import (
     observed_draft_identifiers,
     observed_identifiers,
     proposal_fingerprint,
+    tool_evidence_reference,
     validated_tasks,
     verified_tool_call_records,
 )
@@ -43,22 +45,29 @@ __all__ = [
     "observed_identifiers",
     "proposal_fingerprint",
     "simulation_baseline_trace_links",
+    "simulation_baseline_trace_snapshot",
     "simulation_linked_test_case_version_ids",
+    "tool_evidence_reference",
     "validated_tasks",
     "verified_tool_call_records",
 ]
 
 
-def available_tools(permissions, intent="", compact=False, actions=None):
+def available_tools(permissions, intent="", compact=False, actions=None, domains=None):
     values = []
     tools = registered_tools()
     intent_tool_exists = bool(intent and tool_access(tools.get(intent)))
+    allowed_domains = set(domains) if domains is not None else None
     for tool in tools.values():
         access = tool_access(tool)
         if (
             access
             and access.permission in permissions
             and (actions is None or access.action in actions)
+            and (
+                allowed_domains is None
+                or bool(set(access.domains).intersection(allowed_domains))
+            )
             and (not intent_tool_exists or access.name == intent)
         ):
             schema = tool.args_schema.model_json_schema()

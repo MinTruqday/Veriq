@@ -121,5 +121,41 @@ class SkillProfileRepository:
         async for run in cursor:
             yield run
 
+    async def iter_active_runs_for_members(self, user_ids, session=None):
+        if not user_ids:
+            return
+        cursor = database.value.test_runs.find(
+            {
+                "status": {"$in": ["READY", "IN_PROGRESS"]},
+                "$or": [
+                    {"assignee_id": {"$in": user_ids}},
+                    {
+                        "$expr": {
+                            "$gt": [
+                                {
+                                    "$size": {
+                                        "$filter": {
+                                            "input": {
+                                                "$objectToArray": {
+                                                    "$ifNull": ["$test_case_assignments", {}]
+                                                }
+                                            },
+                                            "as": "assignment",
+                                            "cond": {"$in": ["$$assignment.v", user_ids]},
+                                        }
+                                    }
+                                },
+                                0,
+                            ]
+                        }
+                    },
+                ],
+            },
+            {"project_id": 1, "assignee_id": 1, "test_case_assignments": 1},
+            session=session,
+        )
+        async for run in cursor:
+            yield run
+
 
 skill_profile_repository = SkillProfileRepository()

@@ -313,6 +313,7 @@ async def generate_requirement_drafts(
                         preconditions_doc=text_document(item.preconditions),
                         steps=steps,
                         expected_result_doc=text_document(item.expected),
+                        required_skills=item.required_skills,
                         source_evidence=evidence,
                         acceptance_criteria_snapshot_ids=(
                             list(dict.fromkeys(acceptance_criteria_snapshot_ids))

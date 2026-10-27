@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorState, Panel, StatusPill } from "./WorkspacePrimitives";
+import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 
@@ -19,7 +20,10 @@ function CandidateList({ title, results, getCandidates, renderCandidate, empty }
                 <p className="font-medium text-ink">
                   {result.name || `${candidates.length} đề xuất`}
                 </p>
-                <StatusPill value={result.generation_status || result.status} />
+                <div className="flex flex-wrap items-center gap-2">
+                  {result.source_event_id && <ContentOriginBadge origin="ai_generated" />}
+                  <StatusPill value={result.generation_status || result.status} />
+                </div>
               </div>
               {result.objective && (
                 <p className="mt-2 text-sm text-ink-muted">{result.objective}</p>
@@ -119,7 +123,7 @@ export default function SpecializedDesignPanel({ project }) {
               title="Đề xuất kiểm thử bảo mật"
               results={securityResults}
               getCandidates={(result) => result.candidates || []}
-              empty="Chưa có đề xuất được tạo từ sự kiện Requirement phù hợp."
+              empty="Chưa có đề xuất được tạo từ sự kiện thay đổi yêu cầu phù hợp."
               renderCandidate={(candidate) => (
                 <div
                   className="rounded-lg bg-surface-quiet p-3 text-sm"
@@ -146,7 +150,7 @@ export default function SpecializedDesignPanel({ project }) {
               title="Kế hoạch kiểm thử hiệu năng"
               results={performancePlans}
               getCandidates={(plan) => plan.scenarios || []}
-              empty="Chưa có kế hoạch hiệu năng được ghi nhận. Các ngưỡng hiệu năng chỉ được dùng khi có trong Requirement nguồn; AI không tự đặt ngưỡng."
+              empty="Chưa có kế hoạch hiệu năng được ghi nhận. Chỉ dùng ngưỡng hiệu năng nếu tài liệu yêu cầu có nêu; AI không tự đặt ngưỡng."
               renderCandidate={(scenario) => (
                 <div className="rounded-lg bg-surface-quiet p-3 text-sm" key={scenario.scenario_id}>
                   <p className="font-medium text-ink">{scenario.title}</p>

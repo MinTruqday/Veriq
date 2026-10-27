@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { messageOf } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 
@@ -552,9 +553,12 @@ export default function ApiArtifactsPanel({
                         <div className="grid gap-1">
                           <span className="break-all text-xs">{run.automation_run_id}</span>
                           {(run.error_code || run.result?.summary) && (
-                            <span className="break-words text-xs">
-                              {run.error_code || run.result.summary}
-                            </span>
+                            <div className="grid justify-items-start gap-1">
+                              {run.result?.summary && <ContentOriginBadge origin="ai_generated" />}
+                              <span className="break-words text-xs">
+                                {run.error_code || run.result.summary}
+                              </span>
+                            </div>
                           )}
                           <a
                             className="text-accent underline underline-offset-2"

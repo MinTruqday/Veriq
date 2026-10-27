@@ -309,6 +309,16 @@ class TestCaseBatchReviewTests(unittest.IsolatedAsyncioTestCase):
             patch.object(batch_review, "database", db),
             patch.object(batch_review, "get_project", new=AsyncMock()),
             patch.object(batch_review, "_verify_batch_publication_links", new=AsyncMock()),
+            patch.object(
+                batch_review,
+                "_retry_batch_derived_state",
+                new=AsyncMock(
+                    return_value={
+                        **previous["details"]["result"],
+                        "idempotent": True,
+                    }
+                ),
+            ) as retry,
             patch.object(batch_review, "_result_with_derived_state", new=AsyncMock(return_value={
                 **previous["details"]["result"],
                 "derived_pending_version_ids": [],
@@ -320,6 +330,15 @@ class TestCaseBatchReviewTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["version_ids"], ["version-1"])
         transaction.assert_not_awaited()
         derived.assert_awaited_once_with(previous["details"]["result"])
+        retry.assert_awaited_once_with(
+            {
+                **previous["details"]["result"],
+                "derived_pending_version_ids": [],
+                "idempotent": True,
+            },
+            "project-1",
+            self.user,
+        )
 
     async def test_reused_group_operation_id_with_different_payload_is_rejected(self):
         item = draft("draft-1", "TC-1")
@@ -420,11 +439,45 @@ class TestCaseBatchReviewTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(HTTPException) as error:
             await batch_review._existing_batch_result(
-                receipt, self.user, receipt["details"]["request_hash"], "project-1"
+                receipt,
+                self.user,
+                receipt["details"]["request_hash"],
+                "project-1",
+                ["draft-1"],
             )
 
         self.assertEqual(error.exception.status_code, 409)
         self.assertEqual(error.exception.detail["code"], "IDEMPOTENCY_KEY_REUSED")
+
+    async def test_batch_receipt_must_match_the_exact_selected_draft_scope(self):
+        receipt = {
+            "_id": "TCBATCH-existing",
+            "project_id": "project-1",
+            "actor_id": self.user.id,
+            "action": "test_case_group_approved",
+            "entity_type": "TestCaseApprovalGroup",
+            "entity_id": "TCBATCH-existing",
+            "details": {
+                "request_hash": "same-request",
+                "result": {
+                    "batch_id": "TCBATCH-existing",
+                    "count": 1,
+                    "draft_ids": ["different-draft"],
+                    "version_ids": ["version-1"],
+                },
+            },
+        }
+        with self.assertRaises(HTTPException) as error:
+            await batch_review._existing_batch_result(
+                receipt,
+                self.user,
+                "same-request",
+                "project-1",
+                ["draft-1"],
+            )
+
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(error.exception.detail["code"], "TEST_CASE_APPROVAL_INCOMPLETE")
 
     async def test_batch_receipt_requires_matching_approved_draft_and_frozen_version(self):
         def collection(values):
@@ -535,6 +588,16 @@ class TestCaseBatchReviewTests(unittest.IsolatedAsyncioTestCase):
             patch.object(batch_review, "database", db),
             patch.object(batch_review, "get_project", new=AsyncMock()),
             patch.object(batch_review, "_verify_batch_publication_links", new=AsyncMock()),
+            patch.object(
+                batch_review,
+                "_retry_batch_derived_state",
+                new=AsyncMock(
+                    return_value={
+                        **committed["details"]["result"],
+                        "idempotent": True,
+                    }
+                ),
+            ) as retry,
             patch.object(batch_review.test_design_repository, "find_project_settings", new=AsyncMock(return_value={})),
             patch.object(batch_review, "review_context", new=AsyncMock(return_value=context)),
             patch.object(batch_review, "has_verifiable_steps", return_value=True),
@@ -551,6 +614,15 @@ class TestCaseBatchReviewTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["version_ids"], ["version-1"])
         audits.find_one.assert_awaited()
         derived.assert_awaited_once_with(committed["details"]["result"])
+        retry.assert_awaited_once_with(
+            {
+                **committed["details"]["result"],
+                "derived_pending_version_ids": [],
+                "idempotent": True,
+            },
+            "project-1",
+            self.user,
+        )
 
     async def test_stale_revision_or_comparison_blocks_group_before_transaction(self):
         item = draft("draft-1", "TC-1")
@@ -615,6 +687,11 @@ class TestCaseBatchReviewTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 batch_review, "review_context", new=AsyncMock(side_effect=contexts)
             ) as review_context,
+            patch.object(
+                batch_review, "validate_review_sources_before_approval", new=AsyncMock()
+            ),
+            patch.object(batch_review, "has_verifiable_steps", return_value=True),
+            patch.object(batch_review, "lint_test_case", return_value=[]),
         ):
             with self.assertRaises(HTTPException) as error:
                 await batch_review.accept_test_case_group("project-1", request, self.user)

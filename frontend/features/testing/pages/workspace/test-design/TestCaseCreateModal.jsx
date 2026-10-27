@@ -10,6 +10,7 @@ import {
   EXPECTED_IMPACTS,
 } from "./testDesign.model";
 import TestCaseCustomValues from "./TestCaseCustomValues";
+import TestCaseOwnerRecommendation from "./TestCaseOwnerRecommendation";
 import { emptyDoc } from "../../../lib/testing.logic.mjs";
 
 function TestDataEntries({ label, entries, onChange }) {
@@ -65,6 +66,7 @@ function TestDataEntries({ label, entries, onChange }) {
 }
 
 export default function TestCaseCreateModal({
+  projectId,
   isOpen,
   onClose,
   form,
@@ -239,32 +241,43 @@ export default function TestCaseCreateModal({
           />
         </label>
         {canReadMembers && (
-          <label className="field-label">
-            Người phụ trách
-            <select
-              aria-label="Người phụ trách ca kiểm thử"
-              className="apple-input mt-2"
-              value={form.ownerId || ""}
-              disabled={membersUnavailable}
-              onChange={(event) => update({ ownerId: event.target.value })}
-            >
-              <option value="">Chưa phân công</option>
-              {members.map((member) => (
-                <option key={member.user_id} value={member.user_id}>
-                  {member.user_label ||
-                    member.user?.full_name ||
-                    member.user?.email ||
-                    member.user_id}
-                  {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
-                </option>
-              ))}
-            </select>
+          <div>
+            <label className="field-label">
+              Người phụ trách ca kiểm thử
+              <select
+                aria-label="Người phụ trách ca kiểm thử"
+                className="apple-input mt-2"
+                value={form.ownerId || ""}
+                disabled={membersUnavailable}
+                onChange={(event) => update({ ownerId: event.target.value })}
+              >
+                <option value="">Chưa phân công</option>
+                {members.map((member) => (
+                  <option key={member.user_id} value={member.user_id}>
+                    {member.user_label ||
+                      member.user?.full_name ||
+                      member.user?.email ||
+                      member.user_id}
+                    {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <TestCaseOwnerRecommendation
+              projectId={projectId}
+              requiredSkills={form.requiredSkills}
+              onSelect={(candidate) => update({ ownerId: candidate.user_id })}
+            />
+            <p className="mt-2 text-sm text-ink-muted">
+              Đây là người phụ trách bản Test Case. Người thực chạy được phân công riêng trong từng
+              Test Run.
+            </p>
             {membersUnavailable && (
               <span role="status" className="text-sm text-amber-800">
                 Không tải được thành viên dự án; hãy thử tải lại trước khi phân công.
               </span>
             )}
-          </label>
+          </div>
         )}
         {form.testStyle === "BDD" && (
           <div className="grid gap-3 rounded-control border border-border p-4">
@@ -337,8 +350,8 @@ export default function TestCaseCreateModal({
           </select>
         </label>
         <MultiSelect
-          label="Phiên bản Requirement liên quan"
-          searchPlaceholder="Tìm Requirement"
+          label="Phiên bản yêu cầu liên quan"
+          searchPlaceholder="Tìm yêu cầu"
           options={requirements.map((item) => ({
             value: item.current_version_id,
             label: `${item.requirement_key} · ${item.current_version?.title || "Không có tiêu đề"}`,
@@ -366,7 +379,7 @@ export default function TestCaseCreateModal({
           <MultiSelect
             label="Tiêu chí chấp nhận được ca này kiểm thử"
             searchPlaceholder="Tìm tiêu chí chấp nhận"
-            emptyMessage="Requirement đã chọn chưa có tiêu chí chấp nhận"
+            emptyMessage="Yêu cầu đã chọn chưa có tiêu chí chấp nhận"
             options={selectedCriteria.map((criterion) => ({
               value: criterion._id,
               label: `${criterion.requirement_key} · ${criterion.key || "Tiêu chí"}`,

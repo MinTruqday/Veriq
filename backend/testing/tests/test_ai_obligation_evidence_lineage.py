@@ -45,6 +45,26 @@ def test_generated_case_rejects_coverage_without_obligation_evidence():
         GeneratedCase.model_validate(payload)
 
 
+def test_generated_case_accepts_only_required_skills_present_in_source_quote():
+    payload = generated_case_payload()
+    payload["required_skills"] = ["API testing"]
+    payload["evidence_quotes"].append(
+        {"evidence_ref": "REQ-V1", "quote": "API testing is required for this operation."}
+    )
+
+    generated = GeneratedCase.model_validate(payload)
+
+    assert generated.required_skills == ["API testing"]
+
+
+def test_generated_case_rejects_required_skill_not_present_in_source_quote():
+    payload = generated_case_payload()
+    payload["required_skills"] = ["Security testing"]
+
+    with pytest.raises(ValidationError):
+        GeneratedCase.model_validate(payload)
+
+
 def test_ai_draft_keeps_obligation_evidence_with_frozen_source_quote():
     payload = {
         "title": "Kiểm tra chính sách khóa tài khoản",

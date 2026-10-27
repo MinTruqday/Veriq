@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from src.agents.agent import execute_task
 from src.agents.runner.automation_planning import (
@@ -20,7 +21,9 @@ from src.agents.runner.automation_planning import (
     observed_draft_identifiers,
     observed_identifiers,
     simulation_baseline_trace_links,
+    simulation_baseline_trace_snapshot,
     simulation_linked_test_case_version_ids,
+    tool_evidence_reference,
     validated_tasks,
     verified_tool_call_records,
 )
@@ -48,8 +51,10 @@ from src.schemas.agent import (
     VeriqRunState,
 )
 from src.schemas.automation import (
+    AutomationAction,
     AutomationCheckpoint,
     AutomationCheckpointPhase,
+    AutomationEventConditions,
     AutomationGraphSnapshot,
     AutomationStatus,
 )
@@ -67,6 +72,92 @@ from src.tools.registry import registered_tools, tool_access
 
 def state_run(state):
     return VeriqRunState(**state["run"])
+
+
+def automation_action_limits(actions):
+    if not actions:
+        return None, None
+    action_limits = {
+        AutomationAction.COMPILE_BLUEPRINT: ({"requirement"}, {"MUTATE"}),
+        AutomationAction.CREATE_REQUIREMENT_CANDIDATES: ({"requirement"}, {"MUTATE"}),
+        AutomationAction.CREATE_TEST_CASE_CANDIDATES: (
+            {"test_design"},
+            {"PROPOSE", "MUTATE"},
+        ),
+        AutomationAction.CREATE_FINDINGS: ({"analysis"}, {"PROPOSE"}),
+        AutomationAction.REQUEST_CLARIFICATION: ({"requirement"}, {"MUTATE"}),
+        AutomationAction.PROPOSE_ASSIGNMENT: ({"execution"}, {"PROPOSE"}),
+        AutomationAction.PROPOSE_TRANSITION: ({"execution"}, {"PROPOSE"}),
+        AutomationAction.RUN_CHANGE_SIMULATION: ({"analysis"}, {"READ", "PROPOSE"}),
+    }
+    domains = set()
+    tool_actions = set()
+    for value in actions:
+        try:
+            action = AutomationAction(value)
+        except ValueError:
+            return set(), set()
+        action_domains, action_tool_actions = action_limits[action]
+        domains.update(action_domains)
+        tool_actions.update(action_tool_actions)
+    return domains, tool_actions
+
+
+def unmet_automation_conditions(
+    conditions, evidence, requester_role, target_artifact_ids=None
+):
+    if not conditions:
+        return []
+    value = AutomationEventConditions.model_validate(conditions)
+    items = [item for item in evidence if isinstance(item, dict)]
+    unmet = []
+    if len(items) < value.minimum_evidence_count:
+        unmet.append("AUTOMATION_CONDITION_EVIDENCE_COUNT_NOT_MET")
+    artifact_types = {str(item.get("artifact_type") or "") for item in items}
+    if not set(value.required_artifact_types).issubset(artifact_types):
+        unmet.append("AUTOMATION_CONDITION_ARTIFACT_TYPE_MISSING")
+    authorities = {str(item.get("authority") or "") for item in items}
+    if not set(value.required_authorities).issubset(authorities):
+        unmet.append("AUTOMATION_CONDITION_AUTHORITY_MISSING")
+    target_ids = {
+        str(value).strip()
+        for value in target_artifact_ids or []
+        if str(value).strip()
+    }
+    state_evidence = items
+    if target_ids:
+        state_evidence = [
+            item
+            for item in items
+            if target_ids.intersection(
+                {
+                    str(item.get("artifact_id") or ""),
+                    str(item.get("artifact_version_id") or ""),
+                }
+            )
+        ]
+    workflow_states = {
+        str(item.get("artifact_status") or "") for item in state_evidence
+    }
+    if value.workflow_states_any_of and not set(value.workflow_states_any_of).intersection(
+        workflow_states
+    ):
+        unmet.append("AUTOMATION_CONDITION_WORKFLOW_STATE_NOT_MET")
+    if value.requester_roles and requester_role not in value.requester_roles:
+        unmet.append("AUTOMATION_CONDITION_REQUESTER_ROLE_NOT_ALLOWED")
+    if value.minimum_evidence_score is not None and not any(
+        float(item.get("score") or 0) >= value.minimum_evidence_score for item in items
+    ):
+        unmet.append("AUTOMATION_CONDITION_EVIDENCE_SCORE_NOT_MET")
+    if value.require_versioned_evidence and not any(
+        item.get("artifact_version_id") for item in items
+    ):
+        unmet.append("AUTOMATION_CONDITION_VERSIONED_EVIDENCE_REQUIRED")
+    if value.require_trace_link and not any(
+        item.get("relationship_path") or item.get("relationship") for item in items
+    ):
+        unmet.append("AUTOMATION_CONDITION_TRACE_LINK_REQUIRED")
+    return unmet
 
 
 def evidence_for_references(evidence, references):
@@ -255,11 +346,36 @@ def route_after_context(state):
 
 async def plan(state):
     run = state_run(state)
-    simulation = bool((state.get("constraints") or {}).get("change_simulation"))
+    constraints = state.get("constraints") or {}
+    simulation = bool(constraints.get("change_simulation"))
+    action_domains, action_types = automation_action_limits(
+        constraints.get("automation_actions")
+    )
     evidence_refs = [
         item.get("artifact_version_id") or item.get("artifact_id")
         for item in state.get("evidence", [])
     ]
+    condition_failures = unmet_automation_conditions(
+        constraints.get("automation_conditions"),
+        state.get("evidence", []),
+        str(constraints.get("requester_role") or run.role),
+        state.get("target_artifact_ids", []),
+    )
+    if condition_failures:
+        result = AgentResult(
+            task_id=f"AUTOMATION-CONDITION-{run.run_id}",
+            status=AgentTaskStatus.INSUFFICIENT_EVIDENCE,
+            summary="Sự kiện chưa đáp ứng điều kiện của quy tắc tự động hóa; hệ thống không thực hiện hành động",
+            evidence_refs=[value for value in evidence_refs if value],
+            reason_codes=condition_failures,
+        )
+        run.status = AgentRunStatus.RUNNING
+        return {
+            "run": run.model_dump(mode="python"),
+            "tasks": [],
+            "success_criteria": [],
+            "results": [*state.get("results", []), result.model_dump(mode="python")],
+        }
     direct_task = None
     if simulation:
         direct_task = direct_change_simulation_task(run, state, evidence_refs)
@@ -281,12 +397,30 @@ async def plan(state):
         direct_task = direct_test_case_change_impact_task(run, state, evidence_refs)
     if not simulation and not direct_task:
         direct_task = direct_event_observation_task(run, state, evidence_refs)
+    if direct_task and action_domains is not None and (
+        direct_task.domain not in action_domains
+        or any(
+            (access := tool_access(registered_tools().get(call.tool_name))) is None
+            or access.action not in action_types
+            for call in direct_task.tool_calls
+        )
+    ):
+        direct_task = None
     if not simulation and not direct_task:
         direct_task = (
             direct_capability_task(run, evidence_refs)
             if run.intent and not run.completed_tasks
             else None
         )
+    if direct_task and action_domains is not None and (
+        direct_task.domain not in action_domains
+        or any(
+            (access := tool_access(registered_tools().get(call.tool_name))) is None
+            or access.action not in action_types
+            for call in direct_task.tool_calls
+        )
+    ):
+        direct_task = None
     if direct_task:
         run.execution_plan = [direct_task.model_dump(mode="json")]
         run.status = AgentRunStatus.RUNNING
@@ -378,6 +512,13 @@ async def plan(state):
             continue
         run.observations.append({"phase": "MCP_DISCOVERY", **issue})
         known_mcp_issues.add(identity)
+    allowed_tool_actions = action_types
+    if simulation:
+        allowed_tool_actions = (
+            {"READ"}
+            if action_types is None
+            else action_types.intersection({"READ"})
+        )
     prompt = agent_plan_prompt(
         run.project_id,
         run.run_id,
@@ -390,7 +531,8 @@ async def plan(state):
             if not simulation and (not state.get("automatic") or not run.completed_tasks)
             else "",
             compact=True,
-            actions={"READ"} if simulation else None,
+            domains=action_domains,
+            actions=allowed_tool_actions,
         ),
         evidence_refs,
         {
@@ -472,7 +614,7 @@ async def plan(state):
         )
     )
     run.intent = run.intent or generated.intent
-    tasks = validated_tasks(
+    planned_tasks = validated_tasks(
         generated.tasks,
         run,
         evidence_refs,
@@ -486,8 +628,28 @@ async def plan(state):
             if item.get("connection_id") and item.get("tool_name")
         },
     )
+    rejected_automation_action = action_domains is not None and any(
+        task.domain not in action_domains
+        or any(
+            (access := tool_access(registered_tools().get(call.tool_name))) is None
+            or access.action not in action_types
+            for call in task.tool_calls
+        )
+        for task in planned_tasks
+    )
+    tasks = [] if rejected_automation_action else planned_tasks
     tasks = [task for task in tasks if task.tool_calls]
     results = list(state.get("results", []))
+    if rejected_automation_action:
+        results.append(
+            AgentResult(
+                task_id=f"AUTOMATION-ACTION-{run.run_id}",
+                status=AgentTaskStatus.FAILED,
+                summary="Kế hoạch có hành động ngoài phạm vi quy tắc tự động hóa; hệ thống không thực hiện một phần kế hoạch",
+                evidence_refs=evidence_refs,
+                reason_codes=["AUTOMATION_ACTION_OUTSIDE_DEFINITION"],
+            ).model_dump(mode="python")
+        )
     planned_mcp_pairs = planned_mcp_tool_pairs(generated.tasks)
     accepted_mcp_pairs = planned_mcp_tool_pairs(tasks)
     rejected_mcp_plan = bool(planned_mcp_pairs - accepted_mcp_pairs)
@@ -503,7 +665,7 @@ async def plan(state):
                 warnings=["MCP_TOOL_PLAN_REJECTED"],
             ).model_dump(mode="python")
         )
-    if not tasks and not rejected_mcp_plan:
+    if not tasks and not rejected_mcp_plan and not rejected_automation_action:
         prior_results = [AgentResult(**item) for item in results]
         observed_automatic_event = (
             bool(state.get("automatic"))
@@ -633,6 +795,7 @@ async def execute_agent(state):
         if not checkpoint_saved:
             raise RuntimeError("AUTOMATION_WORKER_FENCE_LOST")
 
+    tool_call_batch_id = uuid4().hex
     result, observations = await execute_task(
         task,
         task_evidence,
@@ -642,7 +805,12 @@ async def execute_agent(state):
         automatic=bool(state.get("automatic")),
         checkpoint_action=checkpoint_action if state.get("automatic") else None,
     )
-    for call, observation in zip(task.tool_calls, observations):
+    for tool_call_index, (call, observation) in enumerate(
+        zip(task.tool_calls, observations)
+    ):
+        observation["task_id"] = task.task_id
+        observation["tool_call_index"] = tool_call_index
+        observation["tool_call_batch_id"] = tool_call_batch_id
         if (task.constraints or {}).get("change_simulation"):
             observation["change_simulation_stage"] = (task.constraints or {}).get(
                 "change_simulation_stage"
@@ -677,11 +845,15 @@ async def execute_agent(state):
                     "Đã đọc phiên bản Requirement baseline và ma trận truy vết; "
                     "không tìm thấy phiên bản Test Case đang liên kết để đối chiếu với nội dung đề xuất"
                 )
-    for observation in observations:
+    for observation_index, observation in enumerate(observations):
         if observation.get("status") != ToolExecutionStatus.COMPLETED:
             continue
-        evidence_ref = f"{task.task_id}:{observation.get('tool_name', 'tool')}"
-        observation["evidence_ref"] = evidence_ref
+        observation["evidence_ref"] = tool_evidence_reference(
+            task.task_id,
+            tool_call_batch_id,
+            observation.get("tool_call_index", observation_index),
+            observation.get("tool_name"),
+        )
     tool_evidence = []
     tool_output_rejected = False
     for observation in observations:
@@ -1041,19 +1213,14 @@ async def aggregate(state):
         trace_links = simulation_baseline_trace_links(
             run.observations, baseline_version_id, stage="DISCOVERY"
         )
-        revalidation_present = any(
-            item.get("tool_name") == "get_traceability_links"
-            and item.get("status") == ToolExecutionStatus.COMPLETED
-            and item.get("change_simulation_stage") == "SCOPE_REVALIDATION"
-            and isinstance(item.get("result"), dict)
-            and not item.get("output_security")
-            for item in run.observations
+        discovery_scope = simulation_baseline_trace_snapshot(
+            run.observations, baseline_version_id, "DISCOVERY"
         )
-        revalidated_links = simulation_baseline_trace_links(
-            run.observations, baseline_version_id, stage="SCOPE_REVALIDATION"
+        revalidated_scope = simulation_baseline_trace_snapshot(
+            run.observations, baseline_version_id, "SCOPE_REVALIDATION"
         )
         scope_unchanged = simulation_trace_scope_is_current(
-            trace_links, revalidated_links, revalidation_present
+            discovery_scope, revalidated_scope, revalidated_scope is not None
         )
         suggested_count = sum(link.get("status") == "SUGGESTED" for link in trace_links)
         confirmed_count = sum(link.get("status") == "CONFIRMED" for link in trace_links)

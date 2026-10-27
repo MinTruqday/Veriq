@@ -1,5 +1,6 @@
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
+import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { valueLabel } from "../lib/testing";
 
 export default function TestConditionTable({ items, onSelect }) {
@@ -10,6 +11,11 @@ export default function TestConditionTable({ items, onSelect }) {
       columns={[
         { key: "condition_key", label: "Mã" },
         { key: "title", label: "Điều kiện" },
+        {
+          key: "origin",
+          label: "Nguồn",
+          render: (item) => <ContentOriginBadge origin={item.origin || "manual"} />,
+        },
         {
           key: "category",
           label: "Nhóm",

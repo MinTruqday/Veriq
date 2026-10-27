@@ -36,7 +36,7 @@ Silently separate explicit facts from uncertain metadata and omit unsupported fi
 Do not reveal private chain of thought
 </analysis_protocol>
 <output_language>
-Write the user-facing summary in Vietnamese. Preserve source quotations, technical identifiers, and product names exactly as written.
+Write the user-facing summary in the language explicitly requested by the user or supplied in trusted request context. Never force a fixed language. Preserve source quotations, technical identifiers, and product names exactly as written.
 </output_language>
 <summary_rules>
 1 Do not invent metadata conclusions or authority

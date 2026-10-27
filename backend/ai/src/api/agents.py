@@ -1,18 +1,10 @@
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.agents.runner.graph import canonical_workflow
 from src.core.dependency import get_current_user, oauth2_scheme
-from src.memory.long_term import long_term_memory
 from src.memory.short_term import run_store
-from src.runtime.limits import limits
-from src.schemas.agent import AgentRunRequest, AgentRunStatus, VeriqRunState
+from src.schemas.agent import AgentRunRequest
 from src.schemas.auth import CurrentUser
-from src.services.agent_metrics import agentops
-from src.services.inference import model_metadata
 from src.services.project_access import project_access
-from src.services.token_accounting import current_usage, start_accounting
 from src.tools.registry import registered_tools, tool_access
 
 router = APIRouter(prefix="/tac-tu", tags=["AI Automation compatibility"])
@@ -40,51 +32,10 @@ async def create_agent_run(
     token: str = Depends(oauth2_scheme),
     user: CurrentUser = Depends(get_current_user),
 ):
-    role, permissions = await project_access(payload.project_id, token)
-    run = VeriqRunState(
-        project_id=payload.project_id,
-        user_id=user.id,
-        role=role,
-        permissions=permissions,
-        objective=payload.objective,
-        intent=payload.intent,
-        model_metadata=model_metadata(),
+    raise HTTPException(
+        status_code=410,
+        detail={"code": "DIRECT_AGENT_RUN_RETIRED", "replacement": "tu-dong-hoa-ai/noi-bo/su-kien"},
     )
-    start_accounting()
-    agentops.record_session_start(run.run_id, user.id)
-    try:
-        result = await asyncio.wait_for(
-            canonical_workflow.ainvoke(
-                {
-                    "run": run.model_dump(mode="python"),
-                    "token": f"Bearer {token}",
-                    "evidence": [item.model_dump(mode="python") for item in payload.evidence],
-                    "target_artifact_ids": payload.target_artifact_ids,
-                    "constraints": payload.constraints,
-                    "tasks": [],
-                    "results": [],
-                }
-            ),
-            timeout=limits.run_timeout_seconds,
-        )
-    except TimeoutError:
-        run.status = AgentRunStatus.FAILED
-        run.error_code = "AGENT_LIMIT_REACHED"
-        run.observations.append({"phase": "RUN", "reason_code": "AGENT_LIMIT_REACHED"})
-        run.token_usage = current_usage()
-        await run_store.save(run)
-        agentops.record_session_end(run.run_id, "failed")
-        return run
-    completed = VeriqRunState(**result["run"])
-    completed.token_usage = current_usage()
-    await run_store.save(completed)
-    if completed.status == AgentRunStatus.COMPLETED:
-        await long_term_memory.record_verified(completed)
-    agentops.record_session_end(
-        completed.run_id,
-        "done" if completed.status == AgentRunStatus.COMPLETED else "failed",
-    )
-    return completed
 
 
 @router.get("/luot-chay/{run_id}")

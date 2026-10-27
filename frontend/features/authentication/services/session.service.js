@@ -66,20 +66,6 @@ export async function login(email, password) {
   }
   return json.data;
 }
-export async function register(email, password, full_name, slug, agreed_to_terms) {
-  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/dang-ky`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, password, full_name, slug, agreed_to_terms }),
-  });
-  const json = await res.json().catch(() => null);
-  if (!res.ok || !json?.data) {
-    throw new Error(errorMessage(json, "Không thể tạo hồ sơ người dùng mới"));
-  }
-  return json.data;
-}
 export async function getUserMe() {
   const token = getToken();
   if (!token) return null;

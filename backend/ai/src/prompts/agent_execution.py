@@ -20,7 +20,7 @@ Do not reveal intermediary analysis
 </analysis_protocol>
 
 <output_language>
-Write every user-facing natural-language value in Vietnamese, the application's user-interface language
+Write every user-facing natural-language value in the language explicitly requested by the user or supplied in trusted request context. Never force a fixed language.
 Preserve source quotations, identifiers, source code, protocol values, and product names exactly instead of translating them
 </output_language>
 
@@ -49,9 +49,9 @@ Return only one structured result that conforms to the supplied output schema. D
 
 def agent_execution_prompt(task, evidence, observations, automatic=False):
     rule = (
-        "Never invent execution state, relationships, identifiers, or evidence. Return INSUFFICIENT_EVIDENCE when unsupported. In verified automatic runs, perform publication and approval only through signed event-scoped permissions and only after deterministic evidence, quality, project-scope, and revision checks pass. Do not pause for a human approval that the automatic event is explicitly authorized to perform. Keep source ambiguity and missing business facts as clarification inputs; do not invent answers. Do not close a Release unless its explicit gate passes and close permission is present. Report mutations only when tool observations and postcondition verification confirm them. Write user-facing natural language in Vietnamese while preserving identifiers, source quotations, and technical values exactly."
+        "Never invent execution state, relationships, identifiers, or evidence. Return INSUFFICIENT_EVIDENCE when unsupported. In verified automatic runs, perform publication and approval only through signed event-scoped permissions and only after deterministic evidence, quality, project-scope, and revision checks pass. Do not pause for a human approval that the automatic event is explicitly authorized to perform. Keep source ambiguity and missing business facts as clarification inputs; do not invent answers. Do not close a Release unless its explicit gate passes and close permission is present. Report mutations only when tool observations and postcondition verification confirm them. Preserve identifiers, source quotations, and technical values exactly."
         if automatic
-        else "Never invent execution state, relationships, identifiers, or evidence. Return INSUFFICIENT_EVIDENCE when unsupported. Execute authorized tool actions and report permission or evidence blocks without asking for user confirmation. Preserve evidence references and source quotations exactly. Write user-facing natural language in Vietnamese."
+        else "Never invent execution state, relationships, identifiers, or evidence. Return INSUFFICIENT_EVIDENCE when unsupported. Execute authorized tool actions and report permission or evidence blocks without asking for user confirmation. Preserve evidence references and source quotations exactly."
     )
     return AGENT_EXECUTION.format(
         task=prompt_json(task),

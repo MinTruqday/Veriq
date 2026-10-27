@@ -108,9 +108,10 @@ class TestRunCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     name: str = Field(min_length=2, max_length=300)
     test_plan_id: str | None = None
+    expected_test_plan_snapshot_hash: str | None = Field(default=None, min_length=1, max_length=128)
     test_suite_ids: list[str] = Field(default_factory=list, max_length=500)
     test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
-    assignment_strategy: Literal["MANUAL", "CONFIRMED_SKILLS"] = "MANUAL"
+    assignment_strategy: Literal["MANUAL", "CONFIRMED_SKILLS", "PROFILE_EVIDENCE"] = "PROFILE_EVIDENCE"
     environment: str = Field(default="staging", max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str = Field(default="", max_length=200)
@@ -142,6 +143,7 @@ class TestRunAssignmentInput(BaseModel):
     assignee_id: str = Field(min_length=1, max_length=200)
     test_case_assignments: dict[str, str] = Field(default_factory=dict)
     expected_skill_profile_revisions: dict[str, int] = Field(default_factory=dict)
+    decision_source: Literal["MANUAL", "QA_APPROVED_RECOMMENDATION", "QA_ADJUSTED_RECOMMENDATION"] = "MANUAL"
 
 
 class TestRunResumeInput(BaseModel):

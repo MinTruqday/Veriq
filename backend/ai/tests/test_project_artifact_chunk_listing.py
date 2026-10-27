@@ -13,6 +13,88 @@ from src.store.vector import VectorStore
 
 
 class ProjectArtifactChunkListingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_bm25_document_and_artifact_deletion_require_complete_scope(self):
+        store = BM25Store()
+        await store.initialize(
+            [
+                {
+                    "id": "document-point",
+                    "text": "Document content",
+                    "metadata": {"document_id": "doc-1"},
+                },
+                {
+                    "id": "artifact-point",
+                    "text": "Requirement content",
+                    "metadata": {
+                        "project_id": "project-1",
+                        "artifact_type": "requirement",
+                        "artifact_id": "req-1",
+                        "artifact_version_id": "version-1",
+                    },
+                },
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "document_index_cleanup_scope_invalid"):
+            await store.delete_by_document(" ")
+        with self.assertRaisesRegex(ValueError, "project_artifact_cleanup_scope_invalid"):
+            await store.delete_artifact_version("project-1", "requirement", "req-1", "")
+        with self.assertRaisesRegex(ValueError, "project_artifact_cleanup_scope_invalid"):
+            await store.delete_project_artifact_version("", "version-1")
+
+        self.assertEqual(set(store._documents), {"document-point", "artifact-point"})
+
+    async def test_bm25_artifact_generation_deletion_requires_complete_scope(self):
+        store = BM25Store()
+        await store.initialize(
+            [
+                {
+                    "id": "active-point",
+                    "text": "Current artifact generation",
+                    "metadata": {
+                        "project_id": "project-1",
+                        "artifact_type": "requirement_version",
+                        "artifact_id": "req-1",
+                        "artifact_version_id": "version-1",
+                        "index_generation": "active-generation",
+                    },
+                }
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "project_artifact_cleanup_scope_invalid"):
+            await store.delete_artifact_generation(
+                "project-1", "requirement_version", "req-1", "version-1", ""
+            )
+        with self.assertRaisesRegex(ValueError, "project_artifact_cleanup_scope_invalid"):
+            await store.delete_stale_artifact_generations(
+                "project-1", "requirement_version", "req-1", "version-1", " "
+            )
+
+        self.assertEqual(
+            await store.ids_by_artifact_version("project-1", "version-1"),
+            ["active-point"],
+        )
+
+    async def test_bm25_generation_cleanup_rejects_incomplete_scope_without_mutating_index(self):
+        store = BM25Store()
+        await store.initialize(
+            [
+                {
+                    "id": "kept-point",
+                    "text": "Keep this document indexed",
+                    "metadata": {"document_id": "doc-1", "index_generation": "generation-1"},
+                }
+            ]
+        )
+
+        with self.assertRaisesRegex(ValueError, "document_index_cleanup_scope_invalid"):
+            await store.delete_document_generation("doc-1", "")
+        with self.assertRaisesRegex(ValueError, "document_index_cleanup_scope_invalid"):
+            await store.delete_stale_document_generations("doc-1", " ")
+
+        self.assertEqual(await store.ids_by_document("doc-1"), ["kept-point"])
+
     async def test_bm25_publishes_only_the_requested_staged_generation(self):
         store = BM25Store()
         await store.initialize(

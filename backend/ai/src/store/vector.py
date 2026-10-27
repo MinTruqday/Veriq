@@ -7,8 +7,10 @@ from qdrant_client.http.models import (
     Distance,
     FieldCondition,
     Filter,
+    IsEmptyCondition,
     MatchAny,
     MatchValue,
+    PayloadField,
     PayloadSchemaType,
     PointIdsList,
     PointStruct,
@@ -16,7 +18,11 @@ from qdrant_client.http.models import (
 )
 
 from src.core.infrastructure.configuration import settings
-from src.schemas.project import QdrantPointPayload
+from src.schemas.project import (
+    DOCUMENT_INDEXED_ARTIFACT_TYPES,
+    QdrantPointPayload,
+    is_document_indexed_payload,
+)
 
 
 class VectorStore:
@@ -33,6 +39,7 @@ class VectorStore:
         "module": PayloadSchemaType.KEYWORD,
         "status": PayloadSchemaType.KEYWORD,
         "document_id": PayloadSchemaType.KEYWORD,
+        "source_document_id": PayloadSchemaType.KEYWORD,
         "visibility": PayloadSchemaType.KEYWORD,
         "shared_with": PayloadSchemaType.KEYWORD,
         "source_hash": PayloadSchemaType.KEYWORD,
@@ -43,12 +50,17 @@ class VectorStore:
         "extraction_status": PayloadSchemaType.KEYWORD,
         "unprocessed_block_count": PayloadSchemaType.INTEGER,
         "index_generation": PayloadSchemaType.KEYWORD,
+        "document_index_contract_version": PayloadSchemaType.INTEGER,
         "indexed_at": PayloadSchemaType.DATETIME,
         "conflict_key": PayloadSchemaType.KEYWORD,
         "claim_value": PayloadSchemaType.KEYWORD,
         "embedding_model": PayloadSchemaType.KEYWORD,
     }
     UNINDEXED_POLYMORPHIC_PAYLOAD_FIELDS = ("source_version",)
+
+    @staticmethod
+    def _is_project_artifact_payload(payload: Dict) -> bool:
+        return not payload.get("document_id") or payload.get("artifact_type") == "requirement_document"
 
     def __init__(self):
         self.client = AsyncQdrantClient(
@@ -149,6 +161,18 @@ class VectorStore:
                 payload = QdrantPointPayload.model_validate(
                     {**payload_values, "text": documents[i]}
                 ).model_dump(exclude_none=True)
+                if (
+                    is_document_indexed_payload(payload)
+                    and payload.get("artifact_type")
+                    not in DOCUMENT_INDEXED_ARTIFACT_TYPES
+                ):
+                    raise ValueError("qdrant_document_artifact_type_missing")
+                if (
+                    is_document_indexed_payload(payload)
+                    and payload.get("document_index_contract_version")
+                    != settings.DOCUMENT_INDEX_CONTRACT_VERSION
+                ):
+                    raise ValueError("qdrant_document_index_contract_version_mismatch")
                 points.append(
                     PointStruct(id=ids[i], vector=embeddings[i], payload=payload)
                 )
@@ -166,7 +190,12 @@ class VectorStore:
         is_admin: bool = False,
         metadata_filters: Optional[Dict] = None,
     ) -> List[Dict]:
-        must = []
+        must = [
+            FieldCondition(
+                key="embedding_model",
+                match=MatchValue(value=settings.EMBEDDING_MODEL),
+            )
+        ]
         if document_ids:
             must.append(FieldCondition(key="document_id", match=MatchAny(any=document_ids)))
         for key, value in (metadata_filters or {}).items():
@@ -174,6 +203,46 @@ class VectorStore:
                 continue
             match = MatchAny(any=value) if isinstance(value, list) else MatchValue(value=value)
             must.append(FieldCondition(key=key, match=match))
+        must.append(
+            Filter(
+                should=[
+                    Filter(
+                        must_not=[
+                            FieldCondition(
+                                key="artifact_type",
+                                match=MatchAny(
+                                    any=list(DOCUMENT_INDEXED_ARTIFACT_TYPES)
+                                ),
+                            ),
+                            IsEmptyCondition(is_empty=PayloadField(key="artifact_type")),
+                        ],
+                    ),
+                    Filter(
+                        must=[
+                            IsEmptyCondition(is_empty=PayloadField(key="artifact_type")),
+                            IsEmptyCondition(is_empty=PayloadField(key="document_id")),
+                            IsEmptyCondition(is_empty=PayloadField(key="source_document_id")),
+                        ]
+                    ),
+                    Filter(
+                        must=[
+                            FieldCondition(
+                                key="artifact_type",
+                                match=MatchAny(
+                                    any=list(DOCUMENT_INDEXED_ARTIFACT_TYPES)
+                                ),
+                            ),
+                            FieldCondition(
+                                key="document_index_contract_version",
+                                match=MatchValue(
+                                    value=settings.DOCUMENT_INDEX_CONTRACT_VERSION
+                                ),
+                            ),
+                        ]
+                    ),
+                ]
+            )
+        )
         if not is_admin:
             access_conditions = [
                 FieldCondition(key="visibility", match=MatchValue(value="public")),
@@ -282,6 +351,9 @@ class VectorStore:
             offset = next_offset
 
     async def delete_by_document(self, document_id: str):
+        document_id = str(document_id or "").strip()
+        if not document_id:
+            raise ValueError("document_index_cleanup_scope_invalid")
         try:
             await self.client.delete(
                 collection_name=self.collection_name,
@@ -292,6 +364,54 @@ class VectorStore:
         except Exception:
             logger.exception("Search index deletion error")
             raise
+
+    async def delete_document_generation(
+        self, document_id: str, index_generation: str
+    ):
+        document_id = str(document_id or "").strip()
+        index_generation = str(index_generation or "").strip()
+        if not document_id or not index_generation:
+            raise ValueError("document_index_cleanup_scope_invalid")
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id", match=MatchValue(value=document_id)
+                    ),
+                    FieldCondition(
+                        key="index_generation",
+                        match=MatchValue(value=index_generation),
+                    ),
+                ]
+            ),
+            wait=True,
+        )
+
+    async def delete_stale_document_generations(
+        self, document_id: str, active_generation: str
+    ):
+        document_id = str(document_id or "").strip()
+        active_generation = str(active_generation or "").strip()
+        if not document_id or not active_generation:
+            raise ValueError("document_index_cleanup_scope_invalid")
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id", match=MatchValue(value=document_id)
+                    )
+                ],
+                must_not=[
+                    FieldCondition(
+                        key="index_generation",
+                        match=MatchValue(value=active_generation),
+                    )
+                ],
+            ),
+            wait=True,
+        )
 
     async def ids_by_document(self, document_id: str) -> List[str]:
         point_ids = []
@@ -318,6 +438,186 @@ class VectorStore:
         await self.client.delete(
             collection_name=self.collection_name,
             points_selector=PointIdsList(points=point_ids),
+            wait=True,
+        )
+
+    async def delete_artifact_generation(
+        self,
+        project_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        artifact_version_id: str,
+        index_generation: str,
+    ):
+        scope = tuple(
+            str(value or "").strip()
+            for value in (
+                project_id,
+                artifact_type,
+                artifact_id,
+                artifact_version_id,
+                index_generation,
+            )
+        )
+        if any(not value for value in scope):
+            raise ValueError("project_artifact_cleanup_scope_invalid")
+        (
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            index_generation,
+        ) = scope
+        must_conditions = [
+                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+                FieldCondition(key="artifact_type", match=MatchValue(value=artifact_type)),
+                FieldCondition(key="artifact_id", match=MatchValue(value=artifact_id)),
+                FieldCondition(
+                    key="artifact_version_id",
+                    match=MatchValue(value=artifact_version_id),
+                ),
+                FieldCondition(
+                    key="index_generation", match=MatchValue(value=index_generation)
+                ),
+            ]
+        if artifact_type != "requirement_document":
+            must_conditions.append(
+                IsEmptyCondition(is_empty=PayloadField(key="document_id"))
+            )
+        query_filter = Filter(must=must_conditions)
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=query_filter,
+            wait=True,
+        )
+
+    async def delete_stale_artifact_generations(
+        self,
+        project_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        artifact_version_id: str,
+        active_generation: str,
+    ):
+        scope = tuple(
+            str(value or "").strip()
+            for value in (
+                project_id,
+                artifact_type,
+                artifact_id,
+                artifact_version_id,
+                active_generation,
+            )
+        )
+        if any(not value for value in scope):
+            raise ValueError("project_artifact_cleanup_scope_invalid")
+        (
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            active_generation,
+        ) = scope
+        must_conditions = [
+                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+                FieldCondition(key="artifact_type", match=MatchValue(value=artifact_type)),
+                FieldCondition(key="artifact_id", match=MatchValue(value=artifact_id)),
+                FieldCondition(
+                    key="artifact_version_id",
+                    match=MatchValue(value=artifact_version_id),
+                ),
+            ]
+        if artifact_type != "requirement_document":
+            must_conditions.append(
+                IsEmptyCondition(is_empty=PayloadField(key="document_id"))
+            )
+        query_filter = Filter(
+            must=must_conditions,
+            must_not=[
+                FieldCondition(
+                    key="index_generation", match=MatchValue(value=active_generation)
+                )
+            ],
+        )
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=query_filter,
+            wait=True,
+        )
+
+    async def delete_artifact_version(
+        self, project_id: str, artifact_type: str, artifact_id: str, artifact_version_id: str
+    ):
+        scope = tuple(
+            str(value or "").strip()
+            for value in (project_id, artifact_type, artifact_id, artifact_version_id)
+        )
+        if any(not value for value in scope):
+            raise ValueError("project_artifact_cleanup_scope_invalid")
+        project_id, artifact_type, artifact_id, artifact_version_id = scope
+        must_conditions = [
+                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+                FieldCondition(key="artifact_type", match=MatchValue(value=artifact_type)),
+                FieldCondition(key="artifact_id", match=MatchValue(value=artifact_id)),
+                FieldCondition(
+                    key="artifact_version_id",
+                    match=MatchValue(value=artifact_version_id),
+                ),
+            ]
+        if artifact_type != "requirement_document":
+            must_conditions.append(
+                IsEmptyCondition(is_empty=PayloadField(key="document_id"))
+            )
+        query_filter = Filter(must=must_conditions)
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=query_filter,
+            wait=True,
+        )
+
+    async def delete_project_artifact_version(
+        self, project_id: str, artifact_version_id: str
+    ):
+        scope = tuple(
+            str(value or "").strip() for value in (project_id, artifact_version_id)
+        )
+        if any(not value for value in scope):
+            raise ValueError("project_artifact_cleanup_scope_invalid")
+        project_id, artifact_version_id = scope
+        requirement_document_filter = Filter(
+            must=[
+                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+                FieldCondition(
+                    key="artifact_version_id",
+                    match=MatchValue(value=artifact_version_id),
+                ),
+                FieldCondition(
+                    key="artifact_type", match=MatchValue(value="requirement_document")
+                ),
+            ]
+        )
+        project_artifact_filter = Filter(
+            must=[
+                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+                FieldCondition(
+                    key="artifact_version_id",
+                    match=MatchValue(value=artifact_version_id),
+                ),
+                IsEmptyCondition(is_empty=PayloadField(key="document_id")),
+            ],
+            must_not=[
+                IsEmptyCondition(is_empty=PayloadField(key="artifact_type")),
+                IsEmptyCondition(is_empty=PayloadField(key="artifact_id")),
+            ],
+        )
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=requirement_document_filter,
+            wait=True,
+        )
+        await self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=project_artifact_filter,
             wait=True,
         )
 
@@ -348,13 +648,13 @@ class VectorStore:
                 scroll_filter=query_filter,
                 limit=256,
                 offset=offset,
-                with_payload=["document_id"],
+                with_payload=["document_id", "artifact_type"],
                 with_vectors=False,
             )
             point_ids.extend(
                 str(point.id)
                 for point in points
-                if not (point.payload or {}).get("document_id")
+                if self._is_project_artifact_payload(point.payload or {})
             )
             if next_offset is None:
                 return point_ids
@@ -379,7 +679,7 @@ class VectorStore:
                 scroll_filter=query_filter,
                 limit=256,
                 offset=offset,
-                with_payload=["index_generation", "indexed_at", "document_id"],
+                with_payload=["index_generation", "indexed_at", "document_id", "artifact_type"],
                 with_vectors=False,
             )
             documents.extend(
@@ -388,10 +688,44 @@ class VectorStore:
                     "metadata": dict(point.payload or {}),
                 }
                 for point in points
-                if not (point.payload or {}).get("document_id")
+                if self._is_project_artifact_payload(point.payload or {})
             )
             if next_offset is None:
                 return documents
+            offset = next_offset
+
+    async def iter_artifact_version_summaries(
+        self, project_id: str, artifact_version_id: str
+    ):
+        offset = None
+        query_filter = Filter(
+            must=[
+                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+                FieldCondition(
+                    key="artifact_version_id",
+                    match=MatchValue(value=artifact_version_id),
+                ),
+            ]
+        )
+        while True:
+            points, next_offset = await self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=query_filter,
+                limit=256,
+                offset=offset,
+                with_payload=["index_generation", "indexed_at", "document_id", "artifact_type"],
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                if self._is_project_artifact_payload(payload):
+                    yield {
+                        "id": str(point.id),
+                        "index_generation": payload.get("index_generation"),
+                        "indexed_at": payload.get("indexed_at"),
+                    }
+            if next_offset is None:
+                return
             offset = next_offset
 
     async def scroll_artifact_version(
@@ -435,7 +769,7 @@ class VectorStore:
                     },
                 }
                 for point in points
-                if not (point.payload or {}).get("document_id")
+                if self._is_project_artifact_payload(point.payload or {})
                 and (
                     index_generation != "LEGACY"
                     or not (point.payload or {}).get("index_generation")
@@ -457,7 +791,7 @@ class VectorStore:
                     with_vectors=False,
                 )
                 if any(
-                    not (point.payload or {}).get("document_id")
+                    self._is_project_artifact_payload(point.payload or {})
                     and (
                         index_generation != "LEGACY"
                         or not (point.payload or {}).get("index_generation")

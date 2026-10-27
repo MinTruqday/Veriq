@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
+import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 
 const emptySkill = () => ({
   name: "",
@@ -16,6 +17,7 @@ const emptySkill = () => ({
 });
 const emptyExperience = () => ({
   title: "",
+  period: "",
   domain: "",
   technologies: [],
   responsibilities: "",
@@ -167,6 +169,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
     }));
     const candidateExperiences = (cvPreview.experiences || []).map((item) => ({
       title: item.title,
+      period: item.period || "",
       domain: item.domain,
       technologies: item.technologies || [],
       responsibilities: item.responsibilities || "",
@@ -241,6 +244,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
           </div>
           {cvPreview && (
             <div className="space-y-3 rounded-lg bg-surface-raised p-3">
+              <ContentOriginBadge origin="ai_generated" aiLabel="AI trích xuất · cần rà soát" />
               <p className="text-sm">
                 Xem trước: {cvPreview.skills?.length || 0} kỹ năng,{" "}
                 {cvPreview.experiences?.length || 0} kinh nghiệm. Tệp chưa được lưu; các ứng viên
@@ -263,6 +267,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
                   (item, index) => (
                     <li className="break-words" key={`${item.source_block_id}-${index}`}>
                       <span className="font-medium">{item.name || item.title}</span>
+                      {item.period ? ` · ${item.period}` : ""}
                       {" — “"}
                       {item.evidence_quote}
                       {"” · "}
@@ -310,6 +315,16 @@ export default function MemberSkillProfilePanel({ projectId }) {
               className="grid min-w-0 gap-3 rounded-xl border border-border p-4 md:grid-cols-2"
               key={`skill-${index}`}
             >
+              <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+                <ContentOriginBadge
+                  origin={skill.source_block_id ? "ai_generated" : "manual"}
+                  aiLabel="AI trích từ CV"
+                  humanLabel="Người dùng nhập"
+                />
+                <span className="text-xs text-ink-muted">
+                  {skill.confirmed ? "Đã xác nhận" : "Chưa xác nhận"}
+                </span>
+              </div>
               <label className="field-label">
                 Kỹ năng
                 <input
@@ -396,6 +411,16 @@ export default function MemberSkillProfilePanel({ projectId }) {
               className="grid min-w-0 gap-3 rounded-xl border border-border p-4 md:grid-cols-2"
               key={`experience-${index}`}
             >
+              <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+                <ContentOriginBadge
+                  origin={experience.source_block_id ? "ai_generated" : "manual"}
+                  aiLabel="AI trích từ CV"
+                  humanLabel="Người dùng nhập"
+                />
+                <span className="text-xs text-ink-muted">
+                  {experience.confirmed ? "Đã xác nhận" : "Chưa xác nhận"}
+                </span>
+              </div>
               <label className="field-label">
                 Vai trò hoặc dự án
                 <input
@@ -416,6 +441,18 @@ export default function MemberSkillProfilePanel({ projectId }) {
                     patchEvidenceAt(setExperiences, index, { domain: event.target.value })
                   }
                   maxLength={120}
+                />
+              </label>
+              <label className="field-label">
+                Thời gian theo CV
+                <input
+                  className="apple-input mt-2"
+                  value={experience.period || ""}
+                  onChange={(event) =>
+                    patchEvidenceAt(setExperiences, index, { period: event.target.value })
+                  }
+                  maxLength={120}
+                  placeholder="Ví dụ: 2022–2024 (nếu CV ghi rõ)"
                 />
               </label>
               <label className="field-label md:col-span-2">

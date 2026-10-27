@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import DataTable from "./DataTable";
 import PreventiveActionTable from "./PreventiveActionTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
+import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 
@@ -457,7 +458,16 @@ export default function CausalAnalysisPanel({ project }) {
         <DataTable
           items={candidates}
           columns={[
-            { key: "problem_statement", label: "Vấn đề cần phân tích" },
+            {
+              key: "problem_statement",
+              label: "Vấn đề cần phân tích",
+              render: (item) => (
+                <div className="grid justify-items-start gap-2">
+                  <ContentOriginBadge origin="ai_suggested" />
+                  <span>{item.problem_statement}</span>
+                </div>
+              ),
+            },
             { key: "defect_ids", label: "Lỗi", render: (item) => item.defect_ids.join(", ") },
             { key: "reason_codes", label: "Lý do", render: (item) => item.reason_codes.join(", ") },
           ]}
@@ -612,7 +622,16 @@ export default function CausalAnalysisPanel({ project }) {
               empty="Chưa có giả thuyết"
               columns={[
                 { key: "root_cause_category", label: "Nhóm" },
-                { key: "hypothesis", label: "Giả thuyết" },
+                {
+                  key: "hypothesis",
+                  label: "Giả thuyết",
+                  render: (item) => (
+                    <div className="grid justify-items-start gap-2">
+                      <ContentOriginBadge origin="ai_suggested" />
+                      <span>{item.hypothesis}</span>
+                    </div>
+                  ),
+                },
                 { key: "confidence", label: "Tin cậy" },
               ]}
             />

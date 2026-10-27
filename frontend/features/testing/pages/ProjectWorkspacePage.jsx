@@ -148,7 +148,9 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.testSets]: ["testsuite.read", "testcase.read"],
     [PROJECT_SECTION_SLUGS.testPlans]: "testplan.read",
     [PROJECT_SECTION_SLUGS.testRuns]: "testrun.read",
-    [PROJECT_SECTION_SLUGS.automation]: "automation.read",
+  }[section[0]];
+  const sectionAnyPermissions = {
+    [PROJECT_SECTION_SLUGS.automation]: ["automation.read", "proposal.read"],
   }[section[0]];
   const permissions = state.project?.current_permissions || [];
   const hasCaseSubsectionPermission =
@@ -173,12 +175,14 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
           : area === "settings" && section[0] !== PROJECT_SECTION_SLUGS.audit
             ? PROJECT_SETTINGS_PERMISSIONS
             : null;
-  const hasRequiredPermission = Array.isArray(requiredPermission)
-    ? requiredPermission.every((permission) => permissions.includes(permission))
-    : requiredPermission
-      ? permissions.includes(requiredPermission)
-      : !areaAnyPermissions ||
-        areaAnyPermissions.some((permission) => permissions.includes(permission));
+  const hasRequiredPermission = sectionAnyPermissions
+    ? sectionAnyPermissions.some((permission) => permissions.includes(permission))
+    : Array.isArray(requiredPermission)
+      ? requiredPermission.every((permission) => permissions.includes(permission))
+      : requiredPermission
+        ? permissions.includes(requiredPermission)
+        : !areaAnyPermissions ||
+          areaAnyPermissions.some((permission) => permissions.includes(permission));
   const lacksSectionPermission = Boolean(
     !state.loading &&
       !state.error &&

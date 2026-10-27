@@ -19,6 +19,7 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
 function lines(value, category) {
   return String(value || "")
@@ -577,6 +578,13 @@ export default function CompletionPage({ project }) {
                 {narrativeDraft?.suggestions?.[0] && (
                   <Panel title="Diễn giải AI cho báo cáo hoàn tất">
                     <div className="space-y-4 text-sm">
+                      <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
+                        <ContentOriginBadge origin="ai_generated" />
+                        <p className="mt-2 text-violet-950">
+                          Đây là nội dung AI đề xuất; số liệu và quyết định trong báo cáo gốc được
+                          giữ riêng.
+                        </p>
+                      </div>
                       {[
                         ["Tóm tắt điều hành", "executive_summary"],
                         ["Tổng kết đóng kiểm thử", "closure_summary"],
@@ -605,9 +613,12 @@ export default function CompletionPage({ project }) {
                 {lessonClusters?.suggestions?.length > 0 && (
                   <Panel title="Nhóm bài học do AI đề xuất">
                     <div className="space-y-3">
+                      <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
+                        <ContentOriginBadge origin="ai_generated" />
+                      </div>
                       {lessonClusters.suggestions.map((item, index) => (
                         <article
-                          className="rounded-xl border border-border p-3 text-sm"
+                          className="rounded-xl border border-violet-200 bg-violet-50/30 p-3 text-sm"
                           key={`${item.theme}-${index}`}
                         >
                           <p className="font-semibold">{item.theme}</p>

@@ -15,6 +15,20 @@ from src.core.configuration import _positive_int_environment
 class RequirementDocumentParseRetryTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.user = SimpleNamespace(id="user-parse-retry", is_system_admin=False)
+        self.deduplication_lookup = patch.object(
+            requirement_documents.requirement_document_repository,
+            "find_by_deduplication_key",
+            new=AsyncMock(return_value=None),
+        )
+        self.deduplication_lookup.start()
+        self.addCleanup(self.deduplication_lookup.stop)
+        self.source_block_replace = patch.object(
+            requirement_documents.requirement_source_block_repository,
+            "replace_version",
+            new=AsyncMock(return_value=1),
+        )
+        self.source_block_replace.start()
+        self.addCleanup(self.source_block_replace.stop)
         self.document = {
             "_id": "RDOC-parse-retry",
             "project_id": "project-parse-retry",
@@ -205,6 +219,8 @@ class RequirementDocumentParseRetryTests(unittest.IsolatedAsyncioTestCase):
             patch.object(requirement_documents, "read_raw_requirement_source", new=AsyncMock(return_value=b"source")),
             patch.object(requirement_documents, "read_and_parse_requirement_source", new=AsyncMock(return_value=("requirement", {}))),
             patch.object(requirement_documents.requirement_document_repository, "transition_status", new=AsyncMock(return_value=None)) as transition,
+            patch.object(requirement_documents.requirement_document_repository, "find", new=AsyncMock(return_value=None)),
+            patch.object(requirement_documents.requirement_source_block_repository, "delete_version", new=AsyncMock(return_value=1)),
             patch.object(requirement_documents, "audit", new=AsyncMock()) as audit,
         ):
             with self.assertRaises(HTTPException) as raised:

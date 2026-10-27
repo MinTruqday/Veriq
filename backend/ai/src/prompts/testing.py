@@ -132,10 +132,13 @@ def prompt_execution_fingerprint(prompt, schema):
     return prompt_messages_fingerprint(messages)
 
 
-def build_testing_prompt(capability, project_id, instruction, evidence, evidence_refs, schema):
+def build_testing_prompt(
+    capability, project_id, instruction, evidence, evidence_refs, schema, output_language=None
+):
     prompt = STRUCTURED_TESTING_TEMPLATE.format(
         capability=prompt_json(capability),
         project_id=prompt_json(project_id),
+        output_language=prompt_json(output_language),
         instruction=prompt_json(instruction),
         evidence_refs=prompt_json(evidence_refs),
         evidence=prompt_json(evidence),

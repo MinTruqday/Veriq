@@ -97,6 +97,18 @@ def test_idempotency_key_requires_same_run_context_and_scope():
     }
 
     assert service._idempotent_run_matches(existing, payload, ["version-a"], context)
+    hash_bound_payload = payload.model_copy(
+        update={"expected_test_plan_snapshot_hash": "snapshot-a"}
+    )
+    assert not service._idempotent_run_matches(
+        existing, hash_bound_payload, ["version-a"], context
+    )
+    assert service._idempotent_run_matches(
+        {**existing, "test_plan_snapshot_hash": "snapshot-a"},
+        hash_bound_payload,
+        ["version-a"],
+        context,
+    )
     assert service._idempotent_run_matches(
         {**existing, "test_suite_ids": ["suite-a", "suite-a"]},
         payload,
@@ -137,6 +149,45 @@ def test_approved_test_plan_snapshot_must_match_its_stored_hash():
         verified_approved_plan_snapshot(tampered, "project-a")
     assert raised.value.status_code == 409
     assert raised.value.detail["code"] == "TEST_PLAN_APPROVED_SNAPSHOT_INVALID"
+
+
+def test_run_creation_rejects_snapshot_hash_from_a_stale_approval_event(monkeypatch):
+    payload = RunCreate(
+        project_id="project-a",
+        name="Run từ sự kiện duyệt cũ",
+        test_plan_id="plan-a",
+        expected_test_plan_snapshot_hash="stale-hash",
+    )
+    source_plan = {
+        "_id": "plan-a",
+        "project_id": "project-a",
+        "status": "APPROVED",
+        "test_case_version_ids": ["version-a"],
+    }
+    snapshot = plan_snapshot(source_plan)
+    digest = plan_snapshot_hash(snapshot)
+    approved_plan = {
+        **source_plan,
+        "approved_snapshot": snapshot,
+        "approved_snapshot_hash": digest,
+        "baseline_hash": digest,
+    }
+    monkeypatch.setattr(service, "get_project", _async_value(None))
+    monkeypatch.setattr(
+        service.test_run_repository,
+        "find_plan",
+        AsyncMock(return_value=approved_plan),
+    )
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(
+            service.create_test_run_record(
+                payload, "project-a", SimpleNamespace(id="qa-a")
+            )
+        )
+
+    assert raised.value.status_code == 409
+    assert raised.value.detail["code"] == "TEST_PLAN_APPROVED_SNAPSHOT_CHANGED"
 
 
 def test_approved_test_plan_pins_test_set_revision_and_membership():
@@ -203,6 +254,14 @@ def test_test_run_plan_suite_snapshot_rejects_unknown_or_malformed_scope():
             ["suite-a"], {"test_suite_snapshots": [{"test_suite_id": "suite-a"}]}
         )
     assert raised.value.detail["code"] == "TEST_PLAN_SUITE_SNAPSHOT_INVALID"
+
+
+def test_test_run_plan_rejects_live_test_set_fallback_when_revision_snapshot_is_missing():
+    with pytest.raises(HTTPException) as raised:
+        service._require_plan_suite_snapshot({"test_suite_ids": ["suite-a"]})
+
+    assert raised.value.status_code == 409
+    assert raised.value.detail["code"] == "TEST_PLAN_SUITE_SNAPSHOT_REQUIRED"
 
 
 def test_legacy_plan_snapshot_is_accepted_only_when_baseline_matches_live_scope():
@@ -411,9 +470,9 @@ def test_confirmed_skill_assignment_uses_the_run_creation_transaction(monkeypatc
         _async_value([{"_id": "version-a", "required_skills": ["API"]}]),
     )
 
-    async def assign(project_id, versions, *, session):
+    async def assign(project_id, versions, *, session, include_cv_evidence=False):
         assert session.transaction_open is True
-        assignment_calls.append((project_id, versions, session))
+        assignment_calls.append((project_id, versions, session, include_cv_evidence))
         return (
             {"version-a": "tester-a"},
             [],
@@ -435,6 +494,7 @@ def test_confirmed_skill_assignment_uses_the_run_creation_transaction(monkeypatc
     assert len(assignment_calls) == 2
     assert assignment_calls[0][0] == "project-a"
     assert assignment_calls[0][2] is session
+    assert assignment_calls[0][3] is False
     assert assignment_calls[1] == (
         "fence",
         "project-a",
@@ -444,6 +504,124 @@ def test_confirmed_skill_assignment_uses_the_run_creation_transaction(monkeypatc
     assert run["test_case_assignments"] == {"version-a": "tester-a"}
     assert run["test_case_assignment_decisions"]["version-a"]["skill_profile_revision"] == 4
     assert [kind for kind, _ in session.committed] == ["run", "result", "audit"]
+
+
+def test_adding_cases_to_draft_run_automatically_assigns_only_new_cases(monkeypatch):
+    session = MemorySession()
+    run = {
+        "_id": "run-a",
+        "project_id": "project-a",
+        "revision": 2,
+        "status": "DRAFT",
+        "assignment_strategy": "CONFIRMED_SKILLS",
+        "assignee_id": None,
+        "test_case_version_ids": ["version-a"],
+        "test_case_assignments": {"version-a": "tester-a"},
+        "test_case_assignment_decisions": {"version-a": {"assignee_id": "tester-a"}},
+        "unassigned_assignment_reasons": [],
+    }
+    payload = SimpleNamespace(
+        expected_revision=2,
+        model_dump=lambda **kwargs: {
+            "expected_revision": 2,
+            "test_case_version_ids": ["version-a", "version-b"],
+        },
+    )
+    assignment_calls = []
+    patches = []
+    audit_calls = []
+    monkeypatch.setattr(service.database, "client", MemoryClient(session))
+    monkeypatch.setattr(service, "get_project_entity", _async_value(run))
+    monkeypatch.setattr(service, "validate_test_versions", _async_value(None))
+    monkeypatch.setattr(
+        service.test_run_repository,
+        "find_run",
+        _async_value(run),
+    )
+    monkeypatch.setattr(
+        service.test_run_repository,
+        "list_results",
+        _async_value([]),
+    )
+    monkeypatch.setattr(
+        service.test_run_repository,
+        "list_versions",
+        _async_value([{"_id": "version-b", "required_skills": ["API"]}]),
+    )
+
+    async def insert_results(values, *, session):
+        session.pending.append(("results", values[0]["test_case_version_id"]))
+
+    async def assign(
+        project_id,
+        versions,
+        *,
+        session,
+        existing_case_assignments,
+        existing_assignee_id,
+        include_cv_evidence=False,
+    ):
+        assignment_calls.append(
+            (project_id, versions, session, existing_case_assignments, existing_assignee_id)
+        )
+        return (
+            {"version-b": "tester-b"},
+            [],
+            {"version-b": {"assignee_id": "tester-b", "skill_profile_revision": 5}},
+        )
+
+    async def fence_members(project_id, user_ids, *, session):
+        assert user_ids == {"tester-b"}
+        return []
+
+    async def fence_profiles(project_id, revisions, timestamp, *, session):
+        assert revisions == {"tester-b": 5}
+        return []
+
+    async def patch_run(collection, entity_id, project_id, revision, changes, *, session):
+        patches.append(changes)
+        return {**run, **changes, "revision": revision + 1}
+
+    async def record_audit(*args, **kwargs):
+        audit_calls.append((args, kwargs))
+        session.pending.append(("audit", args[1]))
+
+    monkeypatch.setattr(service.test_run_repository, "insert_results", insert_results)
+    monkeypatch.setattr(service, "automatically_assign_test_cases", assign)
+    monkeypatch.setattr(service.project_repository, "fence_active_testers", fence_members)
+    monkeypatch.setattr(service.skill_profile_repository, "fence_assignment_revisions", fence_profiles)
+    monkeypatch.setattr(service, "optimistic_patch", patch_run)
+    monkeypatch.setattr(service, "audit", record_audit)
+
+    result = asyncio.run(
+        service.update_test_run_record("project-a", "run-a", payload, SimpleNamespace(id="qa-a"))
+    )
+
+    assert assignment_calls == [
+        (
+            "project-a",
+            [{"_id": "version-b", "required_skills": ["API"]}],
+            session,
+            {"version-a": "tester-a"},
+            None,
+            False,
+        )
+    ]
+    assert patches[0]["test_case_assignments"] == {
+        "version-a": "tester-a",
+        "version-b": "tester-b",
+    }
+    assert patches[0]["test_case_assignment_decisions"]["version-a"] == {
+        "assignee_id": "tester-a"
+    }
+    assert patches[0]["unassigned_assignment_reasons"] == []
+    assert result["test_case_assignments"]["version-a"] == "tester-a"
+    assert audit_calls[0][0][5] == {
+        "assignment_strategy": "CONFIRMED_SKILLS",
+        "new_case_count": 1,
+        "automatically_assigned_count": 1,
+        "unassigned_count": 0,
+    }
 
 
 def _configure_assignment(monkeypatch, *, current_profile_revision):
@@ -781,6 +959,28 @@ def test_test_run_cannot_select_a_test_set_outside_the_approved_plan_snapshot():
 
     assert raised.value.status_code == 422
     assert raised.value.detail == {"code": "TEST_RUN_SUITE_OUTSIDE_PLAN_SCOPE"}
+
+
+def test_test_run_plan_context_compares_empty_pins_as_well_as_explicit_ids():
+    run = {
+        "environment_id": "environment-outside-plan",
+        "release_id": None,
+        "build_id": None,
+    }
+    snapshot = {
+        "environment_id": None,
+        "release_id": None,
+        "build_id": None,
+    }
+
+    with pytest.raises(HTTPException) as raised:
+        service._validate_plan_execution_context(run, snapshot)
+
+    assert raised.value.status_code == 422
+    assert raised.value.detail == {
+        "code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE",
+        "field": "environment_id",
+    }
 
 
 def test_test_run_can_select_a_subset_of_test_sets_in_the_approved_plan_snapshot():

@@ -1,5 +1,7 @@
 import asyncio
+import math
 from hashlib import sha256
+from numbers import Real
 from typing import Dict, List, Optional
 
 from loguru import logger
@@ -8,6 +10,11 @@ from src.clients.content import ContentClient
 from src.core.infrastructure.configuration import settings
 from src.knowledge.metadata import public_retrieval_metadata
 from src.repositories.project_artifact_generation import project_artifact_generation_repository
+from src.schemas.project import (
+    DOCUMENT_INDEXED_ARTIFACT_TYPES,
+    QdrantPointPayload,
+    is_document_indexed_payload,
+)
 from src.services.embedding import embedder
 from src.services.inference import decompose_retrieval
 from src.store.bm25 import bm25_store
@@ -28,6 +35,8 @@ async def initialize_retrieval():
     async def current_documents():
         legacy_count = 0
         migrated_count = 0
+        skipped_legacy_embedding_count = 0
+        skipped_document_contract_count = 0
         async for documents in vector_store.iter_scroll_batches():
             legacy_file_url_ids = [
                 document["id"]
@@ -49,31 +58,69 @@ async def initialize_retrieval():
                 != settings.EMBEDDING_MODEL
             ]
             if stale_documents:
-                embeddings = await embedder.embed_batch(
-                    [document.get("text", "") for document in stale_documents]
-                )
-                metadatas = [
-                    {
-                        **document.get("metadata", {}),
+                migratable_documents = []
+                metadatas = []
+                for document in stale_documents:
+                    text = str(document.get("text") or "")
+                    document_metadata = document.get("metadata") or {}
+                    if (
+                        is_document_indexed_payload(document_metadata)
+                        and (
+                            document_metadata.get("artifact_type")
+                            not in DOCUMENT_INDEXED_ARTIFACT_TYPES
+                            or document_metadata.get("document_index_contract_version")
+                            != settings.DOCUMENT_INDEX_CONTRACT_VERSION
+                        )
+                    ):
+                        continue
+                    metadata = {
+                        **document_metadata,
                         "embedding_model": settings.EMBEDDING_MODEL,
                         "embedding_input_mode": "TEXT",
-                        "embedding_input_hash": sha256(
-                            document.get("text", "").encode("utf-8")
-                        ).hexdigest(),
+                        "embedding_input_hash": sha256(text.encode("utf-8")).hexdigest(),
                     }
-                    for document in stale_documents
-                ]
-                await vector_store.upsert(
-                    ids=[document["id"] for document in stale_documents],
-                    embeddings=embeddings,
-                    documents=[document.get("text", "") for document in stale_documents],
-                    metadatas=metadatas,
-                )
-                for document, metadata in zip(stale_documents, metadatas):
-                    document["metadata"] = metadata
-                migrated_count += len(stale_documents)
+                    try:
+                        QdrantPointPayload.model_validate(
+                            {**metadata, "text": text}
+                        )
+                    except (TypeError, ValueError) as error:
+                        skipped_legacy_embedding_count += 1
+                        logger.warning(
+                            "Skipped stale vector with invalid payload during embedding migration point_id={} error_type={}",
+                            document.get("id"),
+                            type(error).__name__,
+                        )
+                        continue
+                    migratable_documents.append(document)
+                    metadatas.append(metadata)
+                if migratable_documents:
+                    texts = [str(document.get("text") or "") for document in migratable_documents]
+                    embeddings = await embedder.embed_batch(texts)
+                    if len(embeddings) != len(migratable_documents):
+                        raise ValueError("embedding_migration_batch_shape_invalid")
+                    await vector_store.upsert(
+                        ids=[document["id"] for document in migratable_documents],
+                        embeddings=embeddings,
+                        documents=texts,
+                        metadatas=metadatas,
+                    )
+                    for document, metadata in zip(migratable_documents, metadatas):
+                        document["metadata"] = metadata
+                    migrated_count += len(migratable_documents)
 
             for document in documents:
+                metadata = document.get("metadata") or {}
+                if (
+                    is_document_indexed_payload(metadata)
+                    and (
+                        metadata.get("artifact_type")
+                        not in DOCUMENT_INDEXED_ARTIFACT_TYPES
+                        or metadata.get("document_index_contract_version")
+                        != settings.DOCUMENT_INDEX_CONTRACT_VERSION
+                    )
+                ):
+                    skipped_document_contract_count += 1
+                    continue
                 yield document
 
         if legacy_count:
@@ -83,6 +130,16 @@ async def initialize_retrieval():
             )
         if migrated_count:
             logger.info("Migrated {} AI vector points to hosted embedding model", migrated_count)
+        if skipped_legacy_embedding_count:
+            logger.warning(
+                "Skipped {} legacy vector points with incomplete payload during embedding migration",
+                skipped_legacy_embedding_count,
+            )
+        if skipped_document_contract_count:
+            logger.warning(
+                "Skipped {} document vectors with an outdated index contract during sparse index initialization",
+                skipped_document_contract_count,
+            )
 
     await bm25_store.initialize_stream(current_documents())
     await retriever.initialize()
@@ -92,6 +149,44 @@ async def initialize_retrieval():
 class RetrievalService:
     def __init__(self):
         self._reranker_ready = False
+
+    @staticmethod
+    def _filter_document_index_contract(documents: List[Dict]) -> List[Dict]:
+        current_documents = []
+        for document in documents:
+            metadata = document.get("metadata") or document
+            if is_document_indexed_payload(metadata) and (
+                metadata.get("artifact_type") not in DOCUMENT_INDEXED_ARTIFACT_TYPES
+                or metadata.get("document_index_contract_version")
+                != settings.DOCUMENT_INDEX_CONTRACT_VERSION
+            ):
+                continue
+            current_documents.append(document)
+        return current_documents
+
+    @staticmethod
+    def _requirement_document_accessible(
+        metadata: Dict, requester_id: Optional[str], is_admin: bool
+    ) -> bool:
+        if metadata.get("ai_enabled") is False:
+            return False
+        if is_admin:
+            return True
+        requester = str(requester_id or "").strip()
+        if not requester:
+            return False
+        owner_id = str(metadata.get("owner_id") or metadata.get("creator_id") or "")
+        if requester == owner_id:
+            return True
+        visibility = str(metadata.get("visibility") or "").strip().lower()
+        if visibility == "project":
+            return True
+        shared_with = metadata.get("shared_with")
+        return (
+            visibility == "shared"
+            and isinstance(shared_with, list)
+            and requester in {str(value) for value in shared_with}
+        )
 
     @staticmethod
     async def _filter_active_artifact_generations(documents: List[Dict]) -> List[Dict]:
@@ -113,13 +208,25 @@ class RetrievalService:
         index_document_ids_by_result = []
         invalid_source_metadata_by_result = []
         all_source_ids = []
+        inaccessible_source_by_result = []
         for document in documents:
             metadata = document.get("metadata") or document
+            is_requirement_document = metadata.get("artifact_type") == "requirement_document"
+            inaccessible_source_by_result.append(
+                is_requirement_document
+                and not RetrievalService._requirement_document_accessible(
+                    metadata, requester_id, is_admin
+                )
+            )
             source_ids = []
             invalid_source_metadata = False
             for key in ("document_id", "source_document_id"):
                 value = metadata.get(key)
-                if value:
+                if value and not (
+                    is_requirement_document
+                    and str(value).strip()
+                    == str(metadata.get("document_id") or metadata.get("artifact_id") or "").strip()
+                ):
                     source_ids.append(str(value).strip())
             related_source_ids = metadata.get("source_document_ids")
             if related_source_ids is not None:
@@ -136,18 +243,22 @@ class RetrievalService:
             all_source_ids.extend(source_ids)
             indexed_document_id = str(metadata.get("document_id") or "").strip()
             index_document_ids_by_result.append(
-                [indexed_document_id] if indexed_document_id else []
+                [indexed_document_id]
+                if indexed_document_id and not is_requirement_document
+                else []
             )
 
         if not all_source_ids:
             return [
                 document
-                for document, invalid in zip(
-                    documents, invalid_source_metadata_by_result
+                for document, invalid, inaccessible in zip(
+                    documents,
+                    invalid_source_metadata_by_result,
+                    inaccessible_source_by_result,
                 )
-                if not invalid
+                if not invalid and not inaccessible
             ]
-        all_source_ids = list(dict.fromkeys(all_source_ids))
+        all_source_ids = sorted(set(all_source_ids))
 
         try:
             active_generations = await ContentClient.active_index_generations_many(
@@ -162,13 +273,14 @@ class RetrievalService:
             ) from error
 
         current_documents = []
-        for document, source_ids, indexed_document_ids, invalid_source_metadata in zip(
+        for document, source_ids, indexed_document_ids, invalid_source_metadata, inaccessible_source in zip(
             documents,
             source_ids_by_result,
             index_document_ids_by_result,
             invalid_source_metadata_by_result,
+            inaccessible_source_by_result,
         ):
-            if invalid_source_metadata:
+            if invalid_source_metadata or inaccessible_source:
                 continue
             if not all(source_id in active_generations for source_id in source_ids):
                 continue
@@ -368,6 +480,9 @@ class RetrievalService:
         if not candidates:
             return []
 
+        candidates = self._filter_document_index_contract(candidates)
+        if not candidates:
+            return []
         candidates = await self._filter_active_artifact_generations(candidates)
         candidates = await self._filter_currently_accessible_sources(
             candidates, requester_id, is_admin
@@ -399,7 +514,18 @@ class RetrievalService:
                 auxiliary_client.rerank(pairs),
                 timeout=settings.MODEL_TIMEOUT_SECONDS,
             )
-            scored_documents = sorted(zip(documents, scores), key=lambda x: x[1], reverse=True)
+            if not isinstance(scores, (list, tuple)) or len(scores) != len(documents):
+                raise ValueError("reranker_score_count_mismatch")
+            if any(
+                isinstance(score, bool)
+                or not isinstance(score, Real)
+                or not math.isfinite(float(score))
+                for score in scores
+            ):
+                raise ValueError("reranker_score_invalid")
+            scored_documents = sorted(
+                zip(documents, scores), key=lambda item: item[1], reverse=True
+            )
             results = await self._filter_active_artifact_generations(
                 [doc for doc, _ in scored_documents[:result_count]]
             )
@@ -455,8 +581,14 @@ class RetrievalService:
             for index, doc_id in enumerate(document_ids)
         ]
         results_per_doc = await asyncio.gather(*tasks, return_exceptions=True)
-        if results_per_doc and all(isinstance(result, Exception) for result in results_per_doc):
-            raise RetrievalUnavailableError("cross_document_retrieval_unavailable")
+        failed_queries = sum(isinstance(result, Exception) for result in results_per_doc)
+        if failed_queries:
+            error_code = (
+                "cross_document_retrieval_unavailable"
+                if failed_queries == len(results_per_doc)
+                else "cross_document_retrieval_partial_failure"
+            )
+            raise RetrievalUnavailableError(error_code)
 
         merged: List[Dict] = []
         for r in results_per_doc:
@@ -466,14 +598,19 @@ class RetrievalService:
         seen = set()
         unique = []
         for d in merged:
-            t = d.get("text", "")
-            if t not in seen:
-                seen.add(t)
+            identity = self._result_key(d)
+            if identity not in seen:
+                seen.add(identity)
                 unique.append(d)
 
-        return await self._filter_active_artifact_generations(
-            self._lost_in_the_middle_reorder(unique)[:result_count]
+        ordered_results = self._lost_in_the_middle_reorder(unique)
+        current_results = await self._filter_active_artifact_generations(
+            ordered_results
         )
+        accessible_results = await self._filter_currently_accessible_sources(
+            current_results, requester_id, is_admin
+        )
+        return accessible_results[:result_count]
 
     def _lost_in_the_middle_reorder(self, documents: List[Dict]) -> List[Dict]:
         if len(documents) <= 2:

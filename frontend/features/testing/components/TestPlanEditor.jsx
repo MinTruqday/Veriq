@@ -20,8 +20,6 @@ const structuredFields = [
   ["dependencies", "Phụ thuộc"],
   ["stakeholders", "Các bên liên quan"],
   ["responsibility_matrix", "Ma trận trách nhiệm"],
-  ["estimation", "Ước lượng"],
-  ["schedule", "Lịch biểu"],
   ["milestones", "Mốc"],
   ["deliverables", "Sản phẩm bàn giao"],
   ["tools", "Công cụ"],
@@ -55,8 +53,14 @@ const defaults = {
   dependencies: [],
   stakeholders: [],
   responsibility_matrix: [],
-  estimation: { method: "expert_judgment", planned_effort_hours: 0, planned_people: 0, notes: "" },
-  schedule: {},
+  estimation: {
+    method: "expert_judgment",
+    planned_effort_hours: 0,
+    planned_people: 0,
+    basis: "",
+    effort_allocations: [],
+  },
+  schedule: { planned_start_at: "", planned_end_at: "" },
   milestones: [],
   deliverables: [],
   tools: [],
@@ -72,6 +76,7 @@ export default function TestPlanEditor({
   requirements,
   suites,
   tests,
+  members = [],
   onSave,
   onCancel,
 }) {
@@ -85,9 +90,33 @@ export default function TestPlanEditor({
         event.preventDefault();
         setError("");
         try {
+          const effortAllocations = value.estimation.effort_allocations || [];
+          if (effortAllocations.some((item) => !item.user_id)) {
+            setError("Chọn thành viên cho từng dòng phân bổ giờ.");
+            return;
+          }
+          if (
+            new Set(effortAllocations.map((item) => item.user_id)).size !== effortAllocations.length
+          ) {
+            setError("Mỗi thành viên chỉ được có một dòng phân bổ trong Test Plan.");
+            return;
+          }
+          const allocatedHours = effortAllocations.reduce(
+            (sum, item) => sum + Number(item.planned_hours || 0),
+            0,
+          );
+          if (
+            effortAllocations.length &&
+            Math.round(allocatedHours * 100) !==
+              Math.round(Number(value.estimation.planned_effort_hours || 0) * 100)
+          ) {
+            setError("Tổng giờ phân bổ phải bằng tổng giờ dự kiến.");
+            return;
+          }
           const payload = {
             project_id: projectId,
             ...value,
+            estimation: { ...value.estimation, planned_people: effortAllocations.length },
             strategy_version_id: value.strategy_version_id || null,
             release: "",
             release_id: null,
@@ -222,6 +251,204 @@ export default function TestPlanEditor({
             />
           </div>
         ))}
+        <section
+          className="min-w-0 space-y-3 rounded-control border border-border p-4 md:col-span-2"
+          aria-labelledby="test-plan-effort-heading"
+        >
+          <div>
+            <h3 id="test-plan-effort-heading" className="font-medium">
+              Ước lượng và phân bổ giờ theo người
+            </h3>
+            <p className="mt-1 text-sm text-ink-muted">
+              Khai báo tổng giờ dự kiến và phân bổ cho thành viên tham gia kế hoạch. Phân bổ này
+              phục vụ lập kế hoạch; người thực chạy từng ca được giao riêng trong Test Run. Đây là
+              dự toán nhân công, không phải chi phí thực tế.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="field-label">
+              Tổng giờ dự kiến
+              <input
+                className="apple-input mt-2 w-full"
+                type="number"
+                min="0"
+                step="0.25"
+                value={value.estimation.planned_effort_hours}
+                onChange={(event) =>
+                  setField("estimation", {
+                    ...value.estimation,
+                    planned_effort_hours: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <label className="field-label">
+              Cách ước lượng
+              <select
+                className="apple-input mt-2 w-full"
+                value={value.estimation.method}
+                onChange={(event) =>
+                  setField("estimation", { ...value.estimation, method: event.target.value })
+                }
+              >
+                <option value="expert_judgment">Đánh giá chuyên gia</option>
+                <option value="three_point">Ước lượng ba điểm</option>
+                <option value="historical">Dữ liệu lịch sử</option>
+                <option value="custom">Khác</option>
+              </select>
+            </label>
+          </div>
+          <label className="field-label block">
+            Căn cứ ước lượng
+            <textarea
+              className="apple-input mt-2 min-h-20 w-full"
+              value={value.estimation.basis || ""}
+              onChange={(event) =>
+                setField("estimation", { ...value.estimation, basis: event.target.value })
+              }
+            />
+          </label>
+          <div className="space-y-2">
+            {(value.estimation.effort_allocations || []).map((allocation, index) => (
+              <div
+                className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
+                key={`${allocation.user_id}-${index}`}
+              >
+                <select
+                  aria-label={`Thành viên phân bổ ${index + 1}`}
+                  className="apple-input min-w-0"
+                  value={allocation.user_id}
+                  onChange={(event) =>
+                    setField("estimation", {
+                      ...value.estimation,
+                      effort_allocations: value.estimation.effort_allocations.map(
+                        (item, itemIndex) =>
+                          itemIndex === index ? { ...item, user_id: event.target.value } : item,
+                      ),
+                    })
+                  }
+                >
+                  <option value="">Chọn thành viên</option>
+                  {members
+                    .filter((item) => item.status === "ACTIVE")
+                    .map((item) => (
+                      <option
+                        key={item.user_id}
+                        value={item.user_id}
+                        disabled={(value.estimation.effort_allocations || []).some(
+                          (other, otherIndex) =>
+                            otherIndex !== index && other.user_id === item.user_id,
+                        )}
+                      >
+                        {item.user_label ||
+                          item.user?.full_name ||
+                          item.user?.email ||
+                          item.user_id}
+                      </option>
+                    ))}
+                </select>
+                <input
+                  aria-label={`Số giờ phân bổ ${index + 1}`}
+                  className="apple-input min-w-0"
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={allocation.planned_hours}
+                  onChange={(event) =>
+                    setField("estimation", {
+                      ...value.estimation,
+                      effort_allocations: value.estimation.effort_allocations.map(
+                        (item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, planned_hours: Number(event.target.value) }
+                            : item,
+                      ),
+                    })
+                  }
+                />
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() =>
+                    setField("estimation", {
+                      ...value.estimation,
+                      effort_allocations: value.estimation.effort_allocations.filter(
+                        (_, itemIndex) => itemIndex !== index,
+                      ),
+                    })
+                  }
+                >
+                  Xóa
+                </button>
+              </div>
+            ))}
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={!members.some((item) => item.status === "ACTIVE")}
+              onClick={() =>
+                setField("estimation", {
+                  ...value.estimation,
+                  effort_allocations: [
+                    ...value.estimation.effort_allocations,
+                    { user_id: "", planned_hours: 1 },
+                  ],
+                })
+              }
+            >
+              Thêm người và số giờ
+            </button>
+            <p className="text-sm text-ink-muted">
+              Đã phân bổ{" "}
+              {(value.estimation.effort_allocations || []).reduce(
+                (sum, item) => sum + (Number(item.planned_hours) || 0),
+                0,
+              )}{" "}
+              / {Number(value.estimation.planned_effort_hours) || 0} giờ.
+            </p>
+          </div>
+        </section>
+        <section
+          className="min-w-0 space-y-3 rounded-control border border-border p-4 md:col-span-2"
+          aria-labelledby="test-plan-schedule-heading"
+        >
+          <div>
+            <h3 id="test-plan-schedule-heading" className="font-medium">
+              Thời gian Test Plan
+            </h3>
+            <p className="mt-1 text-sm text-ink-muted">
+              Thời điểm bắt đầu được dùng để tra đơn giá có hiệu lực khi lập dự toán.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="field-label">
+              Bắt đầu dự kiến
+              <input
+                aria-label="Thời điểm bắt đầu dự kiến"
+                className="apple-input mt-2 w-full"
+                type="datetime-local"
+                required
+                value={value.schedule.planned_start_at || ""}
+                onChange={(event) =>
+                  setField("schedule", { ...value.schedule, planned_start_at: event.target.value })
+                }
+              />
+            </label>
+            <label className="field-label">
+              Kết thúc dự kiến
+              <input
+                aria-label="Thời điểm kết thúc dự kiến"
+                className="apple-input mt-2 w-full"
+                type="datetime-local"
+                required
+                value={value.schedule.planned_end_at || ""}
+                onChange={(event) =>
+                  setField("schedule", { ...value.schedule, planned_end_at: event.target.value })
+                }
+              />
+            </label>
+          </div>
+        </section>
       </div>
       <div className="action-dialog-footer flex items-center justify-end gap-3">
         <button className="secondary-button" type="button" onClick={onCancel}>

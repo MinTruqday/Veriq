@@ -29,6 +29,52 @@ class AutomationExecutionPrincipalTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result[0:2], ("ba", "BA"))
         self.assertEqual(resolve.await_args.args[3]["required_role"], "BA")
 
+    async def test_release_event_uses_release_close_as_execution_permission(self):
+        event = SimpleNamespace(
+            requester_user_id="qa-user",
+            project_id="project-1",
+            trigger="RELEASE_CHANGED",
+        )
+        with (
+            patch(
+                "src.services.automation.require_operation",
+                new=AsyncMock(return_value={"executor_user_id": "release-executor"}),
+            ),
+            patch(
+                "src.services.automation.project_access",
+                new=AsyncMock(return_value=("RELEASE_OPERATOR", ["release.close"])),
+            ) as read_executor_access,
+        ):
+            principal = await AutomationService()._default_execution_principal(event)
+
+        self.assertEqual(
+            principal,
+            ("release-executor", "RELEASE_OPERATOR", ["release.close"]),
+        )
+        self.assertEqual(
+            read_executor_access.await_args.kwargs["preferred_role"], "QA"
+        )
+
+    async def test_release_event_without_release_close_is_not_dispatched(self):
+        event = SimpleNamespace(
+            requester_user_id="qa-user",
+            project_id="project-1",
+            trigger="RELEASE_CHANGED",
+        )
+        with (
+            patch(
+                "src.services.automation.require_operation",
+                new=AsyncMock(return_value={"executor_user_id": "release-executor"}),
+            ),
+            patch(
+                "src.services.automation.project_access",
+                new=AsyncMock(return_value=("RELEASE_OPERATOR", ["ai.generate_testcase"])),
+            ),
+        ):
+            principal = await AutomationService()._default_execution_principal(event)
+
+        self.assertEqual(principal, (None, None, []))
+
     async def test_work_item_observation_uses_authorized_event_requester(self):
         event = SimpleNamespace(
             requester_user_id="developer",

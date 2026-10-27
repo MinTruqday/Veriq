@@ -55,19 +55,98 @@ function planningErrorMessage(reason) {
       "Trong dự án Scrum, cần đưa công việc vào đợt lặp trước khi bắt đầu.",
     WORK_ITEM_WORKFLOW_TRANSITION_INVALID:
       "Quy trình không cho phép chuyển công việc theo cách này.",
+    WORK_ITEM_WORKFLOW_CHANGED:
+      "Quy trình vừa thay đổi. Công việc chưa được chuyển; hãy tải lại bảng rồi thử lại.",
+    WORK_ITEM_TRANSITION_CONFLICT:
+      "Không thể ghi nhận lần chuyển trạng thái này do xung đột dữ liệu. Công việc chưa được cập nhật.",
+    WORK_ITEM_PLANNING_CONCURRENT_UPDATE:
+      "Lập kế hoạch vừa được thay đổi ở nơi khác. Công việc chưa được cập nhật; hãy tải lại rồi thử lại.",
     WORK_ITEM_TRANSITION_DENIED: "Bạn không có quyền chuyển công việc này.",
     REVISION_CONFLICT: "Công việc vừa được cập nhật ở nơi khác. Hãy tải lại rồi thử lại.",
+    WORK_ITEM_NOT_FOUND: "Công việc không còn tồn tại trong dự án. Hãy tải lại danh sách.",
+    WORK_ITEM_EMPTY: "Cần nhập ít nhất một thông tin thay đổi cho công việc.",
+    WORK_ITEM_ASSIGNEE_INVALID: "Người phụ trách phải là thành viên đang hoạt động của dự án.",
+    WORK_ITEM_REQUIREMENT_INVALID: "Một yêu cầu liên kết không còn thuộc dự án này.",
+    WORK_ITEM_PARENT_INVALID: "Hạng mục cha không còn hợp lệ trong dự án.",
+    WORK_ITEM_HIERARCHY_INVALID: "Loại công việc này không thể nằm dưới hạng mục cha đã chọn.",
+    SUBTASK_PARENT_REQUIRED: "Công việc con cần có một Story hoặc Task cha.",
+    WORK_ITEM_SCHEDULE_INVALID: "Ngày kết thúc dự kiến phải sau ngày bắt đầu.",
+    WORK_ITEM_SCHEDULE_TIMEZONE_MISMATCH:
+      "Không thể so sánh ngày do khác múi giờ. Hãy chọn lại ngày theo cùng múi giờ.",
     WORK_ITEM_RANK_CONCURRENT_UPDATE: "Thứ tự danh sách vừa thay đổi. Hãy tải lại rồi thử lại.",
     WORK_ITEM_RANK_TARGET_INVALID: "Vị trí đích không còn hợp lệ. Thứ tự danh sách chưa thay đổi.",
+    WORK_ITEM_DEPENDENCY_INVALID: "Hai công việc được chọn không thể tạo liên kết phụ thuộc.",
+    WORK_ITEM_DEPENDENCY_EXISTS: "Liên kết phụ thuộc này đã tồn tại.",
+    WORK_ITEM_DEPENDENCY_CYCLE: "Liên kết này tạo vòng phụ thuộc nên chưa được lưu.",
+    WORK_ITEM_DEPENDENCY_CONCURRENT_UPDATE:
+      "Một công việc trong liên kết vừa thay đổi. Hãy tải lại rồi thử lại.",
+    WORK_ITEM_PLANNING_BOARD_UNAVAILABLE:
+      "Bảng lập kế hoạch chưa sẵn sàng. Thứ tự danh sách chưa được thay đổi.",
+    PROJECT_NOT_FOUND: "Không tìm thấy dự án. Hãy quay lại danh sách dự án.",
+    ENTITY_NOT_FOUND: "Dữ liệu không còn tồn tại. Hãy tải lại trang.",
     BOARD_COLUMN_STATUS_DUPLICATE: "Mỗi trạng thái chỉ được xuất hiện một lần trên bảng.",
     BOARD_COLUMN_STATUS_INVALID: "Cột bảng phải dùng trạng thái đã có trong quy trình.",
     BOARD_COLUMN_POSITION_DUPLICATE: "Thứ tự các cột bị trùng. Hãy sắp xếp lại trước khi lưu.",
+    BOARD_WIP_LIMIT_REQUIRES_KANBAN: "Giới hạn WIP chỉ áp dụng cho dự án Kanban.",
     WORKFLOW_STATUS_DUPLICATE: "Mã trạng thái không được trùng nhau.",
+    WORKFLOW_STATUS_IN_USE:
+      "Không thể xóa trạng thái đang được công việc sử dụng. Hãy chuyển các công việc đó trước.",
     WORKFLOW_TRANSITION_STATUS_INVALID: "Chuyển trạng thái phải tham chiếu trạng thái đã cấu hình.",
     WORKFLOW_TRANSITION_DUPLICATE: "Một tuyến chuyển trạng thái đang bị khai báo trùng.",
+    SPRINT_REQUIRED: "Chức năng đợt lặp chỉ dùng trong dự án Scrum.",
+    SCRUM_REQUIRED: "Thao tác này chỉ dùng trong dự án Scrum.",
+    SPRINT_NOT_FOUND: "Đợt lặp không còn tồn tại. Hãy tải lại danh sách.",
+    SPRINT_DATES_INVALID: "Ngày kết thúc đợt lặp phải sau ngày bắt đầu.",
+    SPRINT_TRANSITION_INVALID: "Đợt lặp vừa đổi trạng thái. Hãy tải lại trước khi thao tác.",
+    SPRINT_SCOPE_LOCKED: "Không thể đổi phạm vi sau khi đợt lặp đã bắt đầu.",
+    SPRINT_ITEM_ALREADY_ASSIGNED: "Một công việc đã thuộc đợt lặp khác.",
+    SPRINT_WORK_ITEM_INVALID: "Một công việc trong phạm vi không còn hợp lệ.",
+    SPRINT_TARGET_INVALID: "Đợt lặp nhận công việc phải là đợt lặp đã lên kế hoạch.",
+    SPRINT_UNFINISHED_ACTION_REQUIRED:
+      "Hãy chọn cách xử lý công việc chưa hoàn thành trước khi kết thúc đợt lặp.",
+    SPRINT_UNFINISHED_ACTION_INVALID: "Cách xử lý công việc chưa hoàn thành không hợp lệ.",
+    SPRINT_CANCEL_STATUS_INVALID: "Trạng thái đóng phải là trạng thái hợp lệ trong quy trình.",
+    PROJECT_TASK_MIGRATION_CONCURRENT_UPDATE:
+      "Công việc cũ vừa thay đổi. Hãy tải lại trước khi chuyển đổi.",
+    PROJECT_TASK_MIGRATION_MAPPING_INVALID:
+      "Không thể chuyển một số công việc cũ vì thiếu ánh xạ hợp lệ.",
+    PROJECT_TASK_MIGRATION_SOURCE_CHANGED:
+      "Nguồn công việc cũ đã thay đổi; chưa có dữ liệu nào được chuyển.",
     BA_PLANNING_REQUIRED: "Chỉ BA của dự án được thay đổi cấu hình lập kế hoạch.",
   };
   return messages[reason?.code] || messageOf(reason);
+}
+
+function matchesPlanningFilters(item, filters = { query: "", status: "", type: "" }) {
+  const normalizedQuery = filters.query.trim().toLocaleLowerCase();
+  const matchesQuery =
+    !normalizedQuery ||
+    [item._id, item.title, item.name, item.description, item.assignee_id]
+      .filter(Boolean)
+      .some((value) => String(value).toLocaleLowerCase().includes(normalizedQuery));
+  return (
+    matchesQuery &&
+    (!filters.status || item.status === filters.status) &&
+    (!filters.type || item.item_type === filters.type)
+  );
+}
+
+function emptyPlanningFilters() {
+  return { query: "", status: "", type: "" };
+}
+
+function readPlanningFilters(projectId) {
+  if (typeof window === "undefined") return emptyPlanningFilters();
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(`veriq:planning-filters:${projectId}`));
+    return {
+      query: typeof value?.query === "string" ? value.query : "",
+      status: typeof value?.status === "string" ? value.status : "",
+      type: typeof value?.type === "string" ? value.type : "",
+    };
+  } catch {
+    return emptyPlanningFilters();
+  }
 }
 
 export default function PlanningPage({ project, section }) {
@@ -76,6 +155,22 @@ export default function PlanningPage({ project, section }) {
   const [boardValue, setBoardValue] = useState(null);
   const [sprints, setSprints] = useState([]);
   const [roadmap, setRoadmap] = useState(null);
+  const [planningFilters, setPlanningFilters] = useState({ query: "", status: "", type: "" });
+  const updatePlanningFilters = useCallback(
+    (update) => {
+      setPlanningFilters((current) => {
+        const next = typeof update === "function" ? update(current) : update;
+        try {
+          window.sessionStorage.setItem(
+            `veriq:planning-filters:${project._id}`,
+            JSON.stringify(next),
+          );
+        } catch {}
+        return next;
+      });
+    },
+    [project._id],
+  );
   const [configurationMode, setConfigurationMode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -117,6 +212,19 @@ export default function PlanningPage({ project, section }) {
   };
   const planningMethod = project.planning_method || "SCRUM";
   const isScrum = planningMethod === "SCRUM";
+  const filteredItems = items.filter((item) => matchesPlanningFilters(item, planningFilters));
+  const filterableTabs = ["backlog", "list", "board", "roadmap"].includes(tab);
+  const typeOptions = [
+    ...new Set(
+      [
+        ...items.map((item) => item.item_type),
+        "INITIATIVE",
+        "EPIC",
+        "RELEASE",
+        ...(isScrum ? ["SPRINT"] : []),
+      ].filter(Boolean),
+    ),
+  ].sort((left, right) => String(left).localeCompare(String(right), "vi"));
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     setLoading(true);
@@ -144,6 +252,9 @@ export default function PlanningPage({ project, section }) {
       loadSequence.current += 1;
     };
   }, [load]);
+  useEffect(() => {
+    setPlanningFilters(readPlanningFilters(project._id));
+  }, [project._id]);
   const createItem = async () => {
     await ask({
       title: "Tạo công việc",
@@ -518,10 +629,84 @@ export default function PlanningPage({ project, section }) {
           </button>
         </div>
       )}
+      {filterableTabs && (
+        <section
+          aria-label="Bộ lọc lập kế hoạch"
+          className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.45fr)_minmax(12rem,0.45fr)_auto]"
+        >
+          <label className="field-label">
+            Tìm công việc
+            <input
+              aria-label="Tìm công việc trong lập kế hoạch"
+              className="apple-input mt-2"
+              disabled={loading}
+              value={planningFilters.query}
+              onChange={(event) =>
+                updatePlanningFilters((current) => ({ ...current, query: event.target.value }))
+              }
+              placeholder="Mã, tên, mô tả hoặc người phụ trách"
+            />
+          </label>
+          <label className="field-label">
+            Trạng thái
+            <select
+              aria-label="Lọc trạng thái lập kế hoạch"
+              className="apple-input mt-2"
+              disabled={loading}
+              value={planningFilters.status}
+              onChange={(event) =>
+                updatePlanningFilters((current) => ({ ...current, status: event.target.value }))
+              }
+            >
+              <option value="">Tất cả trạng thái</option>
+              {(boardValue?.workflow?.statuses || []).map((status) => (
+                <option key={status.key} value={status.key}>
+                  {status.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-label">
+            Loại công việc
+            <select
+              aria-label="Lọc loại công việc lập kế hoạch"
+              className="apple-input mt-2"
+              disabled={loading}
+              value={planningFilters.type}
+              onChange={(event) =>
+                updatePlanningFilters((current) => ({ ...current, type: event.target.value }))
+              }
+            >
+              <option value="">Tất cả loại</option>
+              {typeOptions.map((type) => (
+                <option key={type} value={type}>
+                  {valueLabel(type)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex min-w-0 items-end gap-3">
+            <button
+              className="secondary-button whitespace-nowrap"
+              type="button"
+              onClick={() => updatePlanningFilters(emptyPlanningFilters())}
+              disabled={
+                loading ||
+                (!planningFilters.query && !planningFilters.status && !planningFilters.type)
+              }
+            >
+              Xóa lọc
+            </button>
+            <span className="pb-3 text-xs text-ink-muted" aria-live="polite">
+              Công việc: {filteredItems.length}/{items.length}
+            </span>
+          </div>
+        </section>
+      )}
       {tab === "backlog" && (
         <Panel>
           <Backlog
-            items={items.filter((item) => item.status === "BACKLOG")}
+            items={filteredItems.filter((item) => item.status === "BACKLOG")}
             canRank={isBa}
             ranking={ranking}
             onRank={rank}
@@ -533,7 +718,8 @@ export default function PlanningPage({ project, section }) {
       {tab === "list" && (
         <Panel>
           <WorkItemList
-            items={items}
+            items={filteredItems}
+            totalCount={items.length}
             statuses={boardValue?.workflow?.statuses || []}
             transitions={boardValue?.workflow?.transitions || []}
             canEdit={isBa}
@@ -545,7 +731,7 @@ export default function PlanningPage({ project, section }) {
       )}
       {tab === "board" && (
         <Board
-          items={items}
+          items={filteredItems}
           board={boardValue?.board}
           workflow={boardValue?.workflow}
           planningMethod={planningMethod}
@@ -623,7 +809,12 @@ export default function PlanningPage({ project, section }) {
         </Panel>
       )}
       {tab === "roadmap" && (
-        <Roadmap value={roadmap} project={project} sprints={isScrum ? sprints : []} />
+        <Roadmap
+          value={roadmap}
+          project={project}
+          sprints={isScrum ? sprints : []}
+          filters={planningFilters}
+        />
       )}
       <PlanningConfigurationModal
         mode={configurationMode}
@@ -689,7 +880,12 @@ function PlanningConfigurationModal({
           status: item.status.trim(),
           name: item.name.trim(),
           position,
-          wip_limit: item.wip_limit === "" ? null : Number(item.wip_limit),
+          wip_limit:
+            planningMethod !== "KANBAN"
+              ? null
+              : item.wip_limit === ""
+                ? null
+                : Number(item.wip_limit),
         }));
         if (
           next.some(
@@ -1137,6 +1333,7 @@ function Backlog({ items, canRank, ranking, onRank, onAddDependency, onEdit }) {
 
 function WorkItemList({
   items,
+  totalCount,
   statuses,
   transitions,
   canEdit,
@@ -1144,72 +1341,15 @@ function WorkItemList({
   onEdit,
   onTransition,
 }) {
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("");
-  const [type, setType] = useState("");
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredItems = items.filter((item) => {
-    const matchesQuery =
-      !normalizedQuery ||
-      [item._id, item.title, item.description, item.assignee_id]
-        .filter(Boolean)
-        .some((value) => String(value).toLocaleLowerCase().includes(normalizedQuery));
-    return (
-      matchesQuery && (!status || item.status === status) && (!type || item.item_type === type)
-    );
-  });
   return (
     <div className="space-y-4 p-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.4fr)_minmax(12rem,0.4fr)]">
-        <label className="field-label">
-          Tìm công việc
-          <input
-            className="apple-input mt-2 w-full"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Mã, tên, mô tả hoặc người phụ trách"
-          />
-        </label>
-        <label className="field-label">
-          Trạng thái
-          <select
-            className="apple-input mt-2 w-full"
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="">Tất cả trạng thái</option>
-            {statuses.map((item) => (
-              <option key={item.key} value={item.key}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-label">
-          Loại công việc
-          <select
-            className="apple-input mt-2 w-full"
-            value={type}
-            onChange={(event) => setType(event.target.value)}
-          >
-            <option value="">Tất cả loại</option>
-            {[...new Set(items.map((item) => item.item_type).filter(Boolean))]
-              .sort()
-              .map((itemType) => (
-                <option key={itemType} value={itemType}>
-                  {valueLabel(itemType)}
-                </option>
-              ))}
-          </select>
-        </label>
-      </div>
       <p className="text-xs text-ink-muted" aria-live="polite">
-        Hiển thị {filteredItems.length} / {items.length} công việc. Danh sách, backlog và bảng dùng
-        cùng dữ liệu dự án.
+        Hiển thị {items.length} / {totalCount} công việc. Danh sách, backlog và bảng dùng cùng dữ
+        liệu dự án.
       </p>
       <DataTable
-        items={filteredItems}
-        empty={items.length ? "Không có công việc khớp bộ lọc" : "Chưa có công việc trong dự án"}
+        items={items}
+        empty={totalCount ? "Không có công việc khớp bộ lọc" : "Chưa có công việc trong dự án"}
         layout="wide-table"
         columns={[
           { key: "_id", label: "Mã", minWidth: 120 },
@@ -1345,7 +1485,9 @@ function Board({
               }
             >
               <div
+                aria-label={`Công việc trong cột ${column.name || statusName(column.status)}`}
                 className="min-h-24 space-y-3 p-4"
+                role="group"
                 onDragOver={(event) => {
                   if (
                     draggedItem &&
@@ -1426,8 +1568,7 @@ function Board({
   );
 }
 
-function Roadmap({ value, project, sprints = [] }) {
-  const dependencies = value?.dependencies || [];
+function Roadmap({ value, project, sprints = [], filters }) {
   const dateValue = (dateInput) => {
     if (!dateInput) return null;
     const dateOnly =
@@ -1456,7 +1597,12 @@ function Roadmap({ value, project, sprints = [] }) {
       : "Chưa có";
   const items = [
     ...(value?.items || []),
-    ...(value?.releases || []),
+    ...(value?.releases || []).map((release) => ({
+      ...release,
+      title: release.title || release.name,
+      item_type: "RELEASE",
+      timeline_kind: "RELEASE",
+    })),
     ...sprints.map((sprint) => ({
       ...sprint,
       _id: sprint._id,
@@ -1467,7 +1613,14 @@ function Roadmap({ value, project, sprints = [] }) {
       timeline_kind: "SPRINT",
     })),
   ];
-  const itemSchedules = items.map((item) => {
+  const visibleItems = items.filter((item) => matchesPlanningFilters(item, filters));
+  const visibleItemIds = new Set(visibleItems.map((item) => item._id).filter(Boolean));
+  const dependencies = (value?.dependencies || []).filter(
+    (dependency) =>
+      visibleItemIds.has(dependency.source_item_id) &&
+      visibleItemIds.has(dependency.target_item_id),
+  );
+  const itemSchedules = visibleItems.map((item) => {
     const scheduledStart = item.planned_start_at ?? item.start_at;
     const scheduledEnd = item.planned_end_at ?? item.end_at;
     const hasStart = Boolean(scheduledStart);
@@ -1649,9 +1802,11 @@ function Roadmap({ value, project, sprints = [] }) {
         )}
       </Panel>
       <Panel title="Lộ trình dự án theo thời gian">
-        {!items.length && !projectRange && !invalidProjectDate && !invalidProjectRange ? (
+        {!visibleItems.length && !projectRange && !invalidProjectDate && !invalidProjectRange ? (
           <p className="p-4 text-sm text-ink-muted">
-            Chưa có sáng kiến, hạng mục lớn hoặc bản phát hành
+            {items.length
+              ? "Không có mục lộ trình khớp bộ lọc"
+              : "Chưa có sáng kiến, hạng mục lớn hoặc bản phát hành"}
           </p>
         ) : (
           <div className="space-y-5 p-4">
@@ -1857,7 +2012,7 @@ function Roadmap({ value, project, sprints = [] }) {
                 <h3 className="border-b border-border px-4 py-3 text-sm font-semibold">
                   Chưa lập lịch ({undatedItems.length})
                 </h3>
-                <ol className="divide-y divide-line">
+                <ol className="divide-y divide-border">
                   {undatedItems.map(({ item }) => (
                     <li
                       className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"

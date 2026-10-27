@@ -68,9 +68,17 @@ def _idempotent_run_matches(existing, payload, version_ids, context):
         "environment_id": context.get("environment_id"),
     }
     expected_suite_ids = expected.pop("test_suite_ids")
-    return existing_suite_ids == expected_suite_ids and all(
-        existing.get(key, "MANUAL" if key == "assignment_strategy" else None) == value
-        for key, value in expected.items()
+    return (
+        existing_suite_ids == expected_suite_ids
+        and (
+            not payload.expected_test_plan_snapshot_hash
+            or existing.get("test_plan_snapshot_hash")
+            == payload.expected_test_plan_snapshot_hash
+        )
+        and all(
+            existing.get(key, "MANUAL" if key == "assignment_strategy" else None) == value
+            for key, value in expected.items()
+        )
     )
 
 
@@ -132,6 +140,23 @@ def _plan_suite_versions(suite_ids, snapshot):
     )
 
 
+def _require_plan_suite_snapshot(snapshot):
+    if not isinstance(snapshot.get("test_suite_snapshots"), list):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_PLAN_SUITE_SNAPSHOT_REQUIRED"},
+        )
+
+
+def _validate_plan_execution_context(context, snapshot):
+    for field in ("release_id", "build_id", "environment_id"):
+        if context.get(field) != snapshot.get(field):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE", "field": field},
+            )
+
+
 async def create_test_run_record(payload, project_id, user):
     
     if project_id is not None and payload.project_id != project_id:
@@ -149,6 +174,19 @@ async def create_test_run_record(payload, project_id, user):
         approved_snapshot, approved_snapshot_hash = verified_approved_plan_snapshot(
             plan, payload.project_id
         )
+        if (
+            payload.expected_test_plan_snapshot_hash
+            and payload.expected_test_plan_snapshot_hash != approved_snapshot_hash
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_PLAN_APPROVED_SNAPSHOT_CHANGED"},
+            )
+    elif payload.expected_test_plan_snapshot_hash:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "TEST_PLAN_SNAPSHOT_HASH_REQUIRES_TEST_PLAN"},
+        )
     context = await resolve_execution_context(
         payload.project_id,
         user,
@@ -161,7 +199,8 @@ async def create_test_run_record(payload, project_id, user):
     )
     version_ids = list(dict.fromkeys(payload.test_case_version_ids))
     if payload.test_suite_ids:
-        if plan and "test_suite_snapshots" in approved_snapshot:
+        if plan:
+            _require_plan_suite_snapshot(approved_snapshot)
             version_ids.extend(
                 _plan_suite_versions(payload.test_suite_ids, approved_snapshot)
             )
@@ -183,14 +222,7 @@ async def create_test_run_record(payload, project_id, user):
             version_ids = list(approved_scope)
         if not set(version_ids).issubset(approved_scope):
             raise HTTPException(status_code=422, detail={"code": "TEST_RUN_OUTSIDE_PLAN_SCOPE"})
-        for field in ("release_id", "build_id", "environment_id"):
-            planned_value = approved_snapshot.get(field)
-            run_value = context.get(field)
-            if planned_value and run_value != planned_value:
-                raise HTTPException(
-                    status_code=422,
-                    detail={"code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE", "field": field},
-                )
+        _validate_plan_execution_context(context, approved_snapshot)
     await validate_test_versions(payload.project_id, version_ids)
     if payload.idempotency_key:
         existing = await test_run_repository.find_run_by_idempotency_key(
@@ -215,7 +247,7 @@ async def create_test_run_record(payload, project_id, user):
     assignment_decisions = {}
     run = {
         "_id": new_id('TRUN'),
-        **payload.model_dump(),
+        **payload.model_dump(exclude={"expected_test_plan_snapshot_hash"}),
         "test_suite_ids": list(dict.fromkeys(payload.test_suite_ids)),
         **context,
         **device_scope,
@@ -241,14 +273,21 @@ async def create_test_run_record(payload, project_id, user):
                     current_snapshot, current_snapshot_hash = verified_approved_plan_snapshot(
                         current_plan, payload.project_id
                     )
-                    if current_snapshot_hash != approved_snapshot_hash:
+                    if (
+                        current_snapshot_hash != approved_snapshot_hash
+                        or (
+                            payload.expected_test_plan_snapshot_hash
+                            and current_snapshot_hash
+                            != payload.expected_test_plan_snapshot_hash
+                        )
+                    ):
                         raise HTTPException(
                             status_code=409,
                             detail={"code": "TEST_PLAN_APPROVED_SNAPSHOT_CHANGED"},
                         )
                     approved_snapshot = current_snapshot
                     _pin_run_to_plan(run, current_snapshot, current_snapshot_hash)
-                if payload.assignment_strategy == "CONFIRMED_SKILLS" and version_ids:
+                if payload.assignment_strategy in {"CONFIRMED_SKILLS", "PROFILE_EVIDENCE"} and version_ids:
                     versions = await test_run_repository.list_versions(
                         version_ids, len(version_ids), session=session
                     )
@@ -257,7 +296,9 @@ async def create_test_run_record(payload, project_id, user):
                         unassigned_reasons,
                         assignment_decisions,
                     ) = await automatically_assign_test_cases(
-                        payload.project_id, versions, session=session
+                        payload.project_id,
+                        versions,
+                        session=session,
                     )
                     stale_members = await project_repository.fence_active_testers(
                         payload.project_id,
@@ -364,7 +405,7 @@ async def create_test_run_record(payload, project_id, user):
         if exc.has_error_label("TransientTransactionError"):
             code = (
                 "SKILL_PROFILE_CHANGED_RETRY_RUN_CREATION"
-                if payload.assignment_strategy == "CONFIRMED_SKILLS"
+                if payload.assignment_strategy in {"CONFIRMED_SKILLS", "PROFILE_EVIDENCE"}
                 else "TEST_RUN_CREATION_CONFLICT"
             )
             raise HTTPException(
@@ -420,6 +461,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
         snapshot, current_hash = verified_approved_plan_snapshot(plan, project_id)
         if not snapshot_hash or current_hash != snapshot_hash:
             raise HTTPException(status_code=409, detail={"code": "TEST_RUN_PLAN_SNAPSHOT_CHANGED"})
+        _validate_plan_suite_scope(source.get("test_suite_ids", []), snapshot)
         if not set(version_ids).issubset(set(snapshot.get("test_case_version_ids", []))):
             raise HTTPException(status_code=409, detail={"code": "TEST_RUN_SCOPE_NO_LONGER_IN_PLAN"})
         requirement_version_ids = list(snapshot.get("requirement_version_ids", []))
@@ -464,9 +506,14 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
                     current_plan = await test_run_repository.find_plan(
                         source["test_plan_id"], project_id, session=session
                     )
-                    _, current_hash = verified_approved_plan_snapshot(current_plan, project_id)
+                    current_snapshot, current_hash = verified_approved_plan_snapshot(
+                        current_plan, project_id
+                    )
                     if current_hash != snapshot_hash:
                         raise HTTPException(status_code=409, detail={"code": "TEST_RUN_PLAN_SNAPSHOT_CHANGED"})
+                    _validate_plan_suite_scope(
+                        source.get("test_suite_ids", []), current_snapshot
+                    )
                 await test_run_repository.insert_run(rerun, session=session)
                 await test_run_repository.insert_results(
                     [
@@ -559,7 +606,8 @@ async def update_test_run_record(project_id, run_id, payload, user):
     ))
     if "test_suite_ids" in changes:
         selected_suite_ids = list(dict.fromkeys(changes["test_suite_ids"]))
-        if plan and "test_suite_snapshots" in approved_snapshot:
+        if plan:
+            _require_plan_suite_snapshot(approved_snapshot)
             suite_versions = _plan_suite_versions(selected_suite_ids, approved_snapshot)
         else:
             suites = await test_run_repository.list_suites(
@@ -608,6 +656,9 @@ async def update_test_run_record(project_id, run_id, payload, user):
                 plan, project_id
             )
         plan_snapshot_hash = approved_plan_snapshot_hash
+        approved_scope = set(approved_snapshot.get("test_case_version_ids", []))
+        if not approved_scope:
+            raise HTTPException(status_code=409, detail={"code": "TEST_PLAN_SCOPE_EMPTY"})
         if run.get("test_plan_snapshot_hash") and (
             run["test_plan_snapshot_hash"] != plan_snapshot_hash
         ):
@@ -620,16 +671,16 @@ async def update_test_run_record(project_id, run_id, payload, user):
             changes.get("test_suite_ids", run.get("test_suite_ids", [])), approved_snapshot
         )
         if not set(updated_versions).issubset(
-            set(approved_snapshot.get("test_case_version_ids", []))
+            approved_scope
         ):
             raise HTTPException(status_code=422, detail={"code": "TEST_RUN_OUTSIDE_PLAN_SCOPE"})
-        for field in ("release_id", "build_id", "environment_id"):
-            planned_value = approved_snapshot.get(field)
-            if planned_value and changes.get(field, run.get(field)) != planned_value:
-                raise HTTPException(
-                    status_code=422,
-                    detail={"code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE", "field": field},
-                )
+        _validate_plan_execution_context(
+            {
+                field: changes.get(field, run.get(field))
+                for field in ("release_id", "build_id", "environment_id")
+            },
+            approved_snapshot,
+        )
         _pin_run_to_plan(changes, approved_snapshot, plan_snapshot_hash)
     if "test_case_version_ids" in changes:
         changes["test_case_version_ids"] = version_ids
@@ -651,6 +702,7 @@ async def update_test_run_record(project_id, run_id, payload, user):
         field in changes and changes[field] != run.get(field)
         for field in context_fields
     )
+    audit_details = None
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -797,33 +849,104 @@ async def update_test_run_record(project_id, run_id, payload, user):
                     or reason.get("test_case_version_id") not in removed_version_ids
                 ]
 
-            if added_version_ids and effective_run.get("assignment_strategy") == "CONFIRMED_SKILLS":
-                unassigned_reasons = list(
-                    changes.get(
-                        "unassigned_assignment_reasons",
-                        effective_run.get("unassigned_assignment_reasons", []),
-                    )
+            if added_version_ids and effective_run.get("assignment_strategy") in {"CONFIRMED_SKILLS", "PROFILE_EVIDENCE"}:
+                added_versions = await test_run_repository.list_versions(
+                    sorted(added_version_ids), len(added_version_ids), session=session
                 )
-                assignments = dict(
+                if {item.get("_id") for item in added_versions} != added_version_ids:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "TEST_CASE_VERSION_CHANGED_RETRY_RUN"},
+                    )
+                current_assignments = dict(
                     changes.get(
                         "test_case_assignments",
                         effective_run.get("test_case_assignments", {}),
                     )
                     or {}
                 )
-                unresolved_ids = {
-                    item.get("test_case_version_id")
-                    for item in unassigned_reasons
-                    if isinstance(item, dict)
-                }
-                for version_id in sorted(added_version_ids - set(assignments) - unresolved_ids):
-                    unassigned_reasons.append(
-                        {
-                            "test_case_version_id": version_id,
-                            "reason": "ASSIGNMENT_REQUIRED_AFTER_SCOPE_CHANGE",
-                        }
+                current_decisions = dict(
+                    changes.get(
+                        "test_case_assignment_decisions",
+                        effective_run.get("test_case_assignment_decisions", {}),
                     )
-                changes["unassigned_assignment_reasons"] = unassigned_reasons
+                    or {}
+                )
+                for version_id in removed_version_ids:
+                    current_assignments.pop(version_id, None)
+                    current_decisions.pop(version_id, None)
+                assigned, unresolved, decisions = await automatically_assign_test_cases(
+                    project_id,
+                    added_versions,
+                    session=session,
+                    existing_case_assignments=current_assignments,
+                    existing_assignee_id=effective_run.get("assignee_id"),
+                )
+                assigned_users = set(assigned.values())
+                stale_members = await project_repository.fence_active_testers(
+                    project_id, assigned_users, session=session
+                )
+                if stale_members:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "TESTER_MEMBERSHIP_CHANGED_RETRY_RUN_CREATION",
+                            "user_ids": stale_members,
+                        },
+                    )
+                selected_profile_revisions = {
+                    decision["assignee_id"]: decision.get("skill_profile_revision", 0)
+                    for decision in decisions.values()
+                    if decision.get("assignee_id")
+                }
+                if selected_profile_revisions:
+                    try:
+                        stale_assignees = await skill_profile_repository.fence_assignment_revisions(
+                            project_id,
+                            selected_profile_revisions,
+                            timestamp,
+                            session=session,
+                        )
+                    except DuplicateKeyError as exc:
+                        raise HTTPException(
+                            status_code=409,
+                            detail={
+                                "code": "SKILL_PROFILE_CHANGED_RETRY_RUN_CREATION",
+                                "user_ids": sorted(selected_profile_revisions),
+                            },
+                        ) from exc
+                    if stale_assignees:
+                        raise HTTPException(
+                            status_code=409,
+                            detail={
+                                "code": "SKILL_PROFILE_CHANGED_RETRY_RUN_CREATION",
+                                "user_ids": stale_assignees,
+                            },
+                        )
+
+                current_assignments.update(assigned)
+                current_decisions.update(decisions)
+                changes["test_case_assignments"] = current_assignments
+                changes["test_case_assignment_decisions"] = current_decisions
+                unassigned_reasons = [
+                    reason
+                    for reason in changes.get(
+                        "unassigned_assignment_reasons",
+                        effective_run.get("unassigned_assignment_reasons", []),
+                    )
+                    if not isinstance(reason, dict)
+                    or reason.get("test_case_version_id") not in added_version_ids
+                ]
+                changes["unassigned_assignment_reasons"] = [
+                    *unassigned_reasons,
+                    *unresolved,
+                ]
+                audit_details = {
+                    "assignment_strategy": effective_run.get("assignment_strategy", "MANUAL"),
+                    "new_case_count": len(added_version_ids),
+                    "automatically_assigned_count": len(assigned),
+                    "unassigned_count": len(unresolved),
+                }
 
             updated = await optimistic_patch(
                 "test_runs",
@@ -839,6 +962,7 @@ async def update_test_run_record(project_id, run_id, payload, user):
                 "TestRun",
                 run_id,
                 project_id,
+                audit_details,
                 session=session,
             )
     return updated
@@ -922,6 +1046,10 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                     {
                         "assignee_id": payload.assignee_id,
                         "test_case_assignments": payload.test_case_assignments,
+                        "assignment_decision_source": payload.decision_source,
+                        "assignment_approved_by": user.id,
+                        "assignment_approved_at": now(),
+                        "assignment_skill_profile_revisions": expected_profile_revisions,
                     },
                     session=session,
                 )
@@ -931,7 +1059,11 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                     'TestRun',
                     run_id,
                     project_id,
-                    {"assignee_id": payload.assignee_id},
+                    {
+                        "assignee_id": payload.assignee_id,
+                        "case_count": len(payload.test_case_assignments),
+                        "decision_source": payload.decision_source,
+                    },
                     session=session,
                 )
         except DuplicateKeyError as exc:

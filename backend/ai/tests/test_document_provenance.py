@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,7 +7,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call, patch
 
 from src.services.chunking import ChunkingService
-from src.services.conversion import ConversionService
+from src.services.conversion import (
+    ConversionService,
+    IndexingAttemptSupersededError,
+)
 
 
 def async_values(values):
@@ -18,6 +22,104 @@ def async_values(values):
 
 
 class DocumentProvenanceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_non_pdf_parse_failure_cleans_partial_image_assets(self):
+        service = ConversionService()
+        temporary_path = Path("/tmp/veriq-document-parse-failure.docx")
+        source_hash = "a" * 64
+
+        async def to_thread(function, *args, **kwargs):
+            if function == service._download_to_temporary_file:
+                return temporary_path, ".docx", source_hash
+            if function == temporary_path.unlink:
+                return None
+            raise RuntimeError("parser failed after writing image asset")
+
+        with (
+            patch("src.services.conversion.asyncio.to_thread", new=to_thread),
+            patch.object(
+                service,
+                "delete_picture_assets",
+                new=AsyncMock(return_value=1),
+            ) as cleanup,
+        ):
+            result = await service.parse_document_checkpointed(
+                "private/source.docx",
+                "private",
+                "document-1",
+                "project-1",
+                "owner-1",
+            )
+
+        self.assertEqual(result, {"error": "document_parsing_failed"})
+        cleanup.assert_awaited_once_with("project-1", "document-1", source_hash)
+
+    async def test_invalid_pdf_checkpoints_are_discarded_before_one_fresh_parse(self):
+        service = ConversionService()
+        source_hash = "b" * 64
+        parsed_result = {
+            "markdown": "freshly parsed source",
+            "structure": [],
+            "source_sha256": source_hash,
+        }
+        service._download_to_temporary_file = Mock(
+            return_value=(Path("/tmp/veriq-invalid-checkpoint.pdf"), ".pdf", source_hash)
+        )
+        service._parse_pdf_with_page_checkpoints = AsyncMock(
+            side_effect=[
+                RuntimeError("document_page_checkpoint_order_invalid"),
+                parsed_result,
+            ]
+        )
+        service.clear_document_checkpoints = AsyncMock()
+        service.delete_picture_assets = AsyncMock(return_value=1)
+
+        result = await service.parse_document_checkpointed(
+            "private/source.pdf",
+            "private",
+            "document-1",
+            "project-1",
+            "owner-1",
+        )
+
+        self.assertEqual(result, parsed_result)
+        service.clear_document_checkpoints.assert_awaited_once_with(
+            "document-1", "project-1", "owner-1", source_hash
+        )
+        service.delete_picture_assets.assert_awaited_once_with(
+            "project-1", "document-1", source_hash
+        )
+        self.assertEqual(service._parse_pdf_with_page_checkpoints.await_count, 2)
+
+    async def test_invalid_pdf_byte_checkpoints_are_discarded_before_one_fresh_parse(self):
+        service = ConversionService()
+        parsed_result = {"markdown": "freshly parsed upload", "structure": []}
+        service._parse_pdf_with_page_checkpoints = AsyncMock(
+            side_effect=[
+                RuntimeError("document_page_checkpoint_set_incomplete"),
+                parsed_result,
+            ]
+        )
+        service.clear_document_checkpoints = AsyncMock()
+        service.delete_picture_assets = AsyncMock(return_value=1)
+
+        result = await service.parse_bytes_checkpointed(
+            b"%PDF-upload-bytes",
+            ".pdf",
+            "document-2",
+            "project-2",
+            "owner-2",
+        )
+
+        self.assertEqual(result, parsed_result)
+        source_hash = hashlib.sha256(b"%PDF-upload-bytes").hexdigest()
+        service.clear_document_checkpoints.assert_awaited_once_with(
+            "document-2", "project-2", "owner-2", source_hash
+        )
+        service.delete_picture_assets.assert_awaited_once_with(
+            "project-2", "document-2", source_hash
+        )
+        self.assertEqual(service._parse_pdf_with_page_checkpoints.await_count, 2)
+
     def test_picture_cleanup_deletes_in_bounded_object_storage_batches(self):
         service = ConversionService()
         object_pages = [
@@ -41,7 +143,11 @@ class DocumentProvenanceTests(unittest.IsolatedAsyncioTestCase):
 
         client = Mock()
         client.get_paginator.return_value = Paginator()
-        client.delete_objects = Mock()
+        client.delete_objects = Mock(
+            side_effect=lambda **kwargs: {
+                "Deleted": kwargs["Delete"]["Objects"]
+            }
+        )
         with patch.object(service, "_storage_client", return_value=client):
             deleted = service._delete_picture_assets(
                 "p", "d", "a" * 64
@@ -55,6 +161,40 @@ class DocumentProvenanceTests(unittest.IsolatedAsyncioTestCase):
             ],
             [1000, 501],
         )
+        self.assertTrue(
+            all(
+                call.kwargs["Delete"]["Quiet"] is False
+                for call in client.delete_objects.call_args_list
+            )
+        )
+
+    def test_picture_cleanup_reports_object_storage_partial_failure(self):
+        service = ConversionService()
+        object_page = {
+            "Contents": [
+                {
+                    "Key": (
+                        f"project/p/documents/d/sources/{'a' * 64}/images/1.png"
+                    )
+                }
+            ]
+        }
+
+        class Paginator:
+            def paginate(self, **_kwargs):
+                return iter([object_page])
+
+        client = Mock()
+        client.get_paginator.return_value = Paginator()
+        client.delete_objects.return_value = {
+            "Deleted": [],
+            "Errors": [{"Code": "AccessDenied"}],
+        }
+        with patch.object(service, "_storage_client", return_value=client):
+            with self.assertRaisesRegex(
+                RuntimeError, "document_image_cleanup_incomplete"
+            ):
+                service._delete_picture_assets("p", "d", "a" * 64)
 
     def test_ocr_language_is_validated_before_parser_use(self):
         service = ConversionService()
@@ -341,6 +481,89 @@ class DocumentProvenanceTests(unittest.IsolatedAsyncioTestCase):
             result["extraction_warnings"],
         )
         self.assertEqual(result["unprocessed_blocks"], [])
+
+    def test_low_confidence_scanned_page_uses_tesseract_output_and_keeps_accuracy_warning(self):
+        from unittest.mock import Mock
+
+        document = SimpleNamespace(
+            export_to_markdown=lambda: "Docling OCR with missing Vietnamese accents.",
+            pages={"page-3": object()},
+            iterate_items=lambda: iter(()),
+        )
+        converter = SimpleNamespace(convert=Mock(return_value=SimpleNamespace(
+            document=document,
+            confidence=SimpleNamespace(
+                pages={3: SimpleNamespace(ocr_score=0.47)}
+            ),
+        )))
+        service = ConversionService()
+        service._get_docling = Mock(return_value=converter)
+        service._extract_structure = Mock(return_value=[
+            {
+                "block_id": "#/texts/3",
+                "text": "Docling OCR with missing Vietnamese accents.",
+                "type": "text",
+                "level": 0,
+                "page_no": 3,
+                "locations": [{"page_no": 3, "bbox": None}],
+                "extraction_status": "EXTRACTED",
+            },
+            {
+                "block_id": "#/pictures/3",
+                "text": "Figure caption",
+                "type": "picture",
+                "level": 0,
+                "page_no": 3,
+                "locations": [{"page_no": 3, "bbox": None}],
+                "extraction_status": "EXTRACTED",
+                "image_metadata": {"asset_status": "STORED"},
+            },
+        ])
+        service._tesseract_pdf_fallback = Mock(return_value=(
+            "Đăng nhập thành công với tiếng Việt.",
+            [{
+                "block_id": "tesseract-ocr-page-3",
+                "parent_block_id": None,
+                "text": "Đăng nhập thành công với tiếng Việt.",
+                "type": "ocr_fallback_page_text",
+                "level": 0,
+                "page_no": 3,
+                "locations": [{"page_no": 3}],
+                "extraction_status": "EXTRACTED",
+            }],
+            [{
+                "block_id": None,
+                "type": "ocr_fallback",
+                "page_no": 3,
+                "reason_code": "OCR_FALLBACK_ENGINE_USED",
+            }],
+            [],
+        ))
+
+        with patch("importlib.metadata.version", return_value="test-docling"):
+            result = service._parse_file(
+                Path("source.pdf"),
+                page_range=(3, 3),
+                total_page_count=8,
+                use_text_pdf_fast_path=False,
+                ocr_enabled=True,
+                ocr_language="iso:vi",
+            )
+
+        self.assertEqual(result["markdown"], "Đăng nhập thành công với tiếng Việt.")
+        self.assertEqual(
+            [block["block_id"] for block in result["structure"]],
+            ["#/pictures/3", "tesseract-ocr-page-3"],
+        )
+        self.assertIn(
+            "OCR_TEXT_REQUIRES_ACCURACY_VALIDATION",
+            [item["reason_code"] for item in result["extraction_warnings"]],
+        )
+        self.assertIn(
+            "OCR_FALLBACK_LOW_CONFIDENCE",
+            [item["reason_code"] for item in result["extraction_warnings"]],
+        )
+        service._tesseract_pdf_fallback.assert_called_once()
 
     def test_ocr_page_without_recognized_text_has_page_diagnostic(self):
         from unittest.mock import Mock
@@ -798,6 +1021,63 @@ class DocumentProvenanceTests(unittest.IsolatedAsyncioTestCase):
             hashlib.sha256(source_bytes).hexdigest(),
         )
 
+    async def test_superseded_pdf_attempt_preserves_shared_checkpoints_and_assets(self):
+        source_hash = "c" * 64
+        service = ConversionService()
+        service._download_to_temporary_file = Mock(
+            return_value=(Path("/tmp/veriq-superseded.pdf"), ".pdf", source_hash)
+        )
+        service._parse_pdf_with_page_checkpoints = AsyncMock(
+            side_effect=IndexingAttemptSupersededError(
+                "document_indexing_attempt_superseded"
+            )
+        )
+        service.clear_document_checkpoints = AsyncMock()
+        service.delete_picture_assets = AsyncMock(return_value=1)
+
+        with self.assertRaisesRegex(
+            IndexingAttemptSupersededError, "document_indexing_attempt_superseded"
+        ):
+            await service.parse_document_checkpointed(
+                "private/source.pdf",
+                "private",
+                "document-1",
+                "project-1",
+                "owner-1",
+            )
+
+        service.clear_document_checkpoints.assert_not_awaited()
+        service.delete_picture_assets.assert_not_awaited()
+
+    async def test_superseded_non_pdf_attempt_preserves_shared_image_assets(self):
+        source_hash = "d" * 64
+        service = ConversionService()
+        service._download_to_temporary_file = Mock(
+            return_value=(Path("/tmp/veriq-superseded.docx"), ".docx", source_hash)
+        )
+        service._parse_file = Mock(return_value={"markdown": "parsed source"})
+        service.delete_picture_assets = AsyncMock(return_value=1)
+
+        async def authorization_check():
+            raise IndexingAttemptSupersededError(
+                "document_indexing_attempt_superseded"
+            )
+
+        with self.assertRaisesRegex(
+            IndexingAttemptSupersededError, "document_indexing_attempt_superseded"
+        ):
+            await service.parse_document_checkpointed(
+                "private/source.docx",
+                "private",
+                "document-1",
+                "project-1",
+                "owner-1",
+                authorization_check=authorization_check,
+            )
+
+        service._parse_file.assert_not_called()
+        service.delete_picture_assets.assert_not_awaited()
+
     async def test_ocr_page_without_extracted_text_is_reported_and_checkpointed(self):
         import fitz
 
@@ -939,6 +1219,33 @@ class DocumentProvenanceTests(unittest.IsolatedAsyncioTestCase):
                 for span in spans
             )
         )
+
+    async def test_chunking_streams_size_guard_groups_into_serialization(self):
+        service = ChunkingService(min_chars=20, target_chars=40, max_chars=80)
+        structure = [
+            {
+                "block_id": "block-1",
+                "type": "paragraph",
+                "text": "The source contains a testable business rule.",
+                "page_no": 1,
+                "locations": [{"page_no": 1, "bbox": None}],
+            }
+        ]
+        with (
+            patch(
+                "src.services.chunking.embedder.embed_batch",
+                new=AsyncMock(side_effect=RuntimeError("embedding unavailable")),
+            ),
+            patch.object(
+                service, "_serialize_groups", wraps=service._serialize_groups
+            ) as serialize_groups,
+        ):
+            chunks = await service.chunk_document(
+                structure[0]["text"], {"document_id": "doc-1"}, structure
+            )
+
+        self.assertTrue(chunks)
+        self.assertFalse(isinstance(serialize_groups.call_args.args[0], list))
 
     def test_text_pdf_table_fast_path_keeps_rows_and_table_location(self):
         import fitz

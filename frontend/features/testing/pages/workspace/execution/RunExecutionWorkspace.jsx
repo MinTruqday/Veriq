@@ -27,6 +27,7 @@ export default function RunExecutionWorkspace({
   onError,
   onTransition,
   onCreateDefect,
+  creatingDefectResultIds = new Set(),
   stepResults,
   onStepResultsChange,
   terminalResultStatuses,
@@ -45,9 +46,12 @@ export default function RunExecutionWorkspace({
   const [assignmentDraft, setAssignmentDraft] = useState({});
   const [runAssigneeDraft, setRunAssigneeDraft] = useState("");
   const [savingAssignment, setSavingAssignment] = useState(false);
+  const [assignmentProposal, setAssignmentProposal] = useState(null);
+  const [loadingAssignmentProposal, setLoadingAssignmentProposal] = useState(false);
   const [creatingRerun, setCreatingRerun] = useState(false);
   const rerunKey = useRef(null);
   const beginAssignmentEdit = () => {
+    setAssignmentProposal(null);
     const assignments = { ...(run.test_case_assignments || {}) };
     setAssignmentDraft(assignments);
     setRunAssigneeDraft(
@@ -65,6 +69,33 @@ export default function RunExecutionWorkspace({
           run.test_case_version_ids?.includes(versionId) && Boolean(assigneeId),
       ),
     );
+    const proposedAssignments = Object.fromEntries(
+      (assignmentProposal?.case_recommendations || [])
+        .filter((item) => item.status === "PROPOSED" && item.assignee_id)
+        .map((item) => [item.test_case_version_id, item.assignee_id]),
+    );
+    const effectiveProposal = { ...(run.test_case_assignments || {}), ...proposedAssignments };
+    const proposalWasAccepted =
+      assignmentProposal &&
+      Object.entries(effectiveProposal).every(
+        ([versionId, assigneeId]) => testCaseAssignments[versionId] === assigneeId,
+      );
+    const proposalWasAdjusted =
+      assignmentProposal &&
+      Object.entries(proposedAssignments).some(
+        ([versionId, assigneeId]) => testCaseAssignments[versionId] !== assigneeId,
+      );
+    const assignmentDecisionSource =
+      proposalWasAccepted && !proposalWasAdjusted
+        ? "QA_APPROVED_RECOMMENDATION"
+        : assignmentProposal
+          ? "QA_ADJUSTED_RECOMMENDATION"
+          : "MANUAL";
+    const assignedProfileRevisions = Object.fromEntries(
+      Object.entries(assignmentProposal?.skill_profile_revisions || {}).filter(([userId]) =>
+        new Set([...Object.values(testCaseAssignments), runAssigneeDraft]).has(userId),
+      ),
+    );
     if (!runAssigneeDraft) {
       onError("Chọn người phụ trách lần chạy trước khi lưu phân công");
       return;
@@ -75,13 +106,40 @@ export default function RunExecutionWorkspace({
         expected_revision: run.revision,
         assignee_id: runAssigneeDraft,
         test_case_assignments: testCaseAssignments,
+        expected_skill_profile_revisions: assignmentProposal ? assignedProfileRevisions : {},
+        decision_source: assignmentDecisionSource,
       });
       onRunChange(updatedRun);
       setAssignmentEditing(false);
+      setAssignmentProposal(null);
     } catch (reason) {
       onError(messageOf(reason));
     } finally {
       setSavingAssignment(false);
+    }
+  };
+  const proposeAssignments = async () => {
+    setLoadingAssignmentProposal(true);
+    onError("");
+    try {
+      const proposal = await testingApi.recommendRunAssignment(projectId, run._id, {
+        expected_run_revision: run.revision,
+      });
+      setAssignmentProposal(proposal);
+      const recommended = Object.fromEntries(
+        (proposal.case_recommendations || [])
+          .filter((item) => item.status === "PROPOSED" && item.assignee_id)
+          .map((item) => [item.test_case_version_id, item.assignee_id]),
+      );
+      setAssignmentDraft((current) => ({ ...current, ...recommended }));
+      setRunAssigneeDraft(
+        (current) => current || Object.values(recommended)[0] || activeTesters[0]?.user_id || "",
+      );
+      setAssignmentEditing(true);
+    } catch (reason) {
+      onError(messageOf(reason));
+    } finally {
+      setLoadingAssignmentProposal(false);
     }
   };
   return (
@@ -92,14 +150,24 @@ export default function RunExecutionWorkspace({
         actions={
           <div className="flex flex-wrap gap-2">
             {can("testrun.assign") && can("project.members.read") && (
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={!activeTesters.length}
-                onClick={beginAssignmentEdit}
-              >
-                Sửa phân công
-              </button>
+              <>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={!activeTesters.length || loadingAssignmentProposal}
+                  onClick={() => void proposeAssignments()}
+                >
+                  {loadingAssignmentProposal ? "Đang lập đề xuất" : "Đề xuất người thực hiện"}
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={!activeTesters.length}
+                  onClick={beginAssignmentEdit}
+                >
+                  Chọn thủ công
+                </button>
+              </>
             )}
             {can("report.export") && (
               <button
@@ -258,6 +326,15 @@ export default function RunExecutionWorkspace({
       {can("testrun.assign") && can("project.members.read") && assignmentEditing && (
         <Panel title="Phân công lần chạy">
           <div className="space-y-4 p-5">
+            {assignmentProposal && (
+              <div className="rounded-control border border-border bg-surface-raised p-3 text-sm">
+                <p className="font-medium">Đề xuất cần QA xác nhận</p>
+                <p className="mt-1 text-ink-muted">
+                  Gợi ý chưa được áp dụng. Kiểm tra từng ca, có thể đổi người hoặc chọn thủ công rồi
+                  bấm “Duyệt và lưu phân công”.
+                </p>
+              </div>
+            )}
             <label className="field-label block">
               Người phụ trách lần chạy
               <select
@@ -277,33 +354,67 @@ export default function RunExecutionWorkspace({
             </label>
             <div className="space-y-3">
               {(run.test_case_versions || []).map((version) => (
-                <label
-                  className="grid min-w-0 gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(12rem,20rem)] sm:items-center"
+                <div
+                  className="space-y-2 rounded-control border border-border p-3"
                   key={version._id}
                 >
-                  <span className="break-words">
-                    {version.test_case_key} · {version.title}
-                  </span>
-                  <select
-                    aria-label={`Người thực hiện ${version.test_case_key}`}
-                    className="apple-input"
-                    disabled={savingAssignment}
-                    value={assignmentDraft[version._id] || ""}
-                    onChange={(event) =>
-                      setAssignmentDraft((current) => ({
-                        ...current,
-                        [version._id]: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Chưa phân công ca này</option>
-                    {activeTesters.map((member) => (
-                      <option key={member.user_id} value={member.user_id}>
-                        {member.user_label || member.user?.label || member.user_id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <label className="grid min-w-0 gap-2 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(12rem,20rem)] sm:items-center">
+                    <span className="break-words">
+                      {version.test_case_key} · {version.title}
+                    </span>
+                    <select
+                      aria-label={`Người thực hiện ${version.test_case_key}`}
+                      className="apple-input"
+                      disabled={savingAssignment}
+                      value={assignmentDraft[version._id] || ""}
+                      onChange={(event) =>
+                        setAssignmentDraft((current) => ({
+                          ...current,
+                          [version._id]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Chưa phân công ca này</option>
+                      {activeTesters.map((member) => (
+                        <option key={member.user_id} value={member.user_id}>
+                          {member.user_label || member.user?.label || member.user_id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {assignmentProposal &&
+                    (() => {
+                      const item = assignmentProposal.case_recommendations?.find(
+                        (candidate) => candidate.test_case_version_id === version._id,
+                      );
+                      if (!item) return null;
+                      const suggestedMember = activeTesters.find(
+                        (candidate) => candidate.user_id === item.assignee_id,
+                      );
+                      return (
+                        <p className="text-xs text-ink-muted">
+                          {item.status === "PROPOSED" ? (
+                            <>
+                              Veriq đề xuất theo hồ sơ kỹ năng và tải công việc:{" "}
+                              <span className="font-medium text-ink">
+                                {suggestedMember?.user_label ||
+                                  suggestedMember?.user?.label ||
+                                  item.assignee_label ||
+                                  item.assignee_id}
+                              </span>
+                              {item.required_skills?.length
+                                ? ` · Kỹ năng yêu cầu: ${item.required_skills.join(", ")}`
+                                : " · Không yêu cầu kỹ năng cụ thể"}
+                            </>
+                          ) : item.status === "EXISTING_ASSIGNMENT_PRESERVED" ? (
+                            "Giữ nguyên phân công hiện tại"
+                          ) : (
+                            "Chưa có người khớp điều kiện; hãy chọn thủ công nếu cần."
+                          )}
+                        </p>
+                      );
+                    })()}
+                </div>
               ))}
             </div>
             {!activeTesters.length && (
@@ -324,7 +435,11 @@ export default function RunExecutionWorkspace({
                 disabled={!activeTesters.length || savingAssignment}
                 onClick={saveAssignments}
               >
-                {savingAssignment ? "Đang lưu" : "Lưu phân công"}
+                {savingAssignment
+                  ? "Đang lưu"
+                  : assignmentProposal
+                    ? "Duyệt và lưu phân công"
+                    : "Lưu phân công"}
               </button>
             </div>
           </div>
@@ -465,9 +580,12 @@ export default function RunExecutionWorkspace({
                         <button
                           className="apple-button"
                           type="button"
+                          disabled={creatingDefectResultIds.has(result._id)}
                           onClick={() => onCreateDefect(result, item)}
                         >
-                          Tạo lỗi từ kết quả thất bại
+                          {creatingDefectResultIds.has(result._id)
+                            ? "Đang tạo lỗi…"
+                            : "Tạo lỗi từ kết quả thất bại"}
                         </button>
                       )}
                       {hasDefect && (

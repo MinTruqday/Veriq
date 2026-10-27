@@ -6,6 +6,7 @@ from src.core.auth import CurrentUser
 from src.core.human_decisions import require_automation_publication_authority
 from src.core.common import audit, get_project_entity, now
 from src.core.database import database
+from src.clients.ai_automation import queue_requirement_changed
 from src.repositories.requirement import requirement_repository
 from src.modules.design.services.linters import requirement_findings
 from src.modules.requirements.services.requirement_indexing import index_requirement_version
@@ -278,6 +279,7 @@ async def baseline_requirement(
         )
     timestamp = now()
     from src.modules.design.services.test_adequacy import supersede_requirement_assessments
+    already_baselined = False
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             version = await requirement_repository.baseline_version(
@@ -297,45 +299,54 @@ async def baseline_requirement(
             if not version:
                 current = await requirement_repository.find_version(version_id)
                 if current and current.get("status") == 'BASELINED':
-                    return RequirementBaselineResult(current, True)
-                raise HTTPException(
-                    status_code=409,
-                    detail={"code": 'REVISION_CONFLICT'},
+                    version = current
+                    already_baselined = True
+                else:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": 'REVISION_CONFLICT'},
+                    )
+            if not already_baselined:
+                current_baseline_changed = await requirement_repository.set_current_baseline(
+                    version["requirement_id"],
+                    version["project_id"],
+                    version_id,
+                    'BASELINED',
+                    timestamp,
+                    session=session,
                 )
-            current_baseline_changed = await requirement_repository.set_current_baseline(
-                version["requirement_id"],
-                version["project_id"],
-                version_id,
-                'BASELINED',
-                timestamp,
-                session=session,
-            )
-            if not current_baseline_changed:
-                raise HTTPException(
-                    status_code=409,
-                    detail={"code": 'REQUIREMENT_CURRENT_VERSION_CHANGED'},
+                if not current_baseline_changed:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": 'REQUIREMENT_CURRENT_VERSION_CHANGED'},
+                    )
+                await supersede_requirement_assessments(
+                    version["project_id"], version["requirement_id"], version_id, user.id,
+                    session=session,
                 )
-            await supersede_requirement_assessments(
-                version["project_id"], version["requirement_id"], version_id, user.id,
-                session=session,
-            )
-            await requirement_repository.approve_acceptance_criteria(
-                version_id,
-                'draft',
-                'approved',
-                timestamp,
-                user.id,
-                session=session,
-            )
-            await audit(
-                user.id,
-                'requirement_version_baselined',
-                'RequirementVersion',
-                version_id,
-                version["project_id"],
-                session=session,
-            )
-            await queue_requirement_changed(version, user, session)
+                await requirement_repository.approve_acceptance_criteria(
+                    version_id,
+                    'draft',
+                    'approved',
+                    timestamp,
+                    user.id,
+                    session=session,
+                )
+                await audit(
+                    user.id,
+                    'requirement_version_baselined',
+                    'RequirementVersion',
+                    version_id,
+                    version["project_id"],
+                    session=session,
+                )
+                await queue_requirement_changed(version, user, session)
+    if already_baselined:
+        indexed = version.get("index_status") == 'READY'
+        if not indexed:
+            indexed = await index_requirement_version(version)
+        latest = await requirement_repository.find_version(version_id, version["project_id"])
+        return RequirementBaselineResult(latest or version, indexed)
     indexed = await index_requirement_version(version)
     version = await requirement_repository.find_version(version_id)
     return RequirementBaselineResult(version, indexed)

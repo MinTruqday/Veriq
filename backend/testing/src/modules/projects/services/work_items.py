@@ -9,7 +9,13 @@ from src.repositories.work_item import work_item_repository
 
 
 def _conflict(existing):
-    raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT", "current_revision": existing.get("revision")})
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "REVISION_CONFLICT",
+            "current_revision": existing.get("revision") if existing else None,
+        },
+    )
 
 
 async def _project_planning(project_id, user):
@@ -318,6 +324,43 @@ class WorkItemService:
         try:
             async with await database.client.start_session() as session:
                 async with session.start_transaction():
+                    current_workflow = await work_item_repository.find_workflow(
+                        project_id, session=session
+                    )
+                    if (
+                        not current_workflow
+                        or current_workflow.get("revision") != workflow.get("revision")
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "WORK_ITEM_WORKFLOW_CHANGED"},
+                        )
+                    current_transition = next(
+                        (
+                            value
+                            for value in current_workflow.get("transitions", [])
+                            if value["from_status"] == item["status"]
+                            and value["to_status"] == payload.status
+                        ),
+                        None,
+                    )
+                    if (
+                        not current_transition
+                        or not roles.intersection(current_transition["allowed_roles"])
+                    ):
+                        raise HTTPException(
+                            status_code=422,
+                            detail={"code": "WORK_ITEM_WORKFLOW_TRANSITION_INVALID"},
+                        )
+                    if not await work_item_repository.guard_workflow_transition(
+                        project_id,
+                        current_workflow["revision"],
+                        session=session,
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "WORK_ITEM_WORKFLOW_CHANGED"},
+                        )
                     if is_kanban and item["status"] != payload.status:
                         board = await work_item_repository.find_board(project_id, session=session)
                         if not board or board.get("planning_method") != "KANBAN":
@@ -402,13 +445,13 @@ class WorkItemService:
         except DuplicateKeyError as exc:
             raise HTTPException(
                 status_code=409,
-                detail={"code": "WORK_ITEM_DEPENDENCY_EXISTS"},
+                detail={"code": "WORK_ITEM_TRANSITION_CONFLICT"},
             ) from exc
         except OperationFailure as exc:
             if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
                 raise HTTPException(
                     status_code=409,
-                    detail={"code": "KANBAN_WIP_CONCURRENT_UPDATE"},
+                    detail={"code": "WORK_ITEM_PLANNING_CONCURRENT_UPDATE"},
                 ) from exc
             raise
         return updated
@@ -517,6 +560,13 @@ class WorkItemService:
         statuses = [column.status for column in payload.columns]
         if len(statuses) != len(set(statuses)):
             raise HTTPException(status_code=422, detail={"code": "BOARD_COLUMN_STATUS_DUPLICATE"})
+        if project.get("planning_method") != "KANBAN" and any(
+            column.wip_limit is not None for column in payload.columns
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "BOARD_WIP_LIMIT_REQUIRES_KANBAN"},
+            )
         workflow = await _workflow(project_id)
         workflow_statuses = {value["key"] for value in workflow.get("statuses", [])}
         if workflow_statuses and any(status not in workflow_statuses for status in statuses):
@@ -525,14 +575,39 @@ class WorkItemService:
         if len(positions) != len(set(positions)):
             raise HTTPException(status_code=422, detail={"code": "BOARD_COLUMN_POSITION_DUPLICATE"})
         board = await _board(project_id, project.get("planning_method", "SCRUM"))
-        updated = await work_item_repository.patch_board(
-            project_id,
-            payload.expected_revision,
-            {"columns": [column.model_dump() for column in payload.columns], "updated_at": now()},
-        )
-        if not updated:
-            _conflict(await work_item_repository.find_board(project_id))
-        await audit(user.id, "planning_board_updated", "PlanningBoard", board["_id"], project_id)
+        try:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    updated = await work_item_repository.patch_board(
+                        project_id,
+                        payload.expected_revision,
+                        {
+                            "columns": [column.model_dump() for column in payload.columns],
+                            "updated_at": now(),
+                        },
+                        session=session,
+                    )
+                    if not updated:
+                        _conflict(
+                            await work_item_repository.find_board(
+                                project_id, session=session
+                            )
+                        )
+                    await audit(
+                        user.id,
+                        "planning_board_updated",
+                        "PlanningBoard",
+                        board["_id"],
+                        project_id,
+                        session=session,
+                    )
+        except OperationFailure as exc:
+            if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "WORK_ITEM_PLANNING_CONCURRENT_UPDATE"},
+                ) from exc
+            raise
         return updated
 
     @staticmethod
@@ -549,14 +624,60 @@ class WorkItemService:
         if len(identities) != len(transitions):
             raise HTTPException(status_code=422, detail={"code": "WORKFLOW_TRANSITION_DUPLICATE"})
         workflow = await _workflow(project_id)
-        updated = await work_item_repository.patch_workflow(
-            project_id,
-            payload.expected_revision,
-            {"statuses": statuses, "transitions": transitions, "updated_at": now()},
-        )
-        if not updated:
-            _conflict(await work_item_repository.find_workflow(project_id))
-        await audit(user.id, "planning_workflow_updated", "PlanningWorkflow", workflow["_id"], project_id)
+        removed_statuses = {
+            value["key"] for value in workflow.get("statuses", [])
+        } - status_keys
+        try:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    if removed_statuses:
+                        active_count = await work_item_repository.count_items(
+                            {
+                                "project_id": project_id,
+                                "status": {"$in": sorted(removed_statuses)},
+                            },
+                            session=session,
+                        )
+                        if active_count:
+                            raise HTTPException(
+                                status_code=422,
+                                detail={
+                                    "code": "WORKFLOW_STATUS_IN_USE",
+                                    "statuses": sorted(removed_statuses),
+                                    "active_count": active_count,
+                                },
+                            )
+                    updated = await work_item_repository.patch_workflow(
+                        project_id,
+                        payload.expected_revision,
+                        {
+                            "statuses": statuses,
+                            "transitions": transitions,
+                            "updated_at": now(),
+                        },
+                        session=session,
+                    )
+                    if not updated:
+                        _conflict(
+                            await work_item_repository.find_workflow(
+                                project_id, session=session
+                            )
+                        )
+                    await audit(
+                        user.id,
+                        "planning_workflow_updated",
+                        "PlanningWorkflow",
+                        workflow["_id"],
+                        project_id,
+                        session=session,
+                    )
+        except OperationFailure as exc:
+            if exc.code == 112 or exc.has_error_label("TransientTransactionError"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "WORK_ITEM_PLANNING_CONCURRENT_UPDATE"},
+                ) from exc
+            raise
         return updated
 
     @staticmethod

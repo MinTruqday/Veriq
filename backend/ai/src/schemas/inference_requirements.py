@@ -2,6 +2,12 @@ from typing import Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+
+TESTABILITY_BLUEPRINT_MAX_OBLIGATIONS = 300
+TESTABILITY_BLUEPRINT_MAX_CLARIFICATIONS = 100
+TESTABILITY_BLUEPRINT_MAX_EVIDENCE_REFS = 200
+TESTABILITY_BLUEPRINT_MAX_WARNINGS = 50
+
 RequirementQualityCategory = Literal[
     "AMBIGUITY", "OMISSION", "INCONSISTENCY", "CONTRADICTION", "UNTESTABLE",
     "MISSING_ACCEPTANCE_CRITERIA", "MISSING_ERROR_BEHAVIOR",
@@ -151,7 +157,9 @@ class RequirementTemplateSynthesisOutput(BaseModel):
     conflicts: List[dict[str, Any]] = Field(default_factory=list, max_length=100)
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)
-    warnings: List[str] = Field(default_factory=list, max_length=50)
+    warnings: List[str] = Field(
+        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_WARNINGS
+    )
 
 class RequirementTemplateReviewFindingOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -208,9 +216,15 @@ class TestabilityBlueprintCompilationOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["testability_blueprint_compilation"] = "testability_blueprint_compilation"
-    obligations: List[TestabilityBlueprintObligationOutput] = Field(default_factory=list, max_length=300)
-    clarifications: List[TestabilityBlueprintClarificationOutput] = Field(default_factory=list, max_length=100)
-    evidence_refs: List[str] = Field(min_length=1, max_length=200)
+    obligations: List[TestabilityBlueprintObligationOutput] = Field(
+        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_OBLIGATIONS
+    )
+    clarifications: List[TestabilityBlueprintClarificationOutput] = Field(
+        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_CLARIFICATIONS
+    )
+    evidence_refs: List[str] = Field(
+        min_length=1, max_length=TESTABILITY_BLUEPRINT_MAX_EVIDENCE_REFS
+    )
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=50)
 
@@ -239,8 +253,12 @@ class TestabilityBlueprintClaimReviewItem(BaseModel):
 class TestabilityBlueprintGroundingReview(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    obligations: List[TestabilityBlueprintClaimReviewItem] = Field(default_factory=list, max_length=300)
-    clarifications: List[TestabilityBlueprintClaimReviewItem] = Field(default_factory=list, max_length=100)
+    obligations: List[TestabilityBlueprintClaimReviewItem] = Field(
+        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_OBLIGATIONS
+    )
+    clarifications: List[TestabilityBlueprintClaimReviewItem] = Field(
+        default_factory=list, max_length=TESTABILITY_BLUEPRINT_MAX_CLARIFICATIONS
+    )
 
 
 class ClarificationBaselineQuestionOutput(BaseModel):

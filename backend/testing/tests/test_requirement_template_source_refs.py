@@ -1,7 +1,9 @@
+import hashlib
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from src.modules.requirements.services.requirement_templates import (
     requirement_document_synthesis_snapshot,
@@ -11,9 +13,28 @@ from src.modules.requirements.services.requirement_templates import (
     template_synthesis_source_snapshot,
 )
 from src.modules.design.services.generation import requirement_test_evidence_text
+from src.schemas.contracts.requirements import RequirementTemplateSynthesis
 
 
 class RequirementTemplateSourceRefTests(unittest.TestCase):
+    def test_synthesis_instruction_accepts_blueprint_payload_within_ai_contract_limit(self):
+        base = {
+            "name": "Mẫu yêu cầu từ tài liệu nguồn",
+            "product_types": ["web"],
+            "source_document_ids": ["RDOC-1"],
+        }
+
+        for length in (3000, 3948, 5000):
+            with self.subTest(length=length):
+                value = RequirementTemplateSynthesis(
+                    **base,
+                    instruction="x" * length,
+                )
+                self.assertEqual(len(value.instruction), length)
+
+        with self.assertRaises(ValidationError):
+            RequirementTemplateSynthesis(**base, instruction="x" * 5001)
+
     def test_template_synthesis_snapshot_tracks_source_document_revision_and_version(self):
         document = {
             "_id": "DOC-1",

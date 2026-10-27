@@ -110,7 +110,26 @@ class RequirementImportRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def finish_resolution(self, job_id, project_id, revision, preview, resolution, updated_at):
+    async def finish_resolution(self, job_id, project_id, revision, preview, resolution, updated_at, session=None):
+        update = {
+            "$set": {
+                "status": "PREVIEW_READY" if preview else "CONFIRMED",
+                "preview": preview,
+                "candidate_count": len(preview),
+                "updated_at": updated_at,
+            },
+            "$push": {"resolutions": resolution},
+            "$inc": {"revision": 1},
+        }
+        if resolution.get("action") == "create_requirement":
+            update["$addToSet"] = {
+                "created_requirement_ids": resolution["requirement_id"],
+                "created_requirement_version_ids": resolution["to_version_id"],
+            }
+        elif resolution.get("action") in {"create_version", "link_source"}:
+            update["$addToSet"] = {
+                "created_requirement_version_ids": resolution["to_version_id"]
+            }
         return await database.value.import_jobs.find_one_and_update(
             {
                 "_id": job_id,
@@ -118,17 +137,9 @@ class RequirementImportRepository:
                 "status": "RESOLVING",
                 "revision": revision,
             },
-            {
-                "$set": {
-                    "status": "PREVIEW_READY" if preview else "CONFIRMED",
-                    "preview": preview,
-                    "candidate_count": len(preview),
-                    "updated_at": updated_at,
-                },
-                "$push": {"resolutions": resolution},
-                "$inc": {"revision": 1},
-            },
+            update,
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
     async def claim_confirmation(
@@ -200,13 +211,15 @@ class RequirementImportRepository:
             {
                 "$set": {
                     "status": target_status,
-                    "created_requirement_ids": requirement_ids,
-                    "created_requirement_version_ids": requirement_version_ids,
                     "selected_indexes": selected_indexes,
                     "rejected_indexes": rejected_indexes,
                     "confirmed_at": updated_at,
                     "confirmed_by": user_id,
                     "updated_at": updated_at,
+                },
+                "$addToSet": {
+                    "created_requirement_ids": {"$each": requirement_ids},
+                    "created_requirement_version_ids": {"$each": requirement_version_ids},
                 },
                 "$inc": {"revision": 1},
             },

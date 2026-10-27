@@ -6,8 +6,8 @@ import { formatDate, messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 
 const pipelineLabels = {
-  compiler: "Biên dịch Blueprint",
-  direct_generation: "Sinh Test Case trực tiếp",
+  compiler: "Lập bản thiết kế kiểm thử",
+  direct_generation: "Sinh ca kiểm thử trực tiếp",
   clarification_without_obligation_planning: "Chỉ lập câu hỏi làm rõ",
 };
 
@@ -109,7 +109,7 @@ export default function TestabilityBenchmarkPanel() {
     <div className="space-y-5">
       {error && <ErrorState message={error} />}
       <Panel
-        title="Benchmark kỹ thuật AI"
+        title="Đánh giá đối chuẩn kỹ thuật AI"
         actions={
           <button
             type="button"
@@ -117,7 +117,7 @@ export default function TestabilityBenchmarkPanel() {
             disabled={running}
             onClick={() => void runBenchmark()}
           >
-            {running ? "Đang chạy 3 pipeline…" : "Chạy benchmark tổng hợp"}
+            {running ? "Đang chạy 3 cách xử lý…" : "Chạy đánh giá tổng hợp"}
           </button>
         }
       >
@@ -128,9 +128,9 @@ export default function TestabilityBenchmarkPanel() {
           </p>
           <p>
             Đáp án được sinh từ quy tắc tạo tình huống, không do chuyên gia độc lập xác nhận. Điểm
-            mô tả hành vi trên bộ này, không chứng minh chất lượng production, khả năng khái quát
-            hay ưu thế so với Jira/Xray. Chạy benchmark có thể mất thời gian vì gọi các pipeline AI
-            thật.
+            mô tả hành vi trên bộ này, không chứng minh chất lượng ở môi trường thực tế, khả năng
+            khái quát hay ưu thế so với Jira/Xray. Chạy đánh giá có thể mất thời gian vì gọi ba cách
+            xử lý AI thật.
           </p>
           <p>
             Một số tình huống thiếu thông tin có nhiều vấn đề cùng lúc và có thứ tự ưu tiên đã soạn
@@ -159,14 +159,14 @@ export default function TestabilityBenchmarkPanel() {
       </Panel>
 
       {report && (
-        <Panel title="Điểm mô tả của từng pipeline">
+        <Panel title="Điểm mô tả của từng cách xử lý">
           <p className="mb-3 text-sm text-ink-muted">
-            Mỗi pipeline dùng các ca nó chấp nhận ổn định qua cả ba lượt; cohort giữa các pipeline
-            có thể khác nhau.
+            Mỗi cách xử lý dùng các tình huống được chấp nhận ổn định qua cả ba lượt; nhóm tình
+            huống giữa các cách xử lý có thể khác nhau.
           </p>
           <DataTable
             items={reportRows(report)}
-            empty="Không có metric đủ điều kiện để chấm"
+            empty="Chưa có tiêu chí đủ điều kiện để chấm"
             columns={[
               { key: "pipeline", label: "Cách xử lý" },
               { key: "metric", label: "Tiêu chí" },
@@ -182,15 +182,15 @@ export default function TestabilityBenchmarkPanel() {
       {report && (
         <Panel title="So sánh công bằng trên cùng tình huống">
           <p className="mb-3 text-sm text-ink-muted">
-            Chỉ so điểm trên ca mà cả hai pipeline đều được chấp nhận qua mọi lượt; số ca ghép cặp
-            được hiển thị để thấy mẫu số thực tế.
+            Chỉ so điểm trên tình huống mà cả hai cách xử lý đều được chấp nhận qua mọi lượt; số
+            tình huống ghép cặp được hiển thị để thấy mẫu số thực tế.
           </p>
           <DataTable
             items={pairedReportRows(report)}
-            empty="Chưa có đủ ca được cả hai pipeline chấp nhận ổn định để so sánh"
+            empty="Chưa có đủ tình huống được cả hai cách xử lý chấp nhận ổn định để so sánh"
             columns={[
               { key: "comparison", label: "Cặp so sánh" },
-              { key: "pipeline", label: "Pipeline" },
+              { key: "pipeline", label: "Cách xử lý" },
               { key: "metric", label: "Tiêu chí" },
               { key: "mean", label: "Trung bình" },
               { key: "spread", label: "Khoảng min–max" },
@@ -201,13 +201,13 @@ export default function TestabilityBenchmarkPanel() {
         </Panel>
       )}
 
-      <Panel title="Lịch sử từng lượt chạy">
+      <Panel title="Lịch sử các lượt đánh giá">
         {loading ? (
           <LoadingState />
         ) : (
           <DataTable
             items={runs}
-            empty="Chưa có lượt benchmark tổng hợp"
+            empty="Chưa có lượt đánh giá tổng hợp"
             columns={[
               { key: "run_id", label: "Mã lượt chạy" },
               {
@@ -225,13 +225,13 @@ export default function TestabilityBenchmarkPanel() {
               },
               {
                 key: "execution_status",
-                label: "Kết quả pipeline",
+                label: "Kết quả xử lý",
                 render: (item) => <StatusPill value={benchmarkStatus(item.execution_status)} />,
               },
               { key: "total_cases", label: "Số tình huống" },
               {
                 key: "pipeline_failures",
-                label: "Pipeline lỗi",
+                label: "Cách xử lý lỗi",
                 render: (item) => item.pipeline_failures?.length || 0,
               },
               {

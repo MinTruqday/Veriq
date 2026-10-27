@@ -1,9 +1,38 @@
 import json
 
 import httpx
+from loguru import logger
 
 from src.core.infrastructure.configuration import settings
 from src.tools.http_client import INTERNAL_API_URL, make_api_request
+
+
+def safe_validation_issue_metadata(body, limit=20):
+    if not isinstance(body, dict):
+        return []
+    error = body.get("error")
+    details = body.get("detail")
+    if isinstance(error, dict):
+        error_details = error.get("details")
+        if isinstance(error_details, dict) and isinstance(error_details.get("issues"), list):
+            details = error_details["issues"]
+    if not isinstance(details, list):
+        return []
+    issues = []
+    for item in details[:limit]:
+        if not isinstance(item, dict):
+            continue
+        location = item.get("loc")
+        error_type = item.get("type")
+        if not isinstance(location, (list, tuple)) or not isinstance(error_type, str):
+            continue
+        safe_location = [
+            value[:120] if isinstance(value, str) else value
+            for value in location
+            if isinstance(value, (str, int)) and not isinstance(value, bool)
+        ][:12]
+        issues.append({"loc": safe_location, "type": error_type[:120]})
+    return issues
 
 
 def headers(config):
@@ -36,6 +65,22 @@ async def call(method, path, config, payload=None, timeout=60):
     except ValueError:
         body = {"error": {"code": "UPSTREAM_RESPONSE_INVALID"}}
     if response.status_code >= 400:
+        validation_issues = safe_validation_issue_metadata(body)
+        if response.status_code == 422:
+            upstream_error = body.get("error") if isinstance(body, dict) else None
+            error_code = (
+                upstream_error.get("code")
+                if isinstance(upstream_error, dict)
+                else None
+            )
+            logger.warning(
+                "Testing API validation failure method={} path={} error_code={} issue_count={} issues={}",
+                method.upper(),
+                path.split("?", 1)[0][:240],
+                str(error_code or "UNKNOWN")[:120],
+                len(validation_issues),
+                validation_issues,
+            )
         error = body.get("error") or body.get("detail")
         if error is None:
             error = {

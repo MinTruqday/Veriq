@@ -292,7 +292,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Tự động hóa",
             href: `${root}/${PROJECT_SECTION_SLUGS.automation}`,
             icon: BrainCircuit,
-            permission: "automation.read",
+            anyPermission: ["automation.read", "proposal.read"],
           },
           {
             id: "defects",

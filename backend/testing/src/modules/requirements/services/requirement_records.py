@@ -132,6 +132,7 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         "parent_version_id": None,
         "change_reason": "Khởi tạo Requirement",
         "status": "DRAFT",
+        "index_status": "PENDING",
         "revision": 1,
         "origin": origin,
         "created_by": user.id,
@@ -423,7 +424,7 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
     return {**requirement, **parent_changes, "current_version": updated_version}
 
 
-async def create_requirement_version_record(requirement_id, payload, user):
+async def create_requirement_version_record(requirement_id, payload, user, session=None):
     requirement = await get_project_entity(
         "requirements", requirement_id, user, "requirement.version.create"
     )
@@ -468,51 +469,58 @@ async def create_requirement_version_record(requirement_id, payload, user):
         "parent_version_id": parent["_id"],
         "change_reason": payload.change_reason,
         "status": "DRAFT",
+        "index_status": "PENDING",
         "revision": 1,
         "created_by": user.id,
         "created_at": timestamp,
         "updated_at": timestamp,
     }
-    async with await database.client.start_session() as session:
-        async with session.start_transaction():
-            await requirement_repository.insert_version(version, session=session)
-            await persist_acceptance_criteria(version, payload.acceptance_criteria, session)
-            activated = await requirement_repository.activate_version(
-                requirement_id,
-                version["_id"],
-                "CHANGED",
-                payload.tags,
-                payload.owner_id or requirement.get("owner_id"),
-                timestamp,
-                payload.expected_current_version_id,
-                session=session,
-            )
-            if not activated:
-                raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-            await queue_requirement_changed(version, user, session)
-            from src.modules.design.services.test_adequacy import (
-                supersede_requirement_assessments,
-            )
-            from src.modules.requirements.services.requirement_clarifications import (
-                supersede_requirement_clarifications,
-            )
+    async def persist(active_session):
+        await requirement_repository.insert_version(version, session=active_session)
+        await persist_acceptance_criteria(version, payload.acceptance_criteria, active_session)
+        activated = await requirement_repository.activate_version(
+            requirement_id,
+            version["_id"],
+            "CHANGED",
+            payload.tags,
+            payload.owner_id or requirement.get("owner_id"),
+            timestamp,
+            payload.expected_current_version_id,
+            session=active_session,
+        )
+        if not activated:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        await queue_requirement_changed(version, user, active_session)
+        from src.modules.design.services.test_adequacy import (
+            supersede_requirement_assessments,
+        )
+        from src.modules.requirements.services.requirement_clarifications import (
+            supersede_requirement_clarifications,
+        )
 
-            await supersede_requirement_assessments(
-                requirement["project_id"], requirement_id, version["_id"], user.id, session
-            )
-            await supersede_requirement_clarifications(
-                requirement["project_id"], requirement_id, version["_id"], session
-            )
-            await audit(
-                user.id,
-                "requirement_version_created",
-                "RequirementVersion",
-                version["_id"],
-                requirement["project_id"],
-                {"parent_version_id": parent["_id"]},
-                session=session,
-            )
-    await index_requirement_version(version)
+        await supersede_requirement_assessments(
+            requirement["project_id"], requirement_id, version["_id"], user.id, active_session
+        )
+        await supersede_requirement_clarifications(
+            requirement["project_id"], requirement_id, version["_id"], active_session
+        )
+        await audit(
+            user.id,
+            "requirement_version_created",
+            "RequirementVersion",
+            version["_id"],
+            requirement["project_id"],
+            {"parent_version_id": parent["_id"]},
+            session=active_session,
+        )
+
+    if session is None:
+        async with await database.client.start_session() as active_session:
+            async with active_session.start_transaction():
+                await persist(active_session)
+        await index_requirement_version(version)
+    else:
+        await persist(session)
     return version
 
 

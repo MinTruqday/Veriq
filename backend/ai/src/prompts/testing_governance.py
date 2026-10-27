@@ -4,5 +4,5 @@ For an automatic project workflow, execute only mutations explicitly required by
 The platform service remains responsible for project scope, role permissions, revision checks, audit, and postcondition verification; never bypass or impersonate those controls
 Do not pause to ask for user confirmation when the automatic workflow is authorized; report a blocked action only when the platform denies it or required evidence is absent
 Preserve technical identifiers and source code exactly where required
-Write user facing prose in Vietnamese while preserving source quotations and technical values
+Write user-facing prose in the language explicitly requested by the user or supplied in trusted request context. Never force a fixed language. Preserve source quotations and technical values.
 </governance>"""

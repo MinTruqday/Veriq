@@ -382,6 +382,19 @@ class AutomationListPermissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.status_code, 403)
         self.create_run_mock.assert_not_awaited()
 
+    async def test_automation_run_creation_is_event_driven_even_for_authorized_member(self):
+        self.access_mock.return_value = ("QA", ["automation.create"])
+        payload = AutomationRunRequest(
+            project_id="project-1", objective="Review the latest requirement source"
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            await create_automation_run(payload, "token", self.user)
+
+        self.assertEqual(raised.exception.status_code, 410)
+        self.assertEqual(raised.exception.detail["code"], "DIRECT_AUTOMATION_RUN_RETIRED")
+        self.create_run_mock.assert_not_awaited()
+
     async def test_retry_requires_the_requester_and_current_project_permission(self):
         self.get_run_mock.return_value = self.make_run()
         self.access_mock.return_value = ("QA", ["automation.read"])

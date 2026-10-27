@@ -28,6 +28,8 @@ en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_
 protobuf>=6.33.5,<7.0.0
 rank_bm25==0.2.2
 mcp>=2.0,<3.0
+opentelemetry-sdk>=1.30,<2.0
+opentelemetry-exporter-otlp-proto-http>=1.30,<2.0
 pymupdf==1.24.2
 pypdfium2>=4.30.0
 beautifulsoup4>=4.12.0

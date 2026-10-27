@@ -10,7 +10,6 @@ const apiBase = (
 const publicRoutes = [
   ["/", "Veriq"],
   ["/dang-nhap", "Đăng nhập"],
-  ["/dang-ky", "Tạo tài khoản"],
   ["/quen-mat-khau", "Khôi phục mật khẩu"],
   ["/dat-lai-mat-khau?token=e2e-reset-token", "Đặt mật khẩu mới"],
   ["/xac-thuc", "Xác thực"],
@@ -29,6 +28,11 @@ test("public and authentication pages render without horizontal overflow", async
       const response = await page.goto(route, { waitUntil: "domcontentloaded" });
       expect(response?.ok(), `${route} should respond successfully`).toBeTruthy();
       await expect(page.locator("body")).toContainText(heading);
+      const logo = page.locator('img[alt="Veriq"]').first();
+      await expect(logo).toHaveAttribute("src", "/brand/veriq-logo.png");
+      await expect
+        .poll(() => logo.evaluate((image) => image.complete && image.naturalWidth > 0))
+        .toBe(true);
       const dimensions = await page.evaluate(() => ({
         viewport: window.innerWidth,
         document: document.documentElement.scrollWidth,
@@ -128,34 +132,10 @@ test("password recovery preserves input after errors and completes each step", a
   ]);
 });
 
-test("registration sends the entered profile and opens email verification", async ({ page }) => {
-  let registrationPayload;
-  await page.route(`${apiBase}/xac-thuc/dang-ky`, async (route) => {
-    registrationPayload = route.request().postDataJSON();
-    await route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify({ data: { user_id: "user-e2e-register" } }),
-    });
-  });
-
-  await page.goto("/dang-ky");
-  await page.getByLabel("Tên hiển thị").fill("Người dùng kiểm thử");
-  await page.getByLabel("Tên tài khoản").fill("e2e_register");
-  await page.getByLabel("Email").fill("register@example.test");
-  await page.getByLabel("Mật khẩu").fill("correct-horse-battery-1");
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Tạo tài khoản" }).click();
-
-  await expect(page).toHaveURL(/\/xac-minh-thu-dien-tu\?email=register%40example\.test$/);
-  await expect(page.getByRole("heading", { name: "Xác minh địa chỉ thư điện tử" })).toBeVisible();
-  expect(registrationPayload).toEqual({
-    email: "register@example.test",
-    password: "correct-horse-battery-1",
-    full_name: "Người dùng kiểm thử",
-    slug: "e2e_register",
-    agreed_to_terms: true,
-  });
+test("public account registration route is removed", async ({ page }) => {
+  const response = await page.goto("/dang-ky");
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Tạo tài khoản" })).toHaveCount(0);
 });
 
 test("email verification keeps the token after errors and confirms the account", async ({
@@ -235,7 +215,6 @@ test("Google callback completes once and returns only to its saved internal dest
 }) => {
   const token = "e2e-google-login-token";
   let callbackRequests = 0;
-  await page.addInitScript(() => sessionStorage.setItem("veriq_return_path", "/du-an/PRJ-E2E"));
   await page.route(`${apiBase}/**`, async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === "/xac-thuc/google/chuyen-huong") {
@@ -260,6 +239,21 @@ test("Google callback completes once and returns only to its saved internal dest
       });
       return;
     }
+    if (pathname === "/kiem-thu/du-an/PRJ-E2E") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: {
+            _id: "PRJ-E2E",
+            name: "Dự án kiểm thử callback",
+            planning_method: "SCRUM",
+            current_permissions: ["project.read"],
+          },
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -267,6 +261,8 @@ test("Google callback completes once and returns only to its saved internal dest
     });
   });
 
+  await page.goto("/dang-nhap");
+  await page.evaluate(() => sessionStorage.setItem("veriq_return_path", "/du-an/PRJ-E2E"));
   await page.goto("/dang-nhap/google/chuyen-huong?code=e2e-code&state=e2e-state");
 
   await expect(page).toHaveURL(/\/du-an\/PRJ-E2E$/);
@@ -525,7 +521,7 @@ test("an unverified JWT role cannot open the platform administration UI", async 
   let identityLookups = 0;
   await page.context().addCookies([{ name: "token", value: token, url: appBaseUrl }]);
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
-  await page.route("**/*", async (route) => {
+  await page.route(`${apiBase}/**`, async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === "/xac-thuc/ca-nhan") {
       identityLookups += 1;
@@ -602,6 +598,12 @@ test("a verified platform admin can open the platform administration route direc
   await expect(page).toHaveURL(/\/van-hanh$/);
   await expect(page.getByRole("heading", { name: "Vận hành nền tảng" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Vận hành nền tảng" })).toBeVisible();
+  await page.getByRole("button", { name: "Đánh giá AI" }).click();
+  await expect(page.getByRole("heading", { name: "Đánh giá đối chuẩn kỹ thuật AI" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Chạy đánh giá tổng hợp" })).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(
+    /pipeline|blueprint|\bmetric\b|\bcohort\b|benchmark|production/i,
+  );
 });
 
 test("platform operations load errors can be retried", async ({ page }) => {
@@ -618,6 +620,33 @@ test("platform operations load errors can be retried", async ({ page }) => {
         body: JSON.stringify({
           data: { _id: "admin-e2e", email: "admin@example.test", system_role: "ADMIN" },
         }),
+      });
+      return;
+    }
+    if (pathname === "/kiem-thu/van-hanh") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: {
+            knowledge_indexing_backlog: 0,
+            failed_ingestion_jobs: [],
+            failed_impact_jobs: [],
+            worker_failures: [],
+            ai_models: {},
+            ai_request_metrics: {},
+            storage_usage: [],
+            audit_events: [],
+          },
+        }),
+      });
+      return;
+    }
+    if (pathname === "/thong-bao") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [] }),
       });
       return;
     }

@@ -25,6 +25,7 @@ from src.services.testability_blueprint import (
     map_blueprint_obligations_to_requirements,
     requirement_version_source_text,
 )
+from src.services.automation_provenance import source_quote_spans
 from src.tools.automation_publication import (
     publish_grounded_requirement,
     publish_grounded_test_case,
@@ -152,7 +153,7 @@ def existing_test_case_supports_obligation(
         if (
             citation_quote == quote
             and citation_ref in evidence_refs
-            and quote in source_by_ref.get(citation_ref, "")
+            and source_quote_spans(source_by_ref.get(citation_ref, ""), quote)
         ):
             return True
     return False
@@ -216,7 +217,7 @@ def resumable_draft_matches_blueprint_scope(
         if (
             reference not in evidence_refs
             or not quote
-            or quote not in source_evidence.get(reference, "")
+            or not source_quote_spans(source_evidence.get(reference, ""), quote)
         ):
             return False
         citations_by_ref.setdefault(reference, []).append(quote)
@@ -224,10 +225,10 @@ def resumable_draft_matches_blueprint_scope(
     for key in draft_keys:
         source_quote = str(obligation_by_key[key].get("source_quote") or "").strip()
         if not source_quote or not any(
-            source_quote in citation
+            source_quote_spans(citation, source_quote)
             for reference, citations in citations_by_ref.items()
             for citation in citations
-            if source_quote in source_evidence.get(reference, "")
+            if source_quote_spans(source_evidence.get(reference, ""), source_quote)
         ):
             return False
     return True
@@ -436,13 +437,15 @@ def verified_requirement_source_citations(
             )
             span_quote = source_text[start:end] if valid_offsets else ""
             quote = stored_quote or span_quote
-            if not quote or (valid_offsets and span_quote != quote):
+            quote_spans = source_quote_spans(source_text, quote)
+            if not quote or not quote_spans or (
+                valid_offsets and (span_quote != quote or (start, end) not in quote_spans)
+            ):
                 continue
             if not valid_offsets:
-                first = source_text.find(quote)
-                if first < 0 or source_text.find(quote, first + 1) >= 0:
+                if len(quote_spans) != 1:
                     continue
-                start, end = first, first + len(quote)
+                start, end = quote_spans[0]
             expected_quote_hash = str(reference.get("source_text_hash") or "")
             quote_hash = hashlib.sha256(quote.encode("utf-8")).hexdigest()
             if expected_quote_hash and expected_quote_hash != quote_hash:
@@ -505,7 +508,7 @@ def blueprint_source_lineage(blueprint, source_facts):
             if (
                 fact_reference != reference
                 or not fact_quote
-                or quote not in fact_quote
+                or not source_quote_spans(fact_quote, quote)
                 or not isinstance(start, int)
                 or isinstance(start, bool)
                 or not isinstance(end, int)
@@ -562,7 +565,7 @@ def generated_obligation_evidence_matches(coverage_keys, obligation_evidence, ob
         quotes = evidence_by_key[key].get("evidence_quotes") or []
         if not source_quote or not any(
             isinstance(item, dict)
-            and source_quote in str(item.get("quote") or "")
+            and source_quote_spans(str(item.get("quote") or ""), source_quote)
             for item in quotes
         ):
             return False
@@ -603,12 +606,17 @@ def verified_document_facts(source_document_ids, source_documents):
         for line in source_text.splitlines() or [source_text]:
             for segment in re.split(r"(?<=[.!?。！？])\s+", line):
                 quote = segment.strip()
-                if not quote or quote in seen:
+                if not quote:
                     continue
                 start = source_text.find(quote, cursor)
                 if start < 0:
                     start = source_text.find(quote)
                 if start < 0:
+                    continue
+                end = start + len(quote)
+                identity = (start, end, quote)
+                if identity in seen:
+                    cursor = end
                     continue
                 facts.append(
                     AutomationFact(
@@ -621,12 +629,12 @@ def verified_document_facts(source_document_ids, source_documents):
                         quote=quote,
                         fact_kind="source_text_segment",
                         source_start=start,
-                        source_end=start + len(quote),
+                        source_end=end,
                         source_offset_basis="CANONICAL_TEXT",
                     )
                 )
-                cursor = start + len(quote)
-                seen.add(quote)
+                cursor = end
+                seen.add(identity)
     return facts, evidence
 
 
@@ -957,7 +965,7 @@ def blueprint_clarification_source_ids(
             if (
                 (stored_quote and stored_quote != span)
                 or (expected_span_hash and hashlib.sha256(span.encode("utf-8")).hexdigest() != expected_span_hash)
-                or quote not in span
+                or not source_quote_spans(span, quote)
             ):
                 continue
             matched.append(document_id)
@@ -1164,9 +1172,14 @@ def qa_test_design_handoff_versions(
 
 
 def safe_requirement_import_resolution(candidate_match):
+    raw_matches = candidate_match.get("matches")
+    if raw_matches == []:
+        return ("create_requirement", None)
+    if not isinstance(raw_matches, list):
+        return None
     matches = [
         item
-        for item in candidate_match.get("matches", [])
+        for item in raw_matches
         if item.get("requirement_id") and item.get("version_id")
         and item.get("requirement_status") not in {"OBSOLETE", "ARCHIVED"}
     ]
@@ -1181,11 +1194,60 @@ def safe_requirement_import_resolution(candidate_match):
     return None
 
 
-def requirement_import_has_unresolved_matches(comparisons):
-    return any(
-        item.get("matches") and safe_requirement_import_resolution(item) is None
-        for item in comparisons
-    )
+def requirement_versions_requiring_maintenance(import_job):
+    resolutions = (import_job or {}).get("resolutions")
+    if not isinstance(resolutions, list):
+        return set()
+    return {
+        str(item["to_version_id"])
+        for item in resolutions
+        if isinstance(item, dict)
+        and item.get("action") == "create_version"
+        and isinstance(item.get("to_version_id"), str)
+        and item["to_version_id"].strip()
+    }
+
+
+def safe_in_import_duplicate_resolution(candidate_match, earlier_matches, resolutions):
+    internal_matches = [
+        item
+        for item in earlier_matches
+        if item.get("match_type") in {"IN_IMPORT", "SAME_KEY_IN_IMPORT"}
+    ]
+    if not internal_matches or any(
+        item.get("match_type") != "IN_IMPORT" for item in internal_matches
+    ):
+        return None
+    target_candidate_ids = {
+        str(item.get("candidate_id") or "") for item in internal_matches
+    }
+    if "" in target_candidate_ids:
+        return None
+    resolution_by_candidate = {
+        str(item.get("candidate_id") or ""): item
+        for item in resolutions
+        if item.get("candidate_id")
+    }
+    if not target_candidate_ids.issubset(resolution_by_candidate):
+        return None
+    target_requirement_ids = {
+        str(resolution_by_candidate[candidate_id].get("requirement_id") or "")
+        for candidate_id in target_candidate_ids
+        if candidate_id in resolution_by_candidate
+    }
+    if len(target_requirement_ids) != 1 or "" in target_requirement_ids:
+        return None
+    current_matches = candidate_match.get("matches")
+    if not isinstance(current_matches, list) or len(current_matches) != 1:
+        return None
+    match = current_matches[0]
+    if (
+        match.get("match_type") != "EXACT"
+        or str(match.get("requirement_id") or "") not in target_requirement_ids
+        or not match.get("version_id")
+    ):
+        return None
+    return "link_source", match
 
 
 def has_conflicting_blueprint_clarification(blueprint):
@@ -1452,7 +1514,7 @@ async def process_ingested_requirement_document(
             ensure_ascii=False,
         )
 
-    uncovered_blueprint_obligations = []
+    unrepresented_blueprint_obligation_keys = []
     for obligation in blueprint.get("obligations", []):
         evidence = evidence_by_ref.get(obligation.get("source_ref"))
         source_id = str((evidence or {}).get("artifact_id") or obligation.get("source_ref") or "")
@@ -1460,13 +1522,13 @@ async def process_ingested_requirement_document(
         represented = any(
             source_id == str(reference.get("requirement_document_id") or "")
             and quote
-            and quote in str(reference.get("source_quote") or "")
+                and source_quote_spans(str(reference.get("source_quote") or ""), quote)
             for requirement in template_requirements
             for reference in requirement.get("source_refs", [])
         )
         if not represented:
-            uncovered_blueprint_obligations.append(obligation.get("key"))
-    if uncovered_blueprint_obligations:
+            unrepresented_blueprint_obligation_keys.append(obligation.get("key"))
+    if unrepresented_blueprint_obligation_keys:
         return json.dumps(
             {
                 "status": "automation_partial_failure",
@@ -1476,7 +1538,7 @@ async def process_ingested_requirement_document(
                 "unresolved": [
                     {
                         "reason": "BLUEPRINT_OBLIGATIONS_NOT_REFLECTED_IN_REQUIREMENTS",
-                        "obligation_keys": uncovered_blueprint_obligations,
+                        "obligation_keys": unrepresented_blueprint_obligation_keys,
                     }
                 ],
             },
@@ -1495,18 +1557,18 @@ async def process_ingested_requirement_document(
         if item.get("requirement_id")
     }
     unresolved = []
-    updated_requirement_versions = set()
+    updated_requirement_versions = requirement_versions_requiring_maintenance(import_job)
     if import_job.get("status") == "PREVIEW_READY":
         comparison = await require_operation(
             "GET", f"/nhap-yeu-cau/{import_job['_id']}/doi-chieu", config
         )
         candidate_matches = comparison.get("comparisons", [])
-        has_unresolved_matches = requirement_import_has_unresolved_matches(
-            candidate_matches
-        )
-        for queued_candidate_match in (
-            [] if has_unresolved_matches else candidate_matches
-        ):
+        in_import_matches = {
+            str(item.get("candidate_id")): item.get("matches", [])
+            for item in candidate_matches
+            if item.get("candidate_id")
+        }
+        for queued_candidate_match in candidate_matches:
             candidate_id = queued_candidate_match.get("candidate_id")
             if not candidate_id:
                 continue
@@ -1523,25 +1585,36 @@ async def process_ingested_requirement_document(
             )
             if not candidate_match:
                 continue
-            resolution = safe_requirement_import_resolution(candidate_match)
+            current_job = await require_operation(
+                "GET", f"/nhap-yeu-cau/{import_job['_id']}", config
+            )
+            original_internal_matches = [
+                item
+                for item in in_import_matches.get(str(candidate_id), [])
+                if item.get("match_type") in {"IN_IMPORT", "SAME_KEY_IN_IMPORT"}
+            ]
+            if original_internal_matches:
+                resolution = safe_in_import_duplicate_resolution(
+                    candidate_match,
+                    original_internal_matches,
+                    current_job.get("resolutions", []),
+                )
+            else:
+                resolution = safe_requirement_import_resolution(candidate_match)
             if resolution and resolution[0] == "link_source":
                 _, match = resolution
                 current_job = await require_operation("GET", f"/nhap-yeu-cau/{import_job['_id']}", config)
-                try:
-                    await authorized_source_operation(
-                        "POST",
-                        f"/nhap-yeu-cau/{import_job['_id']}/ung-vien/{candidate_id}/doi-chieu",
-                        {
-                            "expected_revision": current_job["revision"],
-                            "target_requirement_id": match["requirement_id"],
-                            "expected_target_version_id": match["version_id"],
-                            "action": "link_source",
-                            "reason": f"Tài liệu {document_id} xác nhận cùng nội dung Requirement; chỉ bổ sung dấu vết nguồn",
-                        },
-                    )
-                except RuntimeError as error:
-                    if str(error) != "SOURCE_ALREADY_LINKED":
-                        raise
+                await authorized_source_operation(
+                    "POST",
+                    f"/nhap-yeu-cau/{import_job['_id']}/ung-vien/{candidate_id}/doi-chieu",
+                    {
+                        "expected_revision": current_job["revision"],
+                        "target_requirement_id": match["requirement_id"],
+                        "expected_target_version_id": match["version_id"],
+                        "action": "link_source",
+                        "reason": f"Tài liệu {document_id} xác nhận cùng nội dung Requirement; chỉ bổ sung dấu vết nguồn",
+                    },
+                )
                 linked_requirement_ids.add(match["requirement_id"])
                 continue
 
@@ -1572,8 +1645,36 @@ async def process_ingested_requirement_document(
                     and item.get("to_version_id")
                 )
                 linked_requirement_ids.add(match["requirement_id"])
+                continue
+
+            if resolution and resolution[0] == "create_requirement":
+                current_job = await require_operation(
+                    "GET", f"/nhap-yeu-cau/{import_job['_id']}", config
+                )
+                resolved_job = await authorized_source_operation(
+                    "POST",
+                    f"/nhap-yeu-cau/{import_job['_id']}/ung-vien/{candidate_id}/doi-chieu",
+                    {
+                        "expected_revision": current_job["revision"],
+                        "action": "create_requirement",
+                        "reason": (
+                            f"Tài liệu {document_id} tạo Requirement nháp riêng vì ứng viên "
+                            "không trùng với Requirement hiện có; ứng viên mơ hồ khác vẫn chờ làm rõ"
+                        ),
+                    },
+                )
+                linked_requirement_ids.update(
+                    item.get("requirement_id")
+                    for item in resolved_job.get("resolutions", [])
+                    if item.get("requirement_id")
+                )
 
         import_job = await require_operation("GET", f"/nhap-yeu-cau/{import_job['_id']}", config)
+        linked_requirement_ids.update(
+            item.get("requirement_id")
+            for item in import_job.get("resolutions", [])
+            if item.get("requirement_id")
+        )
         if import_job.get("status") == "PREVIEW_READY" and import_job.get("preview"):
             comparison = await require_operation(
                 "GET", f"/nhap-yeu-cau/{import_job['_id']}/doi-chieu", config

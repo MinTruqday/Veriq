@@ -86,6 +86,177 @@ def _client(post_responses=(), stream_responses=()):
 
 
 class HostedModelRetryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retryable_primary_failure_uses_configured_fallback(self):
+        request = httpx.Request("POST", "https://model.invalid")
+        unavailable = httpx.HTTPStatusError(
+            "provider unavailable",
+            request=request,
+            response=httpx.Response(503, request=request),
+        )
+        create_client, post_calls, _ = _client(
+            [unavailable, unavailable, unavailable, _Response()]
+        )
+        client = HostedModelClient()
+
+        with (
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_URL", "https://backup.invalid"),
+            patch("src.utils.model_provider.settings.FALLBACK_LLM_MODEL", "backup-model"),
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_TOKEN", "backup-token"),
+            patch("src.utils.model_provider.httpx.AsyncClient", side_effect=create_client),
+            patch("src.utils.model_provider.asyncio.sleep", new=AsyncMock()),
+        ):
+            response = await client.chat_completion(
+                [{"role": "user", "content": "hello"}], response_schema={"type": "object"}
+            )
+
+        self.assertEqual(response.choices[0].message.content, "grounded response")
+        self.assertEqual(response.model, "backup-model")
+        self.assertEqual(len(post_calls), 4)
+        self.assertEqual(post_calls[-1][0][0], "https://backup.invalid")
+        self.assertEqual(post_calls[-1][1]["headers"]["Authorization"], "Bearer backup-token")
+        self.assertEqual(post_calls[-1][1]["json"]["response_format"]["type"], "json_schema")
+        self.assertEqual(client._runtime_status, "ready")
+
+    async def test_requested_non_default_model_does_not_use_fallback(self):
+        request = httpx.Request("POST", "https://model.invalid")
+        unavailable = httpx.HTTPStatusError(
+            "provider unavailable",
+            request=request,
+            response=httpx.Response(503, request=request),
+        )
+        create_client, post_calls, _ = _client([unavailable, unavailable, unavailable])
+        client = HostedModelClient()
+
+        with (
+            patch("src.utils.model_provider.settings.LLM_MODEL", "default-model"),
+            patch(
+                "src.utils.model_provider.settings.PRIMARY_MODEL_URL",
+                "https://model.invalid",
+            ),
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_URL", "https://backup.invalid"),
+            patch("src.utils.model_provider.settings.FALLBACK_LLM_MODEL", "backup-model"),
+            patch("src.utils.model_provider.httpx.AsyncClient", side_effect=create_client),
+            patch("src.utils.model_provider.asyncio.sleep", new=AsyncMock()),
+        ):
+            with self.assertRaises(ModelProviderUnavailable):
+                await client.chat_completion(
+                    [{"role": "user", "content": "hello"}], model="explicit-model"
+                )
+
+        self.assertEqual(len(post_calls), 3)
+        self.assertTrue(all(call[0][0] == "https://model.invalid" for call in post_calls))
+
+    async def test_warmup_uses_fallback_when_primary_is_retryably_unavailable(self):
+        request = httpx.Request("POST", "https://model.invalid")
+        unavailable = httpx.HTTPStatusError(
+            "provider unavailable",
+            request=request,
+            response=httpx.Response(503, request=request),
+        )
+        create_client, post_calls, _ = _client(
+            [unavailable, unavailable, unavailable, _Response()]
+        )
+        client = HostedModelClient()
+
+        with (
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_URL", "https://backup.invalid"),
+            patch("src.utils.model_provider.settings.FALLBACK_LLM_MODEL", "backup-model"),
+            patch("src.utils.model_provider.httpx.AsyncClient", side_effect=create_client),
+            patch("src.utils.model_provider.asyncio.sleep", new=AsyncMock()),
+        ):
+            ready = await client.warm_primary()
+
+        self.assertTrue(ready)
+        self.assertEqual(post_calls[-1][0][0], "https://backup.invalid")
+
+    async def test_stream_uses_fallback_only_before_emitting_output(self):
+        request = httpx.Request("POST", "https://model.invalid")
+        unavailable = httpx.ConnectError("provider unavailable", request=request)
+        response = _StreamResponse(
+            lines=[
+                'data: {"choices":[{"delta":{"content":"fallback"}}]}',
+                "data: [DONE]",
+            ]
+        )
+        create_client, _, stream_calls = _client(
+            stream_responses=[unavailable, unavailable, unavailable, response]
+        )
+        client = HostedModelClient()
+
+        with (
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_URL", "https://backup.invalid"),
+            patch("src.utils.model_provider.settings.FALLBACK_LLM_MODEL", "backup-model"),
+            patch("src.utils.model_provider.httpx.AsyncClient", side_effect=create_client),
+            patch("src.utils.model_provider.asyncio.sleep", new=AsyncMock()),
+        ):
+            stream = await client.chat_completion(
+                [{"role": "user", "content": "hello"}], stream=True
+            )
+            chunks = [chunk async for chunk in stream]
+
+        self.assertEqual(
+            [chunk.choices[0].delta.content for chunk in chunks], ["fallback"]
+        )
+        self.assertEqual(len(stream_calls), 4)
+
+    async def test_readiness_accepts_available_fallback_model(self):
+        class _HealthResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"data": [{"id": "backup-model"}]}
+
+        class _HealthClient(_AsyncClientContext):
+            async def get(self, url, **_kwargs):
+                if url == "https://primary.invalid/models":
+                    raise httpx.ConnectError("primary offline")
+                return _HealthResponse()
+
+        client = HostedModelClient()
+        with (
+            patch("src.utils.model_provider.settings.PRIMARY_MODEL_HEALTH_URL", "https://primary.invalid/models"),
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_URL", "https://backup.invalid/chat"),
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_HEALTH_URL", "https://backup.invalid/models"),
+            patch("src.utils.model_provider.settings.FALLBACK_LLM_MODEL", "backup-model"),
+            patch("src.utils.model_provider.httpx.AsyncClient", side_effect=lambda **_kwargs: _HealthClient()),
+        ):
+            result = await client.readiness()
+
+        self.assertEqual(result, {"model": "ready"})
+        self.assertEqual(client._runtime_status, "ready")
+
+    async def test_readiness_does_not_accept_fallback_after_primary_authorization_failure(self):
+        class _HealthResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"data": [{"id": "backup-model"}]}
+
+        class _HealthClient(_AsyncClientContext):
+            async def get(self, url, **_kwargs):
+                if url == "https://primary.invalid/models":
+                    request = httpx.Request("GET", url)
+                    response = httpx.Response(401, request=request)
+                    raise httpx.HTTPStatusError(
+                        "denied", request=request, response=response
+                    )
+                return _HealthResponse()
+
+        client = HostedModelClient()
+        with (
+            patch("src.utils.model_provider.settings.PRIMARY_MODEL_HEALTH_URL", "https://primary.invalid/models"),
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_URL", "https://backup.invalid/chat"),
+            patch("src.utils.model_provider.settings.FALLBACK_MODEL_HEALTH_URL", "https://backup.invalid/models"),
+            patch("src.utils.model_provider.settings.FALLBACK_LLM_MODEL", "backup-model"),
+            patch("src.utils.model_provider.httpx.AsyncClient", side_effect=lambda **_kwargs: _HealthClient()),
+        ):
+            result = await client.readiness()
+
+        self.assertEqual(result, {"model": "unavailable"})
+        self.assertEqual(client._runtime_status, "unavailable")
+
     async def test_non_retryable_authorization_error_is_not_retried(self):
         request = httpx.Request("POST", "https://model.invalid")
         denied = httpx.HTTPStatusError(

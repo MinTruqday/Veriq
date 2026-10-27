@@ -11,7 +11,10 @@ from src.clients.knowledge import knowledge_client
 from src.clients.notification import notification_client
 from src.repositories.cache import DocumentCacheRepository
 from src.repositories.document import DocumentRepository
-from src.repositories.document_ingestion_outbox import document_ingestion_outbox
+from src.repositories.document_ingestion_outbox import (
+    DocumentIngestionSourceChanged,
+    document_ingestion_outbox,
+)
 from src.schemas.document import DocumentContentUpdate, DocumentCreate, DocumentInDB, DocumentStatus
 from src.services.document.base import can_read_full, is_admin, pwd_context, serialize_document
 
@@ -282,29 +285,31 @@ class DocumentCrudService:
             raise HTTPException(status_code=403, detail="Không có quyền lập chỉ mục tài liệu")
         if not document.get("file_url"):
             raise HTTPException(status_code=422, detail="Tài liệu chưa có tệp nguồn")
-        await DocumentRepository.update_one(
-            {"_id": document_id},
-            {
-                "$set": {"indexing_status": "queued"},
-                "$unset": {"indexing_error": "", "index_dispatch_event_id": ""},
-            },
-        )
+        if (
+            document.get("ai_enabled") is False
+            or document.get("index_status") == "REVOKE_PENDING"
+            or document.get("source_is_current") is False
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Tài liệu hiện không được phép lập chỉ mục AI",
+            )
         try:
             await document_ingestion_outbox.enqueue(
                 document,
                 user_id=str(document.get("creator_id") or ""),
                 superseded_document_id=str(document.get("previous_version_id") or ""),
                 force_new=True,
+                expected_source_snapshot=document,
+            )
+        except DocumentIngestionSourceChanged:
+            raise HTTPException(
+                status_code=409,
+                detail="Tài liệu hoặc quyền truy cập đã thay đổi; hãy tải lại trước khi lập chỉ mục",
             )
         except Exception:
-            await DocumentRepository.update_one(
-                {"_id": document_id},
-                {
-                    "$set": {
-                        "indexing_status": "failed",
-                        "indexing_error": "indexing_dispatch_failed",
-                    }
-                },
+            logger.exception(
+                "Document reindex dispatch failed document_id={}", document_id
             )
             raise HTTPException(
                 status_code=503, detail="Không thể đưa tài liệu vào hàng đợi lập chỉ mục"

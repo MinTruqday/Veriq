@@ -26,7 +26,10 @@ async def accept_test_case_group(project_id, payload, user):
     body_hash = fingerprint(payload.model_dump())
     existing = await database.value.audit_events.find_one({"_id": batch_id})
     if existing:
-        result = await _existing_batch_result(existing, user, body_hash, project_id)
+        result = await _existing_batch_result(
+            existing, user, body_hash, project_id,
+            [item.draft_id for item in payload.items],
+        )
         return await _retry_batch_derived_state(result, project_id, user)
     settings = await test_design_repository.find_project_settings(project_id)
     drafts = []
@@ -115,6 +118,8 @@ async def accept_test_case_group(project_id, payload, user):
                 or not isinstance(replay_result.get("version_ids"), list)
                 or len(replay_result["draft_ids"]) != replay_count
                 or len(replay_result["version_ids"]) != replay_count
+                or replay_result["draft_ids"]
+                != [item.draft_id for item in payload.items]
             ):
                 raise HTTPException(409, detail={"code": "TEST_CASE_APPROVAL_INCOMPLETE"})
             await _verify_batch_publication_links(
@@ -175,7 +180,10 @@ async def accept_test_case_group(project_id, payload, user):
             {"_id": batch_id, "project_id": project_id}
         )
         if existing:
-            result = await _existing_batch_result(existing, user, body_hash, project_id)
+            result = await _existing_batch_result(
+                existing, user, body_hash, project_id,
+                [item.draft_id for item in payload.items],
+            )
             return await _retry_batch_derived_state(result, project_id, user)
         raise HTTPException(
             409,
@@ -195,7 +203,9 @@ async def accept_test_case_group(project_id, payload, user):
     return {**result, "derived_pending_version_ids": sorted(set(pending))}
 
 
-async def _existing_batch_result(existing, user, body_hash, project_id):
+async def _existing_batch_result(
+    existing, user, body_hash, project_id, expected_draft_ids
+):
     details = existing.get("details") or {}
     batch_id = existing.get("_id")
     if (
@@ -230,6 +240,7 @@ async def _existing_batch_result(existing, user, body_hash, project_id):
         or not valid_ids(version_ids)
         or len(draft_ids) != count
         or len(version_ids) != count
+        or draft_ids != expected_draft_ids
     ):
         raise HTTPException(409, detail={"code": "TEST_CASE_APPROVAL_INCOMPLETE"})
     await _verify_batch_publication_links(project_id, draft_ids, version_ids)

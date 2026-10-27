@@ -16,6 +16,7 @@ export default function AuthFrame({ title, description, children, footer, width 
             height={36}
             className="h-9 w-9 rounded-xl object-cover"
             priority
+            unoptimized
           />
           <span>Veriq</span>
         </Link>

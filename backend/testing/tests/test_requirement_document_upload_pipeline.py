@@ -12,6 +12,13 @@ class RequirementDocumentUploadPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.user = SimpleNamespace(id="user-upload-test", is_system_admin=False)
         self.project_id = "project-upload-test"
         self.data = b"User Story: A user signs in with a valid account."
+        self.deduplication_lookup = patch.object(
+            requirement_documents.requirement_document_repository,
+            "find_by_deduplication_key",
+            new=AsyncMock(return_value=None),
+        )
+        self.deduplication_lookup.start()
+        self.addCleanup(self.deduplication_lookup.stop)
         self.document = {
             "_id": "RDOC-upload-test",
             "project_id": self.project_id,

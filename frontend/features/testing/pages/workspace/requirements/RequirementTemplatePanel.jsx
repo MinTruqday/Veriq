@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { docText, messageOf, textDoc, valueLabel } from "../../../lib/testing";
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { REQUIREMENT_LEVELS, REQUIREMENT_TYPES } from "./requirements.model";
@@ -716,6 +717,15 @@ export default function RequirementTemplatePanel({
                 Bỏ mục
               </button>
             </div>
+            {active?.synthesis && (
+              <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3 text-sm">
+                <ContentOriginBadge origin="ai_generated" aiLabel="AI tổng hợp ban đầu" />
+                <p className="mt-2 text-violet-950">
+                  Mẫu được tổng hợp từ tài liệu nguồn. Nội dung bạn chỉnh sửa vẫn được lưu trong
+                  phiên bản mẫu hiện tại.
+                </p>
+              </div>
+            )}
             <div className="grid gap-3 md:grid-cols-2">
               <label className="field-label">
                 Tên yêu cầu

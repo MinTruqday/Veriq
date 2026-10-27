@@ -125,6 +125,10 @@ async def create_indexes():
     await db.project_members.create_index([("user_id", 1), ("status", 1)])
     await db.member_skill_profiles.create_index([("project_id", 1), ("user_id", 1)], unique=True)
     await db.member_skill_profiles.create_index([("user_id", 1), ("updated_at", -1)])
+    await db.payroll_rates.create_index([("user_id", 1), ("currency", 1), ("valid_from", -1)])
+    await db.payroll_rate_locks.create_index([("user_id", 1), ("currency", 1)], unique=True)
+    await db.payroll_import_previews.create_index([("status", 1), ("expires_at", 1)])
+    await db.resource_capacity_periods.create_index([("period_start", 1), ("period_end", 1)], unique=True)
     await db.project_tasks.create_index([("project_id", 1), ("updated_at", -1)])
     await db.project_tasks.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
     await db.work_items.create_index([("project_id", 1), ("backlog_rank", 1)])
@@ -139,6 +143,12 @@ async def create_indexes():
     await db.project_task_migrations.create_index("project_id", unique=True)
     await db.ai_automation_outbox.create_index([("status", 1), ("next_attempt_at", 1)])
     await db.ai_automation_outbox.create_index([("status", 1), ("updated_at", 1)])
+    await db.defect_search_index_outbox.create_index(
+        [("status", 1), ("next_attempt_at", 1), ("created_at", 1)]
+    )
+    await db.defect_search_index_outbox.create_index(
+        [("status", 1), ("lease_expires_at", 1)]
+    )
     await db.requirements.create_index([("project_id", 1), ("requirement_key", 1)], unique=True)
     await ensure_unique_index(db.requirement_documents, [("project_id", 1), ("created_by", 1), ("content_hash", 1)])
     await db.requirement_documents.create_index(
@@ -578,6 +588,11 @@ async def create_indexes():
         [("test_result_id", 1), ("idempotency_key", 1)], unique=True
     )
     await db.defects.create_index([("project_id", 1), ("defect_key", 1)], unique=True)
+    await ensure_partial_unique_index(
+        db.defects,
+        [("project_id", 1), ("created_by", 1), ("idempotency_key", 1)],
+        {"idempotency_key": {"$type": "string"}},
+    )
     await db.defect_retests.create_index([("defect_id", 1), ("idempotency_key", 1)], unique=True)
     await db.test_execution_updates.create_index(
         [("test_result_id", 1), ("idempotency_key", 1)], unique=True

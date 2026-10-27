@@ -1,15 +1,33 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
+from fastapi import HTTPException
 
 from src.runtime.document_ingestion_worker import (
     DocumentIngestionWorker,
+    _ingestion_retry_delay_seconds,
     _retryable_ingestion_error,
 )
 
 
 class DocumentIngestionWorkerTests(unittest.IsolatedAsyncioTestCase):
+    def test_retry_delay_uses_bounded_exponential_backoff(self):
+        with (
+            patch(
+                "src.runtime.document_ingestion_worker.limits",
+                SimpleNamespace(
+                    queue_retry_base_seconds=15,
+                    queue_retry_max_seconds=300,
+                ),
+            ),
+        ):
+            self.assertEqual(
+                [_ingestion_retry_delay_seconds(attempt) for attempt in range(7)],
+                [15, 30, 60, 120, 240, 300, 300],
+            )
+
     def test_transient_http_statuses_retry_but_other_client_errors_do_not(self):
         request = httpx.Request("POST", "https://content.invalid/index")
 
@@ -30,6 +48,44 @@ class DocumentIngestionWorkerTests(unittest.IsolatedAsyncioTestCase):
                     response=httpx.Response(status_code, request=request),
                 )
                 self.assertFalse(_retryable_ingestion_error(error))
+
+        for status_code in (408, 425, 429, 500, 503):
+            with self.subTest(application_status_code=status_code):
+                self.assertTrue(_retryable_ingestion_error(HTTPException(status_code)))
+
+        for status_code in (400, 401, 403, 404, 409, 422):
+            with self.subTest(application_status_code=status_code):
+                self.assertFalse(_retryable_ingestion_error(HTTPException(status_code)))
+
+    async def test_malformed_attempt_counters_are_rejected_without_indexing(self):
+        worker = DocumentIngestionWorker()
+        for invalid_attempt in (True, 1.5, "2", -1, None):
+            with self.subTest(attempt=invalid_attempt):
+                with (
+                    patch(
+                        "src.runtime.document_ingestion_worker.index_document",
+                        new=AsyncMock(),
+                    ) as index,
+                    patch(
+                        "src.runtime.document_ingestion_worker.mq.reject",
+                        new=AsyncMock(return_value=True),
+                    ) as reject,
+                ):
+                    await worker._process(
+                        {
+                            "delivery_tag": "delivery-invalid-attempt",
+                            "payload": {
+                                "event_id": "event-invalid-attempt",
+                                "document_id": "document-invalid-attempt",
+                                "attempt": invalid_attempt,
+                            },
+                        }
+                    )
+
+                index.assert_not_awaited()
+                reject.assert_awaited_once_with(
+                    "delivery-invalid-attempt", requeue=False
+                )
 
     async def test_idle_queue_yields_instead_of_busy_spinning(self):
         worker = DocumentIngestionWorker()
@@ -88,6 +144,78 @@ class DocumentIngestionWorkerTests(unittest.IsolatedAsyncioTestCase):
         )
         ack.assert_awaited_once_with("delivery-1")
 
+    async def test_busy_document_is_scheduled_after_lease_without_consuming_attempt(self):
+        worker = DocumentIngestionWorker()
+        payload = {
+            "event_id": "event-busy",
+            "document_id": "document-busy",
+            "user_id": "user-1",
+            "attempt": 1,
+        }
+        with (
+            patch(
+                "src.runtime.document_ingestion_worker.index_document",
+                new=AsyncMock(
+                    return_value={"status": "busy", "retry_after_seconds": 47.5}
+                ),
+            ) as index,
+            patch(
+                "src.runtime.document_ingestion_worker.mq.publish_delayed",
+                new=AsyncMock(return_value=True),
+            ) as publish_delayed,
+            patch(
+                "src.runtime.document_ingestion_worker.mq.ack",
+                new=AsyncMock(return_value=True),
+            ) as ack,
+            patch(
+                "src.runtime.document_ingestion_worker.mq.reject",
+                new=AsyncMock(),
+            ) as reject,
+        ):
+            await worker._process({"delivery_tag": "delivery-busy", "payload": payload})
+
+        index.assert_awaited_once_with(
+            "document-busy", "user-1", False, "event-busy"
+        )
+        publish_delayed.assert_awaited_once_with(
+            "ai.document_ingestion", payload, 47.5
+        )
+        ack.assert_awaited_once_with("delivery-busy")
+        reject.assert_not_awaited()
+
+    async def test_busy_document_is_dead_lettered_if_delayed_retry_cannot_be_published(self):
+        worker = DocumentIngestionWorker()
+        payload = {
+            "event_id": "event-busy-publish-failed",
+            "document_id": "document-busy",
+            "user_id": "user-1",
+            "attempt": 1,
+        }
+        with (
+            patch(
+                "src.runtime.document_ingestion_worker.index_document",
+                new=AsyncMock(
+                    return_value={"status": "busy", "retry_after_seconds": 47.5}
+                ),
+            ),
+            patch(
+                "src.runtime.document_ingestion_worker.mq.publish_delayed",
+                new=AsyncMock(return_value=False),
+            ) as publish_delayed,
+            patch(
+                "src.runtime.document_ingestion_worker.mq.reject",
+                new=AsyncMock(return_value=True),
+            ) as reject,
+            patch("src.runtime.document_ingestion_worker.mq.ack", new=AsyncMock()) as ack,
+        ):
+            await worker._process({"delivery_tag": "delivery-busy-failed", "payload": payload})
+
+        publish_delayed.assert_awaited_once_with(
+            "ai.document_ingestion", payload, 47.5
+        )
+        reject.assert_awaited_once_with("delivery-busy-failed", requeue=False)
+        ack.assert_not_awaited()
+
     async def test_degraded_replacement_keeps_previous_source_searchable(self):
         worker = DocumentIngestionWorker()
         message = {
@@ -97,7 +225,7 @@ class DocumentIngestionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 "document_id": "document-new",
                 "user_id": "user-1",
                 "superseded_document_id": "document-old",
-                "attempt": 0,
+                "attempt": 1,
             },
         }
         with (
@@ -131,7 +259,7 @@ class DocumentIngestionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 "document_id": "document-new",
                 "user_id": "user-1",
                 "superseded_document_id": "document-old",
-                "attempt": 0,
+                "attempt": 1,
             },
         }
         with (
@@ -144,9 +272,16 @@ class DocumentIngestionWorkerTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(),
             ) as remove,
             patch(
-                "src.runtime.document_ingestion_worker.mq.publish",
+                "src.runtime.document_ingestion_worker.mq.publish_delayed",
                 new=AsyncMock(return_value=True),
-            ) as publish,
+            ) as publish_delayed,
+            patch(
+                "src.runtime.document_ingestion_worker.limits",
+                SimpleNamespace(
+                    queue_retry_base_seconds=15,
+                    queue_retry_max_seconds=300,
+                ),
+            ),
             patch(
                 "src.runtime.document_ingestion_worker.mq.ack",
                 new=AsyncMock(return_value=True),
@@ -156,10 +291,78 @@ class DocumentIngestionWorkerTests(unittest.IsolatedAsyncioTestCase):
 
         index.assert_awaited_once()
         remove.assert_not_awaited()
-        publish.assert_awaited_once_with(
-            "ai.document_ingestion", {**message["payload"], "attempt": 1}
+        publish_delayed.assert_awaited_once_with(
+            "ai.document_ingestion", {**message["payload"], "attempt": 2}, 30
         )
         ack.assert_awaited_once_with("delivery-2")
+
+    async def test_retryable_failure_is_dead_lettered_if_retry_publish_fails(self):
+        worker = DocumentIngestionWorker()
+        message = {
+            "delivery_tag": "delivery-retry-publish-failed",
+            "payload": {
+                "event_id": "event-retry-publish-failed",
+                "document_id": "document-1",
+                "user_id": "user-1",
+                "attempt": 0,
+            },
+        }
+        with (
+            patch(
+                "src.runtime.document_ingestion_worker.index_document",
+                new=AsyncMock(side_effect=RuntimeError("temporary failure")),
+            ),
+            patch(
+                "src.runtime.document_ingestion_worker.mq.publish_delayed",
+                new=AsyncMock(return_value=False),
+            ) as publish_delayed,
+            patch(
+                "src.runtime.document_ingestion_worker.mq.reject",
+                new=AsyncMock(return_value=True),
+            ) as reject,
+            patch("src.runtime.document_ingestion_worker.mq.ack", new=AsyncMock()) as ack,
+        ):
+            await worker._process(message)
+
+        publish_delayed.assert_awaited_once_with(
+            "ai.document_ingestion", {**message["payload"], "attempt": 1}, 15
+        )
+        reject.assert_awaited_once_with("delivery-retry-publish-failed", requeue=False)
+        ack.assert_not_awaited()
+
+    async def test_document_ingestion_retry_limit_uses_runtime_configuration(self):
+        worker = DocumentIngestionWorker()
+        message = {
+            "delivery_tag": "delivery-retry-limit",
+            "payload": {
+                "event_id": "event-retry-limit",
+                "document_id": "document-1",
+                "user_id": "user-1",
+                "attempt": 1,
+            },
+        }
+        with (
+            patch(
+                "src.runtime.document_ingestion_worker.settings.DOCUMENT_INGESTION_MAX_DELIVERY_ATTEMPTS",
+                2,
+            ),
+            patch(
+                "src.runtime.document_ingestion_worker.index_document",
+                new=AsyncMock(side_effect=RuntimeError("temporary failure")),
+            ),
+            patch(
+                "src.runtime.document_ingestion_worker.mq.publish",
+                new=AsyncMock(),
+            ) as publish,
+            patch(
+                "src.runtime.document_ingestion_worker.mq.reject",
+                new=AsyncMock(return_value=True),
+            ) as reject,
+        ):
+            await worker._process(message)
+
+        publish.assert_not_awaited()
+        reject.assert_awaited_once_with("delivery-retry-limit", requeue=False)
 
     async def test_cleanup_failure_does_not_mark_successfully_indexed_document_failed(self):
         worker = DocumentIngestionWorker()

@@ -5,6 +5,48 @@ from typing import Dict, List, Optional
 from loguru import logger
 
 
+class BM25ArtifactVersionSummarySnapshot:
+    def __init__(
+        self, documents, project_id, artifact_version_id, legacy_generation
+    ):
+        self._documents = documents
+        self._project_id = str(project_id)
+        self._artifact_version_id = str(artifact_version_id)
+        self._legacy_generation = str(legacy_generation)
+        self.generation_counts = {}
+        for document in documents.values():
+            metadata = document.get("metadata", {})
+            if (
+                str(metadata.get("project_id")) != self._project_id
+                or str(metadata.get("artifact_version_id"))
+                != self._artifact_version_id
+                or not BM25Store._is_project_artifact_metadata(metadata)
+            ):
+                continue
+            generation = str(
+                metadata.get("index_generation") or self._legacy_generation
+            )
+            self.generation_counts[generation] = (
+                self.generation_counts.get(generation, 0) + 1
+            )
+
+    def contains(self, point_id, generation):
+        document = self._documents.get(str(point_id))
+        if document is None:
+            return False
+        metadata = document.get("metadata", {})
+        return (
+            str(metadata.get("project_id")) == self._project_id
+            and str(metadata.get("artifact_version_id"))
+            == self._artifact_version_id
+            and (
+                BM25Store._is_project_artifact_metadata(metadata)
+            )
+            and str(metadata.get("index_generation") or self._legacy_generation)
+            == str(generation)
+        )
+
+
 class BM25Store:
     def __init__(self):
         self._documents: Dict[str, Dict] = {}
@@ -16,6 +58,13 @@ class BM25Store:
     @staticmethod
     def _tokenize(text: str) -> List[str]:
         return re.findall(r"\w+", text.casefold(), flags=re.UNICODE)
+
+    @staticmethod
+    def _is_project_artifact_metadata(metadata: Dict) -> bool:
+        return (
+            not metadata.get("document_id")
+            or metadata.get("artifact_type") == "requirement_document"
+        )
 
     def _build_index(self, documents: Dict[str, Dict]):
         from rank_bm25 import BM25Okapi
@@ -117,6 +166,9 @@ class BM25Store:
             self._index = index
 
     async def delete_by_document(self, document_id: str) -> None:
+        document_id = str(document_id or "").strip()
+        if not document_id:
+            raise ValueError("document_index_cleanup_scope_invalid")
         async with self._lock:
             replacement = {
                 point_id: document
@@ -137,6 +189,60 @@ class BM25Store:
                 for point_id in stale_ids:
                     staged.pop(point_id, None)
 
+    async def delete_document_generation(
+        self, document_id: str, index_generation: str
+    ) -> None:
+        document_id = str(document_id or "").strip()
+        index_generation = str(index_generation or "").strip()
+        if not document_id or not index_generation:
+            raise ValueError("document_index_cleanup_scope_invalid")
+        await self._delete_document_points(
+            document_id,
+            lambda metadata: str(metadata.get("index_generation") or "")
+            == str(index_generation),
+            include_staged=True,
+        )
+
+    async def delete_stale_document_generations(
+        self, document_id: str, active_generation: str
+    ) -> None:
+        document_id = str(document_id or "").strip()
+        active_generation = str(active_generation or "").strip()
+        if not document_id or not active_generation:
+            raise ValueError("document_index_cleanup_scope_invalid")
+        await self._delete_document_points(
+            document_id,
+            lambda metadata: str(metadata.get("index_generation") or "")
+            != str(active_generation),
+            include_staged=False,
+        )
+
+    async def _delete_document_points(
+        self, document_id: str, generation_matches, *, include_staged: bool
+    ) -> None:
+        def is_target(document):
+            metadata = document.get("metadata", {})
+            return (
+                str(metadata.get("document_id") or "") == str(document_id)
+                and generation_matches(metadata)
+            )
+
+        async with self._lock:
+            replacement = {
+                point_id: document
+                for point_id, document in self._documents.items()
+                if not is_target(document)
+            }
+            ordered_ids, index = self._build_index(replacement)
+            self._documents = replacement
+            self._ordered_ids = ordered_ids
+            self._index = index
+            if include_staged:
+                for staged in self._staged_documents.values():
+                    for point_id, document in list(staged.items()):
+                        if is_target(document):
+                            staged.pop(point_id, None)
+
     async def ids_by_document(self, document_id: str) -> List[str]:
         async with self._lock:
             return [
@@ -155,7 +261,7 @@ class BM25Store:
                 if str(document.get("metadata", {}).get("project_id")) == str(project_id)
                 and str(document.get("metadata", {}).get("artifact_version_id"))
                 == str(artifact_version_id)
-                and not document.get("metadata", {}).get("document_id")
+                and self._is_project_artifact_metadata(document.get("metadata", {}))
             ]
 
     async def list_artifact_version_points(
@@ -171,8 +277,39 @@ class BM25Store:
                 if str(document.get("metadata", {}).get("project_id")) == str(project_id)
                 and str(document.get("metadata", {}).get("artifact_version_id"))
                 == str(artifact_version_id)
-                and not document.get("metadata", {}).get("document_id")
+                and self._is_project_artifact_metadata(document.get("metadata", {}))
             ]
+
+    async def iter_artifact_version_summaries(
+        self, project_id: str, artifact_version_id: str
+    ):
+        async with self._lock:
+            documents = self._documents
+        for point_id, document in documents.items():
+            metadata = document.get("metadata", {})
+            if (
+                str(metadata.get("project_id")) == str(project_id)
+                and str(metadata.get("artifact_version_id"))
+                == str(artifact_version_id)
+                and self._is_project_artifact_metadata(metadata)
+            ):
+                yield {
+                    "id": point_id,
+                    "index_generation": metadata.get("index_generation"),
+                    "indexed_at": metadata.get("indexed_at"),
+                }
+
+    async def artifact_version_summary_snapshot(
+        self, project_id: str, artifact_version_id: str, legacy_generation: str
+    ):
+        async with self._lock:
+            documents = self._documents
+        return BM25ArtifactVersionSummarySnapshot(
+            documents,
+            project_id,
+            artifact_version_id,
+            legacy_generation,
+        )
 
     async def delete_ids(self, point_ids: List[str]) -> None:
         if not point_ids:
@@ -191,6 +328,161 @@ class BM25Store:
             for staged in self._staged_documents.values():
                 for point_id in remove:
                     staged.pop(point_id, None)
+
+    async def delete_artifact_generation(
+        self,
+        project_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        artifact_version_id: str,
+        index_generation: str,
+    ) -> None:
+        scope = tuple(
+            str(value or "").strip()
+            for value in (
+                project_id,
+                artifact_type,
+                artifact_id,
+                artifact_version_id,
+                index_generation,
+            )
+        )
+        if any(not value for value in scope):
+            raise ValueError("project_artifact_cleanup_scope_invalid")
+        (
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            index_generation,
+        ) = scope
+        await self._delete_artifact_points(
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            lambda metadata: str(metadata.get("index_generation") or "")
+            == str(index_generation),
+            include_document_id=artifact_type == "requirement_document",
+        )
+
+    async def delete_stale_artifact_generations(
+        self,
+        project_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        artifact_version_id: str,
+        active_generation: str,
+    ) -> None:
+        scope = tuple(
+            str(value or "").strip()
+            for value in (
+                project_id,
+                artifact_type,
+                artifact_id,
+                artifact_version_id,
+                active_generation,
+            )
+        )
+        if any(not value for value in scope):
+            raise ValueError("project_artifact_cleanup_scope_invalid")
+        (
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            active_generation,
+        ) = scope
+        await self._delete_artifact_points(
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            lambda metadata: str(metadata.get("index_generation") or "")
+            != str(active_generation),
+            include_document_id=artifact_type == "requirement_document",
+        )
+
+    async def delete_artifact_version(
+        self, project_id: str, artifact_type: str, artifact_id: str, artifact_version_id: str
+    ) -> None:
+        scope = tuple(
+            str(value or "").strip()
+            for value in (project_id, artifact_type, artifact_id, artifact_version_id)
+        )
+        if any(not value for value in scope):
+            raise ValueError("project_artifact_cleanup_scope_invalid")
+        project_id, artifact_type, artifact_id, artifact_version_id = scope
+        await self._delete_artifact_points(
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            lambda metadata: True,
+            include_document_id=artifact_type == "requirement_document",
+        )
+
+    async def delete_project_artifact_version(
+        self, project_id: str, artifact_version_id: str
+    ) -> None:
+        scope = tuple(
+            str(value or "").strip() for value in (project_id, artifact_version_id)
+        )
+        if any(not value for value in scope):
+            raise ValueError("project_artifact_cleanup_scope_invalid")
+        project_id, artifact_version_id = scope
+        def is_target(document):
+            metadata = document.get("metadata", {})
+            return (
+                bool(metadata.get("artifact_type"))
+                and bool(metadata.get("artifact_id"))
+                and str(metadata.get("project_id")) == str(project_id)
+                and str(metadata.get("artifact_version_id"))
+                == str(artifact_version_id)
+            )
+
+        async with self._lock:
+            replacement = {
+                point_id: document
+                for point_id, document in self._documents.items()
+                if not is_target(document)
+            }
+            ordered_ids, index = self._build_index(replacement)
+            self._documents = replacement
+            self._ordered_ids = ordered_ids
+            self._index = index
+
+    async def _delete_artifact_points(
+        self,
+        project_id: str,
+        artifact_type: str,
+        artifact_id: str,
+        artifact_version_id: str,
+        generation_matches,
+        include_document_id: bool = False,
+    ) -> None:
+        def is_target(document):
+            metadata = document.get("metadata", {})
+            return (
+                (include_document_id or not metadata.get("document_id"))
+                and str(metadata.get("project_id")) == str(project_id)
+                and str(metadata.get("artifact_type")) == str(artifact_type)
+                and str(metadata.get("artifact_id")) == str(artifact_id)
+                and str(metadata.get("artifact_version_id"))
+                == str(artifact_version_id)
+                and generation_matches(metadata)
+            )
+
+        async with self._lock:
+            replacement = {
+                point_id: document
+                for point_id, document in self._documents.items()
+                if not is_target(document)
+            }
+            ordered_ids, index = self._build_index(replacement)
+            self._documents = replacement
+            self._ordered_ids = ordered_ids
+            self._index = index
 
     @staticmethod
     def _can_access(
@@ -260,8 +552,8 @@ class BM25Store:
             if self._index is None:
                 return []
             index = self._index
-            ordered_ids = list(self._ordered_ids)
-            snapshot = dict(self._documents)
+            ordered_ids = self._ordered_ids
+            snapshot = self._documents
         scores = await asyncio.to_thread(index.get_scores, query_tokens)
 
         allowed_document_ids = set(map(str, document_ids or []))

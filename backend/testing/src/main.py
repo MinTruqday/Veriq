@@ -16,10 +16,15 @@ from src.core.database import close_database, connect_database, database
 from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 from src.modules.design.router import router as design_router
 from src.modules.execution.router import router as execution_router
+from src.modules.finance import router as finance_router
 from src.modules.integrations.router import router as integrations_router
 from src.modules.operations.router import router as operations_router
 from src.modules.projects.router import router as projects_router
 from src.modules.quality.router import router as quality_router
+from src.modules.quality.services.defect_search_index_worker import (
+    start_defect_search_index_worker,
+    stop_defect_search_index_worker,
+)
 from src.modules.requirements.router import router as requirements_router
 from src.modules.requirements.services.requirement_document_worker import (
     start_requirement_document_parse_worker,
@@ -36,7 +41,9 @@ async def lifespan(app: FastAPI):
     await project_access_repository.migrate_legacy()
     await start_event_dispatcher()
     await start_requirement_document_parse_worker()
+    await start_defect_search_index_worker()
     yield
+    await stop_defect_search_index_worker()
     await stop_requirement_document_parse_worker()
     await stop_event_dispatcher()
     await close_database()
@@ -137,6 +144,7 @@ async def release_ai_automation_access_lease(request: Request, call_next):
 app.include_router(projects_router)
 app.include_router(requirements_router)
 app.include_router(execution_router)
+app.include_router(finance_router)
 app.include_router(design_router)
 app.include_router(quality_router)
 app.include_router(integrations_router)

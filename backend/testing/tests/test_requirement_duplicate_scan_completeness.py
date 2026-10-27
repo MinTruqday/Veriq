@@ -12,7 +12,7 @@ async def test_project_wide_duplicate_scan_rejects_requirement_truncation(monkey
     monkeypatch.setattr(
         requirement_analysis,
         "get_project",
-        lambda *args, **kwargs: _resolved(None),
+        _resolved(None),
     )
     monkeypatch.setattr(
         requirement_analysis.settings,
@@ -39,7 +39,7 @@ async def test_duplicate_scan_rejects_missing_current_versions(monkeypatch):
     monkeypatch.setattr(
         requirement_analysis,
         "get_project",
-        lambda *args, **kwargs: _resolved(None),
+        _resolved(None),
     )
     monkeypatch.setattr(
         requirement_analysis.settings,
@@ -71,7 +71,7 @@ async def test_duplicate_scan_rejects_wrong_version_ids_even_when_count_matches(
     monkeypatch.setattr(
         requirement_analysis,
         "get_project",
-        lambda *args, **kwargs: _resolved(None),
+        _resolved(None),
     )
     monkeypatch.setattr(
         requirement_analysis.settings,
@@ -103,7 +103,7 @@ async def test_duplicate_scan_rejects_version_owned_by_another_requirement(monke
     monkeypatch.setattr(
         requirement_analysis,
         "get_project",
-        lambda *args, **kwargs: _resolved(None),
+        _resolved(None),
     )
     monkeypatch.setattr(
         requirement_analysis.requirement_analysis_repository,
@@ -138,7 +138,7 @@ async def test_duplicate_scan_rejects_truncated_acceptance_criteria(monkeypatch)
     monkeypatch.setattr(
         requirement_analysis,
         "get_project",
-        lambda *args, **kwargs: _resolved(None),
+        _resolved(None),
     )
     monkeypatch.setattr(
         requirement_analysis.settings,
@@ -158,7 +158,16 @@ async def test_duplicate_scan_rejects_truncated_acceptance_criteria(monkeypatch)
     monkeypatch.setattr(
         requirement_analysis.requirement_analysis_repository,
         "list_versions",
-        _resolved([{"_id": "REQV-1", "title": "Đăng nhập"}]),
+        _resolved(
+            [
+                {
+                    "_id": "REQV-1",
+                    "project_id": "PRJ-1",
+                    "requirement_id": "REQ-1",
+                    "title": "Đăng nhập",
+                }
+            ]
+        ),
     )
     monkeypatch.setattr(
         requirement_analysis.requirement_analysis_repository,
@@ -185,7 +194,7 @@ async def test_duplicate_scan_records_the_scoring_signals_it_actually_uses(monke
     monkeypatch.setattr(
         requirement_analysis,
         "get_project",
-        lambda *args, **kwargs: _resolved(None),
+        _resolved(None),
     )
     monkeypatch.setattr(
         requirement_analysis.requirement_analysis_repository,

@@ -1,4 +1,6 @@
 import math
+import re
+import unicodedata
 from urllib.parse import urlencode
 
 from src.tools.automation_publication import publish_grounded_test_case
@@ -20,7 +22,20 @@ def compilable_document_ids(documents, event_document_id):
     return identifiers if str(event_document_id) in identifiers else []
 
 def normalized_text(value):
-    return " ".join(str(value or "").casefold().split())
+    normalized = unicodedata.normalize("NFC", str(value or ""))
+    return " ".join(normalized.casefold().split())
+
+
+def source_contains_exact_phrase(source_text, quote):
+    normalized_source = normalized_text(source_text)
+    normalized_quote = normalized_text(quote)
+    if not normalized_source or not normalized_quote:
+        return False
+    return re.search(
+        rf"(?<!\w){re.escape(normalized_quote)}(?!\w)",
+        normalized_source,
+        flags=re.UNICODE,
+    ) is not None
 
 def response_items(value):
     if isinstance(value, list):
@@ -316,7 +331,6 @@ async def resolve_answered_clarifications(version, config):
     source_parts.extend(
         collect_text(version.get("acceptance_criteria") or [])
     )
-    source_text = "\n".join(source_parts)
     pending = []
     for item in items:
         if item.get("status") == "OPEN":
@@ -325,7 +339,7 @@ async def resolve_answered_clarifications(version, config):
         if item.get("status") != "ANSWERED":
             continue
         answer = str(item.get("answer") or "").strip()
-        if not answer or answer.casefold() not in source_text.casefold():
+        if not any(source_contains_exact_phrase(part, answer) for part in source_parts):
             pending.append(item)
             continue
         try:

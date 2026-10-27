@@ -347,6 +347,47 @@ class MCPGatewayPolicyTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
 
+    async def test_entire_mcp_call_is_bounded_and_timeout_is_audited(self):
+        async def slow_call(*_args):
+            await asyncio.sleep(0.02)
+
+        with (
+            patch(
+                "src.tools.mcp_gateway.limits",
+                SimpleNamespace(task_timeout_seconds=0.001),
+            ),
+            patch("src.tools.mcp_gateway._call_mcp_read_tool", new=slow_call),
+        ):
+            output = await call_mcp_read_tool.ainvoke(
+                {
+                    "connection_id": "mcp-1",
+                    "tool_name": "read_source",
+                    "arguments": {},
+                },
+                config={
+                    "configurable": {
+                        "project_id": "project-1",
+                        "user_id": "qa-1",
+                        "token": "signed-project-token",
+                        "permissions": ["project.read"],
+                    }
+                },
+            )
+
+        self.assertEqual(
+            json.loads(output),
+            {
+                "status": "degraded",
+                "reason_code": "MCP_TOOL_TIMEOUT",
+                "audit_id": self.record_mcp_audit.await_args.args[0].audit_id,
+            },
+        )
+        self.complete_mcp_audit.assert_awaited_once()
+        self.assertEqual(
+            self.complete_mcp_audit.await_args.kwargs["reason_code"],
+            "MCP_TOOL_TIMEOUT",
+        )
+
     async def test_agent_executes_allowlisted_mcp_read_and_records_observation(self):
         remote_result = SimpleNamespace(
             is_error=False,

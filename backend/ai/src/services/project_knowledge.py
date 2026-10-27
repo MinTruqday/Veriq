@@ -17,6 +17,7 @@ from src.repositories.project_artifact_generation import (
     project_artifact_generation_repository,
 )
 from src.schemas.project import (
+    DOCUMENT_INDEXED_ARTIFACT_TYPES,
     ProjectArtifactChunkMetadata,
     ProjectArtifactIndexRequest,
     ProjectArtifactQdrantPayload,
@@ -46,19 +47,25 @@ def _invalidate_project_search_cache(project_id: str) -> None:
 
 async def _rollback_project_artifact_generation(
     project_id: str,
+    artifact_type: str,
+    artifact_id: str,
     artifact_version_id: str,
     generation: str,
-    point_ids: list[str],
     cause: Exception,
 ) -> None:
     rollback_results = await asyncio.gather(
-        vector_store.delete_ids(point_ids),
-        bm25_store.delete_ids(point_ids),
+        vector_store.delete_artifact_generation(
+            project_id, artifact_type, artifact_id, artifact_version_id, generation
+        ),
+        bm25_store.delete_artifact_generation(
+            project_id, artifact_type, artifact_id, artifact_version_id, generation
+        ),
+        bm25_store.discard_staged(generation),
         return_exceptions=True,
     )
     rollback_incomplete = [
         store_name
-        for store_name, result in zip(("qdrant", "bm25"), rollback_results)
+        for store_name, result in zip(("qdrant", "bm25", "bm25_staging"), rollback_results)
         if isinstance(result, BaseException)
     ]
     if rollback_incomplete:
@@ -88,7 +95,7 @@ def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest)
     extraction = source_metadata.pop("extraction", {})
     if not isinstance(extraction, dict):
         extraction = {}
-    return {
+    metadata = {
         **source_metadata,
         "project_id": project_id,
         "artifact_type": req.artifact_type,
@@ -100,6 +107,7 @@ def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest)
         "version": req.version,
         "module": req.module,
         "visibility": req.metadata.get("visibility", "project"),
+        "ai_enabled": req.metadata.get("ai_enabled"),
         "requirement_ids": req.metadata.get(
             "requirement_ids",
             [req.artifact_id] if req.artifact_type == "requirement_version" else [],
@@ -124,9 +132,10 @@ def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest)
             "DEGRADED"
             if extraction.get("unprocessed_blocks")
             else "COMPLETE"
-            if extraction.get("structure_available") is True
+            if extraction.get("parser") and req.text.strip()
             else None
         ),
+        "extraction_method": extraction.get("extraction_method") or extraction.get("parser"),
         "unprocessed_block_count": len(extraction.get("unprocessed_blocks") or []),
         "extraction_warning_count": len(extraction.get("extraction_warnings") or []),
         "extraction_warning_codes": sorted(
@@ -139,6 +148,11 @@ def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest)
         "embedding_model": settings.EMBEDDING_MODEL,
         "indexed_at": datetime.now(timezone.utc).isoformat(),
     }
+    if req.artifact_type in DOCUMENT_INDEXED_ARTIFACT_TYPES:
+        metadata["document_index_contract_version"] = (
+            settings.DOCUMENT_INDEX_CONTRACT_VERSION
+        )
+    return metadata
 
 
 def project_artifact_point_payload(text: str, metadata: dict) -> dict:
@@ -194,20 +208,23 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
         ) from error
     if manifest.get("status") == "DELETING":
         raise HTTPException(status_code=409, detail={"code": "ARTIFACT_REMOVAL_IN_PROGRESS"})
-    index_generation = uuid4().hex
+    content_hash = hashlib.sha256(req.text.encode("utf-8")).hexdigest()
+    generation_material = json.dumps(
+        {
+            "project_id": project_id,
+            "artifact_version_id": req.artifact_version_id,
+            "content_hash": content_hash,
+            "index_attempt_id": uuid4().hex,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    index_generation = hashlib.sha256(generation_material.encode("utf-8")).hexdigest()
     metadata = {
         **project_artifact_metadata(project_id, req),
         "index_generation": index_generation,
     }
-    chunks = await chunker.chunk_document(
-        req.text,
-        metadata,
-        structure=[
-            block.model_dump(exclude_none=True) for block in req.source_structure
-        ],
-    )
-    if not chunks:
-        raise HTTPException(status_code=422, detail={"code": "INDEX_CONTENT_EMPTY"})
+    source_structure = req.source_structure
     embedding_batch_size = getattr(embedder, "_batch_size", None)
     point_batch_size = getattr(vector_store, "upsert_batch_size", None)
     if (
@@ -220,59 +237,61 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
     ):
         raise ValueError("project_artifact_index_batch_size_invalid")
     batch_size = min(embedding_batch_size, point_batch_size)
-    content_hash = hashlib.sha256(req.text.encode("utf-8")).hexdigest()
-    ids = [
-        str(uuid5(
-            NAMESPACE_URL,
-            f"{project_id}:{req.artifact_version_id}:{content_hash}:{index_generation}:{index}",
-        ))
-        for index in range(len(chunks))
-    ]
-    old_vector_ids, old_bm25_ids = await asyncio.gather(
-        vector_store.ids_by_artifact_version(project_id, req.artifact_version_id),
-        bm25_store.ids_by_artifact_version(project_id, req.artifact_version_id),
-    )
-    indexed_ids = []
-    lexical_documents = []
-    try:
-        for batch_start in range(0, len(chunks), batch_size):
-            batch_end = min(batch_start + batch_size, len(chunks))
-            batch_chunks = chunks[batch_start:batch_end]
-            batch_ids = ids[batch_start:batch_end]
-            batch_texts = [chunk["text"] for chunk in batch_chunks]
-            embedding_inputs = [f"{req.title} {text}" for text in batch_texts]
-            vectors = await embedder.embed_batch(embedding_inputs)
-            if len(vectors) != len(batch_chunks) or any(
-                not isinstance(vector, list) or not vector for vector in vectors
-            ):
-                raise RuntimeError("INDEX_EMBEDDING_COUNT_MISMATCH")
-            batch_metadata = [
-                {
-                    **metadata,
-                    **chunk.get("metadata", {}),
-                    "chunk_index": batch_start + offset,
-                    "embedding_input_hash": hashlib.sha256(
-                        embedding_inputs[offset].encode("utf-8")
-                    ).hexdigest(),
-                    "embedding_input_mode": "TITLE_AND_TEXT",
-                }
-                for offset, chunk in enumerate(batch_chunks)
-            ]
-            point_payloads = [
-                project_artifact_point_payload(text, item_metadata)
-                for text, item_metadata in zip(batch_texts, batch_metadata)
-            ]
-            indexed_ids.extend(batch_ids)
-            await vector_store.upsert(
-                batch_ids,
-                vectors,
-                [payload["text"] for payload in point_payloads],
-                [
-                    {key: value for key, value in payload.items() if key != "text"}
-                    for payload in point_payloads
-                ],
+    stage_id = index_generation
+    chunk_count = 0
+
+    async def write_batch(batch_chunks, first_chunk_index):
+        if not batch_chunks:
+            return first_chunk_index
+        batch_end = first_chunk_index + len(batch_chunks)
+        batch_ids = [
+            str(
+                uuid5(
+                    NAMESPACE_URL,
+                    f"{project_id}:{req.artifact_version_id}:{content_hash}:{index_generation}:{index}",
+                )
             )
-            lexical_documents.extend(
+            for index in range(first_chunk_index, batch_end)
+        ]
+        batch_texts = [chunk["text"] for chunk in batch_chunks]
+        embedding_inputs = [f"{req.title} {text}" for text in batch_texts]
+        vectors = await embedder.embed_batch(embedding_inputs)
+        if len(vectors) != len(batch_chunks) or any(
+            not isinstance(vector, list) or not vector for vector in vectors
+        ):
+            raise RuntimeError("INDEX_EMBEDDING_COUNT_MISMATCH")
+        batch_metadata = [
+            {
+                **metadata,
+                **chunk.get("metadata", {}),
+                "project_id": project_id,
+                "artifact_type": req.artifact_type,
+                "artifact_id": req.artifact_id,
+                "artifact_version_id": req.artifact_version_id,
+                "index_generation": index_generation,
+                "chunk_index": first_chunk_index + offset,
+                "embedding_input_hash": hashlib.sha256(
+                    embedding_inputs[offset].encode("utf-8")
+                ).hexdigest(),
+                "embedding_input_mode": "TITLE_AND_TEXT",
+            }
+            for offset, chunk in enumerate(batch_chunks)
+        ]
+        point_payloads = [
+            project_artifact_point_payload(text, item_metadata)
+            for text, item_metadata in zip(batch_texts, batch_metadata)
+        ]
+        await vector_store.upsert(
+            batch_ids,
+            vectors,
+            [payload["text"] for payload in point_payloads],
+            [
+                {key: value for key, value in payload.items() if key != "text"}
+                for payload in point_payloads
+            ],
+        )
+        await bm25_store.stage_upsert(
+            [
                 {
                     "id": point_id,
                     "text": text,
@@ -281,24 +300,75 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
                 for point_id, text, item_metadata in zip(
                     batch_ids, batch_texts, batch_metadata
                 )
-            )
-
-        await bm25_store.upsert(
-            lexical_documents
+            ],
+            stage_id=stage_id,
         )
+        return batch_end
+
+    try:
+        semantic = True
+        chunk_stream = chunker.iter_chunk_document(
+            req.text, metadata, structure=source_structure, semantic=semantic
+        )
+        batch_chunks = []
+        while True:
+            try:
+                chunk = await anext(chunk_stream)
+            except StopAsyncIteration:
+                break
+            except asyncio.CancelledError:
+                raise
+            except Exception as chunk_error:
+                if not semantic:
+                    raise
+                await _rollback_project_artifact_generation(
+                    project_id,
+                    req.artifact_type,
+                    req.artifact_id,
+                    req.artifact_version_id,
+                    index_generation,
+                    chunk_error,
+                )
+                batch_chunks.clear()
+                chunk_count = 0
+                semantic = False
+                chunk_stream = chunker.iter_chunk_document(
+                    req.text, metadata, structure=source_structure, semantic=False
+                )
+                continue
+            batch_chunks.append(chunk)
+            if len(batch_chunks) >= batch_size:
+                chunk_count = await write_batch(batch_chunks, chunk_count)
+                batch_chunks.clear()
+        if batch_chunks:
+            chunk_count = await write_batch(batch_chunks, chunk_count)
+        if chunk_count == 0:
+            raise HTTPException(status_code=422, detail={"code": "INDEX_CONTENT_EMPTY"})
+        await bm25_store.publish_staged(stage_id)
+    except asyncio.CancelledError as index_error:
+        await _rollback_project_artifact_generation(
+            project_id,
+            req.artifact_type,
+            req.artifact_id,
+            req.artifact_version_id,
+            index_generation,
+            index_error,
+        )
+        raise
     except Exception as index_error:
         await _rollback_project_artifact_generation(
             project_id,
+            req.artifact_type,
+            req.artifact_id,
             req.artifact_version_id,
             index_generation,
-            indexed_ids,
             index_error,
         )
         raise
 
     try:
         published = await project_artifact_generation_repository.publish(
-            manifest, index_generation, len(ids)
+            manifest, index_generation, chunk_count
         )
     except Exception as publish_error:
         try:
@@ -314,32 +384,46 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
             published = True
         else:
             await _rollback_project_artifact_generation(
-                project_id, req.artifact_version_id, index_generation, ids, publish_error
+                project_id,
+                req.artifact_type,
+                req.artifact_id,
+                req.artifact_version_id,
+                index_generation,
+                publish_error,
             )
             raise
     if not published:
         conflict = ProjectArtifactGenerationConflict("artifact_generation_revision_changed")
         await _rollback_project_artifact_generation(
-            project_id, req.artifact_version_id, index_generation, ids, conflict
+            project_id,
+            req.artifact_type,
+            req.artifact_id,
+            req.artifact_version_id,
+            index_generation,
+            conflict,
         )
         raise conflict
 
-    current_ids = set(ids)
-    stale_ids = (set(old_vector_ids) | set(old_bm25_ids)) - current_ids
-    stale_vector_ids = sorted(stale_ids)
-    stale_bm25_ids = sorted(stale_ids)
     cleanup_pending = []
     cleanup_results = await asyncio.gather(
-        vector_store.delete_ids(stale_vector_ids),
-        bm25_store.delete_ids(stale_bm25_ids),
+        vector_store.delete_stale_artifact_generations(
+            project_id,
+            req.artifact_type,
+            req.artifact_id,
+            req.artifact_version_id,
+            index_generation,
+        ),
+        bm25_store.delete_stale_artifact_generations(
+            project_id,
+            req.artifact_type,
+            req.artifact_id,
+            req.artifact_version_id,
+            index_generation,
+        ),
         return_exceptions=True,
     )
-    for store_name, stale_ids, result in zip(
-        ("qdrant", "bm25"),
-        (stale_vector_ids, stale_bm25_ids),
-        cleanup_results,
-    ):
-        if stale_ids and isinstance(result, BaseException):
+    for store_name, result in zip(("qdrant", "bm25"), cleanup_results):
+        if isinstance(result, BaseException):
             cleanup_pending.append(store_name)
     if cleanup_pending:
         logger.warning(
@@ -372,7 +456,7 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
         "status": "degraded" if cleanup_pending else "indexed",
         "project_id": project_id,
         "artifact_version_id": req.artifact_version_id,
-        "chunks_count": len(ids),
+        "chunks_count": chunk_count,
         "index_generation": index_generation,
         "index_cleanup_pending": cleanup_pending,
         "graph": graph_status,
@@ -394,16 +478,11 @@ async def remove_project_artifact(project_id: str, artifact_version_id: str):
             raise HTTPException(
                 status_code=503, detail={"code": "INDEX_MANIFEST_UNAVAILABLE"}
             ) from error
-        vector_ids, bm25_ids = await asyncio.gather(
-            vector_store.ids_by_artifact_version(project_id, artifact_version_id),
-            bm25_store.ids_by_artifact_version(project_id, artifact_version_id),
-        )
-        point_ids = sorted(set(vector_ids) | set(bm25_ids))
         if not await project_artifact_generation_repository.removal_is_current(manifest):
             raise HTTPException(status_code=409, detail={"code": "ARTIFACT_REMOVAL_SUPERSEDED"})
         delete_results = await asyncio.gather(
-            vector_store.delete_ids(point_ids),
-            bm25_store.delete_ids(point_ids),
+            vector_store.delete_project_artifact_version(project_id, artifact_version_id),
+            bm25_store.delete_project_artifact_version(project_id, artifact_version_id),
             return_exceptions=True,
         )
         failed_stores = [

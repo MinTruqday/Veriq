@@ -142,6 +142,10 @@ async def setup_indexes():
             ],
             "mcp_tool_call_audits": [
                 IndexModel(
+                    [("status", ASCENDING), ("started_at", ASCENDING)],
+                    name="mcp_call_audit_interruption_recovery",
+                ),
+                IndexModel(
                     [("project_id", ASCENDING), ("completed_at", DESCENDING)],
                     name="project_mcp_call_audit_history",
                 ),
@@ -165,6 +169,16 @@ async def setup_indexes():
             "automation_derivation_receipts": [
                 IndexModel([("automation_run_id", ASCENDING)], unique=True),
                 IndexModel([("project_id", ASCENDING), ("created_at", DESCENDING)]),
+            ],
+            "dead_letter_recovery_audit": [
+                IndexModel(
+                    [("created_at", DESCENDING), ("_id", ASCENDING)],
+                    name="dead_letter_recovery_history",
+                ),
+                IndexModel(
+                    [("status", ASCENDING), ("created_at", ASCENDING)],
+                    name="dead_letter_recovery_pending_actions",
+                ),
             ],
             "automation_project_blueprints": [
                 IndexModel(

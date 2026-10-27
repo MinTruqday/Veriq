@@ -30,8 +30,8 @@ TESTING_FEW_SHOT_EXAMPLES = """<few_shot_examples>
 <incorrect_behavior>Put the hypothetical fault in the title objective preconditions steps expected result or coverage obligations as though it were documented behavior</incorrect_behavior>
 </example>
 <example>
-<situation>The user requests analysis in Vietnamese while the evidence is written in English</situation>
-<correct_behavior>Preserve identifiers and technical values while writing every explanatory field in Vietnamese</correct_behavior>
+<situation>The user requests analysis in their selected language while the evidence is written in another language</situation>
+<correct_behavior>Write explanatory fields in the user's selected language while preserving identifiers, technical values, and exact source quotations</correct_behavior>
 <incorrect_behavior>Reply in English solely because the evidence is written in English</incorrect_behavior>
 </example>
 </few_shot_examples>"""

@@ -7,6 +7,7 @@ import FilePicker from "../../../components/FilePicker";
 import { docText, emptyDoc, messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import {
   TEST_CASE_TYPES,
   TEST_CASE_ASSESSMENT_LEVELS,
@@ -59,7 +60,7 @@ const fields = [
     options: ["manual", "candidate", "automated"],
   },
   { key: "data_set_version_ids", label: "Phiên bản bộ dữ liệu", kind: "list" },
-  { key: "requirement_version_ids", label: "Phiên bản Requirement liên kết", kind: "list" },
+  { key: "requirement_version_ids", label: "Phiên bản yêu cầu liên kết", kind: "list" },
   { key: "acceptance_criterion_ids", label: "Tiêu chí chấp nhận liên kết", kind: "list" },
   { key: "coverage_item_ids", label: "Điểm cần kiểm thử liên kết", kind: "list" },
   { key: "test_condition_ids", label: "Điều kiện kiểm thử liên kết", kind: "list" },
@@ -1038,6 +1039,42 @@ export default function TestCaseCompareWorkspace({
       saveInFlight.current = false;
     }
   };
+  if (!result) {
+    return (
+      <Modal
+        isOpen
+        onClose={close}
+        ariaLabel="So sánh và ghép ca kiểm thử"
+        className="w-[min(1600px,100%)] max-w-none max-h-[94dvh] overflow-y-auto"
+      >
+        <ModalHeader>
+          <ModalTitle>So sánh và ghép ca kiểm thử</ModalTitle>
+        </ModalHeader>
+        <div className="min-w-0 space-y-4 p-4 sm:p-6">
+          {error ? (
+            <div
+              role="alert"
+              className="rounded-control border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            >
+              {error}
+            </div>
+          ) : (
+            <p role="status">Đang đọc bản gốc, nguồn và đề xuất AI…</p>
+          )}
+          {error && (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => void reloadComparison()}
+            >
+              Thử tải dữ liệu đối chiếu lại
+            </button>
+          )}
+        </div>
+      </Modal>
+    );
+  }
   const original = context?.original;
   const proposal = context?.proposal;
   const stale = revisionStale || !!context?.stale_reasons?.length;
@@ -1187,9 +1224,14 @@ export default function TestCaseCompareWorkspace({
             </div>
             <div className="grid min-w-0 gap-3 xl:grid-cols-3">
               <section className="min-w-0 rounded-control border border-border bg-surface-quiet p-4">
-                <h4 className="font-semibold">
-                  {context.is_new ? "Đặc tả nguồn — ca mới" : "Bản gốc hiện có"}
-                </h4>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="font-semibold">
+                    {context.is_new ? "Đặc tả nguồn — ca mới" : "Bản gốc hiện có"}
+                  </h4>
+                  {!context.is_new && original && (
+                    <ContentOriginBadge origin={original.origin || "manual"} />
+                  )}
+                </div>
                 {!context.is_new && original ? (
                   <div className="mt-3 space-y-1 text-sm">
                     <p className="font-medium">{original.title}</p>
@@ -1218,8 +1260,11 @@ export default function TestCaseCompareWorkspace({
                   <p className="mt-3 text-sm text-ink-muted">Không có phiên bản gốc.</p>
                 )}
               </section>
-              <section className="min-w-0 rounded-control border border-border bg-surface-quiet p-4">
-                <h4 className="font-semibold">Đề xuất AI ban đầu</h4>
+              <section className="min-w-0 rounded-control border border-violet-300 bg-violet-50/60 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="font-semibold">Đề xuất AI ban đầu</h4>
+                  <ContentOriginBadge origin="ai_generated" />
+                </div>
                 {proposal ? (
                   <div className="mt-3 space-y-1 text-sm">
                     <p className="font-medium">{proposal.title}</p>
@@ -1236,7 +1281,10 @@ export default function TestCaseCompareWorkspace({
                 )}
               </section>
               <section className="min-w-0 rounded-control border border-brand/30 bg-brand/5 p-4">
-                <h4 className="font-semibold">Bản kết quả sau chọn/ghép</h4>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="font-semibold">Bản kết quả sau chọn/ghép</h4>
+                  <ContentOriginBadge origin="manual" humanLabel="Bản người dùng chọn/ghép" />
+                </div>
                 <div className="mt-3 space-y-1 text-sm">
                   <p className="font-medium">{result.title || "Chưa có tên ca"}</p>
                   <p className="text-ink-muted">

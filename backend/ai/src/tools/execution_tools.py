@@ -88,9 +88,24 @@ async def get_work_item_impact_context(
             ensure_ascii=False,
         )
 
+    raw_requirement_ids = work_item.get("requirement_ids", [])
+    if (
+        not isinstance(raw_requirement_ids, list)
+        or any(not isinstance(value, str) or not value.strip() for value in raw_requirement_ids)
+    ):
+        return json.dumps(
+            {
+                "status": "incomplete",
+                "reason_code": "WORK_ITEM_REQUIREMENT_LINKS_INVALID",
+                "work_item_id": work_item_id,
+            },
+            ensure_ascii=False,
+        )
+    requirement_ids = list(dict.fromkeys(value.strip() for value in raw_requirement_ids))
     requirements = []
     test_cases = []
-    for requirement_id in dict.fromkeys(str(value) for value in work_item.get("requirement_ids", []) if value):
+    test_case_requirement_versions = {}
+    for requirement_id in requirement_ids:
         requirement = await require_operation("GET", f"/yeu-cau/{requirement_id}", config)
         if requirement.get("_id") != requirement_id or requirement.get("project_id") != project_id:
             return json.dumps(
@@ -149,8 +164,152 @@ async def get_work_item_impact_context(
                 and version_id in linked_versions
             ):
                 test_cases.append(case)
+                test_case_requirement_versions.setdefault(str(case.get("_id") or ""), set()).add(
+                    version_id
+                )
 
     test_cases = list({str(item["_id"]): item for item in test_cases}.values())
+
+    latest_work_item = await require_operation(
+        "GET", f"/du-an/{project_id}/cong-viec/{work_item_id}", config
+    )
+    if (
+        not isinstance(latest_work_item, dict)
+        or latest_work_item.get("_id") != work_item_id
+        or latest_work_item.get("project_id") != project_id
+    ):
+        return json.dumps(
+            {"status": "denied", "reason_code": "WORK_ITEM_SCOPE_MISMATCH"},
+            ensure_ascii=False,
+        )
+    if (
+        type(latest_work_item.get("revision")) is not int
+        or latest_work_item["revision"] != expected_revision
+        or latest_work_item.get("requirement_ids", []) != raw_requirement_ids
+    ):
+        return json.dumps(
+            {
+                "status": "superseded",
+                "reason_code": "WORK_ITEM_IMPACT_SCOPE_CHANGED_DURING_READ",
+                "project_id": project_id,
+                "work_item_id": work_item_id,
+                "expected_revision": expected_revision,
+                "current_revision": latest_work_item.get("revision"),
+            },
+            ensure_ascii=False,
+        )
+
+    for case in test_cases:
+        case_id = str(case.get("_id") or "")
+        expected_case_version = case.get("current_version") or {}
+        expected_case_version_id = (
+            case.get("current_version_id") or expected_case_version.get("_id")
+        )
+        if not case_id or not expected_case_version_id:
+            return json.dumps(
+                {
+                    "status": "incomplete",
+                    "reason_code": "WORK_ITEM_TEST_CASE_VERSION_UNAVAILABLE",
+                    "work_item_id": work_item_id,
+                    "test_case_id": case_id or None,
+                },
+                ensure_ascii=False,
+            )
+        latest_case = await require_operation(
+            "GET", f"/ca-kiem-thu/{case_id}", config
+        )
+        latest_case_version = (
+            latest_case.get("current_version")
+            if isinstance(latest_case, dict)
+            else None
+        )
+        latest_case_version_id = (
+            latest_case.get("current_version_id")
+            or (
+                latest_case_version.get("_id")
+                if isinstance(latest_case_version, dict)
+                else None
+            )
+        ) if isinstance(latest_case, dict) else None
+        if (
+            not isinstance(latest_case, dict)
+            or latest_case.get("_id") != case_id
+            or latest_case.get("project_id") != project_id
+        ):
+            return json.dumps(
+                {
+                    "status": "incomplete",
+                    "reason_code": "WORK_ITEM_TEST_CASE_SCOPE_CHANGED_DURING_READ",
+                    "work_item_id": work_item_id,
+                    "test_case_id": case_id,
+                },
+                ensure_ascii=False,
+            )
+        if (
+            latest_case_version_id != expected_case_version_id
+            or not isinstance(latest_case_version, dict)
+            or latest_case_version.get("_id") != expected_case_version_id
+            or latest_case_version.get("project_id") != project_id
+            or latest_case_version.get("test_case_id") != case_id
+        ):
+            return json.dumps(
+                {
+                    "status": "superseded",
+                    "reason_code": "WORK_ITEM_TEST_CASE_VERSION_CHANGED_DURING_READ",
+                    "work_item_id": work_item_id,
+                    "test_case_id": case_id,
+                    "expected_test_case_version_id": expected_case_version_id,
+                    "current_test_case_version_id": latest_case_version_id,
+                },
+                ensure_ascii=False,
+            )
+        current_requirement_version_ids = set(
+            latest_case_version.get("requirement_version_ids") or []
+        )
+        if not test_case_requirement_versions.get(case_id, set()).issubset(
+            current_requirement_version_ids
+        ):
+            return json.dumps(
+                {
+                    "status": "incomplete",
+                    "reason_code": "WORK_ITEM_TEST_CASE_REQUIREMENT_LINK_CHANGED_DURING_READ",
+                    "work_item_id": work_item_id,
+                    "test_case_id": case_id,
+                },
+                ensure_ascii=False,
+            )
+
+    for linked in requirements:
+        expected_requirement = linked["requirement"]
+        expected_version_id = linked["current_version"]["_id"]
+        latest_requirement = await require_operation(
+            "GET",
+            f"/yeu-cau/{expected_requirement['_id']}",
+            config,
+        )
+        latest_version = latest_requirement.get("current_version") if isinstance(latest_requirement, dict) else None
+        latest_version_id = (
+            latest_requirement.get("current_version_id")
+            or (latest_version.get("_id") if isinstance(latest_version, dict) else None)
+        ) if isinstance(latest_requirement, dict) else None
+        if (
+            not isinstance(latest_requirement, dict)
+            or latest_requirement.get("_id") != expected_requirement["_id"]
+            or latest_requirement.get("project_id") != project_id
+            or latest_version_id != expected_version_id
+        ):
+            return json.dumps(
+                {
+                    "status": "superseded",
+                    "reason_code": "WORK_ITEM_REQUIREMENT_VERSION_CHANGED_DURING_READ",
+                    "project_id": project_id,
+                    "work_item_id": work_item_id,
+                    "requirement_id": expected_requirement["_id"],
+                    "expected_requirement_version_id": expected_version_id,
+                    "current_requirement_version_id": latest_version_id,
+                },
+                ensure_ascii=False,
+            )
 
     return json.dumps(
         {

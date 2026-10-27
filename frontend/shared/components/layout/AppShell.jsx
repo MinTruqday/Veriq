@@ -473,6 +473,7 @@ export default function AppShell({ children, requireAuth }) {
               height={32}
               className="h-8 w-8 rounded-lg object-cover"
               priority
+              unoptimized
             />
             <span className="text-[15px] font-bold tracking-[-0.02em]">Veriq</span>
           </Link>
@@ -601,10 +602,10 @@ export default function AppShell({ children, requireAuth }) {
                   Đăng nhập
                 </Link>
                 <Link
-                  href="/dang-ky"
+                  href="/dang-nhap"
                   className="flex min-h-11 items-center whitespace-nowrap rounded-control bg-brand px-4 py-2 text-[14px] font-semibold text-white hover:bg-brand-hover"
                 >
-                  Đăng ký
+                  Đăng nhập
                 </Link>
               </>
             )}
@@ -629,6 +630,7 @@ export default function AppShell({ children, requireAuth }) {
               height={36}
               className="h-9 w-9 rounded-xl object-cover"
               priority
+              unoptimized
             />
             {!sidebarCollapsed && <span>Veriq</span>}
           </Link>
@@ -694,6 +696,7 @@ export default function AppShell({ children, requireAuth }) {
                   width={36}
                   height={36}
                   className="h-9 w-9 rounded-xl object-cover"
+                  unoptimized
                 />
                 Veriq
               </Link>

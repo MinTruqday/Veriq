@@ -17,7 +17,6 @@ from src.modules.requirements.services.requirement_transformations import unique
 from src.repositories.analysis import analysis_repository
 from src.clients.project_knowledge import (
     compare_project_text_semantics,
-    remove_artifact,
     search_project_with_status,
 )
 from src.modules.requirements.services.requirement_workflow import (
@@ -26,6 +25,17 @@ from src.modules.requirements.services.requirement_workflow import (
 )
 from src.modules.design.services.linters import requirement_duplicate_score
 from src.schemas.contracts.requirements import RequirementDuplicateCheckInput
+
+
+def requirement_import_match_score(lexical_score, semantic_score, threshold):
+    lexical = max(0.0, float(lexical_score or 0.0))
+    if semantic_score is None:
+        return lexical
+    semantic = max(0.0, float(semantic_score))
+    combined = (lexical * semantic) ** 0.5
+    if semantic >= threshold:
+        return max(combined, semantic)
+    return combined
 
 
 async def authorize_requirement_import_job(job, user):
@@ -80,6 +90,7 @@ async def compare_requirement_import_job(job, user):
             if score >= threshold or same_key:
                 matches.append({
                     "candidate_index": previous_index,
+                    "candidate_id": previous.get("candidate_id"),
                     "requirement_key": previous.get("requirement_key"),
                     "title": previous.get("title"),
                     "content": plain_text(previous.get("content_doc", {})),
@@ -208,12 +219,11 @@ async def compare_requirement_import_job(job, user):
                 semantic_scores = dict(zip(semantic_version_ids, semantic_values))
 
         for requirement, version, lexical_score, reasons, same_key in lexical_candidates:
-            score = lexical_score
-            if version["_id"] in semantic_scores:
-                score = (
-                    max(0.0, lexical_score)
-                    * max(0.0, semantic_scores[version["_id"]])
-                ) ** 0.5
+            semantic_score = semantic_scores.get(version["_id"])
+            score = requirement_import_match_score(
+                lexical_score, semantic_score, threshold
+            )
+            if semantic_score is not None:
                 if score >= threshold and "Ngữ nghĩa nội dung, quy tắc và tiêu chí gần giống" not in reasons:
                     reasons = [*reasons, "Ngữ nghĩa nội dung, quy tắc và tiêu chí gần giống"]
             if requirement.get("status") in {"OBSOLETE", "ARCHIVED"} and not same_key:
@@ -290,6 +300,94 @@ async def resolve_requirement_import_candidate(job_id, candidate_id, payload, us
     if not candidate:
         raise HTTPException(404, detail={"code": "IMPORT_CANDIDATE_NOT_FOUND"})
     comparison = await compare_requirement_import_job(job, user)
+    candidate_comparison = next(
+        (item for item in comparison["comparisons"] if item["candidate_id"] == candidate_id),
+        None,
+    )
+    if not candidate_comparison:
+        raise HTTPException(409, detail={"code": "IMPORT_MATCH_CHANGED"})
+    if payload.action == "create_requirement":
+        if candidate_comparison.get("matches"):
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "IMPORT_MATCH_REVIEW_REQUIRED",
+                    "candidate_indexes": [candidate_comparison["candidate_index"]],
+                },
+            )
+        claimed = await requirement_import_repository.claim_confirmation(
+            job_id,
+            job["project_id"],
+            "PREVIEW_READY",
+            "RESOLVING",
+            user.id,
+            now(),
+            payload.expected_revision,
+        )
+        if not claimed:
+            raise HTTPException(409, detail={"code": "IMPORT_REVISION_CONFLICT"})
+        remaining_preview = [
+            item for item in job["preview"] if item.get("candidate_id") != candidate_id
+        ]
+        try:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    created = await create_requirement_record(
+                        job["project_id"],
+                        RequirementCreate(**candidate),
+                        user,
+                        origin="import",
+                        session=session,
+                    )
+                    resolution = {
+                        "candidate_id": candidate_id,
+                        "action": payload.action,
+                        "requirement_id": created["_id"],
+                        "to_version_id": created["current_version"]["_id"],
+                        "reason": payload.reason,
+                        "resolved_by": user.id,
+                        "resolved_at": now(),
+                    }
+                    updated = await requirement_import_repository.finish_resolution(
+                        job_id,
+                        job["project_id"],
+                        payload.expected_revision + 1,
+                        remaining_preview,
+                        resolution,
+                        now(),
+                        session=session,
+                    )
+                    if not updated:
+                        raise HTTPException(
+                            409, detail={"code": "IMPORT_RESOLUTION_INCOMPLETE"}
+                        )
+                    if updated["status"] == "CONFIRMED" and job.get("source_document_id"):
+                        await requirement_import_repository.confirm_document(
+                            job["source_document_id"],
+                            job["project_id"],
+                            "CONFIRMED",
+                            now(),
+                            session=session,
+                        )
+                    await audit(
+                        user.id,
+                        "requirement_import_candidate_resolved",
+                        "RequirementImport",
+                        job_id,
+                        job["project_id"],
+                        resolution,
+                        session=session,
+                    )
+        except Exception:
+            await requirement_import_repository.reset_confirmation(
+                job_id, job["project_id"], "RESOLVING", "PREVIEW_READY", now()
+            )
+            raise
+        await index_requirement_version(created["current_version"])
+        return updated
+
+    if not payload.target_requirement_id or not payload.expected_target_version_id:
+        raise HTTPException(422, detail={"code": "IMPORT_RESOLUTION_TARGET_REQUIRED"})
     match = next(
         (
             item
@@ -331,7 +429,98 @@ async def resolve_requirement_import_candidate(job_id, candidate_id, payload, us
     if payload.action == "link_source" and match["match_type"] != "EXACT":
         raise HTTPException(422, detail={"code": "SOURCE_LINK_REQUIRES_EXACT_MATCH"})
     if payload.action == "link_source" and source_refs == current.get("source_refs", []):
-        raise HTTPException(409, detail={"code": "SOURCE_ALREADY_LINKED"})
+        claimed = await requirement_import_repository.claim_confirmation(
+            job_id,
+            job["project_id"],
+            "PREVIEW_READY",
+            "RESOLVING",
+            user.id,
+            now(),
+            payload.expected_revision,
+        )
+        if not claimed:
+            raise HTTPException(409, detail={"code": "IMPORT_REVISION_CONFLICT"})
+        remaining_preview = [
+            item for item in job["preview"] if item.get("candidate_id") != candidate_id
+        ]
+        resolution = {
+            "candidate_id": candidate_id,
+            "action": "link_source_already_present",
+            "requirement_id": requirement["_id"],
+            "from_version_id": current["_id"],
+            "to_version_id": current["_id"],
+            "reason": payload.reason,
+            "resolved_by": user.id,
+            "resolved_at": now(),
+        }
+        try:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    latest_requirement = await database.value.requirements.find_one(
+                        {
+                            "_id": requirement["_id"],
+                            "project_id": job["project_id"],
+                            "current_version_id": current["_id"],
+                        },
+                        session=session,
+                    )
+                    latest_version = await database.value.requirement_versions.find_one(
+                        {
+                            "_id": current["_id"],
+                            "project_id": job["project_id"],
+                            "requirement_id": requirement["_id"],
+                        },
+                        session=session,
+                    )
+                    if not latest_requirement or not latest_version:
+                        raise HTTPException(
+                            409, detail={"code": "REVISION_CONFLICT"}
+                        )
+                    latest_source_refs = unique_source_refs(
+                        latest_version.get("source_refs", [])
+                    )
+                    if unique_source_refs(
+                        latest_source_refs + candidate.get("source_refs", [])
+                    ) != latest_source_refs:
+                        raise HTTPException(
+                            409, detail={"code": "SOURCE_LINK_STATE_CHANGED"}
+                        )
+                    updated = await requirement_import_repository.finish_resolution(
+                        job_id,
+                        job["project_id"],
+                        payload.expected_revision + 1,
+                        remaining_preview,
+                        resolution,
+                        now(),
+                        session=session,
+                    )
+                    if not updated:
+                        raise HTTPException(
+                            409, detail={"code": "IMPORT_RESOLUTION_INCOMPLETE"}
+                        )
+                    if updated["status"] == "CONFIRMED" and job.get("source_document_id"):
+                        await requirement_import_repository.confirm_document(
+                            job["source_document_id"],
+                            job["project_id"],
+                            "CONFIRMED",
+                            now(),
+                            session=session,
+                        )
+                    await audit(
+                        user.id,
+                        "requirement_import_candidate_resolved",
+                        "RequirementImport",
+                        job_id,
+                        job["project_id"],
+                        resolution,
+                        session=session,
+                    )
+        except Exception:
+            await requirement_import_repository.reset_confirmation(
+                job_id, job["project_id"], "RESOLVING", "PREVIEW_READY", now()
+            )
+            raise
+        return updated
     values = {
         **current,
         "requirement_key": requirement.get("requirement_key"),
@@ -396,58 +585,64 @@ async def resolve_requirement_import_candidate(job_id, candidate_id, payload, us
     )
     if not claimed:
         raise HTTPException(409, detail={"code": "IMPORT_REVISION_CONFLICT"})
+    remaining_preview = [
+        item for item in job["preview"] if item.get("candidate_id") != candidate_id
+    ]
     try:
-        version = await create_requirement_version_record(
-            requirement["_id"], RequirementVersionCreate(**values), user
-        )
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                version = await create_requirement_version_record(
+                    requirement["_id"],
+                    RequirementVersionCreate(**values),
+                    user,
+                    session=session,
+                )
+                resolution = {
+                    "candidate_id": candidate_id,
+                    "action": payload.action,
+                    "requirement_id": requirement["_id"],
+                    "from_version_id": current["_id"],
+                    "to_version_id": version["_id"],
+                    "reason": payload.reason,
+                    "resolved_by": user.id,
+                    "resolved_at": now(),
+                }
+                updated = await requirement_import_repository.finish_resolution(
+                    job_id,
+                    job["project_id"],
+                    payload.expected_revision + 1,
+                    remaining_preview,
+                    resolution,
+                    now(),
+                    session=session,
+                )
+                if not updated:
+                    raise HTTPException(
+                        409, detail={"code": "IMPORT_RESOLUTION_INCOMPLETE"}
+                    )
+                if updated["status"] == "CONFIRMED" and job.get("source_document_id"):
+                    await requirement_import_repository.confirm_document(
+                        job["source_document_id"],
+                        job["project_id"],
+                        "CONFIRMED",
+                        now(),
+                        session=session,
+                    )
+                await audit(
+                    user.id,
+                    "requirement_import_candidate_resolved",
+                    "RequirementImport",
+                    job_id,
+                    job["project_id"],
+                    resolution,
+                    session=session,
+                )
     except Exception:
         await requirement_import_repository.reset_confirmation(
             job_id, job["project_id"], "RESOLVING", "PREVIEW_READY", now()
         )
         raise
-    resolution = {
-        "candidate_id": candidate_id,
-        "action": payload.action,
-        "requirement_id": requirement["_id"],
-        "from_version_id": current["_id"],
-        "to_version_id": version["_id"],
-        "reason": payload.reason,
-        "resolved_by": user.id,
-        "resolved_at": now(),
-    }
-    updated = await requirement_import_repository.finish_resolution(
-        job_id, job["project_id"], payload.expected_revision + 1,
-        [item for item in job["preview"] if item.get("candidate_id") != candidate_id],
-        resolution, now(),
-    )
-    if not updated:
-        restored = await requirement_repository.rollback_activated_version(
-            requirement["_id"],
-            job["project_id"],
-            version["_id"],
-            current["_id"],
-            requirement["status"],
-            requirement.get("tags", []),
-            requirement.get("owner_id"),
-            now(),
-        )
-        if restored:
-            try:
-                await remove_artifact(job["project_id"], version["_id"])
-            finally:
-                await requirement_repository.delete_acceptance_criteria(version["_id"])
-                await requirement_repository.delete_version(version["_id"], job["project_id"])
-                await requirement_import_repository.reset_confirmation(
-                    job_id, job["project_id"], "RESOLVING", "PREVIEW_READY", now()
-                )
-        else:
-            raise HTTPException(status_code=409, detail={"code": "IMPORT_RESOLUTION_COMPENSATION_REQUIRED"})
-        raise HTTPException(409, detail={"code": "IMPORT_RESOLUTION_INCOMPLETE"})
-    if updated["status"] == "CONFIRMED" and job.get("source_document_id"):
-        await requirement_import_repository.confirm_document(
-            job["source_document_id"], job["project_id"], "CONFIRMED", now()
-        )
-    await audit(user.id, "requirement_import_candidate_resolved", "RequirementImport", job_id, job["project_id"], resolution)
+    await index_requirement_version(version)
     return updated
 
 
@@ -1030,8 +1225,8 @@ async def apply_requirement_import_job(job_id, payload, user):
             job["project_id"],
         )
         raise
-    for item in created:
-        await index_requirement_version(item["current_version"])
+    confirmed_job = await requirement_import_repository.find(job_id, job["project_id"])
+    await recover_confirmed_import_index(confirmed_job)
     return {"job": None, "requirements": created}
 
 

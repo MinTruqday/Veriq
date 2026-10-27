@@ -169,6 +169,12 @@ class ChangeSimulationReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "quote_not_found_in_source"):
             self.validate(self.report(quote="Người dùng luôn đăng nhập được."))
 
+    def test_rejects_quote_found_only_inside_another_word(self):
+        self.observations[0]["result"]["content"] = "invalid"
+        self.evidence[0]["text"] = "invalid"
+        with self.assertRaisesRegex(ValueError, "quote_not_found_in_source"):
+            self.validate(self.report(quote="valid"))
+
     def test_rejects_missing_classification(self):
         with self.assertRaisesRegex(ValueError, "classification_scope_incomplete"):
             self.validate(self.report(classifications=[]))

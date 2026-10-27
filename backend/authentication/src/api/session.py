@@ -15,7 +15,6 @@ from src.schemas.identity import (
     ProfileUpdate,
     ResetPasswordRequest,
     SettingsUpdate,
-    UserCreate,
     UserResponse,
     VerifyCodeRequest,
 )
@@ -146,21 +145,6 @@ async def revoke_my_session(session_id: str, current_user: CurrentUser = Depends
     return APIResponse(
         data=await AccountService.revoke_session(current_user, session_id),
         message="Thu hồi phiên đăng nhập hoàn tất",
-    )
-
-
-@router.post(
-    "/dang-ky",
-    response_model=APIResponse[UserResponse],
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(RateLimiting(calls=3, period=60))],
-)
-async def register_user(user_in: UserCreate, request: Request) -> Any:
-    client_ip = request.client.host if request.client else "unknown"
-    return APIResponse(
-        data=await SessionService.register_user(user_in, client_ip),
-        message="Đăng ký tài khoản hoàn tất, vui lòng tiến hành đăng nhập",
-        status=status.HTTP_201_CREATED,
     )
 
 

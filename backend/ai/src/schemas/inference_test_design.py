@@ -2,6 +2,8 @@ from typing import Any, List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from src.core.text_matching import source_quote_spans
+
 
 class GeneratedStepOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -49,6 +51,7 @@ class GeneratedCaseOutput(BaseModel):
         "equivalence_partitioning", "boundary_value", "decision_table",
         "state_transition", "error_guessing",
     ]] = Field(default_factory=list, max_length=5)
+    required_skills: List[str] = Field(default_factory=list, max_length=50)
     challenge_techniques: List[Literal[
         "equivalence_partitioning", "boundary_value", "decision_table",
         "state_transition", "error_guessing",
@@ -59,6 +62,16 @@ class GeneratedCaseOutput(BaseModel):
     )
     evidence_refs: List[str] = Field(default_factory=list, max_length=100)
     evidence_quotes: List[GeneratedEvidenceQuoteOutput] = Field(min_length=1, max_length=20)
+
+    @field_validator("required_skills")
+    @classmethod
+    def validate_required_skills(cls, values):
+        normalized = [" ".join(value.split()) for value in values]
+        if any(not value or len(value) > 120 for value in normalized):
+            raise ValueError("test_case_required_skill_invalid")
+        if len({value.casefold() for value in normalized}) != len(normalized):
+            raise ValueError("test_case_required_skills_must_be_unique")
+        return normalized
 
     @field_validator("coverage_obligations")
     @classmethod
@@ -79,6 +92,14 @@ class GeneratedCaseOutput(BaseModel):
         test_case_quotes = {
             (item.evidence_ref, item.quote) for item in self.evidence_quotes
         }
+        if any(
+            not any(
+                source_quote_spans(item.quote.casefold(), skill.casefold())
+                for item in self.evidence_quotes
+            )
+            for skill in self.required_skills
+        ):
+            raise ValueError("test_case_required_skill_must_appear_in_cited_evidence")
         if any(
             (quote.evidence_ref, quote.quote) not in test_case_quotes
             for item in self.obligation_evidence

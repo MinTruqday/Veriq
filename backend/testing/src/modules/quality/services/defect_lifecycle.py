@@ -1,8 +1,10 @@
+import hashlib
+import json
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.ai_automation import emit_defect_changed
-from src.clients.project_knowledge import index_artifact
 from src.core.common import (
     audit,
     get_project,
@@ -10,7 +12,6 @@ from src.core.common import (
     new_id,
     now,
     optimistic_patch,
-    plain_text,
     require_action_policy,
 )
 from src.core.database import database
@@ -22,6 +23,66 @@ from src.modules.execution.services.execution_context import (
 )
 from src.modules.execution.services.execution_state import defect_transitions
 from src.repositories.defect import defect_repository
+from src.repositories.defect_search_index import defect_search_index_repository
+
+
+def _retest_request_fingerprint(payload):
+    request = {
+        "test_result_id": payload.test_result_id,
+        "expected_revision": payload.expected_revision,
+        "note": payload.note,
+    }
+    return hashlib.sha256(
+        json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+
+
+def _public_retest(retest):
+    return {
+        key: value
+        for key, value in retest.items()
+        if key not in {"idempotency_key", "idempotency_request_hash"}
+    }
+
+
+async def _replay_retest(project_id, defect_id, existing, payload, request_hash):
+    if (
+        existing.get("project_id") != project_id
+        or existing.get("defect_id") != defect_id
+        or existing.get("idempotency_key") != payload.idempotency_key
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DEFECT_RETEST_IDEMPOTENCY_RECORD_INVALID"},
+        )
+    if existing.get("application_status") != "APPLIED":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DEFECT_RETEST_IDEMPOTENCY_RECORD_INCOMPLETE"},
+        )
+    existing_hash = existing.get("idempotency_request_hash")
+    same_legacy_request = (
+        existing.get("test_result_id") == payload.test_result_id
+        and existing.get("note", "") == payload.note
+        and existing.get("expected_revision", payload.expected_revision)
+        == payload.expected_revision
+    )
+    if (existing_hash and existing_hash != request_hash) or (
+        not existing_hash and not same_legacy_request
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_KEY_REUSED"},
+        )
+    defect = await defect_repository.find_defect(defect_id, project_id)
+    if defect:
+        await defect_search_index_repository.enqueue(defect)
+    return {
+        "defect": defect,
+        "retest": _public_retest(existing),
+    }
 
 
 async def update_defect_record(defect_id, payload, project_id, user):
@@ -189,6 +250,7 @@ async def update_defect_record(defect_id, payload, project_id, user):
                 {"fields": sorted(changes)},
                 session=session,
             )
+            await defect_search_index_repository.enqueue(updated, session=session)
             if source_fields.intersection(changes):
                 await emit_defect_changed(updated, user, session=session)
             if {"severity", "release_id", "linked_test_result_id"}.intersection(changes) and (
@@ -201,35 +263,6 @@ async def update_defect_record(defect_id, payload, project_id, user):
                     user,
                     session,
                 )
-    await index_artifact(
-        updated["project_id"],
-        "defect",
-        updated["_id"],
-        updated["_id"],
-        updated.get("title") or "",
-        " ".join(
-            text
-            for text in (
-                updated.get("title"),
-                plain_text(updated.get("description_doc") or {}),
-                plain_text(updated.get("actual_result_doc") or {}),
-                plain_text(updated.get("expected_result_doc") or {}),
-                " ".join(
-                    str(step.get(field) or "")
-                    for step in updated.get("steps_to_reproduce") or []
-                    if isinstance(step, dict)
-                    for field in ("action", "data", "expected_result")
-                ),
-            )
-            if str(text or "").strip()
-        ),
-        updated.get("status") or "NEW",
-        "PROJECT_REFERENCE",
-        updated.get("revision"),
-        linked_test_result_id=updated.get("linked_test_result_id"),
-        linked_test_case_version_id=updated.get("linked_test_case_version_id"),
-        linked_requirement_version_ids=updated.get("linked_requirement_version_ids") or [],
-    )
     return updated
 
 
@@ -303,6 +336,7 @@ async def transition_defect_record(defect_id, payload, user):
                 {"from": defect["status"], "to": payload.to_status, "reason": payload.reason},
                 session=session,
             )
+            await defect_search_index_repository.enqueue(updated, session=session)
             if old_is_blocking or new_is_blocking:
                 await recheck_release_gates_for_defect(
                     defect["project_id"], [defect.get("release_id")], updated, user, session
@@ -314,12 +348,12 @@ async def retest_defect_record(project_id, defect_id, payload, user):
     defect = await get_project_entity("defects", defect_id, user, "defect.retest")
     if defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
+    request_hash = _retest_request_fingerprint(payload)
     existing = await defect_repository.find_retest(defect_id, payload.idempotency_key)
     if existing:
-        return {
-            "defect": await defect_repository.find_defect(defect_id, project_id),
-            "retest": existing,
-        }
+        return await _replay_retest(
+            project_id, defect_id, existing, payload, request_hash
+        )
     if defect["status"] != "READY_FOR_RETEST":
         raise HTTPException(
             status_code=409,
@@ -369,6 +403,8 @@ async def retest_defect_record(project_id, defect_id, payload, user):
         "to_status": target_status,
         "note": payload.note,
         "idempotency_key": payload.idempotency_key,
+        "idempotency_request_hash": request_hash,
+        "expected_revision": payload.expected_revision,
         "retested_by": user.id,
         "application_status": "PENDING",
         "created_at": now(),
@@ -421,6 +457,7 @@ async def retest_defect_record(project_id, defect_id, payload, user):
                     },
                     session=session,
                 )
+                await defect_search_index_repository.enqueue(updated, session=session)
                 if defect_blocks_release(defect) or new_is_blocking:
                     await recheck_release_gates_for_defect(
                         project_id, [defect.get("release_id")], updated, user, session
@@ -429,8 +466,7 @@ async def retest_defect_record(project_id, defect_id, payload, user):
         existing = await defect_repository.find_retest(defect_id, payload.idempotency_key)
         if not existing:
             raise
-        return {
-            "defect": await defect_repository.find_defect(defect_id, project_id),
-            "retest": existing,
-        }
-    return {"defect": updated, "retest": event}
+        return await _replay_retest(
+            project_id, defect_id, existing, payload, request_hash
+        )
+    return {"defect": updated, "retest": _public_retest(event)}

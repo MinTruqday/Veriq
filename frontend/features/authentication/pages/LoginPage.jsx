@@ -18,14 +18,7 @@ export default function LoginPage() {
   return (
     <AuthFrame
       title="Đăng nhập"
-      footer={
-        <p>
-          Chưa có tài khoản?{" "}
-          <Link href="/dang-ky" className="font-semibold text-brand hover:text-brand-hover">
-            Đăng ký
-          </Link>
-        </p>
-      }
+      footer={<p>Chưa có tài khoản? Liên hệ quản trị viên để được cấp tài khoản.</p>}
     >
       {error && (
         <div className="mb-5">

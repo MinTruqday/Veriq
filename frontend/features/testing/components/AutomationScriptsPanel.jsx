@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
+import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
 
@@ -22,6 +23,7 @@ export default function AutomationScriptsPanel({ project }) {
     try {
       const values = await testingApi.listAutomationScriptDrafts(project._id);
       setItems(values);
+      setError("");
       setSelected((current) => {
         const next = values.find((item) => item._id === current?._id) || null;
         if (next && !draftDirty) {
@@ -38,6 +40,25 @@ export default function AutomationScriptsPanel({ project }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!canExport) return undefined;
+    let active = true;
+    let pending = false;
+    const timer = window.setInterval(async () => {
+      if (!active || document.visibilityState !== "visible" || pending) return;
+      pending = true;
+      try {
+        await load();
+      } finally {
+        pending = false;
+      }
+    }, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [canExport, load]);
 
   const openDraft = async (item) => {
     try {
@@ -123,7 +144,16 @@ export default function AutomationScriptsPanel({ project }) {
                 empty="Chưa có bản nháp kịch bản tự động hóa"
                 onSelect={openDraft}
                 columns={[
-                  { key: "filename", label: "Tệp" },
+                  {
+                    key: "filename",
+                    label: "Tệp",
+                    render: (item) => (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{item.filename}</span>
+                        {item.source_event_key && <ContentOriginBadge origin="ai_generated" />}
+                      </div>
+                    ),
+                  },
                   { key: "framework", label: "Công cụ" },
                   {
                     key: "status",
@@ -138,6 +168,7 @@ export default function AutomationScriptsPanel({ project }) {
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2">
+                      {selected.source_event_key && <ContentOriginBadge origin="ai_generated" />}
                       <StatusPill value={selected.status} />
                       <StatusPill value={selected.generation_status} />
                     </div>

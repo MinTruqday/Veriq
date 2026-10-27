@@ -1,6 +1,7 @@
 import DataTable from "../../../components/DataTable";
 import { Panel } from "../../../components/WorkspacePrimitives";
 import { requirementFieldLabel, requirementSuggestionPreview } from "./requirements.model";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
 export default function RequirementQualityPanel({ lint }) {
   if (!lint) return null;
@@ -32,7 +33,7 @@ export default function RequirementQualityPanel({ lint }) {
           {
             key: "origin",
             label: "Nguồn",
-            render: (item) => (item.origin === "AI" ? "AI" : "Quy tắc"),
+            render: (item) => <ContentOriginBadge origin={item.origin === "AI" ? "ai" : "rule"} />,
           },
           { key: "severity", label: "Mức độ" },
           { key: "rule_id", label: "Mã" },

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Pagination } from "@/shared/components/ui/Pagination";
+import NotificationPreferencesPanel from "@/features/notification/components/NotificationPreferencesPanel";
 import {
   changeMyPassword,
   listMySessions,
@@ -303,6 +304,7 @@ export default function AccountPage() {
           onChange={setSessionPage}
         />
       </section>
+      <NotificationPreferencesPanel />
       <div className="flex flex-wrap gap-3">
         <Link className="secondary-button" href="/du-an">
           Về không gian kiểm thử

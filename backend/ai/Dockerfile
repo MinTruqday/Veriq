@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libgl1 \
     libglib2.0-0 \
+    tesseract-ocr \
+    tesseract-ocr-vie \
     && mkdir -p /home/appuser/.cache/tmp \
     && pip install --no-cache-dir uv==0.12.3 \
     && uv pip install --system --no-cache \

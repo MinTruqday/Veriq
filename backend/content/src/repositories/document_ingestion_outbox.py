@@ -11,9 +11,57 @@ from src.schemas.document_ingestion_outbox import (
 )
 
 
+class DocumentIngestionSourceChanged(RuntimeError):
+    pass
+
+
 class DocumentIngestionOutboxRepository:
     COLLECTION = "document_ingestion_outbox"
-    LEASE_SECONDS = 120
+    SOURCE_SNAPSHOT_FIELDS = (
+        "file_url",
+        "revision",
+        "source_revision",
+        "content_hash",
+        "source_hash",
+        "content_sha256",
+        "title",
+        "author",
+        "author_name",
+        "visibility",
+        "owner_id",
+        "creator_id",
+        "shared_with",
+        "ai_enabled",
+        "source_is_current",
+        "index_status",
+        "source",
+        "content_source",
+        "source_name",
+        "source_url",
+        "source_type",
+        "authority",
+        "indexing_status",
+        "document_index_contract_version",
+        "index_dispatch_event_id",
+        "content_format",
+        "version",
+        "source_version",
+        "publisher",
+        "publisher_name",
+        "book_title",
+        "collector_version",
+        "project_id",
+        "artifact_type",
+        "artifact_id",
+        "artifact_version_id",
+        "module",
+        "status",
+        "content_type",
+        "conflict_key",
+        "claim_value",
+        "ocr_language",
+        "artifact_metadata",
+    )
 
     @classmethod
     def _collection(cls):
@@ -22,12 +70,17 @@ class DocumentIngestionOutboxRepository:
         return database.mongodb[settings.CONTENT_DB_NAME][cls.COLLECTION]
 
     @classmethod
+    def source_snapshot_from_document(cls, document: dict) -> dict:
+        return {field: document.get(field) for field in cls.SOURCE_SNAPSHOT_FIELDS}
+
+    @classmethod
     async def enqueue(
         cls,
         document: dict,
         user_id: str = "",
         superseded_document_id: str = "",
         force_new: bool = False,
+        expected_source_snapshot: dict | None = None,
     ) -> str:
         now = datetime.now(timezone.utc)
         document_id = str(document.get("_id") or document.get("document_id") or "")
@@ -66,13 +119,22 @@ class DocumentIngestionOutboxRepository:
                     upsert=True,
                     session=session,
                 )
+                document_filter = {
+                    "_id": document.get("_id") or document_id,
+                    "is_deleted": {"$ne": True},
+                }
+                if expected_source_snapshot is not None:
+                    document_filter.update(
+                        {
+                            field: expected_source_snapshot.get(field)
+                            for field in cls.SOURCE_SNAPSHOT_FIELDS
+                            if field in expected_source_snapshot
+                        }
+                    )
                 result = await database.mongodb[settings.CONTENT_DB_NAME][
                     "documents"
                 ].update_one(
-                    {
-                        "_id": document.get("_id") or document_id,
-                        "is_deleted": {"$ne": True},
-                    },
+                    document_filter,
                     {
                         "$set": {
                             "index_dispatch_event_id": event_id,
@@ -85,6 +147,10 @@ class DocumentIngestionOutboxRepository:
                     session=session,
                 )
                 if result.matched_count != 1:
+                    if expected_source_snapshot is not None:
+                        raise DocumentIngestionSourceChanged(
+                            "document_ingestion_source_changed"
+                        )
                     raise RuntimeError("document_ingestion_source_unavailable")
         return event_id
 
@@ -95,14 +161,24 @@ class DocumentIngestionOutboxRepository:
             {
                 "$or": [
                     {"status": "pending", "available_at": {"$lte": now}},
-                    {"status": "processing", "lease_until": {"$lte": now}},
+                {
+                    "status": "processing",
+                    "$or": [
+                        {"lease_until": {"$lte": now}},
+                        {"lease_until": None},
+                        {"lease_until": {"$exists": False}},
+                    ],
+                },
                 ]
             },
             {
                 "$set": {
                     "status": DocumentIngestionDispatchStatus.PROCESSING.value,
                     "lease_token": lease_token,
-                    "lease_until": now + timedelta(seconds=cls.LEASE_SECONDS),
+                    "lease_until": now
+                    + timedelta(
+                        seconds=settings.DOCUMENT_INGESTION_OUTBOX_LEASE_SECONDS
+                    ),
                     "updated_at": now,
                 },
                 "$inc": {"attempts": 1},
@@ -135,8 +211,20 @@ class DocumentIngestionOutboxRepository:
     @classmethod
     async def retry(cls, event: dict, lease_token: str, error: Exception) -> bool:
         now = datetime.now(timezone.utc)
-        attempts = max(1, int(event.get("attempts") or 1))
-        delay_seconds = min(15 * (2 ** min(attempts - 1, 6)), 900)
+        raw_attempts = event.get("attempts")
+        attempts = (
+            raw_attempts
+            if isinstance(raw_attempts, int) and not isinstance(raw_attempts, bool)
+            else 1
+        )
+        attempts = max(1, attempts)
+        base_delay = settings.DOCUMENT_INGESTION_RETRY_BASE_SECONDS
+        maximum_delay = settings.DOCUMENT_INGESTION_RETRY_MAX_SECONDS
+        maximum_doublings = (maximum_delay // base_delay).bit_length()
+        delay_seconds = min(
+            base_delay * (1 << min(attempts - 1, maximum_doublings)),
+            maximum_delay,
+        )
         result = await cls._collection().update_one(
             {
                 "_id": str(event.get("_id") or event.get("event_id") or ""),
@@ -162,13 +250,31 @@ class DocumentIngestionOutboxRepository:
             "file_url": {"$type": "string", "$ne": ""},
             "is_deleted": {"$ne": True},
             "source_is_current": {"$ne": False},
-            "indexing_status": {"$in": [None, "not_started", "queued"]},
+            "ai_enabled": {"$ne": False},
+            "index_status": {"$ne": "REVOKE_PENDING"},
             "$or": [
-                {"index_dispatch_event_id": {"$exists": False}},
-                {"index_dispatch_event_id": None},
+                {
+                    "indexing_status": {"$in": [None, "not_started", "queued"]},
+                    "$or": [
+                        {"index_dispatch_event_id": {"$exists": False}},
+                        {"index_dispatch_event_id": None},
+                    ],
+                },
+                {
+                    "indexing_status": {"$in": ["indexed", "degraded"]},
+                    "document_index_contract_version": {
+                        "$ne": settings.DOCUMENT_INDEX_CONTRACT_VERSION
+                    },
+                },
             ],
         }
-        cursor = cls._collection().database["documents"].find(query).limit(limit)
+        cursor = (
+            cls._collection()
+            .database["documents"]
+            .find(query)
+            .sort([("updated_at", 1), ("_id", 1)])
+            .limit(limit)
+        )
         return await cursor.to_list(length=limit)
 
     @classmethod

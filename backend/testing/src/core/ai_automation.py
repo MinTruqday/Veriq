@@ -7,12 +7,42 @@ import httpx
 from fastapi import HTTPException
 
 from src.clients.ai_automation import ai_automation_client
+from src.core.database import database
 from src.core.metrics import AI_GENERATION_LATENCY, AI_REQUESTS
 
 
 stream_sink: ContextVar[Callable[[dict], Awaitable[None]] | None] = ContextVar(
     "stream_sink", default=None
 )
+
+
+def require_ai_automation_event(user, allowed_triggers):
+    run_id = str(getattr(user, "_ai_automation_run_id", "") or "")
+    trigger = str(getattr(user, "_ai_automation_trigger", "") or "")
+    source_event_id = str(getattr(user, "_ai_automation_source_event_id", "") or "")
+    if not run_id or not source_event_id or trigger not in set(allowed_triggers):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "AI_AUTOMATION_EVENT_REQUIRED"},
+        )
+    return {"run_id": run_id, "trigger": trigger, "source_event_id": source_event_id}
+
+
+def require_document_ingestion_event(user, source_document_ids):
+    automation = require_ai_automation_event(user, {"DOCUMENT_INGESTED"})
+    event_parts = automation["source_event_id"].split(":")
+    if (
+        len(event_parts) != 3
+        or event_parts[0] != "requirement-document"
+        or not event_parts[1]
+        or not event_parts[2].isdigit()
+        or event_parts[1] not in set(map(str, source_document_ids))
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "VERIFIED_DOCUMENT_EVENT_REQUIRED"},
+        )
+    return event_parts[1], int(event_parts[2])
 
 
 def ai_contract_metadata(result):
@@ -47,6 +77,12 @@ def ai_contract_metadata(result):
 async def request_ai_automation(capability, project_id, instruction, evidence):
     started_at = time.perf_counter()
     try:
+        output_language = None
+        if database.client is not None:
+            project = await database.value.projects.find_one(
+                {"_id": project_id}, {"locale": 1}
+            )
+            output_language = (project or {}).get("locale")
         sink = stream_sink.get()
         if sink:
             await sink(
@@ -61,6 +97,7 @@ async def request_ai_automation(capability, project_id, instruction, evidence):
                 "capability": capability,
                 "project_id": project_id,
                 "instruction": instruction,
+                "output_language": output_language,
                 "evidence": evidence,
             },
             sink,

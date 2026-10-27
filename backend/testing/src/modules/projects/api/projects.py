@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+import re
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
@@ -14,17 +16,30 @@ from src.schemas.contracts.project import (
     ProjectTaskDelete,
     ProjectTaskPatch,
 )
-from src.schemas.contracts.skill_profile import AssignmentRecommendationInput, SkillProfilePatch
+from src.schemas.contracts.skill_profile import (
+    AssignmentRecommendationInput,
+    SkillProfilePatch,
+    TestCaseOwnerRecommendationInput,
+)
 from src.modules.projects.services.project import ProjectService
 from src.modules.projects.services.project_progress import ProjectProgressService
 from src.modules.projects.services.skill_profiles import (
     extract_own_skill_profile_from_cv,
     get_own_skill_profile,
+    recommend_test_case_owner,
     recommend_test_run_assignments,
     update_own_skill_profile,
 )
 
 router = APIRouter(prefix="/kiem-thu", tags=["Dự án kiểm thử"])
+
+
+def _accept_language(request):
+    for item in request.headers.get("accept-language", "").split(","):
+        locale = item.split(";", 1)[0].strip()
+        if re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", locale):
+            return locale
+    return None
 
 
 @router.get("/du-an/{project_id}/ho-so-nang-luc/cua-toi")
@@ -62,6 +77,20 @@ async def suggest_test_run_assignments(
     return envelope(await recommend_test_run_assignments(project_id, run_id, payload, user))
 
 
+@router.post("/du-an/{project_id}/ca-kiem-thu/goi-y-nguoi-phu-trach")
+async def suggest_test_case_owner(
+    project_id: str,
+    payload: TestCaseOwnerRecommendationInput,
+    request: Request,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(
+        await recommend_test_case_owner(
+            project_id, payload, user, output_language=_accept_language(request)
+        )
+    )
+
+
 @router.get("/du-an/kha-nang", response_model=dict)
 async def project_capabilities(user: CurrentUser = Depends(get_current_user)):
     value = ProjectCapabilities(
@@ -71,7 +100,13 @@ async def project_capabilities(user: CurrentUser = Depends(get_current_user)):
 
 
 @router.post("/du-an", status_code=201)
-async def create_project(payload: ProjectCreate, user: CurrentUser = Depends(get_current_user)):
+async def create_project(
+    payload: ProjectCreate,
+    request: Request,
+    user: CurrentUser = Depends(get_current_user),
+):
+    if payload.locale is None:
+        payload = payload.model_copy(update={"locale": _accept_language(request)})
     value = await ProjectService.create(payload, user)
     return envelope(value, revision=value["revision"])
 

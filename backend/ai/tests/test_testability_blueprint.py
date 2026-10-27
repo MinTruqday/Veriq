@@ -16,6 +16,7 @@ from src.schemas.inference_requirements import (
     TestabilityBlueprintCompilationOutput as BlueprintCompilationOutputSchema,
 )
 from src.services.testability_blueprint import (
+    _bounded_blueprint_warnings,
     compile_testability_blueprint,
     facts_bound_to_authorized_evidence,
     map_blueprint_obligations_to_requirements,
@@ -44,9 +45,17 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
             }
         }
 
-    def test_prompt_uses_english_instructions_and_vietnamese_output_contract(self):
+    def test_aggregated_blueprint_warnings_respect_output_contract(self):
+        warnings = [f"batch-{index}" for index in range(60)]
+
+        result = _bounded_blueprint_warnings(warnings)
+
+        self.assertEqual(len(result), 50)
+        self.assertEqual(result[-1], "11 cảnh báo bổ sung đã được gộp")
+
+    def test_prompt_uses_english_instructions_and_user_selected_output_language(self):
         self.assertIn("Compile a testability blueprint", TESTABILITY_BLUEPRINT_COMPILATION)
-        self.assertIn("Write generated obligations and clarification questions in Vietnamese", TESTABILITY_BLUEPRINT_COMPILATION)
+        self.assertIn("language explicitly requested by the user", TESTABILITY_BLUEPRINT_COMPILATION)
         self.assertIn("Do not turn a broad goal or label", TESTABILITY_BLUEPRINT_COMPILATION)
         self.assertIn("Do not ask for optional presentation details", TESTABILITY_BLUEPRINT_COMPILATION)
         self.assertIn("never join quotes, paraphrase them, or insert ellipses", TESTABILITY_BLUEPRINT_COMPILATION)
@@ -56,10 +65,10 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("unlocks_obligation_keys", TESTABILITY_BLUEPRINT_COMPILATION)
         self.assertNotIn("Biên dịch", TESTABILITY_BLUEPRINT_COMPILATION)
-        self.assertIn("in Vietnamese", REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS)
-        self.assertIn("in Vietnamese", CLARIFICATION_BASELINE)
+        self.assertIn("language explicitly requested by the user", REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS)
+        self.assertIn("language explicitly requested by the user", CLARIFICATION_BASELINE)
         test_generation = requirement_test_generation_instruction()
-        self.assertIn("in Vietnamese", test_generation)
+        self.assertIn("language explicitly requested by the user", test_generation)
         self.assertIn("State the documented, observable outcome directly", test_generation)
         self.assertIn("instead of inventing a value", test_generation)
         compiled_generation = requirement_test_generation_instruction(
@@ -157,6 +166,72 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].text, self.fact.quote)
+
+    def test_canonical_fact_uses_full_source_when_retrieved_chunk_appears_first(self):
+        quote = self.fact.quote
+        canonical_text = f"{'x' * 120}\n{quote}\nPhần tiếp theo."
+        start = canonical_text.index(quote)
+        fact = self.fact.model_copy(
+            update={
+                "source_start": start,
+                "source_end": start + len(quote),
+                "source_offset_basis": "CANONICAL_TEXT",
+            }
+        )
+        evidence = {
+            "doc-1-v1": [
+                {
+                    "artifact_id": "doc-1",
+                    "artifact_version_id": "doc-1-v1",
+                    "text": quote,
+                },
+                {
+                    "artifact_id": "doc-1",
+                    "artifact_version_id": "doc-1-v1",
+                    "source_offset_basis": "RETRIEVED_CHUNK",
+                    "relationship_path": ["doc-1"],
+                    "text": canonical_text,
+                },
+                {
+                    "artifact_id": "doc-1",
+                    "artifact_version_id": "doc-1-v1",
+                    "source_offset_basis": "CANONICAL_TEXT",
+                    "relationship_path": ["doc-root", "doc-1"],
+                    "text": canonical_text,
+                },
+            ]
+        }
+
+        result = verified_fact_evidence([fact], evidence, {"doc-root", "doc-1"})
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].verified_facts[0].source_start, start)
+        self.assertEqual(result[0].verified_facts[0].source_end, start + len(quote))
+        self.assertEqual(result[0].relationship_paths, [["doc-root", "doc-1"]])
+
+    def test_canonical_fact_rejects_a_chunk_local_offset_without_canonical_source(self):
+        quote = self.fact.quote
+        canonical_text = f"{'x' * 120}\n{quote}\nPhần tiếp theo."
+        start = canonical_text.index(quote)
+        fact = self.fact.model_copy(
+            update={
+                "source_start": start,
+                "source_end": start + len(quote),
+                "source_offset_basis": "CANONICAL_TEXT",
+            }
+        )
+        evidence = {
+            "doc-1-v1": [
+                {
+                    "artifact_id": "doc-1",
+                    "artifact_version_id": "doc-1-v1",
+                    "source_offset_basis": "RETRIEVED_CHUNK",
+                    "text": canonical_text,
+                }
+            ]
+        }
+
+        self.assertEqual(verified_fact_evidence([fact], evidence, {"doc-1"}), [])
 
     def test_fact_evidence_rejects_version_id_mismatch(self):
         mismatched_evidence = {
@@ -313,6 +388,27 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(verified[0].source_end, len(fact.quote))
                 self.assertEqual(verified[0].source_offset_basis, "CANONICAL_TEXT")
 
+    def test_negative_source_citation_offsets_are_rejected(self):
+        quote = self.fact.quote
+        malformed = self.fact.model_copy(
+            update={
+                "source_start": -1,
+                "source_end": len(quote) - 1,
+                "source_offset_basis": "SOURCE_CITATION",
+            }
+        )
+        evidence = {
+            "doc-1-v1": {
+                "artifact_id": "doc-1",
+                "text": quote,
+                "source_verification": "VERIFIED_REQUIREMENT_SOURCE_CITATION",
+                "source_start": -1,
+                "source_end": len(quote) - 1,
+            }
+        }
+
+        self.assertEqual(verified_fact_evidence([malformed], evidence, {"doc-1"}), [])
+
     def test_fact_lineage_uses_api_verified_version_chain_not_graph_neighborhood(self):
         evidence = {
             "doc-1-v1": {
@@ -383,6 +479,31 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(verified, [])
+
+    def test_repeated_quote_uses_an_already_verified_canonical_span(self):
+        quote = self.fact.quote
+        authoritative_text = f"{quote}\nGhi chú.\n{quote}"
+        second_position = authoritative_text.rfind(quote)
+        canonical_fact = self.fact.model_copy(
+            update={
+                "source_start": second_position,
+                "source_end": second_position + len(quote),
+                "source_offset_basis": "CANONICAL_TEXT",
+            }
+        )
+
+        verified = facts_bound_to_authorized_evidence(
+            [canonical_fact],
+            {"doc-1-v1": [{**self.evidence["doc-1-v1"], "text": quote}]},
+            {"doc-1"},
+            {"doc-1": ["doc-1"]},
+            {"doc-1": {"normalized_content": authoritative_text}},
+        )
+
+        self.assertEqual(len(verified), 1)
+        self.assertEqual(verified[0].source_start, second_position)
+        self.assertEqual(verified[0].source_end, second_position + len(quote))
+        self.assertEqual(verified[0].source_offset_basis, "CANONICAL_TEXT")
 
     def test_fact_is_rejected_when_current_document_content_cannot_be_read_back(self):
         verified = facts_bound_to_authorized_evidence(
@@ -546,6 +667,134 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("BLUEPRINT_OBLIGATION_GROUNDING_INVALID", result["reason_codes"])
         self.assertEqual(result["obligations"], [])
 
+    async def test_model_obligation_quote_inside_another_word_is_rejected(self):
+        fact = self.fact.model_copy(
+            update={
+                "quote": "invalid",
+                "source_start": 0,
+                "source_end": len("invalid"),
+            }
+        )
+        evidence = {"doc-1-v1": {"artifact_id": "doc-1", "text": "invalid"}}
+        model_result = {
+            "status": "SUCCESS",
+            "degraded_mode": None,
+            "evidence_refs": ["doc-1-v1"],
+            "obligations": [{
+                "key": "valid-token",
+                "obligation": "Kiểm tra từ hợp lệ.",
+                "source_ref": "doc-1-v1",
+                "source_quote": "valid",
+            }],
+            "clarifications": [],
+        }
+        with patch(
+            "src.services.testability_blueprint.generate_ai_automation",
+            new=AsyncMock(return_value=SimpleNamespace(model_dump=lambda **_: model_result)),
+        ):
+            result = await compile_testability_blueprint(
+                "project-1", [fact], evidence, {"doc-1"}
+            )
+
+        self.assertEqual(result["status"], "DEGRADED")
+        self.assertIn("BLUEPRINT_OBLIGATION_GROUNDING_INVALID", result["reason_codes"])
+
+    async def test_obligation_source_must_be_listed_in_blueprint_evidence_refs(self):
+        second_fact = self.fact.model_copy(
+            update={
+                "artifact_id": "doc-2",
+                "artifact_version_id": "doc-2-v1",
+                "quote": "Mã xác minh có hiệu lực trong 10 phút.",
+                "source_start": 0,
+                "source_end": len("Mã xác minh có hiệu lực trong 10 phút."),
+            }
+        )
+        evidence = {
+            **self.evidence,
+            "doc-2-v1": {
+                "artifact_id": "doc-2",
+                "artifact_version_id": "doc-2-v1",
+                "text": second_fact.quote,
+            },
+        }
+        model_result = {
+            "status": "SUCCESS",
+            "degraded_mode": None,
+            "evidence_refs": ["doc-2-v1"],
+            "obligations": [{
+                "key": "password-minimum-length",
+                "obligation": "Kiểm tra độ dài mật khẩu",
+                "source_ref": "doc-1-v1",
+                "source_quote": self.fact.quote,
+            }],
+            "clarifications": [],
+        }
+
+        with patch(
+            "src.services.testability_blueprint.generate_ai_automation",
+            new=AsyncMock(return_value=SimpleNamespace(model_dump=lambda **_: model_result)),
+        ):
+            result = await compile_testability_blueprint(
+                "project-1",
+                [self.fact, second_fact],
+                evidence,
+                {"doc-1", "doc-2"},
+            )
+
+        self.assertEqual(result["status"], "DEGRADED")
+        self.assertIn("BLUEPRINT_EVIDENCE_REFERENCE_INCOMPLETE", result["reason_codes"])
+        self.assertEqual(result["obligations"], [])
+
+    async def test_clarification_sources_must_be_listed_in_blueprint_evidence_refs(self):
+        second_fact = self.fact.model_copy(
+            update={
+                "artifact_id": "doc-2",
+                "artifact_version_id": "doc-2-v1",
+                "quote": "Mã xác minh có hiệu lực trong 10 phút.",
+                "source_start": 0,
+                "source_end": len("Mã xác minh có hiệu lực trong 10 phút."),
+            }
+        )
+        evidence = {
+            **self.evidence,
+            "doc-2-v1": {
+                "artifact_id": "doc-2",
+                "artifact_version_id": "doc-2-v1",
+                "text": second_fact.quote,
+            },
+        }
+        model_result = {
+            "status": "SUCCESS",
+            "degraded_mode": None,
+            "evidence_refs": ["doc-2-v1"],
+            "obligations": [],
+            "clarifications": [{
+                "code": "MISSING_LOGIN_LIMIT",
+                "category": "OMISSION",
+                "question": "Mã xác minh được phép nhập sai bao nhiêu lần?",
+                "reason": "Nguồn chưa nêu giới hạn số lần nhập sai.",
+                "priority": "MEDIUM",
+                "evidence_refs": ["doc-1-v1"],
+                "source_quote": self.fact.quote,
+                "unlocks_obligation_keys": [],
+            }],
+        }
+
+        with patch(
+            "src.services.testability_blueprint.generate_ai_automation",
+            new=AsyncMock(return_value=SimpleNamespace(model_dump=lambda **_: model_result)),
+        ):
+            result = await compile_testability_blueprint(
+                "project-1",
+                [self.fact, second_fact],
+                evidence,
+                {"doc-1", "doc-2"},
+            )
+
+        self.assertEqual(result["status"], "DEGRADED")
+        self.assertIn("BLUEPRINT_EVIDENCE_REFERENCE_INCOMPLETE", result["reason_codes"])
+        self.assertEqual(result["clarifications"], [])
+
     async def test_blueprint_obligation_must_be_grounded_in_an_extracted_fact(self):
         surrounding_text = (
             f"{self.fact.quote}. Tài liệu cũng nhắc tới hỗ trợ khách hàng."
@@ -698,6 +947,171 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "DEGRADED")
         self.assertIn("BLUEPRINT_CLARIFICATION_REASON_MISSING", result["reason_codes"])
         self.assertEqual(result["clarifications"], [])
+
+    async def test_large_blueprint_evidence_is_compiled_in_configured_batches(self):
+        source_parts = []
+        facts = []
+        cursor = 0
+        for index in range(3):
+            quote = f"Điều khoản {index:03d}: " + ("x" * 2500)
+            if source_parts:
+                cursor += 1
+            facts.append(
+                AutomationFact(
+                    artifact_type="requirement_document",
+                    artifact_id="large-doc",
+                    artifact_version_id="large-doc-v1",
+                    source="document",
+                    authority="project",
+                    quote=quote,
+                    source_start=cursor,
+                    source_end=cursor + len(quote),
+                    source_offset_basis="CANONICAL_TEXT",
+                )
+            )
+            source_parts.append(quote)
+            cursor += len(quote)
+        source_text = "\n".join(source_parts)
+        evidence_by_ref = {
+            "large-doc-v1": {
+                "artifact_id": "large-doc",
+                "artifact_version_id": "large-doc-v1",
+                "source_offset_basis": "CANONICAL_TEXT",
+                "text": source_text,
+            }
+        }
+        batch_sizes = []
+
+        async def compile_batch(request):
+            batch_sizes.append(len(request.evidence))
+            evidence = request.evidence[0]
+            quote = evidence.verified_facts[0].quote[:1000]
+            output = {
+                "status": "SUCCESS",
+                "degraded_mode": None,
+                "evidence_refs": [evidence.artifact_version_id],
+                "obligations": [{
+                    "key": "SAME_MODEL_KEY",
+                    "obligation": f"Kiểm tra điều khoản {quote[:20]}",
+                    "source_ref": evidence.artifact_version_id,
+                    "source_quote": quote,
+                }],
+                "clarifications": [],
+                "confidence": 0.82,
+                "warnings": [],
+            }
+            return SimpleNamespace(model_dump=lambda **_: output)
+
+        with (
+            patch("src.services.testability_blueprint.settings.AI_AGENT_MAX_EVIDENCE_ITEMS", 2),
+            patch(
+                "src.services.testability_blueprint.generate_ai_automation",
+                new=AsyncMock(side_effect=compile_batch),
+            ),
+        ):
+            result = await compile_testability_blueprint(
+                "project-1", facts, evidence_by_ref, {"large-doc"}
+            )
+
+        self.assertEqual(batch_sizes, [2, 1])
+        self.assertEqual(result["status"], "SUCCESS")
+        self.assertEqual(len(result["obligations"]), 2)
+        self.assertEqual(
+            [item["key"] for item in result["obligations"]],
+            ["B001-SAME_MODEL_KEY", "B002-SAME_MODEL_KEY"],
+        )
+
+        failure_calls = 0
+
+        async def fail_second_batch(request):
+            nonlocal failure_calls
+            failure_calls += 1
+            if failure_calls == 1:
+                return await compile_batch(request)
+            raise RuntimeError("provider unavailable")
+
+        with (
+            patch("src.services.testability_blueprint.settings.AI_AGENT_MAX_EVIDENCE_ITEMS", 2),
+            patch(
+                "src.services.testability_blueprint.generate_ai_automation",
+                new=AsyncMock(side_effect=fail_second_batch),
+            ),
+        ):
+            failed_result = await compile_testability_blueprint(
+                "project-1", facts, evidence_by_ref, {"large-doc"}
+            )
+
+        self.assertEqual(failed_result["status"], "DEGRADED")
+        self.assertEqual(
+            failed_result["reason_codes"], ["BLUEPRINT_BATCH_COMPILATION_FAILED"]
+        )
+        self.assertEqual(failed_result["obligations"], [])
+
+    async def test_empty_blueprint_batch_is_reported_when_other_batches_succeed(self):
+        second_fact = self.fact.model_copy(
+            update={
+                "artifact_id": "doc-2",
+                "artifact_version_id": "doc-2-v1",
+                "quote": "Trang đăng nhập có logo của hệ thống.",
+                "source_start": 0,
+                "source_end": len("Trang đăng nhập có logo của hệ thống."),
+            }
+        )
+        evidence = {
+            **self.evidence,
+            "doc-2-v1": {
+                "artifact_id": "doc-2",
+                "artifact_version_id": "doc-2-v1",
+                "text": second_fact.quote,
+            },
+        }
+
+        async def compile_batch(request):
+            item = request.evidence[0]
+            if item.artifact_version_id == "doc-1-v1":
+                output = {
+                    "status": "SUCCESS",
+                    "degraded_mode": None,
+                    "evidence_refs": [item.artifact_version_id],
+                    "obligations": [],
+                    "clarifications": [],
+                    "confidence": 0.8,
+                    "warnings": [],
+                }
+            else:
+                output = {
+                    "status": "SUCCESS",
+                    "degraded_mode": None,
+                    "evidence_refs": [item.artifact_version_id],
+                    "obligations": [{
+                        "key": "logo-display",
+                        "obligation": "Kiểm tra logo trang đăng nhập",
+                        "source_ref": item.artifact_version_id,
+                        "source_quote": second_fact.quote,
+                    }],
+                    "clarifications": [],
+                    "confidence": 0.8,
+                    "warnings": [],
+                }
+            return SimpleNamespace(model_dump=lambda **_: output)
+
+        with (
+            patch("src.services.testability_blueprint.settings.AI_AGENT_MAX_EVIDENCE_ITEMS", 1),
+            patch(
+                "src.services.testability_blueprint.generate_ai_automation",
+                new=AsyncMock(side_effect=compile_batch),
+            ),
+        ):
+            result = await compile_testability_blueprint(
+                "project-1",
+                [self.fact, second_fact],
+                evidence,
+                {"doc-1", "doc-2"},
+            )
+
+        self.assertEqual(result["status"], "SUCCESS")
+        self.assertEqual(len(result["obligations"]), 1)
+        self.assertIn("BATCH_1:NO_TESTABILITY_OUTCOMES", result["warnings"])
 
     def test_legacy_blueprint_receipt_without_reason_remains_readable(self):
         output = BlueprintCompilationOutputSchema.model_validate({

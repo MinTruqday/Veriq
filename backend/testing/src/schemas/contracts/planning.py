@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -22,11 +23,44 @@ class TestPlanEstimation(BaseModel):
     planned_effort_hours: float = Field(default=0, ge=0)
     planned_people: int = Field(default=0, ge=0)
     basis: str = Field(default="", max_length=5000)
+    effort_allocations: list["TestPlanEffortAllocation"] = Field(default_factory=list, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_effort_allocations(self):
+        allocation_ids = [item.user_id for item in self.effort_allocations]
+        if len(allocation_ids) != len(set(allocation_ids)):
+            raise ValueError("TEST_PLAN_EFFORT_ALLOCATION_DUPLICATE_USER")
+        if self.effort_allocations:
+            allocation_total = sum(item.planned_hours for item in self.effort_allocations)
+            if round(allocation_total, 2) != round(self.planned_effort_hours, 2):
+                raise ValueError("TEST_PLAN_EFFORT_ALLOCATION_TOTAL_MUST_MATCH_PLAN")
+        return self
+
+
+class TestPlanEffortAllocation(BaseModel):
+    user_id: str = Field(min_length=1, max_length=200)
+    planned_hours: float = Field(gt=0, le=100000)
 
 
 class TestPlanSchedule(BaseModel):
     planned_start_at: str | None = Field(default=None, max_length=80)
     planned_end_at: str | None = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_schedule_order(self):
+        if self.planned_start_at and self.planned_end_at:
+            try:
+                start = datetime.fromisoformat(self.planned_start_at.replace("Z", "+00:00"))
+                end = datetime.fromisoformat(self.planned_end_at.replace("Z", "+00:00"))
+                if (start.tzinfo is None) != (end.tzinfo is None):
+                    raise ValueError("TEST_PLAN_SCHEDULE_TIMEZONE_MISMATCH")
+                if start > end:
+                    raise ValueError("TEST_PLAN_SCHEDULE_END_BEFORE_START")
+            except (TypeError, ValueError) as error:
+                if str(error).startswith("TEST_PLAN_SCHEDULE_"):
+                    raise
+                raise ValueError("TEST_PLAN_SCHEDULE_INVALID") from error
+        return self
 
 
 class TestPlanMilestone(BaseModel):

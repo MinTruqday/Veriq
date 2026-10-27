@@ -315,6 +315,16 @@ class RequirementImportConfirmationRevisionTests(unittest.IsolatedAsyncioTestCas
         delete_created = AsyncMock()
         index = AsyncMock()
         audit = AsyncMock()
+        confirmed_job = {
+            "_id": "IMPORT-1",
+            "project_id": "PROJECT-1",
+            "status": "CONFIRMED",
+            "created_requirement_version_ids": ["REQV-1", "REQV-2"],
+        }
+        indexed_versions = [
+            {"_id": "REQV-1", "index_status": "PENDING"},
+            {"_id": "REQV-2", "index_status": "PENDING"},
+        ]
 
         with (
             patch.object(
@@ -351,6 +361,16 @@ class RequirementImportConfirmationRevisionTests(unittest.IsolatedAsyncioTestCas
                 requirement_import_workflow.requirement_import_repository,
                 "confirm",
                 new=confirm,
+            ),
+            patch.object(
+                requirement_import_workflow.requirement_import_repository,
+                "find",
+                new=AsyncMock(return_value=confirmed_job),
+            ),
+            patch.object(
+                requirement_import_workflow.requirement_repository,
+                "list_versions_by_ids",
+                new=AsyncMock(return_value=indexed_versions),
             ),
             patch.object(
                 requirement_import_workflow.requirement_import_repository,

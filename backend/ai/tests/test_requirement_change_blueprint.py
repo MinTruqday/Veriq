@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +12,7 @@ from src.tools.requirement_change_workflow import (
     finalized_generation_warnings,
     list_all_impact_proposals,
     process_changed_requirement_version,
+    requirement_quality_allows_automatic_publication,
     requirement_version_source_facts,
 )
 from src.tools.test_case_deduplication import consolidate_duplicate_test_case_drafts
@@ -291,6 +293,118 @@ class RequirementChangeBlueprintTests(unittest.TestCase):
 
 
 class RequirementChangeAutomationTests(unittest.IsolatedAsyncioTestCase):
+    def test_requirement_quality_gate_blocks_invalid_degraded_or_blocking_results(self):
+        self.assertTrue(
+            requirement_quality_allows_automatic_publication(
+                {
+                    "status": "SUCCESS",
+                    "valid": True,
+                    "degraded_mode": False,
+                    "blocking_finding_count": 0,
+                }
+            )
+        )
+        for assessment in (
+            {
+                "status": "SUCCESS",
+                "valid": False,
+                "degraded_mode": False,
+                "blocking_finding_count": 0,
+            },
+            {
+                "status": "DEGRADED",
+                "valid": True,
+                "degraded_mode": True,
+                "blocking_finding_count": 0,
+            },
+            {
+                "status": "SUCCESS",
+                "valid": True,
+                "degraded_mode": False,
+                "blocking_finding_count": 1,
+            },
+        ):
+            with self.subTest(assessment=assessment):
+                self.assertFalse(requirement_quality_allows_automatic_publication(assessment))
+
+    async def test_changed_requirement_quality_failure_stops_before_baseline_or_generation(self):
+        version = {
+            "_id": "REQV-1",
+            "project_id": "project-1",
+            "requirement_id": "REQ-1",
+            "status": "DRAFT",
+            "revision": 1,
+            "plain_text_projection": "Người dùng đăng nhập.",
+        }
+        requirement = {"_id": "REQ-1", "current_version": version}
+        permissions = {
+            "requirement.read",
+            "requirement.review",
+            "requirement.version.read",
+            "ai.generate_testcase",
+            "testcase.create",
+            "testcase.read",
+            "testcase.lint",
+            "testcase.submit_review",
+            "ai.run_lint",
+            "changeset.create",
+            "changeset.review",
+            "impact.execute",
+            "impact.review",
+            "impact.close",
+            "ai.run_impact",
+            "ai.create_proposal",
+            "proposal.read",
+        }
+        api = AsyncMock(side_effect=[version, requirement, {}])
+        quality = {
+            "analysis_id": "QUALITY-1",
+            "status": "DEGRADED",
+            "valid": False,
+            "degraded_mode": True,
+            "finding_count": 1,
+            "blocking_finding_count": 1,
+        }
+
+        with (
+            patch("src.tools.requirement_change_workflow.require_operation", api),
+            patch(
+                "src.tools.requirement_change_workflow.compile_testability_blueprint",
+                new=AsyncMock(
+                    return_value={
+                        "status": "SUCCESS",
+                        "obligations": [],
+                        "evidence_refs": ["REQV-1"],
+                    }
+                ),
+            ),
+            patch(
+                "src.tools.requirement_change_workflow.resolve_answered_clarifications",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "src.tools.requirement_change_workflow.assess_changed_requirement_quality",
+                new=AsyncMock(return_value=quality),
+            ),
+        ):
+            raw = await process_changed_requirement_version.ainvoke(
+                {"project_id": "project-1", "requirement_version_id": "REQV-1"},
+                config={"configurable": {"permissions": sorted(permissions)}},
+            )
+
+        result = json.loads(raw)
+        self.assertEqual(result["reason_code"], "REQUIREMENT_QUALITY_GATE_FAILED")
+        self.assertEqual(result["verification"]["status"], "INCOMPLETE")
+        self.assertEqual(api.await_count, 3)
+        self.assertEqual(
+            [call.args[1] for call in api.await_args_list],
+            [
+                "/phien-ban-yeu-cau/REQV-1",
+                "/yeu-cau/REQ-1",
+                "/phien-ban-yeu-cau/REQV-1/phieu-lam-ro/tao-tu-ra-soat",
+            ],
+        )
+
     async def test_changed_requirement_quality_uses_revision_scoped_idempotency(self):
         version = {"_id": "REQV-1", "revision": 7}
         response = {
@@ -379,7 +493,19 @@ class RequirementChangeAutomationTests(unittest.IsolatedAsyncioTestCase):
         for response, reason in (
             ({**base, "findings": [None]}, "REQUIREMENT_QUALITY_FINDINGS_INVALID"),
             (
+                {**base, "findings": [{"severity": "unknown"}]},
+                "REQUIREMENT_QUALITY_FINDINGS_INVALID",
+            ),
+            (
                 {**base, "findings": [], "status": "UNKNOWN"},
+                "REQUIREMENT_QUALITY_STATUS_INVALID",
+            ),
+            (
+                {**base, "findings": [], "degraded_mode": None},
+                "REQUIREMENT_QUALITY_STATUS_INVALID",
+            ),
+            (
+                {**base, "findings": [], "valid": "true"},
                 "REQUIREMENT_QUALITY_STATUS_INVALID",
             ),
         ):

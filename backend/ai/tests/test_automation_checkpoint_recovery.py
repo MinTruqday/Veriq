@@ -181,6 +181,8 @@ class AutomationCheckpointRecoveryTests(unittest.IsolatedAsyncioTestCase):
 
         runs = MagicMock()
         runs.find.return_value.to_list = AsyncMock(return_value=[run_document])
+
+        runs.find.return_value.sort.return_value = runs.find.return_value
         runs.find_one_and_update = AsyncMock(return_value=updated_document)
 
         checkpoints = MagicMock()
@@ -267,6 +269,8 @@ class AutomationCheckpointRecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_recovery_cutoff_only_selects_runs_present_at_startup(self):
         runs = MagicMock()
         runs.find.return_value.to_list = AsyncMock(return_value=[])
+
+        runs.find.return_value.sort.return_value = runs.find.return_value
         db = MagicMock()
         db.automation_runs = runs
         database_infrastructure = MagicMock()
@@ -277,9 +281,16 @@ class AutomationCheckpointRecoveryTests(unittest.IsolatedAsyncioTestCase):
             patch("src.repositories.automation.database", database_infrastructure),
             patch("src.repositories.automation.settings.AI_DB_NAME", "test"),
         ):
-            await automation_repository.recover_interrupted_runs(cutoff)
+            await automation_repository.recover_interrupted_runs(
+                cutoff,
+                after_automation_run_id="AUT-RECOVERY-000",
+                limit=37,
+            )
 
         query = runs.find.call_args.args[0]
+        self.assertEqual(query["_id"], {"$gt": "AUT-RECOVERY-000"})
+        runs.find.return_value.sort.assert_called_once_with([("_id", 1)])
+        runs.find.return_value.to_list.assert_awaited_once_with(length=37)
         branches = query["$or"]
         self.assertEqual(len(branches), 3)
         self.assertEqual(branches[0]["status"], AutomationStatus.RUNNING.value)
@@ -304,6 +315,8 @@ class AutomationCheckpointRecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_periodic_recovery_excludes_queued_and_legacy_runs(self):
         runs = MagicMock()
         runs.find.return_value.to_list = AsyncMock(return_value=[])
+
+        runs.find.return_value.sort.return_value = runs.find.return_value
         db = MagicMock()
         db.automation_runs = runs
         infrastructure = MagicMock()
@@ -466,6 +479,8 @@ class AutomationCheckpointRecoveryTests(unittest.IsolatedAsyncioTestCase):
         )
         runs = MagicMock()
         runs.find.return_value.to_list = AsyncMock(return_value=[run_document])
+
+        runs.find.return_value.sort.return_value = runs.find.return_value
         runs.find_one_and_update = AsyncMock()
         checkpoints = MagicMock()
         checkpoints.find_one = AsyncMock()
@@ -506,6 +521,8 @@ class AutomationCheckpointRecoveryTests(unittest.IsolatedAsyncioTestCase):
         )
         runs = MagicMock()
         runs.find.return_value.to_list = AsyncMock(return_value=[run_document])
+
+        runs.find.return_value.sort.return_value = runs.find.return_value
         runs.find_one_and_update = AsyncMock(return_value=degraded_document)
         checkpoints = MagicMock()
         checkpoints.find_one = AsyncMock(return_value=checkpoint)
@@ -545,6 +562,8 @@ class AutomationCheckpointRecoveryTests(unittest.IsolatedAsyncioTestCase):
         )
         runs = MagicMock()
         runs.find.return_value.to_list = AsyncMock(return_value=[run_document])
+
+        runs.find.return_value.sort.return_value = runs.find.return_value
         runs.find_one_and_update = AsyncMock(return_value=degraded_document)
         checkpoints = MagicMock()
         checkpoints.find_one = AsyncMock(return_value=None)
@@ -568,6 +587,32 @@ class AutomationCheckpointRecoveryTests(unittest.IsolatedAsyncioTestCase):
         saved = checkpoints.insert_one.await_args.args[0]
         self.assertFalse(saved["detail"]["retryable"])
         self.assertIsNone(saved["state_snapshot"])
+
+    async def test_retry_checkpoint_count_queries_only_retryable_dispatch_failures(self):
+        checkpoints = MagicMock()
+        checkpoints.count_documents = AsyncMock(return_value=4)
+        db = MagicMock(automation_checkpoints=checkpoints)
+        infrastructure = MagicMock()
+        infrastructure.mongodb.__getitem__.return_value = db
+
+        with (
+            patch("src.repositories.automation.database", infrastructure),
+            patch("src.repositories.automation.settings.AI_DB_NAME", "test"),
+        ):
+            count = await automation_repository.count_retry_checkpoints("AUT-1")
+
+        self.assertEqual(count, 4)
+        checkpoints.count_documents.assert_awaited_once_with(
+            {
+                "automation_run_id": "AUT-1",
+                "detail.reason_code": {
+                    "$in": [
+                        "AUTOMATION_QUEUE_UNAVAILABLE",
+                        "AUTOMATION_WORKER_RETRYABLE",
+                    ]
+                },
+            }
+        )
 
 if __name__ == "__main__":
     unittest.main()
