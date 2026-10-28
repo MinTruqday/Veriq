@@ -388,6 +388,7 @@ class RequirementClarificationObligationTests(unittest.IsolatedAsyncioTestCase):
             "_id": "REQV-1",
             "requirement_id": "REQ-1",
             "project_id": "PRJ-1",
+            "revision": 1,
         }
         findings = [
             {

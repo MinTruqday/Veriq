@@ -565,6 +565,141 @@ class DocumentProvenanceTests(unittest.IsolatedAsyncioTestCase):
         )
         service._tesseract_pdf_fallback.assert_called_once()
 
+    def test_high_confidence_vietnamese_scan_uses_similar_tesseract_text_with_more_diacritics(self):
+        from unittest.mock import Mock
+
+        docling_text = (
+            "Yêu cu đăng nhp / Ngưi dùng nhp email / Mt khu hp l / "
+            "H thng xác thc / Hin th tng quan"
+        )
+        tesseract_text = (
+            "Yêu cầu đăng nhập / Người dùng nhập email / Mật khẩu hợp lệ / "
+            "Hệ thống xác thực / Hiển thị tổng quan"
+        )
+        document = SimpleNamespace(
+            export_to_markdown=lambda: docling_text,
+            pages={"page-1": object()},
+            iterate_items=lambda: iter(()),
+        )
+        converter = SimpleNamespace(convert=Mock(return_value=SimpleNamespace(
+            document=document,
+            confidence=SimpleNamespace(
+                pages={1: SimpleNamespace(ocr_score=0.983518)}
+            ),
+        )))
+        service = ConversionService()
+        service._get_docling = Mock(return_value=converter)
+        service._extract_structure = Mock(return_value=[
+            {
+                "block_id": "#/texts/1",
+                "text": docling_text,
+                "type": "text",
+                "level": 0,
+                "page_no": 1,
+                "locations": [{"page_no": 1}],
+                "extraction_status": "EXTRACTED",
+            },
+        ])
+        service._tesseract_pdf_fallback = Mock(return_value=(
+            tesseract_text,
+            [{
+                "block_id": "tesseract-ocr-page-1",
+                "parent_block_id": None,
+                "text": tesseract_text,
+                "type": "ocr_fallback_page_text",
+                "level": 0,
+                "page_no": 1,
+                "locations": [{"page_no": 1}],
+                "extraction_status": "EXTRACTED",
+            }],
+            [{
+                "block_id": None,
+                "type": "ocr_fallback",
+                "page_no": 1,
+                "reason_code": "OCR_FALLBACK_ENGINE_USED",
+            }],
+            [],
+        ))
+
+        with patch("importlib.metadata.version", return_value="test-docling"):
+            result = service._parse_file(
+                Path("source.pdf"),
+                page_range=(1, 1),
+                total_page_count=1,
+                use_text_pdf_fast_path=False,
+                ocr_enabled=True,
+                ocr_language="iso:vi",
+            )
+
+        self.assertEqual(result["markdown"], tesseract_text)
+        self.assertIn(
+            "OCR_FALLBACK_VIETNAMESE_ALTERNATIVE_SELECTED",
+            [item["reason_code"] for item in result["extraction_warnings"]],
+        )
+        service._tesseract_pdf_fallback.assert_called_once()
+
+    def test_high_confidence_vietnamese_scan_keeps_conflicting_ocr_text_for_review(self):
+        from unittest.mock import Mock
+
+        docling_text = "Tài khoản chỉ mở khi trạng thái là hoạt động."
+        tesseract_text = "Tài khoản luôn mở khi trạng thái là hoạt động."
+        document = SimpleNamespace(
+            export_to_markdown=lambda: docling_text,
+            pages={"page-1": object()},
+            iterate_items=lambda: iter(()),
+        )
+        converter = SimpleNamespace(convert=Mock(return_value=SimpleNamespace(
+            document=document,
+            confidence=SimpleNamespace(
+                pages={1: SimpleNamespace(ocr_score=0.98)}
+            ),
+        )))
+        service = ConversionService()
+        service._get_docling = Mock(return_value=converter)
+        service._extract_structure = Mock(return_value=[
+            {
+                "block_id": "#/texts/1",
+                "text": docling_text,
+                "type": "text",
+                "level": 0,
+                "page_no": 1,
+                "locations": [{"page_no": 1}],
+                "extraction_status": "EXTRACTED",
+            },
+        ])
+        service._tesseract_pdf_fallback = Mock(return_value=(
+            tesseract_text,
+            [{
+                "block_id": "tesseract-ocr-page-1",
+                "parent_block_id": None,
+                "text": tesseract_text,
+                "type": "ocr_fallback_page_text",
+                "level": 0,
+                "page_no": 1,
+                "locations": [{"page_no": 1}],
+                "extraction_status": "EXTRACTED",
+            }],
+            [],
+            [],
+        ))
+
+        with patch("importlib.metadata.version", return_value="test-docling"):
+            result = service._parse_file(
+                Path("source.pdf"),
+                page_range=(1, 1),
+                total_page_count=1,
+                use_text_pdf_fast_path=False,
+                ocr_enabled=True,
+                ocr_language="iso:vi",
+            )
+
+        self.assertEqual(result["markdown"], docling_text)
+        self.assertIn(
+            "OCR_ENGINES_DISAGREE_REVIEW_REQUIRED",
+            [item["reason_code"] for item in result["extraction_warnings"]],
+        )
+        service._tesseract_pdf_fallback.assert_called_once()
+
     def test_ocr_page_without_recognized_text_has_page_diagnostic(self):
         from unittest.mock import Mock
 

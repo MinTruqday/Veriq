@@ -132,7 +132,10 @@ def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest)
             "DEGRADED"
             if extraction.get("unprocessed_blocks")
             else "COMPLETE"
-            if extraction.get("parser") and req.text.strip()
+            if (
+                extraction.get("parser")
+                or extraction.get("extraction_method") == "USER_PROVIDED"
+            ) and req.text.strip()
             else None
         ),
         "extraction_method": extraction.get("extraction_method") or extraction.get("parser"),

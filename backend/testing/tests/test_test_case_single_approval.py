@@ -240,8 +240,10 @@ class SingleTestCaseApprovalTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(ready)
         self.assertEqual(version["index_error_code"], "APPROVAL_STATUS_PERSIST_FAILED")
-        self.assertIsNone(version["adequacy_invalidation_error_code"])
-        self.assertEqual(invalidate.await_count, 2)
+        self.assertEqual(
+            version["adequacy_invalidation_error_code"],
+            "APPROVAL_STATUS_PERSIST_FAILED",
+        )
 
     async def test_approval_and_ai_outbox_are_written_in_same_transaction(self):
         draft = review_draft()

@@ -1,4 +1,5 @@
 import asyncio
+import difflib
 import hashlib
 import io
 import math
@@ -6,6 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
+import unicodedata
 from collections import Counter
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -23,7 +25,7 @@ class IndexingAttemptSupersededError(RuntimeError):
 
 
 class ConversionService:
-    CHECKPOINT_CONTRACT_VERSION = 6
+    CHECKPOINT_CONTRACT_VERSION = 7
     INVALID_PAGE_CHECKPOINT_ERRORS = frozenset(
         {
             "document_page_checkpoint_page_count_mismatch",
@@ -306,6 +308,31 @@ class ConversionService:
         if normalized == "iso:vi":
             return "vie"
         return None
+
+    @staticmethod
+    def _ocr_text_without_diacritics(text: str) -> str:
+        decomposed = unicodedata.normalize("NFD", str(text or "")).casefold()
+        return " ".join(
+            "".join(
+                character
+                for character in decomposed
+                if unicodedata.category(character) != "Mn"
+            ).split()
+        )
+
+    @staticmethod
+    def _ocr_diacritic_count(text: str) -> int:
+        decomposed = unicodedata.normalize("NFD", str(text or ""))
+        return sum(unicodedata.category(character) == "Mn" for character in decomposed)
+
+    @classmethod
+    def _ocr_text_similarity(cls, left: str, right: str) -> float:
+        return difflib.SequenceMatcher(
+            None,
+            cls._ocr_text_without_diacritics(left),
+            cls._ocr_text_without_diacritics(right),
+            autojunk=False,
+        ).ratio()
 
     def _tesseract_pdf_page_text(
         self,
@@ -829,11 +856,15 @@ class ConversionService:
                     for confidence_page, confidence in diagnostics
                 )
                 confidence = self._ocr_page_confidence(conversion, page_no)
+                low_confidence = (
+                    confidence is not None
+                    and confidence < settings.DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE
+                )
+                compare_vietnamese_ocr = language == "iso:vi"
                 if (
                     page_no is not None
-                    and confidence is not None
-                    and confidence < settings.DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE
                     and self._tesseract_language(language)
+                    and (low_confidence or compare_vietnamese_ocr)
                 ):
                     (
                         fallback_markdown,
@@ -846,7 +877,59 @@ class ConversionService:
                         page_count or self._pdf_page_count(file_path),
                         language,
                     )
-                    if fallback_markdown:
+                    page_text = "\n\n".join(
+                        str(block.get("text") or "").strip()
+                        for block in structure
+                        if str(block.get("text") or "").strip()
+                        and (
+                            block.get("page_no") == page_no
+                            or any(
+                                isinstance(location, dict)
+                                and location.get("page_no") == page_no
+                                for location in (block.get("locations") or [])
+                            )
+                        )
+                        and str(block.get("type") or "").casefold()
+                        not in {"picture", "image"}
+                    )
+                    replace_with_fallback = bool(fallback_markdown and low_confidence)
+                    fallback_reason = "OCR_FALLBACK_LOW_CONFIDENCE"
+                    if (
+                        fallback_markdown
+                        and compare_vietnamese_ocr
+                        and not low_confidence
+                    ):
+                        tesseract_restored_diacritics = (
+                            self._ocr_diacritic_count(fallback_markdown)
+                            > self._ocr_diacritic_count(page_text)
+                        )
+                        same_token_count = len(page_text.split()) == len(
+                            fallback_markdown.split()
+                        )
+                        text_similarity = self._ocr_text_similarity(
+                            page_text, fallback_markdown
+                        )
+                        if (
+                            same_token_count
+                            and text_similarity
+                            >= settings.DOCUMENT_OCR_VIETNAMESE_TEXT_SIMILARITY_MIN
+                            and tesseract_restored_diacritics
+                        ):
+                            replace_with_fallback = True
+                            fallback_reason = (
+                                "OCR_FALLBACK_VIETNAMESE_ALTERNATIVE_SELECTED"
+                            )
+                        elif text_similarity < 1:
+                            extraction_warnings.append({
+                                "block_id": None,
+                                "type": "ocr_fallback_comparison",
+                                "page_no": page_no,
+                                "docling_ocr_confidence": confidence,
+                                "engine_text_similarity": round(text_similarity, 4),
+                                "reason_code": "OCR_ENGINES_DISAGREE_REVIEW_REQUIRED",
+                            })
+
+                    if replace_with_fallback:
                         def belongs_to_page(block):
                             if block.get("page_no") == page_no:
                                 return True
@@ -878,7 +961,7 @@ class ConversionService:
                             "page_no": page_no,
                             "docling_ocr_confidence": confidence,
                             "fallback_min_confidence": settings.DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE,
-                            "reason_code": "OCR_FALLBACK_LOW_CONFIDENCE",
+                            "reason_code": fallback_reason,
                         })
                         unprocessed_blocks.extend(fallback_unprocessed_blocks)
                         unprocessed_blocks = [
@@ -889,7 +972,7 @@ class ConversionService:
                                 and item.get("page_no") == page_no
                             )
                         ]
-                    else:
+                    elif low_confidence:
                         unprocessed_blocks.extend(fallback_unprocessed_blocks)
             elif not any(
                 item.get("extraction_status") != "EXTRACTED" for item in structure

@@ -1194,6 +1194,15 @@ def safe_requirement_import_resolution(candidate_match):
     return None
 
 
+def requirement_import_has_unresolved_matches(comparisons):
+    return any(
+        isinstance(item, dict)
+        and item.get("matches")
+        and safe_requirement_import_resolution(item) is None
+        for item in comparisons or []
+    )
+
+
 def requirement_versions_requiring_maintenance(import_job):
     resolutions = (import_job or {}).get("resolutions")
     if not isinstance(resolutions, list):

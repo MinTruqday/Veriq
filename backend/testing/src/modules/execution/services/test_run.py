@@ -84,7 +84,7 @@ def _idempotent_run_matches(existing, payload, version_ids, context):
 
 def _pin_run_to_plan(run, snapshot, snapshot_hash):
     run["test_plan_snapshot_hash"] = snapshot_hash
-    run["requirement_version_ids"] = list(snapshot.get("requirement_version_ids", []))
+    run["requirement_version_ids"] = list(snapshot.get("requirement_version_ids") or [])
     if snapshot.get("device_matrix_id"):
         run.update(
             {
@@ -98,7 +98,7 @@ def _pin_run_to_plan(run, snapshot, snapshot_hash):
 
 def _validate_plan_suite_scope(suite_ids, snapshot):
     selected = set(suite_ids or [])
-    approved = set(snapshot.get("test_suite_ids", []))
+    approved = set(snapshot.get("test_suite_ids") or [])
     if not selected.issubset(approved):
         raise HTTPException(
             status_code=422,
@@ -581,7 +581,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
     return rerun
 
 
-async def update_test_run_record(project_id, run_id, payload, user):
+async def _update_test_run_record(project_id, run_id, payload, user):
     
     run = await get_project_entity('test_runs', run_id, user, 'testrun.update')
     if run["project_id"] != project_id:
@@ -966,6 +966,26 @@ async def update_test_run_record(project_id, run_id, payload, user):
                 session=session,
             )
     return updated
+
+
+async def update_test_run_record(project_id, run_id, payload, user):
+    try:
+        return await _update_test_run_record(project_id, run_id, payload, user)
+    except PyMongoError as error:
+        if not (
+            error.has_error_label("TransientTransactionError")
+            or getattr(error, "code", None) == 112
+        ):
+            raise
+        current = await test_run_repository.find_run(run_id, project_id)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TEST_RUN_SCOPE_CHANGED_RETRY",
+                "current_revision": (current or {}).get("revision"),
+                "retryable": True,
+            },
+        ) from error
 
 
 async def assign_test_run_record(project_id, run_id, payload, user):

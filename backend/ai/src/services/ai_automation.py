@@ -173,7 +173,7 @@ def generated_cases_have_grounded_citations(cases, evidence):
             valid_quotes.append(quote.casefold())
         quoted_text = " ".join(valid_quotes)
         if any(
-            not source_quote_spans(quoted_text, str(skill).strip())
+            not source_quote_spans(quoted_text, str(skill).strip().casefold())
             for skill in case.get("required_skills") or []
         ):
             return False

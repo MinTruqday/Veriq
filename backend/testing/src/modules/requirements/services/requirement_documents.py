@@ -706,6 +706,10 @@ async def read_and_parse_requirement_source(document, attempt_id):
 
 async def index_requirement_document(document, _stale_retries=0):
     source_structure = document.get("source_structure") or []
+    extraction = dict(document.get("parse_report") or {})
+    if (document.get("raw_source") or {}).get("storage") == "embedded":
+        extraction.setdefault("extraction_method", "USER_PROVIDED")
+        extraction.setdefault("unprocessed_blocks", [])
     source_structure_hash = str(
         document.get("source_structure_source_hash") or document.get("content_hash") or ""
     )
@@ -744,10 +748,10 @@ async def index_requirement_document(document, _stale_retries=0):
         source_type=document.get("source_type"),
         source_version=document.get("source_version"),
         source_hash=document.get("content_hash"),
-        extraction=document.get("parse_report") or {},
+        extraction=extraction,
     )
     index_status = requirement_document_index_status(
-        indexed, document.get("parse_report") or {}
+        indexed, extraction
     )
     result = await requirement_document_repository.set_index_result(
         document["_id"],

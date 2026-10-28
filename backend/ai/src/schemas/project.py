@@ -568,7 +568,7 @@ class QdrantPointPayload(ProjectArtifactChunkMetadata):
                 self.artifact_version_id,
                 self.source_hash,
                 self.normalized_content_hash,
-                self.parser_name,
+                self.content_format,
                 self.index_generation,
                 self.document_index_contract_version,
                 self.extraction_status,
@@ -583,6 +583,8 @@ class QdrantPointPayload(ProjectArtifactChunkMetadata):
                 self.chunk_index,
             )
             if any(value is None or value == "" for value in required_values):
+                raise ValueError("qdrant_document_chunk_metadata_incomplete")
+            if self.extraction_method != "USER_PROVIDED" and not self.parser_name:
                 raise ValueError("qdrant_document_chunk_metadata_incomplete")
             for digest in (
                 self.source_hash,

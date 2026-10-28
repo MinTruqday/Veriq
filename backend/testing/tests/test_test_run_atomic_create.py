@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
+from pymongo.errors import OperationFailure
 
 from src.modules.execution.services import test_plan as test_plan_service
 from src.modules.execution.services import test_run as service
@@ -346,6 +347,21 @@ def _configure_create(monkeypatch, *, fail_after_partial_results):
         ),
     )
     monkeypatch.setattr(service, "validate_test_versions", _async_value(None))
+    monkeypatch.setattr(
+        service.test_run_repository,
+        "list_versions",
+        _async_value([]),
+    )
+    monkeypatch.setattr(
+        service,
+        "automatically_assign_test_cases",
+        _async_value(({}, [], {})),
+    )
+    monkeypatch.setattr(
+        service.project_repository,
+        "fence_active_testers",
+        _async_value([]),
+    )
 
     async def insert_run(value, *, session):
         calls.append(("run", session))
@@ -562,7 +578,7 @@ def test_adding_cases_to_draft_run_automatically_assigns_only_new_cases(monkeypa
         include_cv_evidence=False,
     ):
         assignment_calls.append(
-            (project_id, versions, session, existing_case_assignments, existing_assignee_id)
+            (project_id, versions, session, dict(existing_case_assignments), existing_assignee_id)
         )
         return (
             {"version-b": "tester-b"},
@@ -604,7 +620,6 @@ def test_adding_cases_to_draft_run_automatically_assigns_only_new_cases(monkeypa
             session,
             {"version-a": "tester-a"},
             None,
-            False,
         )
     ]
     assert patches[0]["test_case_assignments"] == {
@@ -648,6 +663,7 @@ def _configure_assignment(monkeypatch, *, current_profile_revision):
         _async_value({"user_id": "tester-a"}),
     )
     monkeypatch.setattr(service.test_run_repository, "count_active_testers", _async_value(1))
+    monkeypatch.setattr(service.project_repository, "fence_active_testers", _async_value([]))
 
     async def fence_profiles(project_id, expected_revisions, timestamp, *, session):
         calls.append(("fence", project_id, expected_revisions, session))
@@ -726,6 +742,7 @@ def test_run_patch_validates_the_new_test_plan_snapshot(monkeypatch):
         "_id": "TRUN-existing",
         "project_id": "project-a",
         "status": "DRAFT",
+        "revision": 1,
         "test_plan_id": None,
         "test_case_version_ids": ["version-a"],
         "release_id": None,
@@ -777,10 +794,12 @@ def test_run_patch_validates_the_new_test_plan_snapshot(monkeypatch):
 
 
 def test_run_patch_accepts_new_plan_when_existing_scope_is_inside_snapshot(monkeypatch):
+    session = MemorySession()
     run = {
         "_id": "TRUN-existing",
         "project_id": "project-a",
         "status": "DRAFT",
+        "revision": 1,
         "test_plan_id": None,
         "test_case_version_ids": ["version-a"],
         "release_id": None,
@@ -788,7 +807,10 @@ def test_run_patch_accepts_new_plan_when_existing_scope_is_inside_snapshot(monke
         "environment_id": None,
     }
     patched = []
+    monkeypatch.setattr(service.database, "client", MemoryClient(session))
     monkeypatch.setattr(service, "get_project_entity", _async_value(run))
+    monkeypatch.setattr(service.test_run_repository, "find_run", _async_value(run))
+    monkeypatch.setattr(service.test_run_repository, "list_results", _async_value([]))
     monkeypatch.setattr(
         service,
         "verified_approved_plan_snapshot",
@@ -980,6 +1002,37 @@ def test_test_run_plan_context_compares_empty_pins_as_well_as_explicit_ids():
     assert raised.value.detail == {
         "code": "TEST_RUN_CONTEXT_OUTSIDE_PLAN_SCOPE",
         "field": "environment_id",
+    }
+
+
+def test_update_test_run_maps_concurrent_mongo_write_conflict_to_retryable_revision_conflict(monkeypatch):
+    async def write_conflict(*args, **kwargs):
+        raise OperationFailure(
+            "write conflict",
+            code=112,
+            details={"errorLabels": ["TransientTransactionError"]},
+        )
+
+    monkeypatch.setattr(service, "_update_test_run_record", write_conflict)
+    monkeypatch.setattr(
+        service.test_run_repository,
+        "find_run",
+        AsyncMock(return_value={"_id": "run-a", "revision": 2}),
+    )
+    payload = SimpleNamespace()
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(
+            service.update_test_run_record(
+                "project-a", "run-a", payload, SimpleNamespace(id="qa-a")
+            )
+        )
+
+    assert raised.value.status_code == 409
+    assert raised.value.detail == {
+        "code": "TEST_RUN_SCOPE_CHANGED_RETRY",
+        "current_revision": 2,
+        "retryable": True,
     }
 
 

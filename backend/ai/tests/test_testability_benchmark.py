@@ -1,3 +1,4 @@
+import unicodedata
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -1141,7 +1142,7 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
             ],
             expected_source_quotes=[quote],
             expected_obligation_sources={"account_lockout": quote},
-            expected_obligation_source_refs={"account_lockout": "policy-v1"},
+            expected_obligation_source_refs={"account_lockout": "api-v1"},
             compiler=BenchmarkCandidateSchema(
                 obligation_citations={
                     "account_lockout": [{"quote": quote, "source_ref": "policy-v1"}]
@@ -1175,6 +1176,50 @@ class TestabilityBenchmarkExecutionStatusTests(unittest.IsolatedAsyncioTestCase)
                 },
                 expected_obligation_source_refs={"account_lockout": "missing-v1"},
             )
+
+    def test_gold_obligation_quote_must_belong_to_its_answer_key_source_version(self):
+        with self.assertRaisesRegex(
+            ValueError, "benchmark_obligation_quote_not_in_cited_source"
+        ):
+            BenchmarkGoldCaseSchema(
+                case_id="obligation-quote-wrong-version",
+                sources=[
+                    {
+                        "source_id": "policy",
+                        "artifact_version_id": "policy-v1",
+                        "text": "Chính sách chưa xác định số lần đăng nhập sai.",
+                    },
+                    {
+                        "source_id": "api",
+                        "artifact_version_id": "api-v1",
+                        "text": "Tài khoản bị khóa sau năm lần đăng nhập sai.",
+                    },
+                ],
+                expected_source_quotes=[
+                    "Tài khoản bị khóa sau năm lần đăng nhập sai."
+                ],
+                expected_obligation_sources={
+                    "account_lockout": "Tài khoản bị khóa sau năm lần đăng nhập sai."
+                },
+                expected_obligation_source_refs={"account_lockout": "policy-v1"},
+            )
+
+    def test_gold_quote_source_mapping_normalizes_unicode_consistently(self):
+        composed = "Cà phê phải được xác nhận."
+        decomposed = unicodedata.normalize("NFD", composed)
+        case = BenchmarkGoldCaseSchema(
+            case_id="unicode-source-map",
+            sources=[{
+                "source_id": "srs",
+                "artifact_version_id": "srs-v1",
+                "text": composed,
+            }],
+            expected_source_quotes=[composed],
+            expected_source_quote_sources={decomposed: ["srs-v1"]},
+            expected_clarification_categories=["MISSING_RULE"],
+        )
+
+        self.assertEqual(case.expected_source_quote_sources, {decomposed: ["srs-v1"]})
 
     async def test_obligation_score_requires_its_own_evidence_to_be_grounded(self):
         quote = "Mật khẩu phải có ít nhất 12 ký tự."

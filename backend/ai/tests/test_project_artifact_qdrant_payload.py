@@ -125,6 +125,36 @@ class ProjectArtifactQdrantPayloadTests(unittest.TestCase):
         ):
             QdrantPointPayload.model_validate({"text": text, **empty_text_span})
 
+    def test_user_provided_document_chunk_does_not_claim_a_parser(self):
+        text = "Đăng nhập cần thông tin hợp lệ."
+        metadata = {
+            "document_id": "document-1",
+            "project_id": "project-1",
+            "artifact_type": "requirement_document",
+            "artifact_id": "document-1",
+            "artifact_version_id": "document-version-1",
+            "source_hash": "a" * 64,
+            "normalized_content_hash": "b" * 64,
+            "content_format": "md",
+            "index_generation": "c" * 64,
+            "document_index_contract_version": settings.DOCUMENT_INDEX_CONTRACT_VERSION,
+            "extraction_status": "COMPLETE",
+            "extraction_method": "USER_PROVIDED",
+            "embedding_model": "multilingual-e5-large",
+            "embedding_input_mode": "TEXT",
+            "embedding_input_hash": sha256(text.encode()).hexdigest(),
+            "chunk_id": "chunk-1",
+            "logical_chunk_id": "logical-chunk-1",
+            "chunk_hash": sha256(text.encode()).hexdigest(),
+            "chunk_type": "semantic",
+            "chunk_index": 0,
+        }
+
+        payload = QdrantPointPayload.model_validate({"text": text, **metadata})
+
+        self.assertEqual(payload.extraction_method, "USER_PROVIDED")
+        self.assertIsNone(payload.parser_name)
+
     def test_document_summary_requires_links_to_sampled_chunks(self):
         text = "Tóm tắt tài liệu"
         with self.assertRaisesRegex(

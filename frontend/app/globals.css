@@ -204,6 +204,7 @@
     grid-column: 1 / -1;
     width: 100%;
     min-width: 0;
+    flex: 0 1 auto;
   }
 
   .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-actions {

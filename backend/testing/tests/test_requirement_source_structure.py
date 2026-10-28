@@ -173,6 +173,23 @@ class RequirementSourceStructureTests(unittest.IsolatedAsyncioTestCase):
             requirement_documents.REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION,
         )
 
+    async def test_embedded_requirement_document_is_marked_as_user_provided(self):
+        document = {
+            "_id": "doc",
+            "project_id": "project",
+            "normalized_content": "Rule A",
+            "content_hash": "sourcehash",
+            "raw_source": {"storage": "embedded"},
+        }
+        with (
+            patch.object(requirement_documents, "index_artifact", new=AsyncMock(return_value=True)) as index,
+            patch.object(requirement_documents.requirement_document_repository, "set_index_result", new=AsyncMock(return_value=SimpleNamespace(matched_count=1))),
+        ):
+            await requirement_documents.index_requirement_document(document)
+
+        self.assertEqual(index.await_args.kwargs["extraction"]["extraction_method"], "USER_PROVIDED")
+        self.assertEqual(index.await_args.kwargs["extraction"]["unprocessed_blocks"], [])
+
     async def test_stale_revision_reindexes_latest_source_once(self):
         old_document = {
             "_id": "doc",

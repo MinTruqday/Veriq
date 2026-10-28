@@ -20,6 +20,7 @@ class AIAutomationEvidenceMetadataTests(unittest.TestCase):
         evidence = [
             {
                 "artifact_id": "req-1",
+                "artifact_version_id": "req-1",
                 "text": "API testing is required for this operation.",
             }
         ]
@@ -121,13 +122,13 @@ class AIAutomationEvidenceMetadataTests(unittest.TestCase):
             performance_targets_have_evidence(
                 [
                     {
-                        **suggestion,
+                        "virtual_users": 1,
                         "evidence_quotes": [
                             {"evidence_ref": "REQV-1", "quote": "Yêu cầu hiệu năng"}
                         ],
                     }
                 ],
-                evidence,
+                [{"artifact_id": "REQV-1", "text": "invalid Yêu cầu hiệu năng"}],
             )
         )
 

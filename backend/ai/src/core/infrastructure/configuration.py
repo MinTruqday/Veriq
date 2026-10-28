@@ -59,6 +59,9 @@ class Settings:
     DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE: float = float(
         os.getenv("DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE", "0.5")
     )
+    DOCUMENT_OCR_VIETNAMESE_TEXT_SIMILARITY_MIN: float = float(
+        os.getenv("DOCUMENT_OCR_VIETNAMESE_TEXT_SIMILARITY_MIN", "0.9")
+    )
     DOCUMENT_INDEX_CONTRACT_VERSION: int = int(
         os.getenv("DOCUMENT_INDEX_CONTRACT_VERSION", "2")
     )
@@ -130,6 +133,8 @@ if not settings.DOCUMENT_OCR_LANGUAGE:
     raise ValueError("DOCUMENT_OCR_LANGUAGE must not be empty")
 if not 0 <= settings.DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE <= 1:
     raise ValueError("DOCUMENT_OCR_FALLBACK_MIN_CONFIDENCE must be between 0 and 1")
+if not 0 <= settings.DOCUMENT_OCR_VIETNAMESE_TEXT_SIMILARITY_MIN <= 1:
+    raise ValueError("DOCUMENT_OCR_VIETNAMESE_TEXT_SIMILARITY_MIN must be between 0 and 1")
 if settings.DOCUMENT_INDEX_CONTRACT_VERSION < 1:
     raise ValueError("DOCUMENT_INDEX_CONTRACT_VERSION must be positive")
 if settings.DOCUMENT_INDEXING_LEASE_SECONDS < 2:

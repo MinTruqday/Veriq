@@ -980,12 +980,15 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
                 "text": source_text,
             }
         }
+        self.assertEqual(
+            len(verified_fact_evidence(facts, evidence_by_ref, {"large-doc"})), 3
+        )
         batch_sizes = []
 
         async def compile_batch(request):
             batch_sizes.append(len(request.evidence))
             evidence = request.evidence[0]
-            quote = evidence.verified_facts[0].quote[:1000]
+            quote = evidence.verified_facts[0].quote
             output = {
                 "status": "SUCCESS",
                 "degraded_mode": None,
@@ -1013,7 +1016,7 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
                 "project-1", facts, evidence_by_ref, {"large-doc"}
             )
 
-        self.assertEqual(batch_sizes, [2, 1])
+        self.assertEqual(batch_sizes, [2, 1], result)
         self.assertEqual(result["status"], "SUCCESS")
         self.assertEqual(len(result["obligations"]), 2)
         self.assertEqual(

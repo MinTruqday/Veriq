@@ -111,7 +111,7 @@ class AutomationWorkerFailureCheckpointTests(unittest.IsolatedAsyncioTestCase):
         worker = AutomationWorker()
         run = self.make_run().model_copy(update={"status": AutomationStatus.QUEUED})
         checkpoint = self.make_checkpoint(
-            AutomationCheckpointPhase.TASKS_PLANNED,
+            AutomationCheckpointPhase.PLAN_CREATED,
             {"reason_code": "AUTOMATION_QUEUE_REDELIVERY"},
         )
         with (

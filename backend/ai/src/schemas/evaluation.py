@@ -12,6 +12,12 @@ def validate_unique_benchmark_case_ids(cases):
         raise ValueError("benchmark_case_ids_must_be_unique")
 
 
+def benchmark_quote_occurs_in_source(source_text, quote):
+    normalized_source = unicodedata.normalize("NFC", source_text)
+    normalized_quote = unicodedata.normalize("NFC", quote)
+    return bool(source_quote_spans(normalized_source, normalized_quote))
+
+
 def benchmark_answer_key_review_covers_cases(cases, review):
     if not review:
         return False
@@ -271,7 +277,10 @@ class TestabilityBenchmarkGoldCase(BaseModel):
             self.expected_source_quotes = list(dict.fromkeys(self.expected_obligation_sources.values()))
         if any(
             not quote.strip()
-            or not any(source_quote_spans(source_text, quote) for source_text in source_texts)
+            or not any(
+                benchmark_quote_occurs_in_source(source_text, quote)
+                for source_text in source_texts
+            )
             for quote in self.expected_source_quotes
         ):
             raise ValueError("benchmark_expected_quote_must_appear_in_source")
@@ -282,7 +291,10 @@ class TestabilityBenchmarkGoldCase(BaseModel):
                 raise ValueError("benchmark_obligation_sources_must_match_expected_obligations")
             if any(
                 not quote.strip()
-                or not any(source_quote_spans(source_text, quote) for source_text in source_texts)
+                or not any(
+                    benchmark_quote_occurs_in_source(source_text, quote)
+                    for source_text in source_texts
+                )
                 for quote in self.expected_obligation_sources.values()
             ):
                 raise ValueError("benchmark_obligation_quote_must_appear_in_source")
@@ -298,15 +310,30 @@ class TestabilityBenchmarkGoldCase(BaseModel):
                 allowed_source_refs
             ):
                 raise ValueError("benchmark_expected_source_reference_not_found")
+            source_text_by_ref = {
+                source.artifact_version_id: source.text for source in self.sources
+            }
+            if any(
+                not benchmark_quote_occurs_in_source(
+                    source_text_by_ref[source_ref],
+                    self.expected_obligation_sources[obligation_key],
+                )
+                for obligation_key, source_ref in self.expected_obligation_source_refs.items()
+            ):
+                raise ValueError("benchmark_obligation_quote_not_in_cited_source")
         if self.expected_source_quote_sources:
             if not self.sources:
                 raise ValueError("benchmark_quote_source_answer_key_requires_explicit_sources")
             expected_quotes = {
-                " ".join(quote.split()).rstrip(".!?。！？").casefold()
+                unicodedata.normalize("NFC", " ".join(quote.split()))
+                .rstrip(".!?。！？")
+                .casefold()
                 for quote in self.expected_source_quotes
             }
             mapped_quotes = {
-                " ".join(quote.split()).rstrip(".!?。！？").casefold()
+                unicodedata.normalize("NFC", " ".join(quote.split()))
+                .rstrip(".!?。！？")
+                .casefold()
                 for quote in self.expected_source_quote_sources
             }
             if mapped_quotes != expected_quotes:
@@ -316,7 +343,9 @@ class TestabilityBenchmarkGoldCase(BaseModel):
                 source.artifact_version_id: source.text for source in self.sources
             }
             for quote, source_refs in self.expected_source_quote_sources.items():
-                normalized_quote = " ".join(quote.split()).rstrip(".!?。！？").casefold()
+                normalized_quote = unicodedata.normalize(
+                    "NFC", " ".join(quote.split())
+                ).rstrip(".!?。！？").casefold()
                 if normalized_quote not in expected_quotes:
                     raise ValueError("benchmark_quote_source_answer_key_quote_not_expected")
                 if not source_refs or len(source_refs) != len(set(source_refs)):
@@ -325,7 +354,7 @@ class TestabilityBenchmarkGoldCase(BaseModel):
                     source_text = source_text_by_ref.get(source_ref)
                     if source_text is None:
                         raise ValueError("benchmark_expected_source_reference_not_found")
-                    if not source_quote_spans(source_text, quote):
+                    if not benchmark_quote_occurs_in_source(source_text, quote):
                         raise ValueError("benchmark_expected_quote_not_in_cited_source")
         clarification_codes = set(
             self.expected_clarification_categories or self.expected_clarification_codes
