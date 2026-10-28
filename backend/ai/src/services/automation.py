@@ -630,6 +630,9 @@ class AutomationService:
         ]
         response_record = {
             "uncertainty_code": payload.uncertainty_code,
+            "question": uncertainty.question,
+            "reason": uncertainty.reason,
+            "evidence_refs": list(uncertainty.evidence_refs),
             "answer": payload.answer,
             "answered_by": responder_user_id,
             "answered_at": answered_at.isoformat(),

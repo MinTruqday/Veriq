@@ -21,6 +21,8 @@ from src.tools.requirement_document_workflow import (
     generated_obligation_evidence_matches,
     generate_grounded_test_case_preview,
     has_conflicting_blueprint_clarification,
+    apply_user_clarification_resolutions,
+    match_user_clarification_resolutions,
     list_all_ai_readable_requirement_documents,
     persist_blueprint_clarifications,
     publish_grounded_requirement,
@@ -31,6 +33,10 @@ from src.tools.requirement_document_workflow import (
     requirement_document_synthesis_snapshot,
     requirement_template_source_snapshot_matches,
     requirement_import_has_unresolved_matches,
+    template_requirements_with_user_resolutions,
+    template_user_resolution_readback_matches,
+    update_resumed_requirement_drafts,
+    unresolved_blueprint_clarifications,
     resumable_draft_matches_blueprint_scope,
     safe_requirement_import_resolution,
     source_extraction_gaps,
@@ -74,6 +80,69 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 }
             ],
         }
+
+    async def test_resume_applies_user_answer_to_same_draft_and_answers_linked_question(self):
+        quote = "Repeated invalid attempts lock the account."
+        version = {
+            "_id": "REQV-1",
+            "status": "DRAFT",
+            "revision": 1,
+            "business_rules": [],
+            "source_refs": [{"source_quote": quote}],
+        }
+        question = {
+            "_id": "RCL-1",
+            "status": "OPEN",
+            "revision": 1,
+            "source_quote": quote,
+        }
+        answers = []
+
+        async def operation(method, path, config, payload=None, **kwargs):
+            if method == "GET" and path == "/yeu-cau/REQ-1":
+                return {
+                    "_id": "REQ-1",
+                    "project_id": "project-1",
+                    "current_version_id": version["_id"],
+                    "current_version": dict(version),
+                }
+            if method == "PATCH" and path == "/du-an/project-1/yeu-cau/REQ-1":
+                self.assertEqual(payload["expected_revision"], version["revision"])
+                version.update(payload)
+                version["revision"] += 1
+                return {"current_version": dict(version)}
+            if method == "GET" and path == "/phien-ban-yeu-cau/REQV-1/phieu-lam-ro":
+                return {"items": [dict(question)]}
+            if method == "PATCH" and path == "/phieu-lam-ro/RCL-1/tra-loi":
+                question.update(status="ANSWERED", answer=payload["answer"])
+                question["revision"] += 1
+                answers.append(payload["answer"])
+                return dict(question)
+            raise AssertionError((method, path, payload))
+
+        match = {
+            "clarification": {"source_quote": quote},
+            "response": {"answer": "Five consecutive failed attempts."},
+        }
+        with patch(
+            "src.tools.requirement_document_workflow.require_operation",
+            new=AsyncMock(side_effect=operation),
+        ):
+            await update_resumed_requirement_drafts(
+                "project-1",
+                ["REQ-1"],
+                [match],
+                {
+                    "configurable": {
+                        "permissions": ["requirement.update", "business_rule.manage"]
+                    }
+                },
+                AsyncMock(),
+            )
+
+        self.assertEqual(version["business_rules"], ["Five consecutive failed attempts."])
+        self.assertEqual(question["status"], "ANSWERED")
+        self.assertEqual(answers, ["Five consecutive failed attempts."])
 
     def test_blueprint_obligation_accepts_a_grounded_subspan_from_the_same_source(self):
         source = "AC-1: Export includes the selected date range."
@@ -1615,6 +1684,52 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(source_evidence[0]["source_start"], source_facts[0]["source_start"])
         self.assertEqual(source_evidence[0]["source_end"], source_facts[0]["source_end"])
 
+    def test_blueprint_source_lineage_carries_claims_from_every_authorized_source(self):
+        documents = {
+            "DOC-1": {
+                "_id": "DOC-1",
+                "normalized_content": "Sau các lần thử sai liên tiếp, tài khoản bị khóa.",
+            },
+            "DOC-2": {
+                "_id": "DOC-2",
+                "normalized_content": "Sau đúng năm lần thử sai liên tiếp, tài khoản bị khóa.",
+            },
+        }
+        facts, _ = verified_document_facts(["DOC-1", "DOC-2"], documents)
+        blueprint = {
+            "obligations": [
+                {
+                    "key": "LOCKOUT_VAGUE",
+                    "source_ref": "DOC-1",
+                    "source_quote": "Sau các lần thử sai liên tiếp, tài khoản bị khóa.",
+                },
+                {
+                    "key": "LOCKOUT_EXACT",
+                    "source_ref": "DOC-2",
+                    "source_quote": "Sau đúng năm lần thử sai liên tiếp, tài khoản bị khóa.",
+                },
+            ],
+            "clarifications": [
+                {
+                    "code": "LOCKOUT_THRESHOLD",
+                    "evidence_refs": ["DOC-1", "DOC-2"],
+                    "source_quote": "Sau các lần thử sai liên tiếp, tài khoản bị khóa.",
+                }
+            ],
+        }
+
+        source_facts, source_evidence = blueprint_source_lineage(blueprint, facts)
+
+        self.assertEqual(
+            {item["artifact_id"] for item in source_facts}, {"DOC-1", "DOC-2"}
+        )
+        self.assertEqual(
+            {item["artifact_id"] for item in source_evidence}, {"DOC-1", "DOC-2"}
+        )
+        self.assertTrue(
+            all(item["source_verification"] == "VERIFIED_BLUEPRINT_SOURCE_FACT" for item in source_evidence)
+        )
+
     def test_blueprint_source_lineage_does_not_claim_unmatched_or_unverified_quote(self):
         facts, _ = verified_document_facts(
             ["DOC-1"],
@@ -1882,6 +1997,314 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(
             has_conflicting_blueprint_clarification(
                 {"clarifications": [{"category": "OMISSION"}]}
+            )
+        )
+
+    def test_user_clarification_resolves_only_the_unique_matching_source_conflict(self):
+        clarification = {
+            "code": "CLARIFY_LOCK_THRESHOLD",
+            "category": "CONTRADICTION",
+            "question": "What is the exact number of invalid attempts required to lock an account?",
+            "reason": "The sources disagree about the account lock threshold.",
+            "evidence_refs": ["DOC-1", "DOC-2"],
+            "source_quote": "After repeated invalid attempts, the account is locked.",
+            "unlocks_obligation_keys": ["LOCKOUT"],
+        }
+        blueprint = {"clarifications": [clarification]}
+        conflicts = [
+            {
+                "type": "CONTRADICTION",
+                "description": "The account lock threshold differs across sources.",
+                "evidence_refs": ["DOC-1:0", "DOC-2:0"],
+            }
+        ]
+        response = {
+            "uncertainty_code": "UNC-LOCKOUT-THRESHOLD",
+            "question": "What is the specific number of repeated invalid attempts required to lock an account?",
+            "evidence_refs": ["DOC-1"],
+            "answer": "Five consecutive invalid attempts.",
+            "answered_by": "qa-user",
+            "answered_at": "2026-10-28T00:00:00+00:00",
+            "evidence_ref": "clarification:decision-1",
+        }
+
+        matches = match_user_clarification_resolutions(
+            blueprint, conflicts, [response]
+        )
+
+        self.assertEqual(len(matches), 1)
+        resolved = apply_user_clarification_resolutions(blueprint, matches)
+        self.assertEqual(
+            resolved["clarifications"][0]["source_quote"],
+            clarification["source_quote"],
+        )
+        self.assertEqual(
+            resolved["clarifications"][0]["user_resolution"]["answer"],
+            response["answer"],
+        )
+        self.assertFalse(has_conflicting_blueprint_clarification(resolved))
+
+    def test_user_clarification_matches_requirement_template_conflict_contract(self):
+        clarification = {
+            "code": "UNC-LOCKOUT-THRESHOLD",
+            "category": "CONTRADICTION",
+            "question": "What is the specific number of repeated invalid attempts required to lock an account?",
+            "reason": "The sources mention repeated attempts and exactly five consecutive attempts.",
+            "evidence_refs": ["DOC-1", "DOC-2", "DOC-3"],
+            "source_quote": "After repeated invalid attempts, the account is locked.",
+        }
+        conflict = {
+            "conflict_id": "CLARIFY_LOCKOUT_THRESHOLD",
+            "description": "Contradiction regarding the account lock threshold: DOC-1 and DOC-2 specify repeated attempts, whereas DOC-3 specifies exactly five consecutive attempts.",
+            "evidence_refs": ["DOC-1:0", "DOC-2:0", "DOC-3:0"],
+        }
+        response = {
+            "uncertainty_code": "UNC-LOCKOUT-THRESHOLD",
+            "question": clarification["question"],
+            "reason": clarification["reason"],
+            "evidence_refs": ["DOC-1"],
+            "answer": "Five consecutive invalid attempts.",
+            "answered_by": "qa-user",
+            "answered_at": "2026-10-28T00:00:00+00:00",
+            "evidence_ref": "clarification:decision-1",
+        }
+
+        matches = match_user_clarification_resolutions(
+            {"clarifications": [clarification]}, [conflict], [response]
+        )
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["response"]["answer"], response["answer"])
+
+    def test_user_clarification_resolves_blueprint_conflict_without_template_conflict(self):
+        clarification = {
+            "code": "UNC-LOCKOUT-THRESHOLD",
+            "category": "CONTRADICTION",
+            "question": "What is the account lock threshold?",
+            "reason": "The source does not define a specific number.",
+            "evidence_refs": ["DOC-1"],
+            "source_quote": "After repeated invalid attempts, lock the account.",
+        }
+        response = {
+            "uncertainty_code": clarification["code"],
+            "evidence_refs": ["DOC-1"],
+            "answer": "Five consecutive invalid attempts.",
+            "answered_by": "qa-user",
+            "answered_at": "2026-10-28T00:00:00+00:00",
+            "evidence_ref": "clarification:decision-2",
+        }
+
+        matches = match_user_clarification_resolutions(
+            {"clarifications": [clarification]}, [], [response]
+        )
+        resolved = apply_user_clarification_resolutions(
+            {"clarifications": [clarification]}, matches
+        )
+
+        self.assertEqual(len(matches), 1)
+        self.assertIsNone(matches[0]["conflict_index"])
+        self.assertEqual(
+            resolved["clarifications"][0]["user_resolution"]["answer"],
+            response["answer"],
+        )
+        self.assertFalse(has_conflicting_blueprint_clarification(resolved))
+
+    def test_user_clarification_resolves_missing_boundary_from_same_source(self):
+        clarification = {
+            "code": "AUTH-LOCK-THRESHOLD",
+            "category": "MISSING_BOUNDARY",
+            "question": "How many consecutive invalid attempts lock the account?",
+            "reason": "The source does not specify the lock threshold.",
+            "evidence_refs": ["DOC-1"],
+            "source_quote": "Repeated invalid attempts lock the account.",
+        }
+        response = {
+            "uncertainty_code": "AUTH-LOCK-THRESHOLD",
+            "question": clarification["question"],
+            "reason": clarification["reason"],
+            "evidence_refs": ["DOC-1:1"],
+            "answer": "Five consecutive invalid attempts.",
+            "answered_by": "ba-user",
+            "answered_at": "2026-10-28T00:00:00+00:00",
+            "evidence_ref": "clarification:threshold-1",
+        }
+
+        matches = match_user_clarification_resolutions(
+            {"clarifications": [clarification]}, [], [response]
+        )
+        resolved = apply_user_clarification_resolutions(
+            {"clarifications": [clarification]}, matches
+        )
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(
+            resolved["clarifications"][0]["user_resolution"]["answer"],
+            response["answer"],
+        )
+        self.assertEqual(
+            template_requirements_with_user_resolutions(
+                {
+                    "requirements": [
+                        {
+                            "business_rules": [],
+                            "source_refs": [
+                                {"source_quote": clarification["source_quote"]}
+                            ],
+                        }
+                    ]
+                },
+                matches,
+            )[0]["business_rules"],
+            [response["answer"]],
+        )
+
+    def test_user_clarification_resolves_answered_conflict_independently(self):
+        lockout = {
+            "code": "LOCKOUT_THRESHOLD",
+            "category": "CONTRADICTION",
+            "question": "What is the account lock threshold?",
+            "reason": "Sources differ on the number of failed sign-ins.",
+            "evidence_refs": ["DOC-1", "DOC-2"],
+            "source_quote": "Lock the account after repeated failures.",
+        }
+        session = {
+            "code": "SESSION_TIMEOUT",
+            "category": "CONTRADICTION",
+            "question": "How long does an inactive session remain valid?",
+            "reason": "Session timeout values differ across sources.",
+            "evidence_refs": ["DOC-3", "DOC-4"],
+            "source_quote": "An inactive session expires.",
+        }
+        response = {
+            "uncertainty_code": "LOCKOUT_THRESHOLD",
+            "evidence_refs": ["DOC-1"],
+            "answer": "Five consecutive invalid attempts.",
+        }
+        conflict = {
+            "description": "Contradiction about account lock threshold.",
+            "evidence_refs": ["DOC-1:0", "DOC-2:0"],
+        }
+
+        matches = match_user_clarification_resolutions(
+            {"clarifications": [lockout, session]}, [conflict], [response]
+        )
+
+        self.assertEqual(len(matches), 1)
+        self.assertIs(matches[0]["clarification"], lockout)
+        self.assertEqual(matches[0]["response"]["answer"], response["answer"])
+
+    def test_user_clarification_does_not_resolve_ambiguous_or_unlinked_conflicts(self):
+        first = {
+            "code": "LOCKOUT_THRESHOLD",
+            "category": "CONTRADICTION",
+            "question": "What is the lock threshold?",
+            "reason": "Sources disagree about the lock threshold.",
+            "evidence_refs": ["DOC-1", "DOC-2"],
+            "source_quote": "Account lock behavior is required.",
+            "unlocks_obligation_keys": ["LOCKOUT"],
+        }
+        second = {**first, "code": "SESSION_THRESHOLD"}
+        response = {
+            "question": "What is the threshold?",
+            "evidence_refs": ["DOC-1"],
+            "answer": "Five.",
+        }
+        conflicts = [
+            {
+                "type": "CONTRADICTION",
+                "description": "Sources conflict about a threshold.",
+                "evidence_refs": ["DOC-1:0", "DOC-2:0"],
+            }
+        ]
+
+        self.assertEqual(
+            match_user_clarification_resolutions(
+                {"clarifications": [first, second]}, conflicts, [response]
+            ),
+            [],
+        )
+        self.assertEqual(
+            match_user_clarification_resolutions(
+                {"clarifications": [first]},
+                conflicts,
+                [{**response, "evidence_refs": ["DOC-9"]}],
+            ),
+            [],
+        )
+
+    def test_user_resolution_is_added_to_one_source_linked_requirement(self):
+        template = {
+            "requirements": [
+                {
+                    "title": "Account locking",
+                    "business_rules": ["Existing rule"],
+                    "source_refs": [
+                        {
+                            "source_quote": "AC-3: After repeated invalid attempts, the account is locked."
+                        }
+                    ],
+                }
+            ]
+        }
+        matches = [
+            {
+                "clarification": {
+                    "source_quote": "AC-3: After repeated invalid attempts, the account is locked."
+                },
+                "response": {"answer": "Five consecutive invalid attempts."},
+            }
+        ]
+
+        requirements = template_requirements_with_user_resolutions(template, matches)
+
+        self.assertEqual(
+            requirements[0]["business_rules"],
+            ["Existing rule", "Five consecutive invalid attempts."],
+        )
+
+    def test_resolved_user_clarification_is_not_reopened_as_requirement_clarification(self):
+        resolved = {
+            "code": "LOCKOUT_THRESHOLD",
+            "category": "CONTRADICTION",
+            "question": "What is the lockout threshold?",
+            "user_resolution": {
+                "uncertainty_code": "UNC-LOCKOUT-THRESHOLD",
+                "answer": "Five consecutive invalid attempts.",
+                "answered_by": "qa-user",
+                "answered_at": "2026-10-28T00:00:00+00:00",
+                "evidence_ref": "clarification:decision-3",
+            },
+        }
+        unresolved = {**resolved, "user_resolution": {"answer": "Five."}}
+
+        self.assertEqual(
+            unresolved_blueprint_clarifications([resolved, unresolved]), [unresolved]
+        )
+
+    def test_user_resolution_requires_requirement_template_readback(self):
+        match = {
+            "clarification": {
+                "source_quote": "After repeated invalid attempts, the account is locked."
+            },
+            "response": {"answer": "Five consecutive invalid attempts."},
+        }
+        template = {
+            "requirements": [
+                {
+                    "business_rules": ["Five consecutive invalid attempts."],
+                    "source_refs": [
+                        {
+                            "source_quote": "AC-3: After repeated invalid attempts, the account is locked."
+                        }
+                    ],
+                }
+            ]
+        }
+
+        self.assertTrue(template_user_resolution_readback_matches(template, [match]))
+        self.assertFalse(
+            template_user_resolution_readback_matches(
+                {"requirements": []}, [match]
             )
         )
 

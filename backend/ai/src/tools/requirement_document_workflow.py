@@ -3,7 +3,7 @@ import hashlib
 import json
 import math
 import re
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 import httpx
@@ -1326,8 +1326,377 @@ def safe_in_import_duplicate_resolution(candidate_match, earlier_matches, resolu
 def has_conflicting_blueprint_clarification(blueprint):
     return any(
         item.get("category") in {"CONTRADICTION", "INCONSISTENCY"}
+        and not item.get("user_resolution")
         for item in blueprint.get("clarifications", [])
     )
+
+
+def unresolved_blueprint_clarifications(clarifications):
+    unresolved = []
+    for item in clarifications or []:
+        resolution = item.get("user_resolution")
+        if not isinstance(resolution, dict) or not all(
+            str(resolution.get(field) or "").strip()
+            for field in (
+                "uncertainty_code",
+                "answer",
+                "answered_by",
+                "answered_at",
+                "evidence_ref",
+            )
+        ):
+            unresolved.append(item)
+    return unresolved
+
+
+def clarification_terms(value):
+    return {
+        token
+        for token in re.findall(r"[^\W_]+", str(value or "").casefold(), flags=re.UNICODE)
+        if len(token) > 2
+    }
+
+
+def clarification_similarity(left, right):
+    left_terms = clarification_terms(left)
+    right_terms = clarification_terms(right)
+    if not left_terms or not right_terms:
+        return 0.0
+    return len(left_terms & right_terms) / min(len(left_terms), len(right_terms))
+
+
+def clarification_document_ids(references):
+    output = set()
+    for reference in references or []:
+        value = str(reference or "").strip()
+        if not value:
+            continue
+        document_id, separator, suffix = value.partition(":")
+        output.add(document_id if separator and suffix.isdigit() else value)
+    return output
+
+
+def match_user_clarification_resolutions(blueprint, conflicts, responses):
+    clarifications = [
+        item
+        for item in blueprint.get("clarifications", [])
+        if item.get("category") and item.get("response_allowed", True)
+    ]
+    if not clarifications or not responses:
+        return []
+
+    response_candidates = {}
+    for clarification in clarifications:
+        clarification_refs = clarification_document_ids(
+            clarification.get("evidence_refs")
+        )
+        candidates = []
+        for response_index, response in enumerate(responses):
+            response_refs = clarification_document_ids(response.get("evidence_refs"))
+            if not clarification_refs.intersection(response_refs):
+                continue
+            exact_code_match = bool(
+                clarification.get("code")
+                and response.get("uncertainty_code")
+                and str(clarification.get("code")).strip()
+                == str(response.get("uncertainty_code")).strip()
+            )
+            similarity = max(
+                clarification_similarity(
+                    response.get("question"),
+                    " ".join(
+                        [
+                            str(clarification.get("question") or ""),
+                            str(clarification.get("reason") or ""),
+                        ]
+                    ),
+                ),
+                clarification_similarity(
+                    response.get("reason"),
+                    " ".join(
+                        [
+                            str(clarification.get("question") or ""),
+                            str(clarification.get("reason") or ""),
+                        ]
+                    ),
+                ),
+            )
+            if exact_code_match or similarity >= 0.4:
+                candidates.append(
+                    (response_index, 1.0 if exact_code_match else similarity)
+                )
+        candidates.sort(key=lambda item: item[1], reverse=True)
+        if (
+            candidates
+            and (len(candidates) == 1 or candidates[0][1] - candidates[1][1] >= 0.15)
+        ):
+            response_candidates[id(clarification)] = candidates[0][0]
+
+    response_indexes = list(response_candidates.values())
+    duplicated_response_indexes = {
+        index for index in response_indexes if response_indexes.count(index) > 1
+    }
+    response_candidates = {
+        clarification_id: response_index
+        for clarification_id, response_index in response_candidates.items()
+        if response_index not in duplicated_response_indexes
+    }
+
+    if not conflicts:
+        clarification_by_id = {id(item): item for item in clarifications}
+        return [
+            {
+                "conflict_index": None,
+                "clarification": clarification_by_id[clarification_id],
+                "response": responses[response_index],
+            }
+            for clarification_id, response_index in response_candidates.items()
+        ]
+
+    conflict_matches = {}
+    for conflict_index, conflict in enumerate(conflicts):
+        conflict_type = str(conflict.get("type") or "").upper()
+        if conflict_type and conflict_type not in {
+            "CONTRADICTION",
+            "INCONSISTENCY",
+        }:
+            return []
+        conflict_refs = clarification_document_ids(conflict.get("evidence_refs"))
+        candidates = []
+        for clarification in clarifications:
+            if id(clarification) not in response_candidates:
+                continue
+            clarification_refs = clarification_document_ids(
+                clarification.get("evidence_refs")
+            )
+            if not conflict_refs.intersection(clarification_refs):
+                continue
+            similarity = clarification_similarity(
+                conflict.get("description") or conflict.get("reason"),
+                " ".join(
+                    [
+                        str(clarification.get("question") or ""),
+                        str(clarification.get("reason") or ""),
+                    ]
+                ),
+            )
+            if similarity >= 0.25:
+                candidates.append((clarification, similarity))
+        candidates.sort(key=lambda item: item[1], reverse=True)
+        if candidates and not (
+            len(candidates) > 1 and candidates[0][1] - candidates[1][1] < 0.15
+        ):
+            conflict_matches[conflict_index] = candidates[0]
+
+    if len({id(item[0]) for item in conflict_matches.values()}) != len(
+        conflict_matches
+    ):
+        return []
+    return [
+        {
+            "conflict_index": conflict_index,
+            "clarification": clarification,
+            "response": responses[response_candidates[id(clarification)]],
+        }
+        for conflict_index, (clarification, _) in sorted(conflict_matches.items())
+        if id(clarification) in response_candidates
+    ]
+
+
+def template_requirements_with_user_resolutions(template, matches):
+    requirements = [dict(item) for item in template.get("requirements") or []]
+    for match in matches:
+        quote = str(match["clarification"].get("source_quote") or "").strip()
+        response = match["response"]
+        answer = str(response.get("answer") or "").strip()
+        if not quote or not answer:
+            return None
+        candidates = []
+        for index, requirement in enumerate(requirements):
+            if any(
+                source_quote_spans(
+                    str(reference.get("source_quote") or ""), quote
+                )
+                or source_quote_spans(
+                    quote, str(reference.get("source_quote") or "")
+                )
+                for reference in requirement.get("source_refs", [])
+                if isinstance(reference, dict)
+            ):
+                candidates.append(index)
+        if len(candidates) != 1:
+            return None
+        requirement = requirements[candidates[0]]
+        business_rules = list(requirement.get("business_rules") or [])
+        if answer not in business_rules:
+            business_rules.append(answer)
+        requirement["business_rules"] = business_rules
+    return requirements
+
+
+def template_user_resolution_readback_matches(template, matches):
+    requirements = template.get("requirements") or []
+    for match in matches:
+        quote = str(match["clarification"].get("source_quote") or "").strip()
+        answer = str(match["response"].get("answer") or "").strip()
+        candidates = [
+            requirement
+            for requirement in requirements
+            if any(
+                source_quote_spans(str(reference.get("source_quote") or ""), quote)
+                or source_quote_spans(quote, str(reference.get("source_quote") or ""))
+                for reference in requirement.get("source_refs", [])
+                if isinstance(reference, dict)
+            )
+        ]
+        if (
+            len(candidates) != 1
+            or not answer
+            or answer not in (candidates[0].get("business_rules") or [])
+        ):
+            return False
+    return True
+
+
+def apply_user_clarification_resolutions(blueprint, matches):
+    resolved = dict(blueprint)
+    clarifications = []
+    for item in blueprint.get("clarifications", []):
+        match = next(
+            (candidate for candidate in matches if candidate["clarification"] is item),
+            None,
+        )
+        if not match:
+            clarifications.append(item)
+            continue
+        response = match["response"]
+        clarifications.append(
+            {
+                **item,
+                "user_resolution": {
+                    "uncertainty_code": response.get("uncertainty_code"),
+                    "answer": response.get("answer"),
+                    "answered_by": response.get("answered_by"),
+                    "answered_at": response.get("answered_at"),
+                    "evidence_ref": response.get("evidence_ref"),
+                },
+            }
+        )
+    resolved["clarifications"] = clarifications
+    return resolved
+
+
+async def update_resumed_requirement_drafts(
+    project_id, requirement_ids, matches, config, before_write
+):
+    if not matches:
+        return
+    permissions = set((config or {}).get("configurable", {}).get("permissions", []))
+    if not {"requirement.update", "business_rule.manage"}.issubset(permissions):
+        raise AutomationOperationError("REQUIREMENT_CLARIFICATION_UPDATE_PERMISSION_MISSING")
+    requirements = []
+    for requirement_id in dict.fromkeys(str(value) for value in requirement_ids if value):
+        requirement = await require_operation(
+            "GET", f"/yeu-cau/{requirement_id}", config
+        )
+        if requirement.get("project_id") != project_id:
+            raise AutomationOperationError("RESUME_REQUIREMENT_PROJECT_MISMATCH")
+        version = requirement.get("current_version") or await require_operation(
+            "GET", f"/phien-ban-yeu-cau/{requirement['current_version_id']}", config
+        )
+        requirements.append((requirement, version))
+
+    for match in matches:
+        quote = str(match["clarification"].get("source_quote") or "").strip()
+        answer = str(match["response"].get("answer") or "").strip()
+        if not quote or len(answer) < 2:
+            raise AutomationOperationError("CLARIFICATION_RESOLUTION_INCOMPLETE")
+        candidates = []
+        for requirement, version in requirements:
+            if version.get("status") != "DRAFT":
+                continue
+            if any(
+                source_quote_spans(str(reference.get("source_quote") or ""), quote)
+                or source_quote_spans(quote, str(reference.get("source_quote") or ""))
+                for reference in version.get("source_refs", [])
+                if isinstance(reference, dict)
+            ):
+                candidates.append((requirement, version))
+        if len(candidates) != 1:
+            raise AutomationOperationError("CLARIFICATION_REQUIREMENT_MATCH_AMBIGUOUS")
+        requirement, version = candidates[0]
+        business_rules = list(version.get("business_rules") or [])
+        if answer not in business_rules:
+            updated_business_rules = [*business_rules, answer]
+            await before_write()
+            await require_operation(
+                "PATCH",
+                f"/du-an/{project_id}/yeu-cau/{requirement['_id']}",
+                config,
+                {
+                    "expected_revision": version.get("revision"),
+                    "business_rules": updated_business_rules,
+                },
+            )
+        readback = await require_operation(
+            "GET", f"/yeu-cau/{requirement['_id']}", config
+        )
+        readback_version = readback.get("current_version") or await require_operation(
+            "GET", f"/phien-ban-yeu-cau/{readback['current_version_id']}", config
+        )
+        if (
+            readback.get("project_id") != project_id
+            or readback_version.get("status") != "DRAFT"
+            or answer not in (readback_version.get("business_rules") or [])
+        ):
+            raise AutomationOperationError("CLARIFICATION_REQUIREMENT_READBACK_INVALID")
+        clarification_payload = await require_operation(
+            "GET",
+            f"/phien-ban-yeu-cau/{readback_version['_id']}/phieu-lam-ro",
+            config,
+        )
+        matching_clarifications = [
+            item
+            for item in response_items(clarification_payload)
+            if item.get("status") in {"OPEN", "ANSWERED"}
+            and (
+                source_quote_spans(
+                    str(item.get("source_quote") or ""), quote
+                )
+                or source_quote_spans(
+                    quote, str(item.get("source_quote") or "")
+                )
+            )
+        ]
+        if len(matching_clarifications) == 1:
+            clarification = matching_clarifications[0]
+            if clarification.get("status") == "OPEN":
+                await before_write()
+                await require_operation(
+                    "PATCH",
+                    f"/phieu-lam-ro/{clarification['_id']}/tra-loi",
+                    config,
+                    {
+                        "expected_revision": clarification.get("revision"),
+                        "answer": answer,
+                    },
+                )
+                clarification_readback = response_items(
+                    await require_operation(
+                        "GET",
+                        f"/phien-ban-yeu-cau/{readback_version['_id']}/phieu-lam-ro",
+                        config,
+                    )
+                )
+                if not any(
+                    item.get("_id") == clarification.get("_id")
+                    and item.get("status") == "ANSWERED"
+                    and item.get("answer") == answer
+                    for item in clarification_readback
+                ):
+                    raise AutomationOperationError(
+                        "REQUIREMENT_CLARIFICATION_ANSWER_READBACK_INVALID"
+                    )
 
 
 def validate_blueprint_clarification_obligation_links(blueprint):
@@ -1351,6 +1720,9 @@ async def process_ingested_requirement_document(
     project_id: Annotated[str, Field(description="Testing project identifier")],
     document_id: Annotated[str, Field(min_length=1, description="Verified uploaded requirement document identifier")],
     source_facts: Annotated[list[AutomationFact], Field(description="Source facts extracted and quote-verified by the automation graph")] = Field(default_factory=list),
+    clarification_responses: Annotated[list[dict[str, Any]], Field(description="Recorded user answers to clarification questions for this ingestion workflow")] = Field(default_factory=list),
+    resume_import_job_id: Annotated[str | None, Field(description="Previously confirmed import job for resuming the same document workflow")] = None,
+    resume_requirement_ids: Annotated[list[str], Field(description="Requirements created by the prior confirmed import in this workflow")] = Field(default_factory=list),
     config: RunnableConfig = None,
 ) -> str:
     """Run the authorized document-ingestion workflow through a grounded template, Requirements, duplicate-safe Test Cases, and lifecycle checks"""
@@ -1535,9 +1907,22 @@ async def process_ingested_requirement_document(
         )
     if not template.get("_id") or template.get("project_id") != project_id:
         raise RuntimeError("TEMPLATE_READBACK_INVALID")
-    blueprint_conflict = has_conflicting_blueprint_clarification(blueprint)
     template_conflicts = (template.get("synthesis") or {}).get("conflicts") or []
-    if template_conflicts or blueprint_conflict:
+    clarification_responses = list(
+        clarification_responses
+        or ((config or {}).get("configurable") or {}).get(
+            "clarification_responses", []
+        )
+        or []
+    )
+    matches = match_user_clarification_resolutions(
+        blueprint, template_conflicts, clarification_responses
+    )
+    if (
+        template_conflicts
+        or has_conflicting_blueprint_clarification(blueprint)
+        or matches
+    ):
         conflict_template = await require_operation(
             "GET", f"{project_path}/mau-yeu-cau/{template['_id']}", config
         )
@@ -1548,33 +1933,135 @@ async def process_ingested_requirement_document(
             or (template_conflicts and not conflicts)
         ):
             raise RuntimeError("SOURCE_CONFLICT_READBACK_INVALID")
-        return json.dumps(
-            {
-                "status": "automation_waiting_for_decision",
-                "reason_code": "SOURCE_CONFLICT",
-                "template_id": template["_id"],
-                "conflict_count": len(conflicts) + sum(
-                    item.get("category") in {"CONTRADICTION", "INCONSISTENCY"}
-                    for item in blueprint.get("clarifications", [])
-                ),
-                "conflicts": conflicts,
-                "clarifications": blueprint.get("clarifications", []),
-                "testability_blueprint": blueprint,
-                "verification": {
-                    "status": "COMPLETED",
-                    "project_id": project_id,
-                    "artifact_ids": [template["_id"]],
-                    "checks": [
-                        {
-                            "artifact_id": template["_id"],
-                            "artifact_type": "requirement_template",
-                            "conflict_count": len(conflicts),
-                        }
+        template = conflict_template
+        if conflicts:
+            matches = match_user_clarification_resolutions(
+                blueprint, conflicts, clarification_responses
+            )
+        if (
+            matches
+            and "requirement.update" in permissions
+            and (not conflicts or len(matches) == len(conflicts))
+        ):
+            resolved_requirements = template_requirements_with_user_resolutions(
+                conflict_template, matches
+            )
+            expected_version = conflict_template.get("version")
+            if (
+                resolved_requirements is not None
+                and isinstance(expected_version, int)
+                and not isinstance(expected_version, bool)
+                and expected_version >= 1
+            ):
+                context = conflict_template.get("context") or {}
+                update_payload = {
+                    "name": conflict_template.get("name"),
+                    "description": conflict_template.get("description") or "",
+                    "product_types": conflict_template.get("product_types") or [],
+                    "context": {
+                        key: context.get(key, default)
+                        for key, default in (
+                            ("objectives", ""),
+                            ("in_scope", ""),
+                            ("out_of_scope", ""),
+                            ("stakeholders", []),
+                            ("actors_and_systems", []),
+                            ("glossary", []),
+                            ("assumptions", []),
+                            ("constraints", []),
+                        )
+                    },
+                    "requirements": resolved_requirements,
+                    "source_document_ids": conflict_template.get(
+                        "source_document_ids", []
+                    ),
+                    "source_template_ids": conflict_template.get(
+                        "source_template_ids", []
+                    ),
+                    "expected_version": expected_version,
+                    "conflict_resolutions": [
+                        "["
+                        + str(match["response"].get("uncertainty_code") or "")
+                        + "] "
+                        + str(match["response"].get("answer") or "")
+                        for match in matches
                     ],
+                }
+                write_error = None
+                try:
+                    await authorized_source_operation(
+                        "PUT",
+                        f"{project_path}/mau-yeu-cau/{template['_id']}",
+                        update_payload,
+                    )
+                except (AutomationOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
+                    write_error = error
+                try:
+                    conflict_template = await require_operation(
+                        "GET", f"{project_path}/mau-yeu-cau/{template['_id']}", config
+                    )
+                except (AutomationOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
+                    if write_error is not None:
+                        raise AutomationOperationError(
+                            "TEMPLATE_RESOLUTION_OUTCOME_UNRESOLVED"
+                        ) from write_error
+                    raise error
+                resolved_conflicts = (
+                    conflict_template.get("synthesis") or {}
+                ).get("conflicts") or []
+                resolution_readback_valid = (
+                    conflict_template.get("project_id") == project_id
+                    and conflict_template.get("_id") == template.get("_id")
+                    and isinstance(conflict_template.get("version"), int)
+                    and conflict_template.get("version") >= expected_version + 1
+                    and not resolved_conflicts
+                    and template_user_resolution_readback_matches(
+                        conflict_template, matches
+                    )
+                )
+                if not resolution_readback_valid and write_error is not None:
+                    raise write_error
+                if resolution_readback_valid:
+                    template = conflict_template
+                    conflicts = []
+                    blueprint = apply_user_clarification_resolutions(
+                        blueprint, matches
+                    )
+        blueprint_conflict = has_conflicting_blueprint_clarification(blueprint)
+        if conflicts or blueprint_conflict:
+            blueprint_source_facts, blueprint_source_evidence = blueprint_source_lineage(
+                blueprint, verified_facts
+            )
+            return json.dumps(
+                {
+                    "status": "automation_waiting_for_decision",
+                    "reason_code": "SOURCE_CONFLICT",
+                    "template_id": template["_id"],
+                    "conflict_count": len(conflicts) + sum(
+                        item.get("category") in {"CONTRADICTION", "INCONSISTENCY"}
+                        and not item.get("user_resolution")
+                        for item in blueprint.get("clarifications", [])
+                    ),
+                    "conflicts": conflicts,
+                    "clarifications": blueprint.get("clarifications", []),
+                    "testability_blueprint": blueprint,
+                    "source_facts": blueprint_source_facts,
+                    "source_evidence": blueprint_source_evidence,
+                    "verification": {
+                        "status": "COMPLETED",
+                        "project_id": project_id,
+                        "artifact_ids": [template["_id"]],
+                        "checks": [
+                            {
+                                "artifact_id": template["_id"],
+                                "artifact_type": "requirement_template",
+                                "conflict_count": len(conflicts),
+                            }
+                        ],
+                    },
                 },
-            },
-            ensure_ascii=False,
-        )
+                ensure_ascii=False,
+            )
     template_requirements = template.get("requirements") or []
     if not template_requirements:
         return json.dumps(
@@ -1610,13 +2097,43 @@ async def process_ingested_requirement_document(
             ensure_ascii=False,
         )
 
-    import_job = await authorized_source_operation(
-        "POST", f"{project_path}/mau-yeu-cau/{template['_id']}/xem-truoc"
-    )
+    resumed_requirement_ids = set()
+    if resume_import_job_id and clarification_responses:
+        import_job = await require_operation(
+            "GET", f"/nhap-yeu-cau/{resume_import_job_id}", config
+        )
+        if (
+            import_job.get("_id") != resume_import_job_id
+            or import_job.get("project_id") != project_id
+            or import_job.get("template_id") != template.get("_id")
+            or import_job.get("status") != "CONFIRMED"
+        ):
+            raise AutomationOperationError("RESUME_IMPORT_SCOPE_MISMATCH")
+        resumed_requirement_ids = {
+            str(value)
+            for value in [
+                *(resume_requirement_ids or []),
+                *(import_job.get("created_requirement_ids") or []),
+            ]
+            if value
+        }
+        if not resumed_requirement_ids:
+            raise AutomationOperationError("RESUME_IMPORT_REQUIREMENTS_MISSING")
+        await update_resumed_requirement_drafts(
+            project_id,
+            sorted(resumed_requirement_ids),
+            matches,
+            config,
+            validate_source_access,
+        )
+    else:
+        import_job = await authorized_source_operation(
+            "POST", f"{project_path}/mau-yeu-cau/{template['_id']}/xem-truoc"
+        )
     if import_job.get("project_id") != project_id or not import_job.get("_id"):
         raise RuntimeError("REQUIREMENT_IMPORT_PREVIEW_INVALID")
 
-    linked_requirement_ids = {
+    linked_requirement_ids = set(resumed_requirement_ids) | {
         item.get("requirement_id")
         for item in import_job.get("resolutions", [])
         if item.get("requirement_id")
@@ -1789,7 +2306,9 @@ async def process_ingested_requirement_document(
         blueprint_clarifications, unmapped_clarifications = (
             await persist_blueprint_clarifications(
                 current,
-                blueprint.get("clarifications", []),
+                unresolved_blueprint_clarifications(
+                    blueprint.get("clarifications", [])
+                ),
                 evidence_by_ref,
                 source_documents,
                 config,

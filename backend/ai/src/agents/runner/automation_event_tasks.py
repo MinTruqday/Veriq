@@ -420,25 +420,55 @@ def direct_document_ingestion_task(run, state, evidence_refs):
     )
     if not document_id:
         return None
+    previous_ingestion = next(
+        (
+            item.get("result")
+            for item in reversed(getattr(run, "observations", []) or [])
+            if item.get("tool_name") == "process_ingested_requirement_document"
+            and item.get("status") == ToolExecutionStatus.COMPLETED
+            and isinstance(item.get("result"), dict)
+            and item["result"].get("requirement_import_job_id")
+        ),
+        {},
+    )
+    clarification_responses = list(
+        (state.get("constraints") or {}).get("clarification_responses", []) or []
+    )
+    tool_arguments = {
+        "project_id": run.project_id,
+        "document_id": document_id,
+        "source_facts": [
+            item
+            for item in state.get("source_facts", [])
+            if str(item.get("artifact_id") or "") in identifiers
+        ],
+        "clarification_responses": clarification_responses,
+    }
+    if clarification_responses and previous_ingestion:
+        tool_arguments.update(
+            {
+                "resume_import_job_id": previous_ingestion.get(
+                    "requirement_import_job_id"
+                ),
+                "resume_requirement_ids": previous_ingestion.get(
+                    "requirement_ids", []
+                ),
+            }
+        )
     tasks = validated_tasks(
         [
             PlannedTask(
                 domain="requirement",
                 objective=document_ingested_objective(),
                 evidence_refs=evidence_refs,
-                constraints={"workflow_terminal": True},
+                constraints={
+                    "workflow_terminal": True,
+                    "resume_after_clarification": bool(clarification_responses),
+                },
                 tool_calls=[
                     ToolCall(
                         tool_name=tool_name,
-                        arguments={
-                            "project_id": run.project_id,
-                            "document_id": document_id,
-                            "source_facts": [
-                                item
-                                for item in state.get("source_facts", [])
-                                if str(item.get("artifact_id") or "") in identifiers
-                            ],
-                        },
+                        arguments=tool_arguments,
                     )
                 ],
             )
@@ -446,7 +476,18 @@ def direct_document_ingestion_task(run, state, evidence_refs):
         run,
         evidence_refs,
         maximum=1,
-        known_identifiers=[*identifiers, *evidence_refs],
+        known_identifiers=[
+            *identifiers,
+            *evidence_refs,
+            *(
+                [
+                    str(previous_ingestion.get("requirement_import_job_id")),
+                    *map(str, previous_ingestion.get("requirement_ids", [])),
+                ]
+                if clarification_responses and previous_ingestion
+                else []
+            ),
+        ],
     )
     return tasks[0] if tasks and tasks[0].tool_calls else None
 

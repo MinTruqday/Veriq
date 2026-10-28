@@ -19,6 +19,7 @@ from src.agents.runner.automation_event_tasks import (
 )
 from src.agents.runner.graph import canonical_workflow
 from src.agents.runner.nodes import aggregate, plan, route_after_agent, verify
+from src.agents.runner.automation_validation import mutation_fingerprint
 from src.schemas.agent import (
     AgentPlan,
     AgentResult,
@@ -172,6 +173,84 @@ class AutomationEventTaskTests(unittest.TestCase):
         self.assertIsNotNone(task)
         arguments = task.tool_calls[0].arguments
         self.assertEqual(arguments["source_facts"], [source_fact])
+
+    def test_document_ingestion_resume_passes_clarification_records_to_mutation(self):
+        run = VeriqRunState(
+            project_id="project-1",
+            user_id="ba-1",
+            role="BA",
+            permissions=["project.read", "requirement.create"],
+            objective="Resume document processing after a user clarification",
+            evidence_refs=["doc-1-v1"],
+            observations=[
+                {
+                    "tool_name": "process_ingested_requirement_document",
+                    "status": "COMPLETED",
+                    "result": {
+                        "requirement_import_job_id": "RIMP-1",
+                        "requirement_ids": ["REQ-1"],
+                    },
+                }
+            ],
+            tool_calls=[
+                {
+                    "tool_name": "process_ingested_requirement_document",
+                    "arguments": {
+                        "project_id": "project-1",
+                        "document_id": "doc-1",
+                        "source_facts": [],
+                    },
+                    "mutation_fingerprint": mutation_fingerprint(
+                        "process_ingested_requirement_document",
+                        {
+                            "project_id": "project-1",
+                            "document_id": "doc-1",
+                            "source_facts": [],
+                        },
+                    ),
+                }
+            ],
+        )
+        clarification = {
+            "uncertainty_code": "LOCKOUT_THRESHOLD",
+            "question": "How many attempts?",
+            "reason": "The source does not specify a number.",
+            "evidence_refs": ["doc-1-v1"],
+            "answer": "Five consecutive failed attempts.",
+            "answered_by": "ba-1",
+            "answered_at": "2026-10-28T04:00:00+00:00",
+            "evidence_ref": "clarification-1",
+        }
+
+        task = direct_document_ingestion_task(
+            run,
+            {
+                "automatic": True,
+                "source_event_verified": True,
+                "constraints": {
+                    "trigger": "DOCUMENT_INGESTED",
+                    "clarification_responses": [clarification],
+                },
+                "target_artifact_ids": ["doc-1"],
+                "evidence": [{
+                    "artifact_type": "requirement_document",
+                    "artifact_id": "doc-1",
+                    "artifact_version_id": "doc-1-v1",
+                    "text": "The source document",
+                }],
+                "source_facts": [],
+            },
+            ["doc-1-v1"],
+        )
+
+        self.assertIsNotNone(task)
+        self.assertTrue(task.constraints["resume_after_clarification"])
+        self.assertEqual(
+            task.tool_calls[0].arguments["clarification_responses"],
+            [clarification],
+        )
+        self.assertEqual(task.tool_calls[0].arguments["resume_import_job_id"], "RIMP-1")
+        self.assertEqual(task.tool_calls[0].arguments["resume_requirement_ids"], ["REQ-1"])
 
     def test_project_discovered_mcp_read_tools_are_given_to_the_agent_planner(self):
         run = VeriqRunState(

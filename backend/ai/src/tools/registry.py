@@ -279,6 +279,12 @@ async def invoke_tool(
                     ),
                     "tool_name": tool_name,
                 }
+            configurable["clarification_responses"] = list(
+                (getattr(active_run, "constraints", None) or {}).get(
+                    "clarification_responses"
+                )
+                or []
+            )
             source_event_verified = bool(
                 getattr(active_run, "source_event_verified", False)
             )

@@ -163,6 +163,12 @@ class AutomationRetryCheckpointTests(unittest.IsolatedAsyncioTestCase):
             transition.await_args.kwargs["detail"]["resuming_after"],
             AutomationCheckpointPhase.FACTS_EXTRACTED.value,
         )
+        clarification_response = transition.await_args.args[2]["constraints"][
+            "clarification_responses"
+        ][0]
+        self.assertEqual(clarification_response["question"], uncertainty.question)
+        self.assertEqual(clarification_response["reason"], uncertainty.reason)
+        self.assertEqual(clarification_response["answer"], "Five consecutive failed attempts.")
         self.assertEqual(resumed_snapshot.uncertainties[0].resolution_status, "USER_ANSWERED")
         self.assertEqual(resumed_snapshot.uncertainties[0].answer, "Five consecutive failed attempts.")
         self.assertTrue(

@@ -54,6 +54,7 @@ class ProjectArtifactQdrantPayloadTests(unittest.TestCase):
             "artifact_version_id": "document-version-1",
             "source_hash": "a" * 64,
             "normalized_content_hash": "b" * 64,
+            "content_format": "pdf",
             "parser_name": "docling",
             "parser_version": "1.0",
             "index_generation": "c" * 64,
@@ -148,6 +149,17 @@ class ProjectArtifactQdrantPayloadTests(unittest.TestCase):
             "chunk_hash": sha256(text.encode()).hexdigest(),
             "chunk_type": "semantic",
             "chunk_index": 0,
+            "source_spans": [
+                {
+                    "block_id": "block-1",
+                    "content_type": "paragraph",
+                    "source_start": 0,
+                    "source_end": len(text),
+                    "offset_basis": "normalized_block",
+                    "chunk_start": 0,
+                    "chunk_end": len(text),
+                }
+            ],
         }
 
         payload = QdrantPointPayload.model_validate({"text": text, **metadata})
@@ -170,6 +182,7 @@ class ProjectArtifactQdrantPayloadTests(unittest.TestCase):
                     "artifact_version_id": "document-version-1",
                     "source_hash": "a" * 64,
                     "normalized_content_hash": "b" * 64,
+                    "content_format": "pdf",
                     "parser_name": "docling",
                     "parser_version": "1.0",
                     "index_generation": "c" * 64,
