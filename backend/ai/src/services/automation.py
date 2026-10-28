@@ -580,7 +580,8 @@ class AutomationService:
         matching_uncertainties = [
             item
             for item in snapshot.uncertainties
-            if item.code == payload.uncertainty_code and item.blocking
+            if item.code == payload.uncertainty_code
+            and item.resolution_status == "OPEN"
         ]
         if not matching_uncertainties:
             raise HTTPException(
@@ -622,7 +623,8 @@ class AutomationService:
                     "answered_at": answered_at,
                 }
             )
-            if item.code == payload.uncertainty_code and item.blocking
+            if item.code == payload.uncertainty_code
+            and item.resolution_status == "OPEN"
             else item
             for item in snapshot.uncertainties
         ]
@@ -640,9 +642,14 @@ class AutomationService:
             **(run.constraints or {}),
             "clarification_responses": [*prior_responses, response_record],
         }
+        resume_after_phase = (
+            AutomationCheckpointPhase.FACTS_EXTRACTED
+            if snapshot.source_facts
+            else AutomationCheckpointPhase.OBSERVED
+        )
         resumed_snapshot = snapshot.model_copy(
             update={
-                "completed_phase": AutomationCheckpointPhase.OBSERVED,
+                "completed_phase": resume_after_phase,
                 "run": snapshot.run.model_copy(
                     update={
                         "evidence_refs": list(
@@ -665,14 +672,19 @@ class AutomationService:
                 "status": AutomationStatus.QUEUED,
                 "error_code": None,
                 "constraints": updated_constraints,
-                "evidence": [*run.evidence, clarification_evidence],
+                "evidence": [
+                    item.model_dump(mode="python")
+                    if hasattr(item, "model_dump")
+                    else item
+                    for item in [*run.evidence, clarification_evidence]
+                ],
             },
             phase=AutomationCheckpointPhase.QUEUED,
             detail={
                 "reason_code": "AUTOMATION_RESUMED_WITH_USER_CLARIFICATION",
                 "uncertainty_code": payload.uncertainty_code,
                 "responder_user_id": responder_user_id,
-                "resuming_after": AutomationCheckpointPhase.OBSERVED.value,
+                "resuming_after": resume_after_phase.value,
             },
             state_snapshot=resumed_snapshot,
         )
@@ -690,7 +702,7 @@ class AutomationService:
                 detail={
                     "reason_code": "AUTOMATION_QUEUE_UNAVAILABLE",
                     "retryable": True,
-                    "resuming_after": AutomationCheckpointPhase.OBSERVED.value,
+                    "resuming_after": resume_after_phase.value,
                 },
                 state_snapshot=resumed_snapshot,
             )

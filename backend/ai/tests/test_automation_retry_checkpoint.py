@@ -4,19 +4,51 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from fastapi import HTTPException
 
+from src.agents.runner.automation_graph import (
+    project_source_evidence,
+    safety_inspection_evidence,
+)
 from src.schemas.agent import VeriqRunState
 from src.schemas.automation import (
     AutomationCheckpoint,
     AutomationCheckpointPhase,
+    AutomationClarificationResponseRequest,
+    AutomationFact,
     AutomationGraphSnapshot,
     AutomationKind,
     AutomationRun,
     AutomationStatus,
+    AutomationUncertainty,
+    EvidenceItem,
 )
 from src.services.automation import AutomationService
 
 
 class AutomationRetryCheckpointTests(unittest.IsolatedAsyncioTestCase):
+    def test_safety_inspection_uses_sources_and_clarifications_not_tool_output(self):
+        document = {
+            "artifact_type": "requirement_document",
+            "artifact_id": "RDOC-1",
+            "authority": "PROJECT_REFERENCE",
+        }
+        tool_output = {
+            "artifact_type": "tool_result",
+            "artifact_id": "TASK-1",
+            "authority": "verified_tool:process_ingested_requirement_document",
+        }
+        clarification = {
+            "artifact_type": "automation_clarification",
+            "artifact_id": "CLARIFICATION-1",
+            "authority": "user_clarification",
+        }
+
+        result = safety_inspection_evidence(
+            [document, tool_output, clarification], set()
+        )
+
+        self.assertEqual(result, [document, clarification])
+        self.assertEqual(project_source_evidence([document, tool_output, clarification], set()), [document])
+
     def make_run(self, status=AutomationStatus.FAILED, error_code="AUTOMATION_EXECUTION_FAILED"):
         return AutomationRun(
             automation_run_id="AUT-RETRY-1",
@@ -41,6 +73,154 @@ class AutomationRetryCheckpointTests(unittest.IsolatedAsyncioTestCase):
             objective="Tiếp tục luồng tự động hóa",
         )
         return AutomationGraphSnapshot(completed_phase=phase, run=run)
+
+    async def test_answerable_nonblocking_uncertainty_resumes_awaiting_run(self):
+        service = AutomationService()
+        run = self.make_run(
+            status=AutomationStatus.AWAITING_INPUT,
+            error_code="AUTOMATION_WAITING_FOR_INPUT",
+        )
+        run = run.model_copy(
+            update={
+                "revision": 4,
+                "evidence": [
+                    EvidenceItem(
+                        artifact_type="requirement_document",
+                        artifact_id="RDOC-1",
+                        source="database",
+                        authority="PROJECT_REFERENCE",
+                        text="Source text",
+                        project_id="PRJ-1",
+                    )
+                ],
+            }
+        )
+        uncertainty = AutomationUncertainty(
+            code="LOCKOUT_THRESHOLD",
+            question="What is the account lockout threshold?",
+            reason="The source says repeated attempts without a number.",
+            blocking=False,
+            response_allowed=True,
+        )
+        snapshot = self.make_snapshot(AutomationCheckpointPhase.FINALIZED).model_copy(
+            update={
+                "uncertainties": [uncertainty],
+                "source_facts": [
+                    AutomationFact(
+                        automation_run_id=run.automation_run_id,
+                        project_id=run.project_id,
+                        artifact_type="requirement_document",
+                        artifact_id="RDOC-1",
+                        artifact_version_id="RDOC-1",
+                        source="database",
+                        authority="PROJECT_REFERENCE",
+                        quote="Source text",
+                    )
+                ],
+            }
+        )
+        checkpoint = AutomationCheckpoint(
+            automation_run_id=run.automation_run_id,
+            phase=AutomationCheckpointPhase.FINALIZED,
+            status=AutomationStatus.AWAITING_INPUT,
+            state_snapshot=snapshot,
+        )
+        queued = run.model_copy(
+            update={"status": AutomationStatus.QUEUED, "error_code": None, "revision": 5}
+        )
+        with (
+            patch(
+                "src.services.automation.automation_repository.latest_checkpoint",
+                new=AsyncMock(return_value=checkpoint),
+            ),
+            patch(
+                "src.services.automation.automation_repository.transition_with_checkpoint",
+                new=AsyncMock(return_value=queued),
+            ) as transition,
+            patch("src.services.automation.mq.publish", new=AsyncMock(return_value=True)),
+        ):
+            result = await service.provide_clarification(
+                run,
+                AutomationClarificationResponseRequest(
+                    expected_revision=4,
+                    uncertainty_code="LOCKOUT_THRESHOLD",
+                    answer="Five consecutive failed attempts.",
+                ),
+                "USER-BA",
+            )
+
+        self.assertEqual(result.status, AutomationStatus.QUEUED)
+        self.assertEqual(
+            transition.await_args.kwargs["detail"]["reason_code"],
+            "AUTOMATION_RESUMED_WITH_USER_CLARIFICATION",
+        )
+        resumed_snapshot = transition.await_args.kwargs["state_snapshot"]
+        self.assertEqual(
+            resumed_snapshot.completed_phase,
+            AutomationCheckpointPhase.FACTS_EXTRACTED,
+        )
+        self.assertEqual(
+            transition.await_args.kwargs["detail"]["resuming_after"],
+            AutomationCheckpointPhase.FACTS_EXTRACTED.value,
+        )
+        self.assertEqual(resumed_snapshot.uncertainties[0].resolution_status, "USER_ANSWERED")
+        self.assertEqual(resumed_snapshot.uncertainties[0].answer, "Five consecutive failed attempts.")
+        self.assertTrue(
+            all(
+                isinstance(item, dict)
+                for item in transition.await_args.args[2]["evidence"]
+            )
+        )
+
+    async def test_nonanswerable_uncertainty_does_not_resume_run(self):
+        service = AutomationService()
+        run = self.make_run(
+            status=AutomationStatus.AWAITING_INPUT,
+            error_code="AUTOMATION_WAITING_FOR_INPUT",
+        )
+        uncertainty = AutomationUncertainty(
+            code="SOURCE_ACCESS",
+            question="Can the source be read?",
+            reason="The source is not authorized.",
+            blocking=False,
+            response_allowed=False,
+        )
+        snapshot = self.make_snapshot(AutomationCheckpointPhase.FINALIZED).model_copy(
+            update={"uncertainties": [uncertainty]}
+        )
+        checkpoint = AutomationCheckpoint(
+            automation_run_id=run.automation_run_id,
+            phase=AutomationCheckpointPhase.FINALIZED,
+            status=AutomationStatus.AWAITING_INPUT,
+            state_snapshot=snapshot,
+        )
+        with (
+            patch(
+                "src.services.automation.automation_repository.latest_checkpoint",
+                new=AsyncMock(return_value=checkpoint),
+            ),
+            patch(
+                "src.services.automation.automation_repository.transition_with_checkpoint",
+                new=AsyncMock(),
+            ) as transition,
+        ):
+            with self.assertRaises(HTTPException) as error:
+                await service.provide_clarification(
+                    run,
+                    AutomationClarificationResponseRequest(
+                        expected_revision=3,
+                        uncertainty_code="SOURCE_ACCESS",
+                        answer="Please allow access.",
+                    ),
+                    "USER-BA",
+                )
+
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(
+            error.exception.detail["code"],
+            "AUTOMATION_CLARIFICATION_REQUIRES_SOURCE_OR_SYSTEM_RECOVERY",
+        )
+        transition.assert_not_awaited()
 
     async def test_retry_preserves_last_safe_snapshot_for_worker_resume(self):
         service = AutomationService()

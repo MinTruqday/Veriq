@@ -108,6 +108,30 @@ def distinct_uncertainty_codes(uncertainties):
     return output
 
 
+def project_source_evidence(evidence, release_control_ids):
+    return [
+        item
+        for item in evidence
+        if id(item) not in release_control_ids
+        and str(item.get("artifact_type") or "").casefold() != "tool_result"
+        and not str(item.get("authority") or "").casefold().startswith("verified_tool:")
+        and is_source_fact_evidence(item)
+    ]
+
+
+def safety_inspection_evidence(evidence, release_control_ids):
+    return [
+        *project_source_evidence(evidence, release_control_ids),
+        *[
+            item
+            for item in evidence
+            if id(item) not in release_control_ids
+            and str(item.get("authority") or "").casefold()
+            in {"user_clarification", "user_answer"}
+        ],
+    ]
+
+
 async def resume_dispatch(state: AutomationGraphState):
     return {}
 
@@ -296,17 +320,8 @@ async def extract_source_facts(state: AutomationGraphState):
     ]
     release_controls = verified_release_gate_control_evidence(state)
     release_control_ids = {id(item) for item in release_controls}
-    source_evidence = [
-        item
-        for item in evidence
-        if is_source_fact_evidence(item)
-        and id(item) not in release_control_ids
-    ]
-    safety_evidence = [
-        item
-        for item in evidence
-        if id(item) not in release_control_ids
-    ]
+    source_evidence = project_source_evidence(evidence, release_control_ids)
+    safety_evidence = safety_inspection_evidence(evidence, release_control_ids)
     facts = []
     uncertainties = []
     degraded_flags = list(state.get("degraded_flags", []))
