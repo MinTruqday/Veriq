@@ -137,6 +137,7 @@ class RequirementDocumentCreateRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.status_code, 503)
         self.assertEqual(raised.exception.detail["code"], "KNOWLEDGE_INDEX_FAILED")
         self.assertTrue(insert.await_args.args[0]["ai_enabled"])
+        self.assertEqual(insert.await_args.args[0]["parse_report"]["unprocessed_blocks"], [])
         update.assert_not_awaited()
 
     async def test_duplicate_retry_reindexes_then_requeues_the_same_revision(self):

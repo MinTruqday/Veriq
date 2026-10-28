@@ -487,6 +487,7 @@ async def create_requirement_document_record(project_id, payload, user):
         },
         "normalized_content": normalized_content,
         "normalized_content_hash": hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+        "parse_report": {"unprocessed_blocks": []},
         "source_version": lineage["source_version"] if lineage else '1',
         "source_series_id": lineage["source_series_id"] if lineage else document_id,
         "source_version_sequence": lineage["source_version_sequence"] if lineage else 1,
