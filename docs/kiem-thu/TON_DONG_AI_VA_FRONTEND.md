@@ -1898,3 +1898,12 @@ Kiểm tra tĩnh và production build frontend đạt sau chỉnh sửa. Không 
 - AI-04 source impact API trên Docker Testing: **5/5 kiểm tra đạt** — lineage hai phiên bản được đọc đúng, chỉ Requirement versions liên kết mới xuất hiện, impact status chính xác, người ngoài project bị từ chối, lineage hỏng trả `409`. Fixture đã xác nhận vắng mặt trong mọi Mongo database. Không build image.
 - AI-04 cập nhật Requirement nháp và citation trên Docker Testing: **6/6 kiểm tra đạt** — quote sai hash bị từ chối mà revision giữ nguyên; BA cập nhật được draft với citation đúng; cập nhật stale bị từ chối; QA đọc lại đúng source ref; source impact trỏ đúng Requirement version vừa cập nhật. Fixture đã xác nhận vắng mặt trong mọi Mongo database. Không build image.
 - AI-04 vẫn mở: còn thiếu giao diện browser theo phiên thật, change impact sau khi sửa Requirement có Test Case liên kết, và worker/event tiếp tục sau khi BA trả lời Phiếu làm rõ. Tổng runtime API/lifecycle hiện đạt **27/27**; cùng **27 service tests** đạt. Tệp test được chép vào `/tmp/ai04-testing-tests`; pytest và thư mục tạm sẽ được gỡ sau lượt nghiệm thu cuối.
+
+#### AI-04 — kiểm chứng worker tiếp tục sau câu trả lời làm rõ — 28/10/2026
+
+- Dùng project, tài khoản BA, session, automation run và checkpoint tạm, mỗi ID sinh riêng; không dùng hay sửa hai run `AWAITING_INPUT` có sẵn trong dữ liệu dự án.
+- Gửi câu trả lời qua API AI thật. API trả `200` và `QUEUED`; RabbitMQ chuyển lượt chạy tới worker hiện có. Worker ghi lần lượt `WORKER_STARTED`, `FACTS_EXTRACTED`, `UNCERTAINTY_ASSESSED`, `PLAN_CREATED`, `FINALIZED`, `ACTIONS_VERIFIED` và `GRAPH_COMPLETED`.
+- Fixture cố ý không chứa tài liệu nguồn. Worker kết thúc `DEGRADED` sau khi kiểm tra, không tạo artifact thiếu căn cứ. Đây là kết quả mong đợi cho nguồn trống; không chứng minh nhánh tạo Requirement/Test Case sau khi câu trả lời được đưa vào Requirement đã cập nhật.
+- SHA-256 của sáu module API/service/repository/worker/graph/event-task trong `veriq_ai` khớp workspace; không build image.
+- Đã dọn project/member, account/session/Redis session, automation run và toàn bộ checkpoint. Kiểm tra sau dọn: 0 dòng còn theo project ID, user/session ID hoặc run ID trong các database Testing, AI và Authentication.
+- Phạm vi đã chứng minh: BA trả lời checkpoint → queue → worker resume → tiếp tục đánh giá nguồn và dừng an toàn khi không có chứng cứ. **Không đóng AI-04**: vẫn thiếu browser theo phiên thật và impact sau thay đổi Requirement có Test Case liên kết; chưa kiểm chứng tiếp tục qua phiếu Requirement đã được BA cập nhật và QA xác nhận.
