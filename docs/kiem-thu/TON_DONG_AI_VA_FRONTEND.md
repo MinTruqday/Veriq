@@ -1907,3 +1907,10 @@ Kiểm tra tĩnh và production build frontend đạt sau chỉnh sửa. Không 
 - SHA-256 của sáu module API/service/repository/worker/graph/event-task trong `veriq_ai` khớp workspace; không build image.
 - Đã dọn project/member, account/session/Redis session, automation run và toàn bộ checkpoint. Kiểm tra sau dọn: 0 dòng còn theo project ID, user/session ID hoặc run ID trong các database Testing, AI và Authentication.
 - Phạm vi đã chứng minh: BA trả lời checkpoint → queue → worker resume → tiếp tục đánh giá nguồn và dừng an toàn khi không có chứng cứ. **Không đóng AI-04**: vẫn thiếu browser theo phiên thật và impact sau thay đổi Requirement có Test Case liên kết; chưa kiểm chứng tiếp tục qua phiếu Requirement đã được BA cập nhật và QA xác nhận.
+
+#### AI-04 — impact sau thay đổi với Test Case liên kết — 28/10/2026
+
+- Trên container Testing đang chạy, tạo project, Requirement version 1/2, hai Test Case version và change set tạm; chỉ một Test Case có trace link tới Requirement đã đổi.
+- Chạy service impact thật với quyền QA đã đọc từ cấu hình phân quyền typed. Bộ phân loại AI được đặt vào nhánh provider degraded có kiểm soát để kiểm tra fallback: chỉ Test Case có trace trực tiếp được đưa vào danh sách ảnh hưởng; ca không liên quan bị loại. Phân tích được lưu, change set chuyển `REVIEWED` → `ANALYZED` bằng revision 1 → 2.
+- Regression scope hiện có đạt 4/4. SHA-256 của hai service impact trong container khớp workspace. Fixture project, membership, Requirement, Test Case, trace, change set, analysis và audit được dọn; truy vấn hậu kiểm không còn bản ghi theo project ID.
+- Không build Docker. **Chưa đóng AI-04**: kiểm chứng vừa rồi là nhánh service với provider degraded, chưa chứng minh phân loại AI thành công qua API và giao diện; còn thiếu browser theo phiên thật và luồng BA trả lời phiếu → cập nhật Requirement → QA xác nhận → worker tiếp tục.
