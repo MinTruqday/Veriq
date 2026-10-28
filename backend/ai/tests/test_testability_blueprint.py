@@ -1171,6 +1171,48 @@ class TestabilityBlueprintTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(supported, [])
         self.assertEqual(unsupported, [obligation])
 
+    def test_prefixed_blueprint_quote_maps_to_grounded_requirement_subspan(self):
+        source_text = "AC-1: Export includes the selected date range."
+        citation = "Export includes the selected date range."
+        start = source_text.index(citation)
+        obligation = {
+            "key": "EXPORT_DATE_RANGE",
+            "source_ref": "doc-1-v1",
+            "source_quote": source_text,
+        }
+        version = {
+            "_id": "REQV-1",
+            "source_refs": [
+                {
+                    "requirement_document_id": "doc-1",
+                    "source_version": "1",
+                    "content_hash": "hash-1",
+                    "source_start": start,
+                    "source_end": start + len(citation),
+                    "source_quote": citation,
+                    "source_text_hash": hashlib.sha256(citation.encode("utf-8")).hexdigest(),
+                }
+            ],
+            "plain_text_projection": "Export includes the selected date range.",
+            "acceptance_criteria": [],
+        }
+        evidence = {"doc-1-v1": {"artifact_id": "doc-1", "text": source_text}}
+        documents = {
+            "doc-1": {
+                "_id": "doc-1",
+                "source_version": "1",
+                "content_hash": "hash-1",
+                "normalized_content": source_text,
+            }
+        }
+
+        supported, unsupported = obligations_supported_by_requirement_version(
+            version, [obligation], evidence, documents
+        )
+
+        self.assertEqual(supported, [obligation])
+        self.assertEqual(unsupported, [])
+
     def test_open_clarification_does_not_hide_source_mapped_blueprint_obligation(self):
         quote = "Nếu thông tin đăng nhập không hợp lệ, hệ thống từ chối truy cập."
         obligation = {

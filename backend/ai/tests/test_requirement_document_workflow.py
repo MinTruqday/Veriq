@@ -9,6 +9,7 @@ from src.tools.automation_publication import verified_test_case_publication_read
 from src.tools.requirement_document_workflow import (
     AutomationOperationError,
     authorized_document_version_path,
+    blueprint_obligation_is_represented,
     blueprint_source_lineage,
     blocking_blueprint_clarifications,
     blueprint_clarification_source_ids,
@@ -72,6 +73,76 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 }
             ],
         }
+
+    def test_blueprint_obligation_accepts_a_grounded_subspan_from_the_same_source(self):
+        source = "AC-1: Export includes the selected date range."
+        quote = "Export includes the selected date range."
+        start = source.index(quote)
+        end = start + len(quote)
+        represented = blueprint_obligation_is_represented(
+            {"source_ref": "RDOC-1", "source_quote": source},
+            [
+                {
+                    "source_refs": [
+                        {
+                            "requirement_document_id": "RDOC-1",
+                            "source_quote": quote,
+                            "source_start": start,
+                            "source_end": end,
+                        }
+                    ]
+                }
+            ],
+            {"RDOC-1": [{"artifact_id": "RDOC-1", "text": source}]},
+        )
+        self.assertTrue(represented)
+
+    def test_blueprint_obligation_rejects_an_unrelated_source_span(self):
+        source = "AC-1: Export includes the selected date range."
+        unrelated = "AC-1"
+        represented = blueprint_obligation_is_represented(
+            {
+                "source_ref": "RDOC-1",
+                "source_quote": "Export includes the selected date range.",
+            },
+            [
+                {
+                    "source_refs": [
+                        {
+                            "requirement_document_id": "RDOC-1",
+                            "source_quote": unrelated,
+                            "source_start": 0,
+                            "source_end": len(unrelated),
+                        }
+                    ]
+                }
+            ],
+            {"RDOC-1": [{"artifact_id": "RDOC-1", "text": source}]},
+        )
+        self.assertFalse(represented)
+
+    def test_blueprint_obligation_accepts_single_evidence_mapping_from_document_index(self):
+        source = "AC-1: Export includes the selected date range."
+        quote = "Export includes the selected date range."
+        start = source.index(quote)
+        end = start + len(quote)
+        represented = blueprint_obligation_is_represented(
+            {"source_ref": "RDOC-1", "source_quote": source},
+            [
+                {
+                    "source_refs": [
+                        {
+                            "requirement_document_id": "RDOC-1",
+                            "source_quote": quote,
+                            "source_start": start,
+                            "source_end": end,
+                        }
+                    ]
+                }
+            ],
+            {"RDOC-1": {"artifact_id": "RDOC-1", "text": source}},
+        )
+        self.assertTrue(represented)
 
     def test_ambiguous_requirement_match_blocks_all_automatic_resolutions(self):
         comparisons = [
@@ -743,6 +814,7 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(version["_id"], "TCV-2")
         self.assertEqual(status, "SUCCESS")
         self.assertEqual(operation.await_count, 2)
+        self.assertEqual(operation.await_args.kwargs["timeout"], 90)
 
     async def test_ai_test_case_publication_resumes_review_submitted_draft(self):
         draft = {
@@ -1590,6 +1662,15 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(generated_obligation_evidence_matches(
             ["LOCKOUT"], evidence, [obligation]
         ))
+        self.assertTrue(generated_obligation_evidence_matches(
+            ["LOCKOUT"], [{
+                "obligation_key": "LOCKOUT",
+                "evidence_quotes": [{
+                    "evidence_ref": "REQ-V1",
+                    "quote": "bị khóa sau 5 lần nhập sai.",
+                }],
+            }], [obligation]
+        ))
         self.assertFalse(generated_obligation_evidence_matches(
             ["LOCKOUT"], [{
                 "obligation_key": "LOCKOUT",
@@ -2231,6 +2312,10 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(latest, confirmed)
         self.assertEqual(result["requirements"], [])
         self.assertEqual(operation.await_count, 2)
+        self.assertEqual(
+            operation.await_args_list[0].kwargs["timeout"],
+            180,
+        )
 
     async def test_import_waits_for_confirmation_without_repeating_mutation(self):
         job = {"_id": "import-1", "revision": 3, "preview": [{}]}

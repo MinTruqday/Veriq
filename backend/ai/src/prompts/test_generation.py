@@ -17,7 +17,7 @@ def _render_generation_instruction(task, coverage_rules, testability_obligations
     if testability_obligations:
         sections.extend(
             (
-                "<compiled_obligation_rules>Prioritize supplied obligations. Use only their keys; do not invent keys or merge distinct obligations. One Test Case may cover multiple keys only when its same steps, inputs, and expected outcome directly verify every listed obligation. Retain every key separately. Do not require duplicate cases for obligations verified by the same observable behavior. If an obligation is unsupported by selected Requirement evidence, do not generate its Test Case and report a warning.</compiled_obligation_rules>",
+                "<compiled_obligation_rules>Prioritize supplied obligations. Use only their keys; do not invent keys or merge distinct obligations. One Test Case may cover multiple keys only when its same steps, inputs, and expected outcome directly verify every listed obligation. Retain every key separately. For every listed coverage_obligation, include exactly one obligation_evidence entry with that key and at least one exact evidence quote already cited in evidence_quotes; the quote may be a precise subspan of the obligation source quote when a Requirement field omits a document label or prefix. Do not use a paraphrase as a source quote. Do not require duplicate cases for obligations verified by the same observable behavior. If an obligation is unsupported by selected Requirement evidence, do not generate its Test Case and report a warning.</compiled_obligation_rules>",
                 "<untrusted_obligation_data_json>",
                 prompt_json(testability_obligations),
                 "</untrusted_obligation_data_json>",

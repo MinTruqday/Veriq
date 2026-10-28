@@ -775,6 +775,13 @@ def obligations_supported_by_requirement_version(
             quote_is_linked = bool(
                 quote and cited_quote and source_quote_spans(cited_quote, quote)
             )
+            claim_spans = source_quote_spans(source_text, quote) if quote else []
+            if not quote_is_linked and span_quote and claim_spans:
+                quote_is_linked = any(
+                    (claim_start <= cited_start and cited_end <= claim_end)
+                    or (cited_start <= claim_start and claim_end <= cited_end)
+                    for claim_start, claim_end in claim_spans
+                )
             if not quote_is_linked:
                 continue
             linked_to_requirement = True

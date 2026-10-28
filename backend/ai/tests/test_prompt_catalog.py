@@ -287,6 +287,12 @@ class PromptCatalogTests(unittest.TestCase):
             ).count("<objective>"),
             1,
         )
+        self.assertIn(
+            "include exactly one obligation_evidence entry",
+            requirement_test_generation_instruction(
+                [{"key": "k1", "obligation": "claim", "source_quote": "claim"}]
+            ),
+        )
 
     def test_remaining_runtime_prompt_families_keep_named_structure(self):
         prompts = [

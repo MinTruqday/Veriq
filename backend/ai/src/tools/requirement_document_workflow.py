@@ -44,6 +44,8 @@ from src.tools.testing import (
 )
 from src.tools.testing_api import AutomationOperationError, parse, require_operation
 
+REQUIREMENT_IMPORT_APPLY_TIMEOUT_SECONDS = 180
+
 
 async def apply_requirement_import_safely(import_job, config, before_write=None):
     job_id = str(import_job.get("_id") or "")
@@ -60,6 +62,7 @@ async def apply_requirement_import_safely(import_job, config, before_write=None)
                 "selected_indexes": list(range(len(import_job.get("preview") or []))),
                 "expected_revision": import_job["revision"],
             },
+            timeout=REQUIREMENT_IMPORT_APPLY_TIMEOUT_SECONDS,
         )
         latest = await require_operation("GET", f"/nhap-yeu-cau/{job_id}", config)
     except (AutomationOperationError, httpx.TimeoutException, httpx.NetworkError) as error:
@@ -232,6 +235,51 @@ def resumable_draft_matches_blueprint_scope(
         ):
             return False
     return True
+
+
+def blueprint_obligation_is_represented(obligation, template_requirements, evidence_by_ref):
+    source_ref = str(obligation.get("source_ref") or "")
+    quote = str(obligation.get("source_quote") or "").strip()
+    raw_evidence = evidence_by_ref.get(source_ref)
+    evidence_items = raw_evidence if isinstance(raw_evidence, list) else [raw_evidence]
+    evidence = next(
+        (
+            item
+            for item in evidence_items
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        ),
+        None,
+    )
+    if not evidence or not quote:
+        return False
+    source_id = str(evidence.get("artifact_id") or source_ref)
+    source_text = evidence["text"]
+    obligation_spans = source_quote_spans(source_text, quote)
+    if not obligation_spans:
+        return False
+    for requirement in template_requirements:
+        for reference in requirement.get("source_refs", []):
+            if str(reference.get("requirement_document_id") or "") != source_id:
+                continue
+            reference_quote = str(reference.get("source_quote") or "").strip()
+            start = reference.get("source_start")
+            end = reference.get("source_end")
+            if (
+                not reference_quote
+                or isinstance(start, bool)
+                or not isinstance(start, int)
+                or isinstance(end, bool)
+                or not isinstance(end, int)
+                or (start, end) not in source_quote_spans(source_text, reference_quote)
+            ):
+                continue
+            if any(
+                (obligation_start <= start and end <= obligation_end)
+                or (start <= obligation_start and obligation_end <= end)
+                for obligation_start, obligation_end in obligation_spans
+            ):
+                return True
+    return False
 
 
 async def resolve_existing_obligation_coverage(
@@ -565,7 +613,10 @@ def generated_obligation_evidence_matches(coverage_keys, obligation_evidence, ob
         quotes = evidence_by_key[key].get("evidence_quotes") or []
         if not source_quote or not any(
             isinstance(item, dict)
-            and source_quote_spans(str(item.get("quote") or ""), source_quote)
+            and (
+                source_quote_spans(str(item.get("quote") or ""), source_quote)
+                or source_quote_spans(source_quote, str(item.get("quote") or ""))
+            )
             for item in quotes
         ):
             return False
@@ -1525,17 +1576,9 @@ async def process_ingested_requirement_document(
 
     unrepresented_blueprint_obligation_keys = []
     for obligation in blueprint.get("obligations", []):
-        evidence = evidence_by_ref.get(obligation.get("source_ref"))
-        source_id = str((evidence or {}).get("artifact_id") or obligation.get("source_ref") or "")
-        quote = str(obligation.get("source_quote") or "").strip()
-        represented = any(
-            source_id == str(reference.get("requirement_document_id") or "")
-            and quote
-                and source_quote_spans(str(reference.get("source_quote") or ""), quote)
-            for requirement in template_requirements
-            for reference in requirement.get("source_refs", [])
-        )
-        if not represented:
+        if not blueprint_obligation_is_represented(
+            obligation, template_requirements, evidence_by_ref
+        ):
             unrepresented_blueprint_obligation_keys.append(obligation.get("key"))
     if unrepresented_blueprint_obligation_keys:
         return json.dumps(

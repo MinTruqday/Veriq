@@ -1,5 +1,7 @@
 from src.tools.testing_api import AutomationOperationError, require_operation
 
+TEST_CASE_PUBLICATION_TIMEOUT_SECONDS = 90
+
 
 def _same_unique_values(left, right):
     if not isinstance(left, list) or not isinstance(right, list):
@@ -255,6 +257,7 @@ async def publish_grounded_test_case(project_id, draft, config, before_write=Non
             "change_reason": "Tự động công bố ca kiểm thử đã qua kiểm tra nguồn và chất lượng",
             "review_note": "Tự động công bố theo chính sách luồng AI của dự án",
         },
+        timeout=TEST_CASE_PUBLICATION_TIMEOUT_SECONDS,
     )
     data = result.get("data") if isinstance(result, dict) else None
     if not isinstance(data, dict) and isinstance(result, dict):
