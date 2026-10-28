@@ -105,6 +105,69 @@ class RequirementClarificationObligationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.detail["code"], "RESOLUTION_VERSION_NOT_CURRENT")
         replace.assert_not_awaited()
 
+    async def test_resolution_after_requirement_version_change_uses_clarification_source_revision(self):
+        clarification = {
+            "_id": "RCL-1",
+            "project_id": "PRJ-1",
+            "requirement_id": "REQ-1",
+            "requirement_version_id": "REQV-1",
+            "status": "ANSWERED",
+        }
+        current_requirement = {"current_version_id": "REQV-2"}
+        current_version = {
+            "_id": "REQV-2",
+            "revision": 3,
+            "status": "DRAFT",
+            "content_doc": {"type": "doc", "content": []},
+            "business_rules": [],
+        }
+        source_version = {"_id": "REQV-1", "revision": 1}
+        payload = SimpleNamespace(
+            expected_revision=2,
+            requirement_version_id="REQV-2",
+            evidence_quote="Bằng chứng trong phiên bản hiện tại",
+        )
+        with (
+            patch.object(requirement_clarifications, "require_automation_publication_authority"),
+            patch.object(
+                requirement_clarifications.requirement_clarification_repository,
+                "find",
+                new=AsyncMock(return_value=clarification),
+            ),
+            patch.object(
+                requirement_clarifications,
+                "get_project_entity",
+                new=AsyncMock(return_value=current_requirement),
+            ),
+            patch.object(requirement_clarifications, "_require_role", new=AsyncMock()),
+            patch.object(
+                requirement_clarifications.requirement_repository,
+                "find_version",
+                new=AsyncMock(side_effect=[current_version, source_version]),
+            ),
+            patch.object(
+                requirement_clarifications.requirement_repository,
+                "list_acceptance_criteria",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                requirement_clarifications,
+                "_version_evidence",
+                return_value="bằng chứng trong phiên bản hiện tại",
+            ),
+            patch.object(
+                requirement_clarifications,
+                "_replace_and_audit",
+                new=AsyncMock(return_value={"_id": "RCL-1", "status": "RESOLVED"}),
+            ) as replace,
+        ):
+            await requirement_clarifications.resolve_clarification(
+                "RCL-1", payload, SimpleNamespace(id="qa-1")
+            )
+
+        self.assertEqual(replace.await_args.kwargs["requirement_current_version_id"], "REQV-2")
+        self.assertEqual(replace.await_args.kwargs["requirement_version_revision"], 1)
+
     async def test_historical_requirement_version_cannot_be_decided(self):
         clarification = {
             "_id": "RCL-1",

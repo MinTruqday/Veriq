@@ -283,6 +283,17 @@ async def resolve_clarification(clarification_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": "RESOLUTION_VERSION_INVALID"})
     if requirement.get("current_version_id") != version["_id"]:
         raise HTTPException(status_code=409, detail={"code": "RESOLUTION_VERSION_NOT_CURRENT"})
+    clarification_version = (
+        version
+        if clarification["requirement_version_id"] == version["_id"]
+        else await requirement_repository.find_version(
+            clarification["requirement_version_id"],
+            clarification["project_id"],
+            clarification["requirement_id"],
+        )
+    )
+    if not clarification_version:
+        raise HTTPException(status_code=409, detail={"code": "REQUIREMENT_VERSION_CHANGED"})
     criteria = await requirement_repository.list_acceptance_criteria(version["_id"], None)
     if payload.evidence_quote.casefold() not in _version_evidence(version, criteria):
         raise HTTPException(status_code=422, detail={"code": "RESOLUTION_EVIDENCE_NOT_FOUND"})
@@ -302,7 +313,7 @@ async def resolve_clarification(clarification_id, payload, user):
         "requirement_clarification_resolved",
         {"requirement_version_id": version["_id"]},
         requirement_current_version_id=version["_id"],
-        requirement_version_revision=version.get("revision"),
+        requirement_version_revision=clarification_version.get("revision"),
     )
 
 
