@@ -1032,6 +1032,19 @@ def blueprint_clarification_identity(item):
     )
 
 
+def unmapped_blueprint_clarifications_after_persistence(unmapped, persisted):
+    mapped_codes = {
+        str(item.get("blueprint_code"))
+        for item in persisted
+        if item.get("blueprint_code")
+    }
+    return [
+        item
+        for item in unmapped
+        if str(item.get("code") or "") not in mapped_codes
+    ]
+
+
 async def persist_blueprint_clarifications(
     version,
     clarifications,
@@ -1760,6 +1773,7 @@ async def process_ingested_requirement_document(
     clarification_ids = set()
     clarification_plans = []
     unmapped_blueprint_clarifications = []
+    persisted_blueprint_clarifications = []
     for requirement_id in sorted(linked_requirement_ids):
         requirement = await require_operation("GET", f"/yeu-cau/{requirement_id}", config)
         if requirement.get("project_id") != project_id or not requirement.get("current_version_id"):
@@ -1784,6 +1798,7 @@ async def process_ingested_requirement_document(
             )
         )
         unmapped_blueprint_clarifications.extend(unmapped_clarifications)
+        persisted_blueprint_clarifications.extend(blueprint_clarifications)
         clarification_ids.update(
             item["_id"] for item in blueprint_clarifications if item.get("_id")
         )
@@ -1867,7 +1882,10 @@ async def process_ingested_requirement_document(
             "evidence_refs": item.get("evidence_refs", []),
             "source_quote": item.get("source_quote"),
         }
-        for item in unmapped_blueprint_clarifications
+        for item in unmapped_blueprint_clarifications_after_persistence(
+            unmapped_blueprint_clarifications,
+            persisted_blueprint_clarifications,
+        )
     )
 
     changed_versions = [

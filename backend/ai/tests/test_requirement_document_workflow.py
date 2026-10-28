@@ -36,6 +36,7 @@ from src.tools.requirement_document_workflow import (
     source_extraction_gaps,
     source_extraction_warnings,
     uncovered_blueprint_obligations,
+    unmapped_blueprint_clarifications_after_persistence,
     verified_document_facts,
     verified_requirement_source_citations,
 )
@@ -2055,6 +2056,20 @@ class RequirementDocumentWorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(unmapped, [])
         self.assertEqual(created[0]["_id"], "RCL-1")
         operation.assert_awaited_once()
+
+    def test_blueprint_clarification_mapped_to_one_requirement_is_not_globally_unmapped(self):
+        unmapped = [
+            {"code": "LOCKOUT_THRESHOLD", "question": "How many attempts?"},
+            {"code": "SESSION_TIMEOUT", "question": "When does the session expire?"},
+        ]
+        persisted = [
+            {"blueprint_code": "LOCKOUT_THRESHOLD", "_id": "RCL-1"},
+        ]
+
+        self.assertEqual(
+            unmapped_blueprint_clarifications_after_persistence(unmapped, persisted),
+            [unmapped[1]],
+        )
 
     def test_requirement_source_citation_serializes_structured_content_consistently(self):
         source_text = json.dumps(
