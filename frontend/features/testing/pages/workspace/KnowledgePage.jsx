@@ -772,19 +772,6 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                                 {block.page_no != null && (
                                   <span className="text-ink-muted">Trang {block.page_no}</span>
                                 )}
-                                <span className="break-all text-xs text-ink-muted">
-                                  {block.block_id || "Không có mã khối"}
-                                </span>
-                                {block.parent_block_id && (
-                                  <span className="break-all text-xs text-ink-muted">
-                                    Khối cha: {block.parent_block_id}
-                                  </span>
-                                )}
-                                {block.level != null && (
-                                  <span className="text-xs text-ink-muted">
-                                    Cấp bộ phân tích {block.level}
-                                  </span>
-                                )}
                                 {hierarchy?.cycle && (
                                   <span className="text-xs text-danger">
                                     Quan hệ cha–con bị vòng lặp
@@ -851,9 +838,24 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                                   )}
                                 </div>
                               )}
-                              <p className="mt-1 break-all text-xs text-ink-muted">
-                                Khối cha: {block.parent_block_id || "Không có mã cha"}
-                              </p>
+                              {(block.block_id || block.parent_block_id || block.level != null) && (
+                                <details className="mt-2 text-xs text-ink-muted">
+                                  <summary className="cursor-pointer">
+                                    Thông tin cấu trúc nguồn
+                                  </summary>
+                                  <div className="mt-1 space-y-1">
+                                    {block.block_id && (
+                                      <p className="break-all">Mã khối: {block.block_id}</p>
+                                    )}
+                                    {block.parent_block_id && (
+                                      <p className="break-all">
+                                        Mã khối cha: {block.parent_block_id}
+                                      </p>
+                                    )}
+                                    {block.level != null && <p>Cấp cấu trúc: {block.level}</p>}
+                                  </div>
+                                </details>
+                              )}
                             </li>
                           );
                         })}

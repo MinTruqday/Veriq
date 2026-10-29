@@ -550,17 +550,16 @@ export default function RequirementTemplatePanel({
           {canReadAutomationRuns && (
             <div className="space-y-2 border-b border-border pb-3" aria-live="polite">
               <div>
-                <p className="text-sm font-medium">Tự động hóa theo tài liệu</p>
+                <p className="text-sm font-medium">Kết quả xử lý tài liệu</p>
               </div>
               {automationRunsError && (
                 <p className="text-sm text-danger" role="alert">
-                  Chưa tải được trạng thái lượt chạy AI: {automationRunsError}
+                  Chưa tải được kết quả xử lý tài liệu: {automationRunsError}
                 </p>
               )}
               {templateReadbackError && (
                 <p className="text-sm text-danger" role="alert">
-                  Lượt chạy đã kết thúc nhưng chưa đọc lại được danh sách mẫu:{" "}
-                  {templateReadbackError}
+                  Tài liệu đã xử lý nhưng chưa tải lại được danh sách mẫu: {templateReadbackError}
                 </p>
               )}
               {sourceDocuments
@@ -591,14 +590,14 @@ export default function RequirementTemplatePanel({
                             className="text-accent underline"
                             href={projectRoute(project._id, PROJECT_SECTION_SLUGS.automation)}
                           >
-                            Xem lượt chạy
+                            Xem tiến trình xử lý
                           </a>
                         </div>
                       ) : (
                         <span className="text-xs text-ink-muted">
                           {document.status === "READY"
-                            ? "Chưa tìm thấy lượt chạy tương ứng trong các lượt gần đây mà tài khoản được phép xem."
-                            : "Sự kiện AI chỉ được đưa vào xử lý sau khi phân tích tài liệu hoàn tất."}
+                            ? "Chưa có kết quả xử lý cho tài liệu này."
+                            : "Tài liệu sẽ được xử lý sau khi phân tích hoàn tất."}
                         </span>
                       )}
                     </div>

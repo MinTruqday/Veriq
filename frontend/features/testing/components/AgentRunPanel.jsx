@@ -18,21 +18,25 @@ import ContentOriginBadge from "../../../shared/components/common/ContentOriginB
 
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
 
-function automationTriggerLabel(trigger) {
-  const normalized = String(trigger || "MANUAL").replace(/_{2,}/g, "_");
-  const label = valueLabel(normalized);
-  return label === normalized ? "Hoạt động AI theo sự kiện" : label;
+function automationTriggerLabel(run) {
+  const providedLabel = String(run?.trigger_label || run?.trigger_display_name || "").trim();
+  if (providedLabel) return providedLabel;
+  return run?.trigger === "MANUAL" ? "Theo yêu cầu người dùng" : "Sự kiện dự án";
 }
 
 function automationRunTitle(run) {
-  const trigger = String(run?.trigger || "MANUAL").replace(/_{2,}/g, "_");
-  if (trigger !== "MANUAL") return automationTriggerLabel(trigger);
-  const objective = String(run?.objective || "").trim();
-  const generatedEvent = objective.match(/tự xử lý sự kiện\s+([A-Z][A-Z0-9_]+)/i);
-  if (generatedEvent) return automationTriggerLabel(generatedEvent[1]);
-  const containsInternalEventCode = /\b[A-Z][A-Z0-9]+__[A-Z0-9_]+\b/.test(objective);
-  if (objective && !containsInternalEventCode) return objective;
-  return automationTriggerLabel(trigger);
+  const internalCode = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/;
+  const summary = [
+    run?.display_name,
+    run?.title,
+    run?.result?.summary,
+    run?.result?.message,
+    run?.objective,
+  ]
+    .map((value) => String(value || "").trim())
+    .find((value) => value && !internalCode.test(value));
+  if (summary) return summary;
+  return "Lượt xử lý dự án";
 }
 
 export default function AgentRunPanel({ project, showDefinitions = true }) {
@@ -670,8 +674,9 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                     {automationRunTitle(item)}
                   </span>
                   <span className="block text-xs text-ink-muted">
-                    {automationTriggerLabel(item.trigger)}
-                    {item.created_at ? ` · ${formatDate(item.created_at)}` : ""}
+                    {item.trigger === "MANUAL" && "Chạy theo yêu cầu"}
+                    {item.created_at &&
+                      `${item.trigger === "MANUAL" ? " · " : ""}${formatDate(item.created_at)}`}
                   </span>
                 </span>
                 <StatusPill
@@ -719,23 +724,40 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             )}
             <div className="flex flex-wrap items-center gap-3">
               <StatusPill value={run.status} />
-              <span>Loại hoạt động: {automationTriggerLabel(run.trigger)}</span>
-              <span>Vai trò yêu cầu: {valueLabel(run.requester_role)}</span>
+              <span className="min-w-0 break-words font-medium">{automationRunTitle(run)}</span>
+              {run.created_at && (
+                <time className="text-xs text-ink-muted" dateTime={run.created_at}>
+                  {formatDate(run.created_at)}
+                </time>
+              )}
               <details className="text-xs text-ink-muted">
-                <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
-                <p className="mt-1 break-all">Mã lượt chạy: {run.automation_run_id}</p>
+                <summary className="cursor-pointer">Chi tiết lượt xử lý</summary>
+                <dl className="mt-2 grid gap-1">
+                  <div>
+                    <dt className="inline">Nguồn khởi chạy: </dt>
+                    <dd className="inline">{automationTriggerLabel(run)}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline">Vai trò yêu cầu: </dt>
+                    <dd className="inline">{valueLabel(run.requester_role)}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline">Mã lượt xử lý: </dt>
+                    <dd className="inline break-all">{run.automation_run_id}</dd>
+                  </div>
+                </dl>
               </details>
             </div>
             {workflow && (
               <section
-                aria-label="Trạng thái toàn luồng AI"
+                aria-label="Tiến độ xử lý AI"
                 className="grid gap-3 rounded-control border border-border bg-surface-quiet p-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-semibold text-ink">Trạng thái toàn luồng</h3>
+                    <h3 className="font-semibold text-ink">Tình trạng xử lý</h3>
                     <p className="mt-1 text-xs text-ink-muted">
-                      Lượt xử lý này có thể hoàn tất trước những lượt tiếp theo do nó tạo ra.
+                      Bao gồm các công việc tiếp nối được tạo từ kết quả lượt này.
                     </p>
                   </div>
                   <StatusPill value={workflow.status} />
@@ -757,7 +779,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                         key={item.automation_run_id}
                       >
                         <span className="min-w-0 text-xs text-ink-muted">
-                          {automationTriggerLabel(item.trigger)}
+                          {automationRunTitle(item)}
                         </span>
                         <StatusPill value={item.status} />
                       </li>
@@ -1016,7 +1038,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             )}
             {checkpoints.length > 0 && (
               <div>
-                <h3 className="font-semibold text-ink">Nhật ký các bước xử lý</h3>
+                <h3 className="font-semibold text-ink">Các bước đã thực hiện</h3>
                 <ol className="mt-2 grid gap-2">
                   {checkpoints.map((checkpoint) => {
                     const item = automationCheckpointView(checkpoint);
@@ -1054,7 +1076,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             )}
             {receipt && (
               <div>
-                <h3 className="font-semibold text-ink">Dấu vết bằng chứng</h3>
+                <h3 className="font-semibold text-ink">Nguồn đã dùng</h3>
                 <p className="mt-1 text-ink-muted">
                   {receipt.source_fact_ids?.length || 0} nguồn được dùng để tạo kết quả này
                 </p>

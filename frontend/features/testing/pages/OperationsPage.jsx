@@ -30,6 +30,20 @@ const modelLabels = {
   risk_scoring: "Chấm điểm rủi ro",
 };
 
+function formatStorageSize(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 byte";
+  if (bytes < 1000) return `${Math.round(bytes).toLocaleString("vi-VN")} byte`;
+  const units = ["kB", "MB", "GB", "TB"];
+  let size = bytes;
+  let unitIndex = -1;
+  while (size >= 1000 && unitIndex < units.length - 1) {
+    size /= 1000;
+    unitIndex += 1;
+  }
+  return `${size.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
+}
+
 export default function OperationsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [section, setSection] = useState("overview");
@@ -279,7 +293,11 @@ export default function OperationsPage() {
               columns={[
                 { key: "project_key", label: "Dự án" },
                 { key: "files", label: "Tệp" },
-                { key: "bytes", label: "Dung lượng theo byte" },
+                {
+                  key: "bytes",
+                  label: "Dung lượng",
+                  render: (item) => formatStorageSize(item.bytes),
+                },
               ]}
             />
             <Pagination

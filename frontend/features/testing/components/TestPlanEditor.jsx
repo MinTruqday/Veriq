@@ -417,7 +417,7 @@ export default function TestPlanEditor({
               Thời gian kế hoạch kiểm thử
             </h3>
             <p className="mt-1 text-sm text-ink-muted">
-              Thời điểm bắt đầu được dùng để tra đơn giá có hiệu lực khi lập dự toán.
+              Thời điểm bắt đầu giúp áp dụng đúng đơn giá nhân sự khi lập dự toán.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">

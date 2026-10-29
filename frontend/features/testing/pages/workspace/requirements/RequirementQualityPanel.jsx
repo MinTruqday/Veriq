@@ -33,7 +33,7 @@ export default function RequirementQualityPanel({ lint, loading = false }) {
       )}
       {lint.artifact_revision && (
         <p className="px-5 pt-3 text-sm text-ink-muted">
-          Kết quả kiểm tra cho lần sửa {lint.artifact_revision}
+          Kết quả kiểm tra cho lần cập nhật {lint.artifact_revision}
         </p>
       )}
       <DataTable
@@ -45,8 +45,7 @@ export default function RequirementQualityPanel({ lint, loading = false }) {
             label: "Nguồn",
             render: (item) => <ContentOriginBadge origin={item.origin === "AI" ? "ai" : "rule"} />,
           },
-          { key: "severity", label: "Mức độ" },
-          { key: "rule_id", label: "Mã" },
+          { key: "severity", label: "Mức độ", render: (item) => valueLabel(item.severity) },
           { key: "message", label: "Nội dung" },
           { key: "suggestion", label: "Đề xuất" },
         ]}

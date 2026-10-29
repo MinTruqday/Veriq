@@ -356,29 +356,29 @@ export default function ReportsPage({ project }) {
                 <section aria-labelledby="coverage-metrics-heading" className="space-y-3">
                   <div>
                     <h2 className="text-base font-semibold" id="coverage-metrics-heading">
-                      Độ phủ truy vết và thực thi
+                      Liên kết yêu cầu và kết quả kiểm thử
                     </h2>
                     <p className="mt-1 text-sm text-ink-muted">
-                      Các chỉ số thể hiện phạm vi yêu cầu, tiêu chí, hiệu lực và kỹ thuật kiểm thử.
-                      Độ phủ thực thi được lọc theo bản phát hành và bản dựng; bộ lọc môi trường
-                      chưa áp dụng cho chỉ số này.
+                      Các tỷ lệ cho biết yêu cầu và tiêu chí chấp nhận đã liên kết với ca kiểm thử,
+                      liên kết còn hiệu lực và ca đã được chạy. Tỷ lệ ca đã chạy được lọc theo bản
+                      phát hành và bản dựng; bộ lọc môi trường chưa áp dụng cho tỷ lệ này.
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                     <Metric
-                      label="Yêu cầu được bao phủ"
+                      label="Yêu cầu có liên kết kiểm thử"
                       value={metricPercentage(value.coverage.requirement_coverage)}
                     />
                     <Metric
-                      label="Tiêu chí chấp nhận được bao phủ"
+                      label="Tiêu chí chấp nhận có liên kết"
                       value={metricPercentage(value.coverage.acceptance_criterion_coverage)}
                     />
                     <Metric
-                      label="Độ phủ còn hiệu lực"
+                      label="Liên kết còn hiệu lực"
                       value={metricPercentage(value.coverage.fresh_coverage)}
                     />
                     <Metric
-                      label="Độ phủ thực thi"
+                      label="Ca kiểm thử đã chạy"
                       value={metricPercentage(value.coverage.execution_coverage)}
                     />
                     <Metric
@@ -459,7 +459,7 @@ export default function ReportsPage({ project }) {
                     {value.ai && (
                       <>
                         <Metric
-                          label="Lượt AI không hoàn tất bình thường"
+                          label="Lượt AI gặp lỗi hoặc dùng chế độ dự phòng"
                           value={metricCount(value.ai.degraded_count)}
                           detail={
                             value.ai.degraded_rate === null || value.ai.degraded_rate === undefined
@@ -522,21 +522,21 @@ export default function ReportsPage({ project }) {
               </div>
               <div className="grid gap-5 xl:grid-cols-2">
                 {value.coverage && (
-                  <Panel title="Độ phủ theo kỹ thuật">
+                  <Panel title="Yêu cầu theo nhóm tình huống kiểm thử">
                     <DataTable
                       items={Object.entries(value.coverage.category_coverage || {}).map(
                         ([category, coverage]) => ({ _id: category, category, coverage }),
                       )}
-                      empty="Chưa có dữ liệu kỹ thuật"
+                      empty="Chưa có dữ liệu theo nhóm tình huống"
                       columns={[
                         {
                           key: "category",
-                          label: "Kỹ thuật",
+                          label: "Nhóm tình huống",
                           render: (item) => valueLabel(item.category),
                         },
                         {
                           key: "coverage",
-                          label: "Độ phủ",
+                          label: "Yêu cầu có liên kết",
                           render: (item) => metricPercentage(item.coverage),
                         },
                       ]}
@@ -546,7 +546,7 @@ export default function ReportsPage({ project }) {
                 {value.ai && (
                   <details className="rounded-xl border border-border bg-surface px-5 py-4">
                     <summary className="cursor-pointer font-semibold text-ink">
-                      Thông tin vận hành AI
+                      Chi tiết sử dụng AI
                     </summary>
                     <div className="mt-4">
                       <DataTable
@@ -584,17 +584,17 @@ export default function ReportsPage({ project }) {
                       },
                       {
                         key: "requirement_coverage",
-                        label: "Độ phủ yêu cầu",
+                        label: "Yêu cầu có liên kết",
                         render: (item) => metricPercentage(item.metrics?.requirement_coverage),
                       },
                       {
                         key: "fresh_coverage",
-                        label: "Độ phủ còn hiệu lực",
+                        label: "Liên kết còn hiệu lực",
                         render: (item) => metricPercentage(item.metrics?.fresh_coverage),
                       },
                       {
                         key: "execution_coverage",
-                        label: "Độ phủ thực thi",
+                        label: "Ca kiểm thử đã chạy",
                         render: (item) => metricPercentage(item.metrics?.execution_coverage),
                       },
                     ]}

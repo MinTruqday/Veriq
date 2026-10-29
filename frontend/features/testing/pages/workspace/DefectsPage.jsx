@@ -710,7 +710,7 @@ export default function DefectsPage({ project }) {
         </Modal>
       )}
       {duplicates.length > 0 && (
-        <Panel title="Ứng viên lỗi trùng cần người dùng xác nhận">
+        <Panel title="Các lỗi có thể bị trùng">
           <DataTable
             items={duplicates}
             columns={[
@@ -931,13 +931,13 @@ export default function DefectsPage({ project }) {
                             setTraceReview({ defect: item, result: traceSuggestions[item._id] })
                           }
                         >
-                          Xem gợi ý liên kết
+                          Xem gợi ý AI
                         </button>
                       )}
                     {can("ai.suggest_bug_trace") &&
                       (!traceSuggestions[item._id] ||
                         traceSuggestions[item._id].source_event_revision !== item.revision) && (
-                        <span className="text-xs text-ink-muted">Chưa có gợi ý liên kết</span>
+                        <span className="text-xs text-ink-muted">Chưa có gợi ý AI</span>
                       )}
                     {item.linked_test_case_version_id && canManageTrace(item) && (
                       <button

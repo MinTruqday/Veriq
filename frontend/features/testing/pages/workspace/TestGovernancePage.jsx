@@ -129,6 +129,7 @@ export default function TestGovernancePage({ project }) {
       setError(messageOf(reason));
     }
   };
+  const reviewerCount = (selected?.reviewer_ids || selected?.reviewers || []).length;
   return (
     <WorkspacePage
       title="Chiến lược kiểm thử"
@@ -361,7 +362,7 @@ export default function TestGovernancePage({ project }) {
             <div>
               <p className="field-label">Người rà soát được phân công</p>
               <p className="mt-2 text-sm">
-                {selected.reviewer_ids?.join(" · ") || "Chưa phân công"}
+                {reviewerCount ? `${reviewerCount} người được phân công` : "Chưa phân công"}
               </p>
             </div>
           </div>

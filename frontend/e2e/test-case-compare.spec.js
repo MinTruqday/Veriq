@@ -2967,10 +2967,10 @@ test("AI event runs appear without asking the user to start them manually", asyn
   await expect(page.getByText("Hoạt động gần đây")).toBeVisible();
   await expect(page.getByText("AUT-E2E-EVENT-1")).toHaveCount(0);
   await page.getByRole("button", { name: /Rà soát tài liệu sau khi tải lên/ }).click();
-  const runDetails = page.getByRole("group").filter({ hasText: "Mã lượt chạy" });
-  await runDetails.getByText("Thông tin hỗ trợ").click();
-  await expect(page.getByText("Mã lượt chạy: AUT-E2E-EVENT-1")).toBeVisible();
-  await runDetails.getByText("Thông tin hỗ trợ").click();
+  const runDetails = page.getByRole("group").filter({ hasText: "Mã lượt xử lý" });
+  await runDetails.getByText("Chi tiết lượt xử lý").click();
+  await expect(page.getByText("Mã lượt xử lý: AUT-E2E-EVENT-1")).toBeVisible();
+  await runDetails.getByText("Chi tiết lượt xử lý").click();
   await expect(page.getByRole("heading", { name: "Cần bổ sung thông tin" })).toBeVisible();
   await expect(page.getByText("Hệ thống xử lý thế nào khi email chưa được đăng ký?")).toBeVisible();
   await expect(page.getByLabel("Thông tin trả lời")).toHaveCount(0);
@@ -2988,7 +2988,9 @@ test("AI event runs appear without asking the user to start them manually", asyn
   await expect(page.getByText("AUTOMATION_WAITING_FOR_INPUT")).toHaveCount(0);
 });
 
-test("AI activity translates internal event codes into user-facing actions", async ({ page }) => {
+test("AI activity does not expose internal event codes as user-facing actions", async ({
+  page,
+}) => {
   await installWorkspace(page, "QA", {
     automationRun: {
       trigger: "DOCUMENT_INGESTED",
@@ -2999,7 +3001,7 @@ test("AI activity translates internal event codes into user-facing actions", asy
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
 
-  await expect(page.getByRole("button", { name: /Rà soát tài liệu mới/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Lượt xử lý dự án/ })).toBeVisible();
   await expect(page.getByText(/DOCUMENT_INGESTED/)).toHaveCount(0);
 });
 
@@ -3019,7 +3021,7 @@ test("Requirement import reads the terminal AI status for its source document", 
   await page.getByRole("button", { name: "Dùng mẫu" }).click();
 
   await expect(page.getByRole("dialog", { name: "Nhập tài liệu" })).toBeVisible();
-  await expect(page.getByText("Tự động hóa theo tài liệu")).toBeVisible();
+  await expect(page.getByText("Kết quả xử lý tài liệu")).toBeVisible();
   await expect(
     page
       .getByRole("dialog", { name: "Nhập tài liệu" })
@@ -3028,7 +3030,7 @@ test("Requirement import reads the terminal AI status for its source document", 
       .first(),
   ).toBeVisible();
   await expect(page.getByText("Hoạt động giới hạn")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Xem lượt chạy" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Xem tiến trình xử lý" })).toHaveAttribute(
     "href",
     `/du-an/${projectId}/tu-dong-hoa`,
   );
@@ -3119,10 +3121,11 @@ test("AI run displays the descendant workflow while the root run is already comp
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /Rà soát tài liệu sau khi tải lên/ }).click();
 
-  const workflow = page.getByRole("region", { name: "Trạng thái toàn luồng AI" });
+  const workflow = page.getByRole("region", { name: "Tiến độ xử lý AI" });
   await expect(workflow).toContainText("Đang xử lý");
   await expect(workflow).toContainText("2 lượt · 1 đang chạy");
-  await expect(workflow).toContainText("Rà soát yêu cầu đã thay đổi");
+  await expect(workflow).toContainText("Lượt xử lý dự án");
+  await expect(workflow).not.toContainText("REQUIREMENT_CHANGED");
 });
 
 test("the open AI run refreshes its workflow status when a new child run appears", async ({
@@ -3171,11 +3174,12 @@ test("the open AI run refreshes its workflow status when a new child run appears
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /Rà soát tài liệu sau khi tải lên/ }).click();
 
-  const workflow = page.getByRole("region", { name: "Trạng thái toàn luồng AI" });
+  const workflow = page.getByRole("region", { name: "Tiến độ xử lý AI" });
   await expect(workflow).toContainText("Cần bổ sung thông tin");
   await expect(workflow).toContainText("1 lượt · 0 đang chạy · 1 đang chờ");
   workflowSnapshots[1] = childRunningWorkflow;
-  await expect(workflow).toContainText("Rà soát yêu cầu đã thay đổi", { timeout: 12000 });
+  await expect(workflow).toContainText("Lượt xử lý dự án", { timeout: 12000 });
+  await expect(workflow).not.toContainText("REQUIREMENT_CHANGED");
   await expect(workflow).toContainText("2 lượt · 1 đang chạy · 1 đang chờ");
 });
 
@@ -3294,9 +3298,9 @@ test("AI run details remain visible if evidence lookup is temporarily unavailabl
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /Rà soát tài liệu sau khi tải lên/ }).click();
 
-  const runDetails = page.getByRole("group").filter({ hasText: "Mã lượt chạy" });
-  await runDetails.getByText("Thông tin hỗ trợ").click();
-  await expect(page.getByText("Mã lượt chạy: AUT-E2E-EVENT-1")).toBeVisible();
+  const runDetails = page.getByRole("group").filter({ hasText: "Mã lượt xử lý" });
+  await runDetails.getByText("Chi tiết lượt xử lý").click();
+  await expect(page.getByText("Mã lượt xử lý: AUT-E2E-EVENT-1")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Cần bổ sung thông tin" })).toBeVisible();
   await expect(page.getByText("Hệ thống xử lý thế nào khi email chưa được đăng ký?")).toBeVisible();
   expect(api.automationEvidenceCalls).toBeGreaterThan(0);

@@ -1,5 +1,6 @@
 import DataTable from "../../../components/DataTable";
 import { Panel } from "../../../components/WorkspacePrimitives";
+import { valueLabel } from "../../../lib/testing";
 
 export default function RequirementTracePanel({ current, sourceDocuments }) {
   return (
@@ -14,14 +15,18 @@ export default function RequirementTracePanel({ current, sourceDocuments }) {
           {
             key: "requirement_document_id",
             label: "Tài liệu",
-            render: (item) =>
-              sourceDocuments.find((document) => document._id === item.requirement_document_id)
-                ?.title ||
-              sourceDocuments.find((document) => document._id === item.requirement_document_id)
-                ?.filename ||
-              item.requirement_document_id,
+            render: (item) => {
+              const source = sourceDocuments.find(
+                (document) => document._id === item.requirement_document_id,
+              );
+              return (
+                <span className="break-words">
+                  {source?.title || source?.filename || "Tài liệu nguồn không còn khả dụng"}
+                </span>
+              );
+            },
           },
-          { key: "format", label: "Định dạng" },
+          { key: "format", label: "Định dạng", render: (item) => valueLabel(item.format) },
           {
             key: "location",
             label: "Vị trí",

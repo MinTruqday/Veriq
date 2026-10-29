@@ -1181,7 +1181,7 @@ export default function TestDesignPage({ project, workspaceView }) {
             <label className="field-label block max-w-2xl">
               Yêu cầu đã duyệt
               <select
-                aria-label="Yêu cầu cần xem trạng thái tự động hóa"
+                aria-label="Yêu cầu cần xem kết quả xử lý"
                 className="apple-input mt-2 w-full min-w-0"
                 value={selectedRequirement}
                 onChange={(event) => setSelectedRequirement(event.target.value)}
@@ -1203,19 +1203,8 @@ export default function TestDesignPage({ project, workspaceView }) {
                 <div className="grid gap-2 rounded-control border border-border p-4 text-sm">
                   <div className="flex flex-wrap items-center gap-3">
                     <StatusPill value={requirementAutomationRun.status} />
-                    <details className="text-xs text-ink-muted">
-                      <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
-                      <p className="mt-1 break-all">
-                        Mã lượt chạy: {requirementAutomationRun.automation_run_id}
-                      </p>
-                      <p className="break-all">
-                        Mã sự kiện: {requirementAutomationRun.source_event_id}
-                      </p>
-                    </details>
                   </div>
-                  {requirementAutomationRun.error_code && (
-                    <p>Lượt chạy có lỗi: {valueLabel(requirementAutomationRun.error_code)}</p>
-                  )}
+                  {requirementAutomationRun.error_code && <p>Có lỗi khi xử lý yêu cầu này.</p>}
                   <p className="whitespace-pre-wrap break-words">
                     {requirementAutomationRun.result?.summary ||
                       requirementAutomationRun.result?.proposal?.summary ||

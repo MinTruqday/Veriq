@@ -155,6 +155,7 @@ export default function PlanningPage({ project, section }) {
   const router = useRouter();
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
+  const [projectMembers, setProjectMembers] = useState([]);
   const [boardValue, setBoardValue] = useState(null);
   const [sprints, setSprints] = useState([]);
   const [roadmap, setRoadmap] = useState(null);
@@ -200,6 +201,26 @@ export default function PlanningPage({ project, section }) {
       : [project.current_membership?.project_role].filter(Boolean);
   const isBa = memberRoles.includes("BA");
   const currentUserId = project.current_membership?.user_id;
+  const canReadProjectMembers = (project.current_permissions || []).includes(
+    "project.members.read",
+  );
+  const memberLabels = Object.fromEntries(
+    projectMembers.map((member) => {
+      const userId = member.user_id;
+      const label =
+        member.user?.display_name || member.user?.label || member.user?.email || member.user_label;
+      return [userId, typeof label === "string" && label !== userId ? label : "Thành viên dự án"];
+    }),
+  );
+  const assigneeOptions = [
+    { value: "", label: "Chưa phân công" },
+    ...projectMembers
+      .filter((member) => member.status === "ACTIVE")
+      .map((member) => ({
+        value: member.user_id,
+        label: memberLabels[member.user_id],
+      })),
+  ];
   const canTransitionItem = (item, targetStatus = null) => {
     const canActOnItem =
       isBa || (memberRoles.includes("DEVELOPER") && item.assignee_id === currentUserId);
@@ -236,23 +257,27 @@ export default function PlanningPage({ project, section }) {
     const sequence = ++loadSequence.current;
     setLoading(true);
     try {
-      const [board, roadmapValue, sprintValues] = await Promise.all([
+      const [board, roadmapValue, sprintValues, members] = await Promise.all([
         testingApi.workBoard(project._id),
         testingApi.roadmap(project._id),
         isScrum ? testingApi.listSprints(project._id) : Promise.resolve([]),
+        canReadProjectMembers
+          ? testingApi.listMembers(project._id).catch(() => [])
+          : Promise.resolve([]),
       ]);
       if (sequence !== loadSequence.current) return;
       setItems(board.items || []);
       setBoardValue(board);
       setRoadmap(roadmapValue);
       setSprints(sprintValues);
+      setProjectMembers(members);
       setError("");
     } catch (reason) {
       if (sequence === loadSequence.current) setError(planningErrorMessage(reason));
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [isScrum, project._id]);
+  }, [canReadProjectMembers, isScrum, project._id]);
   useEffect(() => {
     void load();
     return () => {
@@ -278,6 +303,9 @@ export default function PlanningPage({ project, section }) {
         { name: "title", label: "Tên", required: true },
         { name: "description", label: "Mô tả", multiline: true },
         { name: "parent_id", label: "Thuộc công việc", options: itemOptions(items) },
+        ...(canReadProjectMembers
+          ? [{ name: "assignee_id", label: "Người phụ trách", options: assigneeOptions }]
+          : []),
         {
           name: "priority",
           label: "Ưu tiên",
@@ -298,6 +326,7 @@ export default function PlanningPage({ project, section }) {
           title: answer.title.trim(),
           description: answer.description.trim(),
           parent_id: answer.parent_id || null,
+          assignee_id: answer.assignee_id || null,
           estimate: answer.estimate ? Number(answer.estimate) : null,
           planned_start_at: answer.planned_start_at
             ? new Date(`${answer.planned_start_at}T00:00:00.000Z`).toISOString()
@@ -312,6 +341,16 @@ export default function PlanningPage({ project, section }) {
     });
   };
   const editItem = async (item) => {
+    const editAssigneeOptions =
+      item.assignee_id && !assigneeOptions.some((option) => option.value === item.assignee_id)
+        ? [
+            ...assigneeOptions,
+            {
+              value: item.assignee_id,
+              label: memberLabels[item.assignee_id] || "Thành viên dự án",
+            },
+          ]
+        : assigneeOptions;
     await ask({
       title: `Chỉnh sửa ${valueLabel(item.item_type).toLocaleLowerCase()}`,
       confirmLabel: "Lưu thay đổi",
@@ -323,6 +362,16 @@ export default function PlanningPage({ project, section }) {
           multiline: true,
           initialValue: item.description || "",
         },
+        ...(canReadProjectMembers
+          ? [
+              {
+                name: "assignee_id",
+                label: "Người phụ trách",
+                initialValue: item.assignee_id || "",
+                options: editAssigneeOptions,
+              },
+            ]
+          : []),
         {
           name: "priority",
           label: "Ưu tiên",
@@ -363,6 +412,7 @@ export default function PlanningPage({ project, section }) {
           expected_revision: item.revision,
           title: answer.title.trim(),
           description: answer.description.trim(),
+          ...(canReadProjectMembers ? { assignee_id: answer.assignee_id || null } : {}),
           priority: answer.priority,
           estimate: answer.estimate === "" ? null : Number(answer.estimate),
           planned_start_at: answer.planned_start_at
@@ -757,6 +807,7 @@ export default function PlanningPage({ project, section }) {
         <Panel>
           <Backlog
             items={filteredItems}
+            memberLabels={memberLabels}
             canRank={isBa}
             ranking={ranking}
             onRank={rank}
@@ -769,6 +820,8 @@ export default function PlanningPage({ project, section }) {
         <Panel>
           <WorkItemList
             items={filteredItems}
+            memberLabels={memberLabels}
+            canReadProjectMembers={canReadProjectMembers}
             totalCount={items.length}
             statuses={boardValue?.workflow?.statuses || []}
             transitions={boardValue?.workflow?.transitions || []}
@@ -785,6 +838,8 @@ export default function PlanningPage({ project, section }) {
           board={boardValue?.board}
           workflow={boardValue?.workflow}
           planningMethod={planningMethod}
+          memberLabels={memberLabels}
+          canReadProjectMembers={canReadProjectMembers}
           onTransition={transition}
           roles={memberRoles}
           canTransitionItem={canTransitionItem}
@@ -1283,7 +1338,7 @@ function PlanningConfigurationModal({
   );
 }
 
-function Backlog({ items, canRank, ranking, onRank, onAddDependency, onEdit }) {
+function Backlog({ items, memberLabels, canRank, ranking, onRank, onAddDependency, onEdit }) {
   const [draggedId, setDraggedId] = useState("");
   if (!items.length)
     return <p className="p-5 text-sm text-ink-muted">Chưa có công việc trong danh sách chờ</p>;
@@ -1318,6 +1373,13 @@ function Backlog({ items, canRank, ranking, onRank, onAddDependency, onEdit }) {
               )}
             </div>
             <strong className="mt-2 block break-words text-sm">{item.title}</strong>
+            {item.assignee_id && (
+              <p className="mt-1 text-xs text-ink-muted">
+                {memberLabels[item.assignee_id]
+                  ? `Người phụ trách: ${memberLabels[item.assignee_id]}`
+                  : "Đã phân công"}
+              </p>
+            )}
             {item.description && (
               <p className="mt-1 line-clamp-2 text-xs leading-5 text-ink-muted">
                 {item.description}
@@ -1383,6 +1445,8 @@ function Backlog({ items, canRank, ranking, onRank, onAddDependency, onEdit }) {
 
 function WorkItemList({
   items,
+  memberLabels,
+  canReadProjectMembers,
   totalCount,
   statuses,
   transitions,
@@ -1411,11 +1475,16 @@ function WorkItemList({
             ),
           },
           { key: "priority", label: "Ưu tiên", render: (item) => valueLabel(item.priority) },
-          {
-            key: "assignee_id",
-            label: "Người phụ trách",
-            render: (item) => item.assignee_id || "Chưa phân công",
-          },
+          ...(canReadProjectMembers
+            ? [
+                {
+                  key: "assignee_id",
+                  label: "Người phụ trách",
+                  render: (item) =>
+                    (item.assignee_id && memberLabels[item.assignee_id]) || "Chưa phân công",
+                },
+              ]
+            : []),
           {
             key: "due_at",
             label: "Hạn",
@@ -1470,6 +1539,8 @@ function Board({
   board,
   workflow,
   planningMethod,
+  memberLabels,
+  canReadProjectMembers,
   onTransition,
   canTransitionItem,
   roles,
@@ -1576,6 +1647,11 @@ function Board({
                         <p className="mt-1 text-xs text-ink-muted">
                           {valueLabel(item.item_type)} · {valueLabel(item.priority)}
                         </p>
+                        {canReadProjectMembers && item.assignee_id && (
+                          <p className="mt-1 text-xs text-ink-muted">
+                            Người phụ trách: {memberLabels[item.assignee_id] || "Thành viên dự án"}
+                          </p>
+                        )}
                         {canEdit && (
                           <button
                             className="secondary-button mt-3"

@@ -344,7 +344,7 @@ export default function RunExecutionWorkspace({
                 value={runAssigneeDraft}
                 onChange={(event) => setRunAssigneeDraft(event.target.value)}
               >
-                <option value="">Chọn Tester</option>
+                <option value="">Chọn người kiểm thử</option>
                 {activeTesters.map((member) => (
                   <option key={member.user_id} value={member.user_id}>
                     {member.user_label ||
@@ -428,7 +428,9 @@ export default function RunExecutionWorkspace({
               ))}
             </div>
             {!activeTesters.length && (
-              <p className="text-sm text-danger">Không có Tester đang hoạt động để phân công.</p>
+              <p className="text-sm text-danger">
+                Không có người kiểm thử đang hoạt động để phân công.
+              </p>
             )}
             <div className="flex flex-wrap justify-end gap-2">
               <button
@@ -473,7 +475,7 @@ export default function RunExecutionWorkspace({
                   {" — "}
                   {item.reason === "NO_FULL_SKILL_MATCH"
                     ? "Chưa có người khớp đủ kỹ năng"
-                    : "Chưa có Tester khả dụng trong dự án"}
+                    : "Chưa có người kiểm thử khả dụng trong dự án"}
                 </p>
               );
             })}

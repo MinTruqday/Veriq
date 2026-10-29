@@ -299,11 +299,22 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   label: "Loại dữ liệu",
                   render: (item) => valueLabel(item.artifact_type),
                 },
-                { key: "artifact_id", label: "Mã" },
+                {
+                  key: "artifact_id",
+                  label: "Đối tượng",
+                  render: (item) => (
+                    <details>
+                      <summary className="cursor-pointer text-sm">Xem chi tiết</summary>
+                      <span className="mt-1 block break-all text-xs text-ink-muted">
+                        Mã đối tượng: {item.artifact_id || "Không có"}
+                      </span>
+                    </details>
+                  ),
+                },
                 {
                   key: "actor_id",
                   label: "Người thực hiện",
-                  render: (item) => item.actor_label || item.actor_id,
+                  render: (item) => item.actor_label || "Thành viên dự án",
                 },
                 {
                   key: "created_at",
@@ -734,11 +745,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                               {item.user?.email && item.user.email !== memberDisplayName(item) && (
                                 <span className="text-[12px] text-ink-muted">
                                   {item.user.email}
-                                </span>
-                              )}
-                              {memberDisplayName(item) === "Tài khoản không xác định" && (
-                                <span className="text-[12px] text-ink-muted">
-                                  Mã người dùng {item.user_id}
                                 </span>
                               )}
                             </span>

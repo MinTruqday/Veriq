@@ -16,9 +16,9 @@ const capabilities = [
   },
   {
     icon: Sparkles,
-    title: "Tự xử lý khi có thay đổi",
+    title: "Hỗ trợ xử lý bằng AI",
     description:
-      "Tạo lượt xử lý khi tài liệu, yêu cầu hoặc kiểm thử thay đổi; lưu kết quả cùng nguồn dẫn và lịch sử lượt chạy",
+      "Người dùng chọn tác vụ cần chạy; kết quả được lưu cùng nguồn dẫn và lịch sử để tiếp tục rà soát",
   },
 ];
 

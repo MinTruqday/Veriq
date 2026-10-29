@@ -68,7 +68,7 @@ export default function TraceabilityPage({ project }) {
   if (initialLoading || initialLoadFailed)
     return (
       <InitialLoadState
-        title="Truy vết"
+        title="Liên kết yêu cầu và kiểm thử"
         projectId={project._id}
         loading={initialLoading}
         error={error}
@@ -85,7 +85,7 @@ export default function TraceabilityPage({ project }) {
   };
   return (
     <WorkspacePage
-      title="Truy vết"
+      title="Liên kết yêu cầu và kiểm thử"
       actions={
         <div className="flex flex-wrap items-center gap-3">
           {can("report.export") && (
@@ -114,7 +114,7 @@ export default function TraceabilityPage({ project }) {
                 }
               }}
             >
-              Đề xuất liên kết cần khôi phục
+              Tìm liên kết bị thiếu
             </button>
           )}
           {can("coverage.snapshot.create") && (
@@ -189,11 +189,11 @@ export default function TraceabilityPage({ project }) {
         <Modal
           isOpen={creating}
           onClose={() => setCreating(false)}
-          ariaLabel="Tạo liên kết truy vết"
+          ariaLabel="Tạo liên kết yêu cầu và ca kiểm thử"
           className="max-w-2xl"
         >
           <ModalHeader>
-            <ModalTitle>Tạo liên kết truy vết</ModalTitle>
+            <ModalTitle>Tạo liên kết yêu cầu và ca kiểm thử</ModalTitle>
           </ModalHeader>
           {linkError && (
             <div className="px-5 pt-4 text-sm text-danger" role="alert">
@@ -264,10 +264,10 @@ export default function TraceabilityPage({ project }) {
           </form>
         </Modal>
       )}
-      <Panel title="Liên kết truy vết">
+      <Panel title="Liên kết yêu cầu và ca kiểm thử">
         <DataTable
           items={matrix.trace_links || []}
-          empty="Chưa có liên kết truy vết"
+          empty="Chưa có liên kết giữa yêu cầu và ca kiểm thử"
           columns={[
             {
               key: "source_type",
@@ -326,7 +326,7 @@ export default function TraceabilityPage({ project }) {
                   <StatusPill value={item.status} />
                   {item.obsolete && (
                     <span className="text-[11px] font-semibold text-danger">
-                      Liên kết đến dữ liệu không còn hiệu lực
+                      Liên kết này đã lỗi thời
                     </span>
                   )}
                 </span>
@@ -382,7 +382,7 @@ export default function TraceabilityPage({ project }) {
       </Panel>
       {can("coverage.read") && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title="Yêu cầu chưa được phủ">
+          <Panel title="Yêu cầu chưa liên kết ca kiểm thử">
             <DataTable
               items={coverage.uncovered_requirements || []}
               empty="Tất cả yêu cầu hiện hành đã có liên kết xác nhận"

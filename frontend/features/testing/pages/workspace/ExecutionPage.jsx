@@ -831,8 +831,8 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     <option value="MANUAL">Tạo lần chạy chưa phân công</option>
                   </select>
                   <p className="text-xs text-ink-muted">
-                    Sau khi tạo, QA có thể yêu cầu AI đề xuất người thực hiện theo kỹ năng và tải
-                    công việc, xem lại rồi duyệt đề xuất hoặc tự chọn từng Tester.
+                    Sau khi tạo, người có quyền phân công có thể yêu cầu AI gợi ý người thực hiện
+                    dựa trên kỹ năng và số ca đang phụ trách, rồi duyệt gợi ý hoặc tự phân công.
                   </p>
                 </div>
                 <MultiSelect

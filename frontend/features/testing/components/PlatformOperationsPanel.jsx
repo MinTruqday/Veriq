@@ -239,7 +239,7 @@ export default function PlatformOperationsPanel() {
                         fields: [
                           {
                             name: "storage_bytes",
-                            label: "Dung lượng byte",
+                            label: "Dung lượng lưu trữ (byte)",
                             initialValue: String(item.quota?.storage_bytes || 0),
                           },
                           {
@@ -369,8 +369,8 @@ export default function PlatformOperationsPanel() {
               label: "Trạng thái",
               render: (item) => <StatusPill value={item.enabled ? "ACTIVE" : "DISABLED"} />,
             },
-            { key: "timeout_seconds", label: "Thời gian chờ" },
-            { key: "max_output_tokens", label: "Giới hạn đầu ra" },
+            { key: "timeout_seconds", label: "Thời gian chờ (giây)" },
+            { key: "max_output_tokens", label: "Số token đầu ra tối đa" },
             {
               key: "actions",
               label: "Thao tác",

@@ -257,7 +257,7 @@ export default function TestCaseCreateModal({
                     {member.user_label ||
                       member.user?.full_name ||
                       member.user?.email ||
-                      "Tài khoản không xác định"}
+                      "Thành viên dự án"}
                     {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
                   </option>
                 ))}
