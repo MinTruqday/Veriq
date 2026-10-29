@@ -48,6 +48,15 @@ async def analyze_requirement_quality_for_automation(
     return envelope(await analyze_requirement_quality(version_id, payload, user))
 
 
+@router.post("/phien-ban-yeu-cau/{version_id}/ai/kiem-tra-thu-cong")
+async def analyze_requirement_quality_on_request(
+    version_id: str,
+    payload: RequirementAIAnalysisInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await analyze_requirement_quality(version_id, payload, user))
+
+
 @router.post("/yeu-cau/{requirement_id}/so-sanh")
 async def compare_requirement(
     requirement_id: str,

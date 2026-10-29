@@ -3,27 +3,37 @@ import { Panel } from "../../../components/WorkspacePrimitives";
 import { requirementFieldLabel, requirementSuggestionPreview } from "./requirements.model";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
-export default function RequirementQualityPanel({ lint }) {
-  if (!lint) return null;
+export default function RequirementQualityPanel({ lint, loading = false }) {
+  if (!lint) {
+    return (
+      <Panel title="Kết quả kiểm tra AI">
+        <p className="px-5 py-4 text-sm text-ink-muted" role="status" aria-live="polite">
+          {loading
+            ? "Đang tải kết quả đã lưu…"
+            : "Chưa kiểm tra phiên bản này. Chọn “Kiểm tra AI” để phân tích nội dung hiện tại."}
+        </p>
+      </Panel>
+    );
+  }
   return (
     <Panel
       title={
         lint.degraded_mode
-          ? "Chưa thể hoàn tất đánh giá tự động"
+          ? "Kiểm tra AI chưa hoàn tất"
           : lint.valid
-            ? "Đánh giá tự động không phát hiện lỗi chặn"
-            : "Đánh giá tự động phát hiện vấn đề"
+            ? "AI không phát hiện lỗi chặn"
+            : "AI phát hiện vấn đề"
       }
     >
       {lint.is_stale && (
         <p className="px-5 pt-4 text-sm text-warning" role="status">
-          Kết quả này thuộc phiên bản hoặc lần sửa trước; đang chờ phân tích tự động cho lần sửa
-          hiện tại.
+          Kết quả này thuộc phiên bản hoặc lần sửa trước. Hãy chạy kiểm tra AI lại nếu nội dung đã
+          thay đổi.
         </p>
       )}
       {lint.artifact_revision && (
         <p className="px-5 pt-3 text-sm text-ink-muted">
-          Kết quả tự động cho lần sửa {lint.artifact_revision}
+          Kết quả kiểm tra cho lần sửa {lint.artifact_revision}
         </p>
       )}
       <DataTable

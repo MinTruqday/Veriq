@@ -5,6 +5,7 @@ import { testingApi } from "../../../services/testing.service";
 import { REQUIREMENT_LEVELS, REQUIREMENT_TYPES } from "./requirements.model";
 
 export default function RequirementCurrentVersionPanel({
+  projectId,
   current,
   selected,
   draft,
@@ -12,6 +13,8 @@ export default function RequirementCurrentVersionPanel({
   customFields,
   saveState,
   can,
+  checkingWithAi,
+  onCheckWithAI,
   onError,
   saveDraft,
   onCreateVersion,
@@ -25,6 +28,54 @@ export default function RequirementCurrentVersionPanel({
       title="Phiên bản hiện tại"
       actions={
         <div className="flex flex-wrap gap-2">
+          {can("ai.run_lint") && (
+            <button
+              className="secondary-button"
+              aria-busy={checkingWithAi}
+              disabled={checkingWithAi}
+              type="button"
+              onClick={onCheckWithAI}
+            >
+              {checkingWithAi ? "Đang kiểm tra…" : "Kiểm tra AI"}
+            </button>
+          )}
+          {current.status === "DRAFT" && can("requirement.submit_review") && (
+            <button
+              className="apple-button"
+              type="button"
+              onClick={async () => {
+                await ask({
+                  title: "Gửi yêu cầu đi rà soát",
+                  description: `${selected.requirement_key} sẽ được chuyển sang người rà soát. Bản nháp sẽ được lưu trước khi gửi.`,
+                  confirmLabel: "Gửi rà soát",
+                  fields: [
+                    {
+                      name: "review_note",
+                      label: "Ghi chú cho người rà soát",
+                      initialValue: "",
+                      multiline: true,
+                      autoFocus: true,
+                    },
+                  ],
+                  onConfirm: async (answer) => {
+                    try {
+                      const saved = await saveDraft();
+                      const savedVersion = saved?.current_version || current;
+                      await testingApi.submitRequirementReview(projectId, selected._id, {
+                        expected_revision: savedVersion.revision,
+                        review_note: answer.review_note.trim(),
+                      });
+                      await reload();
+                    } catch (value) {
+                      throw new Error(messageOf(value));
+                    }
+                  },
+                });
+              }}
+            >
+              Gửi rà soát
+            </button>
+          )}
           {current.status === "BASELINED" && can("requirement.version.create") && (
             <button className="secondary-button" type="button" onClick={onCreateVersion}>
               Tạo phiên bản mới
@@ -229,7 +280,7 @@ export default function RequirementCurrentVersionPanel({
                     {item.user_label ||
                       item.user?.full_name ||
                       item.user?.email ||
-                      "Tài khoản không xác định"}
+                      "Thành viên dự án"}
                   </option>
                 ))}
               </select>

@@ -107,6 +107,8 @@ function project(
       "requirement.read",
       "requirement.create",
       "requirement.update",
+      "requirement.submit_review",
+      "ai.run_lint",
       "automation.read",
       "proposal.read",
     );
@@ -2030,6 +2032,157 @@ test("BA can open the Requirement route with its project permission", async ({ p
   await expect(page).toHaveURL(new RegExp(`/du-an/${projectId}/yeu-cau$`));
   await expect(page.getByRole("heading", { name: "Danh sách yêu cầu" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Yêu cầu" })).toBeVisible();
+});
+
+test("BA can manually run the AI check and send a Requirement draft for review", async ({
+  page,
+}) => {
+  const id = "REQ-E2E-REVIEW";
+  let version = {
+    _id: "REQV-E2E-REVIEW",
+    requirement_id: id,
+    project_id: projectId,
+    version: 1,
+    revision: 3,
+    status: "DRAFT",
+    title: "Đăng nhập bằng tài khoản",
+    type: "FUNCTIONAL",
+    priority: "MEDIUM",
+    risk: "MEDIUM",
+    content_doc: document("Người dùng đăng nhập bằng thông tin hợp lệ."),
+    acceptance_criteria: [],
+    business_rules: [],
+    actors: [],
+    dependencies: [],
+    details: {},
+    custom_values: {},
+  };
+  const requirement = () => ({
+    _id: id,
+    project_id: projectId,
+    requirement_key: "REQ-LOGIN-1",
+    status: version.status,
+    current_version_id: version._id,
+    current_version: version,
+  });
+  let submitted;
+  let aiCheck;
+  let canSubmit = false;
+  page.on("pageerror", (error) => console.error("Requirement review page error:", error.message));
+
+  await installWorkspace(page, "BA");
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}`, async (route) => {
+    const data = project("BA");
+    if (!canSubmit) {
+      data.current_permissions = data.current_permissions.filter(
+        (permission) => permission !== "requirement.submit_review",
+      );
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data, status: "SUCCESS" }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/yeu-cau**`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname !== `/kiem-thu/du-an/${projectId}/yeu-cau`) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { items: [requirement()], total: 1, page: 1, page_size: 50 },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/yeu-cau/${id}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: requirement(), status: "SUCCESS" }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/yeu-cau/${id}/phien-ban`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [version], status: "SUCCESS" }),
+    });
+  });
+  await page.route(
+    `${apiBase}/kiem-thu/du-an/${projectId}/cong-tac/yeu-cau/${id}/thao-tac`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: requirement(), status: "SUCCESS" }),
+      });
+    },
+  );
+  await page.route(
+    `${apiBase}/kiem-thu/phien-ban-yeu-cau/${version._id}/ai/ket-qua-moi-nhat`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: null, status: "SUCCESS" }),
+      });
+    },
+  );
+  await page.route(
+    `${apiBase}/kiem-thu/phien-ban-yeu-cau/${version._id}/ai/kiem-tra-thu-cong`,
+    async (route) => {
+      aiCheck = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: {
+            valid: true,
+            degraded_mode: false,
+            artifact_revision: version.revision,
+            findings: [],
+            suggestions: [],
+          },
+          status: "SUCCESS",
+        }),
+      });
+    },
+  );
+  await page.route(
+    `${apiBase}/kiem-thu/du-an/${projectId}/yeu-cau/${id}/gui-ra-soat`,
+    async (route) => {
+      submitted = route.request().postDataJSON();
+      version = { ...version, revision: version.revision + 1, status: "IN_REVIEW" };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: version, status: "SUCCESS" }),
+      });
+    },
+  );
+
+  await page.goto(`/du-an/${projectId}/yeu-cau/${id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: "Gửi rà soát" })).toHaveCount(0);
+  canSubmit = true;
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: "Gửi rà soát" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Kiểm tra AI" })).toBeVisible();
+  await expect(page.getByText(/Chưa kiểm tra phiên bản này/)).toBeVisible();
+  await expect.poll(() => aiCheck).toBeUndefined();
+  await page.getByRole("button", { name: "Kiểm tra AI" }).click();
+  await expect.poll(() => aiCheck?.idempotency_key).toBeTruthy();
+  await expect(page.getByText("AI không phát hiện lỗi chặn")).toBeVisible();
+  await page.getByRole("button", { name: "Gửi rà soát" }).click();
+  const dialog = page.getByRole("dialog", { name: "Gửi yêu cầu đi rà soát" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Gửi rà soát" }).click();
+  await expect.poll(() => submitted).toEqual({ expected_revision: 3, review_note: "" });
+  await expect(page.getByRole("button", { name: "Gửi rà soát" })).toHaveCount(0);
 });
 
 for (const role of ["Developer", "Viewer"]) {

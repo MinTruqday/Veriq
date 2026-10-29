@@ -124,6 +124,11 @@ export const designTestingApi = {
     }),
   getLatestRequirementQualityAnalysis: (id) =>
     testingRequest(`/phien-ban-yeu-cau/${id}/ai/ket-qua-moi-nhat`),
+  lintRequirement: (id, payload) =>
+    testingRequest(`/phien-ban-yeu-cau/${id}/ai/kiem-tra-thu-cong`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   compareRequirement: (id, fromId, toId) =>
     testingRequest(`/yeu-cau/${id}/so-sanh`, {
       method: "POST",

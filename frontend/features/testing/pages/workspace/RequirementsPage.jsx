@@ -68,6 +68,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [lint, setLint] = useState(null);
+  const [lintLoading, setLintLoading] = useState(false);
+  const [checkingWithAi, setCheckingWithAi] = useState(false);
   const [importValue, setImportValue] = useState({
     filename: "requirements.md",
     format: "md",
@@ -392,22 +394,29 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   useEffect(() => {
     if (!current?._id || !project.current_permissions?.includes("requirement.read")) {
       setLint(null);
+      setLintLoading(false);
       return undefined;
     }
     let active = true;
     setLint(null);
-    testingApi.getLatestRequirementQualityAnalysis(current._id).then(
-      (result) => {
-        if (active) setLint(result || null);
-      },
-      (reason) => {
-        if (active && reason?.status !== 404) setError(messageOf(reason));
-      },
-    );
+    setLintLoading(true);
+    const loadLatestAnalysis = async () => {
+      try {
+        const result = await testingApi.getLatestRequirementQualityAnalysis(current._id);
+        if (!active) return;
+        setLint(result || null);
+        setLintLoading(false);
+      } catch (reason) {
+        if (!active) return;
+        if (reason?.status !== 404) setError(messageOf(reason));
+        setLintLoading(false);
+      }
+    };
+    void loadLatestAnalysis();
     return () => {
       active = false;
     };
-  }, [current?._id, current?.revision, project.current_permissions]);
+  }, [current?._id, current?.revision, current?.status, project.current_permissions]);
   useEffect(() => {
     if (!current) return;
     const previousVersionId = loadedVersion.current.split(":", 1)[0];
@@ -591,6 +600,23 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const saveDraft = async () => {
     if (!draftDirty && saveState === "saved") return selected;
     return (await persistDraft(draft, draftSequence.current)) || selected;
+  };
+  const checkRequirementWithAI = async () => {
+    if (!can("ai.run_lint") || checkingWithAi || !current?._id) return;
+    setCheckingWithAi(true);
+    setError("");
+    try {
+      const saved = await saveDraft();
+      const savedVersion = saved?.current_version || current;
+      const result = await testingApi.lintRequirement(savedVersion._id, {
+        idempotency_key: crypto.randomUUID(),
+      });
+      setLint(result || null);
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setCheckingWithAi(false);
+    }
   };
   const createVersion = async () => {
     await ask({
@@ -1384,6 +1410,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           />
           <div className="space-y-6" hidden={activeDetailTab !== "requirement"}>
             <RequirementCurrentVersionPanel
+              projectId={project._id}
               current={current}
               selected={routeSelected}
               draft={draft}
@@ -1391,6 +1418,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               customFields={customFields}
               saveState={saveState}
               can={can}
+              checkingWithAi={checkingWithAi}
+              onCheckWithAI={checkRequirementWithAI}
               onError={setError}
               saveDraft={saveDraft}
               onCreateVersion={createVersion}
@@ -1402,7 +1431,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             {can("requirement_document.read") && (
               <RequirementTracePanel current={current} sourceDocuments={visibleSourceDocuments} />
             )}
-            <RequirementQualityPanel lint={lint} />
+            <RequirementQualityPanel lint={lint} loading={lintLoading} />
           </div>
           {can("testcase.read") && (
             <div className="space-y-6" hidden={activeDetailTab !== "assurance"}>
