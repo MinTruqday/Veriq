@@ -125,12 +125,12 @@ export default function TraceabilityPage({ project }) {
                 await ask({
                   title: "Lưu ảnh chụp độ phủ",
                   description:
-                    "Ảnh chụp giữ nguyên các chỉ số tại thời điểm hiện tại để đối chiếu release",
-                  confirmLabel: "Lưu ảnh chụp",
+                    "Lưu lại các chỉ số hiện tại để đối chiếu với bản phát hành sau này.",
+                  confirmLabel: "Lưu mốc độ phủ",
                   fields: [
                     {
                       name: "label",
-                      label: "Tên ảnh chụp",
+                      label: "Tên mốc độ phủ",
                       initialValue: "Độ phủ hiện tại",
                       required: true,
                       autoFocus: true,
@@ -150,7 +150,7 @@ export default function TraceabilityPage({ project }) {
                 });
               }}
             >
-              Lưu ảnh chụp độ phủ
+              Lưu mốc độ phủ
             </button>
           )}
           {can("trace.create") && (
@@ -274,12 +274,12 @@ export default function TraceabilityPage({ project }) {
             {
               key: "source_id",
               label: "Yêu cầu nguồn",
-              render: (item) => item.source_label || item.source_id,
+              render: (item) => item.source_label || "Yêu cầu không còn khả dụng",
             },
             {
               key: "target_id",
               label: "Ca kiểm thử",
-              render: (item) => item.target_label || item.target_id,
+              render: (item) => item.target_label || "Ca kiểm thử không còn khả dụng",
             },
             { key: "confidence", label: "Độ tin cậy" },
             {
@@ -403,10 +403,10 @@ export default function TraceabilityPage({ project }) {
         </div>
       )}
       {can("coverage.read") && (
-        <Panel title="Lịch sử ảnh chụp độ phủ">
+        <Panel title="Lịch sử mốc độ phủ">
           <DataTable
             items={snapshots}
-            empty="Chưa có ảnh chụp độ phủ"
+            empty="Chưa lưu mốc độ phủ nào"
             columns={[
               { key: "label", label: "Tên" },
               {

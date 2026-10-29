@@ -209,11 +209,7 @@ test("project creation validates its date range and shows the saved schedule", a
   await page.getByRole("button", { name: "Lưu dự án" }).click();
   await expect(page.getByRole("heading", { name: "Tạo dự án" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Kiểm tra lịch dự án" })).toBeVisible();
-  await expect(page.getByText("Bắt đầu dự kiến", { exact: true })).toBeVisible();
-  await expect(page.getByText("27/10/2026", { exact: true })).toBeVisible();
-  await expect(page.getByText("Kết thúc dự kiến", { exact: true })).toBeVisible();
-  await expect(page.getByText("03/11/2026", { exact: true })).toBeVisible();
-  await expect(page.getByText("Thời lượng 8 ngày lịch")).toBeVisible();
+  await expect(page.getByText("27/10/2026 – 03/11/2026", { exact: true })).toBeVisible();
   expect(state.createdPayload).toMatchObject({
     key: "CHECKOUT",
     initial_qa_user_id: "qa@example.test",
@@ -287,6 +283,10 @@ test("project overview shows the same computed task progress for QA and Tester",
   await installProjectOverview(page, "QA");
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/du-an/project-overview-e2e", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("27/10/2026 – 03/11/2026", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Bắt đầu dự kiến|Kết thúc dự kiến|Thời lượng dự kiến/)).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole("progressbar", {
       name: "Tiến độ công việc được tính từ công việc chưa hủy",
@@ -351,12 +351,12 @@ test("project list calendar selects a date instead of filtering by month", async
   const undatedProject = page
     .locator("article")
     .filter({ has: page.getByText("TBD", { exact: true }) });
-  await expect(octoberProject.getByText("Bắt đầu dự kiến", { exact: true })).toBeVisible();
-  await expect(octoberProject.getByText("Kết thúc dự kiến", { exact: true })).toBeVisible();
+  await expect(octoberProject.getByText("12/10/2026 – 04/11/2026", { exact: true })).toBeVisible();
   await expect(octoberProject.getByText(/Cập nhật .*29\/10\/2026/)).toBeVisible();
   await expect(octoberProject.getByText("Đang hoạt động", { exact: true })).toBeVisible();
   await expect(decemberProject).toBeVisible();
   await expect(undatedProject).toBeVisible();
+  await expect(undatedProject.getByText("Chưa có lịch", { exact: true })).toBeVisible();
 
   await page.getByLabel("Lịch dự án").fill("2026-10-15");
   await expect(octoberProject).toBeVisible();

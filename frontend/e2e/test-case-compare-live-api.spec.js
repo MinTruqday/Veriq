@@ -13,6 +13,7 @@ const backendUrl = process.env.LIVE_COMPARE_BACKEND_URL || "http://localhost:801
 const appBaseUrl = process.env.E2E_BASE_URL || "http://localhost:3000";
 const frontendApiUrl =
   process.env.E2E_FRONTEND_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const authApiUrl = process.env.E2E_AUTH_API_URL || frontendApiUrl;
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 function parsedUrl(value) {
@@ -26,27 +27,27 @@ function parsedUrl(value) {
 const parsedBackendUrl = parsedUrl(backendUrl);
 const parsedAppUrl = parsedUrl(appBaseUrl);
 const parsedFrontendApiUrl = parsedUrl(frontendApiUrl);
+const parsedAuthApiUrl = parsedUrl(authApiUrl);
 const localApiHost = Boolean(parsedBackendUrl && loopbackHosts.has(parsedBackendUrl.hostname));
 const localAppHost = Boolean(parsedAppUrl && loopbackHosts.has(parsedAppUrl.hostname));
 const localFrontendApiHost = Boolean(
   parsedFrontendApiUrl && loopbackHosts.has(parsedFrontendApiUrl.hostname),
 );
+const localAuthApiHost = Boolean(parsedAuthApiUrl && loopbackHosts.has(parsedAuthApiUrl.hostname));
 const isolatedFixture =
   process.env.E2E_DISPOSABLE_DATABASE === "true" &&
   process.env.LIVE_COMPARE_DISPOSABLE_FIXTURE === "true" &&
   localApiHost &&
   localAppHost &&
   localFrontendApiHost &&
+  localAuthApiHost &&
   Boolean(fixtureNamespace) &&
-  projectId?.startsWith("PRJ-E2E-") &&
-  projectId.includes(fixtureNamespace) &&
-  saveDraftId?.startsWith("DRAFT-E2E-") &&
-  saveDraftId.includes(fixtureNamespace) &&
-  conflictDraftId?.startsWith("DRAFT-E2E-") &&
-  conflictDraftId.includes(fixtureNamespace) &&
+  projectId?.startsWith("PRJ-") &&
+  saveDraftId?.startsWith("TCD-") &&
+  conflictDraftId?.startsWith("TCD-") &&
   saveDraftId !== conflictDraftId &&
   [saveTestCaseKey, conflictTestCaseKey].every(
-    (key) => key?.startsWith("TC-E2E-") && key.includes(fixtureNamespace),
+    (key) => key?.startsWith("TC-") && key.includes(fixtureNamespace),
   ) &&
   saveTestCaseKey !== conflictTestCaseKey;
 const liveApiEnabled = process.env.E2E_LIVE_READONLY === "true" || isolatedFixture;
@@ -59,10 +60,12 @@ async function verifyFixture(request, draftId, testCaseKey) {
   expect(projectResponse.status(), "disposable project fixture must be readable").toBe(200);
   const projectBody = await projectResponse.json();
   const project = projectBody?.data ?? projectBody;
-  expect(String(project?._id), "fixture project ID must match the isolated namespace").toBe(
+  expect(String(project?._id), "fixture project ID must match the generated project ID").toBe(
     projectId,
   );
-  expect(projectId).toContain(fixtureNamespace);
+  expect(project?.name, "fixture project name must contain the isolated namespace").toContain(
+    fixtureNamespace,
+  );
   expect(
     project?.current_membership?.project_roles || [project?.current_membership?.project_role],
   ).toContain("QA");
@@ -75,10 +78,13 @@ async function verifyFixture(request, draftId, testCaseKey) {
   expect(draftResponse.status(), "disposable Test Case draft must be readable").toBe(200);
   const draftBody = await draftResponse.json();
   const draft = draftBody?.data ?? draftBody;
-  expect(String(draft?._id), "fixture draft ID must match the isolated namespace").toBe(draftId);
+  expect(String(draft?._id), "fixture draft ID must match the generated draft ID").toBe(draftId);
   expect(draft?.project_id, "fixture draft must belong to the isolated project").toBe(projectId);
   expect(draft?.test_case_key, "fixture Test Case key must match the isolated namespace").toBe(
     testCaseKey,
+  );
+  expect(draft?.title, "fixture draft title must contain the isolated namespace").toContain(
+    fixtureNamespace,
   );
   expect(draft?.status, "fixture must be an editable draft").toBe("DRAFT");
   return { project, draft };
@@ -127,7 +133,9 @@ test("QA compares and saves a merged Test Case through the live Testing API", as
   await page.route(`${parsedFrontendApiUrl.origin}/**`, async (route) => {
     const requestUrl = new URL(route.request().url());
     if (requestUrl.pathname.startsWith("/xac-thuc/")) {
-      const response = await route.fetch();
+      const response = await route.fetch({
+        url: `${authApiUrl}${requestUrl.pathname}${requestUrl.search}`,
+      });
       liveResponses.push({
         path: requestUrl.pathname,
         status: response.status(),
@@ -218,7 +226,9 @@ test("QA keeps merged edits when another writer changes the draft revision", asy
   await page.route(`${parsedFrontendApiUrl.origin}/**`, async (route) => {
     const requestUrl = new URL(route.request().url());
     if (requestUrl.pathname.startsWith("/xac-thuc/")) {
-      const response = await route.fetch();
+      const response = await route.fetch({
+        url: `${authApiUrl}${requestUrl.pathname}${requestUrl.search}`,
+      });
       const responseHeaders = response.headers();
       liveResponses.push({
         path: requestUrl.pathname,

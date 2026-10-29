@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { CalendarDays, Plus, Search } from "lucide-react";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import {
   EmptyState,
@@ -19,16 +19,15 @@ import {
   formatProjectDate,
   invalidProjectDateRange,
   minimumProjectEndDate,
-  projectPlannedDurationDays,
 } from "../lib/projectSchedule.logic.mjs";
 
 function projectSchedule(project) {
-  const duration = projectPlannedDurationDays(project.planned_start_at, project.planned_end_at);
-  return {
-    start: project.planned_start_at ? formatProjectDate(project.planned_start_at) : "Chưa xác định",
-    end: project.planned_end_at ? formatProjectDate(project.planned_end_at) : "Chưa xác định",
-    duration,
-  };
+  const start = project.planned_start_at ? formatProjectDate(project.planned_start_at) : null;
+  const end = project.planned_end_at ? formatProjectDate(project.planned_end_at) : null;
+  if (start && end) return `${start} – ${end}`;
+  if (start) return `Từ ${start}`;
+  if (end) return `Đến ${end}`;
+  return "Chưa có lịch";
 }
 
 function projectIncludesDate(project, day) {
@@ -521,20 +520,13 @@ export default function ProjectsPage() {
                       )}
                     </Link>
                   </div>
-                  <div className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-                    <div className="min-w-0">
-                      <span className="block text-ink-muted">Bắt đầu dự kiến</span>
-                      <span className="block break-words font-medium">{schedule.start}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <span className="block text-ink-muted">Kết thúc dự kiến</span>
-                      <span className="block break-words font-medium">{schedule.end}</span>
-                    </div>
-                    {schedule.duration != null && (
-                      <span className="col-span-2 text-ink-muted">
-                        Thời lượng {schedule.duration} ngày lịch
-                      </span>
-                    )}
+                  <div className="flex min-w-0 items-start gap-2 text-[12px]">
+                    <CalendarDays
+                      aria-hidden="true"
+                      className="mt-0.5 shrink-0 text-ink-muted"
+                      size={15}
+                    />
+                    <span className="min-w-0 break-words font-medium">{schedule}</span>
                   </div>
                   <div className="min-w-0 space-y-2 text-[12px]">
                     {taskProgress.completionPercent == null ? (

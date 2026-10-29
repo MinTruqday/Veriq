@@ -2026,7 +2026,11 @@ export default function TestDesignPage({ project, workspaceView }) {
                         .filter(
                           (id) => !requirements.some((item) => item.current_version_id === id),
                         )
-                        .map((id) => ({ value: id, label: `Phiên bản yêu cầu ${id}` })),
+                        .map((id) => ({
+                          value: id,
+                          label: "Phiên bản yêu cầu đã liên kết",
+                          description: "Phiên bản này không còn trong danh sách hiện tại.",
+                        })),
                     ]}
                     value={draftEdit.requirementVersionIds}
                     onChange={(requirementVersionIds) => {
@@ -2072,7 +2076,11 @@ export default function TestDesignPage({ project, workspaceView }) {
                               ),
                             ),
                         )
-                        .map((id) => ({ value: id, label: `Tiêu chí chấp nhận ${id}` })),
+                        .map((id) => ({
+                          value: id,
+                          label: "Tiêu chí chấp nhận đã liên kết",
+                          description: "Tiêu chí này không còn trong phiên bản yêu cầu hiện tại.",
+                        })),
                     ]}
                     value={draftEdit.acceptanceCriterionIds}
                     onChange={(acceptanceCriterionIds) =>

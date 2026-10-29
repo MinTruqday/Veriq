@@ -196,7 +196,7 @@ export default function MonitoringPage({ project }) {
           required: true,
           options: members.map((item) => ({
             value: item.user_id,
-            label: item.identity?.label || item.full_name || item.email || item.user_id,
+            label: item.identity?.label || item.full_name || item.email || "Thành viên dự án",
           })),
         },
         { name: "due_at", label: "Hạn xử lý", required: true, type: "datetime-local" },
@@ -244,7 +244,7 @@ export default function MonitoringPage({ project }) {
           required: true,
           options: members.map((item) => ({
             value: item.user_id,
-            label: item.identity?.label || item.full_name || item.email || item.user_id,
+            label: item.identity?.label || item.full_name || item.email || "Thành viên dự án",
           })),
         },
         { name: "expiry_at", label: "Ngày hết hạn", required: true, type: "datetime-local" },
@@ -289,7 +289,7 @@ export default function MonitoringPage({ project }) {
       );
       const link = document.createElement("a");
       link.href = url;
-      link.download = `quality-gate-${selectedSnapshot._id}.json`;
+      link.download = `ket-qua-cong-phat-hanh-${new Date(selectedSnapshot.snapshot_at).toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (reason) {
@@ -309,7 +309,7 @@ export default function MonitoringPage({ project }) {
               disabled={!selectedPlanId}
               onClick={createSnapshot}
             >
-              Tạo ảnh chụp
+              Lưu mốc giám sát
             </button>
           )}
         </>
@@ -340,7 +340,7 @@ export default function MonitoringPage({ project }) {
             </label>
           )}
           <label className="field-label">
-            Ảnh chụp giám sát
+            Mốc giám sát
             <select
               className="apple-input mt-2"
               value={selectedSnapshot?._id || ""}
@@ -350,7 +350,7 @@ export default function MonitoringPage({ project }) {
                 )
               }
             >
-              <option value="">Chọn ảnh chụp</option>
+              <option value="">Chọn mốc giám sát</option>
               {snapshots.map((item) => (
                 <option key={item._id} value={item._id}>
                   {new Date(item.snapshot_at).toLocaleString("vi-VN")}
@@ -362,10 +362,10 @@ export default function MonitoringPage({ project }) {
       </Panel>
       {selectedSnapshot ? (
         <>
-          <Panel title="Thông tin ảnh chụp">
+          <Panel title="Thông tin mốc giám sát">
             <div className="grid gap-4 p-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <p className="field-label">Thời điểm chụp</p>
+                <p className="field-label">Thời điểm ghi nhận</p>
                 <p className="mt-2">
                   {new Date(selectedSnapshot.snapshot_at).toLocaleString("vi-VN")}
                 </p>
@@ -386,11 +386,6 @@ export default function MonitoringPage({ project }) {
                 </div>
               </div>
             </div>
-            <details className="px-5 pb-5 text-xs text-ink-muted">
-              <summary className="cursor-pointer">Thông tin kiểm tra dữ liệu</summary>
-              <p className="mt-1 break-all">Mã ảnh chụp: {selectedSnapshot._id}</p>
-              <p className="break-all">Mã đối chiếu nguồn: {selectedSnapshot.source_fingerprint}</p>
-            </details>
           </Panel>
           <TestProgressBoard metrics={selectedSnapshot.metrics} />
           <Panel title="Kế hoạch và thực tế">
@@ -489,16 +484,13 @@ export default function MonitoringPage({ project }) {
             <div className="space-y-5 p-5">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-quiet p-4">
                 <div>
-                  <p className="field-label">Kết quả hệ thống tính</p>
-                  <p className="mt-1 text-sm text-ink-muted">
-                    Phiên bản bộ tính {gate?.engine_version || "Chưa có"}
-                  </p>
+                  <p className="field-label">Kết quả đánh giá</p>
                 </div>
                 <QualityGateBadge status={gate?.overall_status} />
               </div>
               <DataTable
                 items={gate?.rules || []}
-                empty="Ảnh chụp chưa có quy tắc cổng chất lượng"
+                empty="Mốc giám sát này chưa có tiêu chí phát hành"
                 getRowKey={(item) => item.criterion_id}
                 columns={[
                   { key: "criterion", label: "Tiêu chí" },
@@ -537,7 +529,7 @@ export default function MonitoringPage({ project }) {
                 ...(selectedSnapshot.deviations || []),
                 ...(selectedSnapshot.blockers || []).map((item) => ({
                   type: "BLOCKER",
-                  actual: item.title || item.defect_id || String(item),
+                  actual: item.title || "Có lỗi đang chặn phát hành",
                 })),
               ]}
               empty="Không có sai lệch hoặc trở ngại"
@@ -549,7 +541,7 @@ export default function MonitoringPage({ project }) {
               ]}
             />
           </Panel>
-          <Panel title="Nợ bảo trì kiểm thử">
+          <Panel title="Việc cần rà soát sau thay đổi">
             <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
               <Metric
                 label="Yêu cầu đã thay đổi"
@@ -560,7 +552,7 @@ export default function MonitoringPage({ project }) {
                 value={selectedSnapshot.metrics?.stale_testcases || 0}
               />
               <Metric
-                label="Phân tích ảnh hưởng đang chờ"
+                label="Thay đổi đang chờ rà soát"
                 value={selectedSnapshot.metrics?.impact_pending || 0}
               />
             </div>

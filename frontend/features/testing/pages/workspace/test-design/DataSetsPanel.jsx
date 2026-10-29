@@ -138,12 +138,18 @@ export default function DataSetsPanel({
           {
             key: "variables",
             label: "Biến",
-            render: (item) => Object.keys(item.current_version?.variables || {}).join(", "),
+            render: (item) => {
+              const names = Object.keys(item.current_version?.variables || {});
+              return names.length ? names.join(", ") : "Chưa khai báo";
+            },
           },
           {
             key: "secret_refs",
             label: "Tham chiếu bí mật",
-            render: (item) => Object.keys(item.current_version?.secret_refs || {}).join(", "),
+            render: (item) => {
+              const names = Object.keys(item.current_version?.secret_refs || {});
+              return names.length ? names.join(", ") : "Không dùng";
+            },
           },
           {
             key: "actions",

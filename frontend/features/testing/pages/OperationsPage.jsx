@@ -212,13 +212,21 @@ export default function OperationsPage() {
               items={value.failed_ingestion_jobs}
               empty="Không có lần nhập liệu bị lỗi"
               columns={[
-                { key: "_id", label: "Mã" },
+                {
+                  key: "summary",
+                  label: "Thông tin",
+                  render: (item) => (
+                    <div className="grid gap-1">
+                      <span className="font-medium">Không nhập được tài liệu</span>
+                      <OperationalDiagnostics item={item} includeFileName />
+                    </div>
+                  ),
+                },
                 {
                   key: "status",
                   label: "Trạng thái",
                   render: (item) => <StatusPill value={item.status} />,
                 },
-                { key: "error_code", label: "Mã lỗi" },
                 {
                   key: "created_at",
                   label: "Thời điểm",
@@ -232,9 +240,16 @@ export default function OperationsPage() {
               items={value.worker_failures}
               empty="Không có lỗi xử lý nền"
               columns={[
-                { key: "_id", label: "Mã" },
-                { key: "event", label: "Sự kiện" },
-                { key: "error_code", label: "Mã lỗi" },
+                {
+                  key: "summary",
+                  label: "Công việc",
+                  render: (item) => (
+                    <div className="grid gap-1">
+                      <span className="font-medium">{operationalEventSummary(item.event)}</span>
+                      <OperationalDiagnostics item={item} includeEvent />
+                    </div>
+                  ),
+                },
                 {
                   key: "completed_at",
                   label: "Thời điểm",
@@ -323,5 +338,45 @@ export default function OperationsPage() {
         </>
       )}
     </WorkspacePage>
+  );
+}
+
+function operationalEventSummary(event) {
+  if (!event) return "Tác vụ nền chưa hoàn tất";
+  const label = valueLabel(event);
+  return label === event ? "Tác vụ nền chưa hoàn tất" : label;
+}
+
+function OperationalDiagnostics({ item, includeEvent = false, includeFileName = false }) {
+  return (
+    <details className="text-xs text-ink-muted">
+      <summary className="w-fit cursor-pointer">Chi tiết xử lý</summary>
+      <dl className="mt-1 grid gap-1 break-all">
+        {includeFileName && (item.file_name || item.filename || item.name) && (
+          <div>
+            <dt className="inline">Tệp: </dt>
+            <dd className="inline">{item.file_name || item.filename || item.name}</dd>
+          </div>
+        )}
+        {item._id && (
+          <div>
+            <dt className="inline">Mã bản ghi: </dt>
+            <dd className="inline font-mono">{item._id}</dd>
+          </div>
+        )}
+        {includeEvent && item.event && (
+          <div>
+            <dt className="inline">Mã sự kiện: </dt>
+            <dd className="inline font-mono">{item.event}</dd>
+          </div>
+        )}
+        {item.error_code && (
+          <div>
+            <dt className="inline">Mã lỗi: </dt>
+            <dd className="inline font-mono">{item.error_code}</dd>
+          </div>
+        )}
+      </dl>
+    </details>
   );
 }

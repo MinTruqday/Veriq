@@ -39,7 +39,6 @@ export function AuthProvider({ children }) {
         return null;
       }
       if (showLoading) setIsLoading(true);
-      setAuthError("");
       try {
         const data = await getUserMe();
         if (getToken() !== token) {
@@ -51,6 +50,7 @@ export function AuthProvider({ children }) {
         }
         if (data) {
           setUser(data);
+          setAuthError("");
           document.cookie = `token=${token}; path=/; max-age=604800; SameSite=Lax`;
           return data;
         } else {

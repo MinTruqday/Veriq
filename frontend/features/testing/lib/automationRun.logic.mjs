@@ -2,7 +2,7 @@ const RETRYABLE_STATUSES = new Set(["FAILED", "DEGRADED"]);
 
 const checkpointPhaseLabels = {
   QUEUED: "Đang chờ xử lý",
-  WORKER_STARTED: "Worker đã tiếp nhận lượt chạy",
+  WORKER_STARTED: "Đã bắt đầu xử lý lượt chạy",
   OBSERVED: "Đã tiếp nhận sự kiện",
   FACTS_EXTRACTED: "Đã trích xuất thông tin có nguồn",
   UNCERTAINTY_ASSESSED: "Đã đánh giá thông tin còn thiếu",
@@ -15,13 +15,13 @@ const checkpointPhaseLabels = {
 };
 
 const checkpointReasonLabels = {
-  AUTOMATION_RESUMED_FROM_CHECKPOINT: "Đã tiếp tục từ checkpoint an toàn",
+  AUTOMATION_RESUMED_FROM_CHECKPOINT: "Đã tiếp tục từ điểm xử lý đã lưu",
   AUTOMATION_RETRY_STARTED: "Đã bắt đầu lượt thử lại",
   AUTOMATION_QUEUE_RETRY: "Hệ thống đang thử gửi lại lượt chạy",
   AUTOMATION_QUEUE_UNAVAILABLE: "Không gửi được lượt chạy vào hàng đợi",
   AUTOMATION_QUEUE_REDELIVERY: "Hệ thống đang gửi lại lượt chạy vào hàng đợi",
-  AUTOMATION_WORKER_CLAIMED: "Worker đã nhận quyền xử lý lượt chạy",
-  AUTOMATION_WORKER_FAILED: "Worker gặp lỗi khi xử lý lượt chạy",
+  AUTOMATION_WORKER_CLAIMED: "Hệ thống đã tiếp nhận lượt chạy",
+  AUTOMATION_WORKER_FAILED: "Hệ thống gặp lỗi khi xử lý lượt chạy",
   AUTOMATION_ACTION_OUTCOME_UNCERTAIN: "Chưa xác định được kết quả thao tác",
   PROJECT_QA_EXECUTOR_UNAVAILABLE: "Chưa có QA phù hợp để thực hiện lượt chạy",
   PROJECT_BA_EXECUTOR_UNAVAILABLE: "Chưa có BA phù hợp để thực hiện lượt chạy",
@@ -33,17 +33,17 @@ const checkpointReasonLabels = {
 
 const automationRunErrorMessages = {
   AUTOMATION_ACTION_OUTCOME_UNCERTAIN:
-    "Chưa xác định được kết quả thao tác trước. Hãy đối soát dữ liệu trước khi chạy tiếp để tránh ghi trùng.",
+    "Chưa xác định được kết quả bước trước. Hãy kiểm tra dữ liệu trước khi tiếp tục để tránh tạo trùng.",
   AUTOMATION_CHECKPOINT_IDENTITY_MISMATCH:
-    "Checkpoint không khớp với danh tính tác vụ hiện tại. Hệ thống đã từ chối khôi phục tự động để tránh chạy sai dữ liệu.",
+    "Thông tin lượt chạy không còn khớp với dữ liệu hiện tại. Hệ thống đã dừng để tránh xử lý nhầm.",
   AUTOMATION_EXECUTION_FAILED:
-    "Lượt tự động hóa gặp lỗi khi xử lý. Hãy xem nhật ký bước cuối; chỉ tiếp tục nếu hệ thống xác nhận có điểm khôi phục an toàn.",
+    "Lượt tự động hóa chưa hoàn tất. Hãy xem bước xử lý gần nhất trước khi tiếp tục.",
   AUTOMATION_LIMIT_REACHED:
-    "Lượt tự động hóa đã chạm giới hạn xử lý. Hãy kiểm tra phần việc còn lại và checkpoint trước khi tiếp tục.",
+    "Lượt tự động hóa đã chạm giới hạn xử lý. Hãy kiểm tra phần việc còn lại trước khi tiếp tục.",
   AUTOMATION_QUEUE_UNAVAILABLE:
-    "Hàng đợi AI chưa sẵn sàng. Lượt chạy được giữ lại và có thể thử tiếp khi hàng đợi hoạt động.",
+    "Hệ thống chưa thể tiếp nhận lượt chạy. Lượt này được giữ lại và sẽ được thử lại khi có thể.",
   AUTOMATION_WORKER_FAILED:
-    "Worker xử lý lượt AI gặp lỗi. Hãy xem checkpoint cuối và trạng thái tiếp tục an toàn.",
+    "Hệ thống gặp lỗi khi xử lý lượt AI. Hãy xem bước gần nhất và trạng thái tiếp tục trước khi thử lại.",
   PROJECT_BA_EXECUTOR_UNAVAILABLE:
     "Dự án chưa có thành viên BA đang hoạt động để tiếp tục lượt chạy này.",
   PROJECT_QA_EXECUTOR_UNAVAILABLE:
@@ -187,15 +187,17 @@ export function latestAutomationUncertainties(checkpoints) {
 
 const MCP_DISCOVERY_MESSAGES = {
   MCP_PROJECT_AUTHORIZATION_UNAVAILABLE:
-    "Chưa xác minh được quyền đọc dự án; hệ thống không kết nối tới nguồn MCP.",
-  MCP_PROJECT_ACCESS_REVOKED: "Quyền đọc dự án đã bị thu hồi; hệ thống không gọi nguồn MCP.",
-  MCP_CONNECTION_DISCOVERY_UNAVAILABLE: "Chưa đọc được cấu hình nguồn MCP của dự án.",
-  MCP_CREDENTIAL_UNAVAILABLE: "Nguồn MCP thiếu thông tin xác thực trên máy chủ.",
-  MCP_DISCOVERY_TIMEOUT: "Nguồn MCP không phản hồi đúng hạn.",
-  MCP_DISCOVERY_FAILED: "Không thể khám phá công cụ từ nguồn MCP.",
+    "Chưa xác minh được quyền đọc dự án nên hệ thống chưa thể dùng nguồn kết nối này.",
+  MCP_PROJECT_ACCESS_REVOKED:
+    "Quyền đọc dự án đã bị thu hồi nên hệ thống không dùng nguồn kết nối này.",
+  MCP_CONNECTION_DISCOVERY_UNAVAILABLE: "Chưa đọc được cấu hình nguồn kết nối của dự án.",
+  MCP_CREDENTIAL_UNAVAILABLE: "Nguồn kết nối chưa được cấu hình đầy đủ trên máy chủ.",
+  MCP_DISCOVERY_TIMEOUT: "Nguồn kết nối không phản hồi đúng hạn.",
+  MCP_DISCOVERY_FAILED: "Không thể đọc danh sách nội dung từ nguồn kết nối.",
   MCP_TOOL_SCHEMA_UNSUPPORTED:
-    "Công cụ MCP có cấu trúc tham số chưa được hỗ trợ nên không được đưa vào kế hoạch.",
-  MCP_ALLOWED_TOOLS_NOT_ADVERTISED: "Nguồn MCP chưa công bố công cụ đọc được cho phép trong dự án.",
+    "Một thao tác của nguồn kết nối chưa được hỗ trợ nên không được sử dụng.",
+  MCP_ALLOWED_TOOLS_NOT_ADVERTISED:
+    "Nguồn kết nối chưa cung cấp nội dung được phép đọc trong dự án.",
 };
 
 export function automationMcpDiscoveryIssues(run) {

@@ -20,13 +20,36 @@ const assessmentLabels = {
   SUPERSEDED: "Đã thay thế",
 };
 
-function sourceReferenceLabel(reference) {
-  const businessRule = /^business_rule:(\d+)$/i.exec(String(reference || ""));
-  return businessRule ? `Quy tắc nghiệp vụ ${businessRule[1]}` : reference;
+function sourceReferenceLabel(item) {
+  const reference = String(item.source_ref || "");
+  if (item.source_type === "business_rule") {
+    const businessRule = /^(?:business_rule:)?(\d+)$/i.exec(reference);
+    return businessRule ? `Quy tắc nghiệp vụ ${businessRule[1]}` : "Quy tắc nghiệp vụ";
+  }
+  if (item.source_type === "acceptance_criterion") {
+    return /^AC[-_ ]?\d+$/i.test(reference) ? reference : "Tiêu chí chấp nhận";
+  }
+  if (item.source_type === "api_operation") {
+    return /^[A-Z]+\s+\//.test(reference) ? reference : "Thao tác API";
+  }
+  if (item.source_type === "requirement_version") return "Nội dung yêu cầu";
+  return "Nguồn yêu cầu";
+}
+
+function waiverOwnerLabel(ownerId, members) {
+  if (!ownerId) return "Chưa xác định";
+  const member = members.find((item) => item.user_id === ownerId);
+  if (!member) return "Thành viên dự án";
+  const candidates = [member.user?.full_name, member.user?.email, member.user_label];
+  return (
+    candidates.find((value) => value && value !== ownerId && value !== member.user_id) ||
+    "Thành viên dự án"
+  );
 }
 
 export default function TestAdequacyPanel({
   requirementVersionId,
+  members = [],
   canDecide = false,
   canCreateClarification = false,
   canApprove = false,
@@ -176,7 +199,7 @@ export default function TestAdequacyPanel({
   };
   const source = (item) => (
     <>
-      <div className="font-medium text-ink">{sourceReferenceLabel(item.source_ref)}</div>
+      <div className="font-medium text-ink">{sourceReferenceLabel(item)}</div>
       {item.source_quote && <div className="mt-1 max-w-sm text-ink-muted">{item.source_quote}</div>}
     </>
   );
@@ -209,13 +232,11 @@ export default function TestAdequacyPanel({
     <>
       {item.decision?.reason || "Chưa có quyết định"}
       {item.decision?.clarification_id && (
-        <div className="mt-1 text-xs text-ink-muted">
-          Phiếu làm rõ {item.decision.clarification_id}
-        </div>
+        <div className="mt-1 text-xs text-ink-muted">Đã liên kết phiếu làm rõ</div>
       )}
       {item.status === "WAIVED" && (
         <div className="mt-2 text-xs leading-5 text-ink-muted">
-          <div>Phụ trách {item.decision?.waiver_owner_id || "Chưa xác định"}</div>
+          <div>Phụ trách {waiverOwnerLabel(item.decision?.waiver_owner_id, members)}</div>
           <div>
             Rà soát lại{" "}
             {item.decision?.waiver_review_at

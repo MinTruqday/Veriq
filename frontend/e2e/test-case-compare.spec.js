@@ -52,6 +52,7 @@ function project(
   canAnswerClarification = false,
   aiReadMode = "default",
   fullNavigation = false,
+  dashboardMetrics = false,
 ) {
   const permissions = ["project.read", "testcase.read", "testcase.duplicate_check"];
   if (role === "QA")
@@ -94,6 +95,8 @@ function project(
   if (role === "QA" && canReadMembers) permissions.push("project.members.read");
   if (role === "QA" && canManageAttachments) permissions.push("attachment.manage");
   if (role === "QA" && canManageNfr) permissions.push("nfrtest.read", "nfrtest.manage");
+  if (role === "QA" && dashboardMetrics)
+    permissions.push("analytics.read", "defect.read", "testrun.read");
   if (canAnswerClarification) permissions.push("requirement.update");
   if (aiReadMode === "proposal-only") {
     permissions.splice(permissions.indexOf("automation.read"), 1);
@@ -151,16 +154,52 @@ async function installWorkspace(
     initialCustomValues = null,
     initialOwnerId = null,
     initialAttachments = [],
+    internalLineage = false,
     canManageAttachments = true,
     canReadMembers = true,
     canManageNfr = false,
     canAnswerClarification = false,
     aiReadMode = "default",
     fullNavigation = false,
+    dashboardMetrics = false,
     nonFunctionalPlans = [],
   } = {},
 ) {
   let mergedDraft = draft();
+  if (internalLineage) {
+    mergedDraft = {
+      ...mergedDraft,
+      source_evidence: [
+        {
+          artifact_version_id: "SOURCE-E2E-1",
+          artifact_type: "acceptance_criterion",
+          title: "Tài liệu đăng nhập",
+          page_no: 4,
+          text: "Người dùng đăng nhập bằng email hợp lệ",
+        },
+      ],
+      coverage_obligations: ["OBLIGATION-OPAQUE-E2E"],
+      obligation_evidence: [
+        {
+          obligation_key: "OBLIGATION-OPAQUE-E2E",
+          evidence_quotes: [
+            {
+              evidence_ref: "SOURCE-E2E-1",
+              quote: "Người dùng đăng nhập bằng email hợp lệ",
+            },
+          ],
+        },
+      ],
+      acceptance_criteria_snapshot_ids: ["CRITERION-VERSION-OPAQUE-E2E"],
+      requirement_version_ids: ["REQ-VERSION-OPAQUE-E2E"],
+      acceptance_criterion_ids: ["ACCEPTANCE-OPAQUE-E2E"],
+      coverage_item_ids: ["COVERAGE-OPAQUE-E2E"],
+      test_condition_ids: ["CONDITION-OPAQUE-E2E"],
+      data_set_version_ids: ["DATASET-VERSION-OPAQUE-E2E"],
+      scenario_id: "SCENARIO-OPAQUE-E2E",
+      repository_node_id: "REPOSITORY-NODE-OPAQUE-E2E",
+    };
+  }
   if (initialCustomValues) mergedDraft.custom_values = initialCustomValues;
   mergedDraft.owner_id = initialOwnerId;
   mergedDraft.attachments = initialAttachments;
@@ -244,7 +283,20 @@ async function installWorkspace(
         canAnswerClarification,
         aiReadMode,
         fullNavigation,
+        dashboardMetrics,
       );
+    } else if (path === `/kiem-thu/du-an/${projectId}/tong-quan`) {
+      data = {
+        requirements: 0,
+        active_tests: 0,
+        open_defects: 0,
+        current_runs: 0,
+        tests_needing_update: 0,
+        changes_waiting_impact: 0,
+        recent_changes: [],
+        latest_run: null,
+        open_defects_by_severity: {},
+      };
     } else if (path === `/kiem-thu/du-an/${projectId}/thanh-vien`) {
       data = [
         {
@@ -793,7 +845,7 @@ test("AI run khóa retry khi checkpoint cuối có thao tác ghi chưa rõ kết
 });
 
 test("QA compares, saves a merged draft, then approves the reviewed group", async ({ page }) => {
-  const api = await installWorkspace(page, "QA");
+  const api = await installWorkspace(page, "QA", { internalLineage: true });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
@@ -807,7 +859,18 @@ test("QA compares, saves a merged draft, then approves the reviewed group", asyn
   await expect(page.getByRole("heading", { name: "Bản kết quả sau chọn/ghép" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nguồn dẫn và trích dẫn" })).toBeVisible();
   await expect(page.getByText("Người dùng đăng nhập bằng email hợp lệ").first()).toBeVisible();
-  await expect(page.getByText("Phiên bản yêu cầu liên kết").first()).toBeVisible();
+  await expect(page.getByText("Tài liệu đăng nhập · Trang 4").first()).toBeVisible();
+  await expect(page.locator('[role="dialog"]')).not.toContainText("SOURCE-E2E-1");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("OBLIGATION-OPAQUE-E2E");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("CRITERION-VERSION-OPAQUE-E2E");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("REQ-VERSION-OPAQUE-E2E");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("ACCEPTANCE-OPAQUE-E2E");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("COVERAGE-OPAQUE-E2E");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("CONDITION-OPAQUE-E2E");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("DATASET-VERSION-OPAQUE-E2E");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("SCENARIO-OPAQUE-E2E");
+  await expect(page.locator('[role="dialog"]')).not.toContainText("REPOSITORY-NODE-OPAQUE-E2E");
+  await expect(page.getByText("Yêu cầu liên kết").first()).toBeVisible();
   await expect(page.locator("main")).not.toContainText(/\bRequirement\b/);
   for (const width of [1920, 1440, 1280, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -2316,7 +2379,7 @@ test("Tester sees read-only Test Design and receives a backend denial for QA-onl
   await expect(page.getByRole("button", { name: "Tạo yêu cầu" })).toHaveCount(0);
 });
 
-test("project workspace routes remain within the viewport at all required widths", async ({
+test("project workspace routes remain within the viewport at the standard desktop and representative widths", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -2363,16 +2426,40 @@ test("project workspace routes remain within the viewport at all required widths
     "tri-thuc",
     "cai-dat",
   ];
-  const widths = [1920, 1440, 1280, 768, 390];
+  const representativeRoutes = new Set([
+    "",
+    "lap-ke-hoach/list",
+    "lap-ke-hoach/board",
+    "lap-ke-hoach/sprint",
+    "lap-ke-hoach/roadmap",
+    "cong-viec",
+    "ban-phat-hanh",
+    "yeu-cau",
+    "ho-so-dam-bao",
+    "phieu-lam-ro",
+    "kho-kiem-thu",
+    "ca-kiem-thu",
+    "ke-hoach-kiem-thu",
+    "lan-chay-kiem-thu",
+    "tu-dong-hoa",
+    "loi",
+    "bao-cao",
+    "tri-thuc",
+    "cai-dat",
+  ]);
+  const allRouteWidth = 1440;
+  const representativeWidths = [1920, 1280, 768, 390];
   const failures = [];
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  for (const width of widths) {
-    await page.setViewportSize({ width, height: 900 });
-    for (const route of routes) {
+  for (const route of routes) {
+    const widths = [allRouteWidth];
+    if (representativeRoutes.has(route)) widths.push(...representativeWidths);
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: 900 });
       const pathname = `/du-an/${projectId}${route ? `/${route}` : ""}`;
-      const response = await page.goto(pathname, { waitUntil: "domcontentloaded" });
+      const response = await page.goto(pathname, { waitUntil: "commit" });
       if (!response?.ok()) failures.push({ route: pathname, width, status: response?.status() });
       await expect(
         page.locator("#main-content h1").first(),
@@ -2929,9 +3016,12 @@ test("AI run explains an MCP discovery failure without exposing provider details
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /Rà soát tài liệu sau khi tải lên/ }).click();
 
-  const diagnostics = page.getByRole("status", { name: "Nguồn MCP cần kiểm tra" });
-  await expect(diagnostics).toContainText("Nguồn MCP không phản hồi đúng hạn");
-  await expect(diagnostics).toContainText("read_contract");
+  const diagnostics = page.getByRole("status", { name: "Nguồn kết nối cần kiểm tra" });
+  await expect(diagnostics).toContainText("Nguồn kết nối không phản hồi đúng hạn");
+  await expect(diagnostics).not.toContainText("MCP");
+  await expect(diagnostics.getByText("Tên thao tác: read_contract")).toBeHidden();
+  await diagnostics.getByText("Thông tin hỗ trợ").click();
+  await expect(diagnostics.getByText("Tên thao tác: read_contract")).toBeVisible();
   await expect(diagnostics).not.toContainText("must never be displayed");
 });
 
@@ -3013,13 +3103,14 @@ test("authorization pause explains the missing project role before retry", async
 test("dashboard does not show a fake task progress when the project summary is missing", async ({
   page,
 }) => {
-  await installWorkspace(page, "QA");
+  await installWorkspace(page, "QA", { dashboardMetrics: true });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}`, { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: "Tiến độ dự án" })).toBeVisible();
   await expect(page.getByText("Chưa tải được số liệu công việc")).toBeVisible();
   await expect(page.getByText(/Tasks\s*·\s*0%/)).toHaveCount(0);
+  await expect(page.getByText("Chưa có dữ liệu mức độ lỗi")).toBeVisible();
 });
 
 test("non-functional plan editor preserves structured fields without raw JSON textareas", async ({

@@ -48,7 +48,11 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
     Object.fromEntries(
       initialVersionIds.map((versionId) => [
         versionId,
-        { value: versionId, label: `Phiên bản đã lưu ${versionId}`, fallback: true },
+        {
+          value: versionId,
+          label: "Ca kiểm thử trong bộ đã lưu",
+          fallback: true,
+        },
       ]),
     ),
   );

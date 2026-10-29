@@ -776,7 +776,6 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                       </details>
                       <p className="text-xs text-ink-muted">
                         Trạng thái {valueLabel(gap.index_status)}
-                        {gap.parser ? ` · Bộ đọc ${gap.parser}` : ""}
                         {gap.page_count !== null ? ` · ${gap.page_count} trang` : ""}
                         {gap.unprocessed_block_count !== null
                           ? ` · ${gap.unprocessed_block_count} phần chưa đọc`
@@ -795,9 +794,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                                 ? " · Chưa trích xuất được nội dung bảng"
                                 : block.reason_code === "PICTURE_TEXT_NOT_EXTRACTED"
                                   ? " · Chưa trích xuất được nội dung hình"
-                                  : block.reason_code
-                                    ? ` · ${valueLabel(block.reason_code)}`
-                                    : " · Khối chưa đọc đầy đủ"}
+                                  : " · Nội dung chưa đọc đầy đủ"}
                             </li>
                           ))}
                         </ul>
@@ -808,6 +805,12 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                           nguyên.
                         </p>
                       )}
+                      {gap.parser && (
+                        <details className="text-xs text-ink-muted">
+                          <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                          <p className="mt-1 break-all">Bộ đọc: {gap.parser}</p>
+                        </details>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -815,13 +818,13 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             )}
             {mcpDiscoveryIssues.length > 0 && (
               <section
-                aria-label="Nguồn MCP cần kiểm tra"
+                aria-label="Nguồn kết nối cần kiểm tra"
                 className="grid gap-2 rounded-control border border-warning/40 bg-warning/5 p-4"
                 role="status"
               >
-                <h3 className="font-semibold text-ink">Nguồn MCP chưa sẵn sàng</h3>
+                <h3 className="font-semibold text-ink">Nguồn kết nối chưa sẵn sàng</h3>
                 <p className="text-ink-muted">
-                  AI không dùng nguồn gặp vấn đề làm bằng chứng. Các phần việc độc lập vẫn có thể
+                  Hệ thống không dùng nguồn gặp vấn đề làm căn cứ. Các phần việc độc lập vẫn có thể
                   tiếp tục; phần phụ thuộc nguồn này được giữ lại để xử lý an toàn.
                 </p>
                 <ul className="grid gap-2">
@@ -830,11 +833,12 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                       className="rounded-control border border-border bg-surface p-3 text-ink-muted"
                       key={`${item.reason_code}-${item.tool_name}`}
                     >
-                      {item.message}
+                      <p>{item.message}</p>
                       {item.tool_name && (
-                        <span className="ml-1">
-                          Công cụ <code>{item.tool_name}</code>.
-                        </span>
+                        <details className="mt-2 text-xs">
+                          <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                          <p className="mt-1 break-all">Tên thao tác: {item.tool_name}</p>
+                        </details>
                       )}
                     </li>
                   ))}

@@ -136,7 +136,7 @@ test("chẩn đoán MCP chỉ hiển thị mã an toàn đã biết và loại b
     [
       {
         reason_code: "MCP_DISCOVERY_TIMEOUT",
-        message: "Nguồn MCP không phản hồi đúng hạn.",
+        message: "Nguồn kết nối không phản hồi đúng hạn.",
         tool_name: "read_contract",
       },
     ],

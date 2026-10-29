@@ -263,7 +263,7 @@ export default function CompletionPage({ project }) {
           required: true,
           options: members.map((member) => ({
             value: member.user_id,
-            label: member.user_label || member.user?.email || member.user_id,
+            label: member.user_label || member.user?.email || "Thành viên dự án",
           })),
         },
         { name: "expiry_at", label: "Ngày hết hạn", type: "datetime-local" },
@@ -315,7 +315,7 @@ export default function CompletionPage({ project }) {
             { value: "", label: "Chưa giao" },
             ...members.map((member) => ({
               value: member.user_id,
-              label: member.user_label || member.user?.email || member.user_id,
+              label: member.user_label || member.user?.email || "Thành viên dự án",
             })),
           ],
         },

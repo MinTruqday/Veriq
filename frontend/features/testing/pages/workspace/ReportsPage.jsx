@@ -544,22 +544,27 @@ export default function ReportsPage({ project }) {
                   </Panel>
                 )}
                 {value.ai && (
-                  <Panel title="Hoạt động AI">
-                    <DataTable
-                      items={Object.entries(value.ai.model_versions || {}).map(
-                        ([model, count]) => ({
-                          _id: model,
-                          model,
-                          count,
-                        }),
-                      )}
-                      empty="Chưa có lần chạy AI"
-                      columns={[
-                        { key: "model", label: "Phiên bản mô hình" },
-                        { key: "count", label: "Lượt sử dụng" },
-                      ]}
-                    />
-                  </Panel>
+                  <details className="rounded-xl border border-border bg-surface px-5 py-4">
+                    <summary className="cursor-pointer font-semibold text-ink">
+                      Thông tin vận hành AI
+                    </summary>
+                    <div className="mt-4">
+                      <DataTable
+                        items={Object.entries(value.ai.model_versions || {}).map(
+                          ([model, count]) => ({
+                            _id: model,
+                            model,
+                            count,
+                          }),
+                        )}
+                        empty="Chưa có lần chạy AI"
+                        columns={[
+                          { key: "model", label: "Mô hình xử lý" },
+                          { key: "count", label: "Lượt sử dụng" },
+                        ]}
+                      />
+                    </div>
+                  </details>
                 )}
               </div>
               {value.coverage && (

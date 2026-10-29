@@ -59,13 +59,13 @@ const fields = [
     kind: "select",
     options: ["manual", "candidate", "automated"],
   },
-  { key: "data_set_version_ids", label: "Phiên bản bộ dữ liệu", kind: "list" },
-  { key: "requirement_version_ids", label: "Phiên bản yêu cầu liên kết", kind: "list" },
-  { key: "acceptance_criterion_ids", label: "Tiêu chí chấp nhận liên kết", kind: "list" },
-  { key: "coverage_item_ids", label: "Điểm cần kiểm thử liên kết", kind: "list" },
-  { key: "test_condition_ids", label: "Điều kiện kiểm thử liên kết", kind: "list" },
-  { key: "scenario_id", label: "Tình huống kiểm thử", kind: "text", optional: true },
-  { key: "repository_node_id", label: "Thư mục kho kiểm thử", kind: "text", optional: true },
+  { key: "data_set_version_ids", label: "Bộ dữ liệu liên kết", kind: "reference_list" },
+  { key: "requirement_version_ids", label: "Yêu cầu liên kết", kind: "reference_list" },
+  { key: "acceptance_criterion_ids", label: "Tiêu chí chấp nhận", kind: "reference_list" },
+  { key: "coverage_item_ids", label: "Điểm cần kiểm thử liên kết", kind: "reference_list" },
+  { key: "test_condition_ids", label: "Điều kiện kiểm thử liên kết", kind: "reference_list" },
+  { key: "scenario_id", label: "Tình huống kiểm thử", kind: "reference", optional: true },
+  { key: "repository_node_id", label: "Thư mục kho kiểm thử", kind: "reference", optional: true },
   {
     key: "duplicate_reason",
     label: "Lý do giữ ca có khả năng trùng",
@@ -109,16 +109,14 @@ function ReadValue({ value, kind, customFields = [], members = [] }) {
   if (value === undefined || value === null) return <p className="text-ink-muted">Không có</p>;
   if (kind === "member") {
     const member = members.find((item) => item.user_id === value);
+    const memberLabel = member
+      ? [member.user?.full_name, member.user?.email, member.user_label].find(
+          (label) => label && label !== member.user_id && label !== value,
+        )
+      : null;
     return (
       <p className="break-words">
-        {member
-          ? member.user_label ||
-            member.user?.full_name ||
-            member.user?.email ||
-            "Tài khoản không xác định"
-          : value
-            ? "Tài khoản không còn trong dự án"
-            : "Chưa phân công"}
+        {member ? memberLabel || "Thành viên dự án" : "Người phụ trách không còn trong dự án"}
       </p>
     );
   }
@@ -150,6 +148,12 @@ function ReadValue({ value, kind, customFields = [], members = [] }) {
     ) : (
       <p className="text-ink-muted">Chưa có tệp đính kèm.</p>
     );
+  if (kind === "reference_list") {
+    const count = Array.isArray(value) ? value.length : 0;
+    return <p className="text-ink-muted">{count ? `${count} liên kết đã lưu` : "Chưa liên kết"}</p>;
+  }
+  if (kind === "reference")
+    return <p className="text-ink-muted">{value ? "Đã liên kết" : "Chưa liên kết"}</p>;
   if (kind === "custom") {
     const fieldByKey = new Map(customFields.map((field) => [field.key, field]));
     const entries = Object.entries(value || {});
@@ -494,6 +498,20 @@ function FieldEditor({
   disabled,
   canManageAttachments,
 }) {
+  if (field.kind === "reference_list" || field.kind === "reference") {
+    return (
+      <div className="rounded-control bg-surface-quiet px-3 py-2 text-sm text-ink-muted">
+        {field.kind === "reference_list"
+          ? Array.isArray(value) && value.length
+            ? `${value.length} liên kết đã lưu`
+            : "Chưa liên kết"
+          : value
+            ? "Đã liên kết"
+            : "Chưa liên kết"}
+        <span className="ml-1">· Chọn bản gốc hoặc đề xuất AI để thay đổi liên kết</span>
+      </div>
+    );
+  }
   if (field.kind === "bdd")
     return value ? (
       <div className="space-y-3">
@@ -613,10 +631,9 @@ function FieldEditor({
         )}
         {members.map((member) => (
           <option key={member.user_id} value={member.user_id}>
-            {member.user_label ||
-              member.user?.full_name ||
-              member.user?.email ||
-              "Tài khoản không xác định"}
+            {[member.user?.full_name, member.user?.email, member.user_label].find(
+              (label) => label && label !== member.user_id,
+            ) || "Thành viên dự án"}
             {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
           </option>
         ))}
@@ -661,6 +678,37 @@ function FieldEditor({
   );
 }
 
+function sourceTypeLabel(type) {
+  return (
+    {
+      requirement: "Yêu cầu",
+      requirement_version: "Yêu cầu",
+      acceptance_criterion: "Tiêu chí chấp nhận",
+      business_rule: "Quy tắc nghiệp vụ",
+      api_operation: "Thao tác API",
+      requirement_document: "Tài liệu yêu cầu",
+      source_document: "Tài liệu nguồn",
+    }[type] || "Tài liệu nguồn"
+  );
+}
+
+function sourceDisplayLabel(source) {
+  const title = source.title || source.label || source.filename;
+  const type = sourceTypeLabel(source.artifact_type || source.source_type);
+  const page = source.page_no ? ` · Trang ${source.page_no}` : "";
+  return `${title || type}${page}`;
+}
+
+function evidenceReferenceLabel(reference, sources, index) {
+  const source = sources.find(
+    (item) =>
+      item.artifact_version_id === reference ||
+      item.artifact_id === reference ||
+      item.source === reference,
+  );
+  return source ? sourceDisplayLabel(source) : `Nguồn dẫn ${index + 1}`;
+}
+
 function EvidenceValue({ value }) {
   const sources = value?.source_evidence || [];
   const quotes = value?.evidence_quotes || [];
@@ -674,9 +722,8 @@ function EvidenceValue({ value }) {
           className="min-w-0 rounded-control bg-surface-quiet p-3"
           key={`${source.artifact_version_id || source.artifact_id || "source"}-${index}`}
         >
-          <p className="break-all text-xs font-medium">
-            {source.title || source.label || `Nguồn ${index + 1}`}
-            {source.page_no ? ` · Trang ${source.page_no}` : ""}
+          <p className="break-words text-xs font-medium">
+            {sourceDisplayLabel(source)}
             {source.block_id ? " · Có vị trí trong tài liệu" : ""}
           </p>
           <p className="mt-2 whitespace-pre-wrap break-words">
@@ -689,13 +736,18 @@ function EvidenceValue({ value }) {
           className="min-w-0 border-l-2 border-brand pl-3"
           key={`${quote.evidence_ref}-${index}`}
         >
-          <p className="break-all text-xs text-ink-muted">{quote.evidence_ref}</p>
+          <p className="text-xs text-ink-muted">
+            Trích dẫn từ {evidenceReferenceLabel(quote.evidence_ref, sources, index)}
+          </p>
           <p className="mt-1 whitespace-pre-wrap break-words">{quote.quote}</p>
         </article>
       ))}
       {references.length > 0 && (
         <p className="break-words text-xs text-ink-muted">
-          Tham chiếu nguồn: {references.join(", ")}
+          Căn cứ:{" "}
+          {references
+            .map((reference, index) => evidenceReferenceLabel(reference, sources, index))
+            .join(", ")}
         </p>
       )}
     </div>
@@ -705,6 +757,8 @@ function EvidenceValue({ value }) {
 function CoverageLineageValue({ value, stale = false }) {
   const obligations = value?.coverage_obligations || [];
   const snapshotIds = value?.acceptance_criteria_snapshot_ids || [];
+  const sources = value?.source_evidence || [];
+  const obligationEvidence = value?.obligation_evidence || [];
   const hypotheses = value?.challenge_hypotheses || [];
   if (!obligations.length && !snapshotIds.length && !hypotheses.length) {
     return (
@@ -723,22 +777,40 @@ function CoverageLineageValue({ value, stale = false }) {
         <p className="font-medium">Nghĩa vụ kiểm thử</p>
         {obligations.length ? (
           <ul className="mt-1 list-disc space-y-1 pl-5">
-            {obligations.map((item, index) => (
-              <li className="break-all" key={`${item}-${index}`}>
-                {item}
-              </li>
-            ))}
+            {obligations.map((item, index) => {
+              const evidence = obligationEvidence.find((entry) => entry.obligation_key === item);
+              const quote = evidence?.evidence_quotes?.[0];
+              return (
+                <li className="break-words" key={`${item}-${index}`}>
+                  {quote?.quote || `Nghĩa vụ liên kết ${index + 1}`}
+                  {quote && (
+                    <span className="ml-1 text-xs text-ink-muted">
+                      · {evidenceReferenceLabel(quote.evidence_ref, sources, index)}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="mt-1 text-ink-muted">Chưa liên kết.</p>
         )}
       </div>
       <div>
-        <p className="font-medium">Tiêu chí trong ảnh chụp khi tạo</p>
+        <p className="font-medium">Tiêu chí yêu cầu tại thời điểm tạo</p>
         {snapshotIds.length ? (
-          <p className="mt-1 break-all">{snapshotIds.join(", ")}</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {snapshotIds.map((id, index) => {
+              const source = sources.find((item) => item.artifact_version_id === id);
+              return (
+                <li className="break-words" key={`${id}-${index}`}>
+                  {source ? sourceDisplayLabel(source) : `Đã lưu tiêu chí chấp nhận ${index + 1}`}
+                </li>
+              );
+            })}
+          </ul>
         ) : (
-          <p className="mt-1 text-ink-muted">Không lưu ảnh chụp tiêu chí.</p>
+          <p className="mt-1 text-ink-muted">Không lưu tiêu chí chấp nhận tại thời điểm tạo.</p>
         )}
       </div>
       <div>

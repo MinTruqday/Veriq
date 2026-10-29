@@ -13,20 +13,16 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
-import { formatProjectDate, projectPlannedDurationDays } from "../../lib/projectSchedule.logic.mjs";
+import { formatProjectDate } from "../../lib/projectSchedule.logic.mjs";
 import { taskProgressPresentation } from "../../lib/projectProgress.logic.mjs";
 
 function projectOverviewDescription(project) {
-  const details = [];
-  const duration = projectPlannedDurationDays(project.planned_start_at, project.planned_end_at);
-  if (project.planned_start_at) {
-    details.push(`Bắt đầu dự kiến: ${formatProjectDate(project.planned_start_at)}`);
-  }
-  if (project.planned_end_at) {
-    details.push(`Kết thúc dự kiến: ${formatProjectDate(project.planned_end_at)}`);
-  }
-  if (duration) details.push(`Thời lượng dự kiến: ${duration} ngày lịch`);
-  return details.join(" · ");
+  const start = project.planned_start_at ? formatProjectDate(project.planned_start_at) : null;
+  const end = project.planned_end_at ? formatProjectDate(project.planned_end_at) : null;
+  if (start && end) return `${start} – ${end}`;
+  if (start) return `Từ ${start}`;
+  if (end) return `Đến ${end}`;
+  return "";
 }
 
 export default function DashboardPage({ project }) {
@@ -212,9 +208,9 @@ export default function DashboardPage({ project }) {
           {dashboard && can("defect.read") && can("testrun.read") && (
             <div className="grid gap-4 lg:grid-cols-2">
               <Panel title="Lỗi đang mở theo mức độ">
-                <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-3 xl:grid-cols-5">
-                  {Object.entries(dashboard.open_defects_by_severity || {}).map(
-                    ([severity, count]) => (
+                {Object.keys(dashboard.open_defects_by_severity || {}).length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-3 xl:grid-cols-5">
+                    {Object.entries(dashboard.open_defects_by_severity).map(([severity, count]) => (
                       <div
                         className="min-w-0 rounded-xl border border-border p-3 xl:p-4"
                         key={severity}
@@ -224,9 +220,11 @@ export default function DashboardPage({ project }) {
                         </p>
                         <p className="mt-1 text-xl font-semibold">{count}</p>
                       </div>
-                    ),
-                  )}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="p-5 text-[13px] text-ink-muted">Chưa có dữ liệu mức độ lỗi</p>
+                )}
               </Panel>
               <Panel title="Lần chạy mới nhất">
                 {dashboard.latest_run ? (

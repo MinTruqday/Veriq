@@ -1408,6 +1408,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             <div className="space-y-6" hidden={activeDetailTab !== "assurance"}>
               <TestAdequacyPanel
                 requirementVersionId={current._id}
+                members={visibleMembers}
                 canDecide={memberRoles.includes("QA") && can("testcase.read")}
                 canCreateClarification={memberRoles.includes("QA") && can("requirement.review")}
                 canApprove={memberRoles.includes("QA") && can("testcase.review")}

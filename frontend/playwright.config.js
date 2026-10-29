@@ -12,10 +12,10 @@ const reportDirectory =
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: false,
+  fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: 1,
+  workers: process.env.CI ? 2 : 4,
   outputDir: path.join(reportDirectory, "artifacts"),
   reporter: [["list"], ["json", { outputFile: path.join(reportDirectory, "results.json") }]],
   use: {

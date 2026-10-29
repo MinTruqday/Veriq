@@ -357,7 +357,7 @@ export default function DefectsPage({ project }) {
             { value: "", label: "Chưa gán" },
             ...members.map((member) => ({
               value: member.user_id,
-              label: member.user_label || member.user?.email || member.user_id,
+              label: member.user_label || member.user?.email || "Thành viên dự án",
             })),
           ],
         },
@@ -749,12 +749,18 @@ export default function DefectsPage({ project }) {
             columns={[
               { key: "requirement_key", label: "Yêu cầu" },
               { key: "title", label: "Tên" },
-              { key: "confidence_band", label: "Mức tín hiệu" },
+              {
+                key: "confidence_band",
+                label: "Mức độ liên quan",
+                render: (item) => valueLabel(item.confidence_band),
+              },
               {
                 key: "reason_codes",
                 label: "Bằng chứng",
                 render: (item) =>
-                  item.reason_codes.map((code) => traceReasonLabels[code] || code).join(", "),
+                  item.reason_codes
+                    .map((code) => traceReasonLabels[code] || "Có thông tin liên quan")
+                    .join(", "),
               },
               {
                 key: "action",
@@ -782,12 +788,18 @@ export default function DefectsPage({ project }) {
             columns={[
               { key: "test_case_key", label: "Ca kiểm thử" },
               { key: "title", label: "Tên" },
-              { key: "confidence_band", label: "Mức tín hiệu" },
+              {
+                key: "confidence_band",
+                label: "Mức độ liên quan",
+                render: (item) => valueLabel(item.confidence_band),
+              },
               {
                 key: "reason_codes",
                 label: "Bằng chứng",
                 render: (item) =>
-                  item.reason_codes.map((code) => traceReasonLabels[code] || code).join(", "),
+                  item.reason_codes
+                    .map((code) => traceReasonLabels[code] || "Có thông tin liên quan")
+                    .join(", "),
               },
               {
                 key: "action",
@@ -865,7 +877,7 @@ export default function DefectsPage({ project }) {
               <option value="">Mọi người xử lý</option>
               {members.map((item) => (
                 <option key={item.user_id} value={item.user_id}>
-                  {item.user_label || item.user?.email || item.user_id}
+                  {item.user_label || item.user?.email || "Thành viên dự án"}
                 </option>
               ))}
             </select>

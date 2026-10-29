@@ -147,6 +147,16 @@ export default function AccountPage() {
       <header className="border-b border-border pb-6">
         <h1 className="text-[32px] font-semibold tracking-[-0.04em]">Tài khoản và bảo mật</h1>
       </header>
+      {status && (
+        <p role="status" className="rounded-control bg-brand-soft p-3 text-brand">
+          {status}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="rounded-control bg-danger-soft p-3 text-danger">
+          {error}
+        </p>
+      )}
       <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_8px_24px_rgba(48,47,42,0.04)]">
         <div className="border-b border-border bg-surface-raised px-5 py-4">
           <h2 className="font-semibold">Thông tin cá nhân</h2>
@@ -313,16 +323,6 @@ export default function AccountPage() {
           Đăng xuất
         </button>
       </div>
-      {status && (
-        <p role="status" className="rounded-control bg-brand-soft p-3 text-brand">
-          {status}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="rounded-control bg-danger-soft p-3 text-danger">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

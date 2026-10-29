@@ -1,6 +1,73 @@
 # Tồn đọng AI và Frontend của Veriq
 
-## Bằng chứng giao diện mới nhất — 29/10/2026, 10:11 (+07)
+## Trạng thái hiện tại — 29/10/2026, 12:27 (+07)
+
+- Sau commit `5d94322b` (`609 commit`), danh sách dự án hiển thị lịch thành một khoảng ngày, bỏ nhãn Scrum/Kanban khỏi thẻ, bỏ chỉ số Project do QA nhập; bộ lọc lịch chọn ngày cụ thể. Tổng quan dự án nay dùng cùng cách hiển thị khoảng ngày thay cho các dòng bắt đầu/kết thúc/thời lượng. Dự án chưa có ngày hiện “Chưa có lịch”.
+- Sau lần chỉnh cuối, Docker frontend được dựng lại và healthy. `format:check`, ESLint, Next production build và 18 kiểm tra logic đạt. Toàn bộ Playwright chạy trên production build local và Docker image mới đều cho **98 đạt, 10 live test bỏ qua, 0 lỗi**; Docker suite hoàn tất trong 2,5 phút. Mọi 40 route workspace được mở ở 1440 px; 19 route đại diện được kiểm tra thêm ở 1920, 1280, 768 và 390 px. 10 ca bỏ qua gồm 5 smoke route theo role, 1 route Admin, 1 guard yêu cầu loopback và 3 kiểm tra compare/save cần token cùng DB disposable; không tính chúng là đạt.
+- Danh sách dự án hiển thị lịch thành khoảng ngày, bỏ chip Scrum/Kanban và nhãn tiến độ nội bộ; tổng quan dùng cùng khoảng ngày và nêu rõ khi chưa có số liệu mức độ lỗi. Assertion dashboard mới chạy qua trên Docker. `git diff --check` sạch. E2E này xác nhận hành vi giao diện với API giả lập cùng một số Docker live checks hiện có; không khép các cổng AI hoặc kiểm tra live cần fixture riêng.
+- Theo bộ đếm điều phối hiện hành, **22/36 cổng đóng, 14 còn mở**. Những dòng trạng thái 14/36, 16/36 và các con số cũ phía dưới là ghi chép lịch sử, không phải trạng thái hiện tại. Trước khi xử lý 14 cổng còn lại, đối chiếu AC-05/AC-06 theo luồng mới để tái sử dụng bằng chứng còn hiệu lực, bỏ chạy lặp nhưng không hạ tiêu chí.
+- Lượt E2E production Docker kết thúc trong 2,5 phút với 2 worker; giữ 40 route ở desktop 1440 px và kiểm tra năm kích thước trên 19 bố cục đại diện. Thời gian chạy suite không được dùng để hạ điều kiện đạt.
+- Bài xác minh lại danh tính sau lỗi dịch vụ tạm thời từng điều hướng nhầm sang đăng nhập do xóa trạng thái lỗi trước khi API trả kết quả. Đã giữ trạng thái lỗi trong lúc thử lại; bài quyền độc lập và toàn bộ suite Docker đều pass sau sửa.
+- AC-05 không chờ rồi chạy lại: ghi quyền cho phép/từ chối trong từng hành trình; AC-06 chỉ tổng hợp báo cáo/health/cleanup một lần. Hai cổng vẫn mở tới khi đủ bằng chứng live theo tiêu chí.
+
+### Cập nhật phạm vi kiểm tra theo giao diện hiện hành
+
+- **FE-03:** kiểm tra khoảng ngày và tiến độ việc tự tính đang hiển thị; không còn coi nút QA nhập `Project %` là hành vi giao diện cần nghiệm thu. Dữ liệu/API cũ vẫn được giữ tương thích, nhưng không dùng để yêu cầu người dùng cập nhật thủ công.
+- **FE-04:** kiểm tra chuyển cách xem Danh sách/Bảng trên cùng Work Item; Scrum/Kanban vẫn là cấu hình dự án quyết định việc có Sprint, không phải nhãn trang trí trên thẻ dự án.
+- **FE-12:** kiểm tra copy và thông tin theo ngữ cảnh người dùng cuối; mã sự kiện, tên checkpoint và lời quảng bá/tagline rỗng không được tính là nội dung hợp lệ.
+- **FE-13:** giữ mọi route ở desktop 1440 px, kiểm tra các breakpoint khác trên từng bố cục đại diện. Chạy mọi route ở mọi kích thước chỉ khi thay đổi dùng chung có thể làm mất hiệu lực ma trận đại diện.
+- **FE-14:** 10 live case đang skip không được cộng vào số đạt; chạy chúng khi có token/phiên và cơ sở dữ liệu tạm được cấu hình an toàn.
+- **AC-05/AC-06:** không tạo hai lượt chờ riêng. Thu quyền theo nhóm trong các luồng A–D; cuối cùng chạy đúng một bước tổng hợp báo cáo, health và cleanup.
+
+### Cách nghiệm thu 36 cổng gọn hơn, không chạy 36 lượt độc lập
+
+36 mã là **36 tiêu chí cần có bằng chứng**, không phải 36 job phải chạy lần lượt. Chỉ giữ một trạng thái có thẩm quyền ở đầu tài liệu: 22/36 đã đóng, 14/36 đang mở. Các bảng trạng thái ở phần ghi chép cũ là lịch sử tại thời điểm viết, không được dùng để tăng/giảm bộ đếm hiện tại.
+
+#### Luồng nghiệm thu đã rút gọn
+
+Không dựng lại một dự án hoặc chạy một bộ test riêng cho từng mã. Dùng một fixture tổng hợp có namespace riêng cho các bước ghi; khi có thể, tái sử dụng dữ liệu đã tạo và đã đọc lại. Chạy bốn hành trình nghiệp vụ, thu bằng chứng quyền ngay trong hành trình, rồi chạy một bước tổng hợp cuối. Đây là lịch chạy mới thay cho cách “đợi từng mã xong rồi chạy mã kế tiếp”.
+
+| Bước | Hành trình / đầu ra | Cổng được gắn bằng chứng |
+|---|---|---|
+| 1 | Tài liệu → trích xuất → blueprint → Requirement/clarification → Test Case; đọc lại nguồn, version, citation và dữ liệu đã lưu | AI-01, AI-04, AI-14, FE-10 |
+| 2 | Đưa nguồn trùng/đã đổi vào cùng dự án → phát hiện trùng hoặc khác biệt → mô phỏng tác động → cập nhật đúng artifact, giữ nguyên lịch sử | AI-09, FE-05 |
+| 3 | Dùng Test Case đã xử lý → phân công → Test Plan/Run → kết quả/evidence → Defect/Release nếu có trong luồng đang hỗ trợ; xác nhận giao diện hiển thị đúng trạng thái | AI-15, AI-16, AC-01, FE-14 |
+| 4 | Tiêm lỗi tại từng ranh giới khác nhau trong cùng fault matrix → xác minh retry/checkpoint/fencing/rollback và trạng thái cuối; đọc lại trace/audit MCP | AI-11, AC-04 |
+| Xuyên suốt | Ghi allow/deny của API và giao diện khi chạy các hành trình trên; gom theo nhóm quyền thực sự khác nhau, không lặp cùng guard trên mọi route/viewport | AC-05 |
+| Cuối cùng | Một bước tổng hợp báo cáo bốn hành trình và AC-05, kiểm tra snapshot/hash phụ thuộc, health, kết quả cleanup; chỉ phát lại bước bị lỗi hoặc hết hiệu lực | AC-06 |
+
+AC-05 và AC-06 **không phải tác vụ chờ hệ thống chạy xong**: AC-05 là bộ sưu tập assertions quyền trong các luồng 1–4; AC-06 là bước tổng hợp ngắn sau cùng. Không khởi động suite riêng cho chúng và không chạy regression toàn bộ lần thứ hai chỉ để “đủ 36”. Hai tiêu chí vẫn chỉ được đóng nếu bằng chứng tương ứng đạt.
+
+#### Giảm thời gian mà không giảm điều kiện đạt
+
+- Trước khi chạy, kiểm tra hash phụ thuộc của từng bằng chứng đã có. Giữ nguyên bằng chứng nếu code, image, schema, endpoint, quyền và môi trường của cổng đó không đổi; chỉ chạy lại cổng bị ảnh hưởng. Không dùng một hash toàn repo làm lý do chạy lại mọi thứ.
+- Cài đặt/khởi động một lần: một stack Docker, một fixture/namespace, một lần đăng nhập cho mỗi role cần thiết. Reuse cùng dữ liệu xuyên các hành trình; dọn một lần sau khi toàn bộ bước phụ thuộc đã kết thúc.
+- Chạy song song chỉ các hành trình ghi trên namespace độc lập. Nếu dùng chung fixture thì chạy theo phụ thuộc, không để hai worker cùng sửa một artifact.
+- Tách thời gian kiểm tra mã nguồn khỏi kiểm tra hệ thống: format/lint/build một lần trên snapshot cuối; API/browser chỉ chạy các nhánh live cần bằng chứng. Không build lại image cho mỗi cổng.
+- Mỗi cổng có điều kiện dừng cụ thể: một lỗi thì lưu trace và dừng nhánh phụ thuộc vào artifact sai, nhưng tiếp tục các nhánh độc lập; sửa theo nhóm nguyên nhân rồi chỉ phát lại các nhánh hết hiệu lực. Không để một luồng fail kéo cả 36 mã chạy lại.
+- Báo riêng `đạt`, `không đạt`, `chưa chạy` và `bị chặn`. Thời lượng ngắn hơn không biến ca bị skip, dữ liệu thiếu hay môi trường giả lập thành bằng chứng đạt.
+
+#### AC-05 — thu bằng chứng quyền trong các luồng, không chạy một vòng chờ riêng
+
+- Lập danh mục quyền từ route metadata và API/service hiện có. Gộp các route chỉ khi chúng cùng dùng một guard/quy tắc quyền; không gộp khác biệt giữa đọc, tạo, sửa, duyệt, quản trị hoặc truy cập ngoài dự án.
+- Với **mỗi nhóm quyền khác nhau**, kiểm tra ít nhất một trường hợp được phép và một trường hợp bị từ chối ở API. Ở giao diện kiểm tra mục điều hướng, mở URL trực tiếp và trạng thái nội dung cho các role liên quan; không chạy lại cùng kiểm tra quyền trên mọi viewport.
+- Kiểm tra mọi route workspace ở desktop 1440 px; kiểm tra thêm năm kích thước trên các route đại diện cho từng bố cục. Chỉ lặp theo role khi quyền làm thay đổi nội dung hoặc hành động nhìn thấy.
+- Gắn kiểm tra quyền vào các hành trình đang kiểm thử theo role. AC-05 là **bảng đối chiếu/thu bằng chứng xuyên suốt**, không phải suite chờ các bài khác chạy xong rồi mới bắt đầu, cũng không cần chạy suite thứ hai bao trùm lại cùng thao tác.
+- Khi route metadata, permission service, endpoint hoặc vai trò đổi, chạy lại các hàng phụ thuộc. Thay đổi CSS không làm chạy lại kiểm tra API quyền; thay đổi API không làm chạy lại toàn bộ ma trận responsive.
+
+#### AC-06 — tổng hợp một lần, không phải bài test dài để chờ
+
+- Khi các luồng kết thúc, thực hiện một bước tổng hợp duy nhất từ báo cáo đã sinh: đối chiếu mã nguồn và service image, tìm cổng thiếu/sai hash, kiểm tra Docker health, dữ liệu thử còn sót và kết quả dọn. Đây là quy tắc nghiệm thu; tài liệu không giả định đã có script tổng hợp tự động. Không dành một lượt test tương tác riêng để ngồi đợi các suite.
+- Chỉ chạy lại suite nào có bằng chứng thiếu, thất bại hoặc bị vô hiệu bởi thay đổi phụ thuộc. Không chạy lại toàn bộ 36 suite chỉ để tạo một báo cáo tổng; cũng không coi báo cáo cũ có hash khác là còn hiệu lực.
+- AC-06 không được đóng nếu còn cổng mở, luồng bắt buộc chưa có bằng chứng runtime, hoặc cleanup chưa được xác nhận. Nếu không có thay đổi sau các bằng chứng đạt, lượt cuối chỉ làm kiểm tra tổng hợp cộng smoke khởi động/health, không dựng lại mọi service.
+
+#### Quy tắc tái sử dụng bằng chứng
+
+- Mỗi bản ghi bằng chứng lưu mã cổng/assertion, commit hash, hash file/phụ thuộc liên quan, image digest, URL/API, role, dữ liệu fixture, trace/run ID và kết quả cleanup.
+- Bằng chứng chỉ hết hiệu lực khi thay đổi chạm tới phụ thuộc đã ghi, test liên quan thất bại/tái hiện lỗi, hoặc môi trường/image khác. Không dùng một hash toàn repository để buộc chạy lại những phần không liên quan.
+- Chia sẻ fixture theo hành trình và dọn một lần sau khi mọi bước phụ thuộc đã kết thúc. Không xóa fixture khi worker còn chạy; mỗi bước phải idempotent hoặc có thể đọc lại trạng thái trước khi retry.
+- Có thể chạy song song các hành trình chỉ khi chúng dùng database/namespace tách biệt. Không chạy đồng thời hai luồng ghi lên cùng fixture.
+- Giữ nguyên yêu cầu live evidence, quyền allow/deny, rollback, retry và cleanup; rút ngắn bằng cách loại bỏ setup và suite trùng, không bằng cách bỏ tiêu chí.
 
 - Danh sách dự án dùng lịch chọn **ngày cụ thể**, không lọc cả tháng; chọn ngày sẽ giữ lại dự án có lịch dự kiến bao gồm ngày đó, bỏ ngày lọc sẽ hiện lại mọi dự án. Mỗi thẻ gom trạng thái và ngày cập nhật thành một cụm. E2E của lịch chọn ngày đạt trên Docker. Automation history hiển thị tên hành động người dùng thay mã sự kiện nội bộ (ví dụ `DOCUMENT_INGESTED` → “Rà soát tài liệu mới”). Trên production build, `pnpm format:check`, `pnpm lint`, `next build` đều đạt; frontend Docker được dựng lại và healthcheck healthy. Toàn bộ E2E: **97 đạt, 10 live tests bị bỏ qua, 0 thất bại**; các ca bị bỏ qua cần cấu hình API/fixture live riêng. Ma trận browser **40 workspace route × 5 viewport (1920, 1440, 1280, 768, 390)** đạt không tràn ngang. Bốn bài retry/refresh AI và planning đạt trong lượt tổng.
 - Đây là bằng chứng giao diện/API mock trên production build, không đóng các cổng cần thao tác live API theo vai trò. Bằng chứng live read-only FE-14 trước đó là 7/7; compare/save và revision conflict live vẫn cần DB disposable. Bộ đếm giữ nguyên **22/36**, 14 ID mở.
@@ -111,9 +178,9 @@ Người dùng yêu cầu hoàn tất toàn bộ phần còn thiếu trước kh
 
 ### Cách hiểu đúng số lượng tồn đọng
 
-36 mã là cổng nghiệm thu, không phải 36 chức năng chắc chắn chưa có code. Trạng thái hiện hành: **16/36 cổng đã đóng; 20 cổng còn mở**. AI-10 và AI-15 được gác lại; cổng đang làm là AI-09. Các bằng chứng cũ bên dưới là lịch sử; trạng thái đóng hiện hành chỉ theo các mục được đánh dấu rõ và có biên bản kết quả.
+Đây là snapshot lịch sử trước khi danh sách điều phối được cập nhật: khi đó ghi 16/36 đã đóng. Trạng thái dùng hiện nay là 22/36 đã đóng, 14/36 còn mở ở đầu tài liệu; không dùng đoạn snapshot này để tính hoặc lên lịch test.
 
-Danh sách cổng là AI-01–AI-16, FE-01–FE-14 và AC-01–AC-06. AI-02, AI-03, AI-05, AI-06, AI-07, AI-08, AI-12, AI-13, FE-02, FE-03, FE-06, FE-11, FE-12, FE-13, AC-02 và AC-03 đã đóng; các điều kiện còn thiếu của từng cổng đang mở được ghi trong bảng bên dưới. Có code hoặc test cũ không tự đóng cổng. Thứ tự hiện tại là **cổng ngắn nhất còn mở trước**, có xét phụ thuộc và bằng chứng đã có. Không chạy lại suite xanh trừ khi source liên quan đổi hoặc có lỗi tái hiện.
+Danh mục chuẩn gồm AI-01–AI-16, FE-01–FE-14 và AC-01–AC-06. Đoạn phân loại kế tiếp thuộc snapshot lịch sử; dùng danh sách 14 cổng còn mở và nhóm hành trình ở đầu tài liệu để điều phối. Test cũ chỉ được tái sử dụng khi hash phụ thuộc và môi trường còn hiệu lực.
 
 #### Luồng chạy nghiệm thu tiết kiệm thời gian
 
@@ -259,7 +326,7 @@ Các mã dưới đây là phạm vi cần hoàn thiện hoặc nối tích hợ
 - AI-15 — kiểm tra nguồn CV theo ranh giới từ: đối chiếu chuỗi con trước đây cho phép claim “Java” khớp vào “JavaScript”. AI extraction, Testing API và schema hồ sơ nay chuẩn hóa Unicode NFC/khoảng trắng rồi yêu cầu ranh giới token; bổ sung regression cho cả output AI lẫn dữ liệu lưu hồ sơ. Chưa chạy test theo yêu cầu dồn kiểm chứng sau khi ghép đủ 16 luồng; AI-15 vẫn mở.
 - AI-16 — trạng thái lượt chạy đang mở: danh sách gần đây đã được làm mới định kỳ nhưng trạng thái toàn luồng trong chi tiết đang mở không được đồng bộ từ payload danh sách; khi có lượt con mới, panel có thể tiếp tục hiển thị trạng thái cha cũ cho tới khi mở lại. Nay đồng bộ snapshot của đúng lượt đang chọn từ API list/readback; hàng rào request bỏ response danh sách cũ khi đổi dự án, đổi lượt đang chọn hoặc có lần tải mới hơn. Đã thêm regression logic và E2E mô phỏng lượt con xuất hiện khi lượt cha đang chờ làm rõ. Chưa chạy test/browser hoặc xác minh sự kiện runtime; AI-16 vẫn mở.
 - AI-01 — rà soát source tiếp: đã đối chiếu claim lease, fencing theo dispatch event, retry/dead-letter, rollback Qdrant/BM25 và cleanup nguồn thay thế. Không thấy lỗi source mới đủ căn cứ để vá trong lượt này; còn thiếu xác minh chạy đồng thời, quyền bị thu hồi, crash/restart và readback trên stack thật. AI-01 vẫn mở.
-- AI-02 — scan trùng Requirement: `list_requirements` mặc định lấy tối đa 500, phiên bản hiện hành tối đa 500, Acceptance Criteria tối đa 10.000; scan trước đây vẫn ghi `COMPLETED` nếu dữ liệu vượt các mức đó và bị cắt lặng lẽ. Thêm giới hạn typed qua cấu hình, đọc thêm một bản ghi làm sentinel và từ chối scan nếu vượt giới hạn hoặc thiếu current version; không tạo kết quả scan giả đủ đầy. Thêm regression cho vượt giới hạn Requirement và thiếu version; chưa chạy test. AI-02 vẫn mở.
+- AI-02 — scan trùng Requirement: `list_requirements` mặc định lấy tối đa 500, phiên bản hiện hành tối đa 500, Acceptance Criteria tối đa 10.000; scan trước đây vẫn ghi `COMPLETED` nếu dữ liệu vượt các mức đó và bị cắt lặng lẽ. Thêm giới hạn typed qua cấu hình, đọc thêm một bản ghi làm sentinel và từ chối scan nếu vượt giới hạn hoặc thiếu current version; không tạo kết quả scan giả đủ đầy. Thêm regression cho vượt giới hạn Requirement và thiếu version; chưa chạy test. AI-02 còn mở tại snapshot lịch sử này; hiện đã đóng và không thuộc 14 cổng mở.
 
 - FE-04/AC-04 — khởi tạo workflow Kanban: nếu API đọc workflow là thao tác đầu tiên trên dự án Kanban chưa có board, khởi tạo workflow trước đây tạo nhầm board mặc định kiểu Scrum; thao tác chuyển cột sau đó bị chặn vì board sai phương thức. Workflow khởi tạo nay lấy `planning_method` của chính dự án trước khi tạo board. Chưa chạy test/API/Docker; FE-04 và AC-04 vẫn mở.
 - AI-12/FE-11 — benchmark tổng hợp trước đây chỉ có route nội bộ nên Admin không thể chạy và xem kết quả từ giao diện. Bổ sung route AI xác thực phiên Admin để đọc lịch sử và chạy ba pipeline trên bộ 30 tình huống tổng hợp × ba lượt; thêm mục Benchmark AI trong Vận hành nền tảng, hiển thị điểm trung bình, min–max, số lượt có điểm, lịch sử, lỗi và đầu ra bị từ chối. Giao diện nêu rõ đáp án sinh theo quy tắc tình huống, không được chuyên gia độc lập xác nhận và không chứng minh ưu thế tổng quát. Chưa chạy API/frontend/Docker hoặc gọi model; AI-12, FE-11 và AC-06 vẫn mở.
@@ -495,12 +562,12 @@ Bộ scan có ground truth là điều kiện đánh giá độ chính xác OCR,
 - Khi ghi nhận snapshot lịch sử này, inventory có 36 cổng và một số cổng được đánh dấu đóng trong phạm vi hẹp. Những đánh dấu đó không thay cho lượt nghiệm thu tổng và không phải trạng thái hiện hành.
 - AI-05 đóng trong phạm vi Test Case lifecycle: Testing suite toàn bộ **354 passed + 46 subtests**, nhóm compare/merge **52 passed**, smoke API/Mongo kiểm tra quyền Tester/QA, stale source/revision, duplicate batch không side effect, idempotency và cleanup; fault injection trên Mongo replica set xác nhận lỗi giữa giao dịch duyệt nhóm rollback toàn bộ Test Case/version/audit/outbox. Không dùng việc FE-06 còn mở để phủ định bằng chứng backend/API của AI-05.
 - AI-10 đóng trong phạm vi độ tin cậy của automation event: fault injection cô lập đã xác nhận Mongo transaction rollback, RabbitMQ unacked redelivery sau khi consumer bị kill không chạy handler hai lần, lỗi provider tạm thời và outbox được retry, lease/fencing và phục hồi; kiểm tra Mongo runtime riêng xác nhận thu hồi quyền chặn lượt mới, chờ lease đang hoạt động kết thúc rồi mới hoàn tất, và cho phép lại sau drain. Provider được kiểm tra bằng stub cục bộ, không phải xác nhận độ sẵn sàng của nhà cung cấp bên ngoài; timeout ngoài runtime còn dựa một phần vào regression. Đây là phạm vi lỗi/khôi phục của AI-10, không đóng AC-04 hay khẳng định mọi tích hợp ngoài đều đã được nghiệm thu.
-- AI-02 vẫn mở vì chưa có smoke phiên bản nguồn trùng/mâu thuẫn và tác động downstream thật. FE-06 hiện đã có thêm smoke browser happy-path compare/merge qua API gắn đúng source workspace; các nhánh stale/conflict, duplicate, lỗi mạng/retry và rollback UI vẫn chưa được nghiệm thu trọn cổng.
+- Ghi chép này thuộc snapshot cũ. Trạng thái hiện hành của AI-02 và FE-06 là đã đóng; không chạy lại các nhánh này trừ khi có regression mới được tái hiện.
 - Lượt làm việc hiện tại: các kết quả song song mới nhất là 151 regression tài liệu/provenance, 255 regression AI event/benchmark, 60 regression change simulation/graph, 42 regression hồ sơ năng lực/phân công, 9 kiểm tra quyền route và Playwright **47 passed, 1 skipped**. Thêm smoke compare/merge browser qua API Testing chạy bằng source workspace cô lập: **1 passed**, lưu bản ghép thành nháp revision 2 và xác nhận bản gốc còn nguyên sau tải lại. `pnpm quality` đạt ở lượt trước với `NEXT_PUBLIC_API_URL=http://localhost:8000`. LangSmith trả 429 do hết quota trace trong một lượt suite; đây không phải bằng chứng trace cloud. E2E phần lớn vẫn dùng mock; các kết quả trên chưa đóng toàn bộ cổng AI/FE/AC.
 
 ## Danh sách cổng còn tồn đọng — dùng để điều phối một lượt hoàn thiện/nghiệm thu
 
-Danh sách này rút gọn các điều kiện còn thiếu của bảng nghiệm thu bên dưới; không thay thế tiêu chí chi tiết của từng cổng. Inventory có 36 cổng; AI-02, AI-03, AI-05, AI-06, AI-07, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng, còn 25 cổng mở. Cổng chỉ được xác nhận đạt khi đủ bằng chứng đúng phạm vi trên snapshot hiện hành.
+Danh sách này rút gọn các điều kiện còn thiếu của bảng nghiệm thu bên dưới; không thay thế tiêu chí chi tiết của từng cổng. Bảng chi tiết bên dưới được ghi ở các thời điểm khác nhau và không còn là nguồn đếm hiện hành. Trạng thái chuẩn hiện tại là 22/36 đã đóng, 14 còn mở như danh sách ở đầu tài liệu; các đoạn ghi 25 cổng mở là snapshot cũ. Không dùng các con số trong ghi chép lịch sử để điều phối lượt chạy mới.
 
 ### AI — 16 cổng nghiệm thu
 
@@ -515,7 +582,7 @@ Danh sách này rút gọn các điều kiện còn thiếu của bảng nghiệ
 | AI-07 | Execution/Defect/retest và một số nhánh Release gate đã có bằng chứng runtime; regression gộp mới nhất đạt 99 bài Testing, 117 bài AI và ma trận JWT role HTTP. Còn E2E Assurance/evidence fail-closed qua worker, failure/retry/recovery và tích hợp report/Release trên scope thật. |
 | **AI-08 — ĐÃ ĐÓNG** | Work Item, quyền, WIP/dependency, phân trang, liên kết Requirement/Test Case, sự kiện lặp và cross-project đã có bằng chứng runtime theo biên bản đóng cổng ngày 28/10 ở cuối tài liệu. Recovery/restart worker được kiểm tra một lần tại AI-10/AC-04, không tính trùng vào cổng này. |
 | AI-09 | Regression mô phỏng nhiều lô và scope freshness có trong source, nhưng chưa chạy runtime. Đối chiếu route hiện tại: API tạo lượt chạy trực tiếp trả `410 DIRECT_AUTOMATION_RUN_RETIRED`; event Requirement Changed tạo run loại `EVENT`, trong khi worker chỉ bật chế độ `change_simulation` theo `AutomationKind.CHANGE_SIMULATION`. Chưa tìm thấy producer/event công khai nào tạo loại run này. Vì vậy chưa thể nghiệm thu mô phỏng đầu-cuối bằng cách gọi API đã nghỉ; cần xác định/nối trigger được hỗ trợ rồi kiểm tra nhiều lô, đúng artifact bị ảnh hưởng và giữ nguyên lịch sử Test Plan/Run. Đây là rà soát source, chưa khẳng định đã xác minh phản hồi `410` trên runtime. |
-| AI-10 | Từng có fault-injection riêng cho worker/outbox, nhưng chưa chạy lại trên source/image cuối cùng cùng các sự kiện nghiệp vụ, cleanup và báo cáo của snapshot nghiệm thu. |
+| **AI-10 — ĐÃ ĐÓNG** | Fault-injection runtime xác nhận transaction rollback, RabbitMQ redelivery sau khi dừng consumer không chạy handler lặp, provider retry/outbox, lease/fencing, phục hồi checkpoint và thu hồi quyền/drain; regression service và dữ liệu tạm đã được dọn. Phạm vi provider ngoài được kiểm bằng stub, không khẳng định độ sẵn sàng của nhà cung cấp. |
 | AI-11 | Chưa có lượt event/outbox/worker gọi MCP thật với audit/evidence đọc lại. Phoenix đã được self-host và trace đã được xác minh qua lần gọi LangGraph smoke; cần kiểm tra một automation job thật cùng event/MCP call và audit/evidence trên cùng trace. |
 | **AI-12 — ĐÃ ĐÓNG** | Benchmark kỹ thuật tổng hợp đã chạy 3 pipeline × 30 tình huống × 3 lượt thật; cả ba báo cáo COMPLETE, không có lỗi provider. Raw output được chấm lại bằng scorer v3 hiện tại; 82 test mục tiêu đạt. Đóng theo phạm vi dữ liệu tổng hợp đã chốt, không dùng kết quả để khẳng định AI đúng hay ưu thế ngoài bộ dữ liệu. |
 | **AI-13 — ĐÃ ĐÓNG** | Prompt owner, capability/public contract, ngôn ngữ chỉ dẫn, quote bắt buộc, đầu ra provider có cấu trúc và call-site contract được kiểm tra trên source hiện tại: 56 passed, 66 subtests passed. |
@@ -529,7 +596,7 @@ Danh sách này rút gọn các điều kiện còn thiếu của bảng nghiệ
 |---|---|
 | **FE-01 — ĐÃ ĐÓNG** | Docker build và ma trận 240 route/session; BA được phép, BA bị thu hồi membership và Admin không có membership đều bị API từ chối `403`, UI chuyển về `/du-an` và không lộ nội dung; route lạ, drawer và bàn phím ở 390px đạt. |
 | **FE-02 — ĐÃ ĐÓNG** | 17/17 Playwright E2E đạt trên Next dev từ source hiện tại ở 1920/1440/1280/768/390 px; bao phủ trang public, login, reset/verify, Google callback success/error, session hết hạn/refresh lỗi, route bảo vệ và role Admin. API UI được stub để kiểm soát trạng thái; endpoint login thật qua Docker Gateway từ chối user không tồn tại với 401. Đóng phạm vi giao diện và hợp đồng gọi API frontend, không tuyên bố OAuth provider hoặc toàn bộ backend auth đã được xác minh. Báo cáo tổng hợp đã ghi; tệp E2E tạm được dọn, không build image. |
-| FE-03 | **ĐÃ ĐÓNG.** FE UI `project-create.spec.js` đạt **4/4** trên Next dev từ source hiện tại: tạo/giữ form khi lỗi, ngày dự kiến, Project% và Tasks% riêng, QA chỉnh còn Tester chỉ xem; các bài UI dùng API stub. Runtime Docker API/DB: tạo Kanban project 201, ngày được lưu và đọc lại ở detail/list, BA kiêm QA tạo đúng một membership có cả hai role; QA ID không hợp lệ trả 404 và không tạo Project; ngày sai trả 422 và không tạo Project. Update Project 200, update với revision cũ 409; thêm thành viên 201 và đọc lại thấy thành viên; archive/restore đều 200. List/detail trả phương thức và số liệu. Project progress runtime: không đăng nhập 401, Tester cập nhật bị từ chối 403, QA cập nhật 200, revision cũ trả 409, giá trị được đọc lại, Tasks%=40.0 theo trọng số và task hủy bị loại, audit có đúng một sự kiện. Bài kiểm tra list/detail xác nhận cùng Tasks%=40.0 và Project%=64 sau cập nhật. Dữ liệu thử đã xóa và số lượng Project/membership/task/audit sau dọn đều bằng 0. `test_project_creation_transaction.py` cũng đạt **2/2**; đây chỉ là bổ sung kiểm tra hợp đồng transaction bằng mock, không dùng thay thế kết quả runtime. Phạm vi đóng là CRUD dự án/thành viên, ngày/phương thức/tiến độ dự án; Scrum/Kanban board, sprint, WIP và roadmap thuộc FE-04. |
+| **FE-03 — ĐÃ ĐÓNG** | Phạm vi giao diện hiện hành là ngày dự án và tiến độ công việc tự tính; không còn yêu cầu người dùng nhập Project% hay hiện chip Scrum/Kanban trên thẻ. `project-create.spec.js` chạy trên Next dev đạt **5/5**: tạo dự án/giữ form khi lỗi, ngày, tiến độ Tasks, không hiển thị 0% khi chưa có công việc, overview thống nhất giữa QA/Tester và lọc lịch theo ngày. UI test dùng API mô phỏng. Bằng chứng Docker API trước đó vẫn xác nhận tạo/sửa dự án, ngày, membership, Tasks% theo trọng số và revision conflict; API Project% cũ được giữ tương thích nhưng không còn là thao tác người dùng trong giao diện. Dữ liệu thử cũ đã dọn. Scrum/Kanban, Sprint, WIP và Roadmap thuộc FE-04. |
 | **FE-04 — ĐÃ ĐÓNG** | Nghiệm thu Planning tổng hợp đạt: 9/9 bài Playwright UI; API live xác nhận Scrum/Kanban, workflow revision conflict, dependency, Sprint lifecycle/scope lock, WIP reject và rollback, List/Board đồng nhất, roadmap; browser live kéo thả cả nhánh WIP bị chặn và nhánh hợp lệ. Đã dọn fixture và hậu kiểm không còn dữ liệu theo project ID/user ID. |
 | FE-05 | Import/template/Requirement version-review-baseline, citation, trùng/mâu thuẫn, Assurance/Clarification/change-impact theo role và lỗi/stale. |
 | **FE-06 — ĐÃ ĐÓNG** | Compare/merge và duyệt nhóm đã được nghiệm thu trên Docker: stale revision trả `409`; QA được phép, Tester bị `403`; duyệt nhóm và retry cùng `operation_id` không nhân bản; fault-injection rollback giữ nguyên draft và không để lại Test Case/version/audit dở dang; browser xác nhận giữ bản ghép khi gặp lỗi mạng sau commit. Xem biên bản đóng FE-06 ngày 28/10/2026. Không mở lại khi chưa có regression được tái hiện. |
@@ -550,8 +617,8 @@ Danh sách này rút gọn các điều kiện còn thiếu của bảng nghiệ
 | AC-02 | Nguồn trùng/mâu thuẫn không nhân bản/ghi đè; citation, quyết định và downstream impact chính xác. |
 | AC-03 | Requirement đổi sau khi ca đã chạy giữ lịch sử, chỉ ảnh hưởng đúng artifact và chạy lại đúng scope. |
 | AC-04 | Failure matrix provider/MCP/DB/outbox/worker/quyền/retry/restart, idempotency và cleanup. |
-| AC-05 | E2E giao diện theo role trên mọi route/action/viewport; API allow/deny được kiểm chứng riêng. |
-| AC-06 | Một lượt cuối full regression/build/browser/API/benchmark có báo cáo từng case, trace và xác nhận dọn hết dữ liệu test. |
+| AC-05 | Mỗi nhóm chính sách quyền có ca API cho phép/từ chối và kiểm tra UI tương ứng; viewport được kiểm theo lớp bố cục, không nhân toàn bộ tích role × route × action × viewport. |
+| AC-06 | Tổng hợp bằng chứng còn hiệu lực theo commit/phụ thuộc/image, chạy lại phần thiếu hoặc bị ảnh hưởng, health smoke và xác nhận cleanup; không lặp full regression lần hai. |
 
 ### Các yêu cầu người dùng vừa nhắc — vẫn thuộc cùng phạm vi, không được bỏ qua
 
@@ -609,7 +676,7 @@ Song song chỉ áp dụng cho triển khai không chồng file/API; trước ch
 - FE-10 sửa trạng thái lỗi tải ban đầu của AgentRunPanel để người dùng có thể gọi lại API thật; Playwright bơm hai lần 503 rồi kiểm tra lần tải lại hiển thị event/run đạt **9/9** trong nhóm AI UI. Prettier, ESLint và diff check đạt; Next dev tạm đã dừng. FE-10 vẫn mở vì chưa có live event/session update, phân loại đầy đủ thao tác automation/assistance và mọi nhánh role/checkpoint.
 - AI-14 sửa mã cảnh báo OCR: có điểm tin cậy theo trang nhưng chưa xác minh được văn bản thì ghi `OCR_TEXT_REQUIRES_SOURCE_REVIEW`, không nói sai rằng không có điểm tin cậy. AI parser/ingestion đạt **44/44**, Content indexing đạt **15/15** trong Docker tắt mạng, workspace chỉ đọc; diff check đạt. AI-14 vẫn mở vì chưa thử tài liệu scan đa ngôn ngữ thật và phục hồi Qdrant/BM25/ACL sau restart.
 - AI-11 runtime smoke không chạy được và đã bị dừng. Phát hiện clone `veriq_ai11_ai` kế thừa Qdrant/Neo4j từ `.env` chung: log Qdrant ghi **26 PUT payload-index thành công**, **10 lượt scroll**, một **PUT upsert point thành công**, và yêu cầu tạo collection tên `veriq` trả 400 do xung đột alias. Đọc chỉ sau đó xác nhận alias `veriq` vẫn trỏ `doclib`, collection hiện có 2.190 points; không có baseline trước lượt chạy nên chưa xác định được ID/số point nằm trong request upsert. Không thấy request delete payload trong log thời gian này. AI startup cũng chạy `CREATE CONSTRAINT ... IF NOT EXISTS` trên Neo4j chung. Container/DB thử nghiệm đã dừng/xóa; không chạy rollback hay thêm lệnh ghi lên Qdrant/Neo4j. Đây là side effect ngoài dự kiến cần được thông báo, không phải bằng chứng AI-11 đạt. Offline MCP/event regression đạt **80 tests**, network-disabled; live event, DB readback và LangSmith trace vẫn chưa kiểm chứng.
-- **Không đóng thêm cổng tổng thể ở batch lịch sử này**: mỗi kết quả mới chỉ phủ một phần tiêu chí. Các con số 32/36 ghi trong nhật ký là trạng thái lịch sử tại thời điểm 25/10/2026; chúng đã được thay thế bởi trạng thái hiện hành ở đầu tài liệu: AI-02, AI-03, AI-05, AI-06, AI-07, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng, còn 25/36 cổng mở. Danh sách và tiêu chí từng cổng ở các bảng phía dưới tiếp tục là nguồn theo dõi duy nhất.
+- **Không đóng thêm cổng tổng thể ở batch lịch sử này**: mỗi kết quả mới chỉ phủ một phần tiêu chí. Các con số 32/36 ghi trong nhật ký là trạng thái lịch sử tại thời điểm 25/10/2026; chúng đã được thay thế bởi trạng thái hiện hành ở đầu tài liệu: 22/36 đã đóng, 14/36 còn mở. Danh sách 14 mã mở ở đầu tài liệu là nguồn điều phối duy nhất.
 
 ## Lô đang xử lý tiếp theo — AI-04, AI-08, AI-12, AI-14, AI-16 — 25/10/2026
 
@@ -627,7 +694,7 @@ Song song chỉ áp dụng cho triển khai không chồng file/API; trước ch
 - Năm suite regression đạt **41/41** trên Testing container có SHA-256 source khớp workspace: assignment snapshot, tạo Run nguyên tử, idempotency, Release Assurance gate và traceability scope. Smoke dùng principal QA/Tester tổng hợp qua dependency override, giữ nguyên kiểm tra quyền nghiệp vụ trên Mongo; outbox và indexing được stub để không phát sinh tác động ngoài. Vì vậy đây là bằng chứng API/nghiệp vụ/transaction trong môi trường cô lập, không phải phiên đăng nhập thật hay kiểm chứng outbox/AI. Database thử nghiệm được drop trong `finally`; test files tạm trong container đã dọn.
 - AI-06 đóng trong phạm vi đã định nghĩa: Test Plan snapshot/approval, nhiều Run, assignment, revision conflict, scope, idempotency và luồng Tester thực thi đều có regression cùng smoke API/Mongo. Không suy rộng kết quả này sang FE-08 hoặc AC-01/05; các cổng đó vẫn cần kiểm thử giao diện và phiên/role đầu-cuối riêng.
 
-- Ghi chú này là snapshot lịch sử, không phải trạng thái hiện hành. Trạng thái hiện hành được định nghĩa ở đầu tài liệu: AI-02, AI-03, AI-05, AI-06, AI-07, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng, còn 25/36 cổng mở.
+- Ghi chú này là snapshot lịch sử, không phải trạng thái hiện hành. Trạng thái hiện hành được định nghĩa ở đầu tài liệu: 22/36 đã đóng, 14/36 còn mở; danh sách mở ở đầu tài liệu là nguồn chuẩn.
 - Luồng production theo `FRAMEWORK_VERIQ.md` mục 8–10: sự kiện/tài liệu có quyền → trích xuất có provenance → Bản thiết kế kiểm thử → xử lý Requirement → sinh/đối chiếu Test Case → các event Test Plan/Run/Defect/Work Item/Release → đọc lại và ghi receipt. Benchmark là lượt đối chứng riêng, không chạy sau mỗi lần nhập và không quyết định artifact dự án.
 - Docker hiện tại: toàn bộ service Veriq báo healthy, trừ Qdrant/Redis chỉ có trạng thái running (compose không khai báo healthcheck cho hai service này). Theo quyền đã cấp trước đó, chỉ build cache không dùng được dọn để giải phóng dung lượng; không xóa image, container hay volume dữ liệu. AI, Testing và Frontend image mới đã được chạy; AI `/suc-khoe`, Testing và Frontend trả HTTP 200/healthy. `auth.py` trong Testing container trùng SHA-256 với source.
 - MCP privacy gate trong source và container AI hiện tại đã được kiểm tra với chuỗi tổng hợp. Runtime thật trả REDACTED cho tên/số điện thoại giả và SAFE cho nội dung nghiệp vụ vô hại; probe cô lập cũng xác nhận BLOCKED khi scanner bị vô hiệu. Sửa thêm lỗ hổng: kết quả làm sạch rỗng hoặc sai kiểu không còn fallback về dữ liệu MCP thô. Hai test gateway tổng hợp xác nhận dữ liệu thô không vào prompt/observation/audit. Lượt mới chạy Testing outbox → AI worker/model Hugging Face → Agent tự chọn MCP cục bộ chỉ trả dữ liệu tổng hợp; event, lời gọi đọc, automation run và MCP audit hoàn tất. Đọc lại xác nhận source/project/artifact/version, quote/offset/hash, ACL và receipt khớp; đồng thời phát hiện lỗi provenance: SourceFact ghi `RETRIEVED_CHUNK` dù nguồn không có chunk ID, hash, trang hay span. Đã sửa để offset basis chỉ lấy từ metadata nguồn đã xác minh; full AI suite đạt **590 tests + 115 subtests**. Container tạm dùng dependency runtime và source mới chạy 4/4 nhánh provenance (UNKNOWN, chunk có metadata, canonical, citation) đạt. Build đầy đủ qua Dockerfile bị dừng sau hơn 4 phút không có tiến triển ở bước cài phụ thuộc; thay vào đó đã tạo image lớp mỏng từ image AI hiện có, cập nhật toàn bộ `src/` và recreate riêng AI. AI container mới healthy, `/suc-khoe` trả 200 và kiểm tra trong container xác nhận fact tự khai chunk không metadata được hạ về `UNKNOWN`. Post-fix event-worker MCP smoke đi qua outbox và MCP read, nhưng run mắc ở `ACTIONS_EXECUTED`, bị cancel sau khoảng 3 phút và không tạo final SourceFact/receipt/observation để đọc lại; checkpoint quote/offset/hash khớp, basis `UNKNOWN` là phù hợp vì nguồn không có metadata chunk, MCP audit completed và ACL đúng. Không retry model; fixture đã dọn, Mongo/Redis/Qdrant/Neo4j không còn bản ghi theo ID và server/chứng thư tạm đã dừng/xóa. AI-11 vẫn mở vì chưa có final receipt và LangSmith trả 429 nên không có trace cloud. Image cũ được giữ dưới tag rollback `veriq-ai:pre-provenance-20261025`; Dockerfile lớp mỏng tạm đã xóa.
@@ -643,7 +710,7 @@ Song song chỉ áp dụng cho triển khai không chồng file/API; trước ch
 
 ## Kiểm kê hiện trạng trước khi tiếp tục — 25/10/2026
 
-- Ghi chú lịch sử: danh sách nghiệm thu gồm **36 cổng**: AI-01–AI-16, FE-01–FE-14 và AC-01–AC-06. Tại thời điểm ghi, AI-05, AI-06, AI-10 và AI-13 được đánh dấu đóng trong phạm vi hẹp. Đây là ghi chú lịch sử; trạng thái hiện hành ở đầu tài liệu là AI-02, AI-03, AI-05, AI-06, AI-07, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng, còn 25/36 cổng mở. Không coi test lẻ hoặc việc có code là đóng cổng.
+- Ghi chú lịch sử: danh sách nghiệm thu gồm **36 cổng**: AI-01–AI-16, FE-01–FE-14 và AC-01–AC-06. Đoạn này ghi trạng thái của snapshot cũ. Trạng thái hiện hành được duy trì duy nhất ở đầu tài liệu và trong bảng điều phối 14 mã đang mở; không dùng ghi chú lịch sử để chạy lại test hoặc tính bộ đếm.
 - Luồng nghiệp vụ AI đang nhắm tới là nguồn có quyền → trích xuất và dấu vết nguồn → Blueprint nghĩa vụ/khoảng trống → Requirement → Test Case → Test Plan/Run → phân công → execution/defect → Assurance/Release/report. Các event thay đổi phải phân tích tác động theo liên kết; benchmark là đánh giá thực nghiệm offline, không nằm ở đầu luồng production.
 - Docker trước đó hết chỗ ghi: MongoDB restart mã 134 và WiredTiger báo `No space left on device`; đây là nguyên nhân các healthcheck chập chờn. Theo quyền đã cấp, lượt này chỉ xóa **5.572 GB build cache**; không đụng image, container hay volume. Sau đó Mongo ping trả `ok: 1`, toàn bộ service Veriq hiện báo healthy, API `/san-sang` của Content/Worker/Notification trả HTTP 200; overlay còn khoảng **3.6 GB**. AI image vẫn không mount source workspace và chưa có pytest/Ruff; chưa rebuild hoặc chạy test nghiệp vụ ghi dữ liệu.
 - Môi trường kiểm tra hiện tại: Python host có pytest nhưng thiếu `pydantic`; container AI có `pydantic` nhưng không có pytest/Ruff. `compileall`, `git diff --check` và smoke cục bộ của bộ che dữ liệu nhạy cảm đạt; lần pytest host cho Test Case dedup chưa collect được vì thiếu dependency. Đây không phải nghiệm thu chức năng.
@@ -684,7 +751,7 @@ Song song chỉ áp dụng cho triển khai không chồng file/API; trước ch
 - Regression toàn AI chạy lại sau thay đổi parser, dùng toàn bộ source/tests workspace trong `/dev/shm` và pytest cài tạm tại đó; endpoint provider/database ngoài được trỏ tới cổng test không kết nối, tracing tắt: **585 passed, 0 failed in 16.87s**. Thư mục test, dependency và file tạm đã được dọn; không ghi fixture vào MongoDB. Đây vẫn là suite unit/service, không đóng các cổng tích hợp.
 - Frontend gần nhất được ghi nhận: Playwright **45 passed, 1 skipped**, chủ yếu API giả lập; `pnpm quality` đạt ở lượt trước. Đây không phải kiểm chứng toàn bộ frontend/live role.
 - Không tạo test artifact mới trong repository và không ghi fixture vào MongoDB. Pytest và test copy được cài/chạy dưới `/tmp` của container hiện có, sau đó đã xóa bằng quyền container và xác minh đường dẫn không còn.
-- **Snapshot trước khi AI-07 đóng:** chỉ AI-13 đã đóng trong phạm vi prompt/schema/catalog/contracts; khi đó còn **35/36 cổng mở**: 15 AI (trừ AI-13), 14 frontend và 6 bài nghiệm thu tích hợp. Đây là trạng thái lịch sử; hiện AI-02, AI-03, AI-05, AI-06, AI-07, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng, còn 25/36 cổng mở. Bộ test 585 pass khi đó không thay thế các tiêu chí đầu-cuối.
+- **Snapshot trước khi AI-07 đóng:** chỉ AI-13 đã đóng trong phạm vi prompt/schema/catalog/contracts; khi đó còn **35/36 cổng mở**: 15 AI (trừ AI-13), 14 frontend và 6 bài nghiệm thu tích hợp. Đây là trạng thái lịch sử; trạng thái hiện hành là 22/36 đã đóng, 14/36 còn mở. Bộ test 585 pass khi đó không thay thế các tiêu chí đầu-cuối.
 - Theo quyền bạn đã cấp, lượt này chỉ xóa Docker build cache không dùng, thu hồi **7.441 GB**; không xóa image, container hay volume. Mongo đã khởi động lại, recovery WiredTiger hoàn tất, ping trả `1`; Mongo và các service AI/Testing/Content/Worker hiện healthy. Overlay còn khoảng **3.7 GB** lúc kiểm tra, nhưng builder đã tái tạo khoảng 892 MB cache đang hoạt động; chưa rebuild image.
 - `veriq_ai` vẫn healthy nhưng chưa được rebuild: SHA-256 parser trong container là `a742b342…`, còn source hiện tại sau sửa là `3380bd1f…`. Vì vậy các test focused chạy từ source mới trong `/dev/shm`, **chưa xác nhận source đó đang chạy qua API live**. Rebuild/recreate lúc này có thể làm gián đoạn container hiện hữu; không xóa image hay volume khi chưa có chỉ dẫn mới.
 
@@ -914,15 +981,15 @@ Rà tiếp phát hiện endpoint retry của tài liệu thay thế không truy�
 
 ## Bảng tiến độ tổng
 
-Inventory có **36 tiêu chí nghiệm thu**. AI-02, AI-03, AI-05, AI-06, AI-07, AI-08, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng theo phạm vi cổng; còn **24/36 cổng mở**. Đây không phải khẳng định 24 chức năng chưa được code; mỗi dòng phân biệt phần đã có với phần cần hoàn thiện hoặc kiểm chứng.
+Snapshot bảng tổng cũ đã được thay thế. Hiện có **36 tiêu chí**, trong đó **22 đã đóng, 14 đang mở**. Nhóm mở hiện hành: AI 7, Frontend 3, nghiệm thu tích hợp 4. Các bảng chi tiết lịch sử bên dưới chỉ để tra nguồn bằng chứng, không được dùng làm inventory hoặc bộ đếm mới.
 
 | Nhóm | Còn mở | Bao gồm |
 |---|---:|---|
-| AI | 8 | AI-01 đến AI-16, trừ AI-02, AI-03, AI-05, AI-06, AI-07, AI-08, AI-12 và AI-13 đã đóng |
-| Frontend | 10 | FE-01 đến FE-14, trừ FE-02, FE-03, FE-06 và FE-13 đã đóng |
-| Nghiệm thu đầu-cuối | 6 | AC-01 đến AC-06: ba luồng nghiệp vụ, lỗi/tính lặp, quyền/UI toàn hệ thống và lượt regression cuối có cleanup |
+| AI | 7 | AI-01, AI-04, AI-09, AI-11, AI-14, AI-15, AI-16 |
+| Frontend | 3 | FE-05, FE-10, FE-14 |
+| Nghiệm thu đầu-cuối | 4 | AC-01, AC-04, AC-05, AC-06 |
 
-Các cổng AI/FE/AC chỉ đóng khi bằng chứng đạt đủ phạm vi. AI-02, AI-03, AI-05, AI-06, AI-07, AI-08, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng theo phạm vi có ghi; cổng tiếp theo được chọn theo thời gian còn lại để đóng trọn và phụ thuộc, sau đó nghiệm thu AC-01–06 tích hợp cuối.
+Trạng thái trong đoạn tổng hợp cũ không còn có thẩm quyền. Chỉ dùng bộ đếm và danh sách mở ở đầu tài liệu; giữ tiêu chí đạt của 36 cổng, gộp các bước chạy theo bốn hành trình thay vì khởi chạy một suite cho từng mã.
 
 Quy tắc theo dõi tiến độ: **chỉ đánh dấu 36 cổng lớn AI-01–AI-16, FE-01–FE-14, AC-01–AC-06**. Các lần chạy con, nhánh cho phép/từ chối và bằng chứng kỹ thuật chỉ ghi trong phần chứng cứ của cổng cha; không tính thành mục hoàn tất riêng hoặc phần trăm tiến độ. Cổng đã đóng được giữ nguyên; chỉ mở lại nếu có regression được xác nhận.
 
@@ -966,10 +1033,10 @@ Danh sách dưới đây là chỉ mục ngắn của toàn bộ tiêu chí chư
 | AC-02 | Nguồn trùng/mâu thuẫn được xử lý không nhân bản/ghi đè; evidence, quyết định và tác động downstream chính xác. |
 | AC-03 | Requirement đổi sau khi chạy giữ lịch sử, tác động đúng artifact, duyệt version liên quan và chạy lại đúng scope. |
 | AC-04 | Failure matrix end-to-end gồm retry/restart/provider/MCP/DB/outbox/thu hồi quyền; chứng minh idempotency và cleanup. |
-| AC-05 | Browser E2E toàn route/action theo role và viewport; xác minh API allow/deny độc lập giao diện. |
-| AC-06 | Một lượt nghiệm thu regression/build/browser/API/benchmark cuối có mã case, role, request, expected/actual, trace và cleanup dữ liệu. |
+| AC-05 | Theo từng nhóm quyền khác nhau: API allow/deny, UI điều hướng/direct URL và viewport theo lớp bố cục; bằng chứng gắn với luồng tương ứng. |
+| AC-06 | Đối chiếu danh mục bằng chứng, hash nguồn/image, health, cổng thiếu và cleanup; chỉ chạy lại suite bị thiếu/thất bại/vô hiệu. |
 
-Không tính các cổng trên là “xong” chỉ bằng cách thêm test hoặc ghi chú. Trước lượt nghiệm thu cuối, tiếp tục hoàn thiện implementation còn thiếu; sau đó chạy toàn ma trận một lượt, sửa lỗi phát hiện được và chạy lại ma trận đầy đủ nếu có thay đổi ảnh hưởng.
+Không tính các cổng trên là “xong” chỉ bằng cách thêm test hoặc ghi chú. Trước lượt nghiệm thu cuối, tiếp tục hoàn thiện implementation còn thiếu; sau đó chạy các hành trình tích hợp đã nhóm ở đầu tài liệu. Khi phát hiện lỗi, sửa và chạy lại các assertion/phần phụ thuộc bị ảnh hưởng; chỉ chạy lại ma trận rộng nếu lỗi cho thấy phạm vi tác động thực sự rộng hoặc không xác định được.
 
 ### Trạng thái thực tế để tránh hiểu nhầm “36 mục chưa làm gì”
 
@@ -987,7 +1054,7 @@ Không tính các cổng trên là “xong” chỉ bằng cách thêm test ho�
 
 ### Danh sách tiêu chí nghiệm thu theo từng mã
 
-Một cổng chỉ đóng khi đạt toàn bộ phạm vi ghi ở bảng nghiệm thu, không phải chỉ vì có code hoặc unit test. Trạng thái hiện hành: AI-02, AI-03, AI-05, AI-06, AI-07, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng; còn 25 cổng mở.
+Một cổng chỉ đóng khi đạt toàn bộ phạm vi của nó, không phải chỉ vì có code hoặc unit test. Dòng trạng thái này là snapshot cũ; dùng bộ đếm 22/36 và danh sách 14 mã đang mở ở đầu tài liệu.
 
 | Cổng | Phần còn phải hoàn tất và chứng minh |
 |---|---|
@@ -1025,8 +1092,8 @@ Một cổng chỉ đóng khi đạt toàn bộ phạm vi ghi ở bảng nghiệ
 | AC-02 | Tài liệu trùng/mâu thuẫn không tạo bản sao hay ghi đè; nguồn, quyết định và tác động downstream chính xác. |
 | AC-03 | Requirement đổi sau khi đã chạy test: giữ lịch sử, chỉ tác động đúng artifact và tạo Run/version mới theo scope. |
 | AC-04 | Failure matrix tổng hợp provider/MCP/DB/outbox/worker/revoke/retry/restart/idempotency và cleanup. |
-| AC-05 | Role × route/action × API × viewport: kiểm tra cho phép/từ chối độc lập giữa UI và backend. |
-| AC-06 | Chạy một lượt nghiệm thu cuối có mã case, role, request, expected/actual, trace, report build/browser/API/benchmark và xác nhận cleanup. |
+| AC-05 | Kiểm tra quyền theo nhóm guard/service: ca được phép và bị từ chối ở API cùng UI; không chạy lại mọi tổ hợp viewport. |
+| AC-06 | Tổng hợp một lần các bằng chứng có hash khớp, health smoke, lỗi còn mở và cleanup; chạy lại đúng phần bị ảnh hưởng. |
 
 **AC-05 kiểm tra môi trường — 29/10/2026:** Docker Testing không có biến E2E chứa role token, phiên đăng nhập hoặc project ID; frontend container cũng không có cấu hình E2E/auth tương ứng. Không tạo dữ liệu, mint token hay bỏ qua xác thực trong lượt này. Vì vậy chưa có phiên được cấp quyền để chạy ma trận UI/API live; AC-05 vẫn mở.
 
@@ -1034,7 +1101,7 @@ Thứ tự đóng phụ thuộc: AI-01–AI-12/14–16 và FE-01–FE-14 phải 
 
 **AI-13 — ĐÃ ĐÓNG:** trên source hiện tại, prompt catalog/evaluation ownership/provider reliability/capability arguments đạt **56 passed, 66 subtests passed** trong container AI hiện có, không rebuild image. Kết quả full suite (**587 passed**) và Ruff trước đó hỗ trợ phạm vi source đã rà; lượt hiện tại chạy lại riêng hợp đồng AI-13. Hai cảnh báo pytest là tùy chọn cấu hình không nhận diện. Phạm vi đóng là prompt/schema/call-site/provider contract, không gồm chất lượng đầu ra model trên mọi đầu vào hoặc Automation E2E.
 
-Theo trạng thái hiện hành ở đầu tài liệu, **AI-02, AI-03, AI-05, AI-06, AI-07, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng, còn 25/36 cổng mở**. Không được tự đóng cổng chỉ bằng cách thêm test hay ghi chú; phải đạt đủ tiêu chí nghiệp vụ, quyền, runtime và giao diện tương ứng.
+Dòng này là snapshot cũ. Theo trạng thái hiện hành ở đầu tài liệu, **22/36 cổng đã đóng, 14/36 còn mở**; danh sách 14 mã mở ở đầu tài liệu là nguồn chuẩn. Không được tự đóng cổng chỉ bằng cách thêm test hay ghi chú; phải đạt đủ tiêu chí nghiệp vụ, quyền, runtime và giao diện tương ứng.
 
 ### Tóm tắt ngắn 36 tiêu chí (đánh dấu rõ trạng thái)
 
@@ -1074,8 +1141,8 @@ Theo trạng thái hiện hành ở đầu tài liệu, **AI-02, AI-03, AI-05, A
 | AC-02 | Nguồn trùng/mâu thuẫn không nhân bản hoặc ghi đè sai |
 | AC-03 | Requirement đổi giữ lịch sử và chỉ tác động đúng artifact/scope |
 | AC-04 | Failure matrix, retry/restart, idempotency và cleanup |
-| AC-05 | UI/API permission matrix toàn hệ thống và responsive |
-| AC-06 | Một lượt regression cuối có trace/evidence và không còn dữ liệu tạm |
+| AC-05 | UI/API permission matrix theo nhóm chính sách, kèm kiểm tra responsive theo lớp bố cục |
+| AC-06 | Một lượt tổng hợp evidence/hash/health/cleanup; không nhân đôi regression |
 
 Danh sách này mô tả việc **chưa đủ bằng chứng để đóng**, không khẳng định từng mục hoàn toàn chưa được code. Chi tiết và bằng chứng hiện có được ghi trong mục theo mã bên dưới.
 
@@ -1141,7 +1208,7 @@ Sau hồi quy, đã build và recreate riêng AI service từ source workspace. 
 
 **Snapshot lịch sử: danh sách tồn đọng trước khi chốt lượt nghiệm thu tổng (36 mã, 32 còn mở):**
 
-> Trạng thái tại snapshot lịch sử đó: 4/36 được đánh dấu đóng trong phạm vi hẹp và 32/36 còn mở. Không dùng dòng này làm trạng thái hiện hành; sau snapshot này AI-07 đã được nghiệm thu và đóng; trạng thái hiện hành ở đầu tài liệu là AI-02, AI-03, AI-05, AI-06, AI-07, AI-12, AI-13, FE-02, FE-03, FE-06 và FE-13 đã đóng, còn 25/36 cổng mở. Bảng bên dưới vẫn hữu ích để truy vết tiêu chí và bằng chứng thời điểm đó.
+> Trạng thái tại snapshot lịch sử đó: 4/36 được đánh dấu đóng trong phạm vi hẹp và 32/36 còn mở. Không dùng dòng này làm trạng thái hiện hành; sau snapshot này AI-07 đã được nghiệm thu và đóng; trạng thái hiện hành ở đầu tài liệu là 22/36 đã đóng và 14/36 đang mở; danh sách 14 mã mở ở đầu tài liệu là nguồn chuẩn. Bảng bên dưới vẫn hữu ích để truy vết tiêu chí và bằng chứng thời điểm đó.
 
 | Mã | Còn phải hoàn tất |
 |---|---|
@@ -1179,8 +1246,8 @@ Sau hồi quy, đã build và recreate riêng AI service từ source workspace. 
 | AC-02 | Duplicate/conflict không nhân bản/ghi đè; đúng evidence, version và downstream impact. |
 | AC-03 | Requirement đổi sau execution: giữ lịch sử, impact chính xác, build lại phần liên quan, Run mới. |
 | AC-04 | Toàn trigger + provider/MCP/DB/outbox/restart/revoke/retry/idempotency matrix. |
-| AC-05 | Mọi role/route/action, UI và API allow/deny ở năm viewport. |
-| AC-06 | Một lượt nghiệm thu cuối toàn regression/build/browser/API/benchmark, báo cáo traceable và dọn dữ liệu/artifact test tạm. |
+| AC-05 | Mỗi nhóm chính sách có UI/API allow/deny; responsive kiểm theo lớp bố cục, không phải mọi tổ hợp role × route × action × viewport. |
+| AC-06 | Một lượt tổng hợp báo cáo traceable, đối chiếu hash/health/cleanup và chạy bù phần thiếu hoặc bị ảnh hưởng. |
 
 Các chi tiết về bằng chứng đã có, phần còn thiếu và pass criteria vẫn nằm ở checklist AI-01…AI-16, FE-01…FE-14 và AC-01…AC-06 phía dưới. Lượt full cuối chưa chạy; các suite gần nhất ở trên là hồi quy từng phần.
 
@@ -1414,8 +1481,8 @@ Ghi chú triển khai FE-10 lượt tiếp tục: `RUNNING`, `AWAITING_INPUT`, `
 - [x] **AC-02:** nguồn trùng/mâu thuẫn không nhân bản/ghi đè; bằng chứng, quyết định và downstream impact chính xác.
 - [x] **AC-03:** Requirement đổi sau khi ca đã chạy giữ lịch sử, tác động đúng đối tượng, tạo/review phiên bản liên quan và chạy lại đúng scope.
 - [ ] **AC-04:** tất cả trigger và failure matrix gồm retry/restart/provider/MCP/DB/outbox/permission revoke; xác minh idempotency và cleanup dữ liệu.
-- [ ] **AC-05:** E2E giao diện theo role và mọi route/action tại các kích thước; test API permission allow/deny độc lập với UI.
-- [ ] **AC-06:** chạy một lượt full regression/build/browser/API/AI benchmark cuối; mỗi case có mã, role, request, expected/actual, trace; sau đó xác nhận không còn dữ liệu test. Chỉ mục này và mọi AI/FE checklist đều pass mới được báo hoàn tất.
+- [ ] **AC-05:** API allow/deny và UI tương ứng cho từng nhóm chính sách quyền khác nhau; kiểm tra viewport theo lớp bố cục. Đính bằng chứng từ các luồng FE/AI liên quan thay vì chạy suite trùng.
+- [ ] **AC-06:** tổng hợp một lượt sau khi mọi cổng có bằng chứng; xác minh hash nguồn/image, kết quả, health và cleanup. Chỉ chạy lại suite thiếu, lỗi hoặc bị thay đổi phụ thuộc làm mất hiệu lực; không chạy lại toàn bộ 36 cổng.
 
 ### Ghi chú triển khai đang chờ nghiệm thu
 
@@ -1488,7 +1555,7 @@ Ghi chú triển khai FE-10 lượt tiếp tục: `RUNNING`, `AWAITING_INPUT`, `
 - AI-14 bảng dài — source correction, chưa nghiệm thu: khi chia bảng quá dài, mỗi đoạn lặp tiêu đề nhưng chỉ có một khoảng nguồn liên tục, không mô tả được quan hệ giữa tiêu đề lặp và các hàng dữ liệu. Qdrant payload nay lưu `source_segments` cho tiêu đề, tiêu đề lặp và hàng dữ liệu với offset nguồn/đoạn; schema kiểm tra độ dài ánh xạ, UI Tài liệu tham chiếu hiển thị các đoạn tương ứng. `ruff`, `py_compile`, ESLint và Prettier đạt (ESLint còn một cảnh báo `<img>` đã tồn tại ở ảnh nguồn); chưa chạy test chức năng, Qdrant/Docker hay browser, AI-14/FE-13 vẫn mở.
 - FE-12/AI-14 giải thích cấu tạo point Qdrant — source-only: hộp Tài liệu tham chiếu tách rõ ba phần đang dùng: ID point, vector embedding và payload; nói rõ `text` là nội dung từng đoạn, summary nếu có là point riêng có nhãn, ảnh không nhét byte vào payload, và không có thành phần thứ tư ngoài ID/vector/payload. Tài liệu kiến trúc cũng nêu cùng hợp đồng để tránh nhầm point ID với mã tài liệu hoặc nghĩ metadata là cấu trúc cây. Chưa kiểm tra trực quan trên browser và chưa đọc/ghi round-trip trên Qdrant thật; FE-12/AI-14 vẫn mở.
 - AI-14 Qdrant readback payload — source-only: API xem các point của tài liệu nay kiểm tra payload typed, identity của project/version/generation, nội dung `text` và hash trước khi trả ra; sai lệch bị từ chối bằng `CHUNK_POINT_PAYLOAD_INVALID` thay vì xuất nội dung không đáng tin. Có regression hẹp cho text lệch hash; chưa chạy test hoặc Qdrant/API thật, không chứng minh round-trip tài liệu 200 trang và AI-14 vẫn mở.
-- AI-02 Requirement dedup — source-only: kết quả đối chiếu trùng `EXACT`/`SAME_KEY` thiếu `version_id` không còn đi tiếp như bản trùng đã phân giải rồi lỗi giữa workflow; ứng viên được giữ chưa giải quyết để người dùng không mất khả năng xử lý. Có hai regression cho thiếu version ID; chưa chạy suite/runtime, AI-02 vẫn mở.
+- AI-02 Requirement dedup — source-only: kết quả đối chiếu trùng `EXACT`/`SAME_KEY` thiếu `version_id` không còn đi tiếp như bản trùng đã phân giải rồi lỗi giữa workflow; ứng viên được giữ chưa giải quyết để người dùng không mất khả năng xử lý. Có hai regression cho thiếu version ID; chưa chạy suite/runtime, AI-02 còn mở tại snapshot lịch sử này; hiện đã đóng và không thuộc 14 cổng mở.
 - FE-13 Qdrant point identity — source-only: màn Tài liệu tham chiếu phân biệt `chunk_id` theo generation với `logical_chunk_id` ổn định theo nguồn; giữ giải thích rằng cấu trúc cha–con là metadata nguồn chứ không phải cây native của Qdrant. Chưa browser kiểm chứng, FE-13 vẫn mở.
 - FE-03 project cards — source-only: danh sách dự án trước đây đặt hai chỉ số Project/Tasks cạnh nhau nhưng chỉ vẽ một thanh, dễ khiến người xem hiểu nhầm; nay tách thành hai thanh có nhãn riêng, ẩn tỷ lệ Tasks khi chưa có công việc, và thay cặp mốc thời gian rỗng bằng một trạng thái rõ. Scrum/Kanban tiếp tục hiện cạnh tên dự án. Chưa xác minh API/browser/responsive, FE-03 vẫn mở.
 - FE-03 dashboard — implementation-only: khi `task_summary` hoặc `completion_percent` không có, Dashboard trước đây chỉ nhận đúng `null` là chưa có việc, còn `undefined` lại hiện 0% và một thanh tiến độ giả. Điều kiện nay xử lý cả hai dạng thiếu/null; đã thêm Playwright regression source cho project summary bị thiếu. Chưa chạy E2E/browser, FE-03 vẫn mở.
@@ -1529,7 +1596,7 @@ Các sửa đổi dưới đây chỉ cập nhật bằng chứng source, không
 - FE-11: “Đóng các phiên khác” nay chỉ thu hồi các phiên không hiện hành, báo đúng kết quả từng phiên và vô hiệu hóa khi không có phiên khác. Danh sách session/thông báo được gắn owner và generation để phản hồi của tài khoản trước không hiện sau khi đổi tài khoản. Chưa chạy session revoke và ma trận role trên browser/API.
 - FE-12: bỏ câu Điều khoản khẳng định người dùng có thể tải dữ liệu hoặc yêu cầu xóa tài khoản trong Cài đặt; các chức năng đó không tồn tại trong UI/API hiện được rà. Nội dung được thay bằng mô tả hẹp về xác thực, phiên đăng nhập và quyền truy cập dự án; chưa có xác nhận pháp lý/chính sách và không coi đây là nghiệm thu nội dung pháp lý.
 - FE-13/14: đã xác nhận phạm vi hiện có chỉ kiểm tra responsive công khai/xác thực, chưa có browser matrix toàn workspace theo role/touch/keyboard. Live compare E2E có thể ghi dữ liệu vào ID project/draft do môi trường cấp mà không tự seed/cleanup; không dùng trên dữ liệu bền vững. Cần harness cô lập, cleanup có thể phục hồi sau crash, trace và báo cáo theo từng case trước lượt nghiệm thu cuối.
-- AI-02: gom nhóm trùng trước đây dùng connected component, mặc nhiên coi quan hệ giống nhau là bắc cầu; các cặp A~B và B~C có thể gộp nhầm A với C, làm nhập nghĩa vụ/truy vết không chính xác. Nay chỉ gộp component khi từng cặp đều có kết quả so sánh trùng tường minh; nhóm không bắc cầu được giữ unresolved, không phát hành. Có regression source cho chuỗi ba ca; chưa chạy test hoặc pipeline dedup thật, AI-02 vẫn mở.
+- AI-02: gom nhóm trùng trước đây dùng connected component, mặc nhiên coi quan hệ giống nhau là bắc cầu; các cặp A~B và B~C có thể gộp nhầm A với C, làm nhập nghĩa vụ/truy vết không chính xác. Nay chỉ gộp component khi từng cặp đều có kết quả so sánh trùng tường minh; nhóm không bắc cầu được giữ unresolved, không phát hành. Có regression source cho chuỗi ba ca; chưa chạy test hoặc pipeline dedup thật, AI-02 còn mở tại snapshot lịch sử này; hiện đã đóng và không thuộc 14 cổng mở.
 - FE-14: live compare spec nay yêu cầu cờ fixture disposable rõ ràng cùng ID `PRJ-E2E-*`/`DRAFT-E2E-*` trước khi cho phép gọi API ghi. Đây là chặn chạy nhầm trên dữ liệu dự án thường, không thay thế harness seed/cleanup và report/trace; FE-14 vẫn mở.
 - AI-07–10: rà lại source Release gate, event/outbox và worker thấy các transaction gate/revision fence, fingerprint replay, checkpoint/lease recovery và mô phỏng đối chiếu scope đã có; chưa có lỗi source mới đủ căn cứ để vá. Các race đóng Release, duplicate delivery/restart, lease/provider/DB failure và mô phỏng scope lớn hoặc stale vẫn phải kiểm tra chung trong lượt Docker/API cuối.
 - FE-03: cập nhật Project % và audit nay dùng cùng giao dịch; giá trị trước ghi audit được đọc theo `expected_revision`, tránh audit sai khi cập nhật đồng thời. Chưa fault-injection audit/transaction hoặc kiểm tra role/API, FE-03 vẫn mở.
@@ -1597,7 +1664,7 @@ Các thay đổi source-only trên được ghép từ nhiều nhánh song song;
 
 ### Danh sách nghiệm thu cuối (giữ nguyên phạm vi 36 mã)
 
-Danh sách mở đầy đủ vẫn là AI-01…AI-16: ingestion/retrieval, duplicate/version conflict, Blueprint lineage, Requirement/clarification, Test Case compare/merge/approval, Test Plan/Run/assignment, execution→defect→Assurance→Release, Work Item impact, change simulation, retry/recovery, MCP/tracing, benchmark, prompt/schema contract, long-doc/Qdrant/BM25, CV/profile/assignment, event UI. FE-01…FE-14: session/role/route, auth, project progress, list/backlog/board/Scrum/Kanban/timeline, Requirement/template/Assurance, compare/merge, Repository/BDD/data/Test Set, Plan/Run/automation, Defect/report/Release, AI event UI, account/admin/settings/notifications, toàn trang visual copy/layout, responsive/a11y, live E2E/cleanup. AC-01…AC-06: luồng đầu-cuối mới, trùng/mâu thuẫn, Requirement đổi sau execution, fault recovery, role×route×API×viewport, và một lượt regression cuối có report/trace/cleanup.
+Đây là danh mục phạm vi tổng thể 36 cổng, không phải danh sách 36 cổng đang mở. Danh sách mở hiện tại chỉ là 14 mã ở đầu tài liệu; các cổng đã đóng được giữ nguyên trừ khi có regression cụ thể được tái hiện.
 
 Không được đánh dấu một mã “xong” chỉ từ source hoặc unit test. Khi implementation và môi trường disposable sẵn sàng, chạy một lượt ma trận tổng; nếu có lỗi thì sửa theo nguyên nhân rồi chạy lại toàn ma trận trên snapshot mới.
 
@@ -1683,7 +1750,7 @@ Kiểm tra cú pháp tĩnh sau lần ghép source này: AST của 416 tệp Pyth
 |---|---|---|
 | FE-01 | AppShell, route guard, lọc menu theo permission và chuyển khỏi route không được phép | Kiểm tra runtime theo role và điều hướng bàn phím |
 | FE-02 | Đăng ký → trang xác minh email riêng; xác minh email tách khỏi mã khôi phục; refresh lỗi tạm thời giữ phiên | Kiểm tra luồng email/session thực trên API và trình duyệt |
-| FE-03 | Project %, Tasks %, ngày dự kiến và audit hiện có; bổ sung thời lượng ngày lịch, không hiển thị 0% giả khi thiếu dữ liệu, phân biệt chưa có task với mọi task đã hủy | Kiểm tra quyền, lưu/đọc và conflict trên API |
+| FE-03 | Ngày dự án và tiến độ công việc tự tính; Project% thủ công không còn là UI acceptance. | List/overview đồng nhất; chưa có việc không hiện 0%; API/UI ngày lưu và đọc lại; QA/Tester chỉ xem cùng số liệu. |
 | FE-04 | List, backlog, board, Sprint chỉ cho Scrum, Kanban/WIP và roadmap dùng cùng Work Item | Kiểm tra thao tác thật, WIP và revision conflict |
 | FE-05 | Import Requirement, mẫu thư viện/tự tạo và đọc lại kết quả automation theo sự kiện đã có | Kiểm tra event, trùng/mâu thuẫn, nguồn và quyền trên stack |
 | FE-06 | Workspace so sánh, chọn/ghép theo trường và bước, lưu bản nháp, giải quyết trùng và duyệt nhóm | Kiểm tra transaction/rollback, quyền và xung đột trên API |
@@ -1866,7 +1933,7 @@ Kiểm tra tĩnh và production build frontend đạt sau chỉnh sửa. Không 
 - **AI-14/FE-13 — giải thích payload Qdrant:** phần xem đoạn đã lập chỉ mục nay hiển thị thêm tác giả/tên nguồn, module/mục/trang khai báo và chế độ tạo embedding khi metadata thực có giá trị. Vector thô không được giả lập hoặc trả từ API này; màn hình tiếp tục tách point ID, text, metadata và thông tin mô hình/hash. Prettier và `git diff --check` đạt; chưa chạy browser/API.
 - **AI-14/FE-13 — metadata quyền riêng tư:** API xem đoạn áp dụng bộ lọc metadata công khai nên không trả mã chủ sở hữu, người tạo hoặc danh sách người được chia sẻ. Giao diện đã bỏ các trường đó khỏi danh sách metadata và giải thích rằng quyền nguồn được backend kiểm tra; tránh hiển thị thiếu như thể đó là giá trị rỗng trong Qdrant. Chưa chạy browser/API.
 - **AI-14 — kiểm tra tính nhất quán cây nguồn trong Qdrant:** `source_spans` tiếp tục lưu phẳng trong payload; quan hệ cây được biểu diễn bằng `block_id`, `parent_block_id`, `ancestor_block_ids` và trạng thái chuỗi cha. Schema nay từ chối ancestor lặp/tự chứa, trạng thái `ROOT` còn cha, `COMPLETE` thiếu cha gần nhất, hoặc `PARTIAL` không khớp cha đã biết. Đã thêm regression cho chuỗi hợp lệ và các trường hợp sai; mới kiểm tra cú pháp Python và whitespace, chưa chạy pytest hoặc ghi/đọc Qdrant.
-- **AI-01/AI-02 — nhập lô có ứng viên mơ hồ:** trước đây một ứng viên cần đối chiếu làm AI bỏ qua cả lô. Luồng nay xử lý từng ứng viên độc lập: liên kết nguồn khi khớp chính xác, tạo phiên bản khi mã ổn định, tạo Requirement nháp có nguồn khi không có kết quả trùng, còn ứng viên có kết quả mơ hồ tiếp tục nằm trong bản xem trước. Tạo Requirement và loại ứng viên khỏi hàng chờ dùng cùng transaction; kết quả lưu vào dấu vết import và được lập chỉ mục sau commit. Đã thêm regression cho việc giữ ứng viên mơ hồ khi tạo ứng viên không trùng; chưa chạy test hoặc Docker, AI-01/AI-02 vẫn mở.
+- **AI-01/AI-02 — nhập lô có ứng viên mơ hồ:** trước đây một ứng viên cần đối chiếu làm AI bỏ qua cả lô. Luồng nay xử lý từng ứng viên độc lập: liên kết nguồn khi khớp chính xác, tạo phiên bản khi mã ổn định, tạo Requirement nháp có nguồn khi không có kết quả trùng, còn ứng viên có kết quả mơ hồ tiếp tục nằm trong bản xem trước. Tạo Requirement và loại ứng viên khỏi hàng chờ dùng cùng transaction; kết quả lưu vào dấu vết import và được lập chỉ mục sau commit. Đã thêm regression cho việc giữ ứng viên mơ hồ khi tạo ứng viên không trùng; chưa chạy test hoặc Docker, AI-01/AI-02 còn mở tại snapshot lịch sử này; hiện đã đóng và không thuộc 14 cổng mở.
 - **AI-02 — trùng lặp trong cùng lô và retry:** sau khi xử lý ứng viên đầu, đối chiếu lại trên danh sách rút gọn có thể làm mất quan hệ trùng ban đầu và tạo lại ứng viên sau như Requirement mới. Kết quả so sánh nội bộ nay giữ `candidate_id`; lượt chạy lưu quan hệ này và chỉ nối nguồn tự động khi mọi ứng viên đích đã được xử lý về cùng Requirement, đồng thời đối chiếu lại cho đúng một kết quả `EXACT`. Trùng theo mã, còn mơ hồ hoặc đích chưa được xử lý vẫn chờ làm rõ; không rơi về nhánh tạo mới. Nếu nguồn đã được gắn trước đó, API nay kết thúc ứng viên như một lần xử lý idempotent sau khi xác nhận lại Requirement version trong transaction, giữ audit và không tạo version mới. Đã thêm regression cho nối chính xác, nguồn đã gắn và các trường hợp phải chờ; chưa chạy test chức năng/Docker, AI-02 còn mở.
 - **AI-01/AI-02 — atomic version resolution, tiếp tục downstream và phục hồi chỉ mục:** khi xử lý ứng viên bằng `create_version` hoặc `link_source`, tạo Requirement version, loại ứng viên khỏi preview, ghi resolution/audit và xác nhận tài liệu cuối cùng nay cùng một transaction. ID phiên bản được cộng dồn vào job để retry lập chỉ mục không tạo version thứ hai. Khi xác nhận phần preview còn lại, repository cộng dồn các ID mới thay vì ghi đè ID từ các ứng viên đã xử lý trước đó; sau commit, luồng phục hồi đọc và lập chỉ mục lại mọi phiên bản chưa `READY`. Khi AI tiếp tục một job sau gián đoạn, nó cũng dựng lại tập phiên bản đã `create_version` để không bỏ qua impact/maintenance downstream chỉ vì request trước đã ghi resolution. Requirement version mới được đánh dấu `PENDING` trước khi lập chỉ mục để lỗi Qdrant còn hiện trong backlog vận hành. Đã cập nhật regression source cho transaction, ID tích lũy và resume downstream; chưa chạy test chức năng, Docker hay lỗi Qdrant→retry; AI-01/AI-02 còn mở.
 - **AI-01/AI-02 — baseline đồng thời và phục hồi Qdrant:** nếu một lượt khác đã chốt cùng Requirement version trong lúc request hiện tại chạy, nhánh thua race không còn trả thành công lập chỉ mục giả. Nó kiểm tra `index_status` của phiên bản đã chốt, thử lập chỉ mục lại nếu chưa `READY`, rồi trả trạng thái sau readback. Đã thêm regression cho trạng thái `FAILED` được thử lại; chưa chạy test transaction/Qdrant hoặc race trên Docker, AI-01/AI-02 còn mở.
