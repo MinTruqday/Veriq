@@ -23,6 +23,36 @@ export default function RequirementCurrentVersionPanel({
   reload,
   onDraftChange,
 }) {
+  const submitReview = async () => {
+    await ask({
+      title: "Gửi yêu cầu đi rà soát",
+      description: `${selected.requirement_key} sẽ được chuyển sang người rà soát. Bản nháp sẽ được lưu trước khi gửi.`,
+      confirmLabel: "Gửi rà soát",
+      fields: [
+        {
+          name: "review_note",
+          label: "Ghi chú cho người rà soát",
+          initialValue: "",
+          multiline: true,
+          autoFocus: true,
+        },
+      ],
+      onConfirm: async (answer) => {
+        try {
+          const saved = await saveDraft();
+          const savedVersion = saved?.current_version || current;
+          await testingApi.submitRequirementReview(projectId, selected._id, {
+            expected_revision: savedVersion.revision,
+            review_note: answer.review_note.trim(),
+          });
+          await reload();
+        } catch (value) {
+          throw new Error(messageOf(value));
+        }
+      },
+    });
+  };
+
   return (
     <Panel
       title="Phiên bản hiện tại"
@@ -37,43 +67,6 @@ export default function RequirementCurrentVersionPanel({
               onClick={onCheckWithAI}
             >
               {checkingWithAi ? "Đang kiểm tra…" : "Kiểm tra AI"}
-            </button>
-          )}
-          {current.status === "DRAFT" && can("requirement.submit_review") && (
-            <button
-              className="apple-button"
-              type="button"
-              onClick={async () => {
-                await ask({
-                  title: "Gửi yêu cầu đi rà soát",
-                  description: `${selected.requirement_key} sẽ được chuyển sang người rà soát. Bản nháp sẽ được lưu trước khi gửi.`,
-                  confirmLabel: "Gửi rà soát",
-                  fields: [
-                    {
-                      name: "review_note",
-                      label: "Ghi chú cho người rà soát",
-                      initialValue: "",
-                      multiline: true,
-                      autoFocus: true,
-                    },
-                  ],
-                  onConfirm: async (answer) => {
-                    try {
-                      const saved = await saveDraft();
-                      const savedVersion = saved?.current_version || current;
-                      await testingApi.submitRequirementReview(projectId, selected._id, {
-                        expected_revision: savedVersion.revision,
-                        review_note: answer.review_note.trim(),
-                      });
-                      await reload();
-                    } catch (value) {
-                      throw new Error(messageOf(value));
-                    }
-                  },
-                });
-              }}
-            >
-              Gửi rà soát
             </button>
           )}
           {current.status === "IN_REVIEW" && can("requirement.approve") && (
@@ -458,18 +451,25 @@ export default function RequirementCurrentVersionPanel({
                   ))}
               </div>
             </details>
-            <button className="secondary-button" type="button" onClick={saveDraft}>
-              Lưu bản nháp
-            </button>
-            <span className="ml-3 text-[12px] text-ink-muted" aria-live="polite">
-              {saveState === "saving"
-                ? "Đang tự động lưu"
-                : saveState === "pending"
-                  ? "Có thay đổi chưa lưu"
-                  : saveState === "error"
-                    ? "Tự động lưu thất bại"
-                    : "Đã tự động lưu"}
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <button className="secondary-button" type="button" onClick={saveDraft}>
+                Lưu bản nháp
+              </button>
+              {current.status === "DRAFT" && can("requirement.submit_review") && (
+                <button className="apple-button" type="button" onClick={submitReview}>
+                  Gửi rà soát
+                </button>
+              )}
+              <span className="text-[12px] text-ink-muted" aria-live="polite">
+                {saveState === "saving"
+                  ? "Đang tự động lưu"
+                  : saveState === "pending"
+                    ? "Có thay đổi chưa lưu"
+                    : saveState === "error"
+                      ? "Tự động lưu thất bại"
+                      : "Đã tự động lưu"}
+              </span>
+            </div>
           </div>
         ) : (
           <div className="md:col-span-3">

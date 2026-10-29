@@ -594,7 +594,7 @@ export default function CausalAnalysisPanel({ project }) {
                 <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
                 <p className="mt-1 break-all">Mã sự kiện: {selected.source_event_id}</p>
                 {selected.source_automation_run_id && (
-                  <p className="break-all">Mã lượt xử lý: {selected.source_automation_run_id}</p>
+                  <p className="break-all">Mã tham chiếu: {selected.source_automation_run_id}</p>
                 )}
               </details>
             </section>

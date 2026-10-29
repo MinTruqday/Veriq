@@ -234,7 +234,7 @@ export default function ChangesPage({ project }) {
             <div className="p-4 pb-0">
               <DegradedBanner
                 mode="DEGRADED_AI"
-                message="Lượt chạy bị suy giảm. Chỉ dùng kết quả và bằng chứng đã ghi nhận; xem nhật ký AI để biết nguyên nhân."
+                message="Kết quả AI chưa đầy đủ. Chỉ dùng kết quả và căn cứ đã ghi nhận; xem hoạt động AI để biết nguyên nhân."
               />
             </div>
           )}

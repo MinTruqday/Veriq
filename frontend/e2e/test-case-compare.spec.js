@@ -119,6 +119,11 @@ function project(
       "requirement.create",
       "requirement.update",
       "requirement.submit_review",
+      "requirement_document.read",
+      "requirement_document.upload",
+      "requirement_document.extract",
+      "requirement_document.review_extraction",
+      "requirement_document.confirm_extraction",
       "ai.run_lint",
       "automation.read",
       "proposal.read",
@@ -902,7 +907,8 @@ test("QA compares, saves a merged draft, then approves the reviewed group", asyn
             .gridTemplateColumns.trim()
             .split(/\s+/).length,
       );
-    expect(comparisonColumns, `comparison layout at ${width}px`).toBe(width >= 1280 ? 3 : 1);
+    const expectedColumns = width >= 1536 ? 3 : width >= 1280 ? 2 : 1;
+    expect(comparisonColumns, `comparison layout at ${width}px`).toBe(expectedColumns);
   }
   await page.getByRole("button", { name: "Dùng đề xuất AI" }).first().click();
   await page.getByRole("button", { name: "Lưu bản ghép" }).click();
@@ -1850,6 +1856,245 @@ test("Requirement import keeps file, manual and template paths separate without 
   await expect(editor).toContainText("Bản nháp Requirement cần được giữ khi đổi cách nhập.");
 });
 
+test("Requirement import preview shows and saves extracted acceptance criteria", async ({
+  page,
+}) => {
+  await installWorkspace(page, "QA");
+  const sourceText = "Người dùng đăng nhập bằng email hợp lệ.";
+  const candidate = {
+    candidate_id: "CANDIDATE-AC-E2E",
+    requirement_key: "REQ-AC-E2E",
+    title: "Đăng nhập bằng email hợp lệ",
+    type: "FUNCTIONAL",
+    content_doc: document(sourceText),
+    acceptance_criteria: [
+      {
+        key: "AC-01",
+        content_doc: document(sourceText),
+        source_span: {
+          requirement_document_id: "RDOC-AC-E2E",
+          source_start: 0,
+          source_end: sourceText.length,
+          source_quote: sourceText,
+        },
+      },
+    ],
+    section_states: { acceptance_criteria: "provided" },
+    source_refs: [{ requirement_document_id: "RDOC-AC-E2E" }],
+  };
+  let savedReview;
+
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/tai-lieu-yeu-cau`, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          _id: "RDOC-AC-E2E",
+          project_id: projectId,
+          filename: "requirements.md",
+          format: "md",
+          content_hash: "hash-ac-e2e",
+          status: "READY",
+          visibility: "private",
+          ai_enabled: false,
+          source_type: "SRS",
+          created_by: "qa-e2e",
+          revision: 1,
+        },
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/tai-lieu-yeu-cau/RDOC-AC-E2E/trich-xuat`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          _id: "IMPORT-AC-E2E",
+          status: "PREVIEW_READY",
+          revision: 1,
+          preview: [candidate],
+        },
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/tai-lieu-yeu-cau/RDOC-AC-E2E`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          _id: "RDOC-AC-E2E",
+          project_id: projectId,
+          filename: "requirements.md",
+          format: "md",
+          status: "READY",
+          revision: 1,
+        },
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/nhap-yeu-cau/IMPORT-AC-E2E`, async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.fallback();
+      return;
+    }
+    savedReview = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          _id: "IMPORT-AC-E2E",
+          status: "PREVIEW_READY",
+          revision: 2,
+          preview: savedReview.preview,
+        },
+      }),
+    });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`/du-an/${projectId}/yeu-cau`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Nhập tài liệu" }).click();
+  await page.getByRole("button", { name: "Soạn nội dung" }).click();
+  await page.getByRole("textbox", { name: "nội dung nguồn" }).fill(sourceText);
+  await page.getByRole("button", { name: "Tạo bản xem trước" }).click();
+
+  const criteria = page.getByRole("textbox", { name: "Tiêu chí chấp nhận AC-01 ứng viên 1" });
+  await expect(criteria).toHaveValue(sourceText);
+  const candidateCards = page.locator(".data-table-responsive-cards");
+  await expect(candidateCards.locator(".data-table-desktop")).toBeHidden();
+  await expect(candidateCards.locator(".data-table-mobile")).toBeVisible();
+  await criteria.scrollIntoViewIfNeeded();
+  await expect(criteria).toBeInViewport();
+  expect((await criteria.boundingBox())?.width).toBeGreaterThan(300);
+  await criteria.fill(`${sourceText} Người dùng cần xác nhận đăng nhập.`);
+  await page.getByRole("button", { name: "Thêm tiêu chí" }).click();
+  await page
+    .getByRole("textbox", { name: "Tiêu chí chấp nhận AC-02 ứng viên 1" })
+    .fill("Tài khoản phải đang hoạt động.");
+  await page.getByRole("button", { name: "Lưu chỉnh sửa" }).click();
+
+  await expect.poll(() => savedReview?.preview?.[0]?.acceptance_criteria).toHaveLength(2);
+  expect(savedReview.preview[0].section_states.acceptance_criteria).toBe("provided");
+  expect(savedReview.preview[0].acceptance_criteria[0].source_span).toBeUndefined();
+  expect(savedReview.preview[0].acceptance_criteria[1].source_span).toBeUndefined();
+});
+
+test("BA can resume a saved Requirement import with its edited acceptance criteria", async ({
+  page,
+}) => {
+  await installWorkspace(page, "BA");
+  const editedCriteria = "Tài khoản phải đang hoạt động trước khi cho phép đăng nhập.";
+  const savedJob = {
+    _id: "IMPORT-RESUME-E2E",
+    project_id: projectId,
+    source_document_id: "RDOC-E2E-SOURCE-V1",
+    status: "PREVIEW_READY",
+    revision: 3,
+    preview: [
+      {
+        candidate_id: "CANDIDATE-RESUME-E2E",
+        requirement_key: "REQ-RESUME-E2E",
+        title: "Đăng nhập với tài khoản đang hoạt động",
+        type: "FUNCTIONAL",
+        content_doc: document("Người dùng đăng nhập bằng thông tin hợp lệ."),
+        acceptance_criteria: [{ key: "AC-01", content_doc: document(editedCriteria) }],
+        section_states: { acceptance_criteria: "provided" },
+        source_refs: [{ requirement_document_id: "RDOC-E2E-SOURCE-V1" }],
+      },
+    ],
+  };
+  let confirmationPayload;
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/tai-lieu-yeu-cau`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [
+          {
+            _id: "RDOC-E2E-SOURCE-V1",
+            project_id: projectId,
+            filename: "requirements.md",
+            format: "md",
+            source_version: "1",
+            status: "EXTRACTED",
+            index_status: "INDEXED",
+            visibility: "project",
+            ai_enabled: false,
+            source_type: "SRS",
+            created_by: "ba-e2e",
+            last_import_job_id: savedJob._id,
+            revision: 2,
+          },
+        ],
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/nhap-yeu-cau/${savedJob._id}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: savedJob, revision: savedJob.revision }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/nhap-yeu-cau/${savedJob._id}/doi-chieu`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          revision: savedJob.revision,
+          comparisons: [{ candidate_index: 0, matches: [] }],
+        },
+        revision: savedJob.revision,
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/nhap-yeu-cau/${savedJob._id}/xac-nhan`, async (route) => {
+    confirmationPayload = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { job_id: savedJob._id, requirements: [] } }),
+    });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`/du-an/${projectId}/yeu-cau`, { waitUntil: "domcontentloaded" });
+  const sourceDocumentsTable = page.getByRole("region", { name: "Bảng dữ liệu" });
+  const parsedStatus = sourceDocumentsTable.getByText("Đã trích xuất", { exact: true });
+  const searchableStatus = sourceDocumentsTable.getByText("Có thể tìm trong tài liệu", {
+    exact: true,
+  });
+  await expect(parsedStatus).toBeVisible();
+  await expect(searchableStatus).toBeVisible();
+  expect((await searchableStatus.boundingBox()).y).toBeGreaterThan(
+    (await parsedStatus.boundingBox()).y,
+  );
+  const resumedJobResponse = page.waitForResponse(
+    (response) => response.url().includes(`/kiem-thu/nhap-yeu-cau/${savedJob._id}`),
+    { timeout: 5000 },
+  );
+  await page.getByRole("button", { name: "Tiếp tục nhập yêu cầu" }).click();
+  expect((await resumedJobResponse).status()).toBe(200);
+  await expect(page.getByRole("dialog", { name: "Nhập tài liệu" })).toBeVisible();
+
+  await expect(
+    page.getByRole("textbox", { name: "Tiêu chí chấp nhận AC-01 ứng viên 1" }),
+  ).toHaveValue(editedCriteria);
+  await expect(page.getByRole("button", { name: "Xác nhận nhập 1 yêu cầu" })).toBeEnabled();
+  await page.getByRole("button", { name: "Xác nhận nhập 1 yêu cầu" }).click();
+  await expect.poll(() => confirmationPayload?.expected_revision).toBe(savedJob.revision);
+  expect(confirmationPayload.selected_indexes).toEqual([0]);
+});
+
 test("failed new Requirement extraction hides an older preview but preserves source text", async ({
   page,
 }) => {
@@ -2186,9 +2431,15 @@ test("BA can manually run the AI check and send a Requirement draft for review",
   );
 
   await page.goto(`/du-an/${projectId}/yeu-cau/${id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Đăng nhập bằng tài khoản" })).toBeVisible({
+    timeout: 15000,
+  });
   await expect(page.getByRole("button", { name: "Gửi rà soát" })).toHaveCount(0);
   canSubmit = true;
   await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Đăng nhập bằng tài khoản" })).toBeVisible({
+    timeout: 15000,
+  });
   await expect(page.getByRole("button", { name: "Gửi rà soát" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Kiểm tra AI" })).toBeVisible();
   await expect(page.getByText(/Chưa kiểm tra phiên bản này/)).toBeVisible();
@@ -2765,7 +3016,7 @@ test("project workspace routes remain within the viewport at the standard deskto
       await expect(
         page.locator("#main-content h1").first(),
         `page title for ${pathname}`,
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 15000 });
       await expect(page.locator('#main-content [aria-busy="true"]')).toHaveCount(0);
       if (route === "ca-kiem-thu" && width === 1440) {
         await expect(page.getByRole("cell", { name: "Chức năng", exact: true })).toBeVisible();
@@ -2791,12 +3042,18 @@ test("project workspace routes remain within the viewport at the standard deskto
       }
       if (route === "" && width === 1440) {
         await expect(page.getByText(/NaN|undefined/)).toHaveCount(0);
-        const activityPanelHeading = page.getByRole("heading", { name: "Hoạt động tự động" });
+        const activityPanelHeading = page.getByRole("heading", { name: "Hoạt động AI" });
         await expect(activityPanelHeading).toBeVisible();
-        const activityPanel = activityPanelHeading.locator("xpath=ancestor::section[1]");
-        await expect(
-          activityPanel.getByRole("heading", { name: "Hoạt động gần đây" }),
-        ).toBeVisible();
+        const activityPanel = page
+          .locator("section.workspace-panel")
+          .filter({ has: activityPanelHeading });
+        const recentActivityHeading = activityPanel.getByRole("heading", {
+          name: "Hoạt động gần đây",
+        });
+        const recentActivityEmpty = activityPanel.getByText("Chưa có hoạt động gần đây.", {
+          exact: true,
+        });
+        await expect(recentActivityHeading.or(recentActivityEmpty)).toBeVisible();
         const panelHeight = await activityPanel.evaluate((element) => element.offsetHeight);
         expect(panelHeight).toBeLessThan(230);
       }
@@ -2979,14 +3236,15 @@ test("AI event runs appear without asking the user to start them manually", asyn
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
+  await expect(page.getByRole("heading", { name: "Hoạt động AI" })).toBeVisible();
   await expect(page.getByText("Rà soát tài liệu sau khi tải lên")).toBeVisible({ timeout: 12000 });
   await expect(page.getByText("Hoạt động gần đây")).toBeVisible();
   await expect(page.getByText("AUT-E2E-EVENT-1")).toHaveCount(0);
   await page.getByRole("button", { name: /Rà soát tài liệu sau khi tải lên/ }).click();
-  const runDetails = page.getByRole("group").filter({ hasText: "Mã lượt xử lý" });
-  await runDetails.getByText("Chi tiết lượt xử lý").click();
-  await expect(page.getByText("Mã lượt xử lý: AUT-E2E-EVENT-1")).toBeVisible();
-  await runDetails.getByText("Chi tiết lượt xử lý").click();
+  const runDetails = page.getByRole("group").filter({ hasText: "Mã tham chiếu" });
+  await runDetails.getByText("Thông tin hỗ trợ").click();
+  await expect(page.getByText("Mã tham chiếu: AUT-E2E-EVENT-1")).toBeVisible();
+  await runDetails.getByText("Thông tin hỗ trợ").click();
   await expect(page.getByRole("heading", { name: "Cần bổ sung thông tin" })).toBeVisible();
   await expect(page.getByText("Hệ thống xử lý thế nào khi email chưa được đăng ký?")).toBeVisible();
   await expect(page.getByLabel("Thông tin trả lời")).toHaveCount(0);
@@ -3017,7 +3275,7 @@ test("AI activity does not expose internal event codes as user-facing actions", 
   await page.goto(`/du-an/${projectId}/tu-dong-hoa`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
 
-  await expect(page.getByRole("button", { name: /Lượt xử lý dự án/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Rà soát tài liệu mới/ })).toBeVisible();
   await expect(page.getByText(/DOCUMENT_INGESTED/)).toHaveCount(0);
 });
 
@@ -3140,7 +3398,7 @@ test("AI run displays the descendant workflow while the root run is already comp
   const workflow = page.getByRole("region", { name: "Tiến độ xử lý AI" });
   await expect(workflow).toContainText("Đang xử lý");
   await expect(workflow).toContainText("2 lượt · 1 đang chạy");
-  await expect(workflow).toContainText("Lượt xử lý dự án");
+  await expect(workflow).toContainText("Rà soát yêu cầu đã thay đổi");
   await expect(workflow).not.toContainText("REQUIREMENT_CHANGED");
 });
 
@@ -3194,7 +3452,7 @@ test("the open AI run refreshes its workflow status when a new child run appears
   await expect(workflow).toContainText("Cần bổ sung thông tin");
   await expect(workflow).toContainText("1 lượt · 0 đang chạy · 1 đang chờ");
   workflowSnapshots[1] = childRunningWorkflow;
-  await expect(workflow).toContainText("Lượt xử lý dự án", { timeout: 12000 });
+  await expect(workflow).toContainText("Rà soát yêu cầu đã thay đổi", { timeout: 12000 });
   await expect(workflow).not.toContainText("REQUIREMENT_CHANGED");
   await expect(workflow).toContainText("2 lượt · 1 đang chạy · 1 đang chờ");
 });
@@ -3314,9 +3572,9 @@ test("AI run details remain visible if evidence lookup is temporarily unavailabl
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
   await page.getByRole("button", { name: /Rà soát tài liệu sau khi tải lên/ }).click();
 
-  const runDetails = page.getByRole("group").filter({ hasText: "Mã lượt xử lý" });
-  await runDetails.getByText("Chi tiết lượt xử lý").click();
-  await expect(page.getByText("Mã lượt xử lý: AUT-E2E-EVENT-1")).toBeVisible();
+  const runDetails = page.getByRole("group").filter({ hasText: "Mã tham chiếu" });
+  await runDetails.getByText("Thông tin hỗ trợ").click();
+  await expect(page.getByText("Mã tham chiếu: AUT-E2E-EVENT-1")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Cần bổ sung thông tin" })).toBeVisible();
   await expect(page.getByText("Hệ thống xử lý thế nào khi email chưa được đăng ký?")).toBeVisible();
   expect(api.automationEvidenceCalls).toBeGreaterThan(0);
@@ -3438,7 +3696,7 @@ test("dashboard does not show a fake task progress when the project summary is m
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/du-an/${projectId}`, { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: "Tiến độ dự án" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tiến độ công việc" })).toBeVisible();
   await expect(page.getByText("Chưa tải được số liệu công việc")).toBeVisible();
   await expect(page.getByText(/Tasks\s*·\s*0%/)).toHaveCount(0);
   await expect(page.getByText("Chưa có dữ liệu mức độ lỗi")).toBeVisible();

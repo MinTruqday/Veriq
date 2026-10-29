@@ -822,7 +822,7 @@ export default function DefectsPage({ project }) {
       <Panel title="Danh sách lỗi">
         <details className="border-b border-border p-4">
           <summary className="cursor-pointer text-sm font-medium">Tìm và lọc lỗi</summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <input
               aria-label="Tìm lỗi"
               className="apple-input xl:col-span-2"

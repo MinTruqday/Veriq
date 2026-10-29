@@ -68,7 +68,7 @@ export function testCaseSubsectionItems(projectId) {
     },
     {
       id: "ai",
-      label: "Lượt chạy AI",
+      label: "Hoạt động AI",
       href: `${root}/ai`,
       anyPermission: ["proposal.read", "automation.read"],
       permissions: ["testcase.read"],
@@ -342,7 +342,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
           },
           {
             id: "ai-review",
-            label: "Lượt chạy AI",
+            label: "Hoạt động AI",
             href: `${root}/${PROJECT_SECTION_SLUGS.aiReview}`,
             icon: BrainCircuit,
             anyPermission: ["automation.read", "proposal.read"],

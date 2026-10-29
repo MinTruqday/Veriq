@@ -505,13 +505,13 @@ export default function TestStatusReportPanel({ project }) {
               </div>
               {narrativeLoading && !narrativeResult && (
                 <p className="text-sm text-ink-muted" role="status">
-                  Báo cáo đã được tạo; đang chờ lượt AI tự động tạo phần diễn giải.
+                  Báo cáo đã được tạo; đang chờ AI tạo phần diễn giải.
                 </p>
               )}
               {narrativeTimedOut && !narrativeResult && (
                 <p className="text-sm text-ink-muted" role="status">
                   Chưa nhận được kết quả tự động. Báo cáo gốc vẫn được giữ nguyên; kiểm tra trạng
-                  thái lượt chạy trong Lịch sử AI.
+                  thái xử lý AI.
                 </p>
               )}
               {narrativeResult?.suggestions?.[0] && (

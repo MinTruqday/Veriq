@@ -52,6 +52,19 @@ function metricDays(value, openCount) {
   return Number.isFinite(numericValue) ? `${numericValue} ngày` : "Chưa đủ dữ liệu";
 }
 
+function ReportMetric({ label, value, detail }) {
+  const unavailable = value === "Chưa đủ dữ liệu" || value === "Chưa có lỗi đang mở";
+  const unavailableDetail =
+    value === "Chưa có lỗi đang mở" ? "Không có lỗi đang mở" : "Chưa có dữ liệu";
+  return (
+    <Metric
+      label={label}
+      value={unavailable ? "—" : value}
+      detail={detail || (unavailable ? unavailableDetail : undefined)}
+    />
+  );
+}
+
 export default function ReportsPage({ project }) {
   const { ask, dialog } = useActionDialog();
   const [value, setValue] = useState(null);
@@ -359,29 +372,29 @@ export default function ReportsPage({ project }) {
                       Liên kết yêu cầu và kết quả kiểm thử
                     </h2>
                     <p className="mt-1 text-sm text-ink-muted">
-                      Các tỷ lệ cho biết yêu cầu và tiêu chí chấp nhận đã liên kết với ca kiểm thử,
-                      liên kết còn hiệu lực và ca đã được chạy. Tỷ lệ ca đã chạy được lọc theo bản
-                      phát hành và bản dựng; bộ lọc môi trường chưa áp dụng cho tỷ lệ này.
+                      Số liệu thể hiện liên kết và kết quả kiểm thử trong phạm vi đã chọn; không
+                      phải thước đo chất lượng phần mềm. Tỷ lệ ca đã chạy lọc theo bản phát hành và
+                      bản dựng, chưa lọc theo môi trường.
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                    <Metric
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <ReportMetric
                       label="Yêu cầu có liên kết kiểm thử"
                       value={metricPercentage(value.coverage.requirement_coverage)}
                     />
-                    <Metric
+                    <ReportMetric
                       label="Tiêu chí chấp nhận có liên kết"
                       value={metricPercentage(value.coverage.acceptance_criterion_coverage)}
                     />
-                    <Metric
+                    <ReportMetric
                       label="Liên kết còn hiệu lực"
                       value={metricPercentage(value.coverage.fresh_coverage)}
                     />
-                    <Metric
+                    <ReportMetric
                       label="Ca kiểm thử đã chạy"
                       value={metricPercentage(value.coverage.execution_coverage)}
                     />
-                    <Metric
+                    <ReportMetric
                       label="Ca kiểm thử cần cập nhật"
                       value={metricCount(value.coverage.stale_tests)}
                     />
@@ -401,9 +414,9 @@ export default function ReportsPage({ project }) {
                       </p>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {value.execution && (
-                      <Metric
+                      <ReportMetric
                         label="Kết quả kiểm thử đạt"
                         value={metricRate(value.execution.pass_rate)}
                         detail={
@@ -415,7 +428,7 @@ export default function ReportsPage({ project }) {
                     )}
                     {value.defects && (
                       <>
-                        <Metric
+                        <ReportMetric
                           label="Tuổi trung bình lỗi đang mở"
                           value={metricDays(
                             value.defects.average_open_age_days,
@@ -437,28 +450,28 @@ export default function ReportsPage({ project }) {
                       Những số liệu dưới đây không bị giới hạn bởi bộ lọc phạm vi ở trên.
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {value.dashboard && (
-                      <Metric
+                      <ReportMetric
                         label="Lỗi đang mở"
                         value={metricCount(value.dashboard.open_defects)}
                       />
                     )}
                     {value.defects && (
-                      <Metric
+                      <ReportMetric
                         label="Số lần mở lại lỗi"
                         value={metricCount(value.defects.reopened_count)}
                       />
                     )}
                     {value.maintenance && (
-                      <Metric
+                      <ReportMetric
                         label="Lượt phân tích ảnh hưởng"
                         value={metricCount(value.maintenance.impact_analysis_count)}
                       />
                     )}
                     {value.ai && (
                       <>
-                        <Metric
+                        <ReportMetric
                           label="Lượt AI gặp lỗi hoặc dùng chế độ dự phòng"
                           value={metricCount(value.ai.degraded_count)}
                           detail={
@@ -467,7 +480,7 @@ export default function ReportsPage({ project }) {
                               : `${metricRate(value.ai.degraded_rate)} số lượt có dữ liệu AI`
                           }
                         />
-                        <Metric
+                        <ReportMetric
                           label="Thời gian phản hồi AI trung bình"
                           value={
                             value.ai.average_latency_ms === null ||

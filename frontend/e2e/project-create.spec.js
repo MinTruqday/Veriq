@@ -267,7 +267,7 @@ test("project cards show only computed task progress without redundant planning 
   await expect(emptyCard.getByText("Chưa có công việc", { exact: true })).toHaveCount(1);
   await expect(emptyCard.getByText("Project · Chưa có đánh giá của QA")).toHaveCount(0);
   await expect(emptyCard.getByRole("progressbar")).toHaveCount(0);
-  for (const width of [1280, 1440, 1920]) {
+  for (const width of [768, 1024, 1280, 1440, 1920]) {
     await page.setViewportSize({ width, height: 1000 });
     const dimensions = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
@@ -369,7 +369,7 @@ test("project list calendar selects a date instead of filtering by month", async
   await expect(decemberProject).toBeVisible();
   await expect(undatedProject).toBeVisible();
 
-  for (const width of [1280, 1440, 1920]) {
+  for (const width of [768, 1024, 1280, 1440, 1920]) {
     await page.setViewportSize({ width, height: 1000 });
     const dimensions = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,

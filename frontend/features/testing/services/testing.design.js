@@ -190,6 +190,7 @@ export const designTestingApi = {
   approveRequirementTemplatePublication: (id, templateId) =>
     testingRequest(`/du-an/${id}/mau-yeu-cau/${templateId}/duyet-phat-hanh`, { method: "POST" }),
   compareRequirementImport: (id) => testingRequest(`/nhap-yeu-cau/${id}/doi-chieu`),
+  getRequirementImport: (id) => testingRequest(`/nhap-yeu-cau/${id}`),
   resolveRequirementImportCandidate: (id, candidateId, payload) =>
     testingRequest(`/nhap-yeu-cau/${id}/ung-vien/${candidateId}/doi-chieu`, {
       method: "POST",

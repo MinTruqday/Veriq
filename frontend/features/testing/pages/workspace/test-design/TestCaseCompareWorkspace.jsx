@@ -1302,7 +1302,7 @@ export default function TestCaseCompareWorkspace({
                 Đóng
               </button>
             </div>
-            <div className="grid min-w-0 gap-3 xl:grid-cols-3">
+            <div className="grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
               <section className="min-w-0 rounded-control border border-border bg-surface-quiet p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <h4 className="font-semibold">
@@ -1360,7 +1360,7 @@ export default function TestCaseCompareWorkspace({
                   <p className="mt-3 text-sm text-ink-muted">Không lưu bản đề xuất AI.</p>
                 )}
               </section>
-              <section className="min-w-0 rounded-control border border-brand/30 bg-brand/5 p-4">
+              <section className="min-w-0 rounded-control border border-brand/30 bg-brand/5 p-4 xl:col-span-2 2xl:col-span-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h4 className="font-semibold">Bản kết quả sau chọn/ghép</h4>
                   <ContentOriginBadge origin="manual" humanLabel="Bản người dùng chọn/ghép" />
@@ -1417,7 +1417,7 @@ export default function TestCaseCompareWorkspace({
                       </span>
                     )}
                   </div>
-                  <div className="grid min-w-0 gap-3 xl:grid-cols-3">
+                  <div className="grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
                     <div className="min-w-0 rounded-control border border-border p-3 text-sm">
                       <p className="mb-2 text-xs text-ink-muted lg:hidden">Bản gốc</p>
                       <ReadValue
@@ -1468,7 +1468,7 @@ export default function TestCaseCompareWorkspace({
                           </button>
                         )}
                     </div>
-                    <div className="min-w-0 rounded-control border border-brand/30 p-3">
+                    <div className="min-w-0 rounded-control border border-brand/30 p-3 xl:col-span-2 2xl:col-span-1">
                       <p className="mb-2 text-xs text-ink-muted lg:hidden">Bản kết quả</p>
                       {editable ? (
                         <FieldEditor
@@ -1517,7 +1517,7 @@ export default function TestCaseCompareWorkspace({
                   ghép.
                 </p>
               </div>
-              <div className="grid min-w-0 gap-3 xl:grid-cols-3">
+              <div className="grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
                 {[
                   [
                     "Nguồn gốc",
@@ -1527,7 +1527,10 @@ export default function TestCaseCompareWorkspace({
                   ["Đề xuất AI", proposal],
                   ["Bản kết quả", result],
                 ].map(([label, value]) => (
-                  <section className="min-w-0 rounded-control border border-border p-3" key={label}>
+                  <section
+                    className={`min-w-0 rounded-control border border-border p-3 ${label === "Bản kết quả" ? "xl:col-span-2 2xl:col-span-1" : ""}`}
+                    key={label}
+                  >
                     <h5 className="mb-2 text-sm font-medium">{label}</h5>
                     <EvidenceValue
                       value={
@@ -1551,13 +1554,16 @@ export default function TestCaseCompareWorkspace({
                   phủ hiện tại khi lưu.
                 </p>
               </div>
-              <div className="grid min-w-0 gap-3 xl:grid-cols-3">
+              <div className="grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
                 {[
                   ["Bản gốc", original],
                   ["Đề xuất AI", proposal],
                   ["Bản kết quả", result],
                 ].map(([label, value]) => (
-                  <section className="min-w-0 rounded-control border border-border p-3" key={label}>
+                  <section
+                    className={`min-w-0 rounded-control border border-border p-3 ${label === "Bản kết quả" ? "xl:col-span-2 2xl:col-span-1" : ""}`}
+                    key={label}
+                  >
                     <h5 className="mb-2 text-sm font-medium">{label}</h5>
                     <CoverageLineageValue
                       value={value}
@@ -1591,7 +1597,7 @@ export default function TestCaseCompareWorkspace({
                       {final ? `Bước ${final.order}` : "Bước đã bỏ khỏi kết quả"}
                     </summary>
                     {expandedSteps.has(id) && (
-                      <div className="mt-3 grid min-w-0 gap-3 xl:grid-cols-3">
+                      <div className="mt-3 grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
                         {[before, suggested].map((step, index) => (
                           <div className="min-w-0 space-y-2 text-sm" key={index}>
                             <p className="font-medium">{index === 0 ? "Bản gốc" : "Đề xuất AI"}</p>
@@ -1642,7 +1648,7 @@ export default function TestCaseCompareWorkspace({
                             )}
                           </div>
                         ))}
-                        <div className="min-w-0 space-y-3">
+                        <div className="min-w-0 space-y-3 xl:col-span-2 2xl:col-span-1">
                           <p className="font-medium">Bản kết quả</p>
                           {final ? (
                             <>

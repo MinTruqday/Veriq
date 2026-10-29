@@ -9,6 +9,20 @@ import {
   REQUIREMENT_SOURCE_TYPE_OPTIONS,
 } from "./requirements.model";
 
+function dateTimeLocalValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function dateTimeApiValue(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 function metadataFields(item) {
   return [
     {
@@ -56,8 +70,9 @@ function metadataFields(item) {
     },
     {
       name: "approved_at",
-      label: "Thời điểm phê duyệt ISO 8601",
-      initialValue: item.approved_at || "",
+      label: "Thời điểm phê duyệt",
+      initialValue: dateTimeLocalValue(item.approved_at),
+      type: "datetime-local",
     },
     {
       name: "source_version",
@@ -68,8 +83,9 @@ function metadataFields(item) {
     },
     {
       name: "effective_from",
-      label: "Hiệu lực từ ISO 8601",
-      initialValue: item.effective_from || "",
+      label: "Bắt đầu có hiệu lực",
+      initialValue: dateTimeLocalValue(item.effective_from),
+      type: "datetime-local",
     },
     {
       name: "tags",
@@ -113,8 +129,10 @@ export default function RequirementSourceDocumentsPanel({
   ask,
   reload,
   onError,
+  onContinueImport,
 }) {
   const [retryingDocumentId, setRetryingDocumentId] = useState("");
+  const [continuingImportDocumentId, setContinuingImportDocumentId] = useState("");
   const [activatingAiDocumentId, setActivatingAiDocumentId] = useState("");
   const [aiActivationNotice, setAiActivationNotice] = useState("");
   const [expandedReportId, setExpandedReportId] = useState("");
@@ -238,7 +256,7 @@ export default function RequirementSourceDocumentsPanel({
     await ask({
       title: "Phân loại tài liệu nguồn",
       description: item.filename,
-      confirmLabel: "Lưu metadata",
+      confirmLabel: "Lưu thông tin phân loại",
       fields: metadataFields(item),
       onConfirm: async (answer) => {
         try {
@@ -255,9 +273,9 @@ export default function RequirementSourceDocumentsPanel({
             external_source_id: answer.external_source_id || null,
             approval_status: answer.approval_status,
             approved_by: answer.approved_by || null,
-            approved_at: answer.approved_at || null,
+            approved_at: dateTimeApiValue(answer.approved_at),
             source_version: answer.source_version,
-            effective_from: answer.effective_from || null,
+            effective_from: dateTimeApiValue(answer.effective_from),
             tags: answer.tags
               .split(",")
               .map((value) => value.trim())
@@ -285,6 +303,16 @@ export default function RequirementSourceDocumentsPanel({
       await testingApi.downloadRequirementDocument(item._id, item.filename);
     } catch (reason) {
       onError(messageOf(reason));
+    }
+  };
+
+  const continueImport = async (item) => {
+    if (!item.last_import_job_id || !onContinueImport) return;
+    setContinuingImportDocumentId(item._id);
+    try {
+      await onContinueImport(item);
+    } finally {
+      setContinuingImportDocumentId("");
     }
   };
 
@@ -378,9 +406,17 @@ export default function RequirementSourceDocumentsPanel({
                       ? "Chưa thể xử lý tài liệu"
                       : "Đang chờ xử lý tài liệu";
               return (
-                <div className="space-y-2">
-                  <StatusPill value={item.status} />
-                  <span>{status}</span>
+                <div className="min-w-0 space-y-3">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-ink-muted">Phân tích tài liệu</p>
+                    <div>
+                      <StatusPill value={item.status} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-ink-muted">Tra cứu nội dung</p>
+                    <p className="break-words text-sm">{status}</p>
+                  </div>
                   <p className="text-xs text-ink-muted">
                     {item.ai_enabled ? "Đã cho phép AI đọc" : "Chưa cho phép AI đọc"}
                   </p>
@@ -454,6 +490,21 @@ export default function RequirementSourceDocumentsPanel({
             hideWhenEmpty: true,
             render: (item) => (
               <span className="flex max-w-[32rem] flex-wrap items-center gap-2">
+                {can("requirement_document.review_extraction") &&
+                  item.status === "EXTRACTED" &&
+                  item.last_import_job_id && (
+                    <button
+                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      type="button"
+                      disabled={continuingImportDocumentId === item._id}
+                      aria-busy={continuingImportDocumentId === item._id}
+                      onClick={() => continueImport(item)}
+                    >
+                      {continuingImportDocumentId === item._id
+                        ? "Đang mở bản xem trước…"
+                        : "Tiếp tục nhập yêu cầu"}
+                    </button>
+                  )}
                 {can("knowledge.manage") && item.status !== "ARCHIVED" && (
                   <>
                     <button

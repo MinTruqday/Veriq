@@ -396,18 +396,7 @@ export default function AppShell({ children, requireAuth }) {
     searchParams,
   ]);
   if (routeDenied) {
-    if (!projectId) return null;
-    return (
-      <main
-        id="main-content"
-        className="flex min-h-[100dvh] items-center justify-center bg-canvas text-ink"
-        aria-busy="true"
-      >
-        <p className="text-sm text-ink-muted" role="status">
-          Đang chuyển về khu vực có thể truy cập.
-        </p>
-      </main>
-    );
+    return null;
   }
   if (
     !canRenderProtectedRoute({

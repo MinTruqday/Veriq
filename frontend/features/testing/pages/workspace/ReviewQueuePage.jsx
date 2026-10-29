@@ -5,7 +5,7 @@ import { ProjectCrumb, WorkspacePage } from "../../components/WorkspacePrimitive
 
 export default function ReviewQueuePage({ project }) {
   return (
-    <WorkspacePage title="Lượt chạy AI" actions={<ProjectCrumb projectId={project._id} />}>
+    <WorkspacePage title="Hoạt động AI" actions={<ProjectCrumb projectId={project._id} />}>
       <AgentRunPanel project={project} showDefinitions={false} />
     </WorkspacePage>
   );

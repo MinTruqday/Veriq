@@ -12,6 +12,21 @@ const statusLabel = {
   SUPERSEDED: "Đã thay thế bởi phiên bản mới",
 };
 
+function sourceReferenceLabel(sourceRef) {
+  const reference = String(sourceRef || "").trim();
+  const businessRule = /^(?:business_rule:?)\s*(\d+)$/i.exec(reference);
+  if (businessRule) return `Quy tắc nghiệp vụ ${businessRule[1]}`;
+  if (/^AC[-_ ]?\d+$/i.test(reference)) return reference.toUpperCase().replace(/[ _]/g, "-");
+  return (
+    {
+      content: "Nội dung yêu cầu",
+      actors: "Tác nhân",
+      business_rules: "Quy tắc nghiệp vụ",
+      acceptance_criteria: "Tiêu chí chấp nhận",
+    }[reference] || "Nguồn yêu cầu"
+  );
+}
+
 export default function RequirementClarificationPanel({
   requirementVersionId,
   role,
@@ -122,9 +137,16 @@ export default function RequirementClarificationPanel({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <strong>{statusLabel[item.status] || valueLabel(item.status)}</strong>
                 {item.source_ref && (
-                  <span className="text-xs text-ink-faint">Nguồn: {item.source_ref}</span>
+                  <span className="text-xs text-ink-faint">
+                    Nguồn: {sourceReferenceLabel(item.source_ref)}
+                  </span>
                 )}
               </div>
+              {item.source_quote && (
+                <blockquote className="mt-3 rounded-control bg-surface-quiet px-3 py-2 text-sm text-ink-muted">
+                  {item.source_quote}
+                </blockquote>
+              )}
               <p className="mt-3 text-sm font-medium text-ink">{item.question}</p>
               <p className="mt-1 text-sm text-ink-muted">Lý do: {item.reason}</p>
               {item.answer && (

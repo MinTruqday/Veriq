@@ -879,15 +879,58 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (activeProjectId.current === requestedProjectId) setRetryingSource(false);
     }
   };
+  const continueRequirementImport = async (document) => {
+    const requestedProjectId = project._id;
+    if (!document?.last_import_job_id) return;
+    try {
+      const job = await testingApi.getRequirementImport(document.last_import_job_id);
+      if (activeProjectId.current !== requestedProjectId) return;
+      if (job.project_id !== requestedProjectId || job.source_document_id !== document._id) {
+        throw new Error("Lượt nhập không khớp với tài liệu nguồn của dự án này.");
+      }
+      if (job.status !== "PREVIEW_READY" || !Array.isArray(job.preview)) {
+        throw new Error(
+          "Bản xem trước này không còn chờ nhập. Hãy kiểm tra trạng thái yêu cầu trong dự án.",
+        );
+      }
+      setSourceDocument(document);
+      setPreview(job);
+      setSelectedIndexes(
+        Array.isArray(job.selected_indexes)
+          ? job.selected_indexes.filter(
+              (index) => Number.isInteger(index) && index >= 0 && index < job.preview.length,
+            )
+          : job.preview.map((_, index) => index),
+      );
+      setImporting(true);
+      setError("");
+    } catch (reason) {
+      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
+    }
+  };
   const editCandidate = (index, patch) => {
     setImportComparison(null);
     setSeparateIndexes([]);
     setSeparateReasons({});
     setPreview((value) => ({
       ...value,
-      preview: value.preview.map((candidate, candidateIndex) =>
-        candidateIndex === index ? { ...candidate, ...patch } : candidate,
-      ),
+      preview: value.preview.map((candidate, candidateIndex) => {
+        if (candidateIndex !== index) return candidate;
+        const updated = { ...candidate, ...patch };
+        if (Object.hasOwn(patch, "acceptance_criteria")) {
+          const sectionStates = { ...(candidate.section_states || {}) };
+          const hasCriteria = patch.acceptance_criteria.some((item) =>
+            docText(item.content_doc).trim(),
+          );
+          if (hasCriteria) {
+            sectionStates.acceptance_criteria = "provided";
+          } else if (sectionStates.acceptance_criteria === "provided") {
+            sectionStates.acceptance_criteria = "missing";
+          }
+          updated.section_states = sectionStates;
+        }
+        return updated;
+      }),
     }));
   };
   const saveImportReview = async (nextPreview, reviewNote, nextSelection = selectedIndexes) => {
@@ -1532,6 +1575,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               ask={ask}
               reload={load}
               onError={setError}
+              onContinueImport={continueRequirementImport}
             />
           )}
           <div className="grid gap-5 xl:grid-cols-2">

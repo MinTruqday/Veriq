@@ -639,17 +639,6 @@ export default function PlanningPage({ project, section }) {
   return (
     <WorkspacePage
       title={pageTitle}
-      description={
-        tab === "backlog"
-          ? "Sắp xếp công việc chưa đưa vào kế hoạch thực hiện."
-          : tab === "sprint"
-            ? "Quản lý phạm vi và trạng thái các đợt lặp của dự án."
-            : tab === "roadmap"
-              ? "Theo dõi mốc thời gian và các hạng mục cấp cao của dự án."
-              : tab === "board"
-                ? "Theo dõi công việc theo trạng thái; quy tắc chuyển cột của dự án được áp dụng."
-                : "Tra cứu và cập nhật công việc trong danh sách của dự án."
-      }
       actions={
         isBa ? (
           <div className="flex flex-wrap gap-2">

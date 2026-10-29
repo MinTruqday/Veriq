@@ -47,6 +47,17 @@ function waiverOwnerLabel(ownerId, members) {
   );
 }
 
+function decisionActorLabel(actorId, members) {
+  if (!actorId) return "Thành viên dự án";
+  const member = members.find((item) => item.user_id === actorId);
+  if (!member) return "Thành viên dự án";
+  const candidates = [member.user?.full_name, member.user?.email, member.user_label];
+  return (
+    candidates.find((value) => value && value !== actorId && value !== member.user_id) ||
+    "Thành viên dự án"
+  );
+}
+
 export default function TestAdequacyPanel({
   requirementVersionId,
   members = [],
@@ -232,7 +243,15 @@ export default function TestAdequacyPanel({
   };
   const decision = (item) => (
     <>
-      {item.decision?.reason || "Chưa có quyết định"}
+      <div className="whitespace-pre-wrap break-words">
+        {item.decision?.reason || "Chưa có quyết định"}
+      </div>
+      {item.decision?.decided_at && (
+        <div className="mt-1 text-xs text-ink-muted">
+          Quyết định bởi {decisionActorLabel(item.decision.decided_by, members)} ·{" "}
+          {new Date(item.decision.decided_at).toLocaleString("vi-VN")}
+        </div>
+      )}
       {item.decision?.clarification_id && (
         <div className="mt-1 text-xs text-ink-muted">Đã liên kết phiếu làm rõ</div>
       )}

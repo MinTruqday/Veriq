@@ -112,7 +112,11 @@ export default function OperationsPage() {
   const aiMetrics = [
     { _id: "impact_total", name: "Lượt phân loại ảnh hưởng", count: impactMetrics.total || 0 },
     { _id: "impact_success", name: "Lượt phân loại thành công", count: impactMetrics.success || 0 },
-    { _id: "impact_degraded", name: "Lượt xử lý giới hạn", count: impactMetrics.degraded || 0 },
+    {
+      _id: "impact_degraded",
+      name: "Lượt phân tích có giới hạn",
+      count: impactMetrics.degraded || 0,
+    },
     {
       _id: "impact_success_rate",
       name: "Tỷ lệ thành công",
@@ -120,7 +124,7 @@ export default function OperationsPage() {
     },
     {
       _id: "impact_latency",
-      name: "Độ trễ trung bình",
+      name: "Thời gian xử lý trung bình",
       count: `${Math.round(impactMetrics.average_latency_ms || 0)} mili giây`,
     },
   ];

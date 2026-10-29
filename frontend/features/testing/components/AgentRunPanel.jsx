@@ -17,6 +17,23 @@ import { ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitiv
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
+const runTitlesByTrigger = {
+  DOCUMENT_INGESTED: "Rà soát tài liệu mới",
+  API_OPERATION_CONFIRMED: "Rà soát đặc tả API",
+  REQUIREMENT_CHANGED: "Rà soát yêu cầu đã thay đổi",
+  TEST_EXECUTION_RECORDED: "Phân tích kết quả kiểm thử",
+  DEFECT_RECORDED: "Phân tích lỗi mới",
+  DEFECT_CHANGED: "Rà soát thay đổi lỗi",
+  WORK_ITEM_CHANGED: "Rà soát công việc đã thay đổi",
+  TEST_CASE_CHANGED: "Rà soát ca kiểm thử đã thay đổi",
+  TEST_CASE_APPROVED: "Tiếp tục xử lý ca kiểm thử đã duyệt",
+  TEST_PLAN_CHANGED: "Rà soát kế hoạch kiểm thử đã thay đổi",
+  TEST_PLAN_APPROVED: "Tiếp tục xử lý kế hoạch kiểm thử đã duyệt",
+  STATUS_REPORT_CREATED: "Tạo báo cáo trạng thái",
+  TEST_COMPLETION_REPORT_CREATED: "Tạo báo cáo hoàn tất kiểm thử",
+  PERFORMANCE_CONFIGURATION_APPROVED: "Xử lý cấu hình hiệu năng đã duyệt",
+  RELEASE_CHANGED: "Rà soát bản phát hành đã thay đổi",
+};
 
 function automationTriggerLabel(run) {
   const providedLabel = String(run?.trigger_label || run?.trigger_display_name || "").trim();
@@ -36,7 +53,7 @@ function automationRunTitle(run) {
     .map((value) => String(value || "").trim())
     .find((value) => value && !internalCode.test(value));
   if (summary) return summary;
-  return "Lượt xử lý dự án";
+  return runTitlesByTrigger[run?.trigger] || "Hoạt động xử lý";
 }
 
 export default function AgentRunPanel({ project, showDefinitions = true }) {
@@ -530,7 +547,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const authorizationGuidance = automationAuthorizationGuidance(run);
 
   return (
-    <Panel title={showDefinitions ? "Tự động hóa dự án" : "Hoạt động tự động"}>
+    <Panel title="Hoạt động AI">
       <div className="grid gap-4 p-4">
         {error && (
           <div className="grid gap-2">
@@ -547,7 +564,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
         )}
         {runsRefreshError && (
           <div className="grid gap-2" role="status">
-            <ErrorState message={`Chưa cập nhật được danh sách lượt chạy: ${runsRefreshError}`} />
+            <ErrorState message={`Chưa cập nhật được hoạt động AI: ${runsRefreshError}`} />
             <button
               className="secondary-button justify-self-start"
               type="button"
@@ -560,7 +577,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 }
               }}
             >
-              Tải lại danh sách lượt chạy
+              Tải lại hoạt động AI
             </button>
           </div>
         )}
@@ -614,7 +631,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
           )}
           {busyRun && canControlRun && (
             <button className="secondary-button" type="button" disabled={busy} onClick={cancel}>
-              Dừng lượt chạy
+              Dừng tác vụ AI
             </button>
           )}
           {canResumeRun && (
@@ -704,7 +721,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             {detailRefreshError && (
               <div className="grid gap-2" role="status">
                 <ErrorState
-                  message={`Thông tin lượt chạy có thể đã cũ; chưa tải được dữ liệu mới nhất: ${detailRefreshError}`}
+                  message={`Thông tin hoạt động AI có thể đã cũ; chưa tải được dữ liệu mới nhất: ${detailRefreshError}`}
                 />
                 <button
                   className="secondary-button justify-self-start"
@@ -718,7 +735,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                     }
                   }}
                 >
-                  Tải lại lượt chạy và bằng chứng
+                  Tải lại hoạt động và căn cứ
                 </button>
               </div>
             )}
@@ -731,7 +748,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 </time>
               )}
               <details className="text-xs text-ink-muted">
-                <summary className="cursor-pointer">Chi tiết lượt xử lý</summary>
+                <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
                 <dl className="mt-2 grid gap-1">
                   <div>
                     <dt className="inline">Nguồn khởi chạy: </dt>
@@ -742,7 +759,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                     <dd className="inline">{valueLabel(run.requester_role)}</dd>
                   </div>
                   <div>
-                    <dt className="inline">Mã lượt xử lý: </dt>
+                    <dt className="inline">Mã tham chiếu: </dt>
                     <dd className="inline break-all">{run.automation_run_id}</dd>
                   </div>
                 </dl>
@@ -768,7 +785,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 </p>
                 {workflow.truncated && (
                   <p className="text-xs text-warning" role="status">
-                    Còn lượt xử lý chưa được tải hết nên chưa thể xác nhận toàn bộ đã hoàn tất.
+                    Còn hoạt động AI chưa được tải hết nên chưa thể xác nhận toàn bộ đã hoàn tất.
                   </p>
                 )}
                 {workflow.runs?.length > 1 && (
@@ -974,7 +991,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                         )}
                         {!item.blocking && item.resolution_status && (
                           <p className="mt-1 text-sm text-ink-muted">
-                            Mục làm rõ này đã được xử lý trong lượt chạy.
+                            Mục làm rõ này đã được xử lý trong tác vụ AI.
                           </p>
                         )}
                       </li>
@@ -982,7 +999,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                   </ul>
                 ) : (
                   <p className="text-sm text-ink-muted">
-                    Lượt chạy chưa lưu câu hỏi cụ thể. Hãy mở yêu cầu hoặc tài liệu nguồn liên quan
+                    Tác vụ AI chưa lưu câu hỏi cụ thể. Hãy mở yêu cầu hoặc tài liệu nguồn liên quan
                     để bổ sung thông tin còn thiếu.
                   </p>
                 )}

@@ -1065,7 +1065,7 @@ export default function TestDesignPage({ project, workspaceView }) {
         ? {
             cases: "Ca kiểm thử",
             adequacy: "Hồ sơ đảm bảo",
-            "agent-runs": "Lượt chạy AI",
+            "agent-runs": "Hoạt động AI",
             scenarios: "Kịch bản kiểm thử",
             templates: "Mẫu ca kiểm thử",
             automation: "Mã kiểm thử tự động",
@@ -1208,10 +1208,10 @@ export default function TestDesignPage({ project, workspaceView }) {
                   <p className="whitespace-pre-wrap break-words">
                     {requirementAutomationRun.result?.summary ||
                       requirementAutomationRun.result?.proposal?.summary ||
-                      "Chưa có phần tóm tắt kết quả trong lượt chạy."}
+                      "Chưa có phần tóm tắt cho hoạt động AI."}
                   </p>
                   <a className="text-accent underline" href="#automation-run-details">
-                    Đến lịch sử lượt chạy
+                    Xem hoạt động AI
                   </a>
                 </div>
               ) : (
@@ -1221,7 +1221,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                 </p>
               ))}
             {!automationRunsLoading && !automationRunsError && !selectedRequirement && (
-              <p className="text-sm text-ink-muted">Chọn yêu cầu để tra lượt chạy tương ứng.</p>
+              <p className="text-sm text-ink-muted">Chọn yêu cầu để tra hoạt động AI tương ứng.</p>
             )}
           </div>
         </Panel>
@@ -1245,8 +1245,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                   actionableDrafts.some((item) => item.status === "IN_REVIEW") && (
                     <div className="space-y-3">
                       <p className="text-sm text-ink-muted">
-                        Chọn ca đang chờ duyệt. Nhóm chỉ được công bố toàn bộ khi mọi nguồn, phiên
-                        bản và kiểm tra đều hợp lệ.
+                        Chọn các ca cần duyệt. Chỉ ca hợp lệ mới được công bố.
                       </p>
                       <DataTable
                         items={actionableDrafts.filter((item) => item.status === "IN_REVIEW")}

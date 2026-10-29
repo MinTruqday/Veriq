@@ -90,6 +90,10 @@ export default function NotificationPreferencesPanel() {
             }
           />
         </div>
+      ) : loading ? (
+        <p className="p-5 text-sm text-ink-muted" role="status" aria-live="polite">
+          Đang tải cài đặt thông báo
+        </p>
       ) : (
         <form className="grid gap-4 p-5" onSubmit={save}>
           {error && (
@@ -97,7 +101,7 @@ export default function NotificationPreferencesPanel() {
               {error}
             </p>
           )}
-          <fieldset disabled={loading || saving} className="grid gap-2">
+          <fieldset disabled={saving} className="grid gap-2">
             <legend className="sr-only">Loại thông báo</legend>
             {settingOptions.map(([key, label]) => (
               <label
@@ -117,8 +121,8 @@ export default function NotificationPreferencesPanel() {
             ))}
           </fieldset>
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={loading || saving}>
-              {loading ? "Đang tải" : saving ? "Đang lưu" : "Lưu cài đặt"}
+            <Button type="submit" disabled={saving}>
+              {saving ? "Đang lưu" : "Lưu cài đặt"}
             </Button>
             {saved && (
               <p className="text-sm text-brand" role="status">

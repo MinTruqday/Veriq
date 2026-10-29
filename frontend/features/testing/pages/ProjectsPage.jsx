@@ -155,8 +155,8 @@ export default function ProjectsPage() {
     }
   };
   useEffect(() => {
-    void load("", status);
-  }, [load, status]);
+    void load("", "active");
+  }, [load]);
   useEffect(() => {
     void loadCapabilities();
   }, [loadCapabilities]);
@@ -439,7 +439,7 @@ export default function ProjectsPage() {
       )}
       <Panel title="Danh sách dự án">
         <form
-          className="grid min-w-0 gap-3 border-b border-border p-4 md:grid-cols-[minmax(260px,1fr)_auto_minmax(170px,220px)_minmax(170px,210px)] md:items-center"
+          className="grid min-w-0 gap-3 border-b border-border p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end xl:grid-cols-[minmax(260px,1fr)_auto_minmax(170px,220px)_minmax(170px,210px)] xl:items-center"
           onSubmit={(event) => {
             event.preventDefault();
             void load(query, status);
@@ -467,7 +467,11 @@ export default function ProjectsPage() {
             aria-label="Trạng thái dự án"
             className="apple-input h-10 w-full"
             value={status}
-            onChange={(event) => setStatus(event.target.value)}
+            onChange={(event) => {
+              const nextStatus = event.target.value;
+              setStatus(nextStatus);
+              void load(query, nextStatus);
+            }}
           >
             <option value="active">Đang hoạt động</option>
             <option value="archived">Đã lưu trữ</option>
@@ -503,10 +507,16 @@ export default function ProjectsPage() {
             {filteredItems.map((item) => {
               const taskProgress = taskProgressPresentation(item.task_summary);
               const schedule = projectSchedule(item);
+              const activityDate = item.updated_at || item.created_at;
+              const activityLabel = item.updated_at
+                ? "Cập nhật"
+                : item.created_at
+                  ? "Tạo lúc"
+                  : "Chưa có thông tin";
               return (
                 <article
                   key={item._id}
-                  className="grid min-w-0 gap-5 p-5 transition hover:bg-surface-quiet lg:grid-cols-[minmax(220px,1.2fr)_minmax(205px,1fr)_minmax(190px,1fr)_minmax(180px,0.9fr)] lg:items-center"
+                  className="grid min-w-0 gap-5 p-5 transition hover:bg-surface-quiet lg:grid-cols-2 lg:items-center xl:grid-cols-[minmax(220px,1.2fr)_minmax(205px,1fr)_minmax(190px,1fr)_minmax(180px,0.9fr)]"
                 >
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="shrink-0 font-mono text-[13px] font-semibold text-brand">
@@ -565,9 +575,11 @@ export default function ProjectsPage() {
                     <StatusPill value={String(item.status).toUpperCase()} />
                     <p
                       className="text-[11px] text-ink-muted lg:text-right"
-                      title={`Cập nhật ${formatProjectUpdatedAt(item.updated_at || item.created_at)}`}
+                      title={`${activityLabel}${activityDate ? ` ${formatProjectUpdatedAt(activityDate)}` : ""}`}
                     >
-                      Cập nhật {formatProjectUpdatedAt(item.updated_at || item.created_at)}
+                      {activityDate
+                        ? `${activityLabel} ${formatProjectUpdatedAt(activityDate)}`
+                        : activityLabel}
                     </p>
                     {item.status === "archived" &&
                       item.current_permissions?.includes("project.restore") && (

@@ -8,6 +8,28 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { REQUIREMENT_IMPORT_FORMATS } from "./requirements.model";
 import RequirementTemplatePanel from "./RequirementTemplatePanel";
 
+function updateAcceptanceCriterion(criteria, index, content) {
+  return criteria.map((criterion, criterionIndex) => {
+    if (criterionIndex !== index) return criterion;
+    const updated = { ...criterion, content_doc: textDoc(content) };
+    if (docText(criterion.content_doc).trim() !== content.trim()) delete updated.source_span;
+    return updated;
+  });
+}
+
+function addAcceptanceCriterion(criteria) {
+  const keys = new Set((criteria || []).map((criterion) => criterion.key));
+  const numberedKeys = [...keys].map((key) => /^AC-(\d+)$/.exec(key || "")).filter(Boolean);
+  const padding = Math.max(0, ...numberedKeys.map((match) => match[1].length));
+  let index = Math.max(0, ...numberedKeys.map((match) => Number(match[1]))) + 1;
+  let key = `AC-${String(index).padStart(padding, "0")}`;
+  while (keys.has(key)) {
+    index += 1;
+    key = `AC-${String(index).padStart(padding, "0")}`;
+  }
+  return [...(criteria || []), { key, content_doc: textDoc(""), status: "draft" }];
+}
+
 function DocumentAccessControl({
   access,
   members,
@@ -487,8 +509,8 @@ export default function RequirementImportModal({
         <div className="border-t border-border p-5">
           {preview.warnings?.includes("NO_DOCUMENTED_BEHAVIOR_TO_DRAFT") && (
             <p className="mb-3 text-sm text-ink-muted">
-              Tài liệu chưa mô tả hành vi đủ rõ để tạo bản nháp yêu cầu Bạn có thể bổ sung tài liệu
-              hoặc tạo mẫu thủ công
+              Tài liệu chưa mô tả hành vi đủ rõ để tạo bản nháp yêu cầu. Bạn có thể bổ sung tài liệu
+              hoặc tạo yêu cầu thủ công.
             </p>
           )}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -547,29 +569,15 @@ export default function RequirementImportModal({
           <DataTable
             items={preview.preview.map((item, index) => ({
               ...item,
-              _id: `candidate-${index}`,
+              _id: index,
               candidateIndex: index,
             }))}
+            layout="cards"
+            selectedIds={selectedIndexes}
+            onSelectionChange={setSelectedIndexes}
+            selectionLabel="Chọn ứng viên"
+            selectionDisabled={preview.status !== "PREVIEW_READY" || confirmingImport}
             columns={[
-              {
-                key: "selected",
-                label: "Nhập",
-                render: (item) => (
-                  <input
-                    aria-label={`Chọn ứng viên ${item.candidateIndex + 1}`}
-                    type="checkbox"
-                    checked={selectedIndexes.includes(item.candidateIndex)}
-                    disabled={preview.status !== "PREVIEW_READY" || confirmingImport}
-                    onChange={(event) =>
-                      setSelectedIndexes((values) =>
-                        event.target.checked
-                          ? [...values, item.candidateIndex].sort((left, right) => left - right)
-                          : values.filter((value) => value !== item.candidateIndex),
-                      )
-                    }
-                  />
-                ),
-              },
               {
                 key: "requirement_key",
                 label: "Mã yêu cầu",
@@ -605,6 +613,7 @@ export default function RequirementImportModal({
               {
                 key: "content_doc",
                 label: "Nội dung",
+                minWidth: 480,
                 render: (item) => (
                   <div className="w-full min-w-0">
                     <DocumentEditor
@@ -616,6 +625,69 @@ export default function RequirementImportModal({
                         onEditCandidate(item.candidateIndex, { content_doc })
                       }
                     />
+                    <label className="field-label mt-3 block">Tiêu chí chấp nhận</label>
+                    <div className="mt-2 space-y-3">
+                      {(item.acceptance_criteria || []).map((criterion, criterionIndex) => (
+                        <div
+                          className="rounded-control border border-border bg-surface-quiet p-3"
+                          key={`${criterion.key || "AC"}-${criterionIndex}`}
+                        >
+                          <label className="field-label block">
+                            {criterion.key || `Tiêu chí ${criterionIndex + 1}`}
+                            <textarea
+                              aria-label={`Tiêu chí chấp nhận ${criterion.key || criterionIndex + 1} ứng viên ${item.candidateIndex + 1}`}
+                              className="apple-input mt-2 min-h-20 w-full min-w-0 resize-y"
+                              disabled={preview.status !== "PREVIEW_READY" || confirmingImport}
+                              value={docText(criterion.content_doc)}
+                              onChange={(event) =>
+                                onEditCandidate(item.candidateIndex, {
+                                  acceptance_criteria: updateAcceptanceCriterion(
+                                    item.acceptance_criteria || [],
+                                    criterionIndex,
+                                    event.target.value,
+                                  ),
+                                })
+                              }
+                            />
+                          </label>
+                          <button
+                            className="secondary-button mt-2"
+                            type="button"
+                            disabled={preview.status !== "PREVIEW_READY" || confirmingImport}
+                            onClick={() =>
+                              onEditCandidate(item.candidateIndex, {
+                                acceptance_criteria: item.acceptance_criteria.filter(
+                                  (_, index) => index !== criterionIndex,
+                                ),
+                              })
+                            }
+                          >
+                            Bỏ tiêu chí này
+                          </button>
+                        </div>
+                      ))}
+                      {!item.acceptance_criteria?.length && (
+                        <p className="text-sm text-ink-muted">
+                          Chưa trích xuất được tiêu chí chấp nhận.
+                        </p>
+                      )}
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={preview.status !== "PREVIEW_READY" || confirmingImport}
+                        onClick={() =>
+                          onEditCandidate(item.candidateIndex, {
+                            acceptance_criteria: addAcceptanceCriterion(item.acceptance_criteria),
+                          })
+                        }
+                      >
+                        Thêm tiêu chí
+                      </button>
+                    </div>
+                    <span className="mt-2 block text-xs font-normal text-ink-muted">
+                      Tiêu chí phải bám theo nội dung tài liệu nguồn. Nội dung đã sửa cần được lưu
+                      và đối chiếu lại trước khi nhập.
+                    </span>
                   </div>
                 ),
               },
@@ -626,8 +698,15 @@ export default function RequirementImportModal({
               },
               {
                 key: "candidate_relation",
-                label: "Quan hệ ứng viên",
-                render: (item) => item.candidate_relation || "Nguyên bản",
+                label: "Kết quả đối chiếu",
+                render: (item) => {
+                  if (item.candidate_relation === "merged") return "Đã gộp từ nhiều nội dung";
+                  const split = /^split-(\d+)$/.exec(item.candidate_relation || "");
+                  if (split) return `Mục ${split[1]} sau khi tách`;
+                  return item.candidate_relation
+                    ? valueLabel(item.candidate_relation)
+                    : "Nội dung mới";
+                },
               },
               {
                 key: "source_refs",

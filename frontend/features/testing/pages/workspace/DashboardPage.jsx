@@ -29,15 +29,19 @@ export default function DashboardPage({ project }) {
   const [value, setValue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [taskSummary, setTaskSummary] = useState(project.task_summary);
   const permissions = project.current_permissions || [];
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
   const canReadCoverage = can("coverage.read");
   const canReadAutomationRuns = can("proposal.read") || can("automation.read");
+  const canReadKnowledge = can("knowledge.read");
   useEffect(() => {
     let active = true;
     const requests = [];
+    setLoading(true);
+    setError("");
     if (canReadAnalytics) {
       requests.push(["dashboard", testingApi.dashboard(project._id)]);
     }
@@ -65,11 +69,11 @@ export default function DashboardPage({ project }) {
     return () => {
       active = false;
     };
-  }, [canReadAnalytics, canReadCoverage, project._id]);
+  }, [canReadAnalytics, canReadCoverage, project._id, reloadVersion]);
   const base = `/du-an/${project._id}`;
   const navigationCards = [
     ["lap-ke-hoach/backlog", "Lập kế hoạch", "project.read"],
-    ["yeu-cau", "Làm rõ yêu cầu", "requirement.read"],
+    ["yeu-cau", "Yêu cầu", "requirement.read"],
     ["ho-so-dam-bao", "Hồ sơ đảm bảo", "requirement.read", "testcase.read"],
     ["ca-kiem-thu", "Thiết kế kiểm thử", "testcase.read"],
     ["ke-hoach-kiem-thu", "Lập kế hoạch kiểm thử", "testplan.read"],
@@ -84,23 +88,38 @@ export default function DashboardPage({ project }) {
   const coverage = value?.coverage;
   const taskProgress = taskProgressPresentation(taskSummary);
   const hasOverviewMetrics =
-    can("requirement.read") ||
-    can("testcase.read") ||
-    can("defect.read") ||
-    (can("coverage.read") && Boolean(coverage));
+    Boolean(dashboard && (can("requirement.read") || can("testcase.read") || can("defect.read"))) ||
+    Boolean(can("coverage.read") && coverage?.requirement_coverage != null);
+  const hasDetailedCoverage =
+    can("coverage.read") &&
+    [
+      coverage?.acceptance_criterion_coverage,
+      coverage?.fresh_coverage,
+      coverage?.execution_coverage,
+    ].some((metric) => metric != null);
   const hasQualityMetrics =
-    can("testcase.read") ||
-    (can("coverage.read") && Boolean(coverage)) ||
-    can("testrun.read") ||
-    can("impact.read");
+    Boolean(dashboard && (can("testcase.read") || can("testrun.read") || can("impact.read"))) ||
+    hasDetailedCoverage;
   return (
     <WorkspacePage title={project.name} description={projectOverviewDescription(project)}>
-      {error && <ErrorState message={error} />}
+      {error && (
+        <div className="space-y-3">
+          <ErrorState message={error} />
+          <button
+            className="secondary-button"
+            disabled={loading}
+            onClick={() => setReloadVersion((current) => current + 1)}
+            type="button"
+          >
+            {loading ? "Đang tải lại" : "Tải lại dữ liệu"}
+          </button>
+        </div>
+      )}
       {loading ? (
         <LoadingState />
       ) : (
         <>
-          <Panel title="Tiến độ dự án">
+          <Panel title="Tiến độ công việc">
             <div className="grid gap-5 p-5">
               <div>
                 <div className="flex items-center justify-between gap-3 text-sm">
@@ -111,7 +130,7 @@ export default function DashboardPage({ project }) {
                   </span>
                   {taskProgress.applicableTotal > 0 && taskProgress.completed != null && (
                     <span className="shrink-0 text-ink-muted">
-                      {taskProgress.completed} hoàn thành
+                      {taskProgress.completed}/{taskProgress.applicableTotal} công việc
                     </span>
                   )}
                 </div>
@@ -134,56 +153,71 @@ export default function DashboardPage({ project }) {
             </div>
           </Panel>
           {canReadAutomationRuns && <AgentRunPanel project={project} showDefinitions={false} />}
-          {dashboard && hasOverviewMetrics && (
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-              {can("requirement.read") && <Metric label="Yêu cầu" value={dashboard.requirements} />}
-              {can("testcase.read") && (
-                <Metric label="Kiểm thử đang hoạt động" value={dashboard.active_tests} />
+          {(dashboard || coverage) && hasOverviewMetrics && (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
+              {can("requirement.read") && dashboard && (
+                <Metric label="Yêu cầu" value={dashboard.requirements} />
               )}
-              {can("defect.read") && <Metric label="Lỗi đang mở" value={dashboard.open_defects} />}
+              {can("testcase.read") && dashboard && (
+                <Metric label="Ca kiểm thử đang hoạt động" value={dashboard.active_tests} />
+              )}
+              {can("defect.read") && dashboard && (
+                <Metric label="Lỗi đang mở" value={dashboard.open_defects} />
+              )}
               {can("coverage.read") && coverage?.requirement_coverage != null && (
-                <Metric label="Độ phủ yêu cầu" value={`${coverage.requirement_coverage}%`} />
+                <Metric
+                  label="Yêu cầu có liên kết kiểm thử"
+                  value={`${coverage.requirement_coverage}%`}
+                />
               )}
             </div>
           )}
-          {dashboard && hasQualityMetrics && (
+          {(dashboard || coverage) && hasQualityMetrics && (
             <details className="rounded-panel border border-border bg-surface p-4 shadow-sm">
               <summary className="cursor-pointer text-sm font-medium">
-                Chỉ số chất lượng chi tiết
+                Số liệu kiểm thử chi tiết
               </summary>
-              <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-                {can("testcase.read") && (
-                  <Metric label="Kiểm thử cần cập nhật" value={dashboard.tests_needing_update} />
+              <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
+                {can("testcase.read") && dashboard && (
+                  <Metric label="Ca kiểm thử cần rà soát" value={dashboard.tests_needing_update} />
                 )}
                 {can("coverage.read") && coverage && (
                   <>
                     {coverage.acceptance_criterion_coverage != null && (
                       <Metric
-                        label="Độ phủ tiêu chí chấp nhận"
+                        label="Tiêu chí chấp nhận có liên kết kiểm thử"
                         value={`${coverage.acceptance_criterion_coverage}%`}
                       />
                     )}
                     {coverage.fresh_coverage != null && (
-                      <Metric label="Độ phủ còn hiệu lực" value={`${coverage.fresh_coverage}%`} />
+                      <Metric
+                        label="Yêu cầu có liên kết kiểm thử còn hiệu lực"
+                        value={`${coverage.fresh_coverage}%`}
+                      />
                     )}
                     {coverage.execution_coverage != null && (
-                      <Metric label="Độ phủ thực thi" value={`${coverage.execution_coverage}%`} />
+                      <Metric
+                        label="Phạm vi đã có kết quả thực thi"
+                        value={`${coverage.execution_coverage}%`}
+                      />
                     )}
                   </>
                 )}
-                {can("testrun.read") && (
-                  <Metric label="Lần chạy hiện tại" value={dashboard.current_runs} />
+                {can("testrun.read") && dashboard && (
+                  <Metric label="Tác vụ AI đang xử lý" value={dashboard.current_runs} />
                 )}
-                {can("impact.read") && (
+                {can("impact.read") && dashboard && (
                   <Metric label="Thay đổi chờ rà soát" value={dashboard.changes_waiting_impact} />
                 )}
               </div>
             </details>
           )}
-          {(navigationCards.length > 0 || can("knowledge.read")) && (
-            <div className="grid gap-4 lg:grid-cols-3">
+          {(navigationCards.length > 0 || canReadKnowledge) && (
+            <div
+              className={`grid gap-4 ${navigationCards.length > 0 && canReadKnowledge ? "lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]" : ""}`}
+            >
               {navigationCards.length > 0 && (
-                <Panel title="Đi tới công việc" className="lg:col-span-2">
+                <Panel title="Đi tới công việc">
                   <div className="grid gap-3 p-5 sm:grid-cols-2">
                     {navigationCards.map(([href, label]) => (
                       <Link
@@ -197,11 +231,11 @@ export default function DashboardPage({ project }) {
                   </div>
                 </Panel>
               )}
-              {can("knowledge.read") && (
+              {canReadKnowledge && (
                 <Panel title="Tài liệu và nguồn">
                   <div className="space-y-3 p-5">
                     <p className="text-sm leading-6 text-ink-muted">
-                      Chỉ tài liệu được cấp quyền mới được dùng làm nguồn dẫn hoặc cho phép AI đọc
+                      Tài liệu tham khảo chỉ hiển thị theo quyền truy cập của bạn.
                     </p>
                     <Link className="apple-button w-full" href={`${base}/tri-thuc`}>
                       Mở tài liệu tham chiếu
@@ -271,7 +305,7 @@ export default function DashboardPage({ project }) {
             <Panel title="Thay đổi gần đây">
               <DataTable
                 items={dashboard.recent_changes}
-                empty="Chưa có bộ thay đổi"
+                empty="Chưa có thay đổi yêu cầu gần đây"
                 columns={[
                   { key: "requirement_label", label: "Yêu cầu" },
                   {

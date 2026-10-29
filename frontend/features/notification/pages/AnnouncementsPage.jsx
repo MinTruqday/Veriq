@@ -79,6 +79,7 @@ export default function AnnouncementsPage() {
       {loadFailed ? null : visible.length === 0 ? (
         <EmptyState
           text={filter === "unread" ? "Không có thông báo chưa đọc" : "Chưa có thông báo"}
+          bordered
         />
       ) : (
         <div className="overflow-hidden rounded-panel border border-border bg-surface">

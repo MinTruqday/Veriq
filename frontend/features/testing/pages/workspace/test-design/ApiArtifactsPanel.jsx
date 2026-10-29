@@ -533,7 +533,7 @@ export default function ApiArtifactsPanel({
                             item.automation_dispatch_status === "DISPATCHING"
                               ? "Sự kiện đang chờ được chuyển tới AI"
                               : item.automation_dispatch_status === "DELIVERED"
-                                ? "Sự kiện đã chuyển tới AI; đang chờ lượt xử lý"
+                                ? "Đã gửi thông tin đến AI; đang chờ xử lý"
                                 : item.automation_dispatch_status === "SUPPRESSED"
                                   ? "Luồng tự động hóa đang tắt"
                                   : "Chưa có trạng thái xử lý tự động"}
@@ -563,7 +563,7 @@ export default function ApiArtifactsPanel({
                             className="text-accent underline underline-offset-2"
                             href={`/du-an/${projectId}/ca-kiem-thu/ai`}
                           >
-                            Mở lượt chạy AI
+                            Mở hoạt động AI
                           </a>
                         </div>
                       )}

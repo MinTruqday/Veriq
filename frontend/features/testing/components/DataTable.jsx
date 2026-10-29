@@ -30,6 +30,7 @@ export default function DataTable({
   selectedIds,
   onSelectionChange,
   selectionLabel = "Chọn mục",
+  selectionDisabled = false,
   getRowKey,
   minTableWidth = 0,
   layout = "table",
@@ -108,9 +109,9 @@ export default function DataTable({
   };
   return (
     <div
-      className={`data-table-responsive min-w-0 ${layout === "wide-table" ? "data-table-responsive-wide" : ""}`}
+      className={`data-table-responsive min-w-0 ${layout === "wide-table" ? "data-table-responsive-wide" : ""} ${layout === "cards" ? "data-table-responsive-cards" : ""}`}
     >
-      <div className="data-table-desktop">
+      <div className={`data-table-desktop ${layout === "cards" ? "hidden" : ""}`}>
         <HorizontalScrollCue
           ariaLabel="Bảng dữ liệu"
           scrollLabel="bảng dữ liệu"
@@ -127,6 +128,7 @@ export default function DataTable({
                     <input
                       aria-label="Chọn tất cả mục trên trang"
                       checked={allSelected}
+                      disabled={selectionDisabled}
                       ref={desktopSelectAllRef}
                       type="checkbox"
                       onChange={toggleAll}
@@ -159,7 +161,9 @@ export default function DataTable({
                       <input
                         aria-label={`${selectionLabel} ${itemLabel(item, index)}`}
                         checked={selectedIds.includes(itemId(item))}
-                        disabled={itemId(item) === undefined || itemId(item) === null}
+                        disabled={
+                          selectionDisabled || itemId(item) === undefined || itemId(item) === null
+                        }
                         type="checkbox"
                         onClick={(event) => event.stopPropagation()}
                         onChange={() => toggle(itemId(item))}
@@ -181,7 +185,9 @@ export default function DataTable({
           </table>
         </HorizontalScrollCue>
       </div>
-      <div className="data-table-mobile divide-y divide-border p-4">
+      <div
+        className={`data-table-mobile divide-y divide-border p-4 ${layout === "cards" ? "block" : ""}`}
+      >
         {selectable && (
           <label
             className="flex min-h-11 items-center gap-3 pb-3 text-[12px] font-semibold text-ink-muted"
@@ -190,6 +196,7 @@ export default function DataTable({
             <input
               aria-label="Chọn tất cả mục trên trang"
               checked={allSelected}
+              disabled={selectionDisabled}
               ref={mobileSelectAllRef}
               type="checkbox"
               onChange={toggleAll}
@@ -214,7 +221,9 @@ export default function DataTable({
                 <input
                   aria-label={`${selectionLabel} ${itemLabel(item, index)}`}
                   checked={selectedIds.includes(itemId(item))}
-                  disabled={itemId(item) === undefined || itemId(item) === null}
+                  disabled={
+                    selectionDisabled || itemId(item) === undefined || itemId(item) === null
+                  }
                   type="checkbox"
                   onClick={(event) => event.stopPropagation()}
                   onChange={() => toggle(itemId(item))}

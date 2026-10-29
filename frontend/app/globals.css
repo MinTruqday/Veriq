@@ -225,6 +225,25 @@
     container-name: data-table-wide;
   }
 
+  .data-table-responsive-cards .data-table-mobile article dl > div {
+    grid-template-columns: minmax(9rem, 22%) minmax(0, 1fr);
+  }
+
+  .data-table-responsive-cards .data-table-desktop {
+    display: none;
+  }
+
+  .data-table-responsive-cards .data-table-mobile {
+    display: block;
+  }
+
+  .data-table-responsive-cards .data-table-mobile article {
+    border: 1px solid hsl(var(--border));
+    border-radius: 9px;
+    margin-bottom: 1rem;
+    padding: 1rem;
+  }
+
   .data-table-desktop {
     display: none;
   }

@@ -566,13 +566,13 @@ export default function CompletionPage({ project }) {
                 </div>
                 {aiLoading && !narrativeDraft && (
                   <p className="text-sm text-ink-muted" role="status">
-                    Báo cáo vừa tạo; đang chờ lượt AI tự động xử lý.
+                    Báo cáo vừa tạo; đang chờ AI xử lý.
                   </p>
                 )}
                 {aiTimedOut && !narrativeDraft && (
                   <p className="text-sm text-ink-muted" role="status">
                     Chưa nhận được kết quả tự động. Báo cáo gốc vẫn được giữ nguyên; xem trạng thái
-                    lượt chạy trong Lịch sử AI.
+                    hoạt động AI.
                   </p>
                 )}
                 {narrativeDraft?.suggestions?.[0] && (
