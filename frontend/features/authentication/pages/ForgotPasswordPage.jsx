@@ -16,7 +16,7 @@ export default function ForgotPasswordPage() {
   return (
     <AuthFrame
       title="Khôi phục mật khẩu"
-      description="Nhập email để nhận mã xác thực"
+      description="Nhập địa chỉ email của tài khoản để nhận mã xác thực."
       footer={
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           <Link href="/xac-thuc" className="font-semibold text-brand hover:text-brand-hover">
@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
         <AuthField
           id="recovery-email"
           name="email"
-          label="Email"
+          label="Địa chỉ email"
           type="email"
           autoComplete="email"
           required

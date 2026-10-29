@@ -515,8 +515,7 @@ export default function RunExecutionWorkspace({
                         {decision.matched_skill_evidence.map((item, index) => (
                           <li className="break-words" key={`${item.name}-${index}`}>
                             {item.name}: {item.evidence || "Đã xác nhận, không có trích dẫn"}
-                            {item.source_block_id ? ` · nguồn ${item.source_block_id}` : ""}
-                            {item.source_page_no ? ` · trang ${item.source_page_no}` : ""}
+                            {item.source_page_no ? ` · Trang ${item.source_page_no} trong CV` : ""}
                           </li>
                         ))}
                       </ul>

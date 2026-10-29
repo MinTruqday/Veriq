@@ -91,16 +91,19 @@ export default function NotificationPreferencesPanel() {
           />
         </div>
       ) : (
-        <form className="space-y-5 p-5" onSubmit={save}>
+        <form className="grid gap-4 p-5" onSubmit={save}>
           {error && (
             <p className="text-sm text-danger" role="alert">
               {error}
             </p>
           )}
-          <fieldset disabled={loading || saving} className="space-y-4">
+          <fieldset disabled={loading || saving} className="grid gap-2">
             <legend className="sr-only">Loại thông báo</legend>
             {settingOptions.map(([key, label]) => (
-              <label className="flex min-h-11 items-center gap-3 text-sm" key={key}>
+              <label
+                className="flex min-h-10 w-fit max-w-full cursor-pointer items-center gap-3 text-sm"
+                key={key}
+              >
                 <input
                   type="checkbox"
                   checked={Boolean(settings[key])}

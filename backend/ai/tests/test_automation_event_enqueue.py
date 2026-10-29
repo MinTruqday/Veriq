@@ -16,6 +16,7 @@ from src.schemas.automation import (
     AutomationEventSuppressedResponse,
     AutomationStatus,
     AutomationTrigger,
+    ChangeSimulationInput,
 )
 from src.services.automation import AutomationService
 
@@ -51,6 +52,35 @@ class AutomationEventEnqueueTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    def make_change_simulation_event(self):
+        return AutomationEventRequest(
+            event_id="change-simulation:parent-run:req-v1:req-v2",
+            project_id="project-1",
+            requester_user_id="ba-user",
+            trigger=AutomationTrigger.REQUIREMENT_CHANGED,
+            parent_automation_run_id="parent-run",
+            target_artifact_ids=["req-v1", "req-v2"],
+            evidence=[
+                {
+                    "artifact_type": "requirement_version",
+                    "artifact_id": "req-1",
+                    "artifact_version_id": version_id,
+                    "source": "database",
+                    "authority": "requirement",
+                    "text": text,
+                    "project_id": "project-1",
+                }
+                for version_id, text in (
+                    ("req-v1", "Old requirement"),
+                    ("req-v2", "New requirement"),
+                )
+            ],
+            change_simulation=ChangeSimulationInput(
+                base_requirement_version_id="req-v1",
+                proposed_source_text="New requirement",
+            ),
+        )
+
     def make_existing_event_run(self, event, status, automation_run_id):
         return SimpleNamespace(
             status=status,
@@ -62,6 +92,7 @@ class AutomationEventEnqueueTests(unittest.IsolatedAsyncioTestCase):
             constraints={},
             target_artifact_ids=list(event.target_artifact_ids),
             evidence=list(event.evidence),
+            change_simulation=event.change_simulation,
         )
 
     async def test_manual_trigger_cannot_be_configured_as_automation(self):
@@ -144,6 +175,43 @@ class AutomationEventEnqueueTests(unittest.IsolatedAsyncioTestCase):
         publish.assert_awaited_once_with(
             "ai.automation", {"automation_run_id": run.automation_run_id}
         )
+
+    async def test_change_simulation_event_creates_typed_simulation_run(self):
+        service = AutomationService()
+        with (
+            patch(
+                "src.services.automation.project_access",
+                new=AsyncMock(return_value=("BA", ["project.read"])),
+            ),
+            patch.object(
+                service,
+                "_default_execution_principal",
+                new=AsyncMock(return_value=("qa-user", "QA", ["impact.execute"])),
+            ),
+            patch(
+                "src.services.automation.automation_repository.find_event_run",
+                new=AsyncMock(side_effect=[None, None]),
+            ),
+            patch(
+                "src.services.automation.automation_repository.list_definitions",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "src.services.automation.automation_repository.create_run_with_checkpoint",
+                new=AsyncMock(side_effect=lambda run, **_: run),
+            ),
+            patch(
+                "src.services.automation.mq.publish", new=AsyncMock(return_value=True)
+            ),
+        ):
+            runs = await service.enqueue_event(self.make_change_simulation_event())
+
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0].kind.value, "CHANGE_SIMULATION")
+        self.assertEqual(
+            runs[0].change_simulation.base_requirement_version_id, "req-v1"
+        )
+        self.assertEqual(runs[0].constraints["parent_automation_run_id"], "parent-run")
 
     async def test_event_run_carries_typed_definition_conditions_and_actions(self):
         service = AutomationService()

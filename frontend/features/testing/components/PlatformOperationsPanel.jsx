@@ -155,7 +155,7 @@ export default function PlatformOperationsPanel() {
         </div>
       </Panel>
 
-      <Panel title="Siêu dữ liệu dự án">
+      <Panel title="Danh sách dự án">
         <DataTable
           items={projects.slice((projectPage - 1) * projectPageSize, projectPage * projectPageSize)}
           empty="Chưa có dự án"

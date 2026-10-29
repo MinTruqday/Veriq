@@ -17,6 +17,19 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 
+const strategyFindingLabels = {
+  STRATEGY_OBJECTIVE_MISSING: "Bổ sung mục tiêu chiến lược.",
+  STRATEGY_TEST_LEVEL_MISSING: "Chọn cấp kiểm thử.",
+  STRATEGY_TEST_TYPE_MISSING: "Chọn loại kiểm thử.",
+  STRATEGY_RISK_MODEL_MISSING: "Bổ sung mô hình đánh giá rủi ro.",
+  STRATEGY_ENTRY_CRITERIA_MISSING: "Bổ sung điều kiện bắt đầu.",
+  STRATEGY_EXIT_CRITERIA_MISSING: "Bổ sung điều kiện kết thúc.",
+  STRATEGY_SUSPENSION_CRITERIA_MISSING: "Bổ sung điều kiện tạm dừng.",
+  STRATEGY_RESUMPTION_CRITERIA_MISSING: "Bổ sung điều kiện tiếp tục.",
+  STRATEGY_REPORTING_CADENCE_MISSING: "Bổ sung chu kỳ báo cáo.",
+  STRATEGY_QUALITY_OBJECTIVE_MISSING: "Bổ sung mục tiêu chất lượng.",
+};
+
 export default function TestGovernancePage({ project }) {
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
@@ -331,11 +344,15 @@ export default function TestGovernancePage({ project }) {
             </div>
             <div>
               <p className="field-label">Cấp kiểm thử</p>
-              <p className="mt-2 text-sm">{selected.test_levels?.join(" · ")}</p>
+              <p className="mt-2 text-sm">
+                {selected.test_levels?.map(valueLabel).join(" · ") || "Chưa khai báo"}
+              </p>
             </div>
             <div>
               <p className="field-label">Loại kiểm thử</p>
-              <p className="mt-2 text-sm">{selected.test_types?.join(" · ")}</p>
+              <p className="mt-2 text-sm">
+                {selected.test_types?.map(valueLabel).join(" · ") || "Chưa khai báo"}
+              </p>
             </div>
             <div>
               <p className="field-label">Công thức rủi ro</p>
@@ -347,18 +364,22 @@ export default function TestGovernancePage({ project }) {
                 {selected.reviewer_ids?.join(" · ") || "Chưa phân công"}
               </p>
             </div>
-            <div>
-              <p className="field-label">Dấu vân tay nội dung</p>
-              <p className="mt-2 break-all font-mono text-xs">
-                {selected.snapshot_hash || "Chưa phê duyệt"}
-              </p>
-            </div>
           </div>
+          <details className="px-5 pb-5 text-xs text-ink-muted">
+            <summary className="cursor-pointer">Thông tin kiểm tra phiên bản</summary>
+            <p className="mt-1 break-all">Mã đối chiếu: {selected.snapshot_hash || "Chưa có"}</p>
+          </details>
           {validation && (
             <div className="border-t border-border p-5 text-sm">
               {validation.ready_for_review
                 ? "Chiến lược đã đủ điều kiện rà soát"
-                : validation.findings.map((item) => item.code).join(" · ")}
+                : validation.findings
+                    .map(
+                      (item) =>
+                        strategyFindingLabels[item.code] ||
+                        "Bổ sung thông tin còn thiếu cho chiến lược.",
+                    )
+                    .join(" ")}
             </div>
           )}
           {comparison && (

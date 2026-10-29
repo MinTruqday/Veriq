@@ -10,7 +10,7 @@ export default function RequirementDuplicatePanel({ result }) {
       title="Ứng viên yêu cầu trùng lặp"
       actions={
         <span className="text-[12px] text-ink-muted">
-          {result.candidate_count} cặp từ thuật toán {result.algorithm?.name}
+          {result.candidate_count} cặp cần đối chiếu
         </span>
       }
     >

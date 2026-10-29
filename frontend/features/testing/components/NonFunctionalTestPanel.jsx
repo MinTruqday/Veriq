@@ -19,6 +19,18 @@ const splitLines = (value) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const providerLabels = {
+  GENERIC: "Công cụ khác",
+  K6: "k6",
+  JMETER: "Apache JMeter",
+  OWASP_ZAP: "OWASP ZAP",
+  PLAYWRIGHT: "Playwright",
+};
+
+const providerLabel = (provider) => providerLabels[provider] || "Công cụ khác";
+const planTypeLabel = (type) =>
+  type === "SECURITY_TEST_PLAN" ? "Kiểm thử bảo mật" : "Kiểm thử hiệu năng";
+
 function StructuredPlanFieldsModal({ planType, initialValues, saving, error, onClose, onSave }) {
   const [values, setValues] = useState(() => structuredClone(initialValues));
   const [responseTargetType, setResponseTargetType] = useState(
@@ -241,7 +253,7 @@ function ExternalEvidenceModal({ saving, error, onClose, onSave }) {
             >
               {["GENERIC", "K6", "JMETER", "OWASP_ZAP", "PLAYWRIGHT"].map((provider) => (
                 <option key={provider} value={provider}>
-                  {provider}
+                  {providerLabel(provider)}
                 </option>
               ))}
             </select>
@@ -287,15 +299,19 @@ function ExternalEvidenceModal({ saving, error, onClose, onSave }) {
             onChange={(resultSummary) => setValues((current) => ({ ...current, resultSummary }))}
           />
           <label className="field-label block">
-            Mã kiểm tra tệp kết quả (SHA256)
+            Mã đối chiếu tệp kết quả
             <input
               className="apple-input mt-2 w-full"
               required
+              aria-describedby="result-hash-help"
               value={values.rawResultHash}
               onChange={(event) =>
                 setValues((current) => ({ ...current, rawResultHash: event.target.value }))
               }
             />
+            <span className="mt-1 block text-xs font-normal text-ink-muted" id="result-hash-help">
+              Dùng để nhận biết tệp kết quả có bị thay đổi sau khi nhập.
+            </span>
           </label>
         </ModalContent>
         <ModalFooter>
@@ -373,21 +389,31 @@ export default function NonFunctionalTestPanel({ project }) {
       fields: [
         { name: "name", label: "Tên", required: true },
         { name: "objective", label: "Mục tiêu", required: true, multiline: true },
-        { name: "scope", label: "Phạm vi mỗi dòng một mục", required: true, multiline: true },
+        { name: "scope", label: "Phạm vi (mỗi dòng một mục)", required: true, multiline: true },
         { name: "approach", label: "Cách tiếp cận", required: true, multiline: true },
         { name: "entry_criteria", label: "Điều kiện bắt đầu mỗi dòng một mục", multiline: true },
         { name: "exit_criteria", label: "Điều kiện kết thúc mỗi dòng một mục", multiline: true },
         { name: "tool_refs", label: "Tham chiếu công cụ mỗi dòng một mục", multiline: true },
         {
           name: "requirement_refs",
-          label: "Mã phiên bản yêu cầu cách nhau bởi dấu phẩy",
+          label: "Tham chiếu phiên bản yêu cầu (mỗi mã cách nhau bởi dấu phẩy)",
         },
         ...(can("testcondition.read")
           ? [
               {
                 name: "condition_ids",
-                label: "Mã điều kiện kiểm thử cách nhau bởi dấu phẩy",
-                initialValue: conditions.map((item) => item._id).join(","),
+                label: "Điều kiện kiểm thử liên quan",
+                multiple: true,
+                options: conditions.map((item) => ({
+                  value: item._id,
+                  label:
+                    item.condition_key ||
+                    item.key ||
+                    item.name ||
+                    item.title ||
+                    "Điều kiện kiểm thử",
+                })),
+                initialValue: conditions.map((item) => item._id),
               },
             ]
           : []),
@@ -395,11 +421,15 @@ export default function NonFunctionalTestPanel({ project }) {
           ? [
               {
                 name: "case_ids",
-                label: "Mã phiên bản ca kiểm thử cách nhau bởi dấu phẩy",
-                initialValue: cases
-                  .map((item) => item.current_version_id)
-                  .filter(Boolean)
-                  .join(","),
+                label: "Ca kiểm thử liên quan",
+                multiple: true,
+                options: cases
+                  .filter((item) => item.current_version_id)
+                  .map((item) => ({
+                    value: item.current_version_id,
+                    label: `${item.test_case_key || item.title || "Ca kiểm thử"} · ${item.current_version?.title || item.title || "Phiên bản hiện tại"}`,
+                  })),
+                initialValue: cases.map((item) => item.current_version_id).filter(Boolean),
               },
             ]
           : []),
@@ -561,10 +591,12 @@ export default function NonFunctionalTestPanel({ project }) {
     const { answer, mode, planType } = planEditor;
     const security = planType === "SECURITY_TEST_PLAN";
     const readIds = (value) =>
-      String(value || "")
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
+      Array.isArray(value)
+        ? value
+        : String(value || "")
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
     const numberOrNull = (value) => (value === "" || value == null ? null : Number(value));
     const common = {
       name: answer.name,
@@ -744,7 +776,7 @@ export default function NonFunctionalTestPanel({ project }) {
         items={items}
         empty="Chưa có kế hoạch kiểm thử phi chức năng"
         columns={[
-          { key: "plan_type", label: "Loại" },
+          { key: "plan_type", label: "Loại", render: (item) => planTypeLabel(item.plan_type) },
           { key: "name", label: "Tên" },
           {
             key: "test_conditions",
@@ -848,10 +880,14 @@ export default function NonFunctionalTestPanel({ project }) {
             items={selected.external_evidence || []}
             empty="Chưa nhập bằng chứng bên ngoài"
             columns={[
-              { key: "provider", label: "Công cụ" },
+              {
+                key: "provider",
+                label: "Công cụ",
+                render: (item) => providerLabel(item.provider),
+              },
               { key: "external_run_ref", label: "Lần chạy" },
               { key: "executed_at", label: "Thời điểm" },
-              { key: "raw_result_hash", label: "Hash" },
+              { key: "raw_result_hash", label: "Mã kiểm tra toàn vẹn tệp" },
             ]}
           />
         </div>

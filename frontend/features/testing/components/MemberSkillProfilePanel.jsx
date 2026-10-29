@@ -250,11 +250,6 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 {cvPreview.experiences?.length || 0} kinh nghiệm. Tệp chưa được lưu; các ứng viên
                 thêm vào bản nháp vẫn ở trạng thái chưa xác nhận.
               </p>
-              {cvPreview.source_sha256 && (
-                <p className="break-all text-xs text-ink-muted">
-                  Dấu nhận dạng tệp CV (SHA-256): {cvPreview.source_sha256}
-                </p>
-              )}
               {!!cvPreview.warnings?.length && (
                 <ul role="status" className="list-disc space-y-1 pl-5 text-sm text-amber-800">
                   {[...new Set(cvPreview.warnings)].map((warning, index) => (
@@ -271,8 +266,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
                       {" — “"}
                       {item.evidence_quote}
                       {"” · "}
-                      {item.source_block_id}
-                      {item.page_no ? ` · trang ${item.page_no}` : ""}
+                      {item.page_no ? ` · Trang ${item.page_no} trong CV` : ""}
                     </li>
                   ),
                 )}
@@ -361,11 +355,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 />
                 {(skill.source_block_id || skill.source_page_no) && (
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    Nguồn CV: {skill.source_block_id || "Không có mã khối"}
-                    {skill.source_page_no ? ` · trang ${skill.source_page_no}` : ""}
-                    {skill.source_sha256
-                      ? ` · CV SHA-256 ${skill.source_sha256.slice(0, 12)}…`
-                      : " · CV nguồn chưa lưu dấu nhận dạng"}
+                    Trích từ CV{skill.source_page_no ? `, trang ${skill.source_page_no}` : ""}
                   </span>
                 )}
               </label>
@@ -495,11 +485,8 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 />
                 {(experience.source_block_id || experience.source_page_no) && (
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    Nguồn CV: {experience.source_block_id || "Không có mã khối"}
-                    {experience.source_page_no ? ` · trang ${experience.source_page_no}` : ""}
-                    {experience.source_sha256
-                      ? ` · CV SHA-256 ${experience.source_sha256.slice(0, 12)}…`
-                      : " · CV nguồn chưa lưu dấu nhận dạng"}
+                    Trích từ CV
+                    {experience.source_page_no ? `, trang ${experience.source_page_no}` : ""}
                   </span>
                 )}
               </label>

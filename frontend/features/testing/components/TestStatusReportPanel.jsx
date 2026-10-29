@@ -137,7 +137,7 @@ export default function TestStatusReportPanel({ project }) {
           required: true,
           options: snapshots.map((item) => ({
             value: item._id,
-            label: `${formatDate(item.snapshot_at)} · ${item.source_fingerprint.slice(0, 8)}`,
+            label: formatDate(item.snapshot_at),
           })),
         },
         {
@@ -613,9 +613,13 @@ export default function TestStatusReportPanel({ project }) {
                   />
                 </Panel>
               )}
-              <p className="break-all text-xs text-ink-muted">
-                Ảnh chụp {selected.snapshot_id} · {selected.snapshot_source_fingerprint}
-              </p>
+              <details className="text-xs text-ink-muted">
+                <summary className="cursor-pointer">Thông tin kiểm tra dữ liệu</summary>
+                <p className="mt-1 break-all">Mã ảnh chụp: {selected.snapshot_id}</p>
+                <p className="break-all">
+                  Mã đối chiếu nguồn: {selected.snapshot_source_fingerprint}
+                </p>
+              </details>
               {can("reviewsession.read") && (
                 <FormalReviewPanel
                   project={project}

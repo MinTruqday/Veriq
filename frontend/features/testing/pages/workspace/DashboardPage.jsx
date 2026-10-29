@@ -10,7 +10,6 @@ import {
   Panel,
   WorkspacePage,
   StatusPill,
-  useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
@@ -18,7 +17,7 @@ import { formatProjectDate, projectPlannedDurationDays } from "../../lib/project
 import { taskProgressPresentation } from "../../lib/projectProgress.logic.mjs";
 
 function projectOverviewDescription(project) {
-  const details = [`Phương thức: ${valueLabel(project.planning_method || "SCRUM")}`];
+  const details = [];
   const duration = projectPlannedDurationDays(project.planned_start_at, project.planned_end_at);
   if (project.planned_start_at) {
     details.push(`Bắt đầu dự kiến: ${formatProjectDate(project.planned_start_at)}`);
@@ -31,23 +30,10 @@ function projectOverviewDescription(project) {
 }
 
 export default function DashboardPage({ project }) {
-  const { ask, dialog } = useActionDialog();
   const [value, setValue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [progress, setProgress] = useState({
-    percent: Number.isFinite(project.project_completion_percent)
-      ? project.project_completion_percent
-      : null,
-    revision: project.revision,
-    taskSummary: project.task_summary,
-  });
-  const membershipRoles = project.current_membership?.project_roles;
-  const memberRoles =
-    Array.isArray(membershipRoles) && membershipRoles.length
-      ? membershipRoles
-      : [project.current_membership?.project_role].filter(Boolean);
-  const isQa = memberRoles.includes("QA");
+  const [taskSummary, setTaskSummary] = useState(project.task_summary);
   const permissions = project.current_permissions || [];
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
@@ -75,13 +61,7 @@ export default function DashboardPage({ project }) {
         const currentProject = data.project;
         setValue({ dashboard: data.dashboard || null, coverage: data.coverage || null });
         if (!currentProject) return;
-        setProgress({
-          percent: Number.isFinite(currentProject.project_completion_percent)
-            ? currentProject.project_completion_percent
-            : null,
-          revision: currentProject.revision,
-          taskSummary: currentProject.task_summary,
-        });
+        setTaskSummary(currentProject.task_summary);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -106,7 +86,7 @@ export default function DashboardPage({ project }) {
   );
   const dashboard = value?.dashboard;
   const coverage = value?.coverage;
-  const taskProgress = taskProgressPresentation(progress.taskSummary);
+  const taskProgress = taskProgressPresentation(taskSummary);
   const hasOverviewMetrics =
     can("requirement.read") ||
     can("testcase.read") ||
@@ -124,84 +104,16 @@ export default function DashboardPage({ project }) {
         <LoadingState />
       ) : (
         <>
-          <Panel
-            title="Tiến độ Project và Tasks"
-            actions={
-              isQa ? (
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={async () => {
-                    await ask({
-                      title: "Cập nhật tiến độ dự án",
-                      confirmLabel: "Lưu tiến độ",
-                      fields: [
-                        {
-                          name: "project_completion_percent",
-                          label: "Tiến độ dự án",
-                          type: "number",
-                          min: 0,
-                          max: 100,
-                          step: 1,
-                          initialValue: progress.percent == null ? "" : String(progress.percent),
-                          required: true,
-                        },
-                        { name: "note", label: "Ghi chú", multiline: true, required: true },
-                      ],
-                      onConfirm: async (answer) => {
-                        const updated = await testingApi.updateProjectProgress(project._id, {
-                          expected_revision: progress.revision,
-                          project_completion_percent: Number(answer.project_completion_percent),
-                          note: answer.note.trim(),
-                        });
-                        setProgress((current) => ({
-                          ...current,
-                          percent: updated.project_completion_percent,
-                          revision: updated.revision,
-                        }));
-                      },
-                    });
-                  }}
-                >
-                  Cập nhật tiến độ
-                </button>
-              ) : null
-            }
-          >
-            <div className="grid gap-5 p-5 lg:grid-cols-2">
-              <div>
-                <div className="flex items-center justify-between text-sm">
-                  <span>
-                    {progress.percent == null
-                      ? "Project · Chưa có đánh giá của QA"
-                      : `Project ${progress.percent}%`}
-                  </span>
-                  <span className="text-ink-muted">QA đánh giá tổng thể</span>
-                </div>
-                {progress.percent != null && (
-                  <div
-                    aria-label="Tiến độ tổng thể do QA đánh giá"
-                    aria-valuemax={100}
-                    aria-valuemin={0}
-                    aria-valuenow={progress.percent}
-                    className="mt-3 h-2 overflow-hidden rounded-full bg-surface-quiet"
-                    role="progressbar"
-                  >
-                    <div
-                      className="h-full rounded-full bg-brand"
-                      style={{ width: `${progress.percent}%` }}
-                    />
-                  </div>
-                )}
-              </div>
+          <Panel title="Tiến độ dự án">
+            <div className="grid gap-5 p-5">
               <div>
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span>
                     {taskProgress.completionPercent == null
-                      ? `Tasks · ${taskProgress.label}`
-                      : `Tasks ${taskProgress.completionPercent}%`}
+                      ? taskProgress.label
+                      : `Hoàn thành ${taskProgress.completionPercent}%`}
                   </span>
-                  {taskProgress.completed != null && (
+                  {taskProgress.applicableTotal > 0 && taskProgress.completed != null && (
                     <span className="shrink-0 text-ink-muted">
                       {taskProgress.completed} hoàn thành
                     </span>
@@ -209,7 +121,7 @@ export default function DashboardPage({ project }) {
                 </div>
                 {taskProgress.completionPercent != null && (
                   <div
-                    aria-label="Tiến độ công việc được tính từ các công việc chưa hủy"
+                    aria-label="Tiến độ công việc được tính từ công việc chưa hủy"
                     aria-valuemax={100}
                     aria-valuemin={0}
                     aria-valuenow={taskProgress.completionPercent}
@@ -300,11 +212,16 @@ export default function DashboardPage({ project }) {
           {dashboard && can("defect.read") && can("testrun.read") && (
             <div className="grid gap-4 lg:grid-cols-2">
               <Panel title="Lỗi đang mở theo mức độ">
-                <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-5">
+                <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-3 xl:grid-cols-5">
                   {Object.entries(dashboard.open_defects_by_severity || {}).map(
                     ([severity, count]) => (
-                      <div className="rounded-xl border border-border p-3" key={severity}>
-                        <p className="text-[11px] text-ink-muted">{valueLabel(severity)}</p>
+                      <div
+                        className="min-w-0 rounded-xl border border-border p-3 xl:p-4"
+                        key={severity}
+                      >
+                        <p className="break-words text-[11px] leading-4 text-ink-muted">
+                          {valueLabel(severity)}
+                        </p>
                         <p className="mt-1 text-xl font-semibold">{count}</p>
                       </div>
                     ),
@@ -369,7 +286,6 @@ export default function DashboardPage({ project }) {
           )}
         </>
       )}
-      {dialog}
     </WorkspacePage>
   );
 }

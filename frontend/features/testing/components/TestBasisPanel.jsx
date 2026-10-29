@@ -1,4 +1,5 @@
 import DataTable from "./DataTable";
+import { valueLabel } from "../lib/testing";
 
 export default function TestBasisPanel({ refs, onChange, requirements }) {
   const addRequirement = (event) => {
@@ -36,11 +37,25 @@ export default function TestBasisPanel({ refs, onChange, requirements }) {
         items={refs}
         empty="Phải chọn ít nhất một cơ sở kiểm thử"
         columns={[
-          { key: "artifact_type", label: "Loại" },
+          { key: "artifact_type", label: "Loại", render: (item) => valueLabel(item.artifact_type) },
           {
             key: "artifact_version_id",
             label: "Phiên bản",
-            render: (item) => item.artifact_version_id || item.artifact_id,
+            render: (item) => {
+              const requirement = requirements.find(
+                (value) => value.current_version_id === item.artifact_version_id,
+              );
+              if (!requirement) return item.label || "Nguồn liên kết khác";
+              return [
+                requirement.requirement_key,
+                requirement.current_version?.version
+                  ? `v${requirement.current_version.version}`
+                  : null,
+                requirement.current_version?.title || requirement.title,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+            },
           },
           {
             key: "actions",

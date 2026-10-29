@@ -46,6 +46,11 @@ export default function LessonsLearnedPanel({
     onActionsChange?.(
       actions.map((item, itemIndex) => (itemIndex === index ? { ...item, [field]: value } : item)),
     );
+  const memberName = (userId) => {
+    if (!userId) return "Chưa phân công";
+    const member = members.find((item) => item.user_id === userId);
+    return member?.user_label || member?.user?.email || "Thành viên không còn trong danh sách";
+  };
   return (
     <section className="space-y-5">
       <div className="space-y-3">
@@ -63,7 +68,7 @@ export default function LessonsLearnedPanel({
         {lessons.map((item, index) =>
           editableLessons ? (
             <div
-              className="grid gap-3 rounded-xl border border-border p-3 md:grid-cols-[180px_1fr_auto]"
+              className="grid min-w-0 gap-3 rounded-xl border border-border p-3 md:grid-cols-[180px_minmax(0,1fr)_auto]"
               key={`lesson-${index}`}
             >
               <select
@@ -80,7 +85,7 @@ export default function LessonsLearnedPanel({
               </select>
               <textarea
                 aria-label={`Bài học ${index + 1}`}
-                className="apple-input min-h-16"
+                className="apple-input min-h-16 w-full min-w-0"
                 required
                 value={item.observation || item.text || ""}
                 onChange={(event) => updateLesson(index, "observation", event.target.value)}
@@ -143,7 +148,7 @@ export default function LessonsLearnedPanel({
               <label className="field-label">
                 Hành động
                 <input
-                  className="apple-input mt-2"
+                  className="apple-input mt-2 w-full min-w-0"
                   required
                   value={item.title || ""}
                   onChange={(event) => updateAction(index, "title", event.target.value)}
@@ -160,7 +165,7 @@ export default function LessonsLearnedPanel({
                   <option value="">Chọn người phụ trách</option>
                   {members.map((member) => (
                     <option key={member.user_id} value={member.user_id}>
-                      {member.user_label || member.user?.email || member.user_id}
+                      {member.user_label || member.user?.email || "Thành viên"}
                     </option>
                   ))}
                 </select>
@@ -211,7 +216,7 @@ export default function LessonsLearnedPanel({
               <p>
                 <span className="field-label">Người phụ trách</span>
                 <br />
-                {item.owner_id}
+                {memberName(item.owner_id)}
               </p>
               <p>
                 <span className="field-label">Trạng thái</span>

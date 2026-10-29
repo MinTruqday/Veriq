@@ -19,6 +19,39 @@ import {
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 
+function metricRate(value) {
+  if (value === null || value === undefined || value === "") return "Chưa đủ dữ liệu";
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? `${Math.round(numericValue * 100)}%` : "Chưa đủ dữ liệu";
+}
+
+function metricPercentage(value) {
+  if (value === null || value === undefined || value === "") return "Chưa đủ dữ liệu";
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? `${Math.round(numericValue)}%` : "Chưa đủ dữ liệu";
+}
+
+function metricCount(value) {
+  if (value === null || value === undefined || value === "") return "Chưa đủ dữ liệu";
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : "Chưa đủ dữ liệu";
+}
+
+function metricDays(value, openCount) {
+  if (
+    openCount !== null &&
+    openCount !== undefined &&
+    openCount !== "" &&
+    Number.isFinite(Number(openCount)) &&
+    Number(openCount) === 0
+  ) {
+    return "Chưa có lỗi đang mở";
+  }
+  if (value === null || value === undefined || value === "") return "Chưa đủ dữ liệu";
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? `${numericValue} ngày` : "Chưa đủ dữ liệu";
+}
+
 export default function ReportsPage({ project }) {
   const { ask, dialog } = useActionDialog();
   const [value, setValue] = useState(null);
@@ -199,11 +232,16 @@ export default function ReportsPage({ project }) {
                     type="button"
                     onClick={async () => {
                       await ask({
-                        title: "Lưu ảnh chụp độ phủ",
+                        title: "Lưu mốc độ phủ",
                         description: `Phạm vi lưu: ${scope.release || "mọi bản phát hành"} · ${scope.build || "mọi bản dựng"}`,
-                        confirmLabel: "Lưu ảnh chụp",
+                        confirmLabel: "Lưu mốc độ phủ",
                         fields: [
-                          { name: "label", label: "Tên ảnh chụp", required: true, autoFocus: true },
+                          {
+                            name: "label",
+                            label: "Tên mốc độ phủ",
+                            required: true,
+                            autoFocus: true,
+                          },
                         ],
                         onConfirm: async (answer) => {
                           try {
@@ -223,7 +261,7 @@ export default function ReportsPage({ project }) {
                       });
                     }}
                   >
-                    Lưu ảnh chụp
+                    Lưu mốc độ phủ
                   </button>
                 ) : null
               }
@@ -321,29 +359,32 @@ export default function ReportsPage({ project }) {
                       Độ phủ truy vết và thực thi
                     </h2>
                     <p className="mt-1 text-sm text-ink-muted">
-                      Độ phủ yêu cầu, tiêu chí, hiệu lực và kỹ thuật tính trên toàn dự án. Độ phủ
-                      thực thi chỉ lọc theo bản phát hành và bản dựng; API hiện chưa lọc chỉ số này
-                      theo môi trường.
+                      Các chỉ số thể hiện phạm vi yêu cầu, tiêu chí, hiệu lực và kỹ thuật kiểm thử.
+                      Độ phủ thực thi được lọc theo bản phát hành và bản dựng; bộ lọc môi trường
+                      chưa áp dụng cho chỉ số này.
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                     <Metric
                       label="Yêu cầu được bao phủ"
-                      value={`${value.coverage.requirement_coverage}%`}
+                      value={metricPercentage(value.coverage.requirement_coverage)}
                     />
                     <Metric
                       label="Tiêu chí chấp nhận được bao phủ"
-                      value={`${value.coverage.acceptance_criterion_coverage}%`}
+                      value={metricPercentage(value.coverage.acceptance_criterion_coverage)}
                     />
                     <Metric
                       label="Độ phủ còn hiệu lực"
-                      value={`${value.coverage.fresh_coverage}%`}
+                      value={metricPercentage(value.coverage.fresh_coverage)}
                     />
                     <Metric
                       label="Độ phủ thực thi"
-                      value={`${value.coverage.execution_coverage}%`}
+                      value={metricPercentage(value.coverage.execution_coverage)}
                     />
-                    <Metric label="Ca kiểm thử cần cập nhật" value={value.coverage.stale_tests} />
+                    <Metric
+                      label="Ca kiểm thử cần cập nhật"
+                      value={metricCount(value.coverage.stale_tests)}
+                    />
                   </div>
                 </section>
               )}
@@ -364,11 +405,7 @@ export default function ReportsPage({ project }) {
                     {value.execution && (
                       <Metric
                         label="Kết quả kiểm thử đạt"
-                        value={
-                          value.execution.pass_rate === null
-                            ? "Chưa đủ dữ liệu"
-                            : `${Math.round(value.execution.pass_rate * 100)}%`
-                        }
+                        value={metricRate(value.execution.pass_rate)}
                         detail={
                           value.execution.terminal_result_count
                             ? `${value.execution.result_counts?.PASS || 0} trên ${value.execution.terminal_result_count} kết quả đã kết thúc`
@@ -380,7 +417,10 @@ export default function ReportsPage({ project }) {
                       <>
                         <Metric
                           label="Tuổi trung bình lỗi đang mở"
-                          value={`${value.defects.average_open_age_days} ngày`}
+                          value={metricDays(
+                            value.defects.average_open_age_days,
+                            value.defects.open_count,
+                          )}
                         />
                       </>
                     )}
@@ -400,32 +440,42 @@ export default function ReportsPage({ project }) {
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                     {value.dashboard && (
                       <Metric
-                        label="Lỗi đang mở · toàn dự án"
-                        value={value.dashboard.open_defects}
+                        label="Lỗi đang mở"
+                        value={metricCount(value.dashboard.open_defects)}
                       />
                     )}
                     {value.defects && (
                       <Metric
-                        label="Số lần mở lại lỗi · toàn dự án"
-                        value={value.defects.reopened_count}
+                        label="Số lần mở lại lỗi"
+                        value={metricCount(value.defects.reopened_count)}
                       />
                     )}
                     {value.maintenance && (
                       <Metric
                         label="Lượt phân tích ảnh hưởng"
-                        value={value.maintenance.impact_analysis_count}
+                        value={metricCount(value.maintenance.impact_analysis_count)}
                       />
                     )}
                     {value.ai && (
                       <>
                         <Metric
-                          label="Lượt AI suy giảm hoặc không thành công"
-                          value={value.ai.degraded_count}
-                          detail={`${Math.round(value.ai.degraded_rate * 100)}% số lượt có dữ liệu AI`}
+                          label="Lượt AI không hoàn tất bình thường"
+                          value={metricCount(value.ai.degraded_count)}
+                          detail={
+                            value.ai.degraded_rate === null || value.ai.degraded_rate === undefined
+                              ? "Chưa đủ dữ liệu để tính tỷ lệ"
+                              : `${metricRate(value.ai.degraded_rate)} số lượt có dữ liệu AI`
+                          }
                         />
                         <Metric
                           label="Thời gian phản hồi AI trung bình"
-                          value={`${Math.round(value.ai.average_latency_ms)} ms`}
+                          value={
+                            value.ai.average_latency_ms === null ||
+                            value.ai.average_latency_ms === undefined ||
+                            !Number.isFinite(Number(value.ai.average_latency_ms))
+                              ? "Chưa đủ dữ liệu"
+                              : `${Math.round(Number(value.ai.average_latency_ms))} ms`
+                          }
                         />
                       </>
                     )}
@@ -472,7 +522,7 @@ export default function ReportsPage({ project }) {
               </div>
               <div className="grid gap-5 xl:grid-cols-2">
                 {value.coverage && (
-                  <Panel title="Độ phủ theo kỹ thuật · toàn dự án">
+                  <Panel title="Độ phủ theo kỹ thuật">
                     <DataTable
                       items={Object.entries(value.coverage.category_coverage || {}).map(
                         ([category, coverage]) => ({ _id: category, category, coverage }),
@@ -484,13 +534,17 @@ export default function ReportsPage({ project }) {
                           label: "Kỹ thuật",
                           render: (item) => valueLabel(item.category),
                         },
-                        { key: "coverage", label: "Độ phủ", render: (item) => `${item.coverage}%` },
+                        {
+                          key: "coverage",
+                          label: "Độ phủ",
+                          render: (item) => metricPercentage(item.coverage),
+                        },
                       ]}
                     />
                   </Panel>
                 )}
                 {value.ai && (
-                  <Panel title="Phiên bản mô hình AI">
+                  <Panel title="Hoạt động AI">
                     <DataTable
                       items={Object.entries(value.ai.model_versions || {}).map(
                         ([model, count]) => ({
@@ -501,21 +555,21 @@ export default function ReportsPage({ project }) {
                       )}
                       empty="Chưa có lần chạy AI"
                       columns={[
-                        { key: "model", label: "Mô hình" },
-                        { key: "count", label: "Số lần chạy" },
+                        { key: "model", label: "Phiên bản mô hình" },
+                        { key: "count", label: "Lượt sử dụng" },
                       ]}
                     />
                   </Panel>
                 )}
               </div>
               {value.coverage && (
-                <Panel title="Ảnh chụp độ phủ">
+                <Panel title="Mốc độ phủ">
                   <p className="px-5 pt-4 text-sm text-ink-muted">
-                    Danh sách ảnh chụp của toàn dự án; mỗi ảnh giữ phạm vi tại thời điểm được lưu.
+                    Mỗi mốc lưu riêng các chỉ số và phạm vi tại thời điểm ghi nhận.
                   </p>
                   <DataTable
                     items={value.snapshots}
-                    empty="Chưa lưu ảnh chụp"
+                    empty="Chưa có mốc độ phủ"
                     columns={[
                       { key: "label", label: "Tên" },
                       {
@@ -526,17 +580,17 @@ export default function ReportsPage({ project }) {
                       {
                         key: "requirement_coverage",
                         label: "Độ phủ yêu cầu",
-                        render: (item) => `${item.metrics?.requirement_coverage ?? 0}%`,
+                        render: (item) => metricPercentage(item.metrics?.requirement_coverage),
                       },
                       {
                         key: "fresh_coverage",
                         label: "Độ phủ còn hiệu lực",
-                        render: (item) => `${item.metrics?.fresh_coverage ?? 0}%`,
+                        render: (item) => metricPercentage(item.metrics?.fresh_coverage),
                       },
                       {
                         key: "execution_coverage",
                         label: "Độ phủ thực thi",
-                        render: (item) => `${item.metrics?.execution_coverage ?? 0}%`,
+                        render: (item) => metricPercentage(item.metrics?.execution_coverage),
                       },
                     ]}
                   />
@@ -569,7 +623,15 @@ export default function ReportsPage({ project }) {
                           label: "Loại dữ liệu",
                           render: (item) => valueLabel(item.entity_type),
                         },
-                        { key: "entity_id", label: "Mã" },
+                        {
+                          key: "entity_id",
+                          label: "Đối tượng",
+                          render: (item) =>
+                            item.entity_key ||
+                            item.entity_name ||
+                            item.entity_title ||
+                            "Không có tên hiển thị",
+                        },
                         {
                           key: "created_at",
                           label: "Thời điểm",

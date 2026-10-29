@@ -1200,11 +1200,16 @@ export default function TestDesignPage({ project, workspaceView }) {
               (requirementAutomationRun ? (
                 <div className="grid gap-2 rounded-control border border-border p-4 text-sm">
                   <div className="flex flex-wrap items-center gap-3">
-                    <strong>{requirementAutomationRun.automation_run_id}</strong>
-                    <StatusPill status={requirementAutomationRun.status} />
-                    <span className="text-ink-muted">
-                      Sự kiện {requirementAutomationRun.source_event_id}
-                    </span>
+                    <StatusPill value={requirementAutomationRun.status} />
+                    <details className="text-xs text-ink-muted">
+                      <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                      <p className="mt-1 break-all">
+                        Mã lượt chạy: {requirementAutomationRun.automation_run_id}
+                      </p>
+                      <p className="break-all">
+                        Mã sự kiện: {requirementAutomationRun.source_event_id}
+                      </p>
+                    </details>
                   </div>
                   {requirementAutomationRun.error_code && (
                     <p>Lượt chạy có lỗi: {valueLabel(requirementAutomationRun.error_code)}</p>
@@ -1244,143 +1249,147 @@ export default function TestDesignPage({ project, workspaceView }) {
         <div className="grid gap-5">
           {actionableDrafts.length > 0 && (
             <Panel title="Ca kiểm thử chưa phê duyệt">
-              {can("testcase.approve") &&
-                actionableDrafts.some((item) => item.status === "IN_REVIEW") && (
-                  <div className="mb-4 space-y-3">
-                    <p className="text-sm text-ink-muted">
-                      Chọn ca đang chờ duyệt. Nhóm chỉ được công bố toàn bộ khi mọi nguồn, phiên bản
-                      và kiểm tra đều hợp lệ.
-                    </p>
-                    <DataTable
-                      items={actionableDrafts.filter((item) => item.status === "IN_REVIEW")}
-                      selectedIds={selectedApprovalDraftIds}
-                      onSelectionChange={setSelectedApprovalDraftIds}
-                      selectionLabel="Chọn ca chờ duyệt"
-                      columns={[
-                        { key: "test_case_key", label: "Mã" },
-                        { key: "title", label: "Tên" },
-                        {
-                          key: "origin",
-                          label: "Nguồn",
-                          render: (item) => <ContentOriginBadge origin={item.origin || "manual"} />,
-                        },
-                        { key: "revision", label: "Lần sửa" },
-                        {
-                          key: "comparison",
-                          label: "Đối chiếu",
-                          minWidth: 180,
-                          render: (item) => {
-                            const requiresComparison = requiresAiComparison(item);
-                            if (!requiresComparison) return "Không áp dụng";
-                            const reviewed = !unreviewedAiDrafts(
-                              [item],
-                              comparedApprovalDraftRevisions,
-                            ).length;
-                            return (
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => setComparisonDraftId(item._id)}
-                              >
-                                {reviewed ? "Đối chiếu lại" : "Đối chiếu gốc và AI"}
-                              </button>
-                            );
-                          },
-                        },
-                      ]}
-                    />
-                    {selectedApprovalDraftIds.some((id) => {
-                      const draft = actionableDrafts.find((item) => item._id === id);
-                      return (
-                        draft &&
-                        unreviewedAiDrafts([draft], comparedApprovalDraftRevisions).length > 0
-                      );
-                    }) && (
-                      <p role="status" className="text-sm text-amber-800">
-                        Mỗi ca do AI đề xuất phải được mở đối chiếu ở revision hiện tại trước khi
-                        đưa vào nhóm duyệt.
+              <div className="space-y-4 p-4 sm:p-5">
+                {can("testcase.approve") &&
+                  actionableDrafts.some((item) => item.status === "IN_REVIEW") && (
+                    <div className="space-y-3">
+                      <p className="text-sm text-ink-muted">
+                        Chọn ca đang chờ duyệt. Nhóm chỉ được công bố toàn bộ khi mọi nguồn, phiên
+                        bản và kiểm tra đều hợp lệ.
                       </p>
-                    )}
-                    <button
-                      type="button"
-                      className="apple-button"
-                      disabled={!selectedApprovalDraftIds.length || approvingDraftGroup}
-                      onClick={approveDraftGroup}
-                    >
-                      {approvingDraftGroup
-                        ? "Đang đối chiếu và duyệt…"
-                        : `Duyệt nhóm${selectedApprovalDraftIds.length ? ` (${selectedApprovalDraftIds.length})` : ""}`}
-                    </button>
-                  </div>
-                )}
-              <DataTable
-                onSelect={(item) => setSelectedDraftId(item._id)}
-                items={actionableDrafts}
-                columns={[
-                  { key: "test_case_key", label: "Mã" },
-                  { key: "title", label: "Tên" },
-                  { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    render: (item) => <StatusPill value={item.status} />,
-                  },
-                  {
-                    key: "action",
-                    label: "Duyệt",
-                    hideWhenEmpty: true,
-                    render: (item) => (
-                      <span className="flex flex-wrap gap-2">
-                        {item.status === "DRAFT" && can("testcase.submit_review") && (
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void reviewDraft(item, "submit");
-                            }}
-                          >
-                            Gửi rà soát
-                          </button>
-                        )}
-                        {item.status === "IN_REVIEW" && can("testcase.review") && (
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void reviewDraft(item, "changes");
-                            }}
-                          >
-                            Yêu cầu sửa
-                          </button>
-                        )}
-                        {item.status === "IN_REVIEW" && can("testcase.approve") && (
-                          <button
-                            className="apple-button"
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (
-                                unreviewedAiDrafts([item], comparedApprovalDraftRevisions).length
-                              ) {
-                                setError("");
-                                setComparisonDraftId(item._id);
-                              } else {
-                                void freeze(item);
-                              }
-                            }}
-                          >
-                            {unreviewedAiDrafts([item], comparedApprovalDraftRevisions).length
-                              ? "Đối chiếu trước khi duyệt"
-                              : "Phê duyệt"}
-                          </button>
-                        )}
-                      </span>
-                    ),
-                  },
-                ]}
-              />
+                      <DataTable
+                        items={actionableDrafts.filter((item) => item.status === "IN_REVIEW")}
+                        selectedIds={selectedApprovalDraftIds}
+                        onSelectionChange={setSelectedApprovalDraftIds}
+                        selectionLabel="Chọn ca chờ duyệt"
+                        columns={[
+                          { key: "test_case_key", label: "Mã" },
+                          { key: "title", label: "Tên" },
+                          {
+                            key: "origin",
+                            label: "Nguồn",
+                            render: (item) => (
+                              <ContentOriginBadge origin={item.origin || "manual"} />
+                            ),
+                          },
+                          { key: "revision", label: "Lần sửa" },
+                          {
+                            key: "comparison",
+                            label: "Đối chiếu",
+                            minWidth: 180,
+                            render: (item) => {
+                              const requiresComparison = requiresAiComparison(item);
+                              if (!requiresComparison) return "Không áp dụng";
+                              const reviewed = !unreviewedAiDrafts(
+                                [item],
+                                comparedApprovalDraftRevisions,
+                              ).length;
+                              return (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => setComparisonDraftId(item._id)}
+                                >
+                                  {reviewed ? "Đối chiếu lại" : "Đối chiếu gốc và AI"}
+                                </button>
+                              );
+                            },
+                          },
+                        ]}
+                      />
+                      {selectedApprovalDraftIds.some((id) => {
+                        const draft = actionableDrafts.find((item) => item._id === id);
+                        return (
+                          draft &&
+                          unreviewedAiDrafts([draft], comparedApprovalDraftRevisions).length > 0
+                        );
+                      }) && (
+                        <p role="status" className="text-sm text-amber-800">
+                          Mỗi ca do AI đề xuất phải được mở đối chiếu ở revision hiện tại trước khi
+                          đưa vào nhóm duyệt.
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        className="apple-button"
+                        disabled={!selectedApprovalDraftIds.length || approvingDraftGroup}
+                        onClick={approveDraftGroup}
+                      >
+                        {approvingDraftGroup
+                          ? "Đang đối chiếu và duyệt…"
+                          : `Duyệt nhóm${selectedApprovalDraftIds.length ? ` (${selectedApprovalDraftIds.length})` : ""}`}
+                      </button>
+                    </div>
+                  )}
+                <DataTable
+                  onSelect={(item) => setSelectedDraftId(item._id)}
+                  items={actionableDrafts}
+                  columns={[
+                    { key: "test_case_key", label: "Mã" },
+                    { key: "title", label: "Tên" },
+                    { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
+                    {
+                      key: "status",
+                      label: "Trạng thái",
+                      render: (item) => <StatusPill value={item.status} />,
+                    },
+                    {
+                      key: "action",
+                      label: "Duyệt",
+                      hideWhenEmpty: true,
+                      render: (item) => (
+                        <span className="flex flex-wrap gap-2">
+                          {item.status === "DRAFT" && can("testcase.submit_review") && (
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void reviewDraft(item, "submit");
+                              }}
+                            >
+                              Gửi rà soát
+                            </button>
+                          )}
+                          {item.status === "IN_REVIEW" && can("testcase.review") && (
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void reviewDraft(item, "changes");
+                              }}
+                            >
+                              Yêu cầu sửa
+                            </button>
+                          )}
+                          {item.status === "IN_REVIEW" && can("testcase.approve") && (
+                            <button
+                              className="apple-button"
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (
+                                  unreviewedAiDrafts([item], comparedApprovalDraftRevisions).length
+                                ) {
+                                  setError("");
+                                  setComparisonDraftId(item._id);
+                                } else {
+                                  void freeze(item);
+                                }
+                              }}
+                            >
+                              {unreviewedAiDrafts([item], comparedApprovalDraftRevisions).length
+                                ? "Đối chiếu trước khi duyệt"
+                                : "Phê duyệt"}
+                            </button>
+                          )}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
+              </div>
             </Panel>
           )}
           <Panel

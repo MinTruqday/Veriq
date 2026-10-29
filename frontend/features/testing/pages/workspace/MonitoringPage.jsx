@@ -353,8 +353,7 @@ export default function MonitoringPage({ project }) {
               <option value="">Chọn ảnh chụp</option>
               {snapshots.map((item) => (
                 <option key={item._id} value={item._id}>
-                  {new Date(item.snapshot_at).toLocaleString("vi-VN")}{" "}
-                  {item.source_fingerprint.slice(0, 8)}
+                  {new Date(item.snapshot_at).toLocaleString("vi-VN")}
                 </option>
               ))}
             </select>
@@ -376,12 +375,6 @@ export default function MonitoringPage({ project }) {
                 <p className="mt-2">{selectedSnapshot.plan_revision}</p>
               </div>
               <div>
-                <p className="field-label">Dấu vân tay nguồn</p>
-                <p className="mt-2 break-all font-mono text-xs">
-                  {selectedSnapshot.source_fingerprint}
-                </p>
-              </div>
-              <div>
                 <p className="field-label">Trạng thái cổng chất lượng</p>
                 <div className="mt-2">
                   <QualityGateBadge
@@ -393,6 +386,11 @@ export default function MonitoringPage({ project }) {
                 </div>
               </div>
             </div>
+            <details className="px-5 pb-5 text-xs text-ink-muted">
+              <summary className="cursor-pointer">Thông tin kiểm tra dữ liệu</summary>
+              <p className="mt-1 break-all">Mã ảnh chụp: {selectedSnapshot._id}</p>
+              <p className="break-all">Mã đối chiếu nguồn: {selectedSnapshot.source_fingerprint}</p>
+            </details>
           </Panel>
           <TestProgressBoard metrics={selectedSnapshot.metrics} />
           <Panel title="Kế hoạch và thực tế">
@@ -422,7 +420,10 @@ export default function MonitoringPage({ project }) {
                         name: "status",
                         label: "Kết quả",
                         required: true,
-                        options: ["PASS", "FAIL"].map((value) => ({ value, label: value })),
+                        options: ["PASS", "FAIL"].map((value) => ({
+                          value,
+                          label: value === "PASS" ? "Đạt" : "Không đạt",
+                        })),
                       },
                       { name: "reason", label: "Lý do", required: true, multiline: true },
                     ],

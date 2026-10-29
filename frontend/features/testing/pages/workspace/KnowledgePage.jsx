@@ -326,7 +326,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
             required
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Nhập hành vi quy tắc lỗi hoặc ca kiểm thử cần tìm"
+            placeholder="Nhập nội dung cần tìm, ví dụ: quy tắc đăng nhập hoặc ca kiểm thử"
           />
           <button className="apple-button" type="submit">
             Tìm kiếm
@@ -352,10 +352,10 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
               },
               {
                 key: "authority",
-                label: "Độ tin cậy",
+                label: "Mức độ chính thức",
                 render: (item) => valueLabel(item.authority),
               },
-              { key: "score", label: "Điểm" },
+              { key: "score", label: "Mức phù hợp" },
               {
                 key: "text",
                 label: "Bằng chứng",
@@ -542,7 +542,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
               { key: "source_type", label: "Loại", render: (item) => valueLabel(item.source_type) },
               {
                 key: "authority",
-                label: "Độ tin cậy",
+                label: "Mức độ chính thức",
                 render: (item) => valueLabel(item.authority),
               },
               {
@@ -563,9 +563,9 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                       key: "actions",
                       label: "Thao tác",
                       render: (item) => (
-                        <span className="flex flex-wrap gap-2">
+                        <span className="flex max-w-[28rem] flex-wrap items-center gap-2">
                           <button
-                            className="secondary-button"
+                            className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                             type="button"
                             onClick={async () => {
                               try {
@@ -579,7 +579,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             Lập chỉ mục lại
                           </button>
                           <button
-                            className="secondary-button"
+                            className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                             type="button"
                             onClick={async () => {
                               await ask({
@@ -629,7 +629,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                       void loadChunkMetadata(item);
                     }}
                   >
-                    Xem các đoạn và metadata
+                    Xem chi tiết chỉ mục
                   </button>
                 ),
               },
@@ -647,45 +647,40 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
         className="max-h-[94dvh] max-w-6xl"
       >
         <ModalHeader>
-          <ModalTitle>Các đoạn đã lập chỉ mục</ModalTitle>
+          <ModalTitle>Chi tiết chỉ mục tài liệu</ModalTitle>
         </ModalHeader>
         <div className="mb-4 rounded-lg border border-border bg-surface-quiet p-4 text-sm">
-          <p className="font-medium">Cách Qdrant lưu một điểm tìm kiếm</p>
+          <p className="font-medium">Cách Qdrant lưu dữ liệu để tìm kiếm</p>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             <div className="min-w-0 rounded-md bg-surface p-3">
-              <p className="font-semibold">1. Mã điểm</p>
+              <p className="font-semibold">Mã bản ghi</p>
               <p className="mt-1 text-ink-muted">
-                ID để đọc, cập nhật hoặc xóa đúng point. Khi tạo thế hệ chỉ mục mới, ID có thể đổi;
-                không dùng nó làm mã tài liệu hay mã yêu cầu.
+                Mỗi đoạn được gán một mã để hệ thống tìm và cập nhật đúng bản ghi. Mã này không phải
+                mã tài liệu hay mã yêu cầu.
               </p>
             </div>
             <div className="min-w-0 rounded-md bg-surface p-3">
-              <p className="font-semibold">2. Véc-tơ tìm kiếm</p>
+              <p className="font-semibold">Dữ liệu tìm theo ý nghĩa</p>
               <p className="mt-1 text-ink-muted">
-                Dãy số do mô hình nhúng (embedding) tạo từ đoạn văn bản (với đối tượng kiểm thử, đầu
-                vào gồm tiêu đề và đoạn). Qdrant dùng véc-tơ để tìm nội dung gần nghĩa; màn này
-                không cần hiển thị dãy số.
+                Hệ thống chuyển nội dung đoạn thành dãy số để tìm các nội dung gần nghĩa. Dãy số này
+                không cần hiển thị khi đọc tài liệu.
               </p>
             </div>
             <div className="min-w-0 rounded-md bg-surface p-3">
-              <p className="font-semibold">3. Dữ liệu kèm theo (payload)</p>
+              <p className="font-semibold">Nội dung và thông tin nguồn</p>
               <p className="mt-1 text-ink-muted">
-                Gồm <code>text</code> là nội dung của một đoạn và siêu dữ liệu (metadata) để lọc,
-                kiểm tra trạng thái trích xuất, rồi lần về đúng tài liệu, phiên bản và vị trí nguồn.
+                Nội dung đoạn đi kèm thông tin để lọc kết quả và mở lại đúng tài liệu, phiên bản,
+                trang hoặc vị trí nguồn khi có.
               </p>
             </div>
           </div>
           <p className="mt-3 text-ink-muted">
-            Một tài liệu dài tạo nhiều điểm dữ liệu (point), mỗi điểm chứa một đoạn riêng; bảng được
-            giữ theo các hàng đã tách và có thể lặp tiêu đề cột. Luồng xử lý cũng có thể tạo điểm
-            tóm tắt riêng, được đánh dấu là tóm tắt chứ không thay cho đoạn nguồn. Ảnh gốc không nằm
-            trong payload; đoạn chỉ giữ siêu dữ liệu hoặc tham chiếu ảnh khi có. Ngoài mã định danh
-            (ID), véc-tơ và payload, Veriq hiện không thêm một vùng dữ liệu thứ tư cho điểm.
+            Tài liệu dài được chia thành nhiều đoạn để tìm kiếm. Bảng có thể được tách theo hàng và
+            lặp tiêu đề cột; ảnh gốc được lưu riêng, còn bản ghi tìm kiếm giữ nội dung trích xuất
+            hoặc liên kết ảnh khi có.
           </p>
           <p className="mt-2 text-ink-muted">
-            Payload nguồn có thể mang thông tin quyền sở hữu và chia sẻ để backend lọc quyền. API
-            xem các đoạn chủ động loại bỏ mã người sở hữu, người tạo và danh sách người nhận chia
-            sẻ; quyền hiện hành vẫn được kiểm tra ở backend.
+            Quyền truy cập tài liệu vẫn được kiểm tra trước khi hệ thống trả kết quả tìm kiếm.
           </p>
         </div>
         {metadataSource && (
@@ -693,7 +688,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
             <div className="rounded-lg bg-surface-quiet p-4 text-sm">
               <p className="font-semibold">{metadataSource.title || metadataSource.filename}</p>
               <p className="mt-1 text-ink-muted">
-                Tài liệu {metadataSource._id} · Trạng thái chỉ mục:{" "}
+                Trạng thái chỉ mục:{" "}
                 {valueLabel(String(metadataSource.index_status || "unknown").toUpperCase())}
               </p>
               <div className="mt-3 grid gap-2 text-xs text-ink-muted sm:grid-cols-3">
@@ -702,26 +697,24 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                   có mã cha khi bộ phân tích cung cấp.
                 </p>
                 <p>
-                  <strong>Qdrant:</strong> mỗi điểm dữ liệu gồm mã, véc-tơ ngữ nghĩa và payload;
-                  payload chứa văn bản đoạn cùng siêu dữ liệu.
+                  <strong>Kho tìm kiếm:</strong> lưu mã bản ghi, dữ liệu tìm theo ý nghĩa và nội
+                  dung đoạn kèm thông tin nguồn.
                 </p>
                 <p>
-                  <strong>Không phải cây:</strong> siêu dữ liệu đoạn trỏ về khối cha/đường dẫn
-                  nguồn; véc-tơ không hiển thị vì dãy số không hữu ích khi rà tài liệu.
+                  <strong>Cấu trúc nguồn:</strong> đoạn có thể trỏ về khối cha và đường dẫn trong
+                  tài liệu; kho tìm kiếm không tự tổ chức tài liệu thành cây.
                 </p>
               </div>
             </div>
             {metadataError && <ErrorState message={metadataError} />}
             <details className="rounded-lg border border-border p-4">
               <summary className="cursor-pointer text-sm font-semibold">
-                Cấu trúc khối nguồn (không phải cây trong Qdrant)
+                Cấu trúc các phần trong tài liệu
               </summary>
               <div className="mt-3 space-y-3 text-sm">
                 <p className="text-ink-muted">
-                  Đây là danh sách khối mà bộ phân tích lưu trong tài liệu chuẩn. Mã khối cha và cấp
-                  chỉ được hiển thị khi nguồn cung cấp; một số tài liệu có thể chỉ tạo thành rừng
-                  khối hoặc không có cấu trúc. Qdrant giữ liên kết cha và danh sách tổ tiên trong
-                  payload của đoạn, không tạo cây riêng.
+                  Đây là các phần mà bộ phân tích nhận diện được trong tài liệu. Quan hệ cha–con chỉ
+                  hiển thị khi nguồn cung cấp; một số tài liệu không có cấu trúc phân cấp.
                 </p>
                 {!sourceStructurePage && !sourceStructureLoading && (
                   <button
@@ -925,158 +918,14 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                         <h3 className="text-sm font-semibold">
                           Đoạn {Number(metadata.chunk_index ?? 0) + 1}
                         </h3>
-                        <span className="break-all text-xs text-ink-muted">
-                          Point ID: {chunk.point_id}
-                        </span>
                       </div>
                       <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
                         {[
-                          ["Mã dự án", metadata.project_id],
-                          ["Loại đối tượng nguồn", valueLabel(metadata.artifact_type)],
-                          ["Mã đối tượng nguồn", metadata.artifact_id],
-                          ["Mã phiên bản đối tượng", metadata.artifact_version_id],
-                          ["Tên nguồn", metadata.source_name],
-                          ["Tác giả nguồn", metadata.author],
-                          ["Mức độ thẩm quyền nguồn", valueLabel(metadata.authority)],
-                          ["Trạng thái nguồn", valueLabel(metadata.status)],
-                          ["Phạm vi hiển thị", valueLabel(metadata.visibility)],
-                          ["Loại nội dung", valueLabel(metadata.content_type)],
-                          ["Tình trạng duyệt nguồn", valueLabel(metadata.approval_status)],
-                          ["Lĩnh vực sản phẩm", metadata.product_area],
-                          ["Module", metadata.module],
-                          ["Thành phần", metadata.component],
-                          ["Mục nguồn", metadata.section],
-                          ["Trang khai báo", metadata.page],
-                          ["Mã bản phát hành", metadata.release_id],
-                          ["Mã nguồn bên ngoài", metadata.external_source_id],
-                          ["Thẻ", (metadata.tags || []).join(", ")],
-                          ["Người duyệt nguồn", metadata.approved_by],
-                          [
-                            "Thời điểm duyệt",
-                            metadata.approved_at
-                              ? new Date(metadata.approved_at).toLocaleString("vi-VN")
-                              : null,
-                          ],
-                          [
-                            "Thời điểm có hiệu lực",
-                            metadata.effective_from
-                              ? new Date(metadata.effective_from).toLocaleString("vi-VN")
-                              : null,
-                          ],
-                          [
-                            "Yêu cầu liên quan",
-                            [
-                              ...(metadata.requirement_ids || []),
-                              ...(metadata.requirement_version_ids || []),
-                              ...(metadata.linked_requirement_version_ids || []),
-                            ].join(", "),
-                          ],
-                          [
-                            "Tiêu chí chấp nhận liên quan",
-                            (metadata.acceptance_criterion_ids || []).join(", "),
-                          ],
-                          [
-                            "Tài liệu nguồn liên quan",
-                            (metadata.source_document_ids || []).join(", "),
-                          ],
-                          [
-                            "Phiên bản ca kiểm thử liên quan",
-                            [
-                              ...(metadata.test_case_version_ids || []),
-                              metadata.test_case_version_id,
-                            ]
-                              .filter(Boolean)
-                              .join(", "),
-                          ],
-                          ["Đợt chạy kiểm thử liên quan", metadata.test_run_id],
-                          ["Kết quả kiểm thử liên quan", metadata.linked_test_result_id],
-                          ["Mã tài liệu", metadata.document_id],
-                          ["Mã tài liệu nguồn", metadata.source_document_id],
-                          ["Loại nguồn", valueLabel(metadata.source_type)],
-                          ["Định dạng nội dung", valueLabel(metadata.content_format)],
-                          ["Dấu băm nguồn", metadata.source_hash],
-                          ["Dấu băm nội dung chuẩn hóa", metadata.normalized_content_hash],
-                          ["Tiêu đề trong chỉ mục", metadata.title],
-                          ["Mã đoạn", metadata.chunk_id],
-                          ["Mã đoạn ổn định theo nguồn", metadata.logical_chunk_id],
-                          ["Dấu băm nội dung đoạn", metadata.chunk_hash],
-                          ["Loại đoạn", valueLabel(metadata.chunk_type)],
-                          [
-                            "Loại khối nguồn",
-                            (metadata.structure_types || []).map(valueLabel).join(", "),
-                          ],
-                          ["Phiên bản nguồn", metadata.version || metadata.source_version],
-                          ["Mã phiên bản chỉ mục", metadata.index_generation],
-                          ["Mã lần xử lý tài liệu", metadata.indexing_attempt_id],
-                          ["Mô hình biểu diễn", metadata.embedding_model],
-                          ["Cách tạo đầu vào biểu diễn", valueLabel(metadata.embedding_input_mode)],
-                          ["Dấu băm đầu vào mô hình biểu diễn", metadata.embedding_input_hash],
-                          ["Phạm vi điểm tóm tắt", valueLabel(metadata.summary_scope)],
-                          ["Số đoạn nguồn của tài liệu", metadata.document_chunk_count],
-                          ["Số ký tự mẫu tóm tắt", metadata.summary_sample_char_count],
-                          [
-                            "Mã đoạn được lấy mẫu",
-                            (metadata.summary_sample_chunk_ids || []).join(", "),
-                          ],
-                          [
-                            "Trang được lấy mẫu",
-                            (metadata.summary_sample_page_numbers || []).join(", "),
-                          ],
-                          [
-                            "Bộ phân tích",
-                            metadata.parser_name
-                              ? `${metadata.parser_name}${metadata.parser_version ? ` · ${metadata.parser_version}` : ""}`
-                              : null,
-                          ],
-                          [
-                            "OCR",
-                            metadata.ocr_enabled === true
-                              ? `Đã bật${metadata.ocr_language ? ` · ${metadata.ocr_language}` : ""}`
-                              : metadata.ocr_enabled === false
-                                ? "Không bật"
-                                : null,
-                          ],
-                          ["Tổng số trang nguồn", metadata.page_count],
-                          ["Số khối nguồn parser trả về", metadata.source_block_count],
-                          ["Trạng thái trích xuất", valueLabel(metadata.extraction_status)],
-                          ["Khối chưa xử lý", metadata.unprocessed_block_count],
-                          ["Số cảnh báo trích xuất", metadata.extraction_warning_count],
-                          [
-                            "Mã cảnh báo trích xuất",
-                            (metadata.extraction_warning_codes || []).map(valueLabel).join(", "),
-                          ],
-                          ["Phương pháp trích xuất", valueLabel(metadata.extraction_method)],
-                          [
-                            "Thời điểm tài liệu được tạo",
-                            metadata.source_created_at
-                              ? new Date(metadata.source_created_at).toLocaleString("vi-VN")
-                              : null,
-                          ],
-                          [
-                            "Thời điểm tài liệu được cập nhật",
-                            metadata.source_updated_at
-                              ? new Date(metadata.source_updated_at).toLocaleString("vi-VN")
-                              : null,
-                          ],
-                          [
-                            "Thời điểm lập chỉ mục",
-                            metadata.indexed_at
-                              ? new Date(metadata.indexed_at).toLocaleString("vi-VN")
-                              : null,
-                          ],
-                          [
-                            "Số ký tự / từ",
-                            metadata.char_count != null
-                              ? `${metadata.char_count} / ${metadata.word_count ?? "—"}`
-                              : null,
-                          ],
-                          ["Trang nguồn", (metadata.page_numbers || []).join(", ")],
-                          [
-                            "Khoảng trang",
-                            metadata.page_start != null || metadata.page_end != null
-                              ? `${metadata.page_start ?? "—"}–${metadata.page_end ?? "—"}`
-                              : null,
-                          ],
+                          ["Nguồn", metadata.source_name || metadata.title],
+                          ["Vị trí", metadata.section],
+                          ["Trang", (metadata.page_numbers || []).join(", ")],
+                          ["Nội dung", valueLabel(metadata.content_type)],
+                          ["Trạng thái phân tích", valueLabel(metadata.extraction_status)],
                         ]
                           .filter(
                             ([, value]) => value !== null && value !== undefined && value !== "",
@@ -1088,6 +937,176 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             </div>
                           ))}
                       </dl>
+                      <details className="mt-3 rounded-md bg-surface-quiet p-3">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Xem toàn bộ thông tin nguồn và chỉ mục
+                        </summary>
+                        <span className="mt-2 block break-all text-xs text-ink-muted">
+                          Mã bản ghi tìm kiếm: {chunk.point_id}
+                        </span>
+                        <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                          {[
+                            ["Mã dự án", metadata.project_id],
+                            ["Loại đối tượng nguồn", valueLabel(metadata.artifact_type)],
+                            ["Mã đối tượng nguồn", metadata.artifact_id],
+                            ["Mã phiên bản đối tượng", metadata.artifact_version_id],
+                            ["Tên nguồn", metadata.source_name],
+                            ["Tác giả nguồn", metadata.author],
+                            ["Mức độ thẩm quyền nguồn", valueLabel(metadata.authority)],
+                            ["Trạng thái nguồn", valueLabel(metadata.status)],
+                            ["Phạm vi hiển thị", valueLabel(metadata.visibility)],
+                            ["Loại nội dung", valueLabel(metadata.content_type)],
+                            ["Tình trạng duyệt nguồn", valueLabel(metadata.approval_status)],
+                            ["Lĩnh vực sản phẩm", metadata.product_area],
+                            ["Module", metadata.module],
+                            ["Thành phần", metadata.component],
+                            ["Mục nguồn", metadata.section],
+                            ["Trang khai báo", metadata.page],
+                            ["Mã bản phát hành", metadata.release_id],
+                            ["Mã nguồn bên ngoài", metadata.external_source_id],
+                            ["Thẻ", (metadata.tags || []).join(", ")],
+                            ["Người duyệt nguồn", metadata.approved_by],
+                            [
+                              "Thời điểm duyệt",
+                              metadata.approved_at
+                                ? new Date(metadata.approved_at).toLocaleString("vi-VN")
+                                : null,
+                            ],
+                            [
+                              "Thời điểm có hiệu lực",
+                              metadata.effective_from
+                                ? new Date(metadata.effective_from).toLocaleString("vi-VN")
+                                : null,
+                            ],
+                            [
+                              "Yêu cầu liên quan",
+                              [
+                                ...(metadata.requirement_ids || []),
+                                ...(metadata.requirement_version_ids || []),
+                                ...(metadata.linked_requirement_version_ids || []),
+                              ].join(", "),
+                            ],
+                            [
+                              "Tiêu chí chấp nhận liên quan",
+                              (metadata.acceptance_criterion_ids || []).join(", "),
+                            ],
+                            [
+                              "Tài liệu nguồn liên quan",
+                              (metadata.source_document_ids || []).join(", "),
+                            ],
+                            [
+                              "Phiên bản ca kiểm thử liên quan",
+                              [
+                                ...(metadata.test_case_version_ids || []),
+                                metadata.test_case_version_id,
+                              ]
+                                .filter(Boolean)
+                                .join(", "),
+                            ],
+                            ["Đợt chạy kiểm thử liên quan", metadata.test_run_id],
+                            ["Kết quả kiểm thử liên quan", metadata.linked_test_result_id],
+                            ["Mã tài liệu", metadata.document_id],
+                            ["Mã tài liệu nguồn", metadata.source_document_id],
+                            ["Loại nguồn", valueLabel(metadata.source_type)],
+                            ["Định dạng nội dung", valueLabel(metadata.content_format)],
+                            ["Dấu băm nguồn", metadata.source_hash],
+                            ["Dấu băm nội dung chuẩn hóa", metadata.normalized_content_hash],
+                            ["Tiêu đề trong chỉ mục", metadata.title],
+                            ["Mã đoạn", metadata.chunk_id],
+                            ["Mã đoạn ổn định theo nguồn", metadata.logical_chunk_id],
+                            ["Dấu băm nội dung đoạn", metadata.chunk_hash],
+                            ["Loại đoạn", valueLabel(metadata.chunk_type)],
+                            [
+                              "Loại khối nguồn",
+                              (metadata.structure_types || []).map(valueLabel).join(", "),
+                            ],
+                            ["Phiên bản nguồn", metadata.version || metadata.source_version],
+                            ["Mã phiên bản chỉ mục", metadata.index_generation],
+                            ["Mã lần xử lý tài liệu", metadata.indexing_attempt_id],
+                            ["Mô hình biểu diễn", metadata.embedding_model],
+                            [
+                              "Cách tạo đầu vào biểu diễn",
+                              valueLabel(metadata.embedding_input_mode),
+                            ],
+                            ["Dấu băm đầu vào mô hình biểu diễn", metadata.embedding_input_hash],
+                            ["Phạm vi điểm tóm tắt", valueLabel(metadata.summary_scope)],
+                            ["Số đoạn nguồn của tài liệu", metadata.document_chunk_count],
+                            ["Số ký tự mẫu tóm tắt", metadata.summary_sample_char_count],
+                            [
+                              "Mã đoạn được lấy mẫu",
+                              (metadata.summary_sample_chunk_ids || []).join(", "),
+                            ],
+                            [
+                              "Trang được lấy mẫu",
+                              (metadata.summary_sample_page_numbers || []).join(", "),
+                            ],
+                            [
+                              "Bộ phân tích",
+                              metadata.parser_name
+                                ? `${metadata.parser_name}${metadata.parser_version ? ` · ${metadata.parser_version}` : ""}`
+                                : null,
+                            ],
+                            [
+                              "OCR",
+                              metadata.ocr_enabled === true
+                                ? `Đã bật${metadata.ocr_language ? ` · ${metadata.ocr_language}` : ""}`
+                                : metadata.ocr_enabled === false
+                                  ? "Không bật"
+                                  : null,
+                            ],
+                            ["Tổng số trang nguồn", metadata.page_count],
+                            ["Số khối nguồn parser trả về", metadata.source_block_count],
+                            ["Trạng thái trích xuất", valueLabel(metadata.extraction_status)],
+                            ["Khối chưa xử lý", metadata.unprocessed_block_count],
+                            ["Số cảnh báo trích xuất", metadata.extraction_warning_count],
+                            [
+                              "Mã cảnh báo trích xuất",
+                              (metadata.extraction_warning_codes || []).map(valueLabel).join(", "),
+                            ],
+                            ["Phương pháp trích xuất", valueLabel(metadata.extraction_method)],
+                            [
+                              "Thời điểm tài liệu được tạo",
+                              metadata.source_created_at
+                                ? new Date(metadata.source_created_at).toLocaleString("vi-VN")
+                                : null,
+                            ],
+                            [
+                              "Thời điểm tài liệu được cập nhật",
+                              metadata.source_updated_at
+                                ? new Date(metadata.source_updated_at).toLocaleString("vi-VN")
+                                : null,
+                            ],
+                            [
+                              "Thời điểm lập chỉ mục",
+                              metadata.indexed_at
+                                ? new Date(metadata.indexed_at).toLocaleString("vi-VN")
+                                : null,
+                            ],
+                            [
+                              "Số ký tự / từ",
+                              metadata.char_count != null
+                                ? `${metadata.char_count} / ${metadata.word_count ?? "—"}`
+                                : null,
+                            ],
+                            ["Trang nguồn", (metadata.page_numbers || []).join(", ")],
+                            [
+                              "Khoảng trang",
+                              metadata.page_start != null || metadata.page_end != null
+                                ? `${metadata.page_start ?? "—"}–${metadata.page_end ?? "—"}`
+                                : null,
+                            ],
+                          ]
+                            .filter(
+                              ([, value]) => value !== null && value !== undefined && value !== "",
+                            )
+                            .map(([label, value]) => (
+                              <div className="min-w-0" key={label}>
+                                <dt className="text-xs text-ink-muted">{label}</dt>
+                                <dd className="break-words">{value}</dd>
+                              </div>
+                            ))}
+                        </dl>
+                      </details>
                       <details className="mt-3 rounded-md bg-surface-quiet p-3">
                         <summary className="cursor-pointer text-sm font-medium">
                           Văn bản đoạn
@@ -1235,7 +1254,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                           </ol>
                         ) : (
                           <p className="mt-2 text-sm text-ink-muted">
-                            Không có liên kết khối nguồn trong metadata của đoạn.
+                            Không có liên kết đến phần nguồn cho đoạn này.
                           </p>
                         )}
                       </details>
@@ -1249,14 +1268,14 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                     disabled={metadataLoading}
                     onClick={() => void loadChunkMetadata(metadataSource, metadataPage.next_cursor)}
                   >
-                    Tải trang metadata tiếp theo
+                    Tải thêm đoạn
                   </button>
                 )}
               </div>
             ) : !metadataError ? (
               <p className="rounded-lg border border-border p-5 text-sm text-ink-muted">
-                Chưa tìm thấy point cho phiên bản này. Có thể nguồn chưa được lập chỉ mục, dùng kiểu
-                chỉ mục khác hoặc dữ liệu cũ không có metadata đoạn.
+                Chưa tìm thấy đoạn tìm kiếm cho phiên bản này. Nguồn có thể chưa được lập chỉ mục,
+                dùng kiểu chỉ mục khác hoặc chưa có thông tin chi tiết cho từng đoạn.
               </p>
             ) : null}
           </div>

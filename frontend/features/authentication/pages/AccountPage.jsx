@@ -171,10 +171,6 @@ export default function AccountPage() {
               {user?.system_role === "ADMIN" ? "Quản trị viên" : "Người dùng"}
             </p>
           </div>
-          <div>
-            <span className="field-label">Mã người dùng</span>
-            <p className="mt-2 break-all font-mono text-[12px]">{user?._id}</p>
-          </div>
           <label className="field-label">
             Ngôn ngữ
             <input
@@ -200,6 +196,7 @@ export default function AccountPage() {
       </section>
       <section className="rounded-2xl border border-border bg-surface p-5">
         <h2 className="font-semibold">Đổi mật khẩu</h2>
+        <p className="mt-1 text-sm text-ink-muted">Mật khẩu mới cần có ít nhất 12 ký tự.</p>
         <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={submitPassword}>
           <label className="field-label">
             Mật khẩu hiện tại
@@ -233,8 +230,11 @@ export default function AccountPage() {
       </section>
       <section className="rounded-2xl border border-border bg-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h2 className="font-semibold">Phiên đăng nhập</h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              Xem và thu hồi các phiên bạn không nhận ra.
+            </p>
           </div>
           <button
             className="secondary-button"
@@ -273,7 +273,7 @@ export default function AccountPage() {
                 >
                   <div>
                     <p className="text-sm font-medium">
-                      {session.is_current ? "Phiên hiện tại" : "Thiết bị đã đăng nhập"}
+                      {session.is_current ? "Phiên hiện tại" : "Phiên đăng nhập khác"}
                     </p>
                     <p className="text-xs text-ink-muted">
                       {session.created_at

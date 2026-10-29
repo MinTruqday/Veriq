@@ -12,7 +12,7 @@ const publicRoutes = [
   ["/dang-nhap", "Đăng nhập"],
   ["/quen-mat-khau", "Khôi phục mật khẩu"],
   ["/dat-lai-mat-khau?token=e2e-reset-token", "Đặt mật khẩu mới"],
-  ["/xac-thuc", "Xác thực"],
+  ["/xac-thuc", "Xác minh mã khôi phục mật khẩu"],
   ["/xac-minh-thu-dien-tu?email=register%40example.test", "Xác minh địa chỉ thư điện tử"],
   ["/dieu-khoan", "Điều khoản"],
 ];
@@ -58,7 +58,7 @@ test("failed login preserves user input and shows the returned error", async ({ 
   await page.goto("/dang-nhap");
   await page.getByLabel("Email").fill("ui-check@example.invalid");
   await page.locator("#login-password").fill("incorrect-test-password");
-  await page.getByRole("button", { name: "Đăng nhập" }).click();
+  await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
 
   await expect(page.getByText("Thông tin đăng nhập kiểm thử không hợp lệ")).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveValue("ui-check@example.invalid");
@@ -203,7 +203,7 @@ test("successful password login verifies the session before opening the project 
   await page.goto("/dang-nhap");
   await page.getByLabel("Email").fill("login@example.test");
   await page.locator("#login-password").fill("correct-horse-battery-1");
-  await page.getByRole("button", { name: "Đăng nhập" }).click();
+  await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
 
   await expect(page).toHaveURL(/\/du-an$/);
   expect(identityAuthorization).toBe(`Bearer ${token}`);
@@ -421,7 +421,7 @@ test("a delayed identity response from an old session cannot replace a new login
     await oldIdentityStartedPromise;
     await page.getByLabel("Email").fill("new@example.test");
     await page.locator("#login-password").fill("valid-test-password");
-    await page.getByRole("button", { name: "Đăng nhập" }).click();
+    await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
     await expect(page).toHaveURL(/\/du-an$/);
 
     releaseOldIdentity();
@@ -599,8 +599,10 @@ test("a verified platform admin can open the platform administration route direc
   await expect(page.getByRole("heading", { name: "Vận hành nền tảng" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Vận hành nền tảng" })).toBeVisible();
   await page.getByRole("button", { name: "Đánh giá AI" }).click();
-  await expect(page.getByRole("heading", { name: "Đánh giá đối chuẩn kỹ thuật AI" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Chạy đánh giá tổng hợp" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Kiểm tra AI trên tình huống thử" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Chạy đánh giá" })).toBeVisible();
   await expect(page.locator("main")).not.toContainText(
     /pipeline|blueprint|\bmetric\b|\bcohort\b|benchmark|production/i,
   );

@@ -192,21 +192,21 @@ export default function RequirementCurrentVersionPanel({
                 className="apple-input min-h-24"
                 value={draft.businessRules}
                 onChange={(event) => onDraftChange({ businessRules: event.target.value })}
-                placeholder="Mỗi dòng một quy tắc nghiệp vụ"
+                placeholder="Mỗi dòng nhập một quy tắc nghiệp vụ"
               />
               <textarea
                 aria-label="Tác nhân"
                 className="apple-input min-h-24"
                 value={draft.actors}
                 onChange={(event) => onDraftChange({ actors: event.target.value })}
-                placeholder="Các tác nhân phân tách bằng dấu phẩy"
+                placeholder="Nhập các tác nhân, phân cách bằng dấu phẩy"
               />
               <textarea
                 aria-label="Phụ thuộc yêu cầu"
                 className="apple-input min-h-24"
                 value={draft.dependencies}
                 onChange={(event) => onDraftChange({ dependencies: event.target.value })}
-                placeholder="Mỗi dòng một phụ thuộc"
+                placeholder="Mỗi dòng nhập một yêu cầu phụ thuộc"
               />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -215,7 +215,7 @@ export default function RequirementCurrentVersionPanel({
                 className="apple-input"
                 value={draft.tags}
                 onChange={(event) => onDraftChange({ tags: event.target.value })}
-                placeholder="Nhãn phân cách bằng dấu phẩy"
+                placeholder="Nhập nhãn, phân cách bằng dấu phẩy"
               />
               <select
                 aria-label="Người phụ trách yêu cầu"
@@ -226,7 +226,10 @@ export default function RequirementCurrentVersionPanel({
                 <option value="">Chưa phân công</option>
                 {members.map((item) => (
                   <option key={item.user_id} value={item.user_id}>
-                    {item.user_label || item.user?.email || item.user_id}
+                    {item.user_label ||
+                      item.user?.full_name ||
+                      item.user?.email ||
+                      "Tài khoản không xác định"}
                   </option>
                 ))}
               </select>

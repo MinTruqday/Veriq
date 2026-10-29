@@ -1,5 +1,6 @@
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
+import { valueLabel } from "../lib/testing";
 
 export default function TestabilityFindingsPanel({ condition, canResolve, onResolve }) {
   return (
@@ -7,7 +8,7 @@ export default function TestabilityFindingsPanel({ condition, canResolve, onReso
       items={condition.analysis_findings || []}
       empty="Không có phát hiện về khả năng kiểm thử"
       columns={[
-        { key: "finding_type", label: "Loại" },
+        { key: "finding_type", label: "Loại", render: (item) => valueLabel(item.finding_type) },
         {
           key: "severity",
           label: "Mức độ",

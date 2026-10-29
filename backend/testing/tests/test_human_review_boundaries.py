@@ -127,7 +127,21 @@ class HumanReviewBoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error.exception.status_code, 403)
 
     def test_role_overrides_cannot_grant_tester_definition_writes(self):
-        mutations = {"testcase.create", "testcase.update", "testcase.import", "testcase.bulk.update", "testcase.approve", "testdata.update", "testsuite.update", "ai.generate_testcase"}
+        mutations = {
+            "testcase.create",
+            "testcase.update",
+            "testcase.import",
+            "testcase.bulk.update",
+            "testcase.approve",
+            "testdata.update",
+            "testsuite.update",
+            "testplan.create",
+            "testplan.update",
+            "testplan.archive",
+            "testplan.submit_review",
+            "testplan.approve",
+            "ai.generate_testcase",
+        }
         permissions = mutations | {"testcase.read", "testcase.review", "comment.create"}
         policy = {"project_permissions": list(permissions), "role_permissions": {"TESTER": list(permissions), "QA": list(permissions)}}
         with patch.object(auth, "access_policy", return_value=policy):
@@ -271,13 +285,15 @@ class HumanReviewBoundaryTests(unittest.IsolatedAsyncioTestCase):
                         "PROJECT_PERMISSION_DENIED",
                     )
 
-    async def test_approval_is_a_new_event_not_the_previous_draft_event(self):
+    async def test_only_baselined_requirement_versions_emit_change_events(self):
         user = SimpleNamespace(id="qa", _ai_automation_run_id=None)
         version = {"_id": "v1", "project_id": "p1", "requirement_id": "r1", "revision": 1, "status": "DRAFT"}
         with patch.object(ai_automation, "emit_event", new=AsyncMock(return_value=True)) as emit:
             await ai_automation.emit_requirement_changed(version, user)
             await ai_automation.emit_requirement_changed({**version, "revision": 2, "status": "BASELINED"}, user)
-        self.assertNotEqual(emit.await_args_list[0].args[1], emit.await_args_list[1].args[1])
+        emit.assert_awaited_once()
+        self.assertEqual(emit.await_args.args[0], "REQUIREMENT_CHANGED")
+        self.assertEqual(emit.await_args.args[1], "requirement-version:v1:2:BASELINED")
 
 
 if __name__ == "__main__":

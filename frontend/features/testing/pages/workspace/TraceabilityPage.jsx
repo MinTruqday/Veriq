@@ -22,6 +22,7 @@ export default function TraceabilityPage({ project }) {
   const [snapshots, setSnapshots] = useState([]);
   const [linkForm, setLinkForm] = useState({ source_id: "", target_id: "" });
   const [error, setError] = useState("");
+  const [linkError, setLinkError] = useState("");
   const [creating, setCreating] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
@@ -153,7 +154,14 @@ export default function TraceabilityPage({ project }) {
             </button>
           )}
           {can("trace.create") && (
-            <button className="apple-button" type="button" onClick={() => setCreating(true)}>
+            <button
+              className="apple-button"
+              type="button"
+              onClick={() => {
+                setLinkError("");
+                setCreating(true);
+              }}
+            >
               Tạo liên kết
             </button>
           )}
@@ -184,8 +192,13 @@ export default function TraceabilityPage({ project }) {
           <ModalHeader>
             <ModalTitle>Tạo liên kết truy vết</ModalTitle>
           </ModalHeader>
+          {linkError && (
+            <div className="px-5 pt-4 text-sm text-danger" role="alert">
+              {linkError}
+            </div>
+          )}
           <form
-            className="grid gap-3 p-5 md:grid-cols-[1fr_1fr_auto]"
+            className="grid min-w-0 gap-3 p-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
             onSubmit={async (event) => {
               event.preventDefault();
               try {
@@ -202,15 +215,16 @@ export default function TraceabilityPage({ project }) {
                 });
                 setLinkForm({ source_id: "", target_id: "" });
                 setCreating(false);
+                setLinkError("");
                 await load();
               } catch (reason) {
-                setError(messageOf(reason));
+                setLinkError(messageOf(reason));
               }
             }}
           >
             <select
               aria-label="Phiên bản yêu cầu nguồn"
-              className="apple-input"
+              className="apple-input min-w-0 w-full"
               required
               value={linkForm.source_id}
               onChange={(event) => setLinkForm({ ...linkForm, source_id: event.target.value })}
@@ -224,7 +238,7 @@ export default function TraceabilityPage({ project }) {
             </select>
             <select
               aria-label="Phiên bản ca kiểm thử đích"
-              className="apple-input"
+              className="apple-input min-w-0 w-full"
               required
               value={linkForm.target_id}
               onChange={(event) => setLinkForm({ ...linkForm, target_id: event.target.value })}

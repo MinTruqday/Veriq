@@ -112,8 +112,13 @@ function ReadValue({ value, kind, customFields = [], members = [] }) {
     return (
       <p className="break-words">
         {member
-          ? member.user_label || member.user?.full_name || member.user?.email || member.user_id
-          : value || "Chưa phân công"}
+          ? member.user_label ||
+            member.user?.full_name ||
+            member.user?.email ||
+            "Tài khoản không xác định"
+          : value
+            ? "Tài khoản không còn trong dự án"
+            : "Chưa phân công"}
       </p>
     );
   }
@@ -608,7 +613,10 @@ function FieldEditor({
         )}
         {members.map((member) => (
           <option key={member.user_id} value={member.user_id}>
-            {member.user_label || member.user?.full_name || member.user?.email || member.user_id}
+            {member.user_label ||
+              member.user?.full_name ||
+              member.user?.email ||
+              "Tài khoản không xác định"}
             {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
           </option>
         ))}
@@ -667,9 +675,9 @@ function EvidenceValue({ value }) {
           key={`${source.artifact_version_id || source.artifact_id || "source"}-${index}`}
         >
           <p className="break-all text-xs font-medium">
-            {source.artifact_version_id || source.artifact_id || "Nguồn tài liệu"}
+            {source.title || source.label || `Nguồn ${index + 1}`}
             {source.page_no ? ` · Trang ${source.page_no}` : ""}
-            {source.block_id ? ` · Khối ${source.block_id}` : ""}
+            {source.block_id ? " · Có vị trí trong tài liệu" : ""}
           </p>
           <p className="mt-2 whitespace-pre-wrap break-words">
             {source.text || "Không lưu đoạn trích."}
@@ -1248,7 +1256,7 @@ export default function TestCaseCompareWorkspace({
                           className="whitespace-pre-wrap break-words border-l-2 border-brand pl-3 text-sm"
                           key={`${item.artifact_version_id}-${index}`}
                         >
-                          <p className="mb-1 font-medium">{item.artifact_version_id}</p>
+                          <p className="mb-1 font-medium">Nguồn {index + 1}</p>
                           {item.text}
                         </blockquote>
                       ))
@@ -1288,8 +1296,8 @@ export default function TestCaseCompareWorkspace({
                 <div className="mt-3 space-y-1 text-sm">
                   <p className="font-medium">{result.title || "Chưa có tên ca"}</p>
                   <p className="text-ink-muted">
-                    {result.test_case_key} · {result.steps?.length || 0} bước · Bản nháp revision{" "}
-                    {context.draft.revision}
+                    {result.test_case_key} · {result.steps?.length || 0} bước · Bản nháp lần cập
+                    nhật {context.draft.revision}
                   </p>
                   <p className="text-xs text-ink-muted">
                     {editable ? "Chọn từng trường hoặc tự chỉnh sửa bên dưới." : "Chế độ chỉ đọc."}
@@ -1497,17 +1505,18 @@ export default function TestCaseCompareWorkspace({
                   <details
                     key={id}
                     className="min-w-0 rounded-control border border-border p-3"
-                    onToggle={(event) =>
+                    onToggle={(event) => {
+                      const isOpen = event.currentTarget.open;
                       setExpandedSteps((current) => {
                         const next = new Set(current);
-                        if (event.currentTarget.open) next.add(id);
+                        if (isOpen) next.add(id);
                         else next.delete(id);
                         return next;
-                      })
-                    }
+                      });
+                    }}
                   >
                     <summary className="cursor-pointer break-words font-medium">
-                      {final ? `Bước ${final.order}` : "Bước đã bỏ khỏi kết quả"} · {id}
+                      {final ? `Bước ${final.order}` : "Bước đã bỏ khỏi kết quả"}
                     </summary>
                     {expandedSteps.has(id) && (
                       <div className="mt-3 grid min-w-0 gap-3 xl:grid-cols-3">

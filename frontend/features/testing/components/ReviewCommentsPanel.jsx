@@ -74,7 +74,7 @@ export default function ReviewCommentsPanel({
     <Panel title={title || "Nhận xét rà soát"}>
       <div className="space-y-4 p-5">
         {error && <ErrorState message={error} />}
-        <label className="grid max-w-xs gap-1 text-xs font-semibold text-ink-muted">
+        <label className="grid w-full max-w-xs gap-1 text-sm font-semibold text-ink">
           Trạng thái nhận xét
           <select
             className="apple-input"
@@ -88,7 +88,7 @@ export default function ReviewCommentsPanel({
         {items.length ? (
           <ul className="divide-y divide-border rounded-xl border border-border">
             {items.map((item) => (
-              <li className="space-y-3 p-4" key={item._id}>
+              <li className="min-w-0 space-y-3 p-4" key={item._id}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusPill value={item.status} />
@@ -106,7 +106,7 @@ export default function ReviewCommentsPanel({
                     </button>
                   )}
                 </div>
-                <p className="whitespace-pre-wrap text-[13px] leading-6">
+                <p className="min-w-0 break-words whitespace-pre-wrap text-[13px] leading-6">
                   {docText(item.body_doc) || "Nhận xét không có nội dung"}
                 </p>
               </li>
@@ -119,7 +119,7 @@ export default function ReviewCommentsPanel({
           <form className="flex flex-col gap-3 sm:flex-row" onSubmit={create}>
             <textarea
               aria-label="Nội dung nhận xét"
-              className="apple-input min-h-24 flex-1"
+              className="apple-input min-h-24 w-full min-w-0 flex-1 sm:w-auto"
               required
               value={body}
               onChange={(event) => setBody(event.target.value)}

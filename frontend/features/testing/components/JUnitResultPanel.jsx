@@ -86,18 +86,25 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
           </button>
         </form>
       )}
-      <p className="mb-3 px-4 pt-4 text-sm text-ink-muted sm:px-5">
-        Thêm mã phiên bản ca kiểm thử vào từng kết quả để hệ thống liên kết chính xác{" "}
-        <code className="mx-1 rounded bg-surface-quiet px-1.5 py-0.5 font-mono text-xs text-ink">
-          veriq_test_case_version_id
-        </code>{" "}
-        trong tệp XML
-      </p>
+      <div className="mb-3 space-y-2 px-4 pt-4 text-sm text-ink-muted sm:px-5">
+        <p>Để hệ thống tự liên kết kết quả, mỗi mục trong tệp cần có mã phiên bản ca kiểm thử.</p>
+        <details className="text-xs">
+          <summary className="w-fit cursor-pointer">Xem tên trường cần dùng trong tệp XML</summary>
+          <code className="mt-2 inline-block rounded bg-surface-quiet px-2 py-1 font-mono text-ink">
+            veriq_test_case_version_id
+          </code>
+        </details>
+      </div>
       <DataTable
         items={imports}
         empty="Chưa có kết quả JUnit"
         columns={[
-          { key: "test_run_id", label: "Lần chạy kiểm thử" },
+          {
+            key: "test_run_id",
+            label: "Lần chạy kiểm thử",
+            render: (item) =>
+              runs.find((run) => run._id === item.test_run_id)?.name || "Không còn khả dụng",
+          },
           { key: "status", label: "Trạng thái" },
           {
             key: "mapped_test_case_version_ids",
@@ -123,7 +130,7 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
                     <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]" key={key}>
                       <p className="self-center text-sm">
                         {row.classname ? `${row.classname} ` : ""}
-                        {row.name || "Không có tên testcase"}
+                        {row.name || "Kết quả không có tên ca kiểm thử"}
                       </p>
                       <select
                         aria-label={`Liên kết kết quả JUnit ${row.name || index + 1}`}

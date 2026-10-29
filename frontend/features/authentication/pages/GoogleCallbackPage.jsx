@@ -10,13 +10,13 @@ function GoogleCallbackContent() {
   const { emailForPasskey, error, finish, back } = useGoogleCallback();
   if (emailForPasskey)
     return (
-      <AuthFrame title="Thiết lập passkey">
+      <AuthFrame title="Thiết lập khóa truy cập">
         <PasskeySetup email={emailForPasskey} onClose={finish} onSuccess={finish} />
       </AuthFrame>
     );
   if (error) {
     return (
-      <AuthFrame title="Xác thực Google">
+      <AuthFrame title="Đăng nhập bằng Google">
         <InlineState title="Không thể đăng nhập" detail={error} tone="danger" />
         <Button className="mt-5 w-full" onClick={back}>
           Quay lại đăng nhập

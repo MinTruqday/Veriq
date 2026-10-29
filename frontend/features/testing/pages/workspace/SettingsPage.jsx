@@ -432,8 +432,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 <div>
                   <h3 className="text-sm font-semibold text-ink">Tự động hóa kiểm thử</h3>
                   <p className="mt-1 text-sm text-ink-muted">
-                    AI chỉ sinh kịch bản khi ca được đánh dấu tự động hóa và dự án có cấu hình công
-                    cụ. Để trống cả hai trường nếu dự án chưa dùng sinh kịch bản.
+                    Chọn công cụ và ngôn ngữ dùng cho các ca kiểm thử tự động của dự án.
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -485,7 +484,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
               {can("project.update") && (
                 <Panel
                   title="Thời gian dự án"
-                  description="Các mốc này giúp theo dõi lộ trình; chúng không tự quyết định tiến độ hoàn thành."
+                  description="Ngày bắt đầu và kết thúc dự kiến của dự án."
                 >
                   <div className="grid gap-3 p-4 sm:grid-cols-2">
                     <label className="field-label">

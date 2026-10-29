@@ -11,12 +11,12 @@ function updateScale(value, onChange, key, text) {
 
 export default function RiskModelEditor({ value, onChange }) {
   return (
-    <fieldset className="grid gap-4 rounded-2xl border border-border p-4 md:grid-cols-2">
+    <fieldset className="grid min-w-0 gap-4 rounded-2xl border border-border p-4 md:grid-cols-2">
       <legend className="px-2 text-sm font-semibold">Mô hình rủi ro</legend>
       <label className="field-label">
         Thang xác suất mỗi mức một dòng
         <textarea
-          className="apple-input mt-2 min-h-28"
+          className="apple-input mt-2 min-h-28 w-full min-w-0"
           value={(value.probability_scale || []).map((item) => item.label).join("\n")}
           onChange={(event) =>
             updateScale(value, onChange, "probability_scale", event.target.value)
@@ -27,16 +27,16 @@ export default function RiskModelEditor({ value, onChange }) {
       <label className="field-label">
         Thang ảnh hưởng mỗi mức một dòng
         <textarea
-          className="apple-input mt-2 min-h-28"
+          className="apple-input mt-2 min-h-28 w-full min-w-0"
           value={(value.impact_scale || []).map((item) => item.label).join("\n")}
           onChange={(event) => updateScale(value, onChange, "impact_scale", event.target.value)}
           required
         />
       </label>
       <label className="field-label md:col-span-2">
-        Công thức mức phơi nhiễm rủi ro
+        Công thức tính mức phơi nhiễm rủi ro
         <input
-          className="apple-input mt-2"
+          className="apple-input mt-2 w-full min-w-0"
           value={value.risk_exposure_formula || ""}
           onChange={(event) => onChange({ ...value, risk_exposure_formula: event.target.value })}
           required
@@ -64,7 +64,7 @@ export default function RiskModelEditor({ value, onChange }) {
       <label className="field-label md:col-span-2">
         Quy tắc ưu tiên hồi quy mỗi dòng một quy tắc
         <textarea
-          className="apple-input mt-2 min-h-24"
+          className="apple-input mt-2 min-h-24 w-full min-w-0"
           value={(value.regression_priority_rules || []).join("\n")}
           onChange={(event) =>
             onChange({

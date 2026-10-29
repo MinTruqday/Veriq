@@ -167,16 +167,16 @@ export default function CompletionPage({ project }) {
     await ask({
       title: "Tạo báo cáo hoàn tất kiểm thử",
       description:
-        "Báo cáo khóa chính xác kế hoạch bản phát hành bản dựng và các lần chạy trong ảnh chụp",
+        "Báo cáo cố định kế hoạch kiểm thử, bản phát hành, bản dựng và các lần chạy trong bản chụp số liệu giám sát.",
       confirmLabel: "Tạo báo cáo",
       fields: [
         {
           name: "snapshot_id",
-          label: "Ảnh chụp giám sát",
+          label: "Bản chụp số liệu giám sát",
           required: true,
           options: snapshots.map((item) => ({
             value: item._id,
-            label: `${formatDate(item.snapshot_at)} · ${item.source_fingerprint?.slice(0, 8) || item._id}`,
+            label: formatDate(item.snapshot_at),
           })),
         },
         {
@@ -344,8 +344,8 @@ export default function CompletionPage({ project }) {
       confirmLabel: "Lưu bàn giao",
       fields: [
         { name: "artifact_type", label: "Loại tài sản", required: true },
-        { name: "artifact_id", label: "Mã tài sản", required: true },
-        { name: "artifact_version_id", label: "Mã phiên bản" },
+        { name: "artifact_id", label: "Tên hoặc mã tài sản", required: true },
+        { name: "artifact_version_id", label: "Mã phiên bản (nếu có)" },
         { name: "handover_to", label: "Bàn giao cho", required: true },
         { name: "storage_location", label: "Vị trí lưu trữ", required: true },
         {
@@ -637,7 +637,7 @@ export default function CompletionPage({ project }) {
                 )}
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <Metric
-                    label="Thực thi"
+                    label="Tiến độ thực thi"
                     value={`${selected.execution_summary?.execution_percent ?? 0}%`}
                   />
                   <Metric
@@ -663,42 +663,47 @@ export default function CompletionPage({ project }) {
                       />
                     )}
                   <Metric
-                    label="Lỗi nghiêm trọng mở"
+                    label="Lỗi nghiêm trọng chưa xử lý"
                     value={selected.defect_summary?.open_critical ?? 0}
                   />
                 </div>
-                <div className="grid gap-3 rounded-xl border border-border p-4 text-sm md:grid-cols-2 xl:grid-cols-3">
-                  <p>
-                    <span className="field-label">Kế hoạch</span>
-                    <br />
-                    <span className="break-all">{selected.test_plan_id}</span>
-                  </p>
-                  <p>
-                    <span className="field-label">Chiến lược</span>
-                    <br />
-                    <span className="break-all">{selected.strategy_version_id}</span>
-                  </p>
-                  <p>
-                    <span className="field-label">Bản phát hành</span>
-                    <br />
-                    <span className="break-all">{selected.release_id}</span>
-                  </p>
-                  <p>
-                    <span className="field-label">Bản dựng</span>
-                    <br />
-                    <span className="break-all">{selected.build_id}</span>
-                  </p>
-                  <p>
-                    <span className="field-label">Ảnh chụp giám sát</span>
-                    <br />
-                    <span className="break-all">{selected.monitoring_snapshot_id}</span>
-                  </p>
-                  <p>
-                    <span className="field-label">Khuyến nghị</span>
-                    <br />
-                    {valueLabel(selected.recommendation)}
-                  </p>
-                </div>
+                <details className="rounded-xl border border-border p-4 text-sm">
+                  <summary className="cursor-pointer font-medium">
+                    Thông tin phạm vi báo cáo
+                  </summary>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <p>
+                      <span className="field-label">Kế hoạch kiểm thử</span>
+                      <br />
+                      {selected.test_plan_id ? "Đã ghi nhận" : "Chưa ghi nhận"}
+                    </p>
+                    <p>
+                      <span className="field-label">Chiến lược kiểm thử</span>
+                      <br />
+                      {selected.strategy_version_id ? "Đã ghi nhận" : "Chưa ghi nhận"}
+                    </p>
+                    <p>
+                      <span className="field-label">Bản phát hành</span>
+                      <br />
+                      {selected.release_id ? "Đã ghi nhận" : "Chưa ghi nhận"}
+                    </p>
+                    <p>
+                      <span className="field-label">Bản dựng</span>
+                      <br />
+                      {selected.build_id ? "Đã ghi nhận" : "Chưa ghi nhận"}
+                    </p>
+                    <p>
+                      <span className="field-label">Bản chụp số liệu giám sát</span>
+                      <br />
+                      {selected.monitoring_snapshot_id ? "Đã ghi nhận" : "Chưa ghi nhận"}
+                    </p>
+                    <p>
+                      <span className="field-label">Khuyến nghị</span>
+                      <br />
+                      {valueLabel(selected.recommendation)}
+                    </p>
+                  </div>
+                </details>
                 {(selected.executive_summary ||
                   selected.closure_summary ||
                   selected.residual_risk_summary ||
@@ -720,7 +725,7 @@ export default function CompletionPage({ project }) {
                   </div>
                 )}
                 <div>
-                  <h3 className="mb-3 font-semibold text-ink">Đánh giá tiêu chí thoát</h3>
+                  <h3 className="mb-3 font-semibold text-ink">Đánh giá điều kiện kết thúc</h3>
                   <DataTable
                     items={(selected.exit_criteria_evaluation || []).map((item, index) => ({
                       ...item,
@@ -822,7 +827,15 @@ export default function CompletionPage({ project }) {
                     }))}
                     empty="Chưa có xác nhận"
                     columns={[
-                      { key: "user_id", label: "Người xác nhận" },
+                      {
+                        key: "user_id",
+                        label: "Người xác nhận",
+                        render: (item) =>
+                          item.user_label ||
+                          members.find((member) => member.user_id === item.user_id)?.user_label ||
+                          members.find((member) => member.user_id === item.user_id)?.user?.email ||
+                          "Không có tên hiển thị",
+                      },
                       { key: "role", label: "Vai trò", render: (item) => valueLabel(item.role) },
                       {
                         key: "decision",
@@ -834,9 +847,10 @@ export default function CompletionPage({ project }) {
                   />
                 </div>
                 {selected.approved_snapshot_hash && (
-                  <p className="break-all text-xs text-ink-muted">
-                    Dấu vân tay nội dung đã phê duyệt {selected.approved_snapshot_hash}
-                  </p>
+                  <details className="text-xs text-ink-muted">
+                    <summary className="cursor-pointer">Mã kiểm tra bản đã duyệt</summary>
+                    <p className="mt-1 break-all">{selected.approved_snapshot_hash}</p>
+                  </details>
                 )}
                 {can("reviewsession.read") && (
                   <FormalReviewPanel

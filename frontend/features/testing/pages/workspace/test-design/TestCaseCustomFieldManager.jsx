@@ -108,9 +108,16 @@ export default function TestCaseCustomFieldManager({ projectId, onUpdated }) {
                 key={field._id}
               >
                 <div className="min-w-0 text-sm">
-                  <p className="break-all font-semibold text-ink">{field.key}</p>
+                  <p className="break-words font-semibold text-ink">{field.label}</p>
                   <p className="mt-1 text-ink-muted">
-                    {field.value_type}
+                    {{
+                      string: "Văn bản",
+                      text: "Văn bản",
+                      number: "Số",
+                      boolean: "Có hoặc không",
+                      choice: "Danh sách lựa chọn",
+                      date: "Ngày",
+                    }[field.value_type] || "Trường tùy chỉnh"}
                     {field.value_type === "choice" && field.choices?.length
                       ? ` · ${field.choices.join(", ")}`
                       : ""}

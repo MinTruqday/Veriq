@@ -30,9 +30,10 @@ function CandidateList({ title, results, getCandidates, renderCandidate, empty }
               )}
               <div className="mt-3 space-y-2">{candidates.map(renderCandidate)}</div>
               {result.source_event_id && (
-                <p className="mt-3 break-all text-xs text-ink-faint">
-                  Sự kiện nguồn: {result.source_event_id}
-                </p>
+                <details className="mt-3 text-xs text-ink-faint">
+                  <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                  <p className="mt-1 break-all">Mã sự kiện: {result.source_event_id}</p>
+                </details>
               )}
               {result.human_confirmation_required === true && (
                 <p className="mt-2 text-xs text-ink-muted">

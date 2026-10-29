@@ -257,7 +257,7 @@ export default function TestCaseCreateModal({
                     {member.user_label ||
                       member.user?.full_name ||
                       member.user?.email ||
-                      member.user_id}
+                      "Tài khoản không xác định"}
                     {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
                   </option>
                 ))}
@@ -512,7 +512,7 @@ export default function TestCaseCreateModal({
             onChange={(event) => update({ automationStatus: event.target.value })}
           >
             <option value="manual">Thủ công</option>
-            <option value="candidate">Đang xem xét tự động hóa</option>
+            <option value="candidate">Đề xuất tự động hóa</option>
             <option value="automated">Đã tự động hóa</option>
           </select>
         </label>

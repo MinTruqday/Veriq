@@ -178,6 +178,24 @@ const valueLabels = {
   TEST_PLAN: "Kế hoạch kiểm thử",
   TEST_CONDITION: "Điều kiện kiểm thử",
   TEST_CASE: "Ca kiểm thử",
+  RELEASE: "Bản phát hành",
+  SPRINT: "Đợt lặp",
+  MANUAL: "Chạy theo yêu cầu",
+  DOCUMENT_INGESTED: "Rà soát tài liệu mới",
+  API_OPERATION_CONFIRMED: "Tạo ca kiểm thử từ thao tác API",
+  REQUIREMENT_CHANGED: "Rà soát yêu cầu đã thay đổi",
+  TEST_EXECUTION_RECORDED: "Phân tích kết quả kiểm thử",
+  DEFECT_RECORDED: "Rà soát lỗi mới",
+  DEFECT_CHANGED: "Rà soát cập nhật lỗi",
+  WORK_ITEM_CHANGED: "Rà soát công việc đã thay đổi",
+  TEST_CASE_CHANGED: "Rà soát ca kiểm thử đã thay đổi",
+  TEST_CASE_APPROVED: "Hoàn thiện ca kiểm thử đã duyệt",
+  TEST_PLAN_CHANGED: "Rà soát kế hoạch kiểm thử đã thay đổi",
+  TEST_PLAN_APPROVED: "Chuẩn bị từ kế hoạch kiểm thử đã duyệt",
+  STATUS_REPORT_CREATED: "Cập nhật báo cáo kiểm thử",
+  TEST_COMPLETION_REPORT_CREATED: "Cập nhật báo cáo hoàn tất kiểm thử",
+  PERFORMANCE_CONFIGURATION_APPROVED: "Chuẩn bị kiểm thử hiệu năng",
+  RELEASE_CHANGED: "Rà soát bản phát hành đã thay đổi",
   IMPACT_ANALYSIS: "Phân tích ảnh hưởng",
   STATUS_REPORT: "Báo cáo trạng thái",
   COMPLETION_REPORT: "Báo cáo hoàn tất",
@@ -226,11 +244,11 @@ const valueLabels = {
   SAFE_ALL: "Mọi thao tác an toàn",
   SERVICE_IDENTITY: "Danh tính dịch vụ",
   DEFECT_CREATED: "Lỗi được tạo",
-  MANUAL: "Kích hoạt thủ công",
-  DOCUMENT_INGESTED: "Tài liệu được nhập",
-  REQUIREMENT_CHANGED: "Yêu cầu thay đổi",
-  TEST_EXECUTION_RECORDED: "Kết quả kiểm thử được ghi nhận",
-  DEFECT_RECORDED: "Lỗi được ghi nhận",
+  MANUAL: "Chạy theo yêu cầu",
+  DOCUMENT_INGESTED: "Rà soát tài liệu mới",
+  REQUIREMENT_CHANGED: "Rà soát yêu cầu đã thay đổi",
+  TEST_EXECUTION_RECORDED: "Phân tích kết quả kiểm thử",
+  DEFECT_RECORDED: "Rà soát lỗi mới",
   Project: "Dự án",
   ProjectSettings: "Cài đặt dự án",
   TestSuite: "Bộ kiểm thử",
@@ -315,6 +333,7 @@ const valueLabels = {
   MODIFIED_ERROR: "Thay đổi xử lý lỗi",
   ADDED_BEHAVIOR: "Thêm hành vi",
   REMOVED_BEHAVIOR: "Loại bỏ hành vi",
+  requirement_document: "Tài liệu yêu cầu",
   requirement_documents: "Tài liệu yêu cầu",
   requirement_version: "Phiên bản yêu cầu",
   requirement: "Yêu cầu",
@@ -392,7 +411,8 @@ export function statusLabel(value) {
 }
 
 export function valueLabel(value) {
-  return valueLabels[value] || statusLabel(value);
+  const normalizedValue = String(value || "").toLowerCase();
+  return valueLabels[value] || valueLabels[normalizedValue] || statusLabel(value);
 }
 
 export function formatDate(value) {

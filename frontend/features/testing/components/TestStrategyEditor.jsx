@@ -58,7 +58,7 @@ const arrayFields = [
   ["resumption_criteria", "Tiêu chí tiếp tục"],
   ["deliverables", "Sản phẩm bàn giao"],
   ["standards_refs", "Tiêu chuẩn tham chiếu"],
-  ["reviewer_ids", "Mã người rà soát"],
+  ["reviewer_ids", "Mã thành viên rà soát"],
 ];
 
 const objectFields = [

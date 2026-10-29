@@ -6,11 +6,13 @@ export default function ReviewChecklist({ items = [] }) {
       {items.length ? (
         items.map((item, index) => (
           <div
-            className="flex items-start gap-3 rounded-xl border border-border px-3 py-2 text-sm"
+            className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-xl border border-border px-3 py-2 text-sm"
             key={item.id || index}
           >
-            <span className="font-semibold">{valueLabel(item.status || "PENDING")}</span>
-            <span>{item.label || item.text || String(item)}</span>
+            <span className="whitespace-nowrap rounded-full bg-surface-quiet px-2 py-1 text-xs font-semibold">
+              {valueLabel(item.status || "PENDING")}
+            </span>
+            <span className="min-w-0 break-words">{item.label || item.text || String(item)}</span>
           </div>
         ))
       ) : (

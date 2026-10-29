@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, valueLabel } from "../../../lib/testing";
+import { LoadingState } from "../../../components/WorkspacePrimitives";
 
 const statusLabel = {
   OPEN: "Đang chờ BA làm rõ",
@@ -22,6 +23,7 @@ export default function RequirementClarificationPanel({
   const [evidence, setEvidence] = useState({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const loadSequence = useRef(0);
   const activeRequirementVersion = useRef(requirementVersionId);
   activeRequirementVersion.current = requirementVersionId;
@@ -32,6 +34,7 @@ export default function RequirementClarificationPanel({
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     if (!requirementVersionId || !canRead) return;
+    setLoading(true);
     try {
       const result = await testingApi.listRequirementClarifications(requirementVersionId);
       if (sequence !== loadSequence.current) return;
@@ -39,6 +42,8 @@ export default function RequirementClarificationPanel({
       setError("");
     } catch (reason) {
       if (sequence === loadSequence.current) setError(messageOf(reason));
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }, [canRead, requirementVersionId]);
   useEffect(() => {
@@ -47,6 +52,7 @@ export default function RequirementClarificationPanel({
     setEvidence({});
     setError("");
     setBusy(false);
+    setLoading(true);
     if (!canRead) {
       loadSequence.current += 1;
       return undefined;
@@ -93,13 +99,23 @@ export default function RequirementClarificationPanel({
         )}
       </div>
       {error && (
-        <div className="rounded-control border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
-          {error}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
+          <span>{error}</span>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={loading}
+            onClick={() => void load()}
+          >
+            Tải lại
+          </button>
         </div>
       )}
-      {items.length === 0 ? (
+      {loading ? (
+        <LoadingState />
+      ) : items.length === 0 && !error ? (
         <p className="text-sm text-ink-muted">Chưa có Phiếu làm rõ cho phiên bản này</p>
-      ) : (
+      ) : items.length > 0 ? (
         <div className="space-y-3">
           {items.map((item) => (
             <article key={item._id} className="rounded-panel border border-border p-4">
@@ -172,7 +188,7 @@ export default function RequirementClarificationPanel({
             </article>
           ))}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

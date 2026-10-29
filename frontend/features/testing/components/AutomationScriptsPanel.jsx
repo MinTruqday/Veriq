@@ -172,7 +172,7 @@ export default function AutomationScriptsPanel({ project }) {
                       <StatusPill value={selected.status} />
                       <StatusPill value={selected.generation_status} />
                     </div>
-                    <span className="text-xs text-ink-muted">Không ghi kho mã nguồn</span>
+                    <span className="text-xs text-ink-muted">Không tự ghi vào kho mã nguồn</span>
                   </div>
                   {selected.degraded_mode && (
                     <p className="text-sm text-ink-muted">

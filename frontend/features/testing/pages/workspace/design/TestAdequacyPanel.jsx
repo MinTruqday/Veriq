@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, valueLabel } from "../../../lib/testing";
-import { useActionDialog } from "../../../components/WorkspacePrimitives";
+import { LoadingState, useActionDialog } from "../../../components/WorkspacePrimitives";
 
 const labels = {
   UNASSESSED: "Chưa đánh giá",
@@ -20,6 +20,11 @@ const assessmentLabels = {
   SUPERSEDED: "Đã thay thế",
 };
 
+function sourceReferenceLabel(reference) {
+  const businessRule = /^business_rule:(\d+)$/i.exec(String(reference || ""));
+  return businessRule ? `Quy tắc nghiệp vụ ${businessRule[1]}` : reference;
+}
+
 export default function TestAdequacyPanel({
   requirementVersionId,
   canDecide = false,
@@ -32,6 +37,7 @@ export default function TestAdequacyPanel({
   const [filter, setFilter] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const loadSequence = useRef(0);
   const activeRequirementVersion = useRef(requirementVersionId);
   activeRequirementVersion.current = requirementVersionId;
@@ -39,11 +45,14 @@ export default function TestAdequacyPanel({
     if (!requirementVersionId) return;
     const sequence = ++loadSequence.current;
     setError("");
+    setLoading(true);
     try {
       const result = await testingApi.getTestAdequacy(requirementVersionId);
       if (sequence === loadSequence.current) setAssessment(result);
     } catch (reason) {
       if (sequence === loadSequence.current) setError(messageOf(reason));
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }, [requirementVersionId]);
   useEffect(() => {
@@ -77,7 +86,7 @@ export default function TestAdequacyPanel({
     const value = await ask({
       title: waiver ? "Chấp nhận có điều kiện" : "Xác nhận không áp dụng",
       description: waiver
-        ? "Waiver chỉ còn hiệu lực đến hạn đã chọn và sẽ buộc Hồ sơ quay lại rà soát khi hết hạn"
+        ? "Quyết định chấp nhận rủi ro chỉ còn hiệu lực đến ngày đã chọn; hồ sơ sẽ cần rà soát lại khi hết hạn"
         : "QA xác nhận Nghĩa vụ này không áp dụng cho yêu cầu hiện tại",
       confirmLabel: "Xác nhận quyết định",
       fields: [
@@ -167,7 +176,7 @@ export default function TestAdequacyPanel({
   };
   const source = (item) => (
     <>
-      <div className="font-medium text-ink">{item.source_ref}</div>
+      <div className="font-medium text-ink">{sourceReferenceLabel(item.source_ref)}</div>
       {item.source_quote && <div className="mt-1 max-w-sm text-ink-muted">{item.source_quote}</div>}
     </>
   );
@@ -313,9 +322,23 @@ export default function TestAdequacyPanel({
           </div>
         </div>
         {error && (
-          <div className="rounded-control border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-danger/25 bg-danger-soft px-4 py-3 text-sm text-danger">
             {error}
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={loading}
+              onClick={() => void load()}
+            >
+              Tải lại
+            </button>
           </div>
+        )}
+        {loading && <LoadingState />}
+        {!loading && !assessment && !error && (
+          <p className="rounded-control bg-surface-quiet p-4 text-sm text-ink-muted">
+            Chưa có hồ sơ đảm bảo cho phiên bản yêu cầu này.
+          </p>
         )}
         {assessment && (
           <>
@@ -381,7 +404,7 @@ export default function TestAdequacyPanel({
                       </p>
                       <div className="mt-1">{source(item)}</div>
                     </div>
-                    <span className="status-badge">
+                    <span className="status-badge max-w-full break-words text-center">
                       {labels[item.status] || valueLabel(item.status)}
                     </span>
                   </div>

@@ -98,7 +98,7 @@ export default function RequirementCreateModal({
           />
         </div>
         <label className="field-label">
-          Tiêu chí chấp nhận mỗi dòng một điều kiện
+          Tiêu chí chấp nhận (mỗi dòng một điều kiện)
           <textarea
             className="apple-input mt-2 min-h-28"
             value={form.acceptance}
@@ -106,7 +106,7 @@ export default function RequirementCreateModal({
           />
         </label>
         <label className="field-label">
-          Quy tắc nghiệp vụ mỗi dòng một quy tắc
+          Quy tắc nghiệp vụ (mỗi dòng một quy tắc)
           <textarea
             className="apple-input mt-2 min-h-24"
             value={form.businessRules}
@@ -114,7 +114,7 @@ export default function RequirementCreateModal({
           />
         </label>
         <label className="field-label">
-          Tác nhân phân tách bằng dấu phẩy
+          Tác nhân (phân cách bằng dấu phẩy)
           <input
             className="apple-input mt-2"
             value={form.actors}
@@ -122,7 +122,7 @@ export default function RequirementCreateModal({
           />
         </label>
         <label className="field-label">
-          Phụ thuộc mỗi dòng một mục
+          Yêu cầu phụ thuộc (mỗi dòng một mục)
           <textarea
             className="apple-input mt-2 min-h-20"
             value={form.dependencies}
@@ -131,7 +131,7 @@ export default function RequirementCreateModal({
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="field-label">
-            Nhãn phân cách bằng dấu phẩy
+            Nhãn (phân cách bằng dấu phẩy)
             <input
               className="apple-input mt-2"
               value={form.tags}
@@ -148,7 +148,10 @@ export default function RequirementCreateModal({
               <option value="">Chưa phân công</option>
               {members.map((item) => (
                 <option key={item.user_id} value={item.user_id}>
-                  {item.user_label || item.user?.email || item.user_id}
+                  {item.user_label ||
+                    item.user?.full_name ||
+                    item.user?.email ||
+                    "Tài khoản không xác định"}
                 </option>
               ))}
             </select>

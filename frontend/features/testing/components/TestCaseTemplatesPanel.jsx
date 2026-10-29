@@ -263,7 +263,7 @@ export default function TestCaseTemplatesPanel({ project }) {
                   <div>
                     <dt className="text-ink-faint">Người tạo</dt>
                     <dd className="mt-1 break-all">
-                      {selected.created_by_label || selected.created_by}
+                      {selected.created_by_label || "Thành viên không còn trong danh sách"}
                     </dd>
                   </div>
                   <div>

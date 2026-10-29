@@ -16,11 +16,11 @@ export default function DataSetCreateModal({ isOpen, onClose, form, setForm, sav
       <ModalHeader>
         <ModalTitle>Tạo bộ dữ liệu</ModalTitle>
       </ModalHeader>
-      <form className="grid gap-3 p-5" onSubmit={onSubmit}>
-        <label className="field-label">
+      <form className="grid min-w-0 gap-3 p-5" onSubmit={onSubmit}>
+        <label className="field-label min-w-0">
           Tên bộ dữ liệu
           <input
-            className="apple-input mt-2"
+            className="apple-input mt-2 w-full min-w-0"
             required
             value={form.name}
             onChange={(event) => update({ name: event.target.value })}

@@ -19,13 +19,15 @@ export default function ReviewFindingsTable({
         {
           key: "severity",
           label: "Mức độ",
+          minWidth: 128,
           render: (item) => <StatusPill value={item.severity} />,
         },
         { key: "category", label: "Nhóm", render: (item) => valueLabel(item.category) },
-        { key: "description", label: "Nội dung" },
+        { key: "description", label: "Nội dung", minWidth: 280 },
         {
           key: "status",
           label: "Trạng thái",
+          minWidth: 136,
           render: (item) => <StatusPill value={item.status} />,
         },
         {

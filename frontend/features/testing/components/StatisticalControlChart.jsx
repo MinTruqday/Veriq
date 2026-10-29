@@ -6,8 +6,16 @@ export default function StatisticalControlChart({ analysis }) {
     Number(analysis?.center_line),
     Number(analysis?.upper_control_limit),
   ];
-  const minimum = Math.min(...values, ...limits);
-  const maximum = Math.max(...values, ...limits);
+  const chartValues = [...values, ...limits].filter(Number.isFinite);
+  if (!points.length || !chartValues.length) {
+    return (
+      <div className="rounded-xl border border-border px-4 py-8 text-center text-sm text-ink-muted">
+        Chưa có đủ số liệu để hiển thị biểu đồ kiểm soát.
+      </div>
+    );
+  }
+  const minimum = Math.min(...chartValues);
+  const maximum = Math.max(...chartValues);
   const span = Math.max(maximum - minimum, 1);
   const x = (index) => (points.length === 1 ? 50 : 6 + (index * 88) / (points.length - 1));
   const y = (value) => 92 - ((Number(value) - minimum) * 84) / span;
@@ -15,7 +23,7 @@ export default function StatisticalControlChart({ analysis }) {
   return (
     <div className="rounded-xl border border-border p-4">
       <svg
-        aria-label={`Biểu đồ kiểm soát ${analysis?.baseline_label || ""}`}
+        aria-label={`Biểu đồ kiểm soát với ${points.length} lần đo, ${points.filter((item) => item.outlier).length} điểm vượt giới hạn`}
         className="h-56 w-full"
         preserveAspectRatio="none"
         role="img"
@@ -54,14 +62,30 @@ export default function StatisticalControlChart({ analysis }) {
             key={item.snapshot_id}
             r={item.outlier ? 2 : 1.4}
           >
-            <title>{`${item.snapshot_id} ${item.value}`}</title>
+            <title>{`Lần đo ${index + 1}${item.measured_at ? ` · ${new Date(item.measured_at).toLocaleString("vi-VN")}` : ""} · ${item.value}${analysis?.unit ? ` ${analysis.unit}` : ""}${item.outlier ? " · Vượt giới hạn kiểm soát" : ""}`}</title>
           </circle>
         ))}
       </svg>
-      <div className="mt-2 flex flex-wrap gap-4 text-xs text-ink-muted">
-        <span>Giới hạn trên {analysis?.upper_control_limit}</span>
-        <span>Đường trung tâm {analysis?.center_line}</span>
-        <span>Giới hạn dưới {analysis?.lower_control_limit}</span>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-ink-muted">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-0.5 w-4 border-t border-dashed border-rose-500" aria-hidden="true" />
+          Giới hạn trên: {analysis?.upper_control_limit}
+          {analysis?.unit ? ` ${analysis.unit}` : ""}
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-0.5 w-4 border-t border-dashed border-slate-500" aria-hidden="true" />
+          Đường trung tâm: {analysis?.center_line}
+          {analysis?.unit ? ` ${analysis.unit}` : ""}
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-0.5 w-4 border-t border-dashed border-rose-500" aria-hidden="true" />
+          Giới hạn dưới: {analysis?.lower_control_limit}
+          {analysis?.unit ? ` ${analysis.unit}` : ""}
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-rose-600" aria-hidden="true" />
+          Điểm vượt giới hạn
+        </span>
       </div>
     </div>
   );

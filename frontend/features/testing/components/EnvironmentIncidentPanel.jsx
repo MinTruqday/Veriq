@@ -1,9 +1,35 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import DataTable from "./DataTable";
-import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
-import { messageOf } from "../lib/testing";
+import { ErrorState, Panel, useActionDialog } from "./WorkspacePrimitives";
+import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+
+const incidentLabels = {
+  BLOCKER: "Chặn phát hành",
+  CRITICAL: "Nghiêm trọng",
+  MAJOR: "Lớn",
+  MINOR: "Nhỏ",
+  UNAVAILABLE: "Không khả dụng",
+  DEPLOYMENT_FAILURE: "Triển khai thất bại",
+  TEST_DATA_FAILURE: "Dữ liệu kiểm thử lỗi",
+  NETWORK: "Mạng",
+  DEPENDENCY: "Dịch vụ phụ thuộc",
+  CONFIGURATION: "Cấu hình",
+  CAPACITY: "Dung lượng",
+  CERTIFICATE: "Chứng thư bảo mật",
+  ACCESS: "Quyền truy cập",
+  OTHER: "Khác",
+};
+
+const incidentLabel = (value) => incidentLabels[value] || valueLabel(value);
+const incidentStatusLabels = {
+  OPEN: "Đang mở",
+  INVESTIGATING: "Đang điều tra",
+  MITIGATED: "Đã giảm thiểu",
+  RESOLVED: "Đã xử lý",
+  CLOSED: "Đã đóng",
+};
 
 export default function EnvironmentIncidentPanel({ project }) {
   const [items, setItems] = useState([]);
@@ -74,7 +100,7 @@ export default function EnvironmentIncidentPanel({ project }) {
           label: "Mức độ",
           options: ["BLOCKER", "CRITICAL", "MAJOR", "MINOR"].map((value) => ({
             value,
-            label: value,
+            label: incidentLabel(value),
           })),
         },
         {
@@ -91,18 +117,22 @@ export default function EnvironmentIncidentPanel({ project }) {
             "CERTIFICATE",
             "ACCESS",
             "OTHER",
-          ].map((value) => ({ value, label: value })),
+          ].map((value) => ({ value, label: incidentLabel(value) })),
         },
         { name: "description", label: "Mô tả", required: true, multiline: true },
         ...(can("testrun.read")
           ? [
               {
                 name: "affected_run_ids",
-                label: "Mã lần chạy bị ảnh hưởng, phân cách bằng dấu phẩy",
+                label: "Lượt chạy bị ảnh hưởng",
+                multiple: true,
+                options: runs.map((item) => ({
+                  value: item._id,
+                  label: `${item.name || "Lượt chạy kiểm thử"} · ${valueLabel(item.status)}`,
+                })),
                 initialValue: runs
                   .filter((item) => item.status === "IN_PROGRESS")
-                  .map((item) => item._id)
-                  .join(","),
+                  .map((item) => item._id),
               },
             ]
           : []),
@@ -114,7 +144,7 @@ export default function EnvironmentIncidentPanel({ project }) {
             { value: "", label: "Chọn thành viên" },
             ...members.map((item) => ({
               value: item.user_id,
-              label: item.user_label || item.email || item.user_id,
+              label: item.user_label || item.email || "Thành viên",
             })),
           ],
         },
@@ -127,10 +157,7 @@ export default function EnvironmentIncidentPanel({ project }) {
         idempotency_key: crypto.randomUUID(),
         build_id: answer.build_id || null,
         observed_at: new Date().toISOString(),
-        affected_run_ids: String(answer.affected_run_ids || "")
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
+        affected_run_ids: Array.isArray(answer.affected_run_ids) ? answer.affected_run_ids : [],
         evidence_refs: [],
       });
       await load();
@@ -186,18 +213,27 @@ export default function EnvironmentIncidentPanel({ project }) {
         items={items}
         empty="Chưa có sự cố môi trường"
         columns={[
-          { key: "incident_key", label: "Mã" },
+          { key: "incident_key", label: "Sự cố", minWidth: 112 },
           {
             key: "severity",
             label: "Mức độ",
-            render: (item) => <StatusPill value={item.severity} />,
+            minWidth: 132,
+            render: (item) => (
+              <span className="inline-flex rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand">
+                {incidentLabel(item.severity)}
+              </span>
+            ),
           },
-          { key: "type", label: "Loại" },
-          { key: "description", label: "Mô tả" },
+          { key: "type", label: "Loại", render: (item) => incidentLabel(item.type) },
+          { key: "description", label: "Mô tả", minWidth: 280 },
           {
             key: "status",
             label: "Trạng thái",
-            render: (item) => <StatusPill value={item.status} />,
+            render: (item) => (
+              <span className="inline-flex rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand">
+                {incidentStatusLabels[item.status] || valueLabel(item.status)}
+              </span>
+            ),
           },
           {
             key: "downtime",
@@ -222,7 +258,7 @@ export default function EnvironmentIncidentPanel({ project }) {
                   type="button"
                   onClick={() => transition(item, "MITIGATED")}
                 >
-                  Đã giảm thiểu
+                  Ghi nhận đã giảm thiểu
                 </button>
               ) : can("environmentincident.update") && item.status === "MITIGATED" ? (
                 <button

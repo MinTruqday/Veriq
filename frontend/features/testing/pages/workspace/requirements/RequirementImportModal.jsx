@@ -205,6 +205,7 @@ export default function RequirementImportModal({
   onError,
 }) {
   const [confirmingImport, setConfirmingImport] = useState(false);
+  const [inputMethod, setInputMethod] = useState("file");
   const confirmingImportRef = useRef(false);
   const confirmImport = async () => {
     if (confirmingImportRef.current) return;
@@ -242,17 +243,47 @@ export default function RequirementImportModal({
         <ModalTitle>Nhập tài liệu</ModalTitle>
       </ModalHeader>
       {error && <ErrorState message={error} />}
-      <RequirementTemplatePanel
-        key={project._id}
-        project={project}
-        isPlatformAdmin={isPlatformAdmin}
-        members={members}
-        sourceDocuments={sourceDocuments}
-        onPreview={onTemplatePreview}
-        onError={onError}
-        isOpen={isOpen}
-      />
-      <form onSubmit={onUploadPreview} className="space-y-4 border-b border-border p-5">
+      <div className="border-b border-border p-5">
+        <p className="field-label">Chọn cách nhập</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3" role="group" aria-label="Cách nhập yêu cầu">
+          {[
+            { id: "file", label: "Tải tệp lên" },
+            { id: "manual", label: "Soạn nội dung" },
+            { id: "template", label: "Dùng mẫu" },
+          ].map((method) => (
+            <button
+              key={method.id}
+              type="button"
+              className={
+                inputMethod === method.id
+                  ? "min-h-10 rounded-control bg-brand px-4 py-2 text-sm font-semibold text-white"
+                  : "min-h-10 rounded-control border border-border bg-surface px-4 py-2 text-sm font-medium text-ink-muted hover:bg-surface-quiet hover:text-ink"
+              }
+              aria-pressed={inputMethod === method.id}
+              onClick={() => setInputMethod(method.id)}
+            >
+              {method.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div hidden={inputMethod !== "template"}>
+        <RequirementTemplatePanel
+          key={project._id}
+          project={project}
+          isPlatformAdmin={isPlatformAdmin}
+          members={members}
+          sourceDocuments={sourceDocuments}
+          onPreview={onTemplatePreview}
+          onError={onError}
+          isOpen={isOpen}
+        />
+      </div>
+      <form
+        hidden={inputMethod !== "file"}
+        onSubmit={onUploadPreview}
+        className="space-y-4 border-b border-border p-5"
+      >
         <FilePicker
           label="Tệp SRS, BRD hoặc bảng yêu cầu"
           accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.json,.yaml,.yml"
@@ -349,7 +380,7 @@ export default function RequirementImportModal({
           </button>
         </div>
       </form>
-      <form onSubmit={onImportPreview} className="space-y-4 p-5">
+      <form hidden={inputMethod !== "manual"} onSubmit={onImportPreview} className="space-y-4 p-5">
         <label className="field-label">
           Tên tệp
           <input
@@ -799,7 +830,10 @@ export default function RequirementImportModal({
         <div className="border-t border-border p-5 text-[12px] text-ink-muted">
           <p>Nguồn {sourceDocument.filename}</p>
           <p>Trạng thái {valueLabel(sourceDocument.status)}</p>
-          <p className="break-all">SHA256 {sourceDocument.content_hash}</p>
+          <details>
+            <summary className="cursor-pointer">Thông tin kiểm tra tệp</summary>
+            <p className="mt-1 break-all">Mã đối chiếu nội dung: {sourceDocument.content_hash}</p>
+          </details>
           {(["UPLOADED", "PARSE_FAILED"].includes(sourceDocument.status) ||
             (sourceDocument.status === "READY" && !preview)) && (
             <button

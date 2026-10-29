@@ -26,44 +26,48 @@ export default function ScenarioCreateModal({
       <ModalHeader>
         <ModalTitle>Tạo kịch bản</ModalTitle>
       </ModalHeader>
-      <form className="space-y-3 p-5" onSubmit={onSubmit}>
-        <input
-          aria-label="Tên kịch bản"
-          className="apple-input"
-          required
-          value={form.title}
-          onChange={(event) => update({ title: event.target.value })}
-          placeholder="Tên kịch bản"
-        />
-        <textarea
-          aria-label="Mục tiêu kịch bản"
-          className="apple-input min-h-20"
-          value={form.objective}
-          onChange={(event) => update({ objective: event.target.value })}
-          placeholder="Mục tiêu và phạm vi"
-        />
-        <select
-          aria-label="Nhóm kịch bản"
-          className="apple-input"
-          value={form.category}
-          onChange={(event) => update({ category: event.target.value })}
-        >
-          {TEST_SCENARIO_CATEGORIES.map((value) => (
-            <option key={value} value={value}>
-              {valueLabel(value)}
-            </option>
-          ))}
-        </select>
+      <form className="min-w-0 space-y-3 p-5" onSubmit={onSubmit}>
+        <label className="field-label block min-w-0">
+          Tên kịch bản
+          <input
+            className="apple-input mt-2 w-full min-w-0"
+            required
+            value={form.title}
+            onChange={(event) => update({ title: event.target.value })}
+          />
+        </label>
+        <label className="field-label block min-w-0">
+          Mục tiêu và phạm vi
+          <textarea
+            className="apple-input mt-2 min-h-20 w-full min-w-0"
+            value={form.objective}
+            onChange={(event) => update({ objective: event.target.value })}
+          />
+        </label>
+        <label className="field-label block min-w-0">
+          Nhóm kịch bản
+          <select
+            className="apple-input mt-2 w-full min-w-0"
+            value={form.category}
+            onChange={(event) => update({ category: event.target.value })}
+          >
+            {TEST_SCENARIO_CATEGORIES.map((value) => (
+              <option key={value} value={value}>
+                {valueLabel(value)}
+              </option>
+            ))}
+          </select>
+        </label>
         <MultiSelect
           label="Điều kiện kiểm thử đã phê duyệt"
           options={testConditions.map((item) => ({
             value: item._id,
-            label: `${item.condition_key} ${item.title}`,
+            label: `${item.condition_key || "Điều kiện kiểm thử"}${item.title ? ` · ${item.title}` : ""}`,
           }))}
           value={form.testConditionIds}
           onChange={(testConditionIds) => update({ testConditionIds })}
         />
-        <div className="flex justify-end gap-3">
+        <div className="flex flex-wrap justify-end gap-3">
           <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
             Hủy
           </button>

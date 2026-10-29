@@ -715,7 +715,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (activeProjectId.current !== requestedProjectId) return;
       setError(
         reason?.code === "IMPORT_REQUIREMENT_KEY_CONFLICT"
-          ? "Mã yêu cầu đã tồn tại trong dự án hoặc trùng với mục đang nhập  Hãy sửa mã trong bản xem trước hoặc bỏ chọn mục trùng"
+          ? "Mã yêu cầu đã tồn tại trong dự án hoặc trùng với mục đang nhập. Hãy sửa mã trong bản xem trước hoặc bỏ chọn mục trùng."
           : messageOf(reason),
       );
     }

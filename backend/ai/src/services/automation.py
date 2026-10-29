@@ -57,6 +57,9 @@ class AutomationService:
         parent_automation_run_id,
         target_artifact_ids,
         evidence,
+        prior_baseline_version_id=None,
+        change_simulation_blocked_reason=None,
+        change_simulation=None,
     ):
         normalized = {
             "event_id": str(event_id or ""),
@@ -69,6 +72,13 @@ class AutomationService:
                 item.model_dump(mode="json") if hasattr(item, "model_dump") else item
                 for item in evidence or []
             ],
+            "prior_baseline_version_id": str(prior_baseline_version_id or ""),
+            "change_simulation_blocked_reason": str(change_simulation_blocked_reason or ""),
+            "change_simulation": (
+                change_simulation.model_dump(mode="json")
+                if hasattr(change_simulation, "model_dump")
+                else change_simulation
+            ),
         }
         serialized = json.dumps(
             normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
@@ -86,6 +96,9 @@ class AutomationService:
             event.parent_automation_run_id,
             event.target_artifact_ids,
             event.evidence,
+            event.prior_baseline_version_id,
+            event.change_simulation_blocked_reason,
+            event.change_simulation,
         ) == cls._event_fingerprint(
             run.source_event_id,
             run.project_id,
@@ -94,6 +107,9 @@ class AutomationService:
             constraints.get("parent_automation_run_id"),
             run.target_artifact_ids,
             run.evidence,
+            constraints.get("prior_baseline_version_id"),
+            constraints.get("change_simulation_blocked_reason"),
+            run.change_simulation,
         )
 
     async def create_definition(
@@ -320,7 +336,9 @@ class AutomationService:
         execution_role, execution_permissions = await project_access(
             event.project_id, execution_token, preferred_role=required_role
         )
-        if required_role == "BA":
+        if event.change_simulation is not None:
+            stage_permission = "impact.execute"
+        elif required_role == "BA":
             stage_permission = "requirement.create"
         elif trigger_value == "API_OPERATION_CONFIRMED":
             stage_permission = "ai.generate_api_testcase"
@@ -364,7 +382,11 @@ class AutomationService:
                 execution_user_id=default_execution_user_id,
                 execution_role=default_execution_role,
                 execution_permissions=default_execution_permissions or [],
-                kind=AutomationKind.EVENT,
+                kind=(
+                    AutomationKind.CHANGE_SIMULATION
+                    if event.change_simulation is not None
+                    else AutomationKind.EVENT
+                ),
                 trigger=event.trigger,
                 definition_id=definition_id,
                 source_event_id=event.event_id,
@@ -377,9 +399,22 @@ class AutomationService:
                 intent=definition.intent if definition else "",
                 target_artifact_ids=event.target_artifact_ids,
                 evidence=event.evidence,
+                change_simulation=event.change_simulation,
                 constraints={
                     "trigger": event.trigger.value,
                     "requester_role": role,
+                    **(
+                        {"prior_baseline_version_id": event.prior_baseline_version_id}
+                        if event.prior_baseline_version_id
+                        else {}
+                    ),
+                    **(
+                        {
+                            "change_simulation_blocked_reason": event.change_simulation_blocked_reason
+                        }
+                        if event.change_simulation_blocked_reason
+                        else {}
+                    ),
                     **(
                         {"automation_conditions": definition.conditions.model_dump(mode="json")}
                         if definition

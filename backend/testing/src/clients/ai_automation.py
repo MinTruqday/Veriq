@@ -49,6 +49,10 @@ def _requirement_event_text(version: dict) -> str:
     return "\n".join(parts)
 
 
+def _requirement_version_is_baselined(version: dict) -> bool:
+    return str(version.get("status") or "").strip().upper() == "BASELINED"
+
+
 class AIAutomationClient:
     async def convert_attachment(self, filename: str, content: bytes) -> dict:
         import base64
@@ -150,7 +154,7 @@ ai_automation_client = AIAutomationClient()
 
 
 async def emit_requirement_changed(version: dict, user) -> bool:
-    if user._ai_automation_run_id:
+    if user._ai_automation_run_id or not _requirement_version_is_baselined(version):
         return True
     return await emit_event(
         "REQUIREMENT_CHANGED",
@@ -169,12 +173,52 @@ async def emit_requirement_changed(version: dict, user) -> bool:
 
 async def queue_requirement_changed(version: dict, user, session) -> str | None:
     """Persist a Requirement automation event in the caller's Mongo transaction."""
-    if user._ai_automation_run_id:
+    if user._ai_automation_run_id or not _requirement_version_is_baselined(version):
         return None
     event_id = (
         f"requirement-version:{version['_id']}:{version.get('revision', 1)}:"
         f"{version.get('status', 'DRAFT')}"
     )
+    prior_baseline_version_id = None
+    change_simulation_blocked_reason = None
+    version_number = version.get("version")
+    if type(version_number) is not int or version_number < 1:
+        change_simulation_blocked_reason = "CURRENT_VERSION_NUMBER_INVALID"
+    else:
+        try:
+            from src.repositories.requirement import requirement_repository
+
+            candidates = await requirement_repository.find_prior_baseline_candidates(
+                version.get("requirement_id"),
+                version.get("project_id"),
+                version_number,
+                session=session,
+            )
+            if not candidates:
+                change_simulation_blocked_reason = "NO_PRIOR_BASELINE"
+            else:
+                latest_version = candidates[0].get("version")
+                latest_candidates = [
+                    item for item in candidates if item.get("version") == latest_version
+                ]
+                if len(latest_candidates) != 1:
+                    change_simulation_blocked_reason = "AMBIGUOUS_PRIOR_BASELINE"
+                else:
+                    candidate = latest_candidates[0]
+                    if (
+                        not candidate.get("_id")
+                        or candidate.get("requirement_id") != version.get("requirement_id")
+                        or candidate.get("project_id") != version.get("project_id")
+                        or candidate.get("status") != "BASELINED"
+                        or type(candidate.get("version")) is not int
+                        or candidate["version"] >= version_number
+                    ):
+                        change_simulation_blocked_reason = "PRIOR_BASELINE_HISTORY_INVALID"
+                    else:
+                        prior_baseline_version_id = str(candidate["_id"])
+        except Exception:
+            logger.exception("Could not resolve prior Requirement baseline for change simulation")
+            change_simulation_blocked_reason = "PRIOR_BASELINE_LOOKUP_FAILED"
     return await queue_event(
         "REQUIREMENT_CHANGED",
         event_id,
@@ -188,6 +232,8 @@ async def queue_requirement_changed(version: dict, user, session) -> str | None:
         session,
         artifact_revision=version.get("revision", 1),
         artifact_status=str(version.get("status") or "DRAFT"),
+        prior_baseline_version_id=prior_baseline_version_id,
+        change_simulation_blocked_reason=change_simulation_blocked_reason,
     )
 
 
@@ -913,6 +959,8 @@ async def queue_event(
     relationship: dict | None = None,
     artifact_revision: int | None = None,
     artifact_status: str | None = None,
+    prior_baseline_version_id: str | None = None,
+    change_simulation_blocked_reason: str | None = None,
 ) -> str:
     """Idempotently persist an event; pass a session to make it atomic with domain writes."""
     payload = {
@@ -941,6 +989,16 @@ async def queue_event(
                 **({"artifact_status": artifact_status} if artifact_status else {}),
             }
         ],
+        **(
+            {"prior_baseline_version_id": prior_baseline_version_id}
+            if prior_baseline_version_id
+            else {}
+        ),
+        **(
+            {"change_simulation_blocked_reason": change_simulation_blocked_reason}
+            if change_simulation_blocked_reason
+            else {}
+        ),
     }
     event_fingerprint = hashlib.sha256(
         json.dumps(

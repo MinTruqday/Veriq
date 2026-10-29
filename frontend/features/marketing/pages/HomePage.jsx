@@ -5,8 +5,8 @@ import { ArrowRight, GitBranch, SearchCheck, Sparkles } from "lucide-react";
 const capabilities = [
   {
     icon: SearchCheck,
-    title: "Liên kết truy vết",
-    description: "Liên kết yêu cầu, tiêu chí chấp nhận, ca kiểm thử và kết quả chạy theo phiên bản",
+    title: "Liên kết yêu cầu và kiểm thử",
+    description: "Theo dõi yêu cầu, tiêu chí chấp nhận, ca kiểm thử và kết quả theo từng phiên bản",
   },
   {
     icon: GitBranch,
@@ -16,16 +16,16 @@ const capabilities = [
   },
   {
     icon: Sparkles,
-    title: "Xử lý tự động theo sự kiện",
+    title: "Tự xử lý khi có thay đổi",
     description:
       "Tạo lượt xử lý khi tài liệu, yêu cầu hoặc kiểm thử thay đổi; lưu kết quả cùng nguồn dẫn và lịch sử lượt chạy",
   },
 ];
 
 const workflow = [
-  "Chuẩn hóa và đặt phiên bản yêu cầu làm nguồn chính thức",
-  "Thiết kế kịch bản và ca kiểm thử có liên kết truy vết",
-  "Theo dõi độ phủ, lần chạy, lỗi và ảnh hưởng thay đổi",
+  "Chuẩn hóa yêu cầu và chọn phiên bản làm căn cứ kiểm thử",
+  "Thiết kế kịch bản và ca kiểm thử gắn với yêu cầu nguồn",
+  "Theo dõi ca kiểm thử, kết quả chạy, lỗi và nội dung cần rà soát khi yêu cầu thay đổi",
 ];
 
 export default function HomePage() {
@@ -52,12 +52,6 @@ export default function HomePage() {
             <span>Veriq</span>
           </Link>
           <div className="flex items-center gap-2">
-            <Link
-              href="/dang-nhap"
-              className="hidden rounded-control px-4 py-2 text-[14px] font-semibold text-ink-muted transition hover:bg-surface hover:text-ink sm:inline-flex"
-            >
-              Đăng nhập
-            </Link>
             <Link href="/dang-nhap" className="apple-button">
               Đăng nhập
               <ArrowRight size={16} />
@@ -71,13 +65,13 @@ export default function HomePage() {
           <h1 className="max-w-none text-balance text-[44px] font-semibold leading-[1.02] tracking-[-0.055em] sm:text-[58px] lg:text-[66px]">
             Quản lý yêu cầu và kiểm thử
           </h1>
+          <p className="mt-5 max-w-[62ch] text-[16px] leading-7 text-ink-muted">
+            Tập trung yêu cầu, ca kiểm thử, kết quả chạy và ảnh hưởng thay đổi trong cùng dự án.
+          </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/dang-nhap" className="apple-button px-6">
               Đăng nhập
               <ArrowRight size={17} />
-            </Link>
-            <Link href="/dang-nhap" className="secondary-button px-6">
-              Đăng nhập
             </Link>
           </div>
         </div>
@@ -105,7 +99,7 @@ export default function HomePage() {
       <section className="mx-auto grid w-full max-w-[1200px] gap-10 px-5 py-16 md:px-8 md:py-20 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
         <div>
           <h2 className="text-[32px] font-semibold leading-tight tracking-[-0.04em]">
-            Từ yêu cầu đến kết quả kiểm thử
+            Các bước trong quy trình kiểm thử
           </h2>
         </div>
         <ol className="space-y-3">

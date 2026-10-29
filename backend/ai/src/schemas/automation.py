@@ -289,8 +289,45 @@ class AutomationEventRequest(BaseModel):
     requester_user_id: str = Field(min_length=1, max_length=200)
     trigger: AutomationTrigger
     parent_automation_run_id: str | None = Field(default=None, max_length=200)
+    prior_baseline_version_id: str | None = Field(default=None, max_length=200)
+    change_simulation_blocked_reason: Literal[
+        "NO_PRIOR_BASELINE",
+        "AMBIGUOUS_PRIOR_BASELINE",
+        "PRIOR_BASELINE_HISTORY_INVALID",
+        "PRIOR_BASELINE_LOOKUP_FAILED",
+        "CURRENT_VERSION_NUMBER_INVALID",
+    ] | None = None
+    change_simulation: ChangeSimulationInput | None = None
     target_artifact_ids: list[str] = Field(default_factory=list, max_length=100)
     evidence: list[EvidenceItem] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_requirement_change_simulation_scope(self):
+        has_prior_reference = self.prior_baseline_version_id is not None
+        has_blocked_reason = self.change_simulation_blocked_reason is not None
+        if has_prior_reference or has_blocked_reason:
+            if self.trigger != AutomationTrigger.REQUIREMENT_CHANGED or self.change_simulation:
+                raise ValueError("prior_baseline_reference_requires_requirement_change_event")
+            if has_prior_reference and has_blocked_reason:
+                raise ValueError("prior_baseline_reference_and_blocked_reason_conflict")
+            if has_prior_reference and self.prior_baseline_version_id in self.target_artifact_ids:
+                raise ValueError("prior_baseline_must_differ_from_changed_version")
+        if self.change_simulation is not None:
+            baseline_id = self.change_simulation.base_requirement_version_id
+            if (
+                self.trigger != AutomationTrigger.REQUIREMENT_CHANGED
+                or not self.parent_automation_run_id
+                or has_prior_reference
+                or has_blocked_reason
+                or baseline_id not in self.target_artifact_ids
+                or not any(
+                    item.artifact_type == "requirement_version"
+                    and (item.artifact_version_id or item.artifact_id) == baseline_id
+                    for item in self.evidence
+                )
+            ):
+                raise ValueError("change_simulation_child_scope_invalid")
+        return self
 
 
 class AutomationRetryRequest(BaseModel):

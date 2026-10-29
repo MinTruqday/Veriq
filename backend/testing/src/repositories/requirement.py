@@ -390,6 +390,22 @@ class RequirementRepository:
             .to_list(limit)
         )
 
+    async def find_prior_baseline_candidates(
+        self, requirement_id, project_id, before_version, session=None
+    ):
+        if type(before_version) is not int or before_version < 2:
+            return []
+        cursor = database.value.requirement_versions.find(
+            {
+                "requirement_id": requirement_id,
+                "project_id": project_id,
+                "status": "BASELINED",
+                "version": {"$lt": before_version},
+            },
+            **({"session": session} if session is not None else {}),
+        ).sort("version", -1)
+        return await cursor.to_list(2)
+
     async def find_version(self, version_id, project_id=None, requirement_id=None, status=None):
         query = {"_id": version_id}
         if project_id:

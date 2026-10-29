@@ -551,7 +551,6 @@ export default function ApiArtifactsPanel({
                       </div>
                       {run && (
                         <div className="grid gap-1">
-                          <span className="break-all text-xs">{run.automation_run_id}</span>
                           {(run.error_code || run.result?.summary) && (
                             <div className="grid justify-items-start gap-1">
                               {run.result?.summary && <ContentOriginBadge origin="ai_generated" />}

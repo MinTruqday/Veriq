@@ -1437,7 +1437,7 @@ class AutomationEventTaskTests(unittest.TestCase):
         self.assertTrue(task.constraints["workflow_terminal"])
 
     def test_requirement_change_compiler_receives_only_facts_for_target_version(self):
-        tool = SimpleNamespace(
+        compiler_tool = SimpleNamespace(
             args_schema=SimpleNamespace(
                 model_json_schema=lambda: {
                     "properties": {
@@ -1448,10 +1448,29 @@ class AutomationEventTaskTests(unittest.TestCase):
                 }
             )
         )
-        access = SimpleNamespace(
+        recommendation_tool = SimpleNamespace(
+            args_schema=SimpleNamespace(
+                model_json_schema=lambda: {
+                    "properties": {
+                        "project_id": {},
+                        "requirement_version_id": {},
+                        "expected_revision": {},
+                    }
+                }
+            )
+        )
+        compiler_access = SimpleNamespace(
             name="process_changed_requirement_version", permission="requirement.approve"
         )
-        run = SimpleNamespace(project_id="project-1", permissions=["requirement.approve"])
+        recommendation_access = SimpleNamespace(
+            name="recommend_test_design_techniques_for_requirement_change",
+            permission="ai.generate_testcase",
+        )
+        run = SimpleNamespace(
+            project_id="project-1",
+            permissions=["requirement.approve", "ai.generate_testcase"],
+            source_event_id="requirement-version:REQV-2:3:BASELINED",
+        )
         state = {
             "automatic": True,
             "source_event_verified": True,
@@ -1462,6 +1481,8 @@ class AutomationEventTaskTests(unittest.TestCase):
                     "artifact_type": "requirement_version",
                     "artifact_id": "REQ-1",
                     "artifact_version_id": "REQV-2",
+                    "artifact_revision": 3,
+                    "project_id": "project-1",
                 }
             ],
             "source_facts": [
@@ -1472,9 +1493,21 @@ class AutomationEventTaskTests(unittest.TestCase):
         with (
             patch(
                 "src.agents.runner.automation_event_tasks.registered_tools",
-                return_value={"process_changed_requirement_version": tool},
+                return_value={
+                    "process_changed_requirement_version": compiler_tool,
+                    "recommend_test_design_techniques_for_requirement_change": recommendation_tool,
+                },
             ),
-            patch("src.agents.runner.automation_event_tasks.tool_access", return_value=access),
+            patch(
+                "src.agents.runner.automation_event_tasks.tool_access",
+                side_effect=lambda tool: (
+                    None
+                    if tool is None
+                    else compiler_access
+                    if tool is compiler_tool
+                    else recommendation_access
+                ),
+            ),
             patch(
                 "src.agents.runner.automation_event_tasks.validated_tasks",
                 side_effect=lambda tasks, *_args, **_kwargs: tasks,
@@ -1483,8 +1516,16 @@ class AutomationEventTaskTests(unittest.TestCase):
             task = direct_requirement_change_task(run, state, ["REQV-2"])
 
         self.assertIsNotNone(task)
-        self.assertEqual(task.tool_calls[0].arguments["requirement_version_id"], "REQV-2")
-        self.assertEqual(task.tool_calls[0].arguments["source_facts"], [state["source_facts"][0]])
+        self.assertEqual(
+            [call.tool_name for call in task.tool_calls],
+            [
+                "recommend_test_design_techniques_for_requirement_change",
+                "process_changed_requirement_version",
+            ],
+        )
+        self.assertEqual(task.tool_calls[0].arguments["expected_revision"], 3)
+        self.assertEqual(task.tool_calls[1].arguments["requirement_version_id"], "REQV-2")
+        self.assertEqual(task.tool_calls[1].arguments["source_facts"], [state["source_facts"][0]])
 
     def test_change_simulation_reads_only_the_explicit_requirement_baseline(self):
         tool_names = {"get_requirement_version", "get_traceability_links"}

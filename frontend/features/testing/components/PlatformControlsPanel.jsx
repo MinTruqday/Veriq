@@ -299,7 +299,7 @@ export default function PlatformControlsPanel() {
         </Panel>
       </div>
 
-      <Panel title="Tác vụ lỗi trong DLQ">
+      <Panel title="Hàng đợi tác vụ lỗi">
         <DataTable
           items={data?.dlq || []}
           empty="Không có tác vụ lỗi"

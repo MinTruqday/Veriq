@@ -94,7 +94,7 @@ test("account profile, session controls and notification preferences use their A
   await expect(
     page.getByRole("status").filter({ hasText: "Đã cập nhật thông tin cá nhân" }),
   ).toBeVisible();
-  await expect(page.getByText("Thiết bị đã đăng nhập")).toBeVisible();
+  await expect(page.getByText("Phiên đăng nhập khác")).toBeVisible();
   await page.getByRole("button", { name: "Thu hồi" }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Đã thu hồi phiên đăng nhập" }),

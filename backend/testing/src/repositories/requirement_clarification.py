@@ -29,6 +29,20 @@ class RequirementClarificationRepository:
             reverse=True,
         )
 
+    async def list_for_requirement(self, project_id, requirement_id):
+        items = await common_repository.list_all_by_id(
+            "requirement_clarifications",
+            {"project_id": project_id, "requirement_id": requirement_id},
+        )
+        return sorted(
+            items,
+            key=lambda item: (
+                str(item.get("created_at") or ""),
+                str(item.get("_id") or ""),
+            ),
+            reverse=True,
+        )
+
     async def list_open_for_version(self, project_id, requirement_version_id, session=None):
         return await common_repository.list_all_by_id(
             "requirement_clarifications",

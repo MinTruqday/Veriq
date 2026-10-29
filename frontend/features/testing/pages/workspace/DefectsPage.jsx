@@ -735,10 +735,9 @@ export default function DefectsPage({ project }) {
         </Panel>
       )}
       {traceReview && (
-        <Panel title={`Ứng viên truy vết cho ${traceReview.defect.defect_key}`}>
-          <div className="border-b border-border px-5 py-3 text-xs text-ink-muted">
-            Kết quả {traceReview.result._id} · Mô hình {traceReview.result.model?.model} · Không tự
-            động thay đổi lỗi
+        <Panel title={`Gợi ý liên kết cho ${traceReview.defect.defect_key}`}>
+          <div className="border-b border-border px-5 py-3 text-sm text-ink-muted">
+            Gợi ý chưa thay đổi lỗi. Chỉ liên kết sau khi người có quyền xác nhận.
           </div>
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm font-semibold text-ink">
             Yêu cầu được đề xuất
@@ -810,9 +809,7 @@ export default function DefectsPage({ project }) {
       )}
       <Panel title="Danh sách lỗi">
         <details className="border-b border-border p-4">
-          <summary className="cursor-pointer text-sm font-medium">
-            Tìm kiếm bộ lọc và sắp xếp
-          </summary>
+          <summary className="cursor-pointer text-sm font-medium">Tìm và lọc lỗi</summary>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <input
               aria-label="Tìm lỗi"
@@ -908,7 +905,9 @@ export default function DefectsPage({ project }) {
               render: (item) => (
                 <span className="flex min-w-0 flex-col items-start gap-2 sm:min-w-48">
                   <span className="text-[11px] text-ink-muted">
-                    {item.linked_test_case_version_id || "Chưa liên kết ca kiểm thử"}
+                    {item.linked_test_case_version_id
+                      ? "Đã liên kết ca kiểm thử"
+                      : "Chưa liên kết ca kiểm thử"}
                   </span>
                   <span className="flex flex-wrap gap-2">
                     {can("ai.suggest_bug_trace") &&
@@ -972,12 +971,14 @@ export default function DefectsPage({ project }) {
                     onClick={() => assignDefect(item)}
                   >
                     {members.find((member) => member.user_id === item.assignee)?.user_label ||
-                      item.assignee ||
+                      members.find((member) => member.user_id === item.assignee)?.user?.email ||
+                      (item.assignee ? "Người xử lý không còn trong danh sách thành viên" : null) ||
                       "Gán người xử lý"}
                   </button>
                 ) : (
                   members.find((member) => member.user_id === item.assignee)?.user_label ||
-                  item.assignee ||
+                  members.find((member) => member.user_id === item.assignee)?.user?.email ||
+                  (item.assignee ? "Người xử lý không còn trong danh sách thành viên" : null) ||
                   "Chưa gán"
                 ),
             },
@@ -994,7 +995,7 @@ export default function DefectsPage({ project }) {
                         return (
                           <select
                             aria-label={`Kết quả retest ${item.defect_key}`}
-                            className="apple-input"
+                            className="apple-input min-w-44"
                             value=""
                             onChange={async (event) => {
                               if (!event.target.value) return;
@@ -1015,7 +1016,11 @@ export default function DefectsPage({ project }) {
                             <option value="">Chọn kết quả kiểm thử lại</option>
                             {eligibleResults.map((result) => (
                               <option key={result._id} value={result._id}>
-                                {valueLabel(result.status)} {result.build || result._id}
+                                {valueLabel(result.status)} ·{" "}
+                                {result.test_case_key ||
+                                  result.test_case_name ||
+                                  result.build ||
+                                  "Kết quả kiểm thử"}
                               </option>
                             ))}
                           </select>
@@ -1028,7 +1033,7 @@ export default function DefectsPage({ project }) {
                       return (
                         <select
                           aria-label={`Chuyển trạng thái ${item.defect_key}`}
-                          className="apple-input"
+                          className="apple-input min-w-44"
                           value=""
                           onChange={(event) => transition(item, event.target.value)}
                         >

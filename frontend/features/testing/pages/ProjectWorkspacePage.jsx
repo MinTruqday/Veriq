@@ -221,6 +221,12 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
         <LoadingState />
       </div>
     );
+  if (state.forbidden)
+    return (
+      <div className="p-8">
+        <LoadingState />
+      </div>
+    );
   if (mustLeaveWorkspace) return null;
   if (state.error || !state.project)
     return (

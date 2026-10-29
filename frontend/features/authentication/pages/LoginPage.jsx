@@ -69,10 +69,10 @@ export default function LoginPage() {
           disabled={submitting}
           onClick={() => passkeyLogin(email)}
         >
-          Passkey
+          Đăng nhập bằng khóa truy cập
         </Button>
         <Button type="button" variant="secondary" disabled={submitting} onClick={googleLogin}>
-          Google
+          Đăng nhập bằng Google
         </Button>
       </div>
     </AuthFrame>

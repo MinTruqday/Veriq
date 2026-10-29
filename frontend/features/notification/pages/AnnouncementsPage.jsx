@@ -89,19 +89,26 @@ export default function AnnouncementsPage() {
                 key={id}
                 className={`border-b border-border px-4 py-4 last:border-b-0 md:px-5 ${item.is_read ? "" : "border-l-2 border-l-brand bg-brand-soft/40"}`}
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <h2 className="text-[15px] font-semibold text-ink">
-                      {item.title || "Thông báo"}
-                    </h2>
-                    <p className="mt-1 max-w-[72ch] text-[14px] leading-relaxed text-ink-muted">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h2 className="min-w-0 break-words text-[15px] font-semibold text-ink">
+                        {item.title || "Thông báo"}
+                      </h2>
+                      {!item.is_read && (
+                        <span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-semibold text-white">
+                          Chưa đọc
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 max-w-[72ch] break-words text-[14px] leading-relaxed text-ink-muted">
                       {item.message || item.body || "Không có nội dung"}
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
                       {item.link && (
                         <Link
                           href={item.link}
-                          className="font-semibold text-brand hover:text-brand-hover"
+                          className="font-semibold text-brand underline-offset-4 hover:text-brand-hover hover:underline"
                         >
                           Mở nội dung
                         </Link>
@@ -110,7 +117,7 @@ export default function AnnouncementsPage() {
                         <button
                           type="button"
                           onClick={() => markRead(id)}
-                          className="font-semibold text-ink-muted hover:text-ink"
+                          className="font-semibold text-ink-muted underline-offset-4 hover:text-ink hover:underline"
                         >
                           Đánh dấu đã đọc
                         </button>
@@ -119,13 +126,13 @@ export default function AnnouncementsPage() {
                         type="button"
                         onClick={() => remove(id)}
                         disabled={processing}
-                        className="font-semibold text-ink-muted hover:text-danger disabled:opacity-50"
+                        className="font-semibold text-ink-muted underline-offset-4 hover:text-danger hover:underline disabled:opacity-50"
                       >
                         Xóa
                       </button>
                     </div>
                   </div>
-                  <time className="shrink-0 text-[12px] text-ink-faint">
+                  <time className="shrink-0 text-[12px] text-ink-faint sm:pt-1">
                     {formatDate(item.created_at)}
                   </time>
                 </div>

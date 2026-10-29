@@ -230,8 +230,8 @@ export default function TestCaseTransferPanel({
                               match.id.startsWith("preview:")
                                 ? `Dòng ${Number(match.id.slice(8)) + 1} trong tệp`
                                 : match.target_version_id
-                                  ? match.title || match.id
-                                  : `${match.title || match.id} bản nháp chưa duyệt`,
+                                  ? match.title || "Ca kiểm thử đã tồn tại"
+                                  : `${match.title || "Ca kiểm thử"} bản nháp chưa duyệt`,
                             )
                             .join("  ")}
                         </p>
@@ -257,7 +257,7 @@ export default function TestCaseTransferPanel({
                               <option value="">Tạo ca riêng</option>
                               {existing.map((match) => (
                                 <option value={match.target_version_id} key={match.id}>
-                                  Tạo phiên bản mới của {match.title || match.id}
+                                  Tạo phiên bản mới của {match.title || "ca kiểm thử đã tồn tại"}
                                 </option>
                               ))}
                             </select>

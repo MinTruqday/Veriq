@@ -109,7 +109,7 @@ export default function TestabilityBenchmarkPanel() {
     <div className="space-y-5">
       {error && <ErrorState message={error} />}
       <Panel
-        title="Đánh giá đối chuẩn kỹ thuật AI"
+        title="Kiểm tra AI trên tình huống thử"
         actions={
           <button
             type="button"
@@ -117,26 +117,25 @@ export default function TestabilityBenchmarkPanel() {
             disabled={running}
             onClick={() => void runBenchmark()}
           >
-            {running ? "Đang chạy 3 cách xử lý…" : "Chạy đánh giá tổng hợp"}
+            {running ? "Đang so sánh các cách xử lý…" : "Chạy đánh giá"}
           </button>
         }
       >
         <div className="space-y-3 text-sm text-ink-muted">
           <p>
-            Bộ cố định gồm 30 tình huống tổng hợp: 10 tình huống đủ căn cứ, 10 thiếu hoặc mơ hồ, và
-            10 trùng lặp hoặc mâu thuẫn. Mỗi lượt so sánh ba cách xử lý, lặp ba lần.
+            Bộ thử gồm 30 tình huống tạo sẵn: 10 tình huống đủ căn cứ, 10 thiếu hoặc mơ hồ, và 10
+            trùng lặp hoặc mâu thuẫn. Mỗi cách xử lý được chạy ba lần.
           </p>
           <p>
-            Đáp án được sinh từ quy tắc tạo tình huống, không do chuyên gia độc lập xác nhận. Điểm
-            mô tả hành vi trên bộ này, không chứng minh chất lượng ở môi trường thực tế, khả năng
-            khái quát hay ưu thế so với Jira/Xray. Chạy đánh giá có thể mất thời gian vì gọi ba cách
-            xử lý AI thật.
+            Đáp án chuẩn được tạo cùng các tình huống, chưa được chuyên gia độc lập xác nhận. Kết
+            quả chỉ mô tả cách AI xử lý bộ thử này; không chứng minh chất lượng ngoài thực tế hoặc
+            ưu thế so với sản phẩm khác. Việc chạy gọi các cách xử lý AI thật nên có thể mất vài
+            phút.
           </p>
           <p>
-            Một số tình huống thiếu thông tin có nhiều vấn đề cùng lúc và có thứ tự ưu tiên đã soạn
-            sẵn; tiêu chí “Thứ tự ưu tiên câu hỏi” đối chiếu thứ tự AI hỏi với đáp án tổng hợp đó.
-            Đây là phép thử kỹ thuật của cách xếp câu hỏi, không phải đánh giá độc lập của giảng
-            viên hay chuyên gia.
+            Một số tình huống có nhiều điểm thiếu. Tiêu chí “Thứ tự ưu tiên câu hỏi” so sánh thứ tự
+            AI hỏi với thứ tự đã ghi trong đáp án chuẩn; đây chưa phải đánh giá độc lập của giảng
+            viên hoặc chuyên gia.
           </p>
           {report && (
             <div className="rounded-xl border border-line bg-surface-quiet p-4 text-ink">
@@ -159,7 +158,7 @@ export default function TestabilityBenchmarkPanel() {
       </Panel>
 
       {report && (
-        <Panel title="Điểm mô tả của từng cách xử lý">
+        <Panel title="Kết quả theo từng cách xử lý">
           <p className="mb-3 text-sm text-ink-muted">
             Mỗi cách xử lý dùng các tình huống được chấp nhận ổn định qua cả ba lượt; nhóm tình
             huống giữa các cách xử lý có thể khác nhau.
@@ -171,9 +170,9 @@ export default function TestabilityBenchmarkPanel() {
               { key: "pipeline", label: "Cách xử lý" },
               { key: "metric", label: "Tiêu chí" },
               { key: "mean", label: "Trung bình" },
-              { key: "spread", label: "Khoảng min–max" },
+              { key: "spread", label: "Khoảng điểm thấp–cao" },
               { key: "runs", label: "Lượt có điểm" },
-              { key: "cases", label: "Ca ổn định/ghép cặp" },
+              { key: "cases", label: "Số tình huống đủ điều kiện" },
             ]}
           />
         </Panel>
@@ -193,9 +192,9 @@ export default function TestabilityBenchmarkPanel() {
               { key: "pipeline", label: "Cách xử lý" },
               { key: "metric", label: "Tiêu chí" },
               { key: "mean", label: "Trung bình" },
-              { key: "spread", label: "Khoảng min–max" },
+              { key: "spread", label: "Khoảng điểm thấp–cao" },
               { key: "runs", label: "Lượt có điểm" },
-              { key: "cases", label: "Ca ghép cặp ổn định" },
+              { key: "cases", label: "Số tình huống so sánh được" },
             ]}
           />
         </Panel>
@@ -209,14 +208,10 @@ export default function TestabilityBenchmarkPanel() {
             items={runs}
             empty="Chưa có lượt đánh giá tổng hợp"
             columns={[
-              { key: "run_id", label: "Mã lượt chạy" },
               {
                 key: "dataset_id",
-                label: "Phiên bản dữ liệu",
-                render: (item) =>
-                  item.dataset_id?.endsWith("-v1")
-                    ? "Tổng hợp v1 · đáp án cũ"
-                    : "Tổng hợp v2 · có xếp ưu tiên",
+                label: "Bộ tình huống",
+                render: () => "Bộ tình huống tổng hợp",
               },
               {
                 key: "created_at",

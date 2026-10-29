@@ -51,6 +51,7 @@ class RequirementAISuggestionTransactionTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(result["_id"], "AIF-ANALYSIS")
+        self.assertIs(result["degraded_mode"], False)
         self.assertIsNone(session.transaction.exception)
         self.assertIs(calls["insert"].await_args.kwargs["session"], session)
         self.assertIs(calls["audit"].await_args.kwargs["session"], session)

@@ -450,21 +450,21 @@ export default function RequirementSourceDocumentsPanel({
           {
             key: "actions",
             label: "Thao tác",
-            minWidth: 320,
+            minWidth: 260,
             hideWhenEmpty: true,
             render: (item) => (
-              <span className="flex flex-wrap gap-2">
+              <span className="flex max-w-[32rem] flex-wrap items-center gap-2">
                 {can("knowledge.manage") && item.status !== "ARCHIVED" && (
                   <>
                     <button
-                      className="secondary-button"
+                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                       type="button"
                       onClick={() => classify(item)}
                     >
                       Phân loại
                     </button>
                     <button
-                      className="secondary-button"
+                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                       type="button"
                       onClick={() => reindex(item)}
                     >
@@ -475,7 +475,7 @@ export default function RequirementSourceDocumentsPanel({
                 {can("requirement_document.extract") &&
                   (["UPLOADED", "PARSE_FAILED"].includes(item.status) || item.can_retry_parse) && (
                     <button
-                      className="secondary-button"
+                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                       type="button"
                       disabled={retryingDocumentId === item._id}
                       aria-busy={retryingDocumentId === item._id}
@@ -495,7 +495,7 @@ export default function RequirementSourceDocumentsPanel({
                   !item.ai_enabled &&
                   (item.status === "READY" ? (
                     <button
-                      className="secondary-button"
+                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                       type="button"
                       disabled={activatingAiDocumentId === item._id}
                       aria-busy={activatingAiDocumentId === item._id}
@@ -513,7 +513,7 @@ export default function RequirementSourceDocumentsPanel({
                 {(isPlatformAdmin || item.created_by === currentUserId) &&
                   item.status !== "ARCHIVED" && (
                     <button
-                      className="secondary-button"
+                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                       type="button"
                       onClick={() => changeAccess(item)}
                     >
@@ -521,14 +521,18 @@ export default function RequirementSourceDocumentsPanel({
                     </button>
                   )}
                 {can("requirement_document.download") && (
-                  <button className="secondary-button" type="button" onClick={() => download(item)}>
+                  <button
+                    className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                    type="button"
+                    onClick={() => download(item)}
+                  >
                     Tải xuống
                   </button>
                 )}
                 {item.status === "ARCHIVED"
                   ? can("requirement_document.restore") && (
                       <button
-                        className="secondary-button"
+                        className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                         type="button"
                         onClick={() => changeArchiveStatus(item, true)}
                       >
@@ -537,7 +541,7 @@ export default function RequirementSourceDocumentsPanel({
                     )
                   : can("requirement_document.archive") && (
                       <button
-                        className="secondary-button"
+                        className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
                         type="button"
                         onClick={() => changeArchiveStatus(item, false)}
                       >

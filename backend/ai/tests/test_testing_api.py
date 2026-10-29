@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from src.tools import testing_api
+from src.tools.test_design_tools import recommend_test_design_techniques_for_requirement_change
 
 
 class TestingApiErrorHandlingTests(unittest.IsolatedAsyncioTestCase):
@@ -88,6 +89,153 @@ class TestingApiErrorHandlingTests(unittest.IsolatedAsyncioTestCase):
             result = await testing_api.call("POST", "/principal", {"configurable": {"token": "Bearer x"}})
 
         self.assertEqual(json.loads(result)["error"], {"code": "PROJECT_QA_EXECUTOR_UNAVAILABLE"})
+
+    async def test_requirement_change_tool_accepts_testing_api_items_envelope(self):
+        version = {
+            "_id": "REQV-1",
+            "project_id": "PRJ-1",
+            "revision": 3,
+            "status": "BASELINED",
+        }
+        responses = [
+            json.dumps(version),
+            json.dumps({"items": [{"technique": "BOUNDARY_VALUE"}]}),
+            json.dumps(version),
+        ]
+        config = {
+            "configurable": {
+                "automation_run_id": "AUT-1",
+                "evidence": [
+                    {
+                        "project_id": "PRJ-1",
+                        "artifact_type": "requirement_version",
+                        "artifact_version_id": "REQV-1",
+                        "artifact_revision": 3,
+                    }
+                ],
+            }
+        }
+
+        with patch(
+            "src.tools.test_design_tools.call",
+            new=AsyncMock(side_effect=responses),
+        ):
+            result = json.loads(
+                await recommend_test_design_techniques_for_requirement_change.coroutine(
+                    project_id="PRJ-1",
+                    requirement_version_id="REQV-1",
+                    expected_revision=3,
+                    config=config,
+                )
+            )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(
+            result["recommendation"]["items"],
+            [{"technique": "BOUNDARY_VALUE"}],
+        )
+
+    async def test_requirement_change_tool_preserves_known_design_conflicts(self):
+        version = {
+            "_id": "REQV-1",
+            "project_id": "PRJ-1",
+            "revision": 3,
+            "status": "BASELINED",
+        }
+        config = {
+            "configurable": {
+                "automation_run_id": "AUT-1",
+                "evidence": [
+                    {
+                        "project_id": "PRJ-1",
+                        "artifact_type": "requirement_version",
+                        "artifact_version_id": "REQV-1",
+                        "artifact_revision": 3,
+                    }
+                ],
+            }
+        }
+
+        for error_code in (
+            "TEST_DESIGN_REQUIREMENT_CHANGED",
+            "TEST_DESIGN_PREVIEW_STALE",
+        ):
+            with self.subTest(error_code=error_code):
+                with patch(
+                    "src.tools.test_design_tools.call",
+                    new=AsyncMock(
+                        side_effect=[
+                            json.dumps(version),
+                            json.dumps(
+                                {
+                                    "status": "qa_operation_failed",
+                                    "upstream_status": 409,
+                                    "error": {"code": error_code},
+                                }
+                            ),
+                        ]
+                    ),
+                ):
+                    result = json.loads(
+                        await recommend_test_design_techniques_for_requirement_change.coroutine(
+                            project_id="PRJ-1",
+                            requirement_version_id="REQV-1",
+                            expected_revision=3,
+                            config=config,
+                        )
+                    )
+
+                self.assertEqual(result["status"], "automation_partial_failure")
+                self.assertEqual(result["reason_code"], error_code)
+
+    async def test_requirement_change_tool_does_not_preserve_unknown_conflict_code(self):
+        version = {
+            "_id": "REQV-1",
+            "project_id": "PRJ-1",
+            "revision": 3,
+            "status": "BASELINED",
+        }
+        config = {
+            "configurable": {
+                "automation_run_id": "AUT-1",
+                "evidence": [
+                    {
+                        "project_id": "PRJ-1",
+                        "artifact_type": "requirement_version",
+                        "artifact_version_id": "REQV-1",
+                        "artifact_revision": 3,
+                    }
+                ],
+            }
+        }
+        with patch(
+            "src.tools.test_design_tools.call",
+            new=AsyncMock(
+                side_effect=[
+                    json.dumps(version),
+                    json.dumps(
+                        {
+                            "status": "qa_operation_failed",
+                            "upstream_status": 409,
+                            "error": {"code": "UNEXPECTED_CONFLICT"},
+                        }
+                    ),
+                ]
+            ),
+        ):
+            result = json.loads(
+                await recommend_test_design_techniques_for_requirement_change.coroutine(
+                    project_id="PRJ-1",
+                    requirement_version_id="REQV-1",
+                    expected_revision=3,
+                    config=config,
+                )
+            )
+
+        self.assertEqual(result["status"], "automation_partial_failure")
+        self.assertEqual(
+            result["reason_code"], "TECHNIQUE_RECOMMENDATION_RESULT_INVALID"
+        )
 
 
 if __name__ == "__main__":

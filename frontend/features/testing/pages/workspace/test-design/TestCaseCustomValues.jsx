@@ -23,7 +23,7 @@ export default function TestCaseCustomValues({ fields = [], values = {}, onChang
               {field.required && <span className="text-danger"> *</span>}
               {field.value_type === "boolean" ? (
                 <select
-                  className="apple-input mt-2"
+                  className="apple-input mt-2 w-full min-w-0"
                   value={value === "" ? "" : String(value)}
                   onChange={(event) =>
                     setValue(event.target.value === "" ? "" : event.target.value === "true")
@@ -35,7 +35,7 @@ export default function TestCaseCustomValues({ fields = [], values = {}, onChang
                 </select>
               ) : field.value_type === "choice" ? (
                 <select
-                  className="apple-input mt-2"
+                  className="apple-input mt-2 w-full min-w-0"
                   value={value}
                   onChange={(event) => setValue(event.target.value)}
                 >
@@ -48,7 +48,7 @@ export default function TestCaseCustomValues({ fields = [], values = {}, onChang
                 </select>
               ) : (
                 <input
-                  className="apple-input mt-2"
+                  className="apple-input mt-2 w-full min-w-0"
                   type={field.value_type === "number" ? "number" : field.value_type}
                   step={field.value_type === "number" ? "any" : undefined}
                   value={value}

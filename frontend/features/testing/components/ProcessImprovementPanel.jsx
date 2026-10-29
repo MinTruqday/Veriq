@@ -2,13 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DataTable from "./DataTable";
 import StatisticalControlChart from "./StatisticalControlChart";
-import {
-  ErrorState,
-  LoadingState,
-  Panel,
-  StatusPill,
-  useActionDialog,
-} from "./WorkspacePrimitives";
+import { ErrorState, LoadingState, Panel, useActionDialog } from "./WorkspacePrimitives";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 
@@ -17,6 +11,48 @@ const lines = (value) =>
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
+
+const metricLabels = {
+  REQUIREMENT_COVERAGE: "Độ phủ yêu cầu",
+  AC_COVERAGE: "Độ phủ tiêu chí chấp nhận",
+  CONDITION_COVERAGE: "Độ phủ điều kiện kiểm thử",
+  RISK_COVERAGE: "Độ phủ rủi ro",
+  EXECUTION_PROGRESS: "Tiến độ thực thi",
+  PASS_RATE: "Tỷ lệ đạt",
+  BLOCKED_RATE: "Tỷ lệ bị chặn",
+  DEFECT_REOPEN_RATE: "Tỷ lệ mở lại lỗi",
+  CRITICAL_DEFECT_AGING: "Tuổi lỗi nghiêm trọng",
+  MEAN_TIME_TO_RETEST: "Thời gian trung bình tới kiểm thử lại",
+  STALE_TEST_RATIO: "Tỷ lệ ca kiểm thử lỗi thời",
+  REQUIREMENT_VOLATILITY: "Biến động yêu cầu",
+  IMPACT_PROPOSAL_ACCEPTANCE_RATE: "Tỷ lệ chấp nhận đề xuất ảnh hưởng",
+  REGRESSION_EFFECTIVENESS: "Hiệu quả hồi quy",
+  AUTOMATION_COVERAGE: "Độ phủ tự động hóa",
+  AUTOMATION_STABILITY: "Độ ổn định tự động hóa",
+  ESCAPED_DEFECT_RATE: "Tỷ lệ lỗi lọt",
+  DEFECT_REMOVAL_EFFICIENCY: "Hiệu suất loại bỏ lỗi",
+};
+
+const metricLabel = (key) => metricLabels[key] || "Chỉ số khác";
+
+const processStatusLabels = {
+  PROPOSED: "Đề xuất",
+  APPROVED_EXPERIMENT: "Đã duyệt thử nghiệm",
+  RUNNING: "Đang thử nghiệm",
+  EVALUATED: "Đã đánh giá",
+  ADOPTED: "Đã áp dụng",
+  REJECTED: "Đã từ chối",
+  STABLE: "Ổn định",
+  UNSTABLE: "Có điểm vượt giới hạn",
+};
+
+function ProcessStatus({ value }) {
+  return (
+    <span className="inline-flex rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand">
+      {processStatusLabels[value] || valueLabel(value)}
+    </span>
+  );
+}
 
 export default function ProcessImprovementPanel({ project }) {
   const [proposals, setProposals] = useState([]);
@@ -91,7 +127,7 @@ export default function ProcessImprovementPanel({ project }) {
     () =>
       snapshots.map((item) => ({
         value: item._id,
-        label: `${item.measurement_key || item._id} · ${item.value ?? "Chưa có giá trị"}`,
+        label: `${metricLabel(item.measurement_key)} · ${item.value ?? "Chưa có giá trị"}${item.unit ? ` ${item.unit}` : ""}${item.measured_at ? ` · ${formatDate(item.measured_at)}` : ""}`,
       })),
     [snapshots],
   );
@@ -119,7 +155,7 @@ export default function ProcessImprovementPanel({ project }) {
         },
         {
           name: "evidence_refs",
-          label: "Mã bằng chứng mỗi dòng một mã",
+          label: "Mã bằng chứng (mỗi dòng một mã)",
           required: true,
           multiline: true,
         },
@@ -128,7 +164,7 @@ export default function ProcessImprovementPanel({ project }) {
         { name: "experiment_scope", label: "Phạm vi thử nghiệm", required: true, multiline: true },
         {
           name: "owner_id",
-          label: "Mã người phụ trách",
+          label: "Mã người phụ trách trong dự án",
           required: true,
           initialValue: project.current_membership?.user_id || "",
         },
@@ -172,12 +208,12 @@ export default function ProcessImprovementPanel({ project }) {
     const lessonOptions = completionReports.flatMap((report) =>
       (report.lessons_learned || []).map((item) => ({
         value: item.lesson_id,
-        label: `${item.title || item.lesson_id} · ${report.completion_key || report._id}`,
+        label: `${item.title || "Bài học kinh nghiệm"} · ${report.completion_key || formatDate(report.created_at)}`,
       })),
     );
     const causalOptions = causalAnalyses.map((item) => ({
       value: item._id,
-      label: item.title || item.problem_statement || item._id,
+      label: item.title || item.problem_statement || "Phân tích nguyên nhân",
     }));
     const answer = await ask({
       title: "Liên kết nguồn cải tiến",
@@ -227,7 +263,7 @@ export default function ProcessImprovementPanel({ project }) {
       fields: [
         {
           name: "measurement_snapshot_refs",
-          label: "Ảnh đo lường",
+          label: "Lần đo",
           required: true,
           multiple: true,
           options: snapshotOptions,
@@ -348,15 +384,15 @@ export default function ProcessImprovementPanel({ project }) {
           name: "measurement_snapshot_id",
           label: "Điểm đo",
           required: true,
-          options: (selectedAnalysis.points || []).map((item) => ({
+          options: (selectedAnalysis.points || []).map((item, index) => ({
             value: item.snapshot_id,
-            label: `${item.snapshot_id} · ${item.value}`,
+            label: `Lần đo ${index + 1} · ${item.value}${selectedAnalysis.unit ? ` ${selectedAnalysis.unit}` : ""}${item.measured_at ? ` · ${formatDate(item.measured_at)}` : ""}`,
           })),
         },
         { name: "cause", label: "Nguyên nhân", required: true, multiline: true },
         {
           name: "evidence_refs",
-          label: "Mã bằng chứng mỗi dòng một mã",
+          label: "Tham chiếu bằng chứng (mỗi dòng một tham chiếu)",
           required: true,
           multiline: true,
         },
@@ -414,11 +450,15 @@ export default function ProcessImprovementPanel({ project }) {
             empty="Chưa có đề xuất cải tiến quy trình"
             columns={[
               { key: "observed_problem", label: "Vấn đề" },
-              { key: "owner_id", label: "Người phụ trách" },
+              {
+                key: "owner_id",
+                label: "Người phụ trách",
+                render: () => "Thành viên được phân công",
+              },
               {
                 key: "status",
                 label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
+                render: (item) => <ProcessStatus value={item.status} />,
               },
               {
                 key: "updated_at",
@@ -545,7 +585,11 @@ export default function ProcessImprovementPanel({ project }) {
                     items={selected.result_comparison}
                     empty="Chưa có dữ liệu so sánh"
                     columns={[
-                      { key: "measurement_key", label: "Chỉ số" },
+                      {
+                        key: "measurement_key",
+                        label: "Chỉ số",
+                        render: (item) => metricLabel(item.measurement_key),
+                      },
                       { key: "baseline_value", label: "Đường cơ sở" },
                       { key: "result_value", label: "Kết quả" },
                       { key: "delta", label: "Chênh lệch" },
@@ -563,14 +607,18 @@ export default function ProcessImprovementPanel({ project }) {
                 empty="Chưa đủ dữ liệu để tạo biểu đồ kiểm soát"
                 columns={[
                   { key: "baseline_label", label: "Cửa sổ cơ sở" },
-                  { key: "measurement_key", label: "Chỉ số" },
+                  {
+                    key: "measurement_key",
+                    label: "Chỉ số",
+                    render: (item) => metricLabel(item.measurement_key),
+                  },
                   { key: "center_line", label: "Đường trung tâm" },
                   { key: "lower_control_limit", label: "Giới hạn dưới" },
                   { key: "upper_control_limit", label: "Giới hạn trên" },
                   {
                     key: "process_status",
                     label: "Trạng thái",
-                    render: (item) => <StatusPill value={item.process_status} />,
+                    render: (item) => <ProcessStatus value={item.process_status} />,
                   },
                   {
                     key: "actions",
@@ -595,8 +643,9 @@ export default function ProcessImprovementPanel({ project }) {
                 <div>
                   <h3 className="font-semibold">{selectedAnalysis.baseline_label}</h3>
                   <p className="text-sm text-ink-muted">
-                    {selectedAnalysis.measurement_key} ·{" "}
-                    {valueLabel(selectedAnalysis.process_status)}
+                    {metricLabel(selectedAnalysis.measurement_key)} ·{" "}
+                    {processStatusLabels[selectedAnalysis.process_status] ||
+                      valueLabel(selectedAnalysis.process_status)}
                   </p>
                 </div>
                 {can("statisticalquality.annotate") && (
@@ -610,7 +659,18 @@ export default function ProcessImprovementPanel({ project }) {
                 items={selectedAnalysis.special_causes || []}
                 empty="Chưa ghi nhận nguyên nhân đặc biệt"
                 columns={[
-                  { key: "measurement_snapshot_id", label: "Điểm đo" },
+                  {
+                    key: "measurement_snapshot_id",
+                    label: "Điểm đo",
+                    render: (item) => {
+                      const point = selectedAnalysis.points?.find(
+                        (value) => value.snapshot_id === item.measurement_snapshot_id,
+                      );
+                      return point
+                        ? `${formatDate(point.measured_at)} · ${point.value}${selectedAnalysis.unit ? ` ${selectedAnalysis.unit}` : ""}`
+                        : "Điểm đo không còn trong phân tích";
+                    },
+                  },
                   { key: "cause", label: "Nguyên nhân" },
                   {
                     key: "created_at",

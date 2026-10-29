@@ -11,12 +11,20 @@ import {
   automationSourceExtractionGaps,
   workflowForSelectedRun,
 } from "../lib/automationRun.logic.mjs";
-import { messageOf, valueLabel } from "../lib/testing";
+import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { EmptyState, ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
+
+function automationRunTitle(run) {
+  const objective = String(run?.objective || "").trim();
+  const generatedEventDescription = /tự xử lý sự kiện\s+[A-Z_]+/i.test(objective);
+  const containsInternalEventCode = /\b[A-Z][A-Z0-9]+__[A-Z0-9_]+\b/.test(objective);
+  if (objective && !generatedEventDescription && !containsInternalEventCode) return objective;
+  return valueLabel(run?.trigger || "MANUAL");
+}
 
 export default function AgentRunPanel({ project, showDefinitions = true }) {
   const currentUserId = project.current_membership?.user_id;
@@ -186,7 +194,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   };
 
   useEffect(() => {
-    if (!canReadProjectRuns && !canReadOwnRuns) return undefined;
+    if ((!canReadProjectRuns && !canReadOwnRuns) || error) return undefined;
     let active = true;
     let pending = false;
     const timer = window.setInterval(async () => {
@@ -285,7 +293,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
       active = false;
       window.clearInterval(timer);
     };
-  }, [canReadOwnRuns, canReadProjectRuns, project._id]);
+  }, [canReadOwnRuns, canReadProjectRuns, error, project._id]);
 
   useEffect(() => {
     if (!run || (!activeStatuses.has(run.status) && !(workflow?.active_count > 0))) {
@@ -500,7 +508,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const authorizationGuidance = automationAuthorizationGuidance(run);
 
   return (
-    <Panel title={showDefinitions ? "Quy tắc theo sự kiện và lượt chạy" : "Lịch sử lượt chạy AI"}>
+    <Panel title={showDefinitions ? "Tự động hóa dự án" : "Hoạt động tự động"}>
       <div className="grid gap-4 p-4">
         {error && (
           <div className="grid gap-2">
@@ -596,7 +604,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
           )}
         </div>
         {visibleDefinitions.length > 0 && (
-          <div className="grid gap-2 border-t border-border pt-4 text-sm">
+          <div className="grid gap-2 pt-2 text-sm">
             <h3 className="font-semibold text-ink">Quy tắc đang có</h3>
             {visibleDefinitions.map((definition) => (
               <div
@@ -622,8 +630,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
           </div>
         )}
         {visibleRuns.length > 0 && (
-          <div className="grid gap-2 border-t border-border pt-4 text-sm">
-            <h3 className="font-semibold text-ink">Lượt chạy gần đây</h3>
+          <div className="grid gap-2 pt-2 text-sm">
+            <h3 className="font-semibold text-ink">Hoạt động gần đây</h3>
             {visibleRuns.slice(0, 10).map((item) => (
               <button
                 className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border p-3 text-left hover:bg-surface-quiet"
@@ -640,8 +648,12 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 }}
               >
                 <span className="min-w-0">
-                  <span className="block truncate font-medium text-ink">{item.objective}</span>
-                  <span className="block text-xs text-ink-muted">{item.automation_run_id}</span>
+                  <span className="block truncate font-medium text-ink">
+                    {automationRunTitle(item)}
+                  </span>
+                  <span className="block text-xs text-ink-muted">
+                    {item.created_at ? formatDate(item.created_at) : ""}
+                  </span>
                 </span>
                 <StatusPill
                   value={
@@ -665,7 +677,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             </EmptyState>
           )}
         {run && (
-          <div className="grid gap-4 border-t border-border pt-4 text-sm">
+          <div className="grid gap-4 pt-2 text-sm">
             {detailRefreshError && (
               <div className="grid gap-2" role="status">
                 <ErrorState
@@ -689,8 +701,12 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             )}
             <div className="flex flex-wrap items-center gap-3">
               <StatusPill value={run.status} />
-              <span>{run.automation_run_id}</span>
-              <span>Vai trò {valueLabel(run.requester_role)}</span>
+              <span>Khởi chạy: {valueLabel(run.trigger || "MANUAL")}</span>
+              <span>Người khởi chạy: {valueLabel(run.requester_role)}</span>
+              <details className="text-xs text-ink-muted">
+                <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                <p className="mt-1 break-all">Mã lượt chạy: {run.automation_run_id}</p>
+              </details>
             </div>
             {workflow && (
               <section
@@ -723,8 +739,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                         className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface p-3"
                         key={item.automation_run_id}
                       >
-                        <span className="min-w-0 break-all text-xs text-ink-muted">
-                          {valueLabel(item.trigger)} · {item.automation_run_id}
+                        <span className="min-w-0 text-xs text-ink-muted">
+                          {valueLabel(item.trigger || "MANUAL")}
                         </span>
                         <StatusPill value={item.status} />
                       </li>
@@ -753,7 +769,11 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                       className="grid min-w-0 gap-2 rounded-control border border-border bg-surface p-3"
                       key={gap.document_id}
                     >
-                      <p className="break-all font-medium text-ink">Tài liệu {gap.document_id}</p>
+                      <p className="font-medium text-ink">Tài liệu cần xử lý</p>
+                      <details className="text-xs text-ink-muted">
+                        <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                        <p className="mt-1 break-all">Mã tài liệu: {gap.document_id}</p>
+                      </details>
                       <p className="text-xs text-ink-muted">
                         Trạng thái {valueLabel(gap.index_status)}
                         {gap.parser ? ` · Bộ đọc ${gap.parser}` : ""}
@@ -848,9 +868,17 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                         {item.question && <p className="font-medium text-ink">{item.question}</p>}
                         {item.reason && <p className="text-ink-muted">{item.reason}</p>}
                         {item.evidence_refs?.length > 0 && (
-                          <p className="text-xs text-ink-muted">
-                            Nguồn liên quan: {item.evidence_refs.join(", ")}
-                          </p>
+                          <div className="text-xs text-ink-muted">
+                            <p>
+                              Nguồn liên quan: {item.evidence_refs.length} trích dẫn đã xác minh
+                            </p>
+                            <details className="mt-1">
+                              <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                              <p className="mt-1 break-all">
+                                Mã nguồn: {item.evidence_refs.join(", ")}
+                              </p>
+                            </details>
+                          </div>
                         )}
                         {item.blocking && item.response_allowed && canAnswerClarification && (
                           <form
@@ -1037,8 +1065,20 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                         key={`${claim.claim_type}-${claim.claim_key}`}
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          <StatusPill value={claim.claim_type} />
-                          <span className="break-all font-medium text-ink">{claim.claim_key}</span>
+                          <span className="status-badge">
+                            {claim.claim_type === "OBLIGATION"
+                              ? "Nghĩa vụ kiểm thử"
+                              : "Yêu cầu làm rõ"}
+                          </span>
+                          <span className="font-medium text-ink">
+                            {claim.claim_type === "OBLIGATION"
+                              ? "Điểm cần kiểm thử"
+                              : "Điểm cần làm rõ"}
+                          </span>
+                          <details className="text-xs text-ink-muted">
+                            <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                            <p className="mt-1 break-all">Mã liên kết: {claim.claim_key}</p>
+                          </details>
                         </div>
                         <div className="grid gap-2">
                           <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
@@ -1051,18 +1091,28 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                                 key={fact.source_fact_id}
                               >
                                 <p className="break-words text-xs text-ink-muted">
-                                  {valueLabel(fact.artifact_type)} · {fact.artifact_id}
-                                  {fact.artifact_version_id ? ` · ${fact.artifact_version_id}` : ""}
+                                  {valueLabel(fact.artifact_type)}
+                                  {fact.source_page_numbers?.length
+                                    ? ` · Trang ${fact.source_page_numbers.join(", ")}`
+                                    : " · Đoạn trích đã xác minh"}
                                 </p>
                                 <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
                                   {fact.quote}
                                 </blockquote>
-                                <p className="mt-2 break-all text-xs text-ink-muted">
-                                  {fact.source}
-                                  {fact.source_start !== null && fact.source_start !== undefined
-                                    ? ` · Vị trí ${fact.source_start}–${fact.source_end}`
-                                    : ""}
-                                </p>
+                                {fact.source_start !== null && fact.source_start !== undefined && (
+                                  <p className="mt-2 break-all text-xs text-ink-muted">
+                                    Vị trí nội dung {fact.source_start}–{fact.source_end}
+                                  </p>
+                                )}
+                                <details className="mt-2 text-xs text-ink-muted">
+                                  <summary className="cursor-pointer">Thông tin nguồn</summary>
+                                  <p className="mt-1 break-all">
+                                    Nguồn: {fact.source} · Mã đối tượng: {fact.artifact_id}
+                                    {fact.artifact_version_id
+                                      ? ` · Phiên bản: ${fact.artifact_version_id}`
+                                      : ""}
+                                  </p>
+                                </details>
                               </div>
                             ))
                           ) : (
@@ -1091,7 +1141,13 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                                     className="break-all rounded-control bg-surface-quiet px-3 py-2 text-ink"
                                     key={`${artifact.artifact_type}-${artifact.artifact_id}`}
                                   >
-                                    {valueLabel(artifact.artifact_type)} · {artifact.artifact_id}
+                                    {valueLabel(artifact.artifact_type)}
+                                    <details className="mt-1 text-xs text-ink-muted">
+                                      <summary className="cursor-pointer">Mã liên kết</summary>
+                                      <span className="mt-1 block break-all">
+                                        {artifact.artifact_id}
+                                      </span>
+                                    </details>
                                   </li>
                                 ))}
                               </ul>
@@ -1118,18 +1174,28 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                       key={fact.source_fact_id}
                     >
                       <p className="break-words text-xs text-ink-muted">
-                        {valueLabel(fact.artifact_type)} · {fact.artifact_id}
-                        {fact.artifact_version_id ? ` · ${fact.artifact_version_id}` : ""}
+                        {valueLabel(fact.artifact_type)}
+                        {fact.source_page_numbers?.length
+                          ? ` · Trang ${fact.source_page_numbers.join(", ")}`
+                          : " · Đoạn trích đã xác minh"}
                       </p>
                       <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
                         {fact.quote}
                       </blockquote>
-                      <p className="mt-2 break-all text-xs text-ink-muted">
-                        {fact.source}
-                        {fact.source_start !== null && fact.source_start !== undefined
-                          ? ` · Vị trí ${fact.source_start}–${fact.source_end}`
-                          : ""}
-                      </p>
+                      {fact.source_start !== null && fact.source_start !== undefined && (
+                        <p className="mt-2 break-all text-xs text-ink-muted">
+                          Vị trí nội dung {fact.source_start}–{fact.source_end}
+                        </p>
+                      )}
+                      <details className="mt-2 text-xs text-ink-muted">
+                        <summary className="cursor-pointer">Thông tin nguồn</summary>
+                        <p className="mt-1 break-all">
+                          Nguồn: {fact.source} · Mã đối tượng: {fact.artifact_id}
+                          {fact.artifact_version_id
+                            ? ` · Phiên bản: ${fact.artifact_version_id}`
+                            : ""}
+                        </p>
+                      </details>
                     </li>
                   ))}
                 </ul>

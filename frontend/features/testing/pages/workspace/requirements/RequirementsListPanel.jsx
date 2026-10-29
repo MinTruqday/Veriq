@@ -29,7 +29,6 @@ export default function RequirementsListPanel({
   onSelect,
   title = "Danh sách yêu cầu",
 }) {
-  if (loading) return <LoadingState />;
   const activeFilterCount = [filters.status, filters.coverage, filters.tag, filters.owner].filter(
     Boolean,
   ).length;
@@ -100,107 +99,116 @@ export default function RequirementsListPanel({
         </div>
       }
     >
-      <details className="border-b border-border p-4">
-        <summary className="cursor-pointer text-sm font-medium">
-          Bộ lọc và sắp xếp
-          {activeFilterCount > 0 && (
-            <span className="ml-2 text-ink-muted">{activeFilterCount} bộ lọc đang dùng</span>
-          )}
-        </summary>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <select
-            aria-label="Lọc trạng thái yêu cầu"
-            className="apple-input"
-            value={filters.status}
-            onChange={(event) => updateFilter("status", event.target.value)}
-          >
-            {REQUIREMENT_STATUS_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Lọc độ phủ yêu cầu"
-            className="apple-input"
-            value={filters.coverage}
-            onChange={(event) => updateFilter("coverage", event.target.value)}
-          >
-            {REQUIREMENT_COVERAGE_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <input
-            aria-label="Lọc nhãn yêu cầu"
-            className="apple-input"
-            placeholder="Nhãn"
-            value={filters.tag}
-            onChange={(event) => updateFilter("tag", event.target.value)}
-          />
-          <select
-            aria-label="Lọc người phụ trách yêu cầu"
-            className="apple-input"
-            value={filters.owner}
-            onChange={(event) => updateFilter("owner", event.target.value)}
-          >
-            <option value="">Mọi người phụ trách</option>
-            {members.map((item) => (
-              <option key={item.user_id} value={item.user_id}>
-                {item.user_label || item.user?.email || item.user_id}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Sắp xếp yêu cầu"
-            className="apple-input"
-            value={filters.sort}
-            onChange={(event) => updateFilter("sort", event.target.value)}
-          >
-            {REQUIREMENT_SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+      {loading ? (
+        <div className="p-5">
+          <LoadingState />
         </div>
-      </details>
-      <DataTable
-        onSelect={
-          onSelect || ((item) => window.location.assign(`/du-an/${projectId}/yeu-cau/${item._id}`))
-        }
-        items={items}
-        selectedIds={canSelectRows ? selectedIds : undefined}
-        onSelectionChange={canSelectRows ? setSelectedIds : undefined}
-        selectionLabel="Chọn yêu cầu"
-        empty="Chưa có yêu cầu"
-        columns={[
-          { key: "requirement_key", label: "Mã" },
-          { key: "title", label: "Tên", render: (item) => item.current_version?.title },
-          {
-            key: "type",
-            label: "Loại",
-            render: (item) => valueLabel(item.current_version?.type),
-          },
-          {
-            key: "risk",
-            label: "Rủi ro",
-            render: (item) => valueLabel(item.current_version?.risk),
-          },
-          {
-            key: "status",
-            label: "Trạng thái",
-            render: (item) => <StatusPill value={item.status} />,
-          },
-          {
-            key: "assurance_status",
-            label: "Hồ sơ đảm bảo",
-            render: (item) => <StatusPill value={item.assurance_status} />,
-          },
-        ]}
-      />
-      <Pagination value={pageInfo} onChange={setPage} />
+      ) : (
+        <>
+          <details className="border-b border-border p-4">
+            <summary className="cursor-pointer text-sm font-medium">
+              Bộ lọc và sắp xếp
+              {activeFilterCount > 0 && (
+                <span className="ml-2 text-ink-muted">{activeFilterCount} bộ lọc đang dùng</span>
+              )}
+            </summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <select
+                aria-label="Lọc trạng thái yêu cầu"
+                className="apple-input"
+                value={filters.status}
+                onChange={(event) => updateFilter("status", event.target.value)}
+              >
+                {REQUIREMENT_STATUS_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Lọc độ phủ yêu cầu"
+                className="apple-input"
+                value={filters.coverage}
+                onChange={(event) => updateFilter("coverage", event.target.value)}
+              >
+                {REQUIREMENT_COVERAGE_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                aria-label="Lọc nhãn yêu cầu"
+                className="apple-input"
+                placeholder="Nhãn"
+                value={filters.tag}
+                onChange={(event) => updateFilter("tag", event.target.value)}
+              />
+              <select
+                aria-label="Lọc người phụ trách yêu cầu"
+                className="apple-input"
+                value={filters.owner}
+                onChange={(event) => updateFilter("owner", event.target.value)}
+              >
+                <option value="">Mọi người phụ trách</option>
+                {members.map((item) => (
+                  <option key={item.user_id} value={item.user_id}>
+                    {item.user_label || item.user?.email || item.user_id}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Sắp xếp yêu cầu"
+                className="apple-input"
+                value={filters.sort}
+                onChange={(event) => updateFilter("sort", event.target.value)}
+              >
+                {REQUIREMENT_SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </details>
+          <DataTable
+            onSelect={
+              onSelect ||
+              ((item) => window.location.assign(`/du-an/${projectId}/yeu-cau/${item._id}`))
+            }
+            items={items}
+            selectedIds={canSelectRows ? selectedIds : undefined}
+            onSelectionChange={canSelectRows ? setSelectedIds : undefined}
+            selectionLabel="Chọn yêu cầu"
+            empty="Chưa có yêu cầu"
+            columns={[
+              { key: "requirement_key", label: "Mã" },
+              { key: "title", label: "Tên", render: (item) => item.current_version?.title },
+              {
+                key: "type",
+                label: "Loại",
+                render: (item) => valueLabel(item.current_version?.type),
+              },
+              {
+                key: "risk",
+                label: "Rủi ro",
+                render: (item) => valueLabel(item.current_version?.risk),
+              },
+              {
+                key: "status",
+                label: "Trạng thái",
+                render: (item) => <StatusPill value={item.status} />,
+              },
+              {
+                key: "assurance_status",
+                label: "Hồ sơ đảm bảo",
+                render: (item) => <StatusPill value={item.assurance_status} />,
+              },
+            ]}
+          />
+          <Pagination value={pageInfo} onChange={setPage} />
+        </>
+      )}
     </Panel>
   );
 }

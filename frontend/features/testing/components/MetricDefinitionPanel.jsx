@@ -88,6 +88,8 @@ const METRICS = {
   ],
 };
 
+const metricLabel = (key) => METRICS[key]?.[0] || "Chỉ số khác";
+
 export default function MetricDefinitionPanel({ project }) {
   const [definitions, setDefinitions] = useState([]);
   const [snapshots, setSnapshots] = useState([]);
@@ -191,8 +193,9 @@ export default function MetricDefinitionPanel({ project }) {
     snapshots.map((item) => [item.measurement_definition_id, item]),
   );
   const selectedSnapshots = snapshots.filter(
-    (item) => !selectedKey || item.measurement_key === selectedKey,
+    (item) => item.measurement_key === (selectedKey || snapshots[0]?.measurement_key),
   );
+  const chartMetricKey = selectedKey || snapshots[0]?.measurement_key || "";
   return (
     <Panel
       title="Đo lường chất lượng"
@@ -223,13 +226,21 @@ export default function MetricDefinitionPanel({ project }) {
             items={alerts.map((item) => ({ ...item, _id: item.definition_id }))}
             empty="Không có cảnh báo ngưỡng"
             columns={[
-              { key: "measurement_key", label: "Chỉ số" },
+              {
+                key: "measurement_key",
+                label: "Chỉ số",
+                render: (item) => metricLabel(item.measurement_key),
+              },
               {
                 key: "level",
                 label: "Mức cảnh báo",
                 render: (item) => <StatusPill value={item.level} />,
               },
-              { key: "value", label: "Giá trị" },
+              {
+                key: "value",
+                label: "Giá trị",
+                render: (item) => `${item.value ?? "Chưa có"}${item.unit ? ` ${item.unit}` : ""}`,
+              },
             ]}
           />
         </div>
@@ -370,7 +381,21 @@ export default function MetricDefinitionPanel({ project }) {
           },
         ]}
       />
-      <div className="p-5">
+      <div className="space-y-3 p-5">
+        <label className="grid max-w-md gap-1 text-sm font-semibold text-ink">
+          Chỉ số cần xem theo thời gian
+          <select
+            className="apple-input w-full min-w-0"
+            value={chartMetricKey}
+            onChange={(event) => setSelectedKey(event.target.value)}
+          >
+            {Array.from(new Set(snapshots.map((item) => item.measurement_key))).map((key) => (
+              <option key={key} value={key}>
+                {metricLabel(key)}
+              </option>
+            ))}
+          </select>
+        </label>
         <MetricTrendChart snapshots={selectedSnapshots} />
       </div>
       {comparison && (
@@ -379,7 +404,11 @@ export default function MetricDefinitionPanel({ project }) {
             items={comparison.items || []}
             empty="Không có số liệu chung để so sánh"
             columns={[
-              { key: "measurement_key", label: "Chỉ số" },
+              {
+                key: "measurement_key",
+                label: "Chỉ số",
+                render: (item) => metricLabel(item.measurement_key),
+              },
               {
                 key: "release_a",
                 label: "Giá trị gốc",

@@ -233,7 +233,7 @@ export default function PlatformUsersPanel() {
                 aria-label="Tìm tài khoản"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Email tên hoặc tên đăng nhập"
+                placeholder="Email, họ tên hoặc tên đăng nhập"
               />
               <button className="secondary-button shrink-0" type="submit">
                 Tìm

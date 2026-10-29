@@ -58,10 +58,13 @@ export default function FormalReviewPanel({
   }, [load]);
   const memberOptions = members.map((item) => ({
     value: item.user_id,
-    label: item.user_label || item.email || item.user_id,
+    label: item.user_label || item.email || "Thành viên",
   }));
   const memberName = (value) =>
-    memberOptions.find((item) => item.value === value)?.label || value || "Chưa phân công";
+    !value
+      ? "Chưa phân công"
+      : memberOptions.find((item) => item.value === value)?.label ||
+        "Thành viên không còn trong danh sách";
   const participantsAreValid = (moderatorId, authorId, reviewerIds) => {
     const values = Array.isArray(reviewerIds) ? reviewerIds : [reviewerIds];
     if (values.includes(moderatorId) || values.includes(authorId)) {
@@ -392,7 +395,7 @@ export default function FormalReviewPanel({
       )}
       {readOnly && (
         <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
-          Chỉ xem lịch sử rà soát. Luồng AI tự động không chờ quyết định tại đây.
+          Chỉ xem lịch sử rà soát.
         </p>
       )}
       <DataTable
@@ -431,7 +434,9 @@ export default function FormalReviewPanel({
             <div>
               <p className="font-semibold">{selected.objective}</p>
               <p className="text-sm text-ink-muted">
-                Checklist {selected.checklist_version_id || selected.checklist_version}
+                {selected.checklist_version
+                  ? `Danh sách tiêu chí phiên bản ${selected.checklist_version}`
+                  : "Danh sách tiêu chí rà soát"}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">

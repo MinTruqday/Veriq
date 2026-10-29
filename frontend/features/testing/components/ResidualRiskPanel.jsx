@@ -87,7 +87,7 @@ export default function ResidualRiskPanel({
                     <option value="">Chọn người phụ trách</option>
                     {members.map((member) => (
                       <option key={member.user_id} value={member.user_id}>
-                        {member.user_label || member.user?.email || member.user_id}
+                        {member.user_label || member.user?.email || "Thành viên"}
                       </option>
                     ))}
                   </select>
@@ -127,7 +127,9 @@ export default function ResidualRiskPanel({
               <p>
                 <span className="field-label">Người phụ trách</span>
                 <br />
-                {item.owner_id}
+                {members.find((member) => member.user_id === item.owner_id)?.user_label ||
+                  members.find((member) => member.user_id === item.owner_id)?.user?.email ||
+                  (item.owner_id ? "Người phụ trách không còn trong danh sách" : "Chưa phân công")}
               </p>
               <p>
                 <span className="field-label">Xử lý</span>

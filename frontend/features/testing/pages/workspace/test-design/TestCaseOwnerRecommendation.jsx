@@ -51,8 +51,8 @@ export default function TestCaseOwnerRecommendation({
             {result.currency
               ? ` theo ${result.currency} tại ngày ${result.payroll_effective_date}`
               : ""}
-            ; thiếu đơn giá không loại người phù hợp. So ngân sách và phân bổ giờ thực hiện ở Test
-            Plan. Đề xuất không tự gán người.
+            ; thiếu đơn giá không loại người phù hợp. So ngân sách và phân bổ giờ thực hiện ở kế
+            hoạch kiểm thử. Đề xuất không tự gán người.
           </p>
           {result.candidates?.length ? (
             result.candidates.slice(0, 3).map((candidate) => (

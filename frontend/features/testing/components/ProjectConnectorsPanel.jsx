@@ -265,7 +265,15 @@ export default function ProjectConnectorsPanel({ project }) {
                 label: "Loại dữ liệu",
                 render: (item) => valueLabel(item.artifact_type),
               },
-              { key: "artifact_id", label: "Mã dữ liệu" },
+              {
+                key: "artifact_id",
+                label: "Đối tượng trong dự án",
+                render: (item) =>
+                  item.artifact_key ||
+                  item.artifact_name ||
+                  item.artifact_title ||
+                  "Đối tượng không còn khả dụng",
+              },
               {
                 key: "status",
                 label: "Trạng thái",

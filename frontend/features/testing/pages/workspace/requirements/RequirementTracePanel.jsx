@@ -3,7 +3,7 @@ import { Panel } from "../../../components/WorkspacePrimitives";
 
 export default function RequirementTracePanel({ current, sourceDocuments }) {
   return (
-    <Panel title="Dấu vết nguồn">
+    <Panel title="Nguồn tài liệu">
       <DataTable
         items={(current.source_refs || []).map((item, index) => ({
           ...item,
@@ -13,7 +13,7 @@ export default function RequirementTracePanel({ current, sourceDocuments }) {
         columns={[
           {
             key: "requirement_document_id",
-            label: "Tài liệu nguồn",
+            label: "Tài liệu",
             render: (item) =>
               sourceDocuments.find((document) => document._id === item.requirement_document_id)
                 ?.title ||
@@ -32,7 +32,6 @@ export default function RequirementTracePanel({ current, sourceDocuments }) {
                   ? `Mục ${item.candidate_index + 1}`
                   : "Toàn bộ tài liệu",
           },
-          { key: "content_hash", label: "SHA256" },
         ]}
       />
     </Panel>

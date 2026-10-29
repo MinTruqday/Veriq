@@ -126,6 +126,9 @@ async def analyze_requirement_quality(version_id, payload, user):
             }
         )
     findings = deterministic_findings + ai_findings
+    contract_metadata = ai_contract_metadata(ai_result)
+    if contract_metadata.get("degraded_mode") is None:
+        contract_metadata["degraded_mode"] = False
     result = {
         "_id": new_id('AIF'),
         "project_id": version["project_id"],
@@ -140,7 +143,7 @@ async def analyze_requirement_quality(version_id, payload, user):
         "valid": ai_result.get("status") == 'SUCCESS'
         and not ai_result.get("degraded_mode")
         and not any(item["severity"] == 'error' for item in findings),
-        **ai_contract_metadata(ai_result),
+        **contract_metadata,
         "idempotency_key": payload.idempotency_key,
         "human_confirmation_required": True,
         "created_by": user.id,

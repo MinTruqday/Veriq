@@ -29,6 +29,20 @@ import {
   shouldReloadAfterAmbiguousMutation,
 } from "../../lib/executionRecovery.logic.mjs";
 
+const testPlanFindingLabels = {
+  TEST_PLAN_STRATEGY_REQUIRED: "Chọn chiến lược kiểm thử đã được duyệt.",
+  TEST_PLAN_OBJECTIVE_REQUIRED: "Bổ sung mục tiêu của kế hoạch.",
+  TEST_PLAN_SCOPE_REQUIRED: "Bổ sung phạm vi kiểm thử.",
+  TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED: "Chọn phiên bản yêu cầu trong phạm vi.",
+  TEST_PLAN_ENTRY_CRITERIA_REQUIRED: "Bổ sung điều kiện bắt đầu.",
+  TEST_PLAN_EXIT_CRITERIA_REQUIRED: "Bổ sung điều kiện kết thúc.",
+  TEST_PLAN_TEST_TYPE_REQUIRED: "Chọn loại kiểm thử.",
+  TEST_PLAN_QUALITY_TARGET_REQUIRED: "Bổ sung mục tiêu chất lượng.",
+  TEST_PLAN_SCHEDULE_REQUIRED: "Bổ sung thời gian dự kiến bắt đầu và kết thúc.",
+  TEST_PLAN_RELEASE_REQUIRED: "Chọn bản phát hành.",
+  TEST_PLAN_ENVIRONMENT_REQUIRED: "Chọn môi trường kiểm thử.",
+};
+
 export default function ExecutionPage({ project, section, workspaceView }) {
   const { ask, dialog } = useActionDialog();
   const runId = section[0] || "";
@@ -804,7 +818,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 </select>
                 <div className="space-y-1">
                   <label className="text-sm font-medium" htmlFor="run-assignment-strategy">
-                    Phân công ca kiểm thử
+                    Cách phân công
                   </label>
                   <select
                     id="run-assignment-strategy"
@@ -814,11 +828,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                       setRunForm({ ...runForm, assignmentStrategy: event.target.value })
                     }
                   >
-                    <option value="MANUAL">Để trống để phân công thủ công</option>
+                    <option value="MANUAL">Tạo lần chạy chưa phân công</option>
                   </select>
                   <p className="text-xs text-ink-muted">
-                    Tạo lần chạy không tự ghi người thực hiện. Sau khi tạo, QA có thể yêu cầu AI đề
-                    xuất theo kỹ năng và tải rồi duyệt đề xuất, hoặc chọn từng Tester thủ công.
+                    Sau khi tạo, QA có thể yêu cầu AI đề xuất người thực hiện theo kỹ năng và tải
+                    công việc, xem lại rồi duyệt đề xuất hoặc tự chọn từng Tester.
                   </p>
                 </div>
                 <MultiSelect
@@ -839,8 +853,8 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   onChange={(versionIds) => setRunForm((current) => ({ ...current, versionIds }))}
                 />
                 <p className="text-[12px] text-ink-muted">
-                  Ảnh chụp {runForm.versionIds.length} phiên bản được chọn cùng các phiên bản trong
-                  bộ kiểm thử
+                  Phạm vi lần chạy gồm {runForm.versionIds.length} phiên bản đã chọn và các phiên
+                  bản thuộc bộ kiểm thử.
                 </p>
                 <div className="action-dialog-footer flex justify-end gap-3">
                   <button
@@ -919,12 +933,18 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             <div className="border-b border-border p-4 text-sm">
               {planValidation.ready_for_approval
                 ? "Kế hoạch đã đủ điều kiện phê duyệt"
-                : planValidation.findings.map((item) => item.code).join(" · ")}
+                : planValidation.findings
+                    .map(
+                      (item) =>
+                        testPlanFindingLabels[item.code] ||
+                        "Bổ sung thông tin còn thiếu cho kế hoạch.",
+                    )
+                    .join(" ")}
             </div>
           )}
           <details className="border-b border-border p-4">
             <summary className="cursor-pointer text-sm font-medium">
-              Tìm kiếm bộ lọc và sắp xếp
+              Tìm kiếm, lọc và sắp xếp
             </summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <input
@@ -1064,7 +1084,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         <Panel title="Danh sách bộ kiểm thử">
           <details className="border-b border-border p-4">
             <summary className="cursor-pointer text-sm font-medium">
-              Tìm kiếm bộ lọc và sắp xếp
+              Tìm kiếm, lọc và sắp xếp
             </summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <input
@@ -1189,7 +1209,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
             <Panel title="Danh sách lần chạy">
               <details className="border-b border-border p-4">
                 <summary className="cursor-pointer text-sm font-medium">
-                  Tìm kiếm bộ lọc và sắp xếp
+                  Tìm kiếm, lọc và sắp xếp
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <input

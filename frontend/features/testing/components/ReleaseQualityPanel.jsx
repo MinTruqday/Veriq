@@ -100,14 +100,21 @@ export default function ReleaseQualityPanel({ project }) {
             { value: "", label: "Chọn ảnh chụp" },
             ...monitoring.map((item) => ({
               value: item._id,
-              label: `${item._id} ${item.effective_quality_gate_status || item.quality_gate_status}`,
+              label: `${item.name || (item.created_at ? new Date(item.created_at).toLocaleString() : "Ảnh chụp giám sát")} · ${item.effective_quality_gate_status || item.quality_gate_status || "Chưa đánh giá"}`,
             })),
           ],
         },
         {
           name: "measurement_snapshot_refs",
-          label: "Mã ảnh chụp đo lường cách nhau bởi dấu phẩy",
-          initialValue: measurements.map((item) => item._id).join(","),
+          label: "Ảnh chụp đo lường liên quan",
+          multiple: true,
+          options: measurements.map((item) => ({
+            value: item._id,
+            label:
+              item.name ||
+              (item.created_at ? new Date(item.created_at).toLocaleString() : "Ảnh chụp đo lường"),
+          })),
+          initialValue: [],
         },
         {
           name: "rationale",
@@ -121,10 +128,7 @@ export default function ReleaseQualityPanel({ project }) {
           const value = await testingApi.createQualityEvaluation(project._id, {
             ...answer,
             idempotency_key: crypto.randomUUID(),
-            measurement_snapshot_refs: answer.measurement_snapshot_refs
-              .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean),
+            measurement_snapshot_refs: answer.measurement_snapshot_refs || [],
             critical_risks: [],
             evidence_refs: [],
           });
@@ -175,7 +179,7 @@ export default function ReleaseQualityPanel({ project }) {
             { value: "", label: "Chọn thành viên" },
             ...members.map((item) => ({
               value: item.user_id,
-              label: item.user_label || item.email || item.user_id,
+              label: item.user_label || item.email || "Thành viên",
             })),
           ],
         },
@@ -234,11 +238,27 @@ export default function ReleaseQualityPanel({ project }) {
         items={items}
         empty="Chưa có đánh giá chất lượng"
         columns={[
-          { key: "release_id", label: "Bản phát hành" },
-          { key: "build_id", label: "Bản dựng" },
+          {
+            key: "release_id",
+            label: "Bản phát hành",
+            render: (item) => {
+              const release = releases.find((value) => value._id === item.release_id);
+              return release
+                ? `${release.key} ${release.name}`
+                : "Bản phát hành không còn khả dụng";
+            },
+          },
+          {
+            key: "build_id",
+            label: "Bản dựng",
+            render: (item) => {
+              const build = builds.find((value) => value._id === item.build_id);
+              return build ? `${build.identifier} ${build.version}` : "Bản dựng không còn khả dụng";
+            },
+          },
           {
             key: "quality_gate_status",
-            label: "Gate",
+            label: "Điều kiện phát hành",
             render: (item) => <StatusPill value={item.quality_gate_status} />,
           },
           {
@@ -311,7 +331,7 @@ export default function ReleaseQualityPanel({ project }) {
                           label: "Quyết định",
                           options: ["ENDORSE", "REQUEST_CHANGES"].map((value) => ({
                             value,
-                            label: value,
+                            label: value === "ENDORSE" ? "Đồng ý" : "Yêu cầu chỉnh sửa",
                           })),
                         },
                         { name: "note", label: "Ghi chú", multiline: true },

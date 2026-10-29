@@ -15,11 +15,6 @@ export default function StrategyVersionHistory({ items, lineageId, onSelect }) {
           render: (item) => <StatusPill value={item.status} />,
         },
         {
-          key: "snapshot_hash",
-          label: "Dấu vân tay nội dung",
-          render: (item) => item.snapshot_hash?.slice(0, 16) || "Chưa chốt",
-        },
-        {
           key: "updated_at",
           label: "Cập nhật",
           render: (item) => new Date(item.updated_at).toLocaleString("vi-VN"),

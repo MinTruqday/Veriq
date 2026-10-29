@@ -163,10 +163,10 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
           <ModalHeader>
             <ModalTitle>Tạo ma trận thiết bị</ModalTitle>
           </ModalHeader>
-          <form className="grid gap-3 p-5 sm:grid-cols-2" onSubmit={createMatrix}>
+          <form className="grid min-w-0 gap-3 p-5 sm:grid-cols-2" onSubmit={createMatrix}>
             <input
               aria-label="Tên ma trận thiết bị"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               required
               placeholder="Tên ma trận"
               value={form.name}
@@ -174,7 +174,7 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
             />
             <input
               aria-label="Mã hồ sơ thiết bị"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               required
               placeholder="Mã hồ sơ"
               value={form.profileKey}
@@ -182,7 +182,7 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
             />
             <input
               aria-label="Tên hồ sơ thiết bị"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               required
               placeholder="Tên hồ sơ"
               value={form.profileName}
@@ -190,7 +190,7 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
             />
             <select
               aria-label="Loại thiết bị"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               value={form.deviceType}
               onChange={(event) => setForm({ ...form, deviceType: event.target.value })}
             >
@@ -202,7 +202,7 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
             </select>
             <input
               aria-label="Hệ điều hành"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               required
               placeholder="Hệ điều hành"
               value={form.operatingSystem}
@@ -210,7 +210,7 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
             />
             <input
               aria-label="Trình duyệt"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               placeholder="Trình duyệt"
               value={form.browser}
               onChange={(event) => setForm({ ...form, browser: event.target.value })}
@@ -252,16 +252,18 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
             <p className="text-sm text-ink-muted">Chưa có ma trận thiết bị</p>
           )}
           {matrices.map((matrix) => (
-            <div className="rounded-xl border border-border p-3" key={matrix._id}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-ink">{matrix.name}</p>
-                  <p className="text-xs text-ink-muted">{matrix.profiles.length} hồ sơ thiết bị</p>
+            <div className="min-w-0 rounded-xl border border-border p-3" key={matrix._id}>
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-words font-medium text-ink">{matrix.name}</p>
+                  <p className="text-xs text-ink-muted">
+                    {matrix.profiles?.length || 0} hồ sơ thiết bị
+                  </p>
                 </div>
                 <StatusPill value={matrix.status} />
               </div>
               {can("device_matrix.manage") && (
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     className="secondary-button"
                     type="button"
@@ -282,10 +284,10 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
           ))}
         </div>
         {can("device_matrix.assign") && matrices.length > 0 && (
-          <form className="space-y-3" onSubmit={assignMatrix}>
+          <form className="min-w-0 space-y-3" onSubmit={assignMatrix}>
             <select
               aria-label="Ma trận thiết bị cần gán"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               value={selectedMatrixId}
               onChange={(event) => setSelectedMatrixId(event.target.value)}
             >
@@ -297,7 +299,7 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
             </select>
             <select
               aria-label="Loại phạm vi được gán"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               value={targetType}
               onChange={(event) => setTargetType(event.target.value)}
             >
@@ -306,7 +308,7 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
             </select>
             <select
               aria-label="Phạm vi được gán"
-              className="apple-input"
+              className="apple-input w-full min-w-0"
               required
               value={targetId}
               onChange={(event) => setTargetId(event.target.value)}

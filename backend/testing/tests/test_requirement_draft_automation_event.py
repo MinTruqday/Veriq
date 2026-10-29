@@ -4,11 +4,88 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
+from src.clients import ai_automation
 from src.modules.requirements.services import requirement_records
 from src.schemas.contracts.requirements import RequirementDraftPatch, RequirementVersionCreate
 
 
 class RequirementDraftAutomationEventTests(unittest.IsolatedAsyncioTestCase):
+    async def test_draft_requirement_does_not_enqueue_maintenance_automation(self):
+        user = SimpleNamespace(id="user-1", _ai_automation_run_id=None)
+        version = {"_id": "version-1", "project_id": "project-1", "status": "DRAFT", "revision": 1}
+        session = object()
+
+        with patch.object(ai_automation, "queue_event", new=AsyncMock()) as queue:
+            result = await ai_automation.queue_requirement_changed(version, user, session)
+
+        self.assertIsNone(result)
+        queue.assert_not_awaited()
+
+    async def test_baselined_requirement_enqueues_maintenance_automation(self):
+        user = SimpleNamespace(id="user-1", _ai_automation_run_id=None)
+        version = {
+            "_id": "version-1",
+            "project_id": "project-1",
+            "requirement_id": "requirement-1",
+            "version": 2,
+            "status": "BASELINED",
+            "revision": 2,
+        }
+        session = object()
+
+        with (
+            patch(
+                "src.repositories.requirement.requirement_repository.find_prior_baseline_candidates",
+                new=AsyncMock(
+                    return_value=[
+                        {
+                            "_id": "version-0",
+                            "project_id": "project-1",
+                            "requirement_id": "requirement-1",
+                            "version": 1,
+                            "status": "BASELINED",
+                        }
+                    ]
+                ),
+            ),
+            patch.object(
+                ai_automation, "queue_event", new=AsyncMock(return_value="event-1")
+            ) as queue,
+        ):
+            result = await ai_automation.queue_requirement_changed(version, user, session)
+
+        self.assertEqual(result, "event-1")
+        queue.assert_awaited_once()
+        self.assertEqual(queue.await_args.args[0], "REQUIREMENT_CHANGED")
+        self.assertEqual(queue.await_args.kwargs["prior_baseline_version_id"], "version-0")
+        self.assertIsNone(queue.await_args.kwargs["change_simulation_blocked_reason"])
+
+    async def test_first_baseline_records_safe_waiting_reason(self):
+        user = SimpleNamespace(id="user-1", _ai_automation_run_id=None)
+        version = {
+            "_id": "version-1",
+            "project_id": "project-1",
+            "requirement_id": "requirement-1",
+            "version": 1,
+            "status": "BASELINED",
+            "revision": 1,
+        }
+
+        with (
+            patch(
+                "src.repositories.requirement.requirement_repository.find_prior_baseline_candidates",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(ai_automation, "queue_event", new=AsyncMock()) as queue,
+        ):
+            await ai_automation.queue_requirement_changed(version, user, object())
+
+        self.assertIsNone(queue.await_args.kwargs["prior_baseline_version_id"])
+        self.assertEqual(
+            queue.await_args.kwargs["change_simulation_blocked_reason"],
+            "NO_PRIOR_BASELINE",
+        )
+
     async def test_saving_requirement_draft_emits_automation_event_for_saved_revision(self):
         user = SimpleNamespace(id="user-1", _ai_automation_run_id=None)
         requirement = {

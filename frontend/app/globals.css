@@ -150,7 +150,7 @@
   }
 
   .workspace-page-actions {
-    flex: 1 1 30rem;
+    flex: 0 1 auto;
     justify-content: flex-end;
   }
 
@@ -583,7 +583,7 @@
   }
 }
 
-@container data-table-wide (min-width: 72rem) {
+@container data-table-wide (min-width: 64rem) {
   .data-table-desktop {
     display: block;
   }

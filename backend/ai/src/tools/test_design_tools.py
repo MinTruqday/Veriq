@@ -12,6 +12,19 @@ from src.tools.registry import with_tool_access
 from src.tools.testing_api import call, parse
 
 
+def parse_collection(value):
+    try:
+        result = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        items = result.get("items", result.get("results"))
+        return items if isinstance(items, list) else []
+    return []
+
+
 @with_tool_access(("test_design", "analysis"), "READ", "testcase.read")
 async def search_test_cases(
     project_id: Annotated[str, Field(description="Testing project identifier")],
@@ -114,13 +127,9 @@ async def generate_security_suggestions_for_requirement(
     )
     if not suggestion or not suggestion.get("_id"):
         return json.dumps({"status": "automation_partial_failure", "reason_code": "SECURITY_SUGGESTION_CREATE_FAILED"})
-    stored = parse(
+    stored = parse_collection(
         await call("GET", f"/du-an/{project_id}/ai/goi-y-kiem-thu-bao-mat", config)
     )
-    if isinstance(stored, dict):
-        stored = stored.get("items", stored.get("results", [stored]))
-    if not isinstance(stored, list):
-        stored = []
     readback = next(
         (item for item in stored if isinstance(item, dict) and item.get("_id") == suggestion["_id"]),
         None,
@@ -384,6 +393,16 @@ async def recommend_test_design_techniques_for_requirement_change(
             timeout=settings.MODEL_TIMEOUT_SECONDS,
         )
     )
+    if result and result.get("status") == "qa_operation_failed":
+        error = result.get("error")
+        error_code = error.get("code") if isinstance(error, dict) else None
+        if result.get("upstream_status") == 409 and error_code in {
+            "TEST_DESIGN_REQUIREMENT_CHANGED",
+            "TEST_DESIGN_PREVIEW_STALE",
+        }:
+            return json.dumps(
+                {"status": "automation_partial_failure", "reason_code": error_code}
+            )
     if not result or not isinstance(result.get("items"), list):
         return json.dumps({"status": "automation_partial_failure", "reason_code": "TECHNIQUE_RECOMMENDATION_RESULT_INVALID"})
     latest = parse(

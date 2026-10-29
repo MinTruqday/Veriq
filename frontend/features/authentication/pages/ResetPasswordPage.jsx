@@ -16,7 +16,10 @@ function ResetPasswordContent() {
     submit(password);
   };
   return (
-    <AuthFrame title="Đặt mật khẩu mới" description="Mật khẩu mới cần có ít nhất 12 ký tự">
+    <AuthFrame
+      title="Đặt mật khẩu mới"
+      description="Mật khẩu mới cần có ít nhất 12 ký tự. Sau khi cập nhật, bạn sẽ được chuyển về trang đăng nhập."
+    >
       {error && (
         <div className="mb-5">
           <InlineState title="Không thể cập nhật" detail={error} tone="danger" />
@@ -34,7 +37,7 @@ function ResetPasswordContent() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
-        <Button type="submit" className="w-full" disabled={submitting}>
+        <Button type="submit" className="w-full" disabled={submitting || !token}>
           {submitting ? "Đang cập nhật" : "Cập nhật"}
         </Button>
       </form>

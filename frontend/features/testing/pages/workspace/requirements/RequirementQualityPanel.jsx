@@ -17,13 +17,13 @@ export default function RequirementQualityPanel({ lint }) {
     >
       {lint.is_stale && (
         <p className="px-5 pt-4 text-sm text-warning" role="status">
-          Kết quả này thuộc phiên bản hoặc lần sửa trước; đang chờ phân tích tự động cho revision
+          Kết quả này thuộc phiên bản hoặc lần sửa trước; đang chờ phân tích tự động cho lần sửa
           hiện tại.
         </p>
       )}
       {lint.artifact_revision && (
         <p className="px-5 pt-3 text-sm text-ink-muted">
-          Kết quả tự động cho revision {lint.artifact_revision}
+          Kết quả tự động cho lần sửa {lint.artifact_revision}
         </p>
       )}
       <DataTable

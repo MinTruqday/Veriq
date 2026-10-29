@@ -26,3 +26,7 @@ def requirement_test_evidence_text(version):
         if isinstance(value, str) and value.strip():
             sections.append(f"{label}:\n{value.strip()}")
     return "\n\n".join(section for section in sections if section)
+
+
+def requirement_test_evidence_matches(version, expected_text):
+    return requirement_test_evidence_text(version) == expected_text

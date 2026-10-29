@@ -3,7 +3,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from src.runtime.automation_worker import AutomationWorker
-from src.schemas.automation import AutomationStatus, AutomationTrigger
+from src.schemas.automation import (
+    AutomationKind,
+    AutomationStatus,
+    AutomationTrigger,
+)
 from src.tools.requirement_document_workflow import qa_test_design_handoff_versions
 
 
@@ -41,6 +45,140 @@ class RequirementHandoffSelectionTests(unittest.TestCase):
 
 
 class AutomationWorkerHandoffTests(unittest.IsolatedAsyncioTestCase):
+    async def test_requirement_change_enqueues_simulation_for_verified_prior_baseline(self):
+        worker = AutomationWorker()
+        prior = {
+            "_id": "req-v1",
+            "project_id": "project-1",
+            "requirement_id": "req-1",
+            "version": 1,
+            "status": "BASELINED",
+            "plain_text_projection": "Old requirement behavior",
+        }
+        current = {
+            "_id": "req-v2",
+            "project_id": "project-1",
+            "requirement_id": "req-1",
+            "version": 2,
+            "status": "BASELINED",
+            "plain_text_projection": "New requirement behavior",
+        }
+        requirement = {
+            "_id": "req-1",
+            "project_id": "project-1",
+            "current_version": current,
+        }
+        parent = SimpleNamespace(
+            automation_run_id="parent-run",
+            project_id="project-1",
+            requester_user_id="ba-1",
+            trigger=AutomationTrigger.REQUIREMENT_CHANGED,
+            constraints={"prior_baseline_version_id": "req-v1"},
+            target_artifact_ids=["req-v2"],
+            evidence=[
+                SimpleNamespace(
+                    artifact_type="requirement_version",
+                    artifact_id="req-1",
+                    artifact_version_id="req-v2",
+                )
+            ],
+        )
+        child = SimpleNamespace(
+            automation_run_id="simulation-run",
+            status=AutomationStatus.QUEUED,
+            error_code=None,
+        )
+        responses = [prior, current, requirement, [current, prior]]
+        with (
+            patch(
+                "src.runtime.automation_worker.require_operation",
+                new=AsyncMock(side_effect=responses),
+            ) as read,
+            patch(
+                "src.runtime.automation_worker.automation_service.enqueue_event",
+                new=AsyncMock(return_value=[child]),
+            ) as enqueue,
+        ):
+            workflows = await worker._enqueue_requirement_change_simulation(
+                parent, "execution-token"
+            )
+
+        self.assertEqual(workflows[0]["status"], "QUEUED")
+        self.assertEqual(workflows[0]["automation_run_id"], "simulation-run")
+        self.assertEqual(read.await_count, 4)
+        event = enqueue.await_args.args[0]
+        self.assertEqual(event.parent_automation_run_id, "parent-run")
+        self.assertEqual(event.target_artifact_ids, ["req-v1", "req-v2"])
+        self.assertEqual(event.change_simulation.base_requirement_version_id, "req-v1")
+        self.assertEqual(
+            event.change_simulation.proposed_source_text, "New requirement behavior"
+        )
+        self.assertEqual(event.evidence[0].text, "Old requirement behavior")
+        self.assertEqual(event.evidence[1].text, "New requirement behavior")
+
+    async def test_requirement_change_simulation_refuses_cross_project_baseline(self):
+        worker = AutomationWorker()
+        parent = SimpleNamespace(
+            automation_run_id="parent-run",
+            project_id="project-1",
+            requester_user_id="ba-1",
+            trigger=AutomationTrigger.REQUIREMENT_CHANGED,
+            constraints={"prior_baseline_version_id": "req-v1"},
+            target_artifact_ids=["req-v2"],
+            evidence=[
+                SimpleNamespace(
+                    artifact_type="requirement_version",
+                    artifact_id="req-1",
+                    artifact_version_id="req-v2",
+                )
+            ],
+        )
+        with (
+            patch(
+                "src.runtime.automation_worker.require_operation",
+                new=AsyncMock(
+                    return_value={
+                        "_id": "req-v1",
+                        "project_id": "project-other",
+                        "requirement_id": "req-1",
+                        "version": 1,
+                        "status": "BASELINED",
+                    }
+                ),
+            ),
+            patch(
+                "src.runtime.automation_worker.automation_service.enqueue_event",
+                new=AsyncMock(),
+            ) as enqueue,
+        ):
+            workflows = await worker._enqueue_requirement_change_simulation(
+                parent, "execution-token"
+            )
+
+        self.assertEqual(workflows[0]["status"], "WAITING")
+        self.assertEqual(
+            workflows[0]["reason_code"],
+            "REQUIREMENT_VERSION_PAIR_NOT_CURRENT_OR_INVALID",
+        )
+        enqueue.assert_not_awaited()
+
+    async def test_simulation_child_does_not_spawn_another_change_simulation(self):
+        worker = AutomationWorker()
+        child = SimpleNamespace(
+            trigger=AutomationTrigger.REQUIREMENT_CHANGED,
+            kind=AutomationKind.CHANGE_SIMULATION,
+            change_simulation=SimpleNamespace(base_requirement_version_id="req-v1"),
+        )
+        with patch(
+            "src.runtime.automation_worker.require_operation", new=AsyncMock()
+        ) as read:
+            workflows = await worker._enqueue_requirement_change_simulation(
+                child, "execution-token"
+            )
+
+        self.assertEqual(workflows, [])
+        read.assert_not_awaited()
+
     async def test_verified_baseline_is_dispatched_to_a_separate_qa_stage_idempotently(self):
         worker = AutomationWorker()
         parent = SimpleNamespace(

@@ -25,7 +25,9 @@ async def _require_question_author(project_id, user):
 
 async def list_clarifications(requirement_version_id, user):
     version = await get_project_entity("requirement_versions", requirement_version_id, user, "requirement.read")
-    return await requirement_clarification_repository.list_for_version(version["project_id"], version["_id"])
+    return await requirement_clarification_repository.list_for_requirement(
+        version["project_id"], version["requirement_id"]
+    )
 
 
 async def _create(

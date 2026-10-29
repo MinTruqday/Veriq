@@ -31,7 +31,7 @@ export default function CicdPanel({ project }) {
   }, [load]);
   const create = async () => {
     await ask({
-      title: "Ánh xạ quy trình CI CD",
+      title: "Ánh xạ quy trình CI/CD",
       description: "Quy trình phải thuộc một kết nối dự án đang hoạt động",
       confirmLabel: "Tạo ánh xạ",
       fields: [
@@ -48,7 +48,7 @@ export default function CicdPanel({ project }) {
         },
         {
           name: "pipelineReference",
-          label: "Tham chiếu quy trình nền tảng",
+          label: "Mã quy trình trên nền tảng",
           required: true,
           initialValue: "pipeline://platform/",
         },
@@ -104,7 +104,7 @@ export default function CicdPanel({ project }) {
   if (!can("cicd.read")) return null;
   return (
     <Panel
-      title="Tích hợp CI CD"
+      title="Tích hợp CI/CD"
       actions={
         can("cicd.manage") && connectors.length > 0 ? (
           <button className="apple-button" type="button" onClick={create}>
@@ -120,7 +120,7 @@ export default function CicdPanel({ project }) {
           empty="Chưa có quy trình được ánh xạ"
           columns={[
             { key: "name", label: "Tên" },
-            { key: "pipeline_reference", label: "Quy trình" },
+            { key: "pipeline_reference", label: "Mã quy trình trên nền tảng" },
             {
               key: "enabled",
               label: "Trạng thái",
@@ -140,7 +140,7 @@ export default function CicdPanel({ project }) {
         />
         <DataTable
           items={state.runs}
-          empty="Chưa nhận lần chạy CI"
+          empty="Chưa nhận lần chạy CI/CD"
           columns={[
             { key: "external_run_id", label: "Mã lần chạy ngoài" },
             { key: "commit_reference", label: "Phiên bản mã nguồn" },

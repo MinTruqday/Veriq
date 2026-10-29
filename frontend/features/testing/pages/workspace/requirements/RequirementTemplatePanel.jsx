@@ -769,7 +769,10 @@ export default function RequirementTemplatePanel({
                   <option value="">Chưa phân công</option>
                   {members.map((member) => (
                     <option key={member.user_id} value={member.user_id}>
-                      {member.user_label || member.user_id}
+                      {member.user_label ||
+                        member.user?.full_name ||
+                        member.user?.email ||
+                        "Tài khoản không xác định"}
                     </option>
                   ))}
                 </select>

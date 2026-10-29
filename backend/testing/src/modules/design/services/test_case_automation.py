@@ -16,6 +16,7 @@ from src.modules.design.services.generation import (
 )
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases, project_test_text, require_current_baselined_version
+from src.modules.design.services.test_evidence import requirement_test_evidence_matches
 
 
 async def generate_test_case_draft_records(version_id, payload, user):
@@ -212,8 +213,7 @@ async def recommend_test_design_techniques(version_id, payload, user):
         ["DRAFT", "IN_REVIEW", "APPROVING"],
     )
     if (
-        (current_versions[0].get("plain_text_projection") or plain_text(current_versions[0].get("content_doc", {})))
-        != evidence[0]["text"]
+        not requirement_test_evidence_matches(current_versions[0], evidence[0]["text"])
         or sorted(
             (item["_id"], item.get("plain_text") or plain_text(item.get("content_doc", {})))
             for item in current_criteria

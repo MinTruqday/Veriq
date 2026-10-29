@@ -46,12 +46,12 @@ export default function ScenariosPanel({
         />
       )}
       <details className="border-b border-border p-4">
-        <summary className="cursor-pointer text-sm font-medium">Tìm kiếm bộ lọc và sắp xếp</summary>
+        <summary className="cursor-pointer text-sm font-medium">Tìm, lọc và sắp xếp</summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <input
             aria-label="Tìm kịch bản"
             className="apple-input"
-            placeholder="Tìm mã hoặc tên"
+            placeholder="Tìm theo mã hoặc tên kịch bản"
             value={filters.q}
             onChange={(event) => setFilters({ ...filters, q: event.target.value })}
           />
@@ -101,7 +101,7 @@ export default function ScenariosPanel({
             onChange={(event) => setFilters({ ...filters, sort: event.target.value })}
           >
             <option value="-updated_at">Mới cập nhật</option>
-            <option value="updated_at">Cũ cập nhật</option>
+            <option value="updated_at">Cập nhật cũ nhất</option>
             <option value="scenario_key">Mã tăng dần</option>
             <option value="title">Tên tăng dần</option>
           </select>

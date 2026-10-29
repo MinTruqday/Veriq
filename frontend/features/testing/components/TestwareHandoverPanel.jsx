@@ -26,7 +26,10 @@ export default function TestwareHandoverPanel({ handover = [], archived = [], en
               key: "artifact_id",
               label: "Tài sản",
               render: (item) =>
-                item.artifact_id || (Array.isArray(item.items) ? `${item.items.length} mục` : ""),
+                item.artifact_key ||
+                item.artifact_name ||
+                item.artifact_title ||
+                (Array.isArray(item.items) ? `${item.items.length} mục` : "Tài sản kiểm thử"),
             },
             { key: "handover_to", label: "Bàn giao cho" },
             { key: "storage_location", label: "Vị trí lưu trữ" },
@@ -58,7 +61,7 @@ export default function TestwareHandoverPanel({ handover = [], archived = [], en
             {
               key: "name",
               label: "Môi trường",
-              render: (item) => item.name || item.environment_id,
+              render: (item) => item.name || "Môi trường không còn khả dụng",
             },
             {
               key: "availability",

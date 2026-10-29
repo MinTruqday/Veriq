@@ -233,13 +233,12 @@ export default function AutomationExecutionPanel({ project }) {
           onSelect={open}
           columns={[
             { key: "name", label: "Tên" },
-            { key: "runner", label: "Runner" },
+            { key: "runner", label: "Công cụ chạy" },
             {
               key: "status",
               label: "Trạng thái",
               render: (item) => <StatusPill value={item.status} />,
             },
-            { key: "operation_id", label: "Mã tác vụ" },
           ]}
         />
         {selected && (

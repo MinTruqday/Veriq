@@ -13,7 +13,7 @@ import {
   useActionDialog,
 } from "../components/WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
-import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { messageOf, valueLabel } from "../lib/testing";
 import { taskProgressPresentation } from "../lib/projectProgress.logic.mjs";
 import {
   formatProjectDate,
@@ -22,14 +22,43 @@ import {
   projectPlannedDurationDays,
 } from "../lib/projectSchedule.logic.mjs";
 
-function projectScheduleLabel(project) {
+function projectSchedule(project) {
   const duration = projectPlannedDurationDays(project.planned_start_at, project.planned_end_at);
-  const dates = [
-    project.planned_start_at && `Bắt đầu dự kiến: ${formatProjectDate(project.planned_start_at)}`,
-    project.planned_end_at && `Kết thúc dự kiến: ${formatProjectDate(project.planned_end_at)}`,
-    duration && `Thời lượng dự kiến: ${duration} ngày lịch`,
-  ].filter(Boolean);
-  return dates.join(" · ");
+  return {
+    start: project.planned_start_at ? formatProjectDate(project.planned_start_at) : "Chưa xác định",
+    end: project.planned_end_at ? formatProjectDate(project.planned_end_at) : "Chưa xác định",
+    duration,
+  };
+}
+
+function projectIncludesDate(project, day) {
+  if (!day) return true;
+  if (!project.planned_start_at && !project.planned_end_at) return false;
+  const [year, month, date] = day.split("-").map(Number);
+  const selectedDayStart = Date.UTC(year, month - 1, date);
+  const selectedDayEnd = selectedDayStart + 24 * 60 * 60 * 1000 - 1;
+  const start = project.planned_start_at ? Date.parse(project.planned_start_at) : null;
+  const end = project.planned_end_at ? Date.parse(project.planned_end_at) : null;
+  return (start == null || start <= selectedDayEnd) && (end == null || end >= selectedDayStart);
+}
+
+function formatProjectUpdatedAt(value) {
+  if (!value) return "Chưa có thông tin";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa có thông tin";
+  const dateLabel = date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+  const timeLabel = date.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+  return `${dateLabel}, ${timeLabel}`;
 }
 
 export default function ProjectsPage() {
@@ -38,6 +67,7 @@ export default function ProjectsPage() {
   const [invitations, setInvitations] = useState([]);
   const [invitationActionId, setInvitationActionId] = useState("");
   const [query, setQuery] = useState("");
+  const [scheduleDate, setScheduleDate] = useState("");
   const [status, setStatus] = useState("active");
   const [invitationError, setInvitationError] = useState("");
   const [invitationActionError, setInvitationActionError] = useState("");
@@ -65,6 +95,7 @@ export default function ProjectsPage() {
     form.planned_start_at,
     form.planned_end_at,
   );
+  const filteredItems = items.filter((item) => projectIncludesDate(item, scheduleDate));
   const openCreateModal = () => {
     setCreateError("");
     setCreating(true);
@@ -75,7 +106,7 @@ export default function ProjectsPage() {
     setError("");
     try {
       const [projectsResult, invitationsResult] = await Promise.allSettled([
-        testingApi.listProjects(value, statusValue),
+        testingApi.listProjects(value, statusValue, 200),
         testingApi.listInvitations(),
       ]);
       if (requestId !== requestSequence.current) return;
@@ -407,121 +438,115 @@ export default function ProjectsPage() {
           )}
         </Panel>
       )}
-      <Panel
-        title="Danh sách dự án"
-        actions={
-          <form
-            className="flex w-full flex-col gap-2 sm:flex-row sm:items-center"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void load(query, status);
-            }}
+      <Panel title="Danh sách dự án">
+        <form
+          className="grid min-w-0 gap-3 border-b border-border p-4 md:grid-cols-[minmax(260px,1fr)_auto_minmax(170px,220px)_minmax(170px,210px)] md:items-center"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void load(query, status);
+          }}
+        >
+          <label className="relative block min-w-0">
+            <span className="sr-only">Tìm dự án</span>
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-ink-faint"
+              size={16}
+            />
+            <input
+              aria-label="Tìm dự án"
+              className="apple-input h-10 w-full py-0 pl-10"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Tìm theo mã hoặc tên dự án"
+            />
+          </label>
+          <button className="secondary-button h-10" type="submit">
+            Tìm
+          </button>
+          <select
+            aria-label="Trạng thái dự án"
+            className="apple-input h-10 w-full"
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
           >
-            <div className="relative flex items-center">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 z-10 text-ink-faint"
-                size={16}
-              />
-              <input
-                aria-label="Tìm dự án"
-                className="apple-input h-10 w-full py-0 pl-10 sm:w-64"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  event.preventDefault();
-                  void load(event.currentTarget.value, status);
-                }}
-                placeholder="Tìm mã hoặc tên"
-              />
-            </div>
-            <button className="secondary-button h-10" type="submit">
-              Tìm
-            </button>
-            <select
-              aria-label="Trạng thái dự án"
-              className="apple-input w-full sm:w-auto"
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-            >
-              <option value="active">Đang hoạt động</option>
-              <option value="archived">Đã lưu trữ</option>
-              <option value="all">Tất cả</option>
-            </select>
-          </form>
-        }
-      >
+            <option value="active">Đang hoạt động</option>
+            <option value="archived">Đã lưu trữ</option>
+            <option value="all">Tất cả dự án</option>
+          </select>
+          <label className="min-w-0">
+            <input
+              aria-label="Lịch dự án"
+              className="apple-input h-10 w-full"
+              type="date"
+              value={scheduleDate}
+              onChange={(event) => setScheduleDate(event.target.value)}
+            />
+          </label>
+        </form>
         {loading ? (
           <div className="p-5">
             <LoadingState />
           </div>
-        ) : items.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <EmptyState>
-            {query.trim()
-              ? "Không tìm thấy dự án phù hợp"
-              : status === "archived"
-                ? "Chưa có dự án đã lưu trữ"
-                : "Chưa có dự án"}
+            {scheduleDate
+              ? "Không có dự án theo ngày đã chọn"
+              : query.trim()
+                ? "Không tìm thấy dự án phù hợp"
+                : status === "archived"
+                  ? "Chưa có dự án đã lưu trữ"
+                  : "Chưa có dự án"}
           </EmptyState>
         ) : (
           <div className="divide-y divide-border">
-            {items.map((item) => {
+            {filteredItems.map((item) => {
               const taskProgress = taskProgressPresentation(item.task_summary);
+              const schedule = projectSchedule(item);
               return (
                 <article
                   key={item._id}
-                  className="grid gap-4 p-5 transition hover:bg-surface-quiet xl:grid-cols-[120px_minmax(0,1fr)_minmax(180px,0.7fr)_140px_180px_auto] xl:items-center"
+                  className="grid min-w-0 gap-5 p-5 transition hover:bg-surface-quiet lg:grid-cols-[minmax(220px,1.2fr)_minmax(205px,1fr)_minmax(190px,1fr)_minmax(180px,0.9fr)] lg:items-center"
                 >
-                  <span className="font-mono text-[13px] font-semibold text-brand">{item.key}</span>
-                  <Link href={`/du-an/${item._id}`} className="min-w-0">
-                    <span className="flex min-w-0 flex-wrap items-center gap-2">
-                      <strong className="break-words text-[14px]">{item.name}</strong>
-                      <StatusPill value={item.planning_method || "SCRUM"} />
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="shrink-0 font-mono text-[13px] font-semibold text-brand">
+                      {item.key}
                     </span>
-                    {item.description && (
-                      <small className="line-clamp-1 text-ink-muted">{item.description}</small>
+                    <Link href={`/du-an/${item._id}`} className="min-w-0">
+                      <strong className="block break-words text-[14px]">{item.name}</strong>
+                      {item.description && (
+                        <small className="mt-1 line-clamp-2 block text-ink-muted">
+                          {item.description}
+                        </small>
+                      )}
+                    </Link>
+                  </div>
+                  <div className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                    <div className="min-w-0">
+                      <span className="block text-ink-muted">Bắt đầu dự kiến</span>
+                      <span className="block break-words font-medium">{schedule.start}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="block text-ink-muted">Kết thúc dự kiến</span>
+                      <span className="block break-words font-medium">{schedule.end}</span>
+                    </div>
+                    {schedule.duration != null && (
+                      <span className="col-span-2 text-ink-muted">
+                        Thời lượng {schedule.duration} ngày lịch
+                      </span>
                     )}
-                    {projectScheduleLabel(item) && (
-                      <small className="mt-1 block text-ink-muted">
-                        {projectScheduleLabel(item)}
-                      </small>
-                    )}
-                  </Link>
-                  <div className="space-y-2 text-[12px]">
-                    {Number.isFinite(item.project_completion_percent) ? (
-                      <div className="space-y-1">
-                        <div className="flex justify-between gap-2">
-                          <span>Project · QA đánh giá</span>
-                          <strong>{item.project_completion_percent}%</strong>
-                        </div>
-                        <div
-                          aria-label={`Project ${item.project_completion_percent}%`}
-                          aria-valuemax={100}
-                          aria-valuemin={0}
-                          aria-valuenow={item.project_completion_percent}
-                          className="h-1.5 overflow-hidden rounded-full bg-surface-quiet"
-                          role="progressbar"
-                        >
-                          <div
-                            className="h-full rounded-full bg-brand"
-                            style={{ width: `${item.project_completion_percent}%` }}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-ink-muted">Project · Chưa có đánh giá của QA</span>
-                    )}
+                  </div>
+                  <div className="min-w-0 space-y-2 text-[12px]">
                     {taskProgress.completionPercent == null ? (
-                      <span className="text-ink-muted">Tasks · {taskProgress.label}</span>
+                      <span className="text-ink-muted">{taskProgress.label}</span>
                     ) : (
                       <div className="space-y-1">
                         <div className="flex justify-between gap-2">
-                          <span>Tasks · Tự tính</span>
+                          <span>Tiến độ công việc</span>
                           <strong>{taskProgress.completionPercent}%</strong>
                         </div>
                         <div
-                          aria-label={`Tasks ${taskProgress.completionPercent}%`}
+                          aria-label={`Tiến độ công việc ${taskProgress.completionPercent}%`}
                           aria-valuemax={100}
                           aria-valuemin={0}
                           aria-valuenow={taskProgress.completionPercent}
@@ -535,58 +560,67 @@ export default function ProjectsPage() {
                         </div>
                       </div>
                     )}
-                    <span className="text-ink-muted">
-                      {taskProgress.total == null
-                        ? "Chưa có thống kê số lượng công việc"
-                        : `${taskProgress.total} công việc · ${taskProgress.blocked ?? 0} bị chặn`}
-                    </span>
-                  </div>
-                  <div className="flex items-center xl:block">
-                    <StatusPill value={String(item.status).toUpperCase()} />
-                  </div>
-                  <div className="text-[12px] text-ink-muted">
-                    <span className="mr-2 font-semibold text-ink xl:hidden">Cập nhật</span>
-                    {formatDate(item.updated_at)}
-                  </div>
-                  {item.status === "archived" &&
-                    item.current_permissions?.includes("project.restore") && (
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={async () => {
-                          await ask({
-                            title: "Khôi phục dự án",
-                            description: `${item.key} sẽ hoạt động trở lại và tiếp tục nhận thay đổi`,
-                            confirmLabel: "Khôi phục",
-                            fields: [
-                              {
-                                name: "reason",
-                                label: "Lý do khôi phục",
-                                initialValue: "Tiếp tục thực hiện dự án",
-                                required: true,
-                              },
-                            ],
-                            onConfirm: async (answer) => {
-                              try {
-                                await testingApi.restoreProject(item._id, {
-                                  expected_revision: item.revision,
-                                  reason: answer.reason,
-                                });
-                                await load(query, status);
-                              } catch (reason) {
-                                throw new Error(messageOf(reason));
-                              }
-                            },
-                          });
-                        }}
-                      >
-                        Khôi phục
-                      </button>
+                    {taskProgress.applicableTotal > 0 && (
+                      <span className="block text-ink-muted">
+                        {taskProgress.applicableTotal} công việc · {taskProgress.completed ?? 0}{" "}
+                        hoàn thành
+                        {taskProgress.blocked > 0 ? ` · ${taskProgress.blocked} bị chặn` : ""}
+                      </span>
                     )}
+                  </div>
+                  <div className="flex min-w-0 flex-col items-start gap-1.5 lg:items-end">
+                    <StatusPill value={String(item.status).toUpperCase()} />
+                    <p
+                      className="text-[11px] text-ink-muted lg:text-right"
+                      title={`Cập nhật ${formatProjectUpdatedAt(item.updated_at || item.created_at)}`}
+                    >
+                      Cập nhật {formatProjectUpdatedAt(item.updated_at || item.created_at)}
+                    </p>
+                    {item.status === "archived" &&
+                      item.current_permissions?.includes("project.restore") && (
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={async () => {
+                            await ask({
+                              title: "Khôi phục dự án",
+                              description: `${item.key} sẽ hoạt động trở lại và tiếp tục nhận thay đổi`,
+                              confirmLabel: "Khôi phục",
+                              fields: [
+                                {
+                                  name: "reason",
+                                  label: "Lý do khôi phục",
+                                  initialValue: "Tiếp tục thực hiện dự án",
+                                  required: true,
+                                },
+                              ],
+                              onConfirm: async (answer) => {
+                                try {
+                                  await testingApi.restoreProject(item._id, {
+                                    expected_revision: item.revision,
+                                    reason: answer.reason,
+                                  });
+                                  await load(query, status);
+                                } catch (reason) {
+                                  throw new Error(messageOf(reason));
+                                }
+                              },
+                            });
+                          }}
+                        >
+                          Khôi phục
+                        </button>
+                      )}
+                  </div>
                 </article>
               );
             })}
           </div>
+        )}
+        {!loading && items.length >= 200 && (
+          <p className="border-t border-border px-4 py-3 text-xs text-ink-muted">
+            Đang hiển thị tối đa 200 dự án. Dùng ô tìm kiếm để thu hẹp danh sách.
+          </p>
         )}
       </Panel>
       {dialog}

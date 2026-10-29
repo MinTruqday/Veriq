@@ -36,7 +36,9 @@ export default function AuthFrame({ title, description, children, footer, width 
               {title}
             </h1>
             {description && (
-              <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">{description}</p>
+              <p className="mt-2 break-words text-[14px] leading-relaxed text-ink-muted">
+                {description}
+              </p>
             )}
           </header>
           {children}

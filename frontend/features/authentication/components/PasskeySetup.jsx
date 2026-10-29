@@ -6,8 +6,8 @@ export default function PasskeySetup({ email, onClose, onSuccess }) {
   const passkey = usePasskeySetup(email, onSuccess);
   return (
     <div>
-      <p className="text-[14px] leading-relaxed text-ink-muted">
-        Dùng passkey hoặc sinh trắc học để đăng nhập
+      <p className="break-words text-[14px] leading-relaxed text-ink-muted">
+        Đăng nhập bằng thiết bị này mà không cần nhập mật khẩu. Bạn có thể bỏ qua và thiết lập sau.
       </p>
       {passkey.error && (
         <div className="mt-5">

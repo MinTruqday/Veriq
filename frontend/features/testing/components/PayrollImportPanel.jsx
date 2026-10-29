@@ -358,8 +358,8 @@ export default function PayrollImportPanel() {
                   </div>
                 ) : (
                   <p className="mt-1 text-ink-muted">
-                    Mã trạng thái: {forecast.status}. Kiểm tra giờ phân bổ, ngày bắt đầu kế hoạch và
-                    đơn giá còn hiệu lực.
+                    Trạng thái: {valueLabel(forecast.status)}. Kiểm tra giờ phân bổ, ngày bắt đầu kế
+                    hoạch và đơn giá còn hiệu lực.
                   </p>
                 )}
               </div>

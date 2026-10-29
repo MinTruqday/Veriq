@@ -286,7 +286,7 @@ export default function OperationsPage() {
                   setAuditQuery(event.target.value);
                   setAuditPage(1);
                 }}
-                placeholder="Sự kiện mã đối tượng hoặc người thực hiện"
+                placeholder="Sự kiện, mã đối tượng hoặc người thực hiện"
               />
             }
           >

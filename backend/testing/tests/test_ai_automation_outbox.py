@@ -135,6 +135,36 @@ class AutomationOutboxTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(evidence["artifact_status"], "APPROVED")
         self.assertEqual(len(outbox.record["event_fingerprint"]), 64)
 
+    async def test_requirement_change_outbox_preserves_prior_baseline_reference(self):
+        update_one = AsyncMock()
+        db = SimpleNamespace(
+            value=SimpleNamespace(
+                ai_automation_outbox=SimpleNamespace(update_one=update_one)
+            )
+        )
+
+        with patch.object(ai_automation, "database", db):
+            await ai_automation.queue_event(
+                "REQUIREMENT_CHANGED",
+                "requirement-version:req-v2:1:BASELINED",
+                "project-1",
+                "requirement_version",
+                "req-1",
+                "req-v2",
+                "requirement",
+                "Updated requirement source",
+                "ba-1",
+                session=object(),
+                artifact_status="BASELINED",
+                prior_baseline_version_id="req-v1",
+            )
+
+        payload = update_one.await_args.args[1]["$setOnInsert"]["payload"]
+        self.assertEqual(payload["prior_baseline_version_id"], "req-v1")
+        self.assertEqual(payload["target_artifact_ids"], ["req-v2"])
+        fingerprint = update_one.await_args.args[1]["$setOnInsert"]["event_fingerprint"]
+        self.assertEqual(len(fingerprint), 64)
+
     async def test_event_id_reuse_with_different_project_or_content_is_rejected(self):
         class OutboxCollection:
             def __init__(self):
@@ -563,6 +593,7 @@ class AutomationOutboxTests(unittest.IsolatedAsyncioTestCase):
             "_id": "version-1",
             "project_id": "project-1",
             "requirement_id": "requirement-1",
+            "status": "BASELINED",
             "plain_text_projection": "Người dùng đăng nhập.",
             "acceptance_criteria": [{"plain_text": "Mã xác thực hết hạn sau 5 phút."}],
             "business_rules": ["Tài khoản bị khóa sau 3 lần sai."],

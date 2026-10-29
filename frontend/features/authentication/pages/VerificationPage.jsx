@@ -17,8 +17,8 @@ function VerifyCodeContent() {
   };
   return (
     <AuthFrame
-      title="Xác thực mã"
-      description={email ? `Mã đã được gửi đến ${email}` : "Nhập mã đã nhận qua email"}
+      title="Xác minh mã khôi phục mật khẩu"
+      description={email ? `Nhập mã đã gửi đến ${email}.` : "Nhập mã khôi phục đã nhận qua email."}
     >
       {error && (
         <div className="mb-5">

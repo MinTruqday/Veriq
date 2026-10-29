@@ -1,5 +1,18 @@
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
+import { formatDate, valueLabel } from "../lib/testing";
+
+const actionTypeLabels = {
+  CORRECTIVE: "Khắc phục",
+  PREVENTIVE: "Phòng ngừa",
+};
+
+const nextStatusLabels = {
+  IN_PROGRESS: "Bắt đầu thực hiện",
+  IMPLEMENTED: "Ghi nhận đã thực hiện",
+  EFFECTIVENESS_REVIEW: "Đánh giá hiệu quả",
+  CLOSED: "Đóng hành động",
+};
 
 export default function PreventiveActionTable({ items = [], canManage, onAssign, onAdvance }) {
   const next = {
@@ -13,14 +26,24 @@ export default function PreventiveActionTable({ items = [], canManage, onAssign,
       items={items}
       empty="Chưa có hành động khắc phục và phòng ngừa"
       columns={[
-        { key: "action_type", label: "Loại" },
-        { key: "title", label: "Hành động" },
+        {
+          key: "action_type",
+          label: "Loại",
+          minWidth: 128,
+          render: (item) => actionTypeLabels[item.action_type] || "Hành động",
+        },
+        { key: "title", label: "Hành động", minWidth: 240 },
         {
           key: "owner_id",
           label: "Phụ trách",
-          render: (item) => item.owner_id || "Chưa phân công",
+          render: (item) => (item.owner_id ? "Đã phân công" : "Chưa phân công"),
         },
-        { key: "due_at", label: "Hạn" },
+        {
+          key: "due_at",
+          label: "Hạn hoàn tất",
+          minWidth: 152,
+          render: (item) => formatDate(item.due_at),
+        },
         {
           key: "status",
           label: "Trạng thái",
@@ -42,7 +65,8 @@ export default function PreventiveActionTable({ items = [], canManage, onAssign,
                     type="button"
                     onClick={() => onAdvance(item, next[item.status])}
                   >
-                    Chuyển {next[item.status]}
+                    {nextStatusLabels[next[item.status]] ||
+                      `Chuyển ${valueLabel(next[item.status])}`}
                   </button>
                 )}
               </div>

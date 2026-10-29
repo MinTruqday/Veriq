@@ -104,7 +104,7 @@ export default function DataSetsPanel({
 
   return (
     <Panel
-      title="Bộ dữ liệu kiểm thử có phiên bản"
+      title="Bộ dữ liệu kiểm thử"
       actions={
         can("testdata.create") ? (
           <button className="secondary-button" type="button" onClick={() => setCreating(true)}>

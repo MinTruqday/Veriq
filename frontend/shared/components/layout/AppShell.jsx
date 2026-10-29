@@ -16,7 +16,7 @@ import {
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { testingApi } from "@/features/testing/services/testing.service";
 import { useAnnouncements } from "@/shared/contexts/AnnouncementContext";
-import { PROJECT_SECTION_SLUGS } from "@/features/testing/routes";
+import { PROJECTS_ROUTE, PROJECT_SECTION_SLUGS } from "@/features/testing/routes";
 import {
   canOpenRoleRestrictedPath,
   canRenderProtectedRoute,
@@ -32,8 +32,8 @@ import {
   testCaseSubsectionItems,
 } from "./navigation";
 
-function collapsedNavigationGroups(groups, pathname) {
-  const activeGroup = groups
+function activeNavigationGroup(groups, pathname) {
+  return groups
     .filter(
       (group) =>
         group.href === pathname ||
@@ -45,6 +45,10 @@ function collapsedNavigationGroups(groups, pathname) {
         Math.max(right.href?.length || 0, ...right.items.map((item) => item.href.length)) -
         Math.max(left.href?.length || 0, ...left.items.map((item) => item.href.length)),
     )[0];
+}
+
+function initialNavigationGroups(groups, pathname) {
+  const activeGroup = activeNavigationGroup(groups, pathname);
   return Object.fromEntries(
     groups.map((group) => [group.label, group.label !== activeGroup?.label]),
   );
@@ -59,10 +63,19 @@ function NavigationList({ onNavigate, projectPermissions, planningMethod, collap
     [pathname, planningMethod, projectPermissions, user],
   );
   const [collapsedGroups, setCollapsedGroups] = useState(() =>
-    collapsedNavigationGroups(groups, pathname),
+    initialNavigationGroups(groups, pathname),
   );
   useEffect(() => {
-    setCollapsedGroups(collapsedNavigationGroups(groups, pathname));
+    const activeGroup = activeNavigationGroup(groups, pathname);
+    if (!activeGroup) return;
+    setCollapsedGroups((current) =>
+      Object.fromEntries(
+        groups.map((group) => [
+          group.label,
+          group.label === activeGroup.label ? false : (current[group.label] ?? true),
+        ]),
+      ),
+    );
   }, [groups, pathname]);
   return (
     <div className={collapsed ? "flex flex-col gap-2" : "flex flex-col gap-3"}>
@@ -154,6 +167,14 @@ export default function AppShell({ children, requireAuth }) {
   const accountRef = useRef(null);
   const mobileTriggerRef = useRef(null);
   const mobileDrawerRef = useRef(null);
+  const redirectFromProject = useCallback(() => {
+    router.replace(PROJECTS_ROUTE);
+    window.setTimeout(() => {
+      if (window.location.pathname.startsWith(`${PROJECTS_ROUTE}/`)) {
+        window.location.replace(PROJECTS_ROUTE);
+      }
+    }, 1200);
+  }, [router]);
   useEffect(() => {
     const updateAiStream = (event) => {
       const value = event.detail;
@@ -177,34 +198,42 @@ export default function AppShell({ children, requireAuth }) {
     setMobileOpen(false);
     setAccountOpen(false);
   }, [pathname]);
-  const refreshProjectContext = useCallback(async (id, hideUntilVerified = false) => {
-    const requestId = ++projectContextRequest.current;
-    setProjectContextError("");
-    if (hideUntilVerified) {
-      setProjectPermissions(null);
-      setPermissionsProjectId(null);
-    }
-    try {
-      const project = await testingApi.getProject(id);
-      if (requestId !== projectContextRequest.current) return;
-      setProjectPermissions(project?.current_permissions || []);
-      setPermissionsProjectId(id);
-      setPlanningMethod(project ? project.planning_method || "SCRUM" : null);
-      setProjectContext(project || null);
-    } catch (error) {
-      if (requestId !== projectContextRequest.current) return;
-      setPlanningMethod(null);
-      setProjectContext(null);
-      if (error?.status === 403 || error?.status === 404) {
-        setProjectPermissions([]);
-        setPermissionsProjectId(id);
-        return;
+  const refreshProjectContext = useCallback(
+    async (id, hideUntilVerified = false) => {
+      const requestId = ++projectContextRequest.current;
+      setProjectContextError("");
+      if (hideUntilVerified) {
+        setProjectPermissions(null);
+        setPermissionsProjectId(null);
       }
-      setProjectPermissions(null);
-      setPermissionsProjectId(null);
-      setProjectContextError("Không thể tải quyền và thông tin dự án. Hãy thử lại.");
-    }
-  }, []);
+      try {
+        const project = await testingApi.getProject(id);
+        if (requestId !== projectContextRequest.current) return;
+        setProjectPermissions(project?.current_permissions || []);
+        setPermissionsProjectId(id);
+        setPlanningMethod(project ? project.planning_method || "SCRUM" : null);
+        setProjectContext(project || null);
+      } catch (error) {
+        if (error?.status === 403 || error?.status === 404) {
+          if (requestId === projectContextRequest.current) {
+            setPlanningMethod(null);
+            setProjectContext(null);
+            setProjectPermissions([]);
+            setPermissionsProjectId(id);
+          }
+          redirectFromProject();
+          return;
+        }
+        if (requestId !== projectContextRequest.current) return;
+        setPlanningMethod(null);
+        setProjectContext(null);
+        setProjectPermissions(null);
+        setPermissionsProjectId(null);
+        setProjectContextError("Không thể tải quyền và thông tin dự án. Hãy thử lại.");
+      }
+    },
+    [redirectFromProject],
+  );
   useEffect(() => {
     if (!projectId || !user) {
       projectContextRequest.current += 1;
@@ -228,6 +257,13 @@ export default function AppShell({ children, requireAuth }) {
     const refreshAfterDeniedAction = (event) => {
       if (event.detail?.projectId === projectId && user) {
         const permission = event.detail?.permission;
+        if (typeof permission !== "string") {
+          setProjectPermissions([]);
+          setPermissionsProjectId(projectId);
+          setProjectContext(null);
+          redirectFromProject();
+          return;
+        }
         if (typeof permission === "string") {
           setProjectPermissions(
             (current) =>
@@ -240,7 +276,7 @@ export default function AppShell({ children, requireAuth }) {
     window.addEventListener("veriq-project-access-denied", refreshAfterDeniedAction);
     return () =>
       window.removeEventListener("veriq-project-access-denied", refreshAfterDeniedAction);
-  }, [projectId, refreshProjectContext, user]);
+  }, [projectId, redirectFromProject, refreshProjectContext, user]);
   useEffect(() => {
     if (requireAuth && !isLoading && !user && !authError) {
       const query = searchParams.toString();
@@ -359,7 +395,20 @@ export default function AppShell({ children, requireAuth }) {
     router,
     searchParams,
   ]);
-  if (routeDenied) return null;
+  if (routeDenied) {
+    if (!projectId) return null;
+    return (
+      <main
+        id="main-content"
+        className="flex min-h-[100dvh] items-center justify-center bg-canvas text-ink"
+        aria-busy="true"
+      >
+        <p className="text-sm text-ink-muted" role="status">
+          Đang chuyển về khu vực có thể truy cập.
+        </p>
+      </main>
+    );
+  }
   if (
     !canRenderProtectedRoute({
       requireAuth,

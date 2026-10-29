@@ -1,4 +1,9 @@
-import { StatusPill } from "./WorkspacePrimitives";
+const THRESHOLD_LABELS = {
+  CRITICAL: "Vượt ngưỡng nghiêm trọng",
+  NORMAL: "Trong ngưỡng",
+  TARGET_MET: "Đạt mục tiêu",
+  WARNING: "Cần theo dõi",
+};
 
 const LOWER_IS_BETTER = new Set([
   "BLOCKED_RATE",
@@ -21,5 +26,11 @@ export default function ThresholdStatus({ metricKey, value, target, warning, cri
     else if (warning !== null && warning !== undefined && value <= warning) status = "WARNING";
     else if (target !== null && target !== undefined && value >= target) status = "TARGET_MET";
   }
-  return <StatusPill value={status} />;
+  return (
+    <span
+      className={`inline-flex max-w-full rounded-full px-2.5 py-1 text-center text-[11px] font-semibold leading-4 ${status === "CRITICAL" ? "bg-danger-soft text-danger" : status === "WARNING" ? "bg-amber-100 text-amber-900" : "bg-brand-soft text-brand"}`}
+    >
+      {THRESHOLD_LABELS[status]}
+    </span>
+  );
 }

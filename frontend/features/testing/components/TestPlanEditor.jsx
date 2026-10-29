@@ -98,7 +98,7 @@ export default function TestPlanEditor({
           if (
             new Set(effortAllocations.map((item) => item.user_id)).size !== effortAllocations.length
           ) {
-            setError("Mỗi thành viên chỉ được có một dòng phân bổ trong Test Plan.");
+            setError("Mỗi thành viên chỉ được có một dòng phân bổ trong kế hoạch kiểm thử.");
             return;
           }
           const allocatedHours = effortAllocations.reduce(
@@ -261,8 +261,8 @@ export default function TestPlanEditor({
             </h3>
             <p className="mt-1 text-sm text-ink-muted">
               Khai báo tổng giờ dự kiến và phân bổ cho thành viên tham gia kế hoạch. Phân bổ này
-              phục vụ lập kế hoạch; người thực chạy từng ca được giao riêng trong Test Run. Đây là
-              dự toán nhân công, không phải chi phí thực tế.
+              phục vụ lập kế hoạch; người thực chạy từng ca được giao riêng trong lượt chạy kiểm
+              thử. Đây là dự toán nhân công, không phải chi phí thực tế.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -414,7 +414,7 @@ export default function TestPlanEditor({
         >
           <div>
             <h3 id="test-plan-schedule-heading" className="font-medium">
-              Thời gian Test Plan
+              Thời gian kế hoạch kiểm thử
             </h3>
             <p className="mt-1 text-sm text-ink-muted">
               Thời điểm bắt đầu được dùng để tra đơn giá có hiệu lực khi lập dự toán.

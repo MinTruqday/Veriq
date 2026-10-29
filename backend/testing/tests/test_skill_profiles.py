@@ -90,6 +90,87 @@ def test_test_case_owner_recommendation_does_not_require_price_or_payroll(monkey
     assert result["applies_automatically"] is False
 
 
+def test_owner_recommendation_matches_ranked_candidate_when_ai_order_conflicts(monkeypatch):
+    class Projects:
+        async def find_one(self, *_args, **_kwargs):
+            return {"_id": "project-a", "locale": "en-US"}
+
+    class PayrollRates:
+        def find(self, *_args, **_kwargs):
+            raise AssertionError("Payroll query must not run without project currency")
+
+    monkeypatch.setattr(
+        type(skill_profiles.database),
+        "value",
+        property(lambda _self: SimpleNamespace(projects=Projects(), payroll_rates=PayrollRates())),
+    )
+    monkeypatch.setattr(skill_profiles, "get_project", _async_value({}))
+    monkeypatch.setattr(
+        skill_profiles.project_repository,
+        "list_members",
+        _async_value([
+            {"user_id": "loaded-tester", "status": "ACTIVE", "project_role": "TESTER"},
+            {"user_id": "lightly-loaded-tester", "status": "ACTIVE", "project_role": "TESTER"},
+        ]),
+    )
+    monkeypatch.setattr(
+        skill_profiles.skill_profile_repository,
+        "list_for_members",
+        _async_value([
+            {"user_id": "loaded-tester", "availability": "AVAILABLE", "skills": [
+                {"name": "Python", "level": "ADVANCED", "confirmed": True}
+            ]},
+            {"user_id": "lightly-loaded-tester", "availability": "AVAILABLE", "skills": [
+                {"name": "Python", "level": "INTERMEDIATE", "confirmed": True}
+            ]},
+        ]),
+    )
+    monkeypatch.setattr(
+        skill_profiles.skill_profile_repository,
+        "iter_active_runs_for_members",
+        _async_iter([{
+            "project_id": "project-a",
+            "status": "IN_PROGRESS",
+            "assignee_id": "loaded-tester",
+            "test_case_assignments": {},
+        }]),
+    )
+    monkeypatch.setattr(
+        skill_profiles,
+        "load_user_identities",
+        _async_value({
+            "loaded-tester": {"label": "Loaded tester"},
+            "lightly-loaded-tester": {"label": "Lightly loaded tester"},
+        }),
+    )
+    monkeypatch.setattr(
+        skill_profiles.ai_automation_client,
+        "recommend_test_case_owners",
+        AsyncMock(return_value={
+            "recommendations": [
+                {"candidate_id": "loaded-tester", "reason": "AI order", "supporting_facts": ["availability"]},
+                {"candidate_id": "lightly-loaded-tester", "reason": "AI order", "supporting_facts": ["availability"]},
+            ],
+            "warnings": [],
+        }),
+    )
+
+    result = asyncio.run(
+        skill_profiles.recommend_test_case_owner(
+            "project-a",
+            SimpleNamespace(draft_id=None, required_skills=["Python"]),
+            SimpleNamespace(id="qa"),
+        )
+    )
+
+    assert result["candidates"][0]["user_id"] == "lightly-loaded-tester"
+    assert result["candidates"][0]["active_run_count"] == 0
+    assert result["candidates"][1]["user_id"] == "loaded-tester"
+    assert result["candidates"][1]["active_run_count"] == 1
+    assert result["recommended_user_id"] == result["candidates"][0]["user_id"]
+    assert result["recommended_user_label"] == result["candidates"][0]["user_label"]
+
+
 def test_assignment_only_uses_explicitly_confirmed_skills_and_availability():
     members = [
         {"user_id": "available", "status": "ACTIVE", "project_role": "TESTER"},

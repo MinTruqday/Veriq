@@ -423,9 +423,9 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
           </label>
           <label className="field-label" htmlFor="reusable-step-action">
             Hành động
-            <input
+            <textarea
               id="reusable-step-action"
-              className="apple-input mt-2 w-full"
+              className="apple-input mt-2 min-h-24 w-full min-w-0"
               value={stepAction}
               onChange={(event) => setStepAction(event.target.value)}
               required

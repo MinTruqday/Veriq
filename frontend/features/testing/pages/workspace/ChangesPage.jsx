@@ -109,10 +109,10 @@ export default function ChangesPage({ project }) {
             <summary className="cursor-pointer text-sm font-medium text-ink">
               Lọc và sắp xếp
             </summary>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-3">
               <input
                 aria-label="Lọc thay đổi theo yêu cầu"
-                className="apple-input"
+                className="apple-input min-w-0 w-full"
                 placeholder="Mã yêu cầu"
                 value={filters.requirement_id}
                 onChange={(event) =>
@@ -121,7 +121,7 @@ export default function ChangesPage({ project }) {
               />
               <select
                 aria-label="Lọc trạng thái thay đổi"
-                className="apple-input"
+                className="apple-input min-w-0 w-full"
                 value={filters.status}
                 onChange={(event) =>
                   setFilters((current) => ({ ...current, status: event.target.value }))
@@ -136,7 +136,7 @@ export default function ChangesPage({ project }) {
               </select>
               <select
                 aria-label="Sắp xếp thay đổi"
-                className="apple-input"
+                className="apple-input min-w-0 w-full"
                 value={filters.sort}
                 onChange={(event) =>
                   setFilters((current) => ({ ...current, sort: event.target.value }))
@@ -180,7 +180,7 @@ export default function ChangesPage({ project }) {
       )}
 
       {selected && (
-        <div className="grid gap-5 xl:grid-cols-2">
+        <div className="grid min-w-0 gap-5 2xl:grid-cols-2">
           <Panel title="Nội dung thay đổi">
             <DataTable
               items={selected.changes || []}
@@ -256,16 +256,13 @@ export default function ChangesPage({ project }) {
       )}
 
       {(can("automation.read") || can("proposal.read")) && (
-        <Panel title="Theo dõi xử lý tự động">
-          <p className="p-4 text-sm text-ink-muted">
-            Các lần chạy, nguồn đã dùng và trạng thái xử lý được xem trong nhật ký AI.
-          </p>
-          <div className="px-4 pb-4">
+        <Panel title="Nhật ký AI">
+          <div className="p-4">
             <Link
               className="secondary-button"
               href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
             >
-              Mở lượt chạy AI
+              Mở nhật ký AI
             </Link>
           </div>
         </Panel>

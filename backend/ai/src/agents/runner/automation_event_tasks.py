@@ -526,20 +526,7 @@ def direct_requirement_change_task(run, state, evidence_refs):
         ),
         None,
     )
-    tool_calls = [
-        ToolCall(
-            tool_name=tool_name,
-            arguments={
-                "project_id": run.project_id,
-                "requirement_version_id": version_id,
-                "source_facts": [
-                    item
-                    for item in state.get("source_facts", [])
-                    if str(item.get("artifact_version_id") or "") == version_id
-                ],
-            },
-        )
-    ]
+    tool_calls = []
     recommendation_name = "recommend_test_design_techniques_for_requirement_change"
     recommendation_tool = registered_tools().get(recommendation_name)
     recommendation_access = tool_access(recommendation_tool)
@@ -554,6 +541,20 @@ def direct_requirement_change_task(run, state, evidence_refs):
                 },
             )
         )
+    tool_calls.append(
+        ToolCall(
+            tool_name=tool_name,
+            arguments={
+                "project_id": run.project_id,
+                "requirement_version_id": version_id,
+                "source_facts": [
+                    item
+                    for item in state.get("source_facts", [])
+                    if str(item.get("artifact_version_id") or "") == version_id
+                ],
+            },
+        )
+    )
     security_name = "generate_security_suggestions_for_requirement"
     security_tool = registered_tools().get(security_name)
     security_access = tool_access(security_tool)

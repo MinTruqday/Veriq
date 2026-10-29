@@ -209,9 +209,11 @@ test("project creation validates its date range and shows the saved schedule", a
   await page.getByRole("button", { name: "Lưu dự án" }).click();
   await expect(page.getByRole("heading", { name: "Tạo dự án" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Kiểm tra lịch dự án" })).toBeVisible();
-  await expect(page.getByText(/Bắt đầu dự kiến: 27\/10\/2026/)).toBeVisible();
-  await expect(page.getByText(/Kết thúc dự kiến: 03\/11\/2026/)).toBeVisible();
-  await expect(page.getByText("Thời lượng dự kiến: 8 ngày lịch")).toBeVisible();
+  await expect(page.getByText("Bắt đầu dự kiến", { exact: true })).toBeVisible();
+  await expect(page.getByText("27/10/2026", { exact: true })).toBeVisible();
+  await expect(page.getByText("Kết thúc dự kiến", { exact: true })).toBeVisible();
+  await expect(page.getByText("03/11/2026", { exact: true })).toBeVisible();
+  await expect(page.getByText("Thời lượng 8 ngày lịch")).toBeVisible();
   expect(state.createdPayload).toMatchObject({
     key: "CHECKOUT",
     initial_qa_user_id: "qa@example.test",
@@ -225,7 +227,7 @@ test("project creation validates its date range and shows the saved schedule", a
   expect(dimensions.content).toBe(dimensions.viewport);
 });
 
-test("project cards separate QA progress from weighted task progress without fake zero", async ({
+test("project cards show only computed task progress without redundant planning labels or fake zero", async ({
   page,
 }) => {
   await installProjectList(page, {
@@ -256,61 +258,123 @@ test("project cards separate QA progress from weighted task progress without fak
   await page.goto("/du-an", { waitUntil: "domcontentloaded" });
 
   const projectCard = page.locator("article").filter({ hasText: "Dự án thanh toán" });
-  await expect(projectCard.getByRole("progressbar", { name: "Project 80%" })).toHaveAttribute(
-    "aria-valuenow",
-    "80",
-  );
-  await expect(projectCard.getByRole("progressbar", { name: "Tasks 49%" })).toHaveAttribute(
-    "aria-valuenow",
-    "49",
-  );
-  await expect(projectCard.getByText("Project · QA đánh giá")).toBeVisible();
-  await expect(projectCard.getByText("Tasks · Tự tính")).toBeVisible();
-  await expect(projectCard.getByText("4 công việc · 1 bị chặn")).toBeVisible();
+  await expect(
+    projectCard.getByRole("progressbar", { name: "Tiến độ công việc 49%" }),
+  ).toHaveAttribute("aria-valuenow", "49");
+  await expect(projectCard.getByText("Project · QA đánh giá")).toHaveCount(0);
+  await expect(projectCard.getByText("Tasks · Tự tính")).toHaveCount(0);
+  await expect(projectCard.getByText("4 công việc · 2 hoàn thành · 1 bị chặn")).toBeVisible();
+  await expect(projectCard.getByText("Scrum", { exact: true })).toHaveCount(0);
 
   const emptyCard = page.locator("article").filter({ hasText: "Dự án chưa có công việc" });
-  await expect(emptyCard.getByText("Project · Chưa có đánh giá của QA")).toBeVisible();
-  await expect(emptyCard.getByText("Tasks · Chưa có công việc")).toBeVisible();
+  await expect(emptyCard.getByText("Chưa có công việc", { exact: true })).toBeVisible();
+  await expect(emptyCard.getByText("Chưa có công việc", { exact: true })).toHaveCount(1);
+  await expect(emptyCard.getByText("Project · Chưa có đánh giá của QA")).toHaveCount(0);
   await expect(emptyCard.getByRole("progressbar")).toHaveCount(0);
+  for (const width of [1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      page: document.documentElement.scrollWidth,
+    }));
+    expect(dimensions.page, `project list overflow at ${width}px`).toBe(dimensions.viewport);
+  }
 });
 
-test("QA updates Project progress while Tester sees both values read-only", async ({ page }) => {
-  const qaState = await installProjectOverview(page, "QA");
+test("project overview shows the same computed task progress for QA and Tester", async ({
+  page,
+}) => {
+  await installProjectOverview(page, "QA");
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/du-an/project-overview-e2e", { waitUntil: "domcontentloaded" });
   await expect(
-    page.getByRole("progressbar", { name: "Tiến độ tổng thể do QA đánh giá" }),
-  ).toHaveAttribute("aria-valuenow", "40");
-  await expect(
     page.getByRole("progressbar", {
-      name: "Tiến độ công việc được tính từ các công việc chưa hủy",
+      name: "Tiến độ công việc được tính từ công việc chưa hủy",
     }),
   ).toHaveAttribute("aria-valuenow", "49");
-  await page.getByRole("button", { name: "Cập nhật tiến độ" }).click();
-  await page.getByRole("spinbutton", { name: "Tiến độ dự án" }).fill("75");
-  await page.getByLabel("Ghi chú").fill("QA cập nhật theo tình hình dự án.");
-  await page.getByRole("button", { name: "Lưu tiến độ" }).click();
-  await expect(page.getByText("Project 75%")).toBeVisible();
-  await expect(
-    page.getByRole("progressbar", { name: "Tiến độ tổng thể do QA đánh giá" }),
-  ).toHaveAttribute("aria-valuenow", "75");
-  await expect(
-    page.getByRole("progressbar", {
-      name: "Tiến độ công việc được tính từ các công việc chưa hủy",
-    }),
-  ).toHaveAttribute("aria-valuenow", "49");
-  expect(qaState.updates).toEqual([
-    {
-      expected_revision: 7,
-      project_completion_percent: 75,
-      note: "QA cập nhật theo tình hình dự án.",
-    },
-  ]);
-
-  const testerState = await installProjectOverview(page, "TESTER");
-  await page.goto("/du-an/project-overview-e2e", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Project 40%")).toBeVisible();
-  await expect(page.getByText("Tasks 49%")).toBeVisible();
   await expect(page.getByRole("button", { name: "Cập nhật tiến độ" })).toHaveCount(0);
-  expect(testerState.updates).toEqual([]);
+  await expect(page.getByText("Phương thức: Scrum")).toHaveCount(0);
+
+  await installProjectOverview(page, "TESTER");
+  await page.goto("/du-an/project-overview-e2e", { waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("progressbar", {
+      name: "Tiến độ công việc được tính từ công việc chưa hủy",
+    }),
+  ).toHaveAttribute("aria-valuenow", "49");
+  await expect(page.getByRole("button", { name: "Cập nhật tiến độ" })).toHaveCount(0);
+});
+
+test("project list calendar selects a date instead of filtering by month", async ({ page }) => {
+  await installProjectList(page, {
+    projects: [
+      {
+        _id: "project-october-e2e",
+        key: "OCT",
+        name: "Dự án tháng Mười",
+        description: "Hạng mục chạy trong tháng Mười",
+        status: "ACTIVE",
+        planned_start_at: "2026-10-12T00:00:00.000Z",
+        planned_end_at: "2026-11-04T00:00:00.000Z",
+        updated_at: "2026-10-29T06:15:00.000Z",
+        task_summary: { completed: 1, total: 2, blocked: 0, completion_percent: 50 },
+      },
+      {
+        _id: "project-december-e2e",
+        key: "DEC",
+        name: "Dự án tháng Mười Hai",
+        status: "ACTIVE",
+        planned_start_at: "2026-12-01T00:00:00.000Z",
+        planned_end_at: "2026-12-20T00:00:00.000Z",
+        updated_at: "2026-10-28T10:00:00.000Z",
+        task_summary: { completed: 0, total: 1, blocked: 0, completion_percent: 0 },
+      },
+      {
+        _id: "project-no-dates-e2e",
+        key: "TBD",
+        name: "Dự án chưa có lịch",
+        status: "ACTIVE",
+        updated_at: "2026-10-27T10:00:00.000Z",
+        task_summary: null,
+      },
+    ],
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/du-an", { waitUntil: "domcontentloaded" });
+
+  const octoberProject = page
+    .locator("article")
+    .filter({ has: page.getByText("OCT", { exact: true }) });
+  const decemberProject = page
+    .locator("article")
+    .filter({ has: page.getByText("DEC", { exact: true }) });
+  const undatedProject = page
+    .locator("article")
+    .filter({ has: page.getByText("TBD", { exact: true }) });
+  await expect(octoberProject.getByText("Bắt đầu dự kiến", { exact: true })).toBeVisible();
+  await expect(octoberProject.getByText("Kết thúc dự kiến", { exact: true })).toBeVisible();
+  await expect(octoberProject.getByText(/Cập nhật .*29\/10\/2026/)).toBeVisible();
+  await expect(octoberProject.getByText("Đang hoạt động", { exact: true })).toBeVisible();
+  await expect(decemberProject).toBeVisible();
+  await expect(undatedProject).toBeVisible();
+
+  await page.getByLabel("Lịch dự án").fill("2026-10-15");
+  await expect(octoberProject).toBeVisible();
+  await expect(decemberProject).toHaveCount(0);
+  await expect(undatedProject).toHaveCount(0);
+  await expect(page.getByText("Lọc theo tháng")).toHaveCount(0);
+
+  await page.getByLabel("Lịch dự án").fill("");
+  await expect(octoberProject).toBeVisible();
+  await expect(decemberProject).toBeVisible();
+  await expect(undatedProject).toBeVisible();
+
+  for (const width of [1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      page: document.documentElement.scrollWidth,
+    }));
+    expect(dimensions.page, `project list overflow at ${width}px`).toBe(dimensions.viewport);
+  }
 });

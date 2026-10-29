@@ -62,6 +62,7 @@ function EmailVerificationContent() {
           required
           minLength={16}
           maxLength={256}
+          helper="Mã xác minh có ít nhất 16 ký tự."
           value={token}
           onChange={(event) => setToken(event.target.value)}
         />

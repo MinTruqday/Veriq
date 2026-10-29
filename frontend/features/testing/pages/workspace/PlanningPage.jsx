@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowLeftRight, ArrowUp, Plus } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import {
@@ -24,6 +25,7 @@ import {
   ModalTitle,
 } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 
 function itemOptions(items) {
   return [
@@ -150,6 +152,7 @@ function readPlanningFilters(projectId) {
 }
 
 export default function PlanningPage({ project, section }) {
+  const router = useRouter();
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [boardValue, setBoardValue] = useState(null);
@@ -212,7 +215,11 @@ export default function PlanningPage({ project, section }) {
   };
   const planningMethod = project.planning_method || "SCRUM";
   const isScrum = planningMethod === "SCRUM";
-  const filteredItems = items.filter((item) => matchesPlanningFilters(item, planningFilters));
+  const filterScopeItems =
+    tab === "backlog" ? items.filter((item) => item.status === "BACKLOG") : items;
+  const filteredItems = filterScopeItems.filter((item) =>
+    matchesPlanningFilters(item, planningFilters),
+  );
   const filterableTabs = ["backlog", "list", "board", "roadmap"].includes(tab);
   const typeOptions = [
     ...new Set(
@@ -583,9 +590,15 @@ export default function PlanningPage({ project, section }) {
     <WorkspacePage
       title={pageTitle}
       description={
-        isScrum
-          ? "Chọn công việc trong Danh sách chờ rồi đưa vào Đợt lặp."
-          : "Theo dõi công việc theo trạng thái; giới hạn WIP được kiểm tra khi chuyển cột."
+        tab === "backlog"
+          ? "Sắp xếp công việc chưa đưa vào kế hoạch thực hiện."
+          : tab === "sprint"
+            ? "Quản lý phạm vi và trạng thái các đợt lặp của dự án."
+            : tab === "roadmap"
+              ? "Theo dõi mốc thời gian và các hạng mục cấp cao của dự án."
+              : tab === "board"
+                ? "Theo dõi công việc theo trạng thái; quy tắc chuyển cột của dự án được áp dụng."
+                : "Tra cứu và cập nhật công việc trong danh sách của dự án."
       }
       actions={
         isBa ? (
@@ -599,7 +612,7 @@ export default function PlanningPage({ project, section }) {
               type="button"
               onClick={() => setConfigurationMode("board")}
             >
-              {planningMethod === "KANBAN" ? "Cột bảng và giới hạn WIP" : "Cấu hình bảng"}
+              {planningMethod === "KANBAN" ? "Cột bảng và giới hạn công việc" : "Cấu hình bảng"}
             </button>
             <button
               className="secondary-button"
@@ -627,6 +640,37 @@ export default function PlanningPage({ project, section }) {
           <button className="secondary-button" type="button" onClick={() => void load()}>
             Tải lại dữ liệu lập kế hoạch
           </button>
+        </div>
+      )}
+      {(tab === "list" || tab === "board") && (
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+          <span className="text-sm font-medium text-ink">Cách xem công việc</span>
+          <div
+            className="inline-flex max-w-full flex-wrap gap-2"
+            role="group"
+            aria-label="Cách xem công việc"
+          >
+            <button
+              type="button"
+              className={tab === "list" ? "apple-button" : "secondary-button"}
+              aria-pressed={tab === "list"}
+              onClick={() =>
+                router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.planning, "list"))
+              }
+            >
+              Danh sách
+            </button>
+            <button
+              type="button"
+              className={tab === "board" ? "apple-button" : "secondary-button"}
+              aria-pressed={tab === "board"}
+              onClick={() =>
+                router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.planning, "board"))
+              }
+            >
+              Bảng công việc
+            </button>
+          </div>
         </div>
       )}
       {filterableTabs && (
@@ -698,7 +742,7 @@ export default function PlanningPage({ project, section }) {
               Xóa lọc
             </button>
             <span className="pb-3 text-xs text-ink-muted" aria-live="polite">
-              Công việc: {filteredItems.length}/{items.length}
+              Hiển thị {filteredItems.length}/{filterScopeItems.length} công việc
             </span>
           </div>
         </section>
@@ -706,7 +750,7 @@ export default function PlanningPage({ project, section }) {
       {tab === "backlog" && (
         <Panel>
           <Backlog
-            items={filteredItems.filter((item) => item.status === "BACKLOG")}
+            items={filteredItems}
             canRank={isBa}
             ranking={ranking}
             onRank={rank}
@@ -953,8 +997,8 @@ function PlanningConfigurationModal({
                 <p className="text-sm text-ink-muted">
                   Mỗi cột phản ánh một trạng thái công việc.
                   {planningMethod === "KANBAN"
-                    ? " Giới hạn WIP được kiểm tra khi chuyển cột."
-                    : " Giới hạn WIP chỉ cấu hình và áp dụng trong dự án Kanban."}
+                    ? " Giới hạn số công việc đang thực hiện được kiểm tra khi chuyển cột."
+                    : " Giới hạn số công việc đang thực hiện chỉ áp dụng cho dự án Kanban."}
                 </p>
                 {columns.map((column, index) => (
                   <div
@@ -972,7 +1016,7 @@ function PlanningConfigurationModal({
                           ),
                         )
                       }
-                      placeholder="Mã trạng thái"
+                      placeholder="Mã dùng trong quy trình"
                       required
                     />
                     <input
@@ -992,7 +1036,7 @@ function PlanningConfigurationModal({
                     {planningMethod === "KANBAN" && (
                       <input
                         className="apple-input min-w-0 w-full"
-                        aria-label={`Giới hạn WIP cột ${index + 1}`}
+                        aria-label={`Giới hạn số công việc đang thực hiện ở cột ${index + 1}`}
                         type="number"
                         min="1"
                         value={column.wip_limit}
@@ -1005,7 +1049,7 @@ function PlanningConfigurationModal({
                             ),
                           )
                         }
-                        placeholder="WIP"
+                        placeholder="Giới hạn công việc"
                       />
                     )}
                     <button
@@ -1342,11 +1386,7 @@ function WorkItemList({
   onTransition,
 }) {
   return (
-    <div className="space-y-4 p-4">
-      <p className="text-xs text-ink-muted" aria-live="polite">
-        Hiển thị {items.length} / {totalCount} công việc. Danh sách, backlog và bảng dùng cùng dữ
-        liệu dự án.
-      </p>
+    <div className="p-4">
       <DataTable
         items={items}
         empty={totalCount ? "Không có công việc khớp bộ lọc" : "Chưa có công việc trong dự án"}

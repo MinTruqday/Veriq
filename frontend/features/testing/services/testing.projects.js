@@ -69,10 +69,11 @@ export const projectTestingApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  listProjects: (query = "", status = "active") => {
+  listProjects: (query = "", status = "active", limit = 200) => {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (status) params.set("status", status);
+    params.set("limit", String(limit));
     return testingRequest(`/du-an?${params.toString()}`);
   },
   createProject: (payload) =>

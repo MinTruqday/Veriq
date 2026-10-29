@@ -144,7 +144,8 @@ export default function ProjectNotificationsPanel({ project }) {
               {watches.map((item) => (
                 <div className="flex items-center justify-between gap-2 text-sm" key={item._id}>
                   <span className="min-w-0 truncate">
-                    {valueLabel(item.artifact_type)} {item.artifact_label || item.artifact_id}
+                    {valueLabel(item.artifact_type)}{" "}
+                    {item.artifact_label || "Đối tượng đang theo dõi"}
                   </span>
                   <button
                     className="secondary-button"
@@ -284,7 +285,7 @@ export default function ProjectNotificationsPanel({ project }) {
             <textarea
               aria-label="Sự kiện thông báo"
               className="apple-input min-h-24"
-              placeholder="Mỗi dòng là một mã sự kiện"
+              placeholder="Nhập mã sự kiện cần thông báo, mỗi dòng một mã"
               value={rules.enabled_events.join("\n")}
               onChange={(event) =>
                 setRules({

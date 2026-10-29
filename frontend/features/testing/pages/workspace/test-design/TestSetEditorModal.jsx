@@ -227,7 +227,7 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
               className="apple-input min-w-0 flex-1"
               type="search"
               value={query}
-              placeholder="Tìm theo mã hoặc tên ca"
+              placeholder="Tìm ca kiểm thử theo mã hoặc tên"
               aria-label="Tìm ca kiểm thử"
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {

@@ -24,6 +24,7 @@ from src.schemas.automation import (
     AutomationRun,
     AutomationStatus,
     AutomationTrigger,
+    ChangeSimulationInput,
     DerivationReceipt,
     DerivationStep,
     EvidenceItem,
@@ -46,6 +47,7 @@ from src.services.automation_provenance import (
 from src.services.inference import model_metadata
 from src.services.project_access import project_access
 from src.tools.registry import registered_tools, tool_access
+from src.tools.testing_api import AutomationOperationError, require_operation
 from src.utils.background import create_background_task
 
 
@@ -724,8 +726,15 @@ class AutomationWorker:
                 if not authorization_error
                 else []
             )
+            if not authorization_error:
+                downstream_handoffs.extend(
+                    await self._enqueue_requirement_change_simulation(
+                        running, execution_token
+                    )
+                )
             handoff_blocked = any(
-                item.get("status") not in {"QUEUED", "RUNNING", "COMPLETED"}
+                item.get("workflow_type") != "CHANGE_SIMULATION"
+                and item.get("status") not in {"QUEUED", "RUNNING", "COMPLETED"}
                 for item in downstream_handoffs
             )
             if handoff_blocked and terminal_status == AutomationStatus.COMPLETED:
@@ -1321,6 +1330,248 @@ class AutomationWorker:
                 for child in child_runs
             )
         return workflows
+
+    async def _enqueue_requirement_change_simulation(self, running, execution_token):
+        if (
+            running.trigger != AutomationTrigger.REQUIREMENT_CHANGED
+            or getattr(running, "kind", None) == AutomationKind.CHANGE_SIMULATION
+            or getattr(running, "change_simulation", None) is not None
+        ):
+            return []
+        constraints = running.constraints if isinstance(running.constraints, dict) else {}
+        current_version_id = next(
+            (
+                str(item.artifact_version_id or item.artifact_id)
+                for item in running.evidence
+                if item.artifact_type == "requirement_version"
+                and (item.artifact_version_id or item.artifact_id)
+                in running.target_artifact_ids
+            ),
+            "",
+        )
+        prior_version_id = str(constraints.get("prior_baseline_version_id") or "")
+        blocked_reason = str(constraints.get("change_simulation_blocked_reason") or "")
+        workflow = {
+            "workflow_type": "CHANGE_SIMULATION",
+            "requirement_version_id": current_version_id or None,
+        }
+        if blocked_reason or not prior_version_id:
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": blocked_reason or "PRIOR_BASELINE_REFERENCE_MISSING",
+                }
+            ]
+        if not current_version_id or current_version_id == prior_version_id:
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": "REQUIREMENT_VERSION_PAIR_INVALID",
+                }
+            ]
+
+        config = {
+            "configurable": {
+                "token": f"Bearer {execution_token}",
+                "project_id": running.project_id,
+                "automation_run_id": running.automation_run_id,
+            }
+        }
+        try:
+            prior = await require_operation(
+                "GET", f"/phien-ban-yeu-cau/{prior_version_id}", config
+            )
+            current = await require_operation(
+                "GET", f"/phien-ban-yeu-cau/{current_version_id}", config
+            )
+            requirement_id = str(current.get("requirement_id") or "")
+            if not requirement_id:
+                raise AutomationOperationError("REQUIREMENT_ID_MISSING")
+            requirement = await require_operation(
+                "GET", f"/yeu-cau/{requirement_id}", config
+            )
+            versions = await require_operation(
+                "GET", f"/yeu-cau/{requirement_id}/phien-ban", config
+            )
+        except Exception:
+            logger.exception(
+                "Requirement change simulation pair could not be reread under project authorization"
+            )
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": "REQUIREMENT_VERSION_PAIR_READBACK_FAILED",
+                }
+            ]
+
+        if (
+            not isinstance(prior, dict)
+            or not isinstance(current, dict)
+            or not isinstance(requirement, dict)
+            or not isinstance(versions, list)
+            or len(versions) >= 500
+            or prior.get("_id") != prior_version_id
+            or current.get("_id") != current_version_id
+            or prior.get("project_id") != running.project_id
+            or current.get("project_id") != running.project_id
+            or prior.get("requirement_id") != requirement_id
+            or current.get("requirement_id") != requirement_id
+            or requirement.get("_id") != requirement_id
+            or requirement.get("project_id") != running.project_id
+            or not isinstance(requirement.get("current_version"), dict)
+            or requirement["current_version"].get("_id") != current_version_id
+            or prior.get("status") != "BASELINED"
+            or current.get("status") != "BASELINED"
+            or type(prior.get("version")) is not int
+            or type(current.get("version")) is not int
+            or prior.get("version") >= current.get("version")
+        ):
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": "REQUIREMENT_VERSION_PAIR_NOT_CURRENT_OR_INVALID",
+                }
+            ]
+
+        prior_baselines = [
+            item
+            for item in versions
+            if isinstance(item, dict)
+            and item.get("status") == "BASELINED"
+            and type(item.get("version")) is int
+            and item["version"] < current["version"]
+        ]
+        if not prior_baselines:
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": "PRIOR_BASELINE_NOT_FOUND_IN_HISTORY",
+                }
+            ]
+        latest_prior_number = max(item["version"] for item in prior_baselines)
+        latest_prior = [
+            item for item in prior_baselines if item["version"] == latest_prior_number
+        ]
+        if len(latest_prior) != 1 or latest_prior[0].get("_id") != prior_version_id:
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": "PRIOR_BASELINE_IS_NOT_UNIQUE_LATEST",
+                }
+            ]
+
+        prior_text = self._requirement_version_source_text(prior)
+        current_text = self._requirement_version_source_text(current)
+        if not prior_text or not current_text:
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": "REQUIREMENT_VERSION_SOURCE_TEXT_MISSING",
+                }
+            ]
+        event_id = (
+            f"change-simulation:{running.automation_run_id}:"
+            f"{prior_version_id}:{current_version_id}"
+        )
+        event = AutomationEventRequest(
+            event_id=event_id,
+            project_id=running.project_id,
+            requester_user_id=running.requester_user_id,
+            trigger=AutomationTrigger.REQUIREMENT_CHANGED,
+            parent_automation_run_id=running.automation_run_id,
+            target_artifact_ids=[prior_version_id, current_version_id],
+            evidence=[
+                EvidenceItem(
+                    artifact_type="requirement_version",
+                    artifact_id=requirement_id,
+                    artifact_version_id=prior_version_id,
+                    source="database",
+                    authority="requirement",
+                    text=prior_text,
+                    project_id=running.project_id,
+                    artifact_status=prior.get("status"),
+                ),
+                EvidenceItem(
+                    artifact_type="requirement_version",
+                    artifact_id=requirement_id,
+                    artifact_version_id=current_version_id,
+                    source="database",
+                    authority="requirement",
+                    text=current_text,
+                    project_id=running.project_id,
+                    artifact_status=current.get("status"),
+                ),
+            ],
+            change_simulation=ChangeSimulationInput(
+                base_requirement_version_id=prior_version_id,
+                proposed_source_text=current_text,
+            ),
+        )
+        try:
+            runs = await automation_service.enqueue_event(event)
+        except Exception:
+            logger.exception(
+                "Requirement change simulation child event could not be enqueued parent_run={}",
+                running.automation_run_id,
+            )
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": "CHANGE_SIMULATION_CHILD_ENQUEUE_FAILED",
+                }
+            ]
+        if not runs:
+            return [
+                {
+                    **workflow,
+                    "status": "WAITING",
+                    "reason_code": "CHANGE_SIMULATION_CHILD_SUPPRESSED",
+                }
+            ]
+        child = runs[0]
+        return [
+            {
+                **workflow,
+                "automation_run_id": child.automation_run_id,
+                "status": child.status.value,
+                "reason_code": child.error_code,
+                "prior_baseline_version_id": prior_version_id,
+                "current_requirement_version_id": current_version_id,
+            }
+        ]
+
+    @staticmethod
+    def _requirement_version_source_text(version):
+        parts = []
+        projection = str(version.get("plain_text_projection") or "").strip()
+        if projection:
+            parts.append(projection)
+        for item in version.get("acceptance_criteria") or []:
+            if isinstance(item, dict):
+                text = str(item.get("plain_text") or "").strip()
+                if text:
+                    parts.append(text)
+
+        def collect(value):
+            if isinstance(value, str):
+                return [value.strip()] if value.strip() else []
+            if isinstance(value, dict):
+                return [text for child in value.values() for text in collect(child)]
+            if isinstance(value, (list, tuple)):
+                return [text for child in value for text in collect(child)]
+            return []
+
+        for field in ("business_rules", "actors", "dependencies", "details", "custom_values"):
+            parts.extend(collect(version.get(field)))
+        return "\n".join(parts)
 
     @staticmethod
     def _verified_output_refs(run) -> list[str]:

@@ -36,6 +36,13 @@ export default function DataTable({
 }) {
   const selectable = Array.isArray(selectedIds) && typeof onSelectionChange === "function";
   const itemId = (item) => item._id ?? item.id ?? item.key ?? item.code;
+  const itemLabel = (item, index) =>
+    item.title ||
+    item.name ||
+    item.test_case_key ||
+    item.requirement_key ||
+    item.defect_key ||
+    `dòng ${index + 1}`;
   const pageIds = (items || []).map(itemId).filter((id) => id !== undefined && id !== null);
   const allSelected =
     selectable && pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
@@ -145,12 +152,12 @@ export default function DataTable({
                   onClick={(event) => selectRow(event, item)}
                   onKeyDown={(event) => openFromKeyboard(event, item)}
                   tabIndex={onSelect ? 0 : undefined}
-                  aria-label={onSelect ? `Mở ${itemId(item) ?? `dòng ${index + 1}`}` : undefined}
+                  aria-label={onSelect ? `Mở ${itemLabel(item, index)}` : undefined}
                 >
                   {selectable && (
                     <td className="w-12 px-4 py-3 align-top">
                       <input
-                        aria-label={`${selectionLabel} ${itemId(item)}`}
+                        aria-label={`${selectionLabel} ${itemLabel(item, index)}`}
                         checked={selectedIds.includes(itemId(item))}
                         disabled={itemId(item) === undefined || itemId(item) === null}
                         type="checkbox"
@@ -197,7 +204,7 @@ export default function DataTable({
             onClick={(event) => selectRow(event, item)}
             onKeyDown={(event) => openFromKeyboard(event, item)}
             tabIndex={onSelect ? 0 : undefined}
-            aria-label={onSelect ? `Mở ${itemId(item) ?? `dòng ${index + 1}`}` : undefined}
+            aria-label={onSelect ? `Mở ${itemLabel(item, index)}` : undefined}
           >
             {selectable && (
               <label
@@ -205,7 +212,7 @@ export default function DataTable({
                 onClick={(event) => event.stopPropagation()}
               >
                 <input
-                  aria-label={`${selectionLabel} ${itemId(item)}`}
+                  aria-label={`${selectionLabel} ${itemLabel(item, index)}`}
                   checked={selectedIds.includes(itemId(item))}
                   disabled={itemId(item) === undefined || itemId(item) === null}
                   type="checkbox"

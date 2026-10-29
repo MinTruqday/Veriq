@@ -433,7 +433,7 @@ export function DegradedBanner({ mode, message }) {
       className="rounded-control border border-warning/30 bg-warning-soft p-4 text-[13px] text-warning"
     >
       {message ||
-        `Hệ thống đang hoạt động giới hạn do ${valueLabel(mode)} các thao tác vẫn được lưu và có thể cần kiểm tra thủ công`}
+        `Hệ thống đang hoạt động ở chế độ hạn chế (${valueLabel(mode)}). Thao tác đã lưu vẫn được giữ lại; một số thao tác có thể cần kiểm tra thủ công.`}
     </p>
   );
 }

@@ -70,6 +70,10 @@ def required_business_role(permission: str) -> ProjectRole | None:
         "proposal.approve",
         "proposal.bulk.approve",
         "proposal.bulk.generate",
+        "testplan.create",
+        "testplan.update",
+        "testplan.archive",
+        "testplan.submit_review",
         "testplan.approve",
         "release.close",
     }:

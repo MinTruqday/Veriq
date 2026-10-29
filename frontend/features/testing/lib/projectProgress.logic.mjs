@@ -5,27 +5,35 @@ export function taskProgressPresentation(summary) {
       completionPercent: null,
       completed: null,
       total: null,
+      applicableTotal: null,
       blocked: null,
     };
   }
 
   const completed = Number.isFinite(summary.completed) ? summary.completed : null;
   const total = Number.isFinite(summary.total) ? summary.total : null;
+  const applicableTotal = Number.isFinite(summary.applicable_total)
+    ? summary.applicable_total
+    : total;
   const blocked = Number.isFinite(summary.blocked) ? summary.blocked : null;
   if (Number.isFinite(summary.completion_percent)) {
-    return { label: "", completionPercent: summary.completion_percent, completed, total, blocked };
-  }
-
-  if (summary.total === 0) {
-    return { label: "Chưa có công việc", completionPercent: null, completed: 0, total: 0, blocked };
-  }
-
-  if (summary.applicable_total === 0 && summary.cancelled > 0) {
     return {
-      label: "Tất cả công việc đã hủy",
+      label: "",
+      completionPercent: summary.completion_percent,
+      completed,
+      total,
+      applicableTotal,
+      blocked,
+    };
+  }
+
+  if (applicableTotal === 0) {
+    return {
+      label: "Chưa có công việc",
       completionPercent: null,
       completed,
       total,
+      applicableTotal,
       blocked,
     };
   }
@@ -35,6 +43,7 @@ export function taskProgressPresentation(summary) {
     completionPercent: null,
     completed,
     total,
+    applicableTotal,
     blocked,
   };
 }

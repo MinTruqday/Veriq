@@ -333,7 +333,7 @@ function readinessGateLabel(gate) {
   return (
     {
       RELEASE_STATE: "Trạng thái phát hành",
-      GATE_REVISION: "Phiên bản điều kiện",
+      GATE_REVISION: "Tính nhất quán của điều kiện đóng",
       COMPLETION_REPORT: "Báo cáo hoàn tất",
       BLOCKING_DEFECTS: "Lỗi chặn phát hành",
       REQUIREMENT_ASSURANCE: "Hồ sơ đảm bảo yêu cầu",
@@ -353,12 +353,10 @@ function readinessCodeLabel(code) {
       NO_OPEN_BLOCKING_DEFECTS: "Không còn lỗi mức chặn đang mở",
       RELEASE_REQUIREMENT_ASSURANCE_VALID: "Hồ sơ đảm bảo hợp lệ",
       RELEASE_COMPLETION_GATE_FAILED: "Chưa đạt điều kiện báo cáo hoàn tất",
-      RELEASE_TEST_PLAN_SCOPE_REQUIRED: "Cần phạm vi Test Plan",
-      RELEASE_TEST_PLAN_SNAPSHOT_INVALID: "Ảnh chụp Test Plan không hợp lệ",
+      RELEASE_TEST_PLAN_SCOPE_REQUIRED: "Cần chọn phạm vi kế hoạch kiểm thử",
+      RELEASE_TEST_PLAN_SNAPSHOT_INVALID: "Bản lưu kế hoạch kiểm thử không hợp lệ",
       RELEASE_REQUIREMENT_SCOPE_REQUIRED: "Cần có yêu cầu trong phạm vi phát hành",
       RELEASE_REQUIREMENT_ASSURANCE_GATE_FAILED: "Hồ sơ đảm bảo chưa đạt",
-    }[code] ||
-    code ||
-    "Chưa đạt điều kiện"
+    }[code] || "Điều kiện này chưa đạt hoặc cần được kiểm tra lại"
   );
 }

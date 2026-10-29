@@ -590,14 +590,13 @@ export default function CausalAnalysisPanel({ project }) {
                 {EVENT_TRIGGER_LABELS[selected.source_event_trigger] || "Sự kiện dự án"} · phiên bản
                 lỗi {selected.source_event_revision}
               </p>
-              <p className="break-all text-xs text-ink-muted">
-                Mã sự kiện: {selected.source_event_id}
-              </p>
-              {selected.source_automation_run_id && (
-                <p className="break-all text-xs text-ink-muted">
-                  Mã lượt AI: {selected.source_automation_run_id}
-                </p>
-              )}
+              <details className="text-xs text-ink-muted">
+                <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                <p className="mt-1 break-all">Mã sự kiện: {selected.source_event_id}</p>
+                {selected.source_automation_run_id && (
+                  <p className="break-all">Mã lượt xử lý: {selected.source_automation_run_id}</p>
+                )}
+              </details>
             </section>
           )}
           <DataTable
