@@ -266,6 +266,7 @@ export default function TraceabilityPage({ project }) {
       )}
       <Panel title="Liên kết yêu cầu và ca kiểm thử">
         <DataTable
+          layout="cards"
           items={matrix.trace_links || []}
           empty="Chưa có liên kết giữa yêu cầu và ca kiểm thử"
           columns={[

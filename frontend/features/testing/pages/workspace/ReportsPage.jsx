@@ -372,9 +372,8 @@ export default function ReportsPage({ project }) {
                       Liên kết yêu cầu và kết quả kiểm thử
                     </h2>
                     <p className="mt-1 text-sm text-ink-muted">
-                      Số liệu thể hiện liên kết và kết quả kiểm thử trong phạm vi đã chọn; không
-                      phải thước đo chất lượng phần mềm. Tỷ lệ ca đã chạy lọc theo bản phát hành và
-                      bản dựng, chưa lọc theo môi trường.
+                      Tỷ lệ ca đã chạy tính theo bản phát hành và bản dựng, chưa lọc theo môi
+                      trường.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -446,9 +445,6 @@ export default function ReportsPage({ project }) {
                     <h2 className="text-base font-semibold" id="project-metrics-heading">
                       Chỉ số toàn dự án
                     </h2>
-                    <p className="mt-1 text-sm text-ink-muted">
-                      Những số liệu dưới đây không bị giới hạn bởi bộ lọc phạm vi ở trên.
-                    </p>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {value.dashboard && (
@@ -582,9 +578,6 @@ export default function ReportsPage({ project }) {
               </div>
               {value.coverage && (
                 <Panel title="Mốc độ phủ">
-                  <p className="px-5 pt-4 text-sm text-ink-muted">
-                    Mỗi mốc lưu riêng các chỉ số và phạm vi tại thời điểm ghi nhận.
-                  </p>
                   <DataTable
                     items={value.snapshots}
                     empty="Chưa có mốc độ phủ"
@@ -615,10 +608,7 @@ export default function ReportsPage({ project }) {
                 </Panel>
               )}
               {value.activity && (
-                <Panel title="Hoạt động chất lượng gần đây">
-                  <p className="px-5 pt-4 text-sm text-ink-muted">
-                    Nhật ký hoạt động của toàn dự án, không chịu ảnh hưởng của bộ lọc báo cáo.
-                  </p>
+                <Panel title="Hoạt động toàn dự án">
                   <div
                     className="max-h-[34rem] overflow-auto overscroll-contain"
                     role="region"

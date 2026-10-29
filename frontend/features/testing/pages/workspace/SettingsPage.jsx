@@ -493,10 +493,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 </div>
               </section>
               {can("project.update") && (
-                <Panel
-                  title="Thời gian dự án"
-                  description="Ngày bắt đầu và kết thúc dự kiến của dự án."
-                >
+                <Panel title="Thời gian dự án">
                   <div className="grid gap-3 p-4 sm:grid-cols-2">
                     <label className="field-label">
                       Bắt đầu dự kiến

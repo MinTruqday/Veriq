@@ -1172,12 +1172,8 @@ export default function TestDesignPage({ project, workspaceView }) {
         />
       )}
       {showAgentRuns && permissions.includes("requirement.read") && canReadAutomationRuns && (
-        <Panel title="Kết quả AI cho yêu cầu đã duyệt">
+        <Panel title="Lượt xử lý AI">
           <div className="grid gap-4 p-5">
-            <p className="text-sm text-ink-muted">
-              Chọn một yêu cầu để xem kết quả xử lý gắn với phiên bản hiện tại. Khi bạn khởi chạy
-              quy trình AI, các bước đủ điều kiện sẽ tự tiếp tục; mục này chỉ tra cứu kết quả.
-            </p>
             <label className="field-label block max-w-2xl">
               Yêu cầu đã duyệt
               <select
@@ -1216,13 +1212,9 @@ export default function TestDesignPage({ project, workspaceView }) {
                 </div>
               ) : (
                 <p className="text-sm text-ink-muted">
-                  Chưa có kết quả xử lý cho phiên bản yêu cầu này. Điều đó chưa xác định được nguyên
-                  nhân.
+                  Chưa có kết quả AI cho phiên bản yêu cầu này.
                 </p>
               ))}
-            {!automationRunsLoading && !automationRunsError && !selectedRequirement && (
-              <p className="text-sm text-ink-muted">Chọn yêu cầu để tra hoạt động AI tương ứng.</p>
-            )}
           </div>
         </Panel>
       )}

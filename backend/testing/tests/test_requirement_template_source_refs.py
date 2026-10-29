@@ -12,11 +12,96 @@ from src.modules.requirements.services.requirement_templates import (
     synthesize_template,
     template_synthesis_source_snapshot,
 )
+from src.modules.requirements.services.requirement_import_workflow import (
+    grounded_requirement_candidates,
+)
+from src.modules.requirements.services.requirement_workflow import candidate_quality_issues
 from src.modules.design.services.generation import requirement_test_evidence_text
 from src.schemas.contracts.requirements import RequirementTemplateSynthesis
 
 
 class RequirementTemplateSourceRefTests(unittest.TestCase):
+    def test_import_keeps_acceptance_criteria_when_source_line_breaks_differ(self):
+        source_text = (
+            "AC-01: Người dùng nhập thông tin hợp lệ,\n"
+            "hệ thống cho phép đăng nhập."
+        )
+        source_quote = source_text
+        candidate_text = "AC-01: Người dùng nhập thông tin hợp lệ, hệ thống cho phép đăng nhập."
+        document = {
+            "_id": "DOC-1",
+            "normalized_content": source_text,
+            "content_hash": "hash-1",
+            "source_version": "1",
+            "format": "docx",
+        }
+        batches = [{
+            "conflicts": [],
+            "suggestions": [{
+                "title": "Đăng nhập bằng thông tin hợp lệ",
+                "type": "functional",
+                "content": candidate_text,
+                "acceptance_criteria": [candidate_text],
+                "evidence_refs": ["DOC-1:0"],
+                "source_quotes": {"DOC-1:0": source_quote},
+            }],
+        }]
+
+        candidates, conflicts = grounded_requirement_candidates(document, batches)
+
+        self.assertEqual(conflicts, [])
+        self.assertEqual(len(candidates[0]["acceptance_criteria"]), 1)
+        criterion = candidates[0]["acceptance_criteria"][0]
+        self.assertEqual(criterion["key"], "AC-01")
+        self.assertEqual(
+            source_text[
+                criterion["source_span"]["source_start"]:
+                criterion["source_span"]["source_end"]
+            ],
+            source_quote,
+        )
+
+    def test_import_does_not_keep_criterion_that_is_not_in_source(self):
+        source_text = "Người dùng đăng nhập bằng email."
+        document = {
+            "_id": "DOC-1",
+            "normalized_content": source_text,
+            "content_hash": "hash-1",
+            "source_version": "1",
+            "format": "txt",
+        }
+        batches = [{
+            "conflicts": [],
+            "suggestions": [{
+                "title": "Đăng nhập",
+                "type": "functional",
+                "content": source_text,
+                "acceptance_criteria": ["Hệ thống khóa tài khoản sau năm lần sai."],
+                "evidence_refs": ["DOC-1:0"],
+                "source_quotes": {"DOC-1:0": source_text},
+            }],
+        }]
+
+        candidates, _ = grounded_requirement_candidates(document, batches)
+
+        self.assertEqual(candidates[0]["acceptance_criteria"], [])
+        self.assertEqual(
+            candidates[0]["section_states"]["acceptance_criteria"], "missing"
+        )
+
+    def test_blank_acceptance_criterion_does_not_satisfy_import_review(self):
+        issues = candidate_quality_issues({
+            "title": "Đăng nhập",
+            "type": "functional",
+            "content_doc": {"type": "doc", "content": []},
+            "source_refs": [{"requirement_document_id": "DOC-1"}],
+            "acceptance_criteria": [
+                {"key": "AC-01", "content_doc": {"type": "doc", "content": []}}
+            ],
+        })
+
+        self.assertIn("ACCEPTANCE_CRITERIA_MISSING_FOR_BASELINE", issues)
+
     def test_synthesis_instruction_accepts_blueprint_payload_within_ai_contract_limit(self):
         base = {
             "name": "Mẫu yêu cầu từ tài liệu nguồn",

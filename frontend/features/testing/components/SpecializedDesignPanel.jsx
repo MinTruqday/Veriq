@@ -113,10 +113,6 @@ export default function SpecializedDesignPanel({ project }) {
   return (
     <Panel title="Đề xuất kiểm thử chuyên sâu">
       <div className="space-y-4 p-5">
-        <p className="text-sm text-ink-muted">
-          Khu vực này chỉ hiển thị kết quả đã được hệ thống ghi nhận từ luồng xử lý nguồn. Không có
-          thao tác gọi AI thủ công ở đây.
-        </p>
         {error && <ErrorState message={error} />}
         <div className="grid gap-6 xl:grid-cols-2">
           {canReadSecurity && (

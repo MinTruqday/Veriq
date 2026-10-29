@@ -288,7 +288,6 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
       {focus !== "repository" && (
         <Panel
           title="Danh sách bước dùng lại"
-          description="Bản đã duyệt được giữ nguyên; thay đổi sẽ tạo phiên bản mới"
           actions={
             can("testcase.create") && !loading && !loadFailed ? (
               <button

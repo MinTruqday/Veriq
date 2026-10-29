@@ -125,7 +125,16 @@ def candidate_quality_issues(candidate):
         issues.append("REQUIREMENT_CONTENT_MISSING")
     if not candidate.get("source_refs"):
         issues.append("REQUIREMENT_SOURCE_MISSING")
-    if candidate.get("type") in ("functional", "api", "permission", "integration") and not candidate.get("acceptance_criteria"):
+    acceptance_criteria = candidate.get("acceptance_criteria") or []
+    has_acceptance_criteria = any(
+        str(item or "").strip()
+        if isinstance(item, str)
+        else plain_text(item.get("content_doc") or {}).strip()
+        if isinstance(item, dict)
+        else False
+        for item in acceptance_criteria
+    )
+    if candidate.get("type") in ("functional", "api", "permission", "integration") and not has_acceptance_criteria:
         issues.append("ACCEPTANCE_CRITERIA_MISSING_FOR_BASELINE")
     if "missing" in (candidate.get("section_states") or {}).values():
         issues.append("APPLICABLE_SECTION_MISSING_FOR_BASELINE")

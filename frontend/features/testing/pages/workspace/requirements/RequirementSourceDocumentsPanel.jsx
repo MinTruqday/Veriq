@@ -406,14 +406,14 @@ export default function RequirementSourceDocumentsPanel({
                       ? "Chưa thể xử lý tài liệu"
                       : "Đang chờ xử lý tài liệu";
               return (
-                <div className="min-w-0 space-y-3">
-                  <div className="space-y-1">
+                <div className="flex min-w-0 flex-col items-start gap-3">
+                  <div className="flex w-full min-w-0 flex-col items-start gap-1">
                     <p className="text-xs font-medium text-ink-muted">Phân tích tài liệu</p>
-                    <div>
+                    <div className="block w-full">
                       <StatusPill value={item.status} />
                     </div>
                   </div>
-                  <div className="space-y-1">
+                  <div className="flex w-full min-w-0 flex-col items-start gap-1">
                     <p className="text-xs font-medium text-ink-muted">Tra cứu nội dung</p>
                     <p className="break-words text-sm">{status}</p>
                   </div>

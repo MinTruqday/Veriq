@@ -1,6 +1,8 @@
 # Tồn đọng AI và Frontend của Veriq
 
-## Trạng thái hiện tại — 29/10/2026, 16:01 (+07)
+## Trạng thái hiện tại — 29/10/2026, 18:08 (+07)
+
+- Frontend sau commit `631 commit`: Docker production build và toàn bộ Playwright đạt **101 passed, 10 skipped, 0 failed**. Bổ sung kiểm tra live riêng: ma trận phiên/role chỉ đọc **7/7 đạt** và API live từ chối thao tác ghép khi chưa đăng nhập **1/1 đạt**. Hai bài live lưu bản ghép/xung đột revision vẫn chưa chạy vì cần database disposable và fixture QA mới; không tính phần này là đạt và giữ FE-14 trong 14 cổng còn mở. Fixture live role đã được dọn; không có thao tác ghi từ browser trong lượt chỉ đọc.
 
 - Sau commit `5d94322b` (`609 commit`), danh sách dự án hiển thị lịch thành một khoảng ngày, bỏ nhãn Scrum/Kanban khỏi thẻ, bỏ chỉ số Project do QA nhập; bộ lọc lịch chọn ngày cụ thể. Tổng quan dự án nay dùng cùng cách hiển thị khoảng ngày thay cho các dòng bắt đầu/kết thúc/thời lượng. Dự án chưa có ngày hiện “Chưa có lịch”.
 - Sau lượt rà soát toàn frontend, Docker frontend được dựng lại và healthy. `format:check`, ESLint, Next production build và Playwright đạt **100 ca, 10 ca live bị bỏ qua, 0 lỗi**; 40 route workspace được mở ở 1440 px, 19 route đại diện được kiểm tra thêm ở 1920, 1280, 768 và 390 px. 10 ca bỏ qua cần phiên/role live hoặc DB disposable; không tính chúng là đạt. Mã sự kiện nội bộ không còn xuất hiện trong tiêu đề hoạt động AI; nhãn hiển thị dùng nội dung mô tả từ dữ liệu nếu có, nếu không dùng nhãn chung. Đây là bằng chứng cho hiển thị và hành vi frontend trong phạm vi route matrix, không đóng các cổng live AI hoặc backend còn mở.

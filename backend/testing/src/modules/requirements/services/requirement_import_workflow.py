@@ -34,22 +34,53 @@ from src.schemas.contracts.requirements import RequirementDuplicateCheckInput
 
 def grounded_requirement_candidates(document, result_batches):
     text = source_document_text(document["normalized_content"])
+    normalized_parts = []
+    source_positions = []
+    in_whitespace = False
+    for position, character in enumerate(text):
+        if character.isspace():
+            if not in_whitespace:
+                normalized_parts.append(" ")
+                source_positions.append(position)
+            in_whitespace = True
+            continue
+        normalized_parts.append(character)
+        source_positions.append(position)
+        in_whitespace = False
+    first = next(
+        (index for index, character in enumerate(normalized_parts) if character != " "),
+        len(normalized_parts),
+    )
+    last = next(
+        (
+            index
+            for index in range(len(normalized_parts) - 1, -1, -1)
+            if normalized_parts[index] != " "
+        ),
+        -1,
+    )
+    normalized_text = "".join(normalized_parts[first : last + 1])
+    source_positions = source_positions[first : last + 1]
 
     def source_reference_for(value, section):
         value = str(value or "").strip()
         if not value:
             return None
-        source_start = text.find(value)
-        if source_start < 0:
+        normalized_value = re.sub(r"\s+", " ", value).strip()
+        normalized_start = normalized_text.find(normalized_value)
+        if normalized_start < 0:
             return None
+        source_start = source_positions[normalized_start]
+        source_end = source_positions[normalized_start + len(normalized_value) - 1] + 1
+        source_quote = text[source_start:source_end]
         return {
             "requirement_document_id": document["_id"],
             "content_hash": document["content_hash"],
             "source_version": document.get("source_version"),
             "source_start": source_start,
-            "source_end": source_start + len(value),
-            "source_text_hash": hashlib.sha256(value.encode("utf-8")).hexdigest(),
-            "source_quote": value,
+            "source_end": source_end,
+            "source_text_hash": hashlib.sha256(source_quote.encode("utf-8")).hexdigest(),
+            "source_quote": source_quote,
             "section": section,
             "format": document["format"],
         }

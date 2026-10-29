@@ -1,8 +1,11 @@
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
+import { formatDate, valueLabel } from "../lib/testing";
 
 export default function TestControlActionPanel({
   items,
+  members = [],
+  typeLabel = (item) => valueLabel(item.type),
   canCreate,
   canUpdate,
   onCreate,
@@ -21,13 +24,19 @@ export default function TestControlActionPanel({
         items={items}
         empty="Chưa có hành động kiểm soát"
         columns={[
-          { key: "type", label: "Loại" },
+          { key: "type", label: "Loại", render: typeLabel },
           { key: "title", label: "Nội dung" },
-          { key: "owner_id", label: "Người phụ trách" },
+          {
+            key: "owner_id",
+            label: "Người phụ trách",
+            render: (item) =>
+              members.find((member) => member.user_id === item.owner_id)?.user_label ||
+              "Chưa phân công",
+          },
           {
             key: "due_at",
             label: "Hạn",
-            render: (item) => new Date(item.due_at).toLocaleString("vi-VN"),
+            render: (item) => formatDate(item.due_at),
           },
           {
             key: "priority",

@@ -902,18 +902,35 @@ export default function DefectsPage({ project }) {
           items={items}
           empty="Chưa có lỗi"
           columns={[
-            { key: "defect_key", label: "Mã" },
-            { key: "title", label: "Tên" },
-            { key: "severity", label: "Mức độ", render: (item) => valueLabel(item.severity) },
-            { key: "priority", label: "Ưu tiên", render: (item) => valueLabel(item.priority) },
+            {
+              key: "defect_key",
+              label: "Mã",
+              minWidth: 88,
+              render: (item) => <span className="whitespace-nowrap">{item.defect_key}</span>,
+            },
+            { key: "title", label: "Tên", minWidth: 205 },
+            {
+              key: "severity",
+              label: "Mức độ",
+              minWidth: 82,
+              render: (item) => valueLabel(item.severity),
+            },
+            {
+              key: "priority",
+              label: "Ưu tiên",
+              minWidth: 82,
+              render: (item) => valueLabel(item.priority),
+            },
             {
               key: "status",
               label: "Trạng thái",
+              minWidth: 116,
               render: (item) => <StatusPill value={item.status} />,
             },
             {
               key: "trace",
               label: "Truy vết",
+              minWidth: 178,
               render: (item) => (
                 <span className="flex min-w-0 flex-col items-start gap-2 sm:min-w-48">
                   <span className="text-[11px] text-ink-muted">
@@ -975,6 +992,7 @@ export default function DefectsPage({ project }) {
             {
               key: "assignee",
               label: "Người xử lý",
+              minWidth: 150,
               render: (item) =>
                 can("defect.assign") ? (
                   <button
@@ -999,6 +1017,7 @@ export default function DefectsPage({ project }) {
                   {
                     key: "transition",
                     label: "Chuyển trạng thái",
+                    minWidth: 170,
                     render: (item) => {
                       if (item.status === "READY_FOR_RETEST") {
                         if (!can("defect.retest")) return null;

@@ -74,7 +74,7 @@ export default function TestCaseCustomFieldManager({ projectId, onUpdated }) {
   return (
     <Panel
       title="Trường mở rộng của ca kiểm thử"
-      description="QA có thể đổi tên, yêu cầu nhập hoặc ngừng dùng trường. Mã, kiểu dữ liệu và lựa chọn đã tạo được giữ nguyên để không làm hỏng dữ liệu lịch sử."
+      description="Đổi nhãn, kiểu nhập hoặc trạng thái; giá trị đã lưu vẫn được giữ nguyên."
       actions={
         <button
           className="secondary-button"

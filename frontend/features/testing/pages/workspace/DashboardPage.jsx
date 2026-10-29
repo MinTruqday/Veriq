@@ -233,12 +233,9 @@ export default function DashboardPage({ project }) {
               )}
               {canReadKnowledge && (
                 <Panel title="Tài liệu và nguồn">
-                  <div className="space-y-3 p-5">
-                    <p className="text-sm leading-6 text-ink-muted">
-                      Tài liệu tham khảo chỉ hiển thị theo quyền truy cập của bạn.
-                    </p>
+                  <div className="p-5">
                     <Link className="apple-button w-full" href={`${base}/tri-thuc`}>
-                      Mở tài liệu tham chiếu
+                      Mở tài liệu và nguồn
                     </Link>
                   </div>
                 </Panel>

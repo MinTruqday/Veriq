@@ -2,23 +2,27 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from src.schemas.inference_requirements import (
-    TestabilityBlueprintCompilationOutput,
-    TestabilityBlueprintGroundingReview,
-    TestabilityBlueprintClaimReviewItem,
+    TestabilityBlueprintCompilationOutput as BlueprintCompilationOutput,
+    TestabilityBlueprintGroundingReview as BlueprintGroundingReview,
+    TestabilityBlueprintClaimReviewItem as BlueprintClaimReviewItem,
+    TestabilityBlueprintObligationOutput as BlueprintObligationOutput,
 )
-from src.schemas.inference_requests import TestingAutomationRequest, TestingEvidence
+from src.schemas.inference_requests import (
+    TestingAutomationRequest as AutomationRequest,
+    TestingEvidence as AutomationEvidence,
+)
 from src.services.ai_automation import generate_ai_automation
 
 
 class BlueprintGroundingReviewTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         quote = "Mật khẩu phải có ít nhất 12 ký tự."
-        self.request = TestingAutomationRequest(
+        self.request = AutomationRequest(
             capability="testability_blueprint_compilation",
             project_id="project-1",
             instruction="Compile the verified facts into a testability blueprint.",
             evidence=[
-                TestingEvidence(
+                AutomationEvidence(
                     artifact_type="requirement_document",
                     artifact_id="doc-1",
                     artifact_version_id="doc-1-v1",
@@ -36,7 +40,7 @@ class BlueprintGroundingReviewTests(unittest.IsolatedAsyncioTestCase):
                 )
             ],
         )
-        self.blueprint = TestabilityBlueprintCompilationOutput(
+        self.blueprint = BlueprintCompilationOutput(
             evidence_refs=["doc-1-v1"],
             confidence=0.9,
             obligations=[
@@ -68,8 +72,8 @@ class BlueprintGroundingReviewTests(unittest.IsolatedAsyncioTestCase):
         return result, structured_call
 
     async def test_blueprint_claims_are_independently_checked_against_verified_facts(self):
-        review = TestabilityBlueprintGroundingReview(
-            obligations=[TestabilityBlueprintClaimReviewItem(index=0)],
+        review = BlueprintGroundingReview(
+            obligations=[BlueprintClaimReviewItem(index=0)],
             clarifications=[],
         )
         result, structured_call = await self._run(review)
@@ -82,9 +86,9 @@ class BlueprintGroundingReviewTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_semantically_unsupported_obligation_is_degraded_not_published(self):
         self.blueprint.obligations[0].obligation = "Kiểm tra tài khoản bị khóa sau 5 lần đăng nhập sai."
-        review = TestabilityBlueprintGroundingReview(
+        review = BlueprintGroundingReview(
             obligations=[
-                TestabilityBlueprintClaimReviewItem(
+                BlueprintClaimReviewItem(
                     index=0,
                     unsupported_claims=["tài khoản bị khóa sau 5 lần đăng nhập sai"],
                 )
@@ -102,8 +106,50 @@ class BlueprintGroundingReviewTests(unittest.IsolatedAsyncioTestCase):
             ["tài khoản bị khóa sau 5 lần đăng nhập sai"],
         )
 
+    async def test_unsupported_blueprint_claim_is_removed_without_dropping_grounded_claims(self):
+        second_obligation = BlueprintObligationOutput(
+            key="UNSUPPORTED_LOCKOUT",
+            obligation="Kiểm tra tài khoản bị khóa sau 5 lần đăng nhập sai.",
+            source_ref="doc-1-v1",
+            source_quote="Mật khẩu phải có ít nhất 12 ký tự.",
+        )
+        blueprint = self.blueprint.model_copy(
+            update={"obligations": [self.blueprint.obligations[0], second_obligation]}
+        )
+        review = BlueprintGroundingReview(
+            obligations=[
+                BlueprintClaimReviewItem(index=0),
+                BlueprintClaimReviewItem(
+                    index=1,
+                    unsupported_claims=["tài khoản bị khóa sau 5 lần đăng nhập sai"],
+                ),
+            ],
+            clarifications=[],
+        )
+        with (
+            patch(
+                "src.services.ai_automation.guardrails_engine.async_inspect_input",
+                new=AsyncMock(return_value={"is_safe": True}),
+            ),
+            patch(
+                "src.services.ai_automation.structured",
+                new=AsyncMock(side_effect=[blueprint, review]),
+            ),
+            patch(
+                "src.services.ai_automation.model_metadata",
+                return_value={"provider": "test", "model": "test-model"},
+            ),
+        ):
+            result = await generate_ai_automation(self.request)
+
+        self.assertEqual(result.status.value, "SUCCESS")
+        self.assertEqual([item["key"] for item in result.obligations], ["PASSWORD_MIN_LENGTH"])
+        self.assertEqual(result.evidence_refs, ["doc-1-v1"])
+        self.assertEqual(result.findings[0]["claim_type"], "OBLIGATION")
+        self.assertIn("AI_UNGROUNDED_CANDIDATES_REJECTED", result.warnings)
+
     async def test_incomplete_reviewer_output_fails_closed(self):
-        review = TestabilityBlueprintGroundingReview(obligations=[], clarifications=[])
+        review = BlueprintGroundingReview(obligations=[], clarifications=[])
         result, _ = await self._run(review)
 
         self.assertEqual(result.status.value, "DEGRADED")

@@ -84,6 +84,7 @@ const labels = {
   OPEN: "Đang mở",
   OPTIONAL: "Không bắt buộc",
   PASS: "Đạt",
+  PASSED: "Đạt",
   PARTIAL_EXECUTION: "Thực thi một phần",
   PARSE_FAILED: "Phân tích tệp thất bại",
   PENDING: "Chờ duyệt",
@@ -108,6 +109,14 @@ const labels = {
   TESTABLE_WITH_RISK: "Có thể kiểm thử kèm rủi ro",
   NOT_TESTABLE: "Không thể kiểm thử",
   NEEDS_CLARIFICATION: "Cần làm rõ",
+  NOT_CONFIGURED: "Chưa cấu hình",
+  INSUFFICIENT_DATA: "Chưa đủ dữ liệu",
+  MANUAL_REQUIRED: "Cần đánh giá thủ công",
+  SCHEDULE: "Tiến độ",
+  EFFORT: "Nỗ lực",
+  BLOCKED_TESTS: "Ca bị chặn",
+  BLOCKER: "Lỗi chặn phát hành",
+  REQUEST_RETEST: "Yêu cầu kiểm thử lại",
   OBSERVED: "Đã tiếp nhận sự kiện",
   PLAN_CREATED: "Đã lập kế hoạch xử lý",
   GRAPH_COMPLETED: "Đã hoàn tất luồng xử lý",
@@ -238,7 +247,11 @@ const valueLabels = {
   project_permission_denied: "Từ chối quyền dự án",
   project_membership_required: "Từ chối truy cập do chưa tham gia dự án",
   project_settings_updated: "Cập nhật cài đặt dự án",
+  test_case_version_approved: "Duyệt phiên bản ca kiểm thử",
+  test_case_group_approved: "Duyệt nhóm ca kiểm thử",
+  test_case_approved: "Duyệt ca kiểm thử",
   test_case_draft_created: "Tạo bản nháp ca kiểm thử",
+  defect_created: "Ghi nhận lỗi",
   test_adequacy_assessment_refreshed: "Cập nhật hồ sơ đảm bảo",
   test_adequacy_review_submitted: "Gửi rà soát hồ sơ đảm bảo",
   test_adequacy_coverage_decided: "Cập nhật quyết định nghĩa vụ kiểm thử",
@@ -396,7 +409,9 @@ export function valueLabel(value) {
 }
 
 export function formatDate(value) {
-  return value ? new Date(value).toLocaleString("vi-VN") : "Chưa có";
+  if (!value) return "Chưa có";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Chưa có" : date.toLocaleString("vi-VN");
 }
 
 export function formatCalendarDate(value) {

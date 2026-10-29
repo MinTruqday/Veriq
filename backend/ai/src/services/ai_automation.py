@@ -339,6 +339,16 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
                 or [item.index for item in review.clarifications] != expected_clarification_indexes
             ):
                 raise ValueError("AI_BLUEPRINT_GROUNDING_REVIEW_INVALID")
+            rejected_obligation_indexes = {
+                item.index for item in review.obligations if item.unsupported_claims
+            }
+            rejected_clarification_indexes = {
+                item.index for item in review.clarifications if item.unsupported_claims
+            }
+            rejected_obligation_keys = {
+                generated_data["obligations"][index]["key"]
+                for index in rejected_obligation_indexes
+            }
             rejected_claims = [
                 {
                     "claim_type": claim_type,
@@ -352,7 +362,48 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
                 for item in items
                 if item.unsupported_claims
             ]
-            if rejected_claims:
+            retained_obligations = [
+                item
+                for index, item in enumerate(generated_data.get("obligations", []))
+                if index not in rejected_obligation_indexes
+            ]
+            retained_clarifications = [
+                item
+                for index, item in enumerate(generated_data.get("clarifications", []))
+                if index not in rejected_clarification_indexes
+                and not set(item.get("unlocks_obligation_keys", []))
+                & rejected_obligation_keys
+            ]
+            if rejected_claims and (retained_obligations or retained_clarifications):
+                generated_data["obligations"] = retained_obligations
+                generated_data["clarifications"] = retained_clarifications
+                generated_data["findings"] = [
+                    *generated_data.get("findings", []),
+                    *rejected_claims[:100],
+                ]
+                generated_data["warnings"] = list(
+                    dict.fromkeys(
+                        [
+                            *generated_data.get("warnings", []),
+                            "AI_UNGROUNDED_CANDIDATES_REJECTED",
+                        ]
+                    )
+                )
+                retained_refs = {
+                    str(item.get("source_ref") or "")
+                    for item in retained_obligations
+                }
+                retained_refs.update(
+                    str(reference)
+                    for item in retained_clarifications
+                    for reference in item.get("evidence_refs", [])
+                )
+                generated_data["evidence_refs"] = [
+                    reference
+                    for reference in generated_data.get("evidence_refs", [])
+                    if reference in retained_refs
+                ]
+            elif rejected_claims:
                 unsupported_details = rejected_claims[:100]
                 raise ValueError("AI_BLUEPRINT_UNGROUNDED_OUTPUT")
         if req.capability == "test_condition_generation":

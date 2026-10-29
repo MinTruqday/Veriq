@@ -15,7 +15,7 @@ import {
   WorkspacePage,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
-import { messageOf, valueLabel } from "../../lib/testing";
+import { formatDate, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 
 const controlTypes = [
@@ -353,7 +353,7 @@ export default function MonitoringPage({ project }) {
               <option value="">Chọn mốc giám sát</option>
               {snapshots.map((item) => (
                 <option key={item._id} value={item._id}>
-                  {new Date(item.snapshot_at).toLocaleString("vi-VN")}
+                  {formatDate(item.snapshot_at)}
                 </option>
               ))}
             </select>
@@ -366,9 +366,7 @@ export default function MonitoringPage({ project }) {
             <div className="grid gap-4 p-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <p className="field-label">Thời điểm ghi nhận</p>
-                <p className="mt-2">
-                  {new Date(selectedSnapshot.snapshot_at).toLocaleString("vi-VN")}
-                </p>
+                <p className="mt-2">{formatDate(selectedSnapshot.snapshot_at)}</p>
               </div>
               <div>
                 <p className="field-label">Phiên bản kế hoạch</p>
@@ -490,7 +488,7 @@ export default function MonitoringPage({ project }) {
               </div>
               <DataTable
                 items={gate?.rules || []}
-                empty="Mốc này chưa có điều kiện phát hành"
+                empty="Chưa có điều kiện phát hành"
                 getRowKey={(item) => item.criterion_id}
                 columns={[
                   { key: "criterion", label: "Tiêu chí" },
@@ -517,7 +515,7 @@ export default function MonitoringPage({ project }) {
                   {
                     key: "decided_at",
                     label: "Thời điểm",
-                    render: (item) => new Date(item.decided_at).toLocaleString("vi-VN"),
+                    render: (item) => formatDate(item.decided_at),
                   },
                 ]}
               />
@@ -534,7 +532,7 @@ export default function MonitoringPage({ project }) {
               ]}
               empty="Không có sai lệch hoặc trở ngại"
               columns={[
-                { key: "type", label: "Loại" },
+                { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
                 { key: "planned", label: "Kế hoạch" },
                 { key: "actual", label: "Thực tế" },
                 { key: "unit", label: "Đơn vị" },
@@ -561,6 +559,8 @@ export default function MonitoringPage({ project }) {
             <Panel title="Hành động kiểm soát">
               <TestControlActionPanel
                 items={actions.filter((item) => item.snapshot_id === selectedSnapshot._id)}
+                members={members}
+                typeLabel={(item) => controlTypeLabels[item.action_type] || valueLabel(item.type)}
                 canCreate={can("testmonitor.control.create")}
                 canUpdate={can("testmonitor.control.update")}
                 onCreate={createAction}

@@ -336,7 +336,7 @@ class AutomationService:
         execution_role, execution_permissions = await project_access(
             event.project_id, execution_token, preferred_role=required_role
         )
-        if event.change_simulation is not None:
+        if getattr(event, "change_simulation", None) is not None:
             stage_permission = "impact.execute"
         elif required_role == "BA":
             stage_permission = "requirement.create"

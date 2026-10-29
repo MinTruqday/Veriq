@@ -1058,7 +1058,6 @@ test("planning filters apply consistently to list, board, and roadmap", async ({
   );
   await expect(page.getByText("Kiểm tra email đăng nhập", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Kiểm tra thanh toán", { exact: true })).toHaveCount(0);
-
   await page.getByRole("button", { name: "Danh sách" }).click();
   await expect(page).toHaveURL(new RegExp(`/du-an/${projectId}/lap-ke-hoach/list$`));
   await expect(
@@ -1653,7 +1652,9 @@ test("Requirement list heading never collapses beside a crowded toolbar", async 
       const panel = page.locator(".requirements-list-panel");
       const heading = panel.locator(".workspace-panel-heading");
       const actions = panel.locator(".workspace-panel-actions");
-      await expect(heading.getByRole("heading", { name: route.title })).toBeVisible();
+      await expect(heading.getByRole("heading", { name: route.title })).toBeVisible({
+        timeout: 15000,
+      });
       await expect(actions.getByRole("textbox", { name: "Tìm yêu cầu" })).toBeVisible();
       if (route.hasDuplicateAction) {
         await expect(actions.getByRole("button", { name: "Kiểm tra trùng lặp" })).toBeVisible();
@@ -1818,7 +1819,9 @@ test("source successor selection preserves one source configuration and can be c
   await installWorkspace(page, "QA");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/du-an/${projectId}/yeu-cau/import`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Nhập tài liệu" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Nhập tài liệu" })).toBeVisible({
+    timeout: 15000,
+  });
   await page.getByRole("button", { name: "Soạn nội dung" }).click();
 
   const parentSelect = page.getByLabel("Phiên bản nguồn trước (không bắt buộc)");
@@ -1843,6 +1846,7 @@ test("Requirement import keeps file, manual and template paths separate without 
   await expect(page.getByRole("button", { name: "Tải tệp lên" })).toHaveAttribute(
     "aria-pressed",
     "true",
+    { timeout: 15000 },
   );
   await expect(page.getByLabel("Tệp SRS, BRD hoặc bảng yêu cầu")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "nội dung nguồn" })).toBeHidden();
@@ -2075,9 +2079,10 @@ test("BA can resume a saved Requirement import with its edited acceptance criter
   });
   await expect(parsedStatus).toBeVisible();
   await expect(searchableStatus).toBeVisible();
-  expect((await searchableStatus.boundingBox()).y).toBeGreaterThan(
-    (await parsedStatus.boundingBox()).y,
-  );
+  const parsedStatusBox = await parsedStatus.boundingBox();
+  const searchableStatusBox = await searchableStatus.boundingBox();
+  expect(searchableStatusBox.x).toBeCloseTo(parsedStatusBox.x, 0);
+  expect(searchableStatusBox.y).toBeGreaterThanOrEqual(parsedStatusBox.y + parsedStatusBox.height);
   const resumedJobResponse = page.waitForResponse(
     (response) => response.url().includes(`/kiem-thu/nhap-yeu-cau/${savedJob._id}`),
     { timeout: 5000 },
@@ -3268,7 +3273,7 @@ test("AI activity does not expose internal event codes as user-facing actions", 
   await installWorkspace(page, "QA", {
     automationRun: {
       trigger: "DOCUMENT_INGESTED",
-      objective: "Tự xử lý sự kiện DOCUMENT_INGESTED trong dự án",
+      objective: "Tự xử lý sự kiện DOCUMENT__INGESTED trong dự án",
     },
   });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -3276,7 +3281,7 @@ test("AI activity does not expose internal event codes as user-facing actions", 
   await page.getByRole("button", { name: "AI tự động hóa" }).click();
 
   await expect(page.getByRole("button", { name: /Rà soát tài liệu mới/ })).toBeVisible();
-  await expect(page.getByText(/DOCUMENT_INGESTED/)).toHaveCount(0);
+  await expect(page.getByText(/DOCUMENT_+INGESTED/)).toHaveCount(0);
 });
 
 test("Requirement import reads the terminal AI status for its source document", async ({

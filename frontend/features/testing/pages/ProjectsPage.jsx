@@ -477,11 +477,11 @@ export default function ProjectsPage() {
             <option value="archived">Đã lưu trữ</option>
             <option value="all">Tất cả dự án</option>
           </select>
-          <label className="field-label min-w-0">
-            Có lịch trong ngày
+          <label className="block min-w-0">
+            <span className="sr-only">Lịch dự án</span>
             <input
               aria-label="Lịch dự án"
-              className="apple-input mt-2 h-10 w-full"
+              className="apple-input h-10 w-full"
               type="date"
               value={scheduleDate}
               onChange={(event) => setScheduleDate(event.target.value)}
