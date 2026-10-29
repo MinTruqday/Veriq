@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -21,6 +22,7 @@ from src.clients.ai_automation import ai_automation_client
 
 
 router = APIRouter(prefix="/kiem-thu/quan-tri/tai-chinh", tags=["Quản trị tài chính"])
+logger = logging.getLogger(__name__)
 _CURRENCY_PATTERN = re.compile(r"^[A-Z]{3}$")
 
 
@@ -61,6 +63,7 @@ async def _parse_sheet(file):
     try:
         converted = await ai_automation_client.convert_attachment(filename, content)
     except Exception as error:
+        logger.exception("Payroll document conversion failed")
         raise HTTPException(status_code=502, detail={"code": "PAYROLL_DOCLING_CONVERSION_FAILED"}) from error
     markdown = converted.get("markdown") or ""
     if converted.get("unprocessed_blocks"):

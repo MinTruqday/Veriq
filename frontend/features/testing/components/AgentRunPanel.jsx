@@ -541,6 +541,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const canControlRun = run?.requester_user_id === currentUserId;
   const canAnswerClarification = permissions.includes("requirement.update");
   const canResumeRun = canControlRun && canResumeAutomationRun(run, checkpoints, currentUserId);
+  const canShowRunControls = canManageDefinitions || (busyRun && canControlRun) || canResumeRun;
   const uncertainties = latestAutomationUncertainties(checkpoints);
   const mcpDiscoveryIssues = automationMcpDiscoveryIssues(run);
   const sourceExtractionGaps = automationSourceExtractionGaps(run);
@@ -548,7 +549,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
 
   return (
     <Panel title="Hoạt động AI">
-      <div className="grid gap-4 p-4">
+      <div className="grid gap-4 px-4 pb-4 pt-3">
         {error && (
           <div className="grid gap-2">
             <ErrorState message={error} />
@@ -618,30 +619,32 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             </label>
           </>
         )}
-        <div className="flex flex-wrap gap-2">
-          {canManageDefinitions && (
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={busy || !definitionName.trim() || !objective.trim() || !trigger}
-              onClick={saveDefinition}
-            >
-              Lưu quy tắc tự động hóa
-            </button>
-          )}
-          {busyRun && canControlRun && (
-            <button className="secondary-button" type="button" disabled={busy} onClick={cancel}>
-              Dừng tác vụ AI
-            </button>
-          )}
-          {canResumeRun && (
-            <button className="secondary-button" type="button" disabled={busy} onClick={retry}>
-              {run.status === "AWAITING_AUTHORIZATION"
-                ? authorizationGuidance.action
-                : "Tiếp tục từ điểm an toàn"}
-            </button>
-          )}
-        </div>
+        {canShowRunControls && (
+          <div className="flex flex-wrap gap-2">
+            {canManageDefinitions && (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={busy || !definitionName.trim() || !objective.trim() || !trigger}
+                onClick={saveDefinition}
+              >
+                Lưu quy tắc tự động hóa
+              </button>
+            )}
+            {busyRun && canControlRun && (
+              <button className="secondary-button" type="button" disabled={busy} onClick={cancel}>
+                Dừng tác vụ AI
+              </button>
+            )}
+            {canResumeRun && (
+              <button className="secondary-button" type="button" disabled={busy} onClick={retry}>
+                {run.status === "AWAITING_AUTHORIZATION"
+                  ? authorizationGuidance.action
+                  : "Tiếp tục từ điểm an toàn"}
+              </button>
+            )}
+          </div>
+        )}
         {visibleDefinitions.length > 0 && (
           <div className="grid gap-2 pt-2 text-sm">
             <h3 className="font-semibold text-ink">Quy tắc đang có</h3>
@@ -669,7 +672,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
           </div>
         )}
         {visibleRuns.length > 0 && (
-          <div className="grid gap-2 pt-2 text-sm">
+          <div className="grid gap-2 text-sm">
             <h3 className="font-semibold text-ink">Hoạt động gần đây</h3>
             {visibleRuns.slice(0, 10).map((item) => (
               <button

@@ -193,7 +193,7 @@ export default function OperationsPage() {
             <Metric label="Phân tích ảnh hưởng lỗi" value={value.failed_impact_jobs.length} />
             <Metric label="Lỗi xử lý nền" value={value.worker_failures.length} />
           </div>
-          <div className="grid gap-5 xl:grid-cols-2">
+          <div className="grid items-start gap-5 xl:grid-cols-2">
             <Panel title="Mô hình đang hoạt động">
               <DataTable
                 items={Object.entries(value.ai_models).map(([name, version]) => ({

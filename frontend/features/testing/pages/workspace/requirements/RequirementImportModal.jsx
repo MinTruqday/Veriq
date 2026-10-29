@@ -132,9 +132,13 @@ function DocumentAccessControl({
           onChange={(event) => onChange({ ...access, ai_enabled: event.target.checked })}
         />
         {access.ai_enabled
-          ? "Đã cho phép AI truy cập tài liệu này"
-          : "Cho phép AI truy cập tài liệu này"}
+          ? "Đã cho phép AI phân tích tài liệu này"
+          : "Cho phép AI phân tích tài liệu này"}
       </label>
+      <p className="text-xs leading-5 text-ink-muted">
+        Khi bạn tạo bản xem trước, AI có thể trích xuất yêu cầu và tiêu chí được nêu trong nguồn.
+        Nếu không bật, hệ thống không chạy AI; nội dung thiếu tiêu chí sẽ được giữ là đang thiếu.
+      </p>
     </fieldset>
   );
 }
