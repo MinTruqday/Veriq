@@ -42,7 +42,7 @@ function automationTriggerLabel(run) {
 }
 
 function automationRunTitle(run) {
-  const internalCode = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/;
+  const internalCode = /\b[A-Z][A-Z0-9]*(?:_+[A-Z0-9]+)+\b/;
   const summary = [
     run?.display_name,
     run?.title,
@@ -776,9 +776,6 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="font-semibold text-ink">Tình trạng xử lý</h3>
-                    <p className="mt-1 text-xs text-ink-muted">
-                      Bao gồm các công việc tiếp nối được tạo từ kết quả lượt này.
-                    </p>
                   </div>
                   <StatusPill value={workflow.status} />
                 </div>
@@ -1030,7 +1027,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             {proposal?.summary && (
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-ink">Kết quả của lượt tự động hóa</h3>
+                  <h3 className="font-semibold text-ink">Kết quả xử lý</h3>
                   <ContentOriginBadge origin="ai_generated" />
                 </div>
                 <p className="mt-1 whitespace-pre-wrap text-ink-muted">{proposal.summary}</p>
