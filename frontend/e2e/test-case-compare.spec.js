@@ -2195,6 +2195,120 @@ test("BA can manually run the AI check and send a Requirement draft for review",
   await expect(page.getByRole("button", { name: "Gửi rà soát" })).toHaveCount(0);
 });
 
+test("QA can accept a Requirement in review and baseline the current version", async ({ page }) => {
+  const id = "REQ-E2E-QA-APPROVAL";
+  let version = {
+    _id: "REQV-E2E-QA-APPROVAL",
+    requirement_id: id,
+    project_id: projectId,
+    version: 1,
+    revision: 3,
+    status: "IN_REVIEW",
+    title: "Đăng nhập bằng tài khoản",
+    type: "FUNCTIONAL",
+    priority: "MEDIUM",
+    risk: "MEDIUM",
+    content_doc: document("Người dùng đăng nhập bằng thông tin hợp lệ."),
+    acceptance_criteria: [],
+    business_rules: [],
+    actors: [],
+    dependencies: [],
+    details: {},
+    custom_values: {},
+  };
+  const requirement = () => ({
+    _id: id,
+    project_id: projectId,
+    requirement_key: "REQ-LOGIN-QA-1",
+    status: version.status,
+    current_version_id: version._id,
+    current_version: version,
+  });
+  let approval;
+
+  await installWorkspace(page, "QA");
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}`, async (route) => {
+    const data = project("QA");
+    data.current_permissions.push("requirement.approve");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data, status: "SUCCESS" }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/yeu-cau**`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname !== `/kiem-thu/du-an/${projectId}/yeu-cau`) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: { items: [requirement()], total: 1, page: 1, page_size: 50 },
+        status: "SUCCESS",
+      }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/yeu-cau/${id}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: requirement(), status: "SUCCESS" }),
+    });
+  });
+  await page.route(`${apiBase}/kiem-thu/yeu-cau/${id}/phien-ban`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [version], status: "SUCCESS" }),
+    });
+  });
+  await page.route(
+    `${apiBase}/kiem-thu/du-an/${projectId}/cong-tac/yeu-cau/${id}/thao-tac`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: requirement(), status: "SUCCESS" }),
+      });
+    },
+  );
+  await page.route(
+    `${apiBase}/kiem-thu/phien-ban-yeu-cau/${version._id}/ai/ket-qua-moi-nhat`,
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: null, status: "SUCCESS" }),
+      });
+    },
+  );
+  await page.route(
+    `${apiBase}/kiem-thu/du-an/${projectId}/yeu-cau/${id}/phe-duyet`,
+    async (route) => {
+      approval = route.request().postDataJSON();
+      version = { ...version, revision: version.revision + 1, status: "BASELINED" };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: version, status: "SUCCESS" }),
+      });
+    },
+  );
+
+  await page.goto(`/du-an/${projectId}/yeu-cau/${id}`, { waitUntil: "domcontentloaded" });
+  const acceptButton = page.getByRole("button", { name: "Chấp nhận yêu cầu" });
+  await expect(acceptButton).toBeVisible();
+  await acceptButton.click();
+  const dialog = page.getByRole("dialog", { name: "Chấp nhận yêu cầu" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Chấp nhận", exact: true }).click();
+  await expect.poll(() => approval).toEqual({ expected_revision: 3, review_note: "" });
+  await expect(page.getByRole("button", { name: "Chấp nhận yêu cầu" })).toHaveCount(0);
+});
+
 for (const role of ["Developer", "Viewer"]) {
   test(`${role} cannot open or see Requirement UI without project permission`, async ({ page }) => {
     await installWorkspace(page, role);

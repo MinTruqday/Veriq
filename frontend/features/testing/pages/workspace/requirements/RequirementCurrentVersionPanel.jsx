@@ -76,6 +76,41 @@ export default function RequirementCurrentVersionPanel({
               Gửi rà soát
             </button>
           )}
+          {current.status === "IN_REVIEW" && can("requirement.approve") && (
+            <button
+              className="apple-button"
+              type="button"
+              onClick={async () => {
+                await ask({
+                  title: "Chấp nhận yêu cầu",
+                  description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng.`,
+                  confirmLabel: "Chấp nhận",
+                  fields: [
+                    {
+                      name: "review_note",
+                      label: "Ghi chú rà soát",
+                      initialValue: "",
+                      multiline: true,
+                      autoFocus: true,
+                    },
+                  ],
+                  onConfirm: async (answer) => {
+                    try {
+                      await testingApi.approveRequirement(projectId, selected._id, {
+                        expected_revision: current.revision,
+                        review_note: answer.review_note.trim(),
+                      });
+                      await reload();
+                    } catch (value) {
+                      throw new Error(messageOf(value));
+                    }
+                  },
+                });
+              }}
+            >
+              Chấp nhận yêu cầu
+            </button>
+          )}
           {current.status === "BASELINED" && can("requirement.version.create") && (
             <button className="secondary-button" type="button" onClick={onCreateVersion}>
               Tạo phiên bản mới
