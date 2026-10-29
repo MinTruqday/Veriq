@@ -1116,6 +1116,7 @@ class MCPGatewayPolicyTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=("QA", ["project.read"])),
             ),
             patch("src.tools.mcp_gateway.mcp_repository.list_project", new=AsyncMock(return_value=[connection])),
+            patch("src.tools.mcp_gateway.mcp_repository.get", new=AsyncMock(return_value=connection)),
             patch("src.tools.mcp_gateway._client_tools", new=AsyncMock(return_value=remote_tools)),
         ):
             tools = await discover_project_tools(
@@ -1219,6 +1220,7 @@ class MCPGatewayPolicyTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=("QA", ["project.read"])),
             ),
             patch("src.tools.mcp_gateway.mcp_repository.list_project", new=AsyncMock(return_value=[connection])),
+            patch("src.tools.mcp_gateway.mcp_repository.get", new=AsyncMock(return_value=connection)),
             patch.dict("os.environ", {}, clear=True),
             patch("src.tools.mcp_gateway._client_tools", new=AsyncMock()) as remote_discovery,
         ):
@@ -1242,6 +1244,7 @@ class MCPGatewayPolicyTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=("QA", ["project.read"])),
             ),
             patch("src.tools.mcp_gateway.mcp_repository.list_project", new=AsyncMock(return_value=[connection])),
+            patch("src.tools.mcp_gateway.mcp_repository.get", new=AsyncMock(return_value=connection)),
             patch(
                 "src.tools.mcp_gateway._client_tools",
                 new=AsyncMock(side_effect=TimeoutError("provider response contained sensitive data")),
@@ -1269,6 +1272,7 @@ class MCPGatewayPolicyTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=("QA", ["project.read"])),
             ),
             patch("src.tools.mcp_gateway.mcp_repository.list_project", new=AsyncMock(return_value=[connection])),
+            patch("src.tools.mcp_gateway.mcp_repository.get", new=AsyncMock(return_value=connection)),
             patch("src.tools.mcp_gateway._client_tools", new=AsyncMock(return_value=remote_tools)),
         ):
             result = await discover_project_tools_with_diagnostics(
@@ -1312,6 +1316,7 @@ class MCPGatewayPolicyTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=("QA", ["project.read"])),
             ),
             patch("src.tools.mcp_gateway.mcp_repository.list_project", new=AsyncMock(return_value=[connection])),
+            patch("src.tools.mcp_gateway.mcp_repository.get", new=AsyncMock(return_value=connection)),
             patch("src.tools.mcp_gateway._client_tools", new=AsyncMock(return_value=remote_tools)),
         ):
             tools = await discover_project_tools(

@@ -267,10 +267,7 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
             const selectedWorkflow = workflowForSelectedRun(items, selectedRunId);
             const selectedSummary = items.find((item) => item.automation_run_id === selectedRunId);
             const knownSnapshot = selectedRunSnapshotRef.current;
-            if (
-              selectedWorkflow &&
-              !isOlderRunSnapshot(selectedSummary, knownSnapshot)
-            ) {
+            if (selectedWorkflow && !isOlderRunSnapshot(selectedSummary, knownSnapshot)) {
               setWorkflow(selectedWorkflow);
             }
             if (
@@ -596,7 +593,7 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
 
   return (
     <Panel title="Hoạt động AI" className={compact ? "agent-run-panel-compact" : ""}>
-      <div className={`grid px-4 ${compact ? "gap-2 pb-3 pt-2" : "gap-4 pb-4 pt-3"}`}>
+      <div className={`grid px-4 ${compact ? "gap-2 pb-3 pt-0" : "gap-4 pb-4 pt-3"}`}>
         {error && (
           <div className="grid gap-2">
             <ErrorState message={error} />

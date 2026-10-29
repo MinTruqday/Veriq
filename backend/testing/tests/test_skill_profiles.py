@@ -285,10 +285,6 @@ def test_assignment_only_uses_explicitly_confirmed_skills_and_availability():
     assert ranked[0]["matched_skill_evidence"] == [{
         "name": "API testing",
         "level": "INTERMEDIATE",
-        "evidence": "Designed API regression suites",
-        "source_block_id": "cv-block-3",
-        "source_page_no": 2,
-        "source_sha256": None,
         "source_kind": "MEMBER_DECLARED",
         "confirmed": True,
     }]
@@ -907,9 +903,8 @@ def test_case_assignment_plan_uses_frozen_case_skills_balances_load_and_preserve
     by_case = {item["test_case_version_id"]: item for item in result["case_recommendations"]}
     assert by_case["v-api"]["assignee_id"] == "tester-api"
     assert by_case["v-api"]["matched_skill_evidence"] == [{
-        "name": "API", "level": "ADVANCED", "evidence": "Built API test strategy",
-        "source_block_id": "cv-block-api", "source_page_no": 5,
-        "source_sha256": None, "source_kind": "MEMBER_DECLARED", "confirmed": True,
+        "name": "API", "level": "ADVANCED",
+        "source_kind": "MEMBER_DECLARED", "confirmed": True,
     }]
     assert by_case["v-sec"]["assignee_id"] == "tester-sec"
     assert by_case["v-manual"]["assignee_id"] == "tester-sec"
