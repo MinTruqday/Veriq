@@ -54,7 +54,7 @@ def starter_templates():
 def requirement_source_refs_from_suggestion(suggestion, evidence_lookup):
     """Keep each cited source span narrow enough to preserve requirement lineage."""
     refs = []
-    source_values = [suggestion.get("title"), suggestion.get("content")]
+    source_values = [suggestion.get("requirement_key"), suggestion.get("title"), suggestion.get("content")]
     for key in ("acceptance_criteria", "actors", "business_rules", "dependencies"):
         source_values.extend(suggestion.get(key, []))
     for key in ("main_flow", "exception_flow", "data_rules", "integration", "quality_measure"):
@@ -870,7 +870,7 @@ async def synthesize_template(project_id, payload, user):
             section_states.update({key: "missing" for key in omitted_sections})
             section_states.update({key: "provided" for key, values in verified_lists.items() if values})
             section_states.update({key: "provided" for key in details})
-            requirements.append(RequirementCreate(title=suggestion["title"], type=suggestion["type"], content_doc=text_doc(suggestion["content"]), acceptance_criteria=[{"key": f"AC-{index + 1}", "content_doc": text_doc(value)} for index, value in enumerate(verified_lists["acceptance_criteria"])], actors=verified_lists["actors"], business_rules=verified_lists["business_rules"], dependencies=verified_lists["dependencies"], details=details, source_refs=refs, section_states=section_states))
+            requirements.append(RequirementCreate(requirement_key=suggestion.get("requirement_key"), title=suggestion["title"], type=suggestion["type"], content_doc=text_doc(suggestion["content"]), acceptance_criteria=[{"key": f"AC-{index + 1}", "content_doc": text_doc(value)} for index, value in enumerate(verified_lists["acceptance_criteria"])], actors=verified_lists["actors"], business_rules=verified_lists["business_rules"], dependencies=verified_lists["dependencies"], details=details, source_refs=refs, section_states=section_states))
             if omitted_sections:
                 source_field_warnings.append("Một số mục AI đề xuất không có nguyên văn trong nguồn nên đã bị bỏ qua  Hãy rà soát mẫu")
         except (KeyError, ValidationError) as error:

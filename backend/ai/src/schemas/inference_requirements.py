@@ -117,6 +117,7 @@ class RequirementTemplateContextOutput(BaseModel):
 class RequirementTemplateSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    requirement_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
     type: Literal["functional", "non_functional", "business_rule", "api", "ui", "data", "permission", "integration", "constraint"]
     content: str = Field(min_length=2, max_length=10000)

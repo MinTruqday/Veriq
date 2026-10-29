@@ -1,12 +1,15 @@
+import hashlib
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.core.ai_automation import request_ai_automation
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, validate_doc
 from src.core.database import database
 from src.schemas.contracts.requirements import RequirementCreate, RequirementExtractionInput, RequirementVersionCreate
 from src.repositories.requirement_import import requirement_import_repository
 from src.repositories.requirement import requirement_repository
-from src.modules.requirements.services.requirement_import import atomic_requirement_candidates
+from src.modules.requirements.services.requirement_import import atomic_requirement_candidates, source_document_text
 from src.modules.requirements.services.requirement_documents import create_requirement_document_record, require_document_access
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
@@ -22,9 +25,158 @@ from src.clients.project_knowledge import (
 from src.modules.requirements.services.requirement_workflow import (
     candidate_fingerprint,
     prepare_requirement_candidates,
+    text_doc,
 )
 from src.modules.design.services.linters import requirement_duplicate_score
 from src.schemas.contracts.requirements import RequirementDuplicateCheckInput
+
+
+def grounded_requirement_candidates(document, result_batches):
+    text = source_document_text(document["normalized_content"])
+    evidence = []
+    for start in range(0, len(text), 3500):
+        reference = f"{document['_id']}:{start}"
+        evidence.append({
+            "artifact_type": f"requirement_document:{document.get('source_type', 'REFERENCE')}",
+            "artifact_id": reference,
+            "text": text[start : start + 3500],
+        })
+    evidence_by_ref = {item["artifact_id"]: item["text"] for item in evidence}
+    candidates = []
+    conflicts = []
+    for result in result_batches:
+        conflicts.extend(result.get("conflicts", []))
+        for suggestion in result.get("suggestions", []):
+            references = suggestion.get("evidence_refs", [])
+            if not references or any(reference not in evidence_by_ref for reference in references):
+                raise HTTPException(status_code=502, detail={"code": "REQUIREMENT_EVIDENCE_INVALID"})
+            source_refs = []
+            verified_quotes = []
+            for reference in references:
+                chunk = evidence_by_ref[reference]
+                quote = str((suggestion.get("source_quotes") or {}).get(reference) or "").strip()
+                if not quote or quote not in chunk:
+                    raise HTTPException(status_code=502, detail={"code": "REQUIREMENT_SOURCE_QUOTE_INVALID"})
+                source_start = int(reference.rsplit(":", 1)[1])
+                quote_start = chunk.find(quote)
+                source_refs.append({
+                    "requirement_document_id": document["_id"],
+                    "content_hash": document["content_hash"],
+                    "source_version": document.get("source_version"),
+                    "source_start": source_start + quote_start,
+                    "source_end": source_start + quote_start + len(quote),
+                    "source_text_hash": hashlib.sha256(quote.encode("utf-8")).hexdigest(),
+                    "source_quote": quote,
+                    "format": document["format"],
+                })
+                verified_quotes.append(quote)
+            cited_text = "\n".join(verified_quotes)
+            key = suggestion.get("requirement_key")
+            if key and not any(key in quote for quote in verified_quotes):
+                raise HTTPException(status_code=502, detail={"code": "REQUIREMENT_KEY_UNGROUNDED"})
+            def contains(value):
+                return bool(value) and str(value).casefold() in cited_text.casefold()
+
+            acceptance_criteria = [
+                value for value in suggestion.get("acceptance_criteria", []) if contains(value)
+            ]
+            actors = [value for value in suggestion.get("actors", []) if contains(value)]
+            business_rules = [
+                value for value in suggestion.get("business_rules", []) if contains(value)
+            ]
+            dependencies = [
+                value for value in suggestion.get("dependencies", []) if contains(value)
+            ]
+            details = {}
+            for field in ("main_flow", "exception_flow", "data_rules", "integration", "quality_measure"):
+                value = suggestion.get(field)
+                if contains(value):
+                    details[field] = value
+            story = {
+                field: suggestion.get(f"user_story_{field}")
+                for field in ("actor", "goal", "value")
+                if contains(suggestion.get(f"user_story_{field}"))
+            }
+            if story and document.get("source_type") == "USER_STORY":
+                details["user_story"] = story
+            missing = set(suggestion.get("missing_sections", []))
+            missing.update(
+                field for field, values in (
+                    ("acceptance_criteria", acceptance_criteria),
+                    ("actors", actors),
+                    ("business_rules", business_rules),
+                    ("dependencies", dependencies),
+                )
+                if suggestion.get(field) and not values
+            )
+            section_states = {field: "missing" for field in missing}
+            section_states.update(
+                {
+                    field: "not_applicable"
+                    for field in suggestion.get("not_applicable_sections", [])
+                }
+            )
+            section_states.update(
+                {
+                    field: "provided"
+                    for field, values in (
+                        ("acceptance_criteria", acceptance_criteria),
+                        ("actors", actors),
+                        ("business_rules", business_rules),
+                        ("dependencies", dependencies),
+                    )
+                    if values
+                }
+            )
+            section_states.update({field: "provided" for field in details})
+            candidate = {
+                "requirement_key": key,
+                "title": suggestion["title"],
+                "type": suggestion["type"],
+                "content_doc": text_doc(suggestion["content"]),
+                "acceptance_criteria": [
+                    {"key": f"AC-{index + 1}", "content_doc": text_doc(value)}
+                    for index, value in enumerate(acceptance_criteria)
+                ],
+                "actors": actors,
+                "business_rules": business_rules,
+                "dependencies": dependencies,
+                "details": details,
+                "section_states": section_states,
+                "source_refs": source_refs,
+            }
+            candidates.append(candidate)
+    return candidates, conflicts
+
+
+async def extract_grounded_requirement_candidates(document, project_id):
+    text = source_document_text(document["normalized_content"])
+    evidence = [
+        {
+            "artifact_type": f"requirement_document:{document.get('source_type', 'REFERENCE')}",
+            "artifact_id": f"{document['_id']}:{start}",
+            "source_version": document.get("source_version"),
+            "authority": document.get("authority"),
+            "text": text[start : start + 3500],
+        }
+        for start in range(0, len(text), 3500)
+    ]
+    if not evidence:
+        return [], []
+    if len(evidence) > 100:
+        raise HTTPException(status_code=413, detail={"code": "REQUIREMENT_SOURCE_TOO_LARGE"})
+    results = []
+    for start in range(0, len(evidence), 8):
+        result = await request_ai_automation(
+            "requirement_template_synthesis",
+            project_id,
+            "Extract complete source-grounded Requirement records. Preserve source identifiers exactly.",
+            evidence[start : start + 8],
+        )
+        if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
+            raise HTTPException(status_code=503, detail={"code": "REQUIREMENT_EXTRACTION_UNAVAILABLE", "warnings": result.get("warnings", [])})
+        results.append(result)
+    return grounded_requirement_candidates(document, results)
 
 
 def requirement_import_match_score(lexical_score, semantic_score, threshold):
@@ -680,7 +832,15 @@ async def extract_requirement_candidates(document_id, payload, user):
         document["project_id"],
     )
     job_id = new_id('RIMP')
-    extracted = atomic_requirement_candidates(document)
+    extraction_mode = "DETERMINISTIC"
+    conflicts = []
+    if document.get("ai_enabled") and document.get("format") not in {"openapi", "postman"}:
+        extracted, conflicts = await extract_grounded_requirement_candidates(
+            document, document["project_id"]
+        )
+        extraction_mode = "AI_GROUNDED"
+    else:
+        extracted = atomic_requirement_candidates(document)
     if len(extracted) > 500:
         raise HTTPException(status_code=413, detail={"code": "IMPORT_CANDIDATE_LIMIT_EXCEEDED"})
     candidates = prepare_requirement_candidates(job_id, extracted)
@@ -694,8 +854,10 @@ async def extract_requirement_candidates(document_id, payload, user):
         "status": 'PREVIEW_READY',
         "preview": candidates,
         "candidate_count": len(candidates),
-        "warnings": ["NO_DOCUMENTED_BEHAVIOR_TO_DRAFT"] if not candidates else [],
-        "extraction_mode": 'DETERMINISTIC',
+        "warnings": (["NO_DOCUMENTED_BEHAVIOR_TO_DRAFT"] if not candidates else [])
+        + (["SOURCE_CONFLICTS_FOUND"] if conflicts else []),
+        "source_conflicts": conflicts,
+        "extraction_mode": extraction_mode,
         "idempotency_key": payload.idempotency_key,
         "revision": 1,
         "created_by": user.id,
