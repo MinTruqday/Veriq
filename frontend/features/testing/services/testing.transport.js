@@ -1,5 +1,12 @@
 import { API_URL, authenticatedFetch } from "@/shared/services/api-client";
 
+function responseErrorMessage(response, body, fallback) {
+  if (body?.error?.message) return body.error.message;
+  if (response.status >= 500)
+    return `Máy chủ gặp lỗi khi xử lý yêu cầu (HTTP ${response.status}). Vui lòng thử lại.`;
+  return fallback;
+}
+
 function refreshProjectAccessAfterDenial(path, status, errorDetails = null, errorCode = "") {
   const projectPermissionDenied =
     errorCode === "PROJECT_PERMISSION_DENIED" && typeof errorDetails?.permission === "string";
@@ -43,7 +50,7 @@ export async function testingRequest(path, options = {}) {
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
-    const error = new Error(body?.error?.message || "Không thể hoàn tất yêu cầu");
+    const error = new Error(responseErrorMessage(response, body, "Không thể hoàn tất yêu cầu"));
     error.status = response.status;
     error.code = body?.error?.code;
     error.details = body?.error?.details;
@@ -60,7 +67,7 @@ export async function testingImageRequest(path) {
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
-    const error = new Error(body?.error?.message || "Không thể tải ảnh nguồn");
+    const error = new Error(responseErrorMessage(response, body, "Không thể tải ảnh nguồn"));
     error.status = response.status;
     error.code = body?.error?.code;
     error.traceId = body?.trace_id;

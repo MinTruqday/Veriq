@@ -2078,6 +2078,7 @@ test("BA can manually run the AI check and send a Requirement draft for review",
   let submitted;
   let aiCheck;
   let canSubmit = false;
+  let failDraftSave = false;
   page.on("pageerror", (error) => console.error("Requirement review page error:", error.message));
 
   await installWorkspace(page, "BA");
@@ -2126,6 +2127,14 @@ test("BA can manually run the AI check and send a Requirement draft for review",
   await page.route(
     `${apiBase}/kiem-thu/du-an/${projectId}/cong-tac/yeu-cau/${id}/thao-tac`,
     async (route) => {
+      if (failDraftSave) {
+        await route.fulfill({
+          status: 500,
+          contentType: "text/plain",
+          body: "Internal Server Error",
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -2187,6 +2196,13 @@ test("BA can manually run the AI check and send a Requirement draft for review",
   await page.getByRole("button", { name: "Kiểm tra AI" }).click();
   await expect.poll(() => aiCheck?.idempotency_key).toBeTruthy();
   await expect(page.getByText("AI không phát hiện lỗi chặn")).toBeVisible();
+  failDraftSave = true;
+  await page.getByLabel("Tên yêu cầu").fill("Đổi mật khẩu tài khoản");
+  await expect(
+    page.getByText("Máy chủ gặp lỗi khi xử lý yêu cầu (HTTP 500). Vui lòng thử lại."),
+  ).toBeVisible({ timeout: 5000 });
+  await expect(page.getByLabel("Tên yêu cầu")).toHaveValue("Đổi mật khẩu tài khoản");
+  failDraftSave = false;
   await page.getByRole("button", { name: "Gửi rà soát" }).click();
   const dialog = page.getByRole("dialog", { name: "Gửi yêu cầu đi rà soát" });
   await expect(dialog).toBeVisible();
