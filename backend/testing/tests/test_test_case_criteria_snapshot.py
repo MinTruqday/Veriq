@@ -5,8 +5,15 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
-from src.modules.design.services.test_case_records import create_test_case_draft_record
-from src.schemas.contracts.design import TestCaseDraftCreate as DraftInput
+from src.modules.design.services.test_case_records import (
+    attach_manual_criterion_evidence,
+    create_test_case_draft_record,
+    update_test_case_draft_record,
+)
+from src.schemas.contracts.design import (
+    TestCaseDraftCreate as DraftInput,
+    TestCaseDraftPatch,
+)
 
 
 class GeneratedTestCaseCriteriaSnapshotTests(unittest.IsolatedAsyncioTestCase):
@@ -113,6 +120,161 @@ class GeneratedTestCaseCriteriaSnapshotTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(raised.exception.status_code, 409)
         self.assertEqual(raised.exception.detail["code"], "TEST_CASE_EVIDENCE_CHANGED")
+
+
+class ManualTestCaseEvidenceTests(unittest.IsolatedAsyncioTestCase):
+    def make_payload(self, **changes):
+        return DraftInput(
+            title="Đăng nhập với email sai",
+            origin="manual",
+            requirement_version_ids=["REQV-1"],
+            acceptance_criterion_ids=["AC-1"],
+            **changes,
+        )
+
+    async def test_manual_selected_criterion_gets_exact_server_verified_citation(self):
+        version = {"_id": "REQV-1", "plain_text_projection": "Đăng nhập."}
+        criterion = {"_id": "AC-1", "plain_text": "Email sai định dạng phải bị từ chối."}
+        with (
+            patch(
+                "src.modules.design.services.test_case_records.analysis_repository.list_requirement_versions",
+                new=AsyncMock(return_value=[version]),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.test_design_repository.list_acceptance_criteria_by_ids",
+                new=AsyncMock(return_value=[criterion]),
+            ),
+        ):
+            result = await attach_manual_criterion_evidence("PRJ-1", self.make_payload())
+
+        self.assertEqual(result.evidence_refs, ["AC-1"])
+        self.assertEqual(
+            [item["artifact_version_id"] for item in result.source_evidence],
+            ["REQV-1", "AC-1"],
+        )
+        self.assertEqual(
+            [item.model_dump() if hasattr(item, "model_dump") else item for item in result.evidence_quotes],
+            [{"evidence_ref": "AC-1", "quote": criterion["plain_text"]}],
+        )
+
+    async def test_manual_citation_is_not_added_when_the_user_supplied_one(self):
+        quote = "Email sai định dạng phải bị từ chối."
+        payload = self.make_payload(
+            evidence_refs=["AC-1"],
+            evidence_quotes=[{"evidence_ref": "AC-1", "quote": quote}],
+            source_evidence=[{
+                "artifact_type": "acceptance_criterion",
+                "artifact_version_id": "AC-1",
+                "text": quote,
+            }],
+        )
+        with patch(
+            "src.modules.design.services.test_case_records.analysis_repository.list_requirement_versions",
+            new=AsyncMock(),
+        ) as list_versions:
+            result = await attach_manual_criterion_evidence("PRJ-1", payload)
+
+        self.assertIs(result, payload)
+        list_versions.assert_not_awaited()
+
+    async def test_manual_citation_rejects_a_missing_selected_criterion(self):
+        payload = self.make_payload()
+        with (
+            patch(
+                "src.modules.design.services.test_case_records.analysis_repository.list_requirement_versions",
+                new=AsyncMock(return_value=[{"_id": "REQV-1"}]),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.test_design_repository.list_acceptance_criteria_by_ids",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await attach_manual_criterion_evidence("PRJ-1", payload)
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(raised.exception.detail["code"], "TEST_CASE_EVIDENCE_CHANGED")
+
+    async def test_manual_draft_edit_refreshes_exact_selected_criterion_citation(self):
+        draft = {
+            "_id": "TCD-1",
+            "project_id": "PRJ-1",
+            "revision": 4,
+            "status": "DRAFT",
+            "origin": "manual",
+            "title": "Đăng nhập với email sai",
+            "requirement_version_ids": ["REQV-1"],
+            "acceptance_criterion_ids": ["AC-1"],
+            "evidence_refs": ["AC-1"],
+            "evidence_quotes": [{"evidence_ref": "AC-1", "quote": "Trích dẫn cũ."}],
+            "source_evidence": [{
+                "artifact_type": "acceptance_criterion",
+                "artifact_version_id": "AC-1",
+                "text": "Trích dẫn cũ.",
+            }],
+            "coverage_obligations": [],
+            "obligation_evidence": [],
+            "challenge_hypotheses": [],
+            "steps": [],
+        }
+        payload = TestCaseDraftPatch(expected_revision=4, title="Kiểm tra email sai định dạng")
+        write = AsyncMock(return_value={**draft, "revision": 5, "title": payload.title})
+        with (
+            patch(
+                "src.modules.design.services.test_case_records.get_project_entity",
+                new=AsyncMock(return_value=draft),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.validate_design_sources",
+                new=AsyncMock(),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.validate_data_set_versions",
+                new=AsyncMock(),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.validate_test_design_structure",
+                new=AsyncMock(),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.validate_coverage_items",
+                new=AsyncMock(),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.validate_test_case_custom_values",
+                new=AsyncMock(),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.analysis_repository.list_requirement_versions",
+                new=AsyncMock(return_value=[{"_id": "REQV-1", "plain_text_projection": "Đăng nhập."}]),
+            ),
+            patch(
+                "src.modules.design.services.test_case_records.test_design_repository.list_acceptance_criteria_by_ids",
+                new=AsyncMock(return_value=[{
+                    "_id": "AC-1",
+                    "plain_text": "Email sai định dạng phải bị từ chối.",
+                }]),
+            ),
+            patch("src.modules.design.services.test_case_records.optimistic_patch", new=write),
+            patch("src.modules.design.services.test_case_records.audit", new=AsyncMock()),
+            patch(
+                "src.modules.design.services.test_case_records.database.client",
+                SimpleNamespace(start_session=AsyncMock(return_value=_AsyncSession())),
+            ),
+            patch("src.clients.ai_automation.emit_test_case_changed", new=AsyncMock()),
+        ):
+            result = await update_test_case_draft_record(
+                "TCD-1", payload, SimpleNamespace(id="user-1")
+            )
+
+        written_changes = write.await_args.args[4]
+        self.assertEqual(written_changes["evidence_refs"], ["AC-1"])
+        self.assertEqual(written_changes["evidence_quotes"], [{
+            "evidence_ref": "AC-1",
+            "quote": "Email sai định dạng phải bị từ chối.",
+        }])
+        self.assertEqual(written_changes["source_evidence"][-1]["text"], "Email sai định dạng phải bị từ chối.")
+        self.assertEqual(result["revision"], 5)
 
 
 class _AsyncContext:

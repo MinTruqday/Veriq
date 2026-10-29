@@ -215,7 +215,9 @@ export default function TestAdequacyPanel({
             </div>
             {!test.assurance_evidence_complete && (
               <div className="mt-1 text-warning">
-                Ca này chưa đủ nguồn, dữ liệu hoặc kết quả mong đợi để chứng minh Nghĩa vụ
+                {test.assurance_evidence_gaps?.length
+                  ? test.assurance_evidence_gaps.join(" · ")
+                  : "Ca này chưa đủ căn cứ để chứng minh Nghĩa vụ"}
               </div>
             )}
           </div>

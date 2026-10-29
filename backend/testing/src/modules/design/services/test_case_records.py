@@ -26,6 +26,7 @@ from src.modules.design.services.test_case_custom_fields import (
     inherit_custom_values,
     validate_test_case_custom_values,
 )
+from src.schemas.contracts.design import TestCaseDraftCreate
 
 
 def project_test_text(value):
@@ -293,6 +294,61 @@ async def validate_coverage_items(project_id, requirement_version_ids, coverage_
         raise HTTPException(status_code=422, detail={"code": "COVERAGE_ITEM_SOURCE_INVALID", "coverage_item_ids": missing})
 
 
+async def attach_manual_criterion_evidence(project_id, payload):
+    if (
+        payload.origin != "manual"
+        or not payload.acceptance_criterion_ids
+        or payload.evidence_refs
+    ):
+        return payload
+    version_ids = list(dict.fromkeys(payload.requirement_version_ids))
+    criterion_ids = list(dict.fromkeys(payload.acceptance_criterion_ids))
+    versions = await analysis_repository.list_requirement_versions(
+        project_id, version_ids, len(version_ids)
+    )
+    criteria = await test_design_repository.list_acceptance_criteria_by_ids(
+        project_id, version_ids, criterion_ids
+    )
+    if len(versions) != len(version_ids) or len(criteria) != len(criterion_ids):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Yêu cầu hoặc tiêu chí chấp nhận đã thay đổi. Hãy tải lại trước khi lưu."},
+        )
+    source_evidence = []
+    for version in versions:
+        text = requirement_test_evidence_text(version)
+        if text:
+            source_evidence.append({
+                "artifact_type": "requirement_version",
+                "artifact_version_id": version["_id"],
+                "text": text,
+            })
+    evidence_quotes = []
+    for criterion in criteria:
+        quote = criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))
+        quote = str(quote).strip()
+        if not quote:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Tiêu chí chấp nhận không còn nội dung để dẫn chứng. Hãy tải lại trước khi lưu."},
+            )
+        source_evidence.append({
+            "artifact_type": "acceptance_criterion",
+            "artifact_version_id": criterion["_id"],
+            "text": quote,
+        })
+        evidence_quotes.append({
+            "evidence_ref": criterion["_id"],
+            "quote": quote[:1000].rstrip(),
+        })
+    return type(payload).model_validate({
+        **payload.model_dump(),
+        "source_evidence": source_evidence,
+        "evidence_refs": [item["_id"] for item in criteria],
+        "evidence_quotes": evidence_quotes,
+    })
+
+
 async def create_test_case_draft_record(
     project_id, payload, user, parent_version_id=None, change_reason=None, session=None,
     draft_id=None,
@@ -349,6 +405,7 @@ async def create_test_case_draft_record(
     await validate_coverage_items(
         project_id, payload.requirement_version_ids, payload.coverage_item_ids
     )
+    payload = await attach_manual_criterion_evidence(project_id, payload)
     if payload.origin == "ai_generated":
         if not payload.requirement_version_ids or not payload.source_evidence or not payload.evidence_refs or not payload.suite_signature:
             raise HTTPException(422, detail={"code": "TEST_CASE_EVIDENCE_REQUIRED", "message": "Ca kiểm thử do AI tạo cần liên kết yêu cầu và bằng chứng nguồn"})
@@ -592,7 +649,8 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         else draft.get("repository_node_id"),
         payload.bdd if payload.bdd is not None else draft.get("bdd"),
     )
-    changes = payload.model_dump()
+    changes = payload.model_dump(exclude_unset=True)
+    changes.pop("expected_revision", None)
     effective_custom_values = (
         payload.custom_values if payload.custom_values is not None else draft.get("custom_values", {})
     )
@@ -610,7 +668,37 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         changes["coverage_obligations"] = []
         changes["obligation_evidence"] = []
         changes["evidence_refs"] = []
+        changes["evidence_quotes"] = []
+        changes["source_evidence"] = []
         changes["challenge_hypotheses"] = []
+    effective_acceptance_criterion_ids = (
+        changes.get("acceptance_criterion_ids")
+        if changes.get("acceptance_criterion_ids") is not None
+        else draft.get("acceptance_criterion_ids", [])
+    )
+    effective_evidence_refs = (
+        changes.get("evidence_refs")
+        if changes.get("evidence_refs") is not None
+        else draft.get("evidence_refs", [])
+    )
+    if (
+        draft.get("origin") == "manual"
+        and effective_acceptance_criterion_ids
+        and not effective_evidence_refs
+    ):
+        changes.update({
+            "source_evidence": [],
+            "evidence_refs": [],
+            "evidence_quotes": [],
+        })
+        candidate = TestCaseDraftCreate.model_validate({**draft, **changes})
+        candidate = await attach_manual_criterion_evidence(draft["project_id"], candidate)
+        verified_citations = candidate.model_dump()
+        changes.update({
+            "source_evidence": verified_citations["source_evidence"],
+            "evidence_refs": verified_citations["evidence_refs"],
+            "evidence_quotes": verified_citations["evidence_quotes"],
+        })
     from src.clients.ai_automation import emit_test_case_changed
 
     async with await database.client.start_session() as session:

@@ -144,16 +144,35 @@ def _case_mapping(item, version):
 
 
 def _case_has_assurance_evidence(version):
+    return not _assurance_evidence_gaps(version)
+
+
+def _assurance_evidence_gaps(version):
+    gaps = []
     has_data = bool(version.get("test_data")) or any(
         bool(step.get("test_data")) for step in version.get("steps", [])
     )
-    return bool(
-        version.get("techniques")
-        and version.get("evidence_refs")
-        and version.get("evidence_quotes")
-        and has_data
-        and plain_text(version.get("expected_result_doc", {})).strip()
+    has_expected_result = bool(plain_text(version.get("expected_result_doc", {})).strip())
+    has_step_expected_result = any(
+        bool(plain_text(step.get("expected_doc", {})).strip())
+        for step in version.get("steps", [])
     )
+    bdd_steps = (version.get("bdd") or {}).get("steps", [])
+    has_bdd_expected_result = any(
+        str(step.get("keyword") or "").strip().casefold() == "then"
+        and str(step.get("text") or "").strip()
+        for step in bdd_steps
+        if isinstance(step, dict)
+    )
+    if not version.get("techniques"):
+        gaps.append("Chưa chọn kỹ thuật kiểm thử")
+    if not version.get("evidence_refs") or not version.get("evidence_quotes"):
+        gaps.append("Chưa có trích dẫn nguồn đã xác minh")
+    if not has_data:
+        gaps.append("Chưa có dữ liệu kiểm thử")
+    if not (has_expected_result or has_step_expected_result or has_bdd_expected_result):
+        gaps.append("Chưa có kết quả mong đợi")
+    return gaps
 
 
 async def _snapshot(requirement_version):
@@ -179,6 +198,7 @@ async def _snapshot(requirement_version):
                     "evidence_quotes": case.get("evidence_quotes", []),
                     "challenge_hypotheses": case.get("challenge_hypotheses", []),
                     "assurance_evidence_complete": _case_has_assurance_evidence(case),
+                    "assurance_evidence_gaps": _assurance_evidence_gaps(case),
                 }
                 for case in mapped
             ],

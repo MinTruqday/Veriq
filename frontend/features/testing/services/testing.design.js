@@ -488,6 +488,11 @@ export const designTestingApi = {
     listPage(`/du-an/${id}/ca-kiem-thu`, query).then((result) => result.items),
   getTestCaseVersion: (versionId) => testingRequest(`/phien-ban-ca-kiem-thu/${versionId}`),
   listTestVersions: (id) => testingRequest(`/ca-kiem-thu/${id}/phien-ban`),
+  createTestCaseVersionDraft: (id, payload) =>
+    testingRequest(`/ca-kiem-thu/${id}/phien-ban/ban-nhap`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   cloneTestCase: (id, payload) =>
     testingRequest(`/ca-kiem-thu/${id}/nhan-ban`, {
       method: "POST",

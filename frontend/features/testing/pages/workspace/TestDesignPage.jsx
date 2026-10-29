@@ -1668,6 +1668,48 @@ export default function TestDesignPage({ project, workspaceView }) {
                   label: "Vòng đời",
                   render: (item) => (
                     <span className="flex flex-wrap gap-2">
+                      {can("testcase.version.create") && item.current_version && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            const answer = await ask({
+                              title: `Tạo phiên bản mới cho ${item.test_case_key}`,
+                              description:
+                                "Phiên bản hiện tại được giữ nguyên. Phiên bản mới sẽ chờ QA rà soát và phê duyệt.",
+                              confirmLabel: "Tạo bản nháp",
+                              fields: [
+                                {
+                                  name: "change_reason",
+                                  label: "Lý do thay đổi",
+                                  required: true,
+                                  multiline: true,
+                                  autoFocus: true,
+                                },
+                              ],
+                            });
+                            if (!answer) return;
+                            try {
+                              const draft = await testingApi.createTestCaseVersionDraft(item._id, {
+                                expected_current_version_id: item.current_version_id,
+                                change_reason: answer.change_reason,
+                              });
+                              setSelectedTestId(item._id);
+                              setSelectedTestIds([]);
+                              await Promise.all([
+                                load(),
+                                testingApi.listTestVersions(item._id).then(setTestVersions),
+                              ]);
+                              setSelectedDraftId(draft._id);
+                            } catch (reasonValue) {
+                              setError(messageOf(reasonValue));
+                            }
+                          }}
+                        >
+                          Tạo phiên bản mới
+                        </button>
+                      )}
                       {can("testcase.clone") && (
                         <button
                           className="secondary-button"
@@ -1810,7 +1852,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                 key={`evidence-${version._id}`}
               >
                 <summary className="cursor-pointer font-medium">
-                  Trích dẫn nguồn của phiên bản v{version.version}
+                  Căn cứ nguồn của phiên bản v{version.version}
                 </summary>
                 <div className="mt-3 space-y-2">
                   {version.evidence_quotes.map((item, index) => (
@@ -1865,7 +1907,7 @@ export default function TestDesignPage({ project, workspaceView }) {
             )}
             {!!selectedDraft.evidence_quotes?.length && (
               <div className="space-y-2 border-b border-border p-5 text-sm">
-                <p className="font-medium">Trích dẫn nguồn khi AI tạo ca</p>
+                <p className="font-medium">Căn cứ nguồn của ca kiểm thử</p>
                 {selectedDraft.evidence_quotes.map((item, index) => (
                   <p key={`${item.evidence_ref}-${index}`}>
                     {item.evidence_ref} {item.quote}
