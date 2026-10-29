@@ -75,8 +75,10 @@ def state_run(state):
 
 
 def automation_action_limits(actions):
-    if not actions:
+    if actions is None:
         return None, None
+    if not actions:
+        return set(), set()
     action_limits = {
         AutomationAction.COMPILE_BLUEPRINT: ({"requirement"}, {"MUTATE"}),
         AutomationAction.CREATE_REQUIREMENT_CANDIDATES: ({"requirement"}, {"MUTATE"}),
@@ -85,6 +87,7 @@ def automation_action_limits(actions):
             {"PROPOSE", "MUTATE"},
         ),
         AutomationAction.CREATE_FINDINGS: ({"analysis"}, {"PROPOSE"}),
+        AutomationAction.READ_PROJECT_MCP: ({"analysis"}, {"READ"}),
         AutomationAction.REQUEST_CLARIFICATION: ({"requirement"}, {"MUTATE"}),
         AutomationAction.PROPOSE_ASSIGNMENT: ({"execution"}, {"PROPOSE"}),
         AutomationAction.PROPOSE_TRANSITION: ({"execution"}, {"PROPOSE"}),

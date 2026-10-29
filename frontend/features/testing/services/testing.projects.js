@@ -61,6 +61,7 @@ export const projectTestingApi = {
       body: JSON.stringify(payload),
     }),
   listAutomationTriggers: () => automationRequest("/triggers"),
+  listAutomationActions: () => automationRequest("/hanh-dong"),
   listAutomationDefinitions: (projectId) => automationRequest(`/du-an/${projectId}/dinh-nghia`),
   createAutomationDefinition: (payload) =>
     automationRequest("/dinh-nghia", { method: "POST", body: JSON.stringify(payload) }),

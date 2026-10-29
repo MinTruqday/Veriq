@@ -21,6 +21,7 @@ from src.prompts.automation_events import (
 )
 from src.runtime.limits import limits
 from src.schemas.agent import PlannedTask, ToolCall, ToolExecutionStatus
+from src.schemas.automation import AutomationAction
 from src.tools.registry import registered_tools, tool_access
 
 
@@ -383,10 +384,21 @@ def simulation_baseline_trace_snapshot(observations, baseline_version_id, stage)
 
 
 def direct_document_ingestion_task(run, state, evidence_refs):
+    constraints = state.get("constraints") or {}
     if (
         not state.get("automatic")
         or state.get("source_event_verified") is not True
-        or (state.get("constraints") or {}).get("trigger") != "DOCUMENT_INGESTED"
+        or constraints.get("trigger") != "DOCUMENT_INGESTED"
+    ):
+        return None
+    mcp_read_enabled = AutomationAction.READ_PROJECT_MCP.value in set(
+        constraints.get("automation_actions") or []
+    )
+    if mcp_read_enabled and any(
+        item.get("tool_name") == "process_ingested_requirement_document"
+        and item.get("status") == ToolExecutionStatus.COMPLETED
+        and (item.get("verification") or {}).get("status") == ToolExecutionStatus.COMPLETED
+        for item in getattr(run, "observations", []) or []
     ):
         return None
     tool_name = "process_ingested_requirement_document"
@@ -462,7 +474,7 @@ def direct_document_ingestion_task(run, state, evidence_refs):
                 objective=document_ingested_objective(),
                 evidence_refs=evidence_refs,
                 constraints={
-                    "workflow_terminal": True,
+                    "workflow_terminal": not mcp_read_enabled,
                     "resume_after_clarification": bool(clarification_responses),
                 },
                 tool_calls=[

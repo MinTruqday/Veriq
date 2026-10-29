@@ -43,12 +43,18 @@ class AutomationGraphFactExtractionTests(unittest.IsolatedAsyncioTestCase):
 
     def test_typed_automation_actions_limit_domains_and_tool_effects(self):
         self.assertEqual(automation_action_limits(None), (None, None))
-        self.assertEqual(automation_action_limits([]), (None, None))
+        self.assertEqual(automation_action_limits([]), (set(), set()))
         domains, actions = automation_action_limits(
             [AutomationAction.PROPOSE_ASSIGNMENT.value]
         )
         self.assertEqual(domains, {"execution"})
         self.assertEqual(actions, {"PROPOSE"})
+
+        domains, actions = automation_action_limits(
+            [AutomationAction.READ_PROJECT_MCP.value]
+        )
+        self.assertEqual(domains, {"analysis"})
+        self.assertEqual(actions, {"READ"})
 
         domains, actions = automation_action_limits(["UNSUPPORTED_ACTION"])
         self.assertEqual(domains, set())

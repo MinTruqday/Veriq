@@ -173,6 +173,50 @@ class AutomationEventTaskTests(unittest.TestCase):
         self.assertIsNotNone(task)
         arguments = task.tool_calls[0].arguments
         self.assertEqual(arguments["source_facts"], [source_fact])
+        self.assertTrue(task.constraints["workflow_terminal"])
+
+    def test_document_event_can_replan_after_ingestion_for_scoped_mcp_read(self):
+        run = VeriqRunState(
+            project_id="project-1",
+            user_id="ba-1",
+            role="BA",
+            permissions=["project.read", "requirement.create"],
+            objective="Process a newly uploaded requirements document",
+            evidence_refs=["doc-1-v1"],
+        )
+        state = {
+            "automatic": True,
+            "source_event_verified": True,
+            "constraints": {
+                "trigger": "DOCUMENT_INGESTED",
+                "automation_actions": [
+                    "CREATE_REQUIREMENT_CANDIDATES",
+                    "READ_PROJECT_MCP",
+                ],
+            },
+            "target_artifact_ids": ["doc-1"],
+            "evidence": [{
+                "artifact_type": "requirement_document",
+                "artifact_id": "doc-1",
+                "artifact_version_id": "doc-1-v1",
+                "text": "The source document",
+            }],
+            "source_facts": [],
+        }
+
+        task = direct_document_ingestion_task(run, state, ["doc-1-v1"])
+
+        self.assertIsNotNone(task)
+        self.assertFalse(task.constraints["workflow_terminal"])
+
+        run.observations.append({
+            "tool_name": "process_ingested_requirement_document",
+            "status": "COMPLETED",
+            "verification": {"status": "COMPLETED"},
+            "result": {"requirement_import_job_id": "RIMP-1"},
+        })
+
+        self.assertIsNone(direct_document_ingestion_task(run, state, ["doc-1-v1"]))
 
     def test_document_ingestion_resume_passes_clarification_records_to_mutation(self):
         run = VeriqRunState(

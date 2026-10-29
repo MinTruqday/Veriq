@@ -137,7 +137,8 @@ class AutomationService:
             trigger=payload.trigger,
             objective=payload.objective,
             intent=payload.intent,
-            actions=payload.actions,
+            actions=payload.actions or [],
+            actions_configured=payload.actions is not None,
             conditions=payload.conditions,
             enabled=payload.enabled,
         )
@@ -163,6 +164,8 @@ class AutomationService:
                 detail={"code": "REVISION_CONFLICT", "latest": definition.model_dump(mode="json")},
             )
         values = payload.model_dump(exclude={"expected_revision"}, exclude_none=True)
+        if "actions" in values:
+            values["actions_configured"] = True
         if values.get("enabled") is True:
             enabled = await automation_repository.list_enabled_definitions(
                 definition.project_id, definition.trigger
@@ -422,7 +425,8 @@ class AutomationService:
                     ),
                     **(
                         {"automation_actions": [action.value for action in definition.actions]}
-                        if definition and definition.actions
+                        if definition
+                        and (definition.actions_configured or definition.actions)
                         else {}
                     ),
                     **(

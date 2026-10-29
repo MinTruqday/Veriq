@@ -44,6 +44,7 @@ class AutomationAction(str, Enum):
     CREATE_REQUIREMENT_CANDIDATES = "CREATE_REQUIREMENT_CANDIDATES"
     CREATE_TEST_CASE_CANDIDATES = "CREATE_TEST_CASE_CANDIDATES"
     CREATE_FINDINGS = "CREATE_FINDINGS"
+    READ_PROJECT_MCP = "READ_PROJECT_MCP"
     REQUEST_CLARIFICATION = "REQUEST_CLARIFICATION"
     PROPOSE_ASSIGNMENT = "PROPOSE_ASSIGNMENT"
     PROPOSE_TRANSITION = "PROPOSE_TRANSITION"
@@ -254,14 +255,16 @@ class AutomationDefinitionRequest(BaseModel):
     trigger: AutomationTrigger
     objective: str = Field(min_length=3, max_length=4000)
     intent: str = Field(default="", max_length=100)
-    actions: list[AutomationAction] = Field(default_factory=list, max_length=8)
+    actions: list[AutomationAction] | None = Field(
+        default=None, max_length=len(AutomationAction)
+    )
     conditions: AutomationEventConditions = Field(default_factory=AutomationEventConditions)
     enabled: bool = True
 
     @field_validator("actions")
     @classmethod
     def unique_actions(cls, actions):
-        if len(set(actions)) != len(actions):
+        if actions is not None and len(set(actions)) != len(actions):
             raise ValueError("automation_actions_must_be_unique")
         return actions
 
@@ -271,7 +274,9 @@ class AutomationDefinitionPatch(BaseModel):
     name: str | None = Field(default=None, min_length=3, max_length=160)
     objective: str | None = Field(default=None, min_length=3, max_length=4000)
     intent: str | None = Field(default=None, max_length=100)
-    actions: list[AutomationAction] | None = Field(default=None, max_length=8)
+    actions: list[AutomationAction] | None = Field(
+        default=None, max_length=len(AutomationAction)
+    )
     conditions: AutomationEventConditions | None = None
     enabled: bool | None = None
 
@@ -557,7 +562,10 @@ class AutomationDefinition(BaseModel):
     trigger: AutomationTrigger
     objective: str
     intent: str = ""
-    actions: list[AutomationAction] = Field(default_factory=list, max_length=8)
+    actions: list[AutomationAction] = Field(
+        default_factory=list, max_length=len(AutomationAction)
+    )
+    actions_configured: bool = False
     conditions: AutomationEventConditions = Field(default_factory=AutomationEventConditions)
     enabled: bool = True
     revision: int = 1

@@ -75,9 +75,11 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const [definitions, setDefinitions] = useState([]);
   const [recentRuns, setRecentRuns] = useState([]);
   const [triggers, setTriggers] = useState([]);
+  const [automationActions, setAutomationActions] = useState([]);
   const [definitionName, setDefinitionName] = useState("");
   const [trigger, setTrigger] = useState("");
   const [objective, setObjective] = useState("");
+  const [selectedActions, setSelectedActions] = useState([]);
   const [run, setRun] = useState(null);
   const [workflow, setWorkflow] = useState(null);
   const [checkpoints, setCheckpoints] = useState([]);
@@ -107,6 +109,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
     setDefinitions([]);
     setRecentRuns([]);
     setTriggers([]);
+    setAutomationActions([]);
+    setSelectedActions([]);
     setRun(null);
     selectedRunIdRef.current = null;
     selectedRunSnapshotRef.current = null;
@@ -119,6 +123,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
     Promise.allSettled([
       canReadDefinitions ? testingApi.listAutomationDefinitions(project._id) : Promise.resolve([]),
       canManageDefinitions ? testingApi.listAutomationTriggers() : Promise.resolve([]),
+      canManageDefinitions ? testingApi.listAutomationActions() : Promise.resolve([]),
       canReadProjectRuns || canReadOwnRuns
         ? testingApi.listAutomationRuns(project._id)
         : Promise.resolve([]),
@@ -128,8 +133,9 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
         const values = results.map((result) => (result.status === "fulfilled" ? result.value : []));
         setDefinitions(values[0]);
         setTriggers(values[1]);
+        setAutomationActions(values[2]);
         if (listRequestVersion === runListRequestVersion.current) {
-          setRecentRuns(values[2]);
+          setRecentRuns(values[3]);
         }
         setError(
           results
@@ -378,9 +384,11 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
         name: definitionName.trim(),
         trigger,
         objective: objective.trim(),
+        actions: selectedActions,
       });
       setDefinitionName("");
       setObjective("");
+      setSelectedActions([]);
       await refreshDefinitions();
     } catch (reason) {
       setError(messageOf(reason));
@@ -617,6 +625,33 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 placeholder="Mô tả kết quả quy tắc cần tạo từ sự kiện này"
               />
             </label>
+            {automationActions.length > 0 && (
+              <fieldset className="grid gap-2 rounded-control border border-border p-3">
+                <legend className="px-1 text-sm font-medium text-ink">
+                  Phạm vi thao tác
+                </legend>
+                <p className="text-sm text-ink-muted">
+                  Nếu không chọn, AI chỉ thực hiện quy trình chính của sự kiện; không được gọi thêm công cụ.
+                </p>
+                {automationActions.map((action) => (
+                  <label className="flex items-start gap-2 text-sm text-ink" key={action}>
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      checked={selectedActions.includes(action)}
+                      onChange={(event) => {
+                        setSelectedActions((current) =>
+                          event.target.checked
+                            ? [...current, action]
+                            : current.filter((item) => item !== action),
+                        );
+                      }}
+                    />
+                    <span>{valueLabel(action)}</span>
+                  </label>
+                ))}
+              </fieldset>
+            )}
           </>
         )}
         {canShowRunControls && (
@@ -656,6 +691,11 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 <div>
                   <p className="font-medium text-ink">{definition.name}</p>
                   <p className="text-ink-muted">{valueLabel(definition.trigger)}</p>
+                  {definition.actions?.length > 0 && (
+                    <p className="text-ink-muted">
+                      {definition.actions.map(valueLabel).join(" · ")}
+                    </p>
+                  )}
                 </div>
                 {definition.owner_user_id === currentUserId && (
                   <button
