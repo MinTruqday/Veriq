@@ -1035,6 +1035,8 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         )
     )
 
+    candidates_by_user = {item["user_id"]: item for item in candidates}
+    score_factors = _owner_score_factors(candidates_by_user, profiles_by_user, payroll_costs, currency)
     ai_candidate_inputs = []
     facts_by_user = {}
     for candidate in candidates:
@@ -1069,11 +1071,11 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             ("active-runs", f"Số đợt chạy đang tham gia: {candidate['active_run_count']}"),
         ):
             facts.append({"fact_id": fact_id, "description": description})
-        hourly_cost = payroll_costs.get(member_id)
-        if hourly_cost is not None:
+        payroll_factor = score_factors[member_id]["factors"].get("payroll_cost")
+        if payroll_factor is not None:
             facts.append({
-                "fact_id": "payroll-rate",
-                "description": f"Chi phí theo giờ: {hourly_cost} {currency}, hiệu lực {effective_date}",
+                "fact_id": "payroll-comparison",
+                "description": f"Hệ số chi phí tương đối đã chuẩn hóa: {payroll_factor}",
             })
         facts_by_user[member_id] = facts
         ai_candidate_inputs.append({
@@ -1087,9 +1089,9 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             "active_project_count": len(project_workload[member_id]),
             "active_case_count": candidate["active_case_count"],
             "active_run_count": candidate["active_run_count"],
-            "hourly_cost": str(hourly_cost) if hourly_cost is not None else None,
-            "currency": currency if hourly_cost is not None else None,
-            "payroll_effective_date": effective_date if hourly_cost is not None else None,
+            "payroll_cost_factor": (
+                score_factors[member_id]["factors"].get("payroll_cost")
+            ),
         })
     ai_result = await ai_automation_client.recommend_test_case_owners(
         project_id, output_language, required, ai_candidate_inputs
@@ -1097,11 +1099,9 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     recommendation_by_user = {
         item["candidate_id"]: item for item in ai_result.get("recommendations") or []
     }
-    candidates_by_user = {item["user_id"]: item for item in candidates}
     if set(recommendation_by_user) != set(candidates_by_user):
         raise HTTPException(status_code=502, detail={"code": "AI_OWNER_RECOMMENDATION_CANDIDATES_INVALID"})
 
-    score_factors = _owner_score_factors(candidates_by_user, profiles_by_user, payroll_costs, currency)
     ai_rank_by_user = {
         item["candidate_id"]: rank
         for rank, item in enumerate(ai_result.get("recommendations") or [], start=1)

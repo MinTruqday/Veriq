@@ -138,7 +138,7 @@ class AutomationService:
             objective=payload.objective,
             intent=payload.intent,
             actions=payload.actions or [],
-            actions_configured=payload.actions is not None,
+            actions_configured=True,
             conditions=payload.conditions,
             enabled=payload.enabled,
         )

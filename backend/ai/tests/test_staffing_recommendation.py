@@ -22,15 +22,13 @@ def _request():
             "relevant_experience": ["Kinh nghiệm đã xác nhận: API testing"],
             "evidence_facts": [
                 {"fact_id": "skill-1", "description": "Confirmed skill: API testing"},
-                {"fact_id": "payroll-rate", "description": "Hourly cost: 100 VND"},
+                {"fact_id": "payroll-comparison", "description": "Normalized payroll cost factor: 1.0"},
             ],
             "availability": "AVAILABLE",
             "active_project_count": 1,
             "active_case_count": 2,
             "active_run_count": 1,
-            "hourly_cost": "100",
-            "currency": "VND",
-            "payroll_effective_date": "2026-10-28",
+            "payroll_cost_factor": 1.0,
         }],
     )
 
@@ -63,8 +61,8 @@ async def test_staffing_model_must_return_every_candidate_with_valid_fact_refere
         AsyncMock(return_value=StaffingRecommendationOutput.model_validate({
             "recommendations": [{
                 "candidate_id": "member-a",
-                "reason": "Có kỹ năng phù hợp và mức chi phí đã được cung cấp.",
-                "supporting_facts": ["skill-1", "payroll-rate"],
+                "reason": "Có kỹ năng phù hợp và hệ số chi phí tương đối đã được cung cấp.",
+                "supporting_facts": ["skill-1", "payroll-comparison"],
             }],
             "warnings": [],
         })),
@@ -73,7 +71,7 @@ async def test_staffing_model_must_return_every_candidate_with_valid_fact_refere
     result = await recommend_staffing(_request())
 
     assert result.recommendations[0].candidate_id == "member-a"
-    assert "payroll-rate" in result.recommendations[0].supporting_facts
+    assert "payroll-comparison" in result.recommendations[0].supporting_facts
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,13 @@
 # Tồn đọng AI và Frontend của Veriq
 
+## Cập nhật sau commit `637 commit` — 30/10/2026
+
+- Bộ đếm nghiệm thu vẫn là **22/36 đã đóng, 14 còn mở**: AI-01, AI-04, AI-09, AI-11, AI-14, AI-15, AI-16, FE-05, FE-10, FE-14, AC-01, AC-04, AC-05 và AC-06. Không chạy lại 14 bộ độc lập; giữ cách nghiệm thu gộp theo bốn hành trình A–D và một bước đối soát AC-06 đã mô tả trong tài liệu.
+- Sau commit, worktree hiện có thay đổi ở AI-11 và AI-15: thao tác được chọn trong cấu hình chỉ giới hạn công cụ bổ sung, không vô hiệu hóa luồng nghiệp vụ sự kiện; đề xuất phân công chỉ gửi hệ số chi phí tương đối đã tính phía máy chủ, không gửi mức lương tuyệt đối cho mô hình hoặc trả nó trong bằng chứng AI. Giao diện làm rõ sự khác biệt giữa luồng sự kiện chính và thao tác bổ sung.
+- Kiểm chứng các thay đổi trên Docker đã hoàn tất: AI **973 passed**, Testing **577 passed**; image AI, Testing và frontend được build thành công, các container khỏe mạnh. Đây là bằng chứng hồi quy code của snapshot hiện tại, không tự đóng AI-11/AI-15 hoặc các hành trình tích hợp còn mở.
+- Chưa có bằng chứng mới để đóng bất kỳ mã nào trong 14 kể trên. Các thiếu hụt chính vẫn là upload/worker và ACL đầu-cuối (AI-01), event Requirement terminal (AI-04), change simulation có trace được xác nhận (AI-09), MCP tool call trong event cùng Phoenix/audit (AI-11), tài liệu dài/scan thật cùng recovery chỉ mục (AI-14), benchmark phân công (AI-15), lượt AI thành công hiển thị đầu-cuối trên browser (AI-16), thao tác ghi compare/save live (FE-14), và một luồng tích hợp đầy đủ cùng fault/permission/cleanup evidence (AC-01/04/05/06). Không diễn giải suite pass thành các tiêu chí này đã đạt.
+- Rà dữ liệu runtime hiện tại: hai kết nối MCP toàn cục Postman/GitHub đang bật và có allowlist; collection audit MCP hiện có **0** bản ghi. Điều này xác nhận cấu hình đã tồn tại nhưng chưa chứng minh tool nào được gọi từ automation event hoặc có audit/trace tương ứng. Không sửa kết nối hay gọi tool trong bước kiểm kê.
+
 ## Trạng thái hiện tại — 29/10/2026, 18:08 (+07)
 
 - Frontend sau commit `631 commit`: Docker production build và toàn bộ Playwright đạt **101 passed, 10 skipped, 0 failed**. Bổ sung kiểm tra live riêng: ma trận phiên/role chỉ đọc **7/7 đạt** và API live từ chối thao tác ghép khi chưa đăng nhập **1/1 đạt**. Hai bài live lưu bản ghép/xung đột revision vẫn chưa chạy vì cần database disposable và fixture QA mới; không tính phần này là đạt và giữ FE-14 trong 14 cổng còn mở. Fixture live role đã được dọn; không có thao tác ghi từ browser trong lượt chỉ đọc.

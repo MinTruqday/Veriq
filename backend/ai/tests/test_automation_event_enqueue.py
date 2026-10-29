@@ -128,6 +128,32 @@ class AutomationEventEnqueueTests(unittest.IsolatedAsyncioTestCase):
             error.exception.detail["code"], "AUTOMATION_TRIGGER_MUST_BE_DOMAIN_EVENT"
         )
 
+    async def test_new_definition_without_actions_has_no_additional_action_scope(self):
+        service = AutomationService()
+        payload = AutomationDefinitionRequest(
+            project_id="project-1",
+            name="Document event workflow",
+            trigger=AutomationTrigger.DOCUMENT_INGESTED,
+            objective="Process an uploaded requirements document",
+        )
+        with (
+            patch(
+                "src.services.automation.automation_repository.list_enabled_definitions",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch(
+                "src.services.automation.automation_repository.create_definition",
+                new=AsyncMock(),
+            ) as persist,
+        ):
+            definition = await service.create_definition(
+                payload, "ba-user", "BA", ["automation.create"]
+            )
+
+        self.assertEqual(definition.actions, [])
+        self.assertTrue(definition.actions_configured)
+        persist.assert_awaited_once_with(definition)
+
     async def test_new_event_is_persisted_and_published_for_the_project_qa_executor(self):
         service = AutomationService()
         with (

@@ -256,7 +256,7 @@ class AutomationDefinitionRequest(BaseModel):
     objective: str = Field(min_length=3, max_length=4000)
     intent: str = Field(default="", max_length=100)
     actions: list[AutomationAction] | None = Field(
-        default=None, max_length=len(AutomationAction)
+        default_factory=list, max_length=len(AutomationAction)
     )
     conditions: AutomationEventConditions = Field(default_factory=AutomationEventConditions)
     enabled: bool = True

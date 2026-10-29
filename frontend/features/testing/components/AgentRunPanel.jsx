@@ -627,11 +627,10 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             </label>
             {automationActions.length > 0 && (
               <fieldset className="grid gap-2 rounded-control border border-border p-3">
-                <legend className="px-1 text-sm font-medium text-ink">
-                  Phạm vi thao tác
-                </legend>
+                <legend className="px-1 text-sm font-medium text-ink">Phạm vi thao tác</legend>
                 <p className="text-sm text-ink-muted">
-                  Nếu không chọn, AI chỉ thực hiện quy trình chính của sự kiện; không được gọi thêm công cụ.
+                  Luồng chính của sự kiện vẫn chạy. Các lựa chọn này chỉ cấp phép thao tác bổ sung;
+                  để trống nghĩa là AI không gọi thêm công cụ.
                 </p>
                 {automationActions.map((action) => (
                   <label className="flex items-start gap-2 text-sm text-ink" key={action}>

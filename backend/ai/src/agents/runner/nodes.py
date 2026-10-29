@@ -400,30 +400,21 @@ async def plan(state):
         direct_task = direct_test_case_change_impact_task(run, state, evidence_refs)
     if not simulation and not direct_task:
         direct_task = direct_event_observation_task(run, state, evidence_refs)
-    if direct_task and action_domains is not None and (
-        direct_task.domain not in action_domains
-        or any(
-            (access := tool_access(registered_tools().get(call.tool_name))) is None
-            or access.action not in action_types
-            for call in direct_task.tool_calls
-        )
-    ):
-        direct_task = None
     if not simulation and not direct_task:
         direct_task = (
             direct_capability_task(run, evidence_refs)
             if run.intent and not run.completed_tasks
             else None
         )
-    if direct_task and action_domains is not None and (
-        direct_task.domain not in action_domains
-        or any(
-            (access := tool_access(registered_tools().get(call.tool_name))) is None
-            or access.action not in action_types
-            for call in direct_task.tool_calls
-        )
-    ):
-        direct_task = None
+        if direct_task and action_domains is not None and (
+            direct_task.domain not in action_domains
+            or any(
+                (access := tool_access(registered_tools().get(call.tool_name))) is None
+                or access.action not in action_types
+                for call in direct_task.tool_calls
+            )
+        ):
+            direct_task = None
     if direct_task:
         run.execution_plan = [direct_task.model_dump(mode="json")]
         run.status = AgentRunStatus.RUNNING
