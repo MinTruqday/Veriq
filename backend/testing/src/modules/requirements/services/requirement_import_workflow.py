@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
@@ -33,6 +34,26 @@ from src.schemas.contracts.requirements import RequirementDuplicateCheckInput
 
 def grounded_requirement_candidates(document, result_batches):
     text = source_document_text(document["normalized_content"])
+
+    def source_reference_for(value, section):
+        value = str(value or "").strip()
+        if not value:
+            return None
+        source_start = text.find(value)
+        if source_start < 0:
+            return None
+        return {
+            "requirement_document_id": document["_id"],
+            "content_hash": document["content_hash"],
+            "source_version": document.get("source_version"),
+            "source_start": source_start,
+            "source_end": source_start + len(value),
+            "source_text_hash": hashlib.sha256(value.encode("utf-8")).hexdigest(),
+            "source_quote": value,
+            "section": section,
+            "format": document["format"],
+        }
+
     evidence = []
     for start in range(0, len(text), 3500):
         reference = f"{document['_id']}:{start}"
@@ -70,23 +91,31 @@ def grounded_requirement_candidates(document, result_batches):
                     "format": document["format"],
                 })
                 verified_quotes.append(quote)
-            cited_text = "\n".join(verified_quotes)
             key = suggestion.get("requirement_key")
             if key and not any(key in quote for quote in verified_quotes):
                 raise HTTPException(status_code=502, detail={"code": "REQUIREMENT_KEY_UNGROUNDED"})
             def contains(value):
-                return bool(value) and str(value).casefold() in cited_text.casefold()
+                return bool(value) and str(value).casefold() in text.casefold()
 
-            acceptance_criteria = [
-                value for value in suggestion.get("acceptance_criteria", []) if contains(value)
-            ]
-            actors = [value for value in suggestion.get("actors", []) if contains(value)]
-            business_rules = [
-                value for value in suggestion.get("business_rules", []) if contains(value)
-            ]
-            dependencies = [
-                value for value in suggestion.get("dependencies", []) if contains(value)
-            ]
+            def grounded_values(values, section):
+                accepted = []
+                for value in values:
+                    reference = source_reference_for(value, section)
+                    if reference:
+                        accepted.append(value)
+                        source_refs.append(reference)
+                return accepted
+
+            acceptance_criteria = grounded_values(
+                suggestion.get("acceptance_criteria", []), "acceptance_criteria"
+            )
+            actors = grounded_values(suggestion.get("actors", []), "actors")
+            business_rules = grounded_values(
+                suggestion.get("business_rules", []), "business_rules"
+            )
+            dependencies = grounded_values(
+                suggestion.get("dependencies", []), "dependencies"
+            )
             details = {}
             for field in ("main_flow", "exception_flow", "data_rules", "integration", "quality_measure"):
                 value = suggestion.get(field)
@@ -129,15 +158,20 @@ def grounded_requirement_candidates(document, result_batches):
                 }
             )
             section_states.update({field: "provided" for field in details})
+            criteria = []
+            for index, value in enumerate(acceptance_criteria, 1):
+                match = re.match(r"^\s*([A-Za-z][A-Za-z0-9_-]*)\s*:\s*", value)
+                criteria.append({
+                    "key": match.group(1) if match else f"AC-{index}",
+                    "content_doc": text_doc(value[match.end():] if match else value),
+                    "source_span": source_reference_for(value, "acceptance_criteria"),
+                })
             candidate = {
                 "requirement_key": key,
                 "title": suggestion["title"],
                 "type": suggestion["type"],
                 "content_doc": text_doc(suggestion["content"]),
-                "acceptance_criteria": [
-                    {"key": f"AC-{index + 1}", "content_doc": text_doc(value)}
-                    for index, value in enumerate(acceptance_criteria)
-                ],
+                "acceptance_criteria": criteria,
                 "actors": actors,
                 "business_rules": business_rules,
                 "dependencies": dependencies,
