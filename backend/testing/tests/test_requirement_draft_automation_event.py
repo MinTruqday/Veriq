@@ -138,6 +138,110 @@ class RequirementDraftAutomationEventTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["current_version"]["revision"], 4)
 
+    async def test_requirement_collaboration_patch_validates_against_persisted_acceptance_criteria(self):
+        user = SimpleNamespace(id="user-1", _ai_automation_run_id=None)
+        requirement = {
+            "_id": "requirement-1",
+            "project_id": "project-1",
+            "current_version_id": "version-1",
+            "requirement_key": "REQ-1",
+            "owner_id": "user-1",
+        }
+        content_doc = {
+            "type": "doc",
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Nội dung yêu cầu"}]}],
+        }
+        version = {
+            "_id": "version-1",
+            "project_id": "project-1",
+            "status": "DRAFT",
+            "revision": 3,
+            "title": "Requirement có AC",
+            "type": "functional",
+            "priority": "medium",
+            "risk": "medium",
+            "content_doc": content_doc,
+            "section_states": {"acceptance_criteria": "provided"},
+            "custom_values": {},
+        }
+        acceptance_criteria = [
+            {
+                "_id": "AC-1",
+                "project_id": "project-1",
+                "requirement_version_id": "version-1",
+                "key": "AC-1",
+                "content_doc": content_doc,
+                "status": "draft",
+            }
+        ]
+        updated_version = {**version, "revision": 4, "details": {"context": "updated"}}
+        payload = RequirementDraftPatch(expected_revision=3, details={"context": "updated"})
+        session = _AsyncSession()
+        client = SimpleNamespace(start_session=AsyncMock(return_value=session))
+
+        with (
+            patch.object(requirement_records.database, "client", client),
+            patch.object(requirement_records, "get_project_entity", new=AsyncMock(return_value=requirement)),
+            patch.object(requirement_records.requirement_repository, "find_version", new=AsyncMock(return_value=version)),
+            patch.object(requirement_records.requirement_repository, "list_acceptance_criteria", new=AsyncMock(return_value=acceptance_criteria)) as list_criteria,
+            patch.object(requirement_records, "validate_requirement_custom_values", new=AsyncMock()) as validate_custom,
+            patch.object(requirement_records.requirement_repository, "update_draft", new=AsyncMock(return_value=updated_version)),
+            patch.object(requirement_records, "audit", new=AsyncMock()),
+            patch.object(requirement_records, "queue_requirement_changed", new=AsyncMock()),
+        ):
+            await requirement_records.update_requirement_draft_record(
+                "project-1", "requirement-1", payload, user
+            )
+
+        list_criteria.assert_awaited_once_with("version-1", None)
+        validated_requirement = validate_custom.await_args.args[1]
+        self.assertEqual(len(validated_requirement.acceptance_criteria), 1)
+        self.assertEqual(validated_requirement.acceptance_criteria[0].key, "AC-1")
+
+    async def test_requirement_collaboration_patch_returns_structured_validation_error_for_inconsistent_sections(self):
+        user = SimpleNamespace(id="user-1", _ai_automation_run_id=None)
+        requirement = {
+            "_id": "requirement-1",
+            "project_id": "project-1",
+            "current_version_id": "version-1",
+            "requirement_key": "REQ-1",
+            "owner_id": "user-1",
+        }
+        content_doc = {"type": "doc", "content": []}
+        version = {
+            "_id": "version-1",
+            "project_id": "project-1",
+            "status": "DRAFT",
+            "revision": 3,
+            "title": "Requirement có AC",
+            "type": "functional",
+            "priority": "medium",
+            "risk": "medium",
+            "content_doc": content_doc,
+            "section_states": {"acceptance_criteria": "provided"},
+            "custom_values": {},
+        }
+        payload = RequirementDraftPatch(
+            expected_revision=3,
+            acceptance_criteria=[],
+            section_states={"acceptance_criteria": "provided"},
+        )
+
+        with (
+            patch.object(requirement_records, "get_project_entity", new=AsyncMock(return_value=requirement)),
+            patch.object(requirement_records, "get_project", new=AsyncMock()),
+            patch.object(requirement_records.requirement_repository, "find_version", new=AsyncMock(return_value=version)),
+            patch.object(requirement_records, "validate_requirement_custom_values", new=AsyncMock()) as validate_custom,
+        ):
+            with self.assertRaises(HTTPException) as error:
+                await requirement_records.update_requirement_draft_record(
+                    "project-1", "requirement-1", payload, user
+                )
+
+        self.assertEqual(error.exception.status_code, 422)
+        self.assertEqual(error.exception.detail["code"], "REQUIREMENT_DRAFT_INVALID")
+        validate_custom.assert_not_awaited()
+
     async def test_draft_identity_cas_failure_aborts_event_and_audit(self):
         user = SimpleNamespace(id="user-1", _ai_automation_run_id=None)
         requirement = {

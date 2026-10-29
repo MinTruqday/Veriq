@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.ai_automation import queue_requirement_changed
@@ -344,9 +345,34 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
     if "source_refs" in changes:
         await validate_requirement_sources(project_id, changes["source_refs"], user)
     if any(key in changes for key in ("custom_values", "type", "details", "section_states")):
-        await validate_requirement_custom_values(
-            project_id, RequirementCreate(**{**version, **changes, "acceptance_criteria": []})
-        )
+        validation_criteria = criteria
+        if validation_criteria is None:
+            validation_criteria = await requirement_repository.list_acceptance_criteria(
+                version["_id"], None
+            )
+        try:
+            validation_payload = RequirementCreate(
+                **{
+                    **version,
+                    **changes,
+                    "acceptance_criteria": validation_criteria,
+                }
+            )
+        except ValidationError as error:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "REQUIREMENT_DRAFT_INVALID",
+                    "fields": [
+                        {
+                            "field": ".".join(str(part) for part in item["loc"]),
+                            "code": item["type"],
+                        }
+                        for item in error.errors()
+                    ],
+                },
+            ) from error
+        await validate_requirement_custom_values(project_id, validation_payload)
     content_doc = changes.get("content_doc")
     if content_doc is not None:
         validate_doc(content_doc)
