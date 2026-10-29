@@ -931,13 +931,13 @@ export default function DefectsPage({ project }) {
                             setTraceReview({ defect: item, result: traceSuggestions[item._id] })
                           }
                         >
-                          Xem gợi ý tự động
+                          Xem gợi ý liên kết
                         </button>
                       )}
                     {can("ai.suggest_bug_trace") &&
                       (!traceSuggestions[item._id] ||
                         traceSuggestions[item._id].source_event_revision !== item.revision) && (
-                        <span className="text-xs text-ink-muted">Chưa có đề xuất tự động</span>
+                        <span className="text-xs text-ink-muted">Chưa có gợi ý liên kết</span>
                       )}
                     {item.linked_test_case_version_id && canManageTrace(item) && (
                       <button

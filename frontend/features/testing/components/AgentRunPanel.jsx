@@ -13,17 +13,26 @@ import {
 } from "../lib/automationRun.logic.mjs";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
-import { EmptyState, ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitives";
+import { ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
 
+function automationTriggerLabel(trigger) {
+  const normalized = String(trigger || "MANUAL").replace(/_{2,}/g, "_");
+  const label = valueLabel(normalized);
+  return label === normalized ? "Hoạt động AI theo sự kiện" : label;
+}
+
 function automationRunTitle(run) {
+  const trigger = String(run?.trigger || "MANUAL").replace(/_{2,}/g, "_");
+  if (trigger !== "MANUAL") return automationTriggerLabel(trigger);
   const objective = String(run?.objective || "").trim();
-  const generatedEventDescription = /tự xử lý sự kiện\s+[A-Z_]+/i.test(objective);
+  const generatedEvent = objective.match(/tự xử lý sự kiện\s+([A-Z][A-Z0-9_]+)/i);
+  if (generatedEvent) return automationTriggerLabel(generatedEvent[1]);
   const containsInternalEventCode = /\b[A-Z][A-Z0-9]+__[A-Z0-9_]+\b/.test(objective);
-  if (objective && !generatedEventDescription && !containsInternalEventCode) return objective;
-  return valueLabel(run?.trigger || "MANUAL");
+  if (objective && !containsInternalEventCode) return objective;
+  return automationTriggerLabel(trigger);
 }
 
 export default function AgentRunPanel({ project, showDefinitions = true }) {
@@ -495,7 +504,16 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const proposal = run?.result?.proposal;
   const blueprintClaims = receipt?.blueprint_claim_lineage || [];
   const blueprintArtifacts = receipt?.blueprint_artifact_lineage || [];
-  const sourceFactsById = new Map(sourceFacts.map((fact) => [fact.source_fact_id, fact]));
+  const sourceFactsById = new Map(
+    sourceFacts.flatMap((fact) =>
+      [fact.source_fact_id, fact.artifact_id, fact.artifact_version_id]
+        .filter(Boolean)
+        .map((reference) => [reference, fact]),
+    ),
+  );
+  const proposalEvidence = (proposal?.evidence_refs || [])
+    .map((reference) => sourceFactsById.get(reference))
+    .filter(Boolean);
   const busyRun = run && activeStatuses.has(run.status);
   const visibleRuns = recentRuns.filter(canViewRun);
   const visibleDefinitions = canReadDefinitions ? definitions : [];
@@ -652,7 +670,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                     {automationRunTitle(item)}
                   </span>
                   <span className="block text-xs text-ink-muted">
-                    {item.created_at ? formatDate(item.created_at) : ""}
+                    {automationTriggerLabel(item.trigger)}
+                    {item.created_at ? ` · ${formatDate(item.created_at)}` : ""}
                   </span>
                 </span>
                 <StatusPill
@@ -671,10 +690,9 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
           !run &&
           visibleRuns.length === 0 &&
           visibleDefinitions.length === 0 && (
-            <EmptyState>
-              Chưa có lượt chạy AI. Lượt chạy sẽ xuất hiện khi có sự kiện được hệ thống tự động xử
-              lý.
-            </EmptyState>
+            <p className="px-4 py-3 text-sm text-ink-muted" role="status">
+              Chưa có hoạt động gần đây.
+            </p>
           )}
         {run && (
           <div className="grid gap-4 pt-2 text-sm">
@@ -701,8 +719,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             )}
             <div className="flex flex-wrap items-center gap-3">
               <StatusPill value={run.status} />
-              <span>Khởi chạy: {valueLabel(run.trigger || "MANUAL")}</span>
-              <span>Người khởi chạy: {valueLabel(run.requester_role)}</span>
+              <span>Loại hoạt động: {automationTriggerLabel(run.trigger)}</span>
+              <span>Vai trò yêu cầu: {valueLabel(run.requester_role)}</span>
               <details className="text-xs text-ink-muted">
                 <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
                 <p className="mt-1 break-all">Mã lượt chạy: {run.automation_run_id}</p>
@@ -717,8 +735,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                   <div>
                     <h3 className="font-semibold text-ink">Trạng thái toàn luồng</h3>
                     <p className="mt-1 text-xs text-ink-muted">
-                      Gồm lượt này và các lượt được nó kích hoạt; trạng thái lượt cha có thể hoàn
-                      tất trước các lượt tiếp theo.
+                      Lượt xử lý này có thể hoàn tất trước những lượt tiếp theo do nó tạo ra.
                     </p>
                   </div>
                   <StatusPill value={workflow.status} />
@@ -729,7 +746,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 </p>
                 {workflow.truncated && (
                   <p className="text-xs text-warning" role="status">
-                    Danh sách luồng vượt giới hạn đọc; chưa thể kết luận luồng đã hoàn tất.
+                    Còn lượt xử lý chưa được tải hết nên chưa thể xác nhận toàn bộ đã hoàn tất.
                   </p>
                 )}
                 {workflow.runs?.length > 1 && (
@@ -740,7 +757,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                         key={item.automation_run_id}
                       >
                         <span className="min-w-0 text-xs text-ink-muted">
-                          {valueLabel(item.trigger || "MANUAL")}
+                          {automationTriggerLabel(item.trigger)}
                         </span>
                         <StatusPill value={item.status} />
                       </li>
@@ -979,17 +996,22 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             )}
             {proposal?.evidence_refs?.length > 0 && (
               <div>
-                <h3 className="font-semibold text-ink">Bằng chứng đã dùng</h3>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {proposal.evidence_refs.map((item) => (
-                    <span
-                      className="rounded-full border border-border bg-surface px-3 py-1 text-xs"
-                      key={item}
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
+                <h3 className="font-semibold text-ink">Căn cứ đã sử dụng</h3>
+                <p className="mt-1 text-ink-muted">
+                  {proposal.evidence_refs.length} nguồn được dùng để tạo kết quả này.
+                </p>
+                {proposalEvidence.length > 0 && (
+                  <ul className="mt-2 grid gap-1 text-sm text-ink-muted">
+                    {proposalEvidence.map((fact) => (
+                      <li key={fact.source_fact_id}>
+                        {fact.source || valueLabel(fact.artifact_type)}
+                        {fact.source_page_numbers?.length
+                          ? ` · Trang ${fact.source_page_numbers.join(", ")}`
+                          : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
             {checkpoints.length > 0 && (

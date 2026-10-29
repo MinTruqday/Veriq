@@ -151,7 +151,7 @@ export default function RequirementCreateModal({
                   {item.user_label ||
                     item.user?.full_name ||
                     item.user?.email ||
-                    "Tài khoản không xác định"}
+                    "Thành viên dự án"}
                 </option>
               ))}
             </select>

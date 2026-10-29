@@ -153,7 +153,7 @@ export default function RequirementsListPanel({
                 <option value="">Mọi người phụ trách</option>
                 {members.map((item) => (
                   <option key={item.user_id} value={item.user_id}>
-                    {item.user_label || item.user?.email || item.user_id}
+                    {item.user_label || item.user?.email || "Thành viên dự án"}
                   </option>
                 ))}
               </select>

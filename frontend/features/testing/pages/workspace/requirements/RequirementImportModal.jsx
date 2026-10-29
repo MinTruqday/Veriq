@@ -92,7 +92,10 @@ function DocumentAccessControl({
                     checked={access.shared_with.includes(member.user_id)}
                     onChange={(event) => updateSharedWith(member.user_id, event.target.checked)}
                   />
-                  {member.user_label || member.user_id}
+                  {member.user_label ||
+                    member.user?.full_name ||
+                    member.user?.email ||
+                    "Thành viên dự án"}
                 </label>
               ))}
             </div>
@@ -637,7 +640,7 @@ export default function RequirementImportModal({
                   }
                   if (source.candidate_index !== undefined)
                     return `Mục ${source.candidate_index + 1}`;
-                  if (source.template_id) return `Mẫu ${source.template_id}`;
+                  if (source.template_id) return "Mẫu nguồn";
                   if (source.operation?.path)
                     return `${source.operation.method} ${source.operation.path}`;
                   return "Nguồn đã liên kết";
@@ -681,7 +684,7 @@ export default function RequirementImportModal({
                             <p className="text-ink-muted">
                               Ca kiểm thử liên quan{" "}
                               {match.affected_test_cases
-                                .map((test) => test.test_case_key || test.test_case_id)
+                                .map((test) => test.test_case_key || "Ca kiểm thử liên quan")
                                 .join(", ")}
                             </p>
                           )}

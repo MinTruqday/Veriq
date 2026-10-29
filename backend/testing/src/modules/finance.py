@@ -20,7 +20,7 @@ from src.clients.authentication import load_accounts, resolve_account
 from src.clients.ai_automation import ai_automation_client
 
 
-router = APIRouter(prefix="/quan-tri/tai-chinh", tags=["Quản trị tài chính"])
+router = APIRouter(prefix="/kiem-thu/quan-tri/tai-chinh", tags=["Quản trị tài chính"])
 _CURRENCY_PATTERN = re.compile(r"^[A-Z]{3}$")
 
 

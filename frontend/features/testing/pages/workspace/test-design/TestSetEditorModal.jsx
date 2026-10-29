@@ -46,11 +46,11 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
   const [cases, setCases] = useState([]);
   const [selection, setSelection] = useState(() =>
     Object.fromEntries(
-      initialVersionIds.map((versionId) => [
+      initialVersionIds.map((versionId, index) => [
         versionId,
         {
           value: versionId,
-          label: "Ca kiểm thử trong bộ đã lưu",
+          label: `Ca đã lưu, mục ${index + 1} · chưa tải được thông tin`,
           fallback: true,
         },
       ]),
@@ -254,7 +254,7 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
                     key={option.value}
                     className="flex min-w-0 items-start justify-between gap-2 text-sm"
                   >
-                    <span className="min-w-0 break-all">{option.label}</span>
+                    <span className="min-w-0 break-words">{option.label}</span>
                     <button
                       className="shrink-0 text-brand hover:underline"
                       type="button"
@@ -305,7 +305,11 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
                   );
                 })}
                 {!cases.length && (
-                  <p className="px-2 py-3 text-sm text-ink-muted">Không có ca kiểm thử phù hợp.</p>
+                  <p className="px-2 py-3 text-sm text-ink-muted">
+                    {appliedQuery
+                      ? "Không tìm thấy ca kiểm thử phù hợp với từ khóa."
+                      : "Chưa có ca kiểm thử để thêm vào bộ này."}
+                  </p>
                 )}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-sm">

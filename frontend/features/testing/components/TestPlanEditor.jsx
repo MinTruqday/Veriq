@@ -343,7 +343,7 @@ export default function TestPlanEditor({
                         {item.user_label ||
                           item.user?.full_name ||
                           item.user?.email ||
-                          item.user_id}
+                          "Thành viên chưa có tên"}
                       </option>
                     ))}
                 </select>

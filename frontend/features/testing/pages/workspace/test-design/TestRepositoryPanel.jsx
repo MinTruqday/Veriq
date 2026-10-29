@@ -23,7 +23,7 @@ function RepositoryBranch({
     <li>
       <div
         className="flex min-h-11 min-w-0 items-center gap-2 rounded-control px-2 hover:bg-surface-quiet"
-        style={{ paddingInlineStart: `${depth * 18 + 8}px` }}
+        style={{ paddingInlineStart: `${Math.min(depth * 16, 96) + 8}px` }}
       >
         {children.length ? (
           <button

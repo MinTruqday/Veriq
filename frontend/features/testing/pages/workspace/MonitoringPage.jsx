@@ -149,8 +149,8 @@ export default function MonitoringPage({ project }) {
   const createSnapshot = async () => {
     if (!selectedPlanId) return;
     await ask({
-      title: "Tạo ảnh chụp giám sát",
-      confirmLabel: "Tạo ảnh chụp",
+      title: "Lưu mốc giám sát",
+      confirmLabel: "Lưu mốc giám sát",
       fields: [
         { name: "actual_effort", label: "Nỗ lực thực tế theo giờ", type: "number" },
         {
@@ -375,7 +375,7 @@ export default function MonitoringPage({ project }) {
                 <p className="mt-2">{selectedSnapshot.plan_revision}</p>
               </div>
               <div>
-                <p className="field-label">Trạng thái cổng chất lượng</p>
+                <p className="field-label">Kết quả điều kiện phát hành</p>
                 <div className="mt-2">
                   <QualityGateBadge
                     status={
@@ -393,7 +393,7 @@ export default function MonitoringPage({ project }) {
           </Panel>
           {can("qualitygate.read") && (
             <Panel
-              title="Tiêu chí thoát"
+              title="Điều kiện phát hành"
               actions={
                 <QualityGateBadge
                   status={
@@ -408,7 +408,7 @@ export default function MonitoringPage({ project }) {
                 canOverride={can("testmonitor.exit_criteria.override")}
                 onOverride={async (criterion) => {
                   await ask({
-                    title: "Ghi đè tiêu chí thoát",
+                    title: "Ghi nhận ngoại lệ điều kiện phát hành",
                     confirmLabel: "Ghi nhận",
                     fields: [
                       {
@@ -445,7 +445,7 @@ export default function MonitoringPage({ project }) {
             </Panel>
           )}
           <Panel
-            title="Quyết định chất lượng"
+            title="Quyết định phát hành"
             actions={
               <div className="flex flex-wrap gap-2">
                 <button className="secondary-button" type="button" onClick={exportGate}>
@@ -490,7 +490,7 @@ export default function MonitoringPage({ project }) {
               </div>
               <DataTable
                 items={gate?.rules || []}
-                empty="Mốc giám sát này chưa có tiêu chí phát hành"
+                empty="Mốc này chưa có điều kiện phát hành"
                 getRowKey={(item) => item.criterion_id}
                 columns={[
                   { key: "criterion", label: "Tiêu chí" },
@@ -505,7 +505,7 @@ export default function MonitoringPage({ project }) {
               />
               <DataTable
                 items={decisions.filter((item) => item.snapshot_id === selectedSnapshot._id)}
-                empty="Chưa có quyết định chất lượng"
+                empty="Chưa có quyết định phát hành"
                 columns={[
                   {
                     key: "decision",
@@ -580,9 +580,9 @@ export default function MonitoringPage({ project }) {
           )}
         </>
       ) : (
-        <Panel title="Ảnh chụp giám sát">
+        <Panel title="Mốc giám sát">
           <p className="p-8 text-sm text-ink-muted">
-            Chọn kế hoạch đã phê duyệt và tạo ảnh chụp đầu tiên
+            Chọn kế hoạch đã phê duyệt để lưu mốc theo dõi đầu tiên.
           </p>
         </Panel>
       )}

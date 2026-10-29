@@ -781,7 +781,9 @@ export default function TestDesignPage({ project, workspaceView }) {
   };
   const freeze = async (draft) => {
     if (unreviewedAiDrafts([draft], comparedApprovalDraftRevisions).length) {
-      setError("Cần đối chiếu bản gốc và đề xuất AI ở revision hiện tại trước khi duyệt ca này.");
+      setError(
+        "Cần đối chiếu bản gốc và đề xuất AI ở lần cập nhật hiện tại trước khi duyệt ca này.",
+      );
       setComparisonDraftId(draft._id);
       return;
     }
@@ -1170,11 +1172,11 @@ export default function TestDesignPage({ project, workspaceView }) {
         />
       )}
       {showAgentRuns && permissions.includes("requirement.read") && canReadAutomationRuns && (
-        <Panel title="Tự động hóa khi yêu cầu thay đổi">
+        <Panel title="Kết quả AI cho yêu cầu đã duyệt">
           <div className="grid gap-4 p-5">
             <p className="text-sm text-ink-muted">
-              Kết quả được ghép theo mã sự kiện, phiên bản và revision chính xác; màn hình không suy
-              đoán theo tên yêu cầu.
+              Chọn một yêu cầu để xem kết quả xử lý gắn với phiên bản hiện tại. Khi bạn khởi chạy
+              quy trình AI, các bước đủ điều kiện sẽ tự tiếp tục; mục này chỉ tra cứu kết quả.
             </p>
             <label className="field-label block max-w-2xl">
               Yêu cầu đã duyệt
@@ -1225,8 +1227,8 @@ export default function TestDesignPage({ project, workspaceView }) {
                 </div>
               ) : (
                 <p className="text-sm text-ink-muted">
-                  Chưa tìm thấy lượt chạy khớp chính xác trong danh sách gần đây. Điều này không
-                  khẳng định sự kiện đã thất bại.
+                  Chưa có kết quả xử lý cho phiên bản yêu cầu này. Điều đó chưa xác định được nguyên
+                  nhân.
                 </p>
               ))}
             {!automationRunsLoading && !automationRunsError && !selectedRequirement && (
@@ -1272,7 +1274,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                               <ContentOriginBadge origin={item.origin || "manual"} />
                             ),
                           },
-                          { key: "revision", label: "Lần sửa" },
+                          { key: "revision", label: "Lần cập nhật" },
                           {
                             key: "comparison",
                             label: "Đối chiếu",
@@ -1305,8 +1307,8 @@ export default function TestDesignPage({ project, workspaceView }) {
                         );
                       }) && (
                         <p role="status" className="text-sm text-amber-800">
-                          Mỗi ca do AI đề xuất phải được mở đối chiếu ở revision hiện tại trước khi
-                          đưa vào nhóm duyệt.
+                          Mỗi ca do AI đề xuất phải được mở đối chiếu ở lần cập nhật hiện tại trước
+                          khi đưa vào nhóm duyệt.
                         </p>
                       )}
                       <button
@@ -1886,8 +1888,8 @@ export default function TestDesignPage({ project, workspaceView }) {
               !!selectedDraft.source_evidence?.length &&
               !selectedDraft.evidence_refs?.length && (
                 <p className="border-b border-border p-5 text-sm text-ink-muted">
-                  Ca đã được chỉnh sửa sau khi AI tạo Dẫn chứng AI ban đầu không còn dùng để xác
-                  nhận nội dung hiện tại Cần rà soát lại trước khi duyệt
+                  Ca này đã được chỉnh sửa sau khi AI tạo. Dẫn chứng ban đầu không còn xác nhận nội
+                  dung hiện tại; hãy rà soát lại căn cứ trước khi duyệt.
                 </p>
               )}
             {can("testcase.update") && selectedDraft.status === "DRAFT" ? (
@@ -2516,13 +2518,13 @@ export default function TestDesignPage({ project, workspaceView }) {
               <div className="border-t border-border">
                 {(testLint.is_stale || draftDirty) && (
                   <p className="px-5 pt-4 text-sm text-warning" role="status">
-                    Kết quả tự động thuộc revision trước; thay đổi hiện tại chưa có kết quả rà soát
-                    mới.
+                    Kết quả kiểm tra này áp dụng cho bản trước. Nội dung hiện tại chưa có kết quả rà
+                    soát mới.
                   </p>
                 )}
                 {testLint.artifact_revision && (
                   <p className="px-5 pt-3 text-sm text-ink-muted">
-                    Kết quả tự động cho revision {testLint.artifact_revision}
+                    Kết quả kiểm tra cho lần cập nhật {testLint.artifact_revision}
                   </p>
                 )}
                 <DataTable

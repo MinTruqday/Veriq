@@ -25,7 +25,7 @@ function forecastText(value) {
       : "",
     value.confidence === null || value.confidence === undefined
       ? ""
-      : `Độ tin cậy ${value.confidence}`,
+      : `Độ tin cậy dự báo ${Math.round(value.confidence * 100)}%`,
     ...(value.assumptions || []),
   ]
     .filter(Boolean)
@@ -128,12 +128,12 @@ export default function TestStatusReportPanel({ project }) {
     const end = today.toISOString().slice(0, 16);
     const startDate = new Date(today.getTime() - 7 * 86400000);
     await ask({
-      title: "Tạo báo cáo trạng thái từ ảnh chụp",
+      title: "Tạo báo cáo từ mốc giám sát",
       confirmLabel: "Tạo báo cáo",
       fields: [
         {
           name: "snapshot_id",
-          label: "Ảnh chụp giám sát",
+          label: "Mốc giám sát",
           required: true,
           options: snapshots.map((item) => ({
             value: item._id,
@@ -165,7 +165,14 @@ export default function TestStatusReportPanel({ project }) {
         },
         { name: "executive_summary", label: "Tóm tắt điều hành", multiline: true },
         { name: "expected_completion_at", label: "Dự kiến hoàn tất", type: "datetime-local" },
-        { name: "forecast_confidence", label: "Độ tin cậy từ 0 đến 1", type: "number" },
+        {
+          name: "forecast_confidence",
+          label: "Độ tin cậy dự báo (%)",
+          type: "number",
+          min: 0,
+          max: 100,
+          step: 1,
+        },
         {
           name: "forecast_assumptions",
           label: "Giả định dự báo mỗi dòng một mục",
@@ -191,7 +198,9 @@ export default function TestStatusReportPanel({ project }) {
                   ? new Date(answer.expected_completion_at).toISOString()
                   : null,
                 confidence:
-                  answer.forecast_confidence === "" ? null : Number(answer.forecast_confidence),
+                  answer.forecast_confidence === ""
+                    ? null
+                    : Number(answer.forecast_confidence) / 100,
                 assumptions: lines(answer.forecast_assumptions),
               },
               distribution: lines(answer.distribution),
@@ -228,9 +237,15 @@ export default function TestStatusReportPanel({ project }) {
         },
         {
           name: "forecast_confidence",
-          label: "Độ tin cậy từ 0 đến 1",
+          label: "Độ tin cậy dự báo (%)",
           type: "number",
-          initialValue: selected.forecast?.confidence ?? "",
+          min: 0,
+          max: 100,
+          step: 1,
+          initialValue:
+            selected.forecast?.confidence == null
+              ? ""
+              : Math.round(selected.forecast.confidence * 100),
         },
         {
           name: "forecast_assumptions",
@@ -263,7 +278,9 @@ export default function TestStatusReportPanel({ project }) {
                   ? new Date(answer.expected_completion_at).toISOString()
                   : null,
                 confidence:
-                  answer.forecast_confidence === "" ? null : Number(answer.forecast_confidence),
+                  answer.forecast_confidence === ""
+                    ? null
+                    : Number(answer.forecast_confidence) / 100,
                 assumptions: lines(answer.forecast_assumptions),
               },
               recommendation_narrative: answer.recommendation_narrative,
@@ -354,7 +371,7 @@ export default function TestStatusReportPanel({ project }) {
             disabled={!snapshots.length || !builds.length}
             onClick={create}
           >
-            Tạo từ ảnh chụp
+            Tạo báo cáo
           </button>
         ) : null
       }
@@ -614,10 +631,10 @@ export default function TestStatusReportPanel({ project }) {
                 </Panel>
               )}
               <details className="text-xs text-ink-muted">
-                <summary className="cursor-pointer">Thông tin kiểm tra dữ liệu</summary>
-                <p className="mt-1 break-all">Mã ảnh chụp: {selected.snapshot_id}</p>
+                <summary className="cursor-pointer">Chi tiết kỹ thuật</summary>
+                <p className="mt-1 break-all">Mốc giám sát: {selected.snapshot_id}</p>
                 <p className="break-all">
-                  Mã đối chiếu nguồn: {selected.snapshot_source_fingerprint}
+                  Mã đối chiếu dữ liệu: {selected.snapshot_source_fingerprint}
                 </p>
               </details>
               {can("reviewsession.read") && (

@@ -90,6 +90,20 @@ function lifecycleFields() {
   ];
 }
 
+function documentFormatLabel(format) {
+  const labels = {
+    md: "Markdown",
+    markdown: "Markdown",
+    doc: "Word",
+    docx: "Word",
+    xls: "Excel",
+    xlsx: "Excel",
+    yml: "OpenAPI YAML",
+    yaml: "OpenAPI YAML",
+  };
+  return labels[String(format || "").toLowerCase()] || valueLabel(format || "Tệp tài liệu");
+}
+
 export default function RequirementSourceDocumentsPanel({
   items,
   members,
@@ -181,7 +195,7 @@ export default function RequirementSourceDocumentsPanel({
           multiple: true,
           options: members.map((member) => ({
             value: member.user_id,
-            label: member.user_label || member.user_id,
+            label: member.user_label || member.user?.email || "Thành viên dự án",
           })),
         },
       ],
@@ -308,88 +322,76 @@ export default function RequirementSourceDocumentsPanel({
         items={items}
         empty="Chưa có tài liệu nguồn"
         columns={[
-          { key: "filename", label: "Tên tệp", minWidth: 250 },
-          { key: "format", label: "Định dạng", minWidth: 96 },
           {
-            key: "source_type",
-            label: "Loại nguồn",
-            minWidth: 144,
-            render: (item) => valueLabel(item.source_type || "REFERENCE"),
+            key: "document",
+            label: "Tài liệu",
+            minWidth: 210,
+            render: (item) => (
+              <div className="space-y-1">
+                <p className="break-words font-medium">{item.title || item.filename}</p>
+                {item.title && item.title !== item.filename && (
+                  <p className="break-all text-xs text-ink-muted">{item.filename}</p>
+                )}
+                <p className="text-xs text-ink-muted">
+                  {valueLabel(item.source_type || "REFERENCE")} · {documentFormatLabel(item.format)}
+                </p>
+              </div>
+            ),
           },
           {
-            key: "authority",
-            label: "Thẩm quyền",
-            minWidth: 176,
-            render: (item) => valueLabel(item.authority || "PROJECT_REFERENCE"),
-          },
-          {
-            key: "module",
+            key: "scope",
             label: "Phạm vi",
-            minWidth: 192,
-            render: (item) =>
-              [item.product_area, item.module, item.component].filter(Boolean).join(" · ") ||
-              "Chưa khai báo",
+            minWidth: 180,
+            render: (item) => {
+              const moduleScope = [item.product_area, item.module, item.component]
+                .filter(Boolean)
+                .join(" · ");
+              const visibility =
+                item.visibility === "project"
+                  ? "Toàn dự án"
+                  : item.visibility === "shared"
+                    ? "Thành viên được chọn"
+                    : "Riêng tư";
+              return (
+                <div className="space-y-1 text-sm">
+                  <p>{valueLabel(item.authority || "PROJECT_REFERENCE")}</p>
+                  <p className="text-xs text-ink-muted">{moduleScope || "Chưa khai báo phân hệ"}</p>
+                  <p className="text-xs text-ink-muted">{visibility}</p>
+                </div>
+              );
+            },
           },
           {
-            key: "status",
-            label: "Trạng thái",
-            minWidth: 144,
-            render: (item) => <StatusPill value={item.status} />,
-          },
-          {
-            key: "visibility",
-            label: "Quyền xem",
-            minWidth: 152,
-            render: (item) =>
-              item.visibility === "project"
-                ? "Toàn dự án"
-                : item.visibility === "shared"
-                  ? "Đã chọn thành viên"
-                  : "Riêng tư",
-          },
-          {
-            key: "ai_enabled",
-            label: "AI đọc",
-            minWidth: 128,
-            render: (item) => (item.ai_enabled ? "Đã cho phép" : "Chưa cho phép"),
-          },
-          {
-            key: "index_status",
-            label: "Chỉ mục AI",
-            minWidth: 208,
+            key: "processing",
+            label: "Tình trạng xử lý",
+            minWidth: 280,
             render: (item) => {
               const issues = item.parse_report?.unprocessed_blocks || [];
               const parseReport = item.parse_report;
               const expanded = expandedReportId === item._id;
-              const parserLabel =
-                parseReport?.parser === "pymupdf_text"
-                  ? "PDF có văn bản"
-                  : parseReport?.parser === "docling"
-                    ? "Docling"
-                    : parseReport?.parser;
               const status =
                 item.index_status === "INDEXED"
-                  ? "Đã lập chỉ mục"
+                  ? "Có thể tìm trong tài liệu"
                   : item.index_status === "DEGRADED"
-                    ? `Đã lập chỉ mục một phần${issues.length ? ` · còn ${issues.length} khối chưa đọc được` : ""}`
+                    ? `Một phần tài liệu chưa đọc được${issues.length ? ` · ${issues.length} phần cần xem` : ""}`
                     : item.index_status === "FAILED"
-                      ? "Lập chỉ mục thất bại"
-                      : "Chưa lập chỉ mục";
+                      ? "Chưa thể xử lý tài liệu"
+                      : "Đang chờ xử lý tài liệu";
               return (
                 <div className="space-y-2">
+                  <StatusPill value={item.status} />
                   <span>{status}</span>
-                  {parseReport && (
-                    <p className="text-xs text-ink-muted">
-                      {parseReport.page_count
-                        ? `${parseReport.page_count} trang`
-                        : "Không có số trang"}
-                      {parserLabel ? ` · Bộ đọc ${parserLabel}` : ""}
-                      {parseReport.parser_version ? ` ${parseReport.parser_version}` : ""}
-                      {parseReport.ocr_enabled
-                        ? ` · OCR ${parseReport.ocr_language || "đã bật"}`
-                        : " · Không dùng OCR"}
-                    </p>
-                  )}
+                  <p className="text-xs text-ink-muted">
+                    {item.ai_enabled ? "Đã cho phép AI đọc" : "Chưa cho phép AI đọc"}
+                  </p>
+                  {parseReport &&
+                    (parseReport.page_count > 0 || parseReport.ocr_enabled === true) && (
+                      <p className="text-xs text-ink-muted">
+                        {parseReport.page_count > 0 ? `${parseReport.page_count} trang` : ""}
+                        {parseReport.ocr_enabled === true &&
+                          `${parseReport.page_count > 0 ? " · " : ""}Đã nhận dạng chữ trong ảnh`}
+                      </p>
+                    )}
                   {issues.length > 0 && (
                     <>
                       <button
@@ -414,16 +416,13 @@ export default function RequirementSourceDocumentsPanel({
                               <p className="font-medium">
                                 {extractionIssueLabel(issue.reason_code)}
                               </p>
-                              <p className="text-ink-muted">
-                                {sourceLocationLabel(issue)}
-                                {issue.block_id ? ` · Khối ${issue.block_id}` : ""}
-                              </p>
+                              <p className="text-ink-muted">{sourceLocationLabel(issue)}</p>
                             </li>
                           ))}
                           {issues.length > 20 && (
                             <li className="text-ink-muted">
-                              Còn {issues.length - 20} khối chưa đọc; tổng số khối được giữ trong
-                              báo cáo phân tích.
+                              Còn {issues.length - 20} phần nội dung chưa đọc; tổng số phần được giữ
+                              trong báo cáo phân tích.
                             </li>
                           )}
                         </ul>
@@ -435,22 +434,23 @@ export default function RequirementSourceDocumentsPanel({
             },
           },
           {
-            key: "source_version",
+            key: "version",
             label: "Phiên bản nguồn",
-            minWidth: 144,
-            render: (item) => item.source_version || "1",
+            minWidth: 140,
+            render: (item) => (
+              <div className="space-y-1 text-sm">
+                <p>Phiên bản {item.source_version || "1"}</p>
+                <p className="text-xs text-ink-muted">
+                  {item.previous_source_version_id ? "Có kế thừa phiên bản trước" : "Tài liệu gốc"}
+                </p>
+                <p className="text-xs text-ink-muted">Lần chỉnh sửa {item.revision ?? 1}</p>
+              </div>
+            ),
           },
-          {
-            key: "previous_source_version_id",
-            label: "Kế thừa từ",
-            minWidth: 180,
-            render: (item) => item.previous_source_version_id || "Tài liệu gốc",
-          },
-          { key: "revision", label: "Lần cập nhật", minWidth: 120 },
           {
             key: "actions",
             label: "Thao tác",
-            minWidth: 260,
+            minWidth: 220,
             hideWhenEmpty: true,
             render: (item) => (
               <span className="flex max-w-[32rem] flex-wrap items-center gap-2">

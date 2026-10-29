@@ -146,7 +146,7 @@ export default function RunExecutionWorkspace({
     <WorkspacePage title={run.name} actions={<ProjectCrumb projectId={projectId} />}>
       {error && <ErrorState message={error} />}
       <Panel
-        title="Điều khiển lần chạy"
+        title="Thao tác lần chạy"
         actions={
           <div className="flex flex-wrap gap-2">
             {can("testrun.assign") && can("project.members.read") && (
@@ -312,8 +312,8 @@ export default function RunExecutionWorkspace({
                     {resumeContext.current_test_case_version.title}
                   </p>
                   <p className="mt-1 text-ink-muted">
-                    Vị trí {resumeContext.position} trên {resumeContext.total_count} còn lại{" "}
-                    {resumeContext.remaining_count}
+                    Ca {resumeContext.position} / {resumeContext.total_count} · còn{" "}
+                    {resumeContext.remaining_count} ca chưa hoàn tất
                   </p>
                 </>
               ) : (
@@ -328,7 +328,7 @@ export default function RunExecutionWorkspace({
           <div className="space-y-4 p-5">
             {assignmentProposal && (
               <div className="rounded-control border border-border bg-surface-raised p-3 text-sm">
-                <p className="font-medium">Đề xuất cần QA xác nhận</p>
+                <p className="font-medium">Đề xuất phân công</p>
                 <p className="mt-1 text-ink-muted">
                   Gợi ý chưa được áp dụng. Kiểm tra từng ca, có thể đổi người hoặc chọn thủ công rồi
                   bấm “Duyệt và lưu phân công”.
@@ -347,7 +347,11 @@ export default function RunExecutionWorkspace({
                 <option value="">Chọn Tester</option>
                 {activeTesters.map((member) => (
                   <option key={member.user_id} value={member.user_id}>
-                    {member.user_label || member.user?.label || member.user_id}
+                    {member.user_label ||
+                      member.user?.label ||
+                      member.user?.full_name ||
+                      member.user?.email ||
+                      "Thành viên chưa có tên"}
                   </option>
                 ))}
               </select>
@@ -377,7 +381,11 @@ export default function RunExecutionWorkspace({
                       <option value="">Chưa phân công ca này</option>
                       {activeTesters.map((member) => (
                         <option key={member.user_id} value={member.user_id}>
-                          {member.user_label || member.user?.label || member.user_id}
+                          {member.user_label ||
+                            member.user?.label ||
+                            member.user?.full_name ||
+                            member.user?.email ||
+                            "Thành viên chưa có tên"}
                         </option>
                       ))}
                     </select>
@@ -399,8 +407,10 @@ export default function RunExecutionWorkspace({
                               <span className="font-medium text-ink">
                                 {suggestedMember?.user_label ||
                                   suggestedMember?.user?.label ||
+                                  suggestedMember?.user?.full_name ||
+                                  suggestedMember?.user?.email ||
                                   item.assignee_label ||
-                                  item.assignee_id}
+                                  "Thành viên không còn trong dự án"}
                               </span>
                               {item.required_skills?.length
                                 ? ` · Kỹ năng yêu cầu: ${item.required_skills.join(", ")}`
@@ -458,7 +468,7 @@ export default function RunExecutionWorkspace({
               );
               return (
                 <p className="break-words text-sm" key={item.test_case_version_id}>
-                  {version?.test_case_key || item.test_case_version_id} ·{" "}
+                  {version?.test_case_key || "Ca kiểm thử không còn khả dụng"} ·{" "}
                   {version?.title || "Ca kiểm thử"}
                   {" — "}
                   {item.reason === "NO_FULL_SKILL_MATCH"
@@ -472,7 +482,7 @@ export default function RunExecutionWorkspace({
       )}
       {run.assignment_strategy === "CONFIRMED_SKILLS" &&
         Object.keys(run.test_case_assignment_decisions || {}).length > 0 && (
-          <Panel title="Căn cứ phân công tự động">
+          <Panel title="Vì sao Veriq đề xuất phân công này">
             <div className="space-y-3 p-5">
               <p className="text-sm text-ink-muted">
                 Đây là thông tin được ghi lại tại thời điểm tạo lần chạy; thay đổi hồ sơ thành viên
@@ -495,13 +505,13 @@ export default function RunExecutionWorkspace({
                     key={versionId}
                   >
                     <h3 className="break-words font-medium">
-                      {version?.test_case_key || versionId} · {version?.title || "Ca kiểm thử"}
+                      {version?.test_case_key || "Ca kiểm thử không còn khả dụng"} ·{" "}
+                      {version?.title || ""}
                     </h3>
                     <p className="break-words text-ink-muted">
                       Người thực hiện:{" "}
                       {run.test_case_assignment_identities?.[decision.assignee_id]?.display_name ||
-                        decision.assignee_id ||
-                        "Chưa phân công"}
+                        "Thành viên không còn trong dự án"}
                       {" · "}
                       {reasonLabel}
                     </p>
@@ -521,14 +531,11 @@ export default function RunExecutionWorkspace({
                       </ul>
                     )}
                     <p className="break-words text-ink-muted">
-                      Hồ sơ kỹ năng phiên bản {decision.skill_profile_revision ?? 0}
+                      Trước khi phân công: {decision.active_run_count_before_assignment ?? 0} lần
+                      chạy đang hoạt động, {decision.active_case_count_before_assignment ?? 0} ca
+                      đang phụ trách
                       {" · "}
-                      Số đợt đang chạy trước khi gán:{" "}
-                      {decision.active_run_count_before_assignment ?? 0}
-                      {" · "}
-                      Tải ca trước khi gán: {decision.active_case_count_before_assignment ?? 0}
-                      {" · "}
-                      Tình trạng khả dụng: {decision.availability_at_assignment || "Chưa ghi nhận"}
+                      Khả dụng: {decision.availability_at_assignment || "Chưa ghi nhận"}
                     </p>
                   </section>
                 );
@@ -536,7 +543,7 @@ export default function RunExecutionWorkspace({
             </div>
           </Panel>
         )}
-      <Panel title="Kết quả thủ công">
+      <Panel title="Kết quả từng ca">
         {savingExecution && (
           <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
             Đang lưu kết quả thực thi…
@@ -553,11 +560,10 @@ export default function RunExecutionWorkspace({
               label: "Người thực hiện",
               render: (item) => {
                 const assigneeId = run.test_case_assignments?.[item._id];
-                return (
-                  run.test_case_assignment_identities?.[assigneeId]?.display_name ||
-                  assigneeId ||
-                  "Chưa phân công"
-                );
+                return assigneeId
+                  ? run.test_case_assignment_identities?.[assigneeId]?.display_name ||
+                      "Thành viên không còn trong dự án"
+                  : "Chưa phân công";
               },
             },
             {
@@ -567,7 +573,7 @@ export default function RunExecutionWorkspace({
                 const result = run.results?.find(
                   (value) => value.test_case_version_id === item._id,
                 );
-                if (!result) return "Không có ảnh chụp thực thi";
+                if (!result) return "Chưa có kết quả cho ca này";
                 if (!["NOT_RUN", "IN_PROGRESS"].includes(result.status)) {
                   const hasDefect = run.defects?.some(
                     (defect) => defect.linked_test_result_id === result._id,
@@ -763,7 +769,7 @@ export default function RunExecutionWorkspace({
                 );
                 return result
                   ? `Kết quả ${valueLabel(result.status)}`
-                  : "Không có ảnh chụp thực thi";
+                  : "Chưa có kết quả cho ca này";
               },
             },
           ]}

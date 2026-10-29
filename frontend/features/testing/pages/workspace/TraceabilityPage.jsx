@@ -123,7 +123,7 @@ export default function TraceabilityPage({ project }) {
               type="button"
               onClick={async () => {
                 await ask({
-                  title: "Lưu ảnh chụp độ phủ",
+                  title: "Lưu mốc độ phủ",
                   description:
                     "Lưu lại các chỉ số hiện tại để đối chiếu với bản phát hành sau này.",
                   confirmLabel: "Lưu mốc độ phủ",
@@ -172,13 +172,16 @@ export default function TraceabilityPage({ project }) {
       {error && <ErrorState message={error} />}
       {can("coverage.read") && (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <Metric label="Độ phủ yêu cầu" value={`${coverage.requirement_coverage || 0}%`} />
           <Metric
-            label="Độ phủ tiêu chí chấp nhận"
+            label="Yêu cầu có liên kết kiểm thử"
+            value={`${coverage.requirement_coverage || 0}%`}
+          />
+          <Metric
+            label="Tiêu chí chấp nhận có liên kết kiểm thử"
             value={`${coverage.acceptance_criterion_coverage || 0}%`}
           />
-          <Metric label="Độ phủ còn hiệu lực" value={`${coverage.fresh_coverage || 0}%`} />
-          <Metric label="Độ phủ thực thi" value={`${coverage.execution_coverage || 0}%`} />
+          <Metric label="Liên kết còn hiệu lực" value={`${coverage.fresh_coverage || 0}%`} />
+          <Metric label="Ca kiểm thử đã chạy" value={`${coverage.execution_coverage || 0}%`} />
           <Metric label="Ca kiểm thử chưa liên kết" value={coverage.unlinked_tests?.length || 0} />
         </div>
       )}
@@ -281,7 +284,14 @@ export default function TraceabilityPage({ project }) {
               label: "Ca kiểm thử",
               render: (item) => item.target_label || "Ca kiểm thử không còn khả dụng",
             },
-            { key: "confidence", label: "Độ tin cậy" },
+            {
+              key: "confidence",
+              label: "Mức độ phù hợp",
+              render: (item) =>
+                typeof item.confidence === "number"
+                  ? `${Math.round(item.confidence * 100)}%`
+                  : "Chưa đánh giá",
+            },
             {
               key: "freshness",
               label: "Hiệu lực",

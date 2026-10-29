@@ -13,7 +13,7 @@ function templateError(reason) {
     DOCUMENT_AI_ACCESS_DISABLED: "Tài liệu nguồn chưa được cho phép AI đọc",
     TEMPLATE_SOURCE_NOT_DECLARED: "Nguồn trích dẫn chưa được chọn cho mẫu",
     TEMPLATE_NOT_EDITABLE: "Mẫu này không còn ở trạng thái cho phép sửa",
-    TEMPLATE_VERSION_CONFLICT: "Mẫu đã thay đổi  Hãy tải lại trước khi lưu",
+    TEMPLATE_VERSION_CONFLICT: "Mẫu đã thay đổi. Hãy tải lại trước khi lưu.",
     TEMPLATE_CONFLICT_RESOLUTION_REQUIRED: "Cần giải quyết mọi mâu thuẫn trước khi lưu",
     TEMPLATE_CONFLICT_REQUIRES_REVIEW: "Cần rà soát và lưu quyết định cho các mâu thuẫn",
     TEMPLATE_HAS_NO_REQUIREMENTS: "Mẫu chưa có yêu cầu để nhập",
@@ -207,6 +207,8 @@ export default function RequirementTemplatePanel({
     { title: "", type: "functional", content: "", acceptance: "" },
   ]);
   const [busy, setBusy] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesLoadFailed, setTemplatesLoadFailed] = useState(false);
   const [automationRuns, setAutomationRuns] = useState([]);
   const [automationRunsError, setAutomationRunsError] = useState("");
   const [templateReadbackError, setTemplateReadbackError] = useState("");
@@ -222,6 +224,8 @@ export default function RequirementTemplatePanel({
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
+    setTemplatesLoading(true);
+    setTemplatesLoadFailed(false);
     setTemplates([]);
     setFields([]);
     Promise.all([
@@ -234,7 +238,13 @@ export default function RequirementTemplatePanel({
         setFields(definitions);
       })
       .catch((reason) => {
-        if (active) onError(templateError(reason));
+        if (active) {
+          setTemplatesLoadFailed(true);
+          onError(templateError(reason));
+        }
+      })
+      .finally(() => {
+        if (active) setTemplatesLoading(false);
       });
     return () => {
       active = false;
@@ -498,26 +508,42 @@ export default function RequirementTemplatePanel({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2 rounded-control border border-border p-3">
           <p className="text-sm font-medium">Mẫu thư viện và mẫu dự án</p>
-          {templates.map((template) => (
-            <div className="flex items-center justify-between gap-2 text-sm" key={template._id}>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={selectedTemplateIds.includes(template._id)}
-                  onChange={() => toggle(selectedTemplateIds, template._id, setSelectedTemplateIds)}
-                />
-                {template.name}{" "}
-                {template.status === "STARTER" ? "Mẫu khởi đầu" : `v${template.version}`}
-              </label>
-              <button
-                className="text-accent underline"
-                type="button"
-                onClick={() => loadTemplate(template)}
-              >
-                Mở
-              </button>
-            </div>
-          ))}
+          {templatesLoading ? (
+            <p className="py-2 text-sm text-ink-muted" role="status">
+              Đang tải mẫu…
+            </p>
+          ) : templatesLoadFailed ? (
+            <p className="py-2 text-sm text-danger" role="alert">
+              Không tải được danh sách mẫu.
+            </p>
+          ) : templates.length ? (
+            templates.map((template) => (
+              <div className="flex items-center justify-between gap-2 text-sm" key={template._id}>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedTemplateIds.includes(template._id)}
+                    onChange={() =>
+                      toggle(selectedTemplateIds, template._id, setSelectedTemplateIds)
+                    }
+                  />
+                  {template.name}{" "}
+                  {template.status === "STARTER" ? "Mẫu khởi đầu" : `v${template.version}`}
+                </label>
+                <button
+                  className="text-accent underline"
+                  type="button"
+                  onClick={() => loadTemplate(template)}
+                >
+                  Mở
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="py-2 text-sm text-ink-muted">
+              Chưa có mẫu. Bạn có thể tạo mẫu mới hoặc tổng hợp từ tài liệu đã cho phép đọc.
+            </p>
+          )}
         </div>
         <div className="space-y-2 rounded-control border border-border p-3">
           <p className="text-sm font-medium">Tài liệu nguồn cho AI</p>
@@ -772,7 +798,7 @@ export default function RequirementTemplatePanel({
                       {member.user_label ||
                         member.user?.full_name ||
                         member.user?.email ||
-                        "Tài khoản không xác định"}
+                        "Thành viên dự án"}
                     </option>
                   ))}
                 </select>
@@ -1026,8 +1052,9 @@ export default function RequirementTemplatePanel({
                         {sourceDocuments.find(
                           (document) => document._id === reference.requirement_document_id,
                         )?.filename ||
-                          reference.requirement_document_id ||
-                          reference.template_id}
+                          (reference.template_id
+                            ? "Mẫu nguồn đã lưu"
+                            : "Tài liệu nguồn không còn khả dụng")}
                         {reference.source_start !== undefined &&
                           `  vị trí ${reference.source_start} đến ${reference.source_end}`}
                       </p>
@@ -1223,7 +1250,7 @@ export default function RequirementTemplatePanel({
               const consentValue = active.consents?.[documentId];
               return (
                 <div className="flex items-center gap-3 text-sm" key={documentId}>
-                  <span>{document?.filename || documentId}</span>
+                  <span>{document?.filename || "Tài liệu nguồn không còn khả dụng"}</span>
                   <span>{consentValue?.approved ? "Đã đồng ý" : "Chưa đồng ý"}</span>
                   {document?.created_by === project.current_membership?.user_id && (
                     <>

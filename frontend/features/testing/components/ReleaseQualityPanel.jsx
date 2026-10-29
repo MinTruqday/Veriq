@@ -94,25 +94,25 @@ export default function ReleaseQualityPanel({ project }) {
         },
         {
           name: "monitoring_snapshot_id",
-          label: "Ảnh chụp giám sát",
+          label: "Mốc giám sát",
           required: true,
           options: [
-            { value: "", label: "Chọn ảnh chụp" },
+            { value: "", label: "Chọn mốc giám sát" },
             ...monitoring.map((item) => ({
               value: item._id,
-              label: `${item.name || (item.created_at ? new Date(item.created_at).toLocaleString() : "Ảnh chụp giám sát")} · ${item.effective_quality_gate_status || item.quality_gate_status || "Chưa đánh giá"}`,
+              label: `${item.name || (item.created_at ? new Date(item.created_at).toLocaleString() : "Mốc giám sát")} · ${item.effective_quality_gate_status || item.quality_gate_status || "Chưa đánh giá"}`,
             })),
           ],
         },
         {
           name: "measurement_snapshot_refs",
-          label: "Ảnh chụp đo lường liên quan",
+          label: "Mốc đo lường liên quan",
           multiple: true,
           options: measurements.map((item) => ({
             value: item._id,
             label:
               item.name ||
-              (item.created_at ? new Date(item.created_at).toLocaleString() : "Ảnh chụp đo lường"),
+              (item.created_at ? new Date(item.created_at).toLocaleString() : "Mốc đo lường"),
           })),
           initialValue: [],
         },

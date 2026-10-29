@@ -141,7 +141,7 @@ export default function DashboardPage({ project }) {
                 <Metric label="Kiểm thử đang hoạt động" value={dashboard.active_tests} />
               )}
               {can("defect.read") && <Metric label="Lỗi đang mở" value={dashboard.open_defects} />}
-              {can("coverage.read") && coverage && (
+              {can("coverage.read") && coverage?.requirement_coverage != null && (
                 <Metric label="Độ phủ yêu cầu" value={`${coverage.requirement_coverage}%`} />
               )}
             </div>
@@ -157,12 +157,18 @@ export default function DashboardPage({ project }) {
                 )}
                 {can("coverage.read") && coverage && (
                   <>
-                    <Metric
-                      label="Độ phủ tiêu chí chấp nhận"
-                      value={`${coverage.acceptance_criterion_coverage}%`}
-                    />
-                    <Metric label="Độ phủ còn hiệu lực" value={`${coverage.fresh_coverage}%`} />
-                    <Metric label="Độ phủ thực thi" value={`${coverage.execution_coverage}%`} />
+                    {coverage.acceptance_criterion_coverage != null && (
+                      <Metric
+                        label="Độ phủ tiêu chí chấp nhận"
+                        value={`${coverage.acceptance_criterion_coverage}%`}
+                      />
+                    )}
+                    {coverage.fresh_coverage != null && (
+                      <Metric label="Độ phủ còn hiệu lực" value={`${coverage.fresh_coverage}%`} />
+                    )}
+                    {coverage.execution_coverage != null && (
+                      <Metric label="Độ phủ thực thi" value={`${coverage.execution_coverage}%`} />
+                    )}
                   </>
                 )}
                 {can("testrun.read") && (
@@ -209,7 +215,7 @@ export default function DashboardPage({ project }) {
             <div className="grid gap-4 lg:grid-cols-2">
               <Panel title="Lỗi đang mở theo mức độ">
                 {Object.keys(dashboard.open_defects_by_severity || {}).length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-3 xl:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 p-5 xl:grid-cols-3">
                     {Object.entries(dashboard.open_defects_by_severity).map(([severity, count]) => (
                       <div
                         className="min-w-0 rounded-xl border border-border p-3 xl:p-4"

@@ -140,7 +140,7 @@ function ReadValue({ value, kind, customFields = [], members = [] }) {
     return value?.length ? (
       <ul className="space-y-1">
         {value.map((attachment, index) => (
-          <li className="break-all" key={attachment.url || attachment.file_path || index}>
+          <li className="break-words" key={attachment.url || attachment.file_path || index}>
             {attachment.filename || attachment.name || "Tệp đính kèm"}
           </li>
         ))}
@@ -466,7 +466,7 @@ function AttachmentEditor({ value = [], onChange, disabled = false }) {
               className="flex min-w-0 items-start justify-between gap-2 rounded-control bg-surface-quiet p-2"
               key={attachment.url || attachment.file_path || index}
             >
-              <span className="min-w-0 break-all text-sm">
+              <span className="min-w-0 break-words text-sm">
                 {attachment.filename || attachment.name || "Tệp đính kèm"}
               </span>
               <button
@@ -825,8 +825,8 @@ function CoverageLineageValue({ value, stale = false }) {
                 <p>{valueLabel(item.technique)}</p>
                 <p className="mt-1 whitespace-pre-wrap break-words">{item.source_quote}</p>
                 {item.existing_case_refs?.length > 0 && (
-                  <p className="mt-1 break-all text-xs text-ink-muted">
-                    Ca liên quan: {item.existing_case_refs.join(", ")}
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Có {item.existing_case_refs.length} ca hiện hành liên quan
                   </p>
                 )}
               </li>
@@ -1568,7 +1568,7 @@ export default function TestCaseCompareWorkspace({
               </div>
             </section>
             <section className="min-w-0 space-y-3">
-              <h4 className="font-semibold">Các bước kiểm thử — đối chiếu theo định danh bước</h4>
+              <h4 className="font-semibold">Các bước kiểm thử — so sánh từng bước</h4>
               {comparedStepIds(original, proposal, result).map((id) => {
                 const before = original?.steps?.find((step) => step.id === id);
                 const suggested = proposal?.steps?.find((step) => step.id === id);

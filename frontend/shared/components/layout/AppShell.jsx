@@ -643,20 +643,12 @@ export default function AppShell({ children, requireAuth }) {
                 </div>
               </>
             ) : (
-              <>
-                <Link
-                  href="/dang-nhap"
-                  className="hidden min-h-11 items-center whitespace-nowrap rounded-control px-3 py-2 text-[14px] font-semibold text-ink hover:bg-surface-quiet min-[380px]:flex"
-                >
-                  Đăng nhập
-                </Link>
-                <Link
-                  href="/dang-nhap"
-                  className="flex min-h-11 items-center whitespace-nowrap rounded-control bg-brand px-4 py-2 text-[14px] font-semibold text-white hover:bg-brand-hover"
-                >
-                  Đăng nhập
-                </Link>
-              </>
+              <Link
+                href="/dang-nhap"
+                className="flex min-h-11 items-center whitespace-nowrap rounded-control bg-brand px-4 py-2 text-[14px] font-semibold text-white hover:bg-brand-hover"
+              >
+                Đăng nhập
+              </Link>
             )}
           </div>
         </div>

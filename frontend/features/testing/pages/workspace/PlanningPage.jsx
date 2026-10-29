@@ -1566,13 +1566,13 @@ function Board({
                     const canTransition = canTransitionItem(item);
                     return (
                       <article
-                        className={`rounded-xl border border-border bg-surface-raised p-3 shadow-[0_4px_14px_rgba(48,47,42,0.035)] ${canTransition ? "cursor-grab active:cursor-grabbing" : ""}`}
+                        className={`min-w-0 rounded-xl border border-border bg-surface-raised p-3 shadow-[0_4px_14px_rgba(48,47,42,0.035)] ${canTransition ? "cursor-grab active:cursor-grabbing" : ""}`}
                         draggable={canTransition}
                         onDragStart={() => setDraggedItem(item)}
                         onDragEnd={() => setDraggedItem(null)}
                         key={item._id}
                       >
-                        <strong className="block text-sm">{item.title}</strong>
+                        <strong className="block break-words text-sm">{item.title}</strong>
                         <p className="mt-1 text-xs text-ink-muted">
                           {valueLabel(item.item_type)} · {valueLabel(item.priority)}
                         </p>

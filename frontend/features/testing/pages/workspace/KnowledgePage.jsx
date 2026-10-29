@@ -355,7 +355,6 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                 label: "Mức độ chính thức",
                 render: (item) => valueLabel(item.authority),
               },
-              { key: "score", label: "Mức phù hợp" },
               {
                 key: "text",
                 label: "Bằng chứng",
@@ -649,40 +648,44 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
         <ModalHeader>
           <ModalTitle>Chi tiết chỉ mục tài liệu</ModalTitle>
         </ModalHeader>
-        <div className="mb-4 rounded-lg border border-border bg-surface-quiet p-4 text-sm">
-          <p className="font-medium">Cách Qdrant lưu dữ liệu để tìm kiếm</p>
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <div className="min-w-0 rounded-md bg-surface p-3">
-              <p className="font-semibold">Mã bản ghi</p>
-              <p className="mt-1 text-ink-muted">
-                Mỗi đoạn được gán một mã để hệ thống tìm và cập nhật đúng bản ghi. Mã này không phải
-                mã tài liệu hay mã yêu cầu.
-              </p>
+        <details className="mb-4 rounded-lg border border-border bg-surface-quiet p-4 text-sm">
+          <summary className="cursor-pointer font-medium">
+            Cách hệ thống tìm nội dung trong tài liệu
+          </summary>
+          <div className="pt-1">
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="min-w-0 rounded-md bg-surface p-3">
+                <p className="font-semibold">Mã bản ghi</p>
+                <p className="mt-1 text-ink-muted">
+                  Mỗi đoạn được gán một mã để hệ thống tìm và cập nhật đúng bản ghi. Mã này không
+                  phải mã tài liệu hay mã yêu cầu.
+                </p>
+              </div>
+              <div className="min-w-0 rounded-md bg-surface p-3">
+                <p className="font-semibold">Dữ liệu tìm theo ý nghĩa</p>
+                <p className="mt-1 text-ink-muted">
+                  Hệ thống chuyển nội dung đoạn thành dãy số để tìm các nội dung gần nghĩa. Dãy số
+                  này không cần hiển thị khi đọc tài liệu.
+                </p>
+              </div>
+              <div className="min-w-0 rounded-md bg-surface p-3">
+                <p className="font-semibold">Nội dung và thông tin nguồn</p>
+                <p className="mt-1 text-ink-muted">
+                  Nội dung đoạn đi kèm thông tin để lọc kết quả và mở lại đúng tài liệu, phiên bản,
+                  trang hoặc vị trí nguồn khi có.
+                </p>
+              </div>
             </div>
-            <div className="min-w-0 rounded-md bg-surface p-3">
-              <p className="font-semibold">Dữ liệu tìm theo ý nghĩa</p>
-              <p className="mt-1 text-ink-muted">
-                Hệ thống chuyển nội dung đoạn thành dãy số để tìm các nội dung gần nghĩa. Dãy số này
-                không cần hiển thị khi đọc tài liệu.
-              </p>
-            </div>
-            <div className="min-w-0 rounded-md bg-surface p-3">
-              <p className="font-semibold">Nội dung và thông tin nguồn</p>
-              <p className="mt-1 text-ink-muted">
-                Nội dung đoạn đi kèm thông tin để lọc kết quả và mở lại đúng tài liệu, phiên bản,
-                trang hoặc vị trí nguồn khi có.
-              </p>
-            </div>
+            <p className="mt-3 text-ink-muted">
+              Tài liệu dài được chia thành nhiều đoạn để tìm kiếm. Bảng có thể được tách theo hàng
+              và lặp tiêu đề cột; ảnh gốc được lưu riêng, còn bản ghi tìm kiếm giữ nội dung trích
+              xuất hoặc liên kết ảnh khi có.
+            </p>
+            <p className="mt-2 text-ink-muted">
+              Quyền truy cập tài liệu vẫn được kiểm tra trước khi hệ thống trả kết quả tìm kiếm.
+            </p>
           </div>
-          <p className="mt-3 text-ink-muted">
-            Tài liệu dài được chia thành nhiều đoạn để tìm kiếm. Bảng có thể được tách theo hàng và
-            lặp tiêu đề cột; ảnh gốc được lưu riêng, còn bản ghi tìm kiếm giữ nội dung trích xuất
-            hoặc liên kết ảnh khi có.
-          </p>
-          <p className="mt-2 text-ink-muted">
-            Quyền truy cập tài liệu vẫn được kiểm tra trước khi hệ thống trả kết quả tìm kiếm.
-          </p>
-        </div>
+        </details>
         {metadataSource && (
           <div className="space-y-4 p-5">
             <div className="rounded-lg bg-surface-quiet p-4 text-sm">

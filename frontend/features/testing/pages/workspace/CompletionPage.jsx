@@ -731,7 +731,7 @@ export default function CompletionPage({ project }) {
                       ...item,
                       _id: item.criterion_id || index,
                     }))}
-                    empty="Không có tiêu chí thoát"
+                    empty="Không có điều kiện phát hành"
                     columns={[
                       { key: "criterion", label: "Tiêu chí" },
                       {
@@ -755,7 +755,7 @@ export default function CompletionPage({ project }) {
                         ? { _id: index, type: "OTHER", title: item }
                         : { ...item, _id: item.defect_id || item.test_result_id || index },
                     )}
-                    empty="Không có hạng mục chưa giải quyết"
+                    empty="Không còn hạng mục cần xử lý"
                     columns={[
                       { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
                       {

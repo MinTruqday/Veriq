@@ -91,6 +91,17 @@ function project(
       "ai.generate_automation_script",
       "testcase.import",
       "testcase.export",
+      "changeset.read",
+      "project.audit.read",
+      "knowledge.read",
+      "project.settings.manage",
+      "analytics.read",
+      "coverage.read",
+      "teststatusreport.read",
+      "testcompletion.read",
+      "qualityevaluation.read",
+      "measurement.read",
+      "processimprovement.read",
     );
   if (role === "QA" && canReadMembers) permissions.push("project.members.read");
   if (role === "QA" && canManageAttachments) permissions.push("attachment.manage");
@@ -1716,7 +1727,7 @@ test("only a stale PARSING source can be recovered from the source-document list
   );
 });
 
-test("degraded document indexing explains unreadable blocks and their source locations", async ({
+test("partly unreadable documents explain the missing content and its source location", async ({
   page,
 }) => {
   await installWorkspace(page, "QA", {
@@ -1742,16 +1753,15 @@ test("degraded document indexing explains unreadable blocks and their source loc
   await expect(
     page
       .getByRole("region", { name: "Bảng dữ liệu" })
-      .getByText(/Đã lập chỉ mục một phần · còn 1 khối chưa đọc được/),
+      .getByText("Một phần tài liệu chưa đọc được · 1 phần cần xem"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Xem phần chưa đọc" }).click();
   const sourceRows = page.getByRole("region", { name: "Bảng dữ liệu" });
   await expect(
     sourceRows.getByText("Chưa trích xuất được nội dung hoặc chú thích hình"),
   ).toBeVisible();
-  await expect(
-    sourceRows.getByText("Trang 4 · vùng 10, 20, 130, 90 · Khối #/pages/4/pictures/0"),
-  ).toBeVisible();
+  await expect(sourceRows.getByText("Trang 4 · vùng 10, 20, 130, 90")).toBeVisible();
+  await expect(sourceRows.getByText("#/pages/4/pictures/0")).toHaveCount(0);
 });
 
 test("an active PARSING source does not expose a concurrent recovery action", async ({ page }) => {
@@ -2536,7 +2546,7 @@ test("project workspace routes remain within the viewport at the standard deskto
   page,
 }) => {
   test.setTimeout(300_000);
-  await installWorkspace(page, "QA", { fullNavigation: true });
+  await installWorkspace(page, "QA", { fullNavigation: true, dashboardMetrics: true });
   const routes = [
     "",
     "lap-ke-hoach",
@@ -2602,6 +2612,10 @@ test("project workspace routes remain within the viewport at the standard deskto
   ]);
   const allRouteWidth = 1440;
   const representativeWidths = [1920, 1280, 768, 390];
+  const legacyRouteTargets = {
+    "cong-viec": "lap-ke-hoach/backlog",
+    "thiet-ke-kiem-thu": "ca-kiem-thu",
+  };
   const failures = [];
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -2614,6 +2628,10 @@ test("project workspace routes remain within the viewport at the standard deskto
       const pathname = `/du-an/${projectId}${route ? `/${route}` : ""}`;
       const response = await page.goto(pathname, { waitUntil: "commit" });
       if (!response?.ok()) failures.push({ route: pathname, width, status: response?.status() });
+      const expectedPathname = `/du-an/${projectId}${
+        legacyRouteTargets[route] ? `/${legacyRouteTargets[route]}` : route ? `/${route}` : ""
+      }`;
+      await expect.poll(() => new URL(page.url()).pathname).toBe(expectedPathname);
       await expect(
         page.locator("#main-content h1").first(),
         `page title for ${pathname}`,
@@ -2623,8 +2641,34 @@ test("project workspace routes remain within the viewport at the standard deskto
         await expect(page.getByRole("cell", { name: "Chức năng", exact: true })).toBeVisible();
         await expect(page.getByRole("cell", { name: "FUNCTIONAL", exact: true })).toHaveCount(0);
       }
+      if (route === "yeu-cau" && width === 1440) {
+        const sourceTable = page
+          .getByRole("region", { name: "Bảng dữ liệu" })
+          .locator("table")
+          .first();
+        const tableDimensions = await sourceTable.evaluate((table) => ({
+          table: table.scrollWidth,
+          viewport: table.parentElement.clientWidth,
+        }));
+        expect(tableDimensions.table).toBeLessThanOrEqual(tableDimensions.viewport + 2);
+        await expect(sourceTable.getByRole("columnheader")).toHaveCount(5);
+        await expect(sourceTable.getByText("Markdown")).toBeVisible();
+        await expect(sourceTable.getByText("Không có số trang")).toHaveCount(0);
+        await expect(sourceTable.getByText("Không nhận dạng chữ trong ảnh")).toHaveCount(0);
+      }
       if (route === "bao-cao" && width === 1440) {
         await expect(page.getByText(/NaN|undefined/)).toHaveCount(0);
+      }
+      if (route === "" && width === 1440) {
+        await expect(page.getByText(/NaN|undefined/)).toHaveCount(0);
+        const activityPanelHeading = page.getByRole("heading", { name: "Hoạt động tự động" });
+        await expect(activityPanelHeading).toBeVisible();
+        const activityPanel = activityPanelHeading.locator("xpath=ancestor::section[1]");
+        await expect(
+          activityPanel.getByRole("heading", { name: "Hoạt động gần đây" }),
+        ).toBeVisible();
+        const panelHeight = await activityPanel.evaluate((element) => element.offsetHeight);
+        expect(panelHeight).toBeLessThan(230);
       }
       const dimensions = await page.evaluate(() => ({
         viewport: document.documentElement.clientWidth,

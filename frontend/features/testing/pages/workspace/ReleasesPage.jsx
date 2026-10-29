@@ -230,7 +230,7 @@ export default function ReleasesPage({ project }) {
                             ) : stale ? (
                               <div className="space-y-1">
                                 <p className="text-xs text-danger">
-                                  Điều kiện đã cũ; cần tải lại trước khi đóng.
+                                  Điều kiện phát hành đã thay đổi; hãy kiểm tra lại trước khi đóng.
                                 </p>
                                 <button
                                   className="secondary-button"
@@ -333,7 +333,7 @@ function readinessGateLabel(gate) {
   return (
     {
       RELEASE_STATE: "Trạng thái phát hành",
-      GATE_REVISION: "Tính nhất quán của điều kiện đóng",
+      GATE_REVISION: "Điều kiện phát hành",
       COMPLETION_REPORT: "Báo cáo hoàn tất",
       BLOCKING_DEFECTS: "Lỗi chặn phát hành",
       REQUIREMENT_ASSURANCE: "Hồ sơ đảm bảo yêu cầu",
@@ -346,15 +346,15 @@ function readinessCodeLabel(code) {
     {
       RELEASE_ACTIVE: "Phát hành đang hoạt động",
       RELEASE_STATE_INVALID: "Trạng thái hiện tại không cho phép đóng",
-      RELEASE_GATE_REVISION_VALID: "Phiên bản điều kiện hợp lệ",
-      RELEASE_GATE_REVISION_INVALID: "Phiên bản điều kiện không hợp lệ",
+      RELEASE_GATE_REVISION_VALID: "Điều kiện đóng còn hiệu lực",
+      RELEASE_GATE_REVISION_INVALID: "Điều kiện đóng đã thay đổi; cần kiểm tra lại",
       RELEASE_COMPLETION_REPORT_VALID: "Báo cáo hoàn tất hợp lệ",
       OPEN_BLOCKING_DEFECTS: "Còn lỗi mức chặn đang mở",
       NO_OPEN_BLOCKING_DEFECTS: "Không còn lỗi mức chặn đang mở",
       RELEASE_REQUIREMENT_ASSURANCE_VALID: "Hồ sơ đảm bảo hợp lệ",
       RELEASE_COMPLETION_GATE_FAILED: "Chưa đạt điều kiện báo cáo hoàn tất",
       RELEASE_TEST_PLAN_SCOPE_REQUIRED: "Cần chọn phạm vi kế hoạch kiểm thử",
-      RELEASE_TEST_PLAN_SNAPSHOT_INVALID: "Bản lưu kế hoạch kiểm thử không hợp lệ",
+      RELEASE_TEST_PLAN_SNAPSHOT_INVALID: "Phạm vi kế hoạch kiểm thử không còn hiệu lực",
       RELEASE_REQUIREMENT_SCOPE_REQUIRED: "Cần có yêu cầu trong phạm vi phát hành",
       RELEASE_REQUIREMENT_ASSURANCE_GATE_FAILED: "Hồ sơ đảm bảo chưa đạt",
     }[code] || "Điều kiện này chưa đạt hoặc cần được kiểm tra lại"
