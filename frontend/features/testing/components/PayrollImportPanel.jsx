@@ -368,61 +368,69 @@ export default function PayrollImportPanel() {
         )}
       </Panel>
       <Panel title="Bảng đơn giá nhân công">
-        <div className="mb-4 space-y-2 text-sm text-ink-muted">
-          <p>
-            Chỉ Admin được xem và nhập dữ liệu này. Mẫu chỉ cần mã/email, đơn giá chi phí theo giờ,
-            tiền tệ và thời hạn hiệu lực.
-          </p>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => void projectTestingApi.downloadPayrollTemplate()}
-          >
-            Tải mẫu CSV
-          </button>
+        <div className="space-y-4 p-4">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 max-w-3xl text-sm leading-5 text-ink-muted">
+              Dùng mẫu CSV hoặc tệp CSV/XLSX có mã hoặc email nhân viên, đơn giá theo giờ, tiền tệ
+              và thời hạn hiệu lực.
+            </p>
+            <button
+              type="button"
+              className="secondary-button shrink-0"
+              onClick={() => void projectTestingApi.downloadPayrollTemplate()}
+            >
+              Tải mẫu CSV
+            </button>
+          </div>
+          <form className="space-y-4" onSubmit={runPreview}>
+            <label className="field-label block">
+              Chọn bảng CSV hoặc XLSX
+              <input
+                className="peer sr-only"
+                type="file"
+                accept=".csv,.xlsx"
+                onChange={(event) => void selectFile(event.target.files?.[0] || null)}
+              />
+              <span className="peer-focus-visible:ring-2 peer-focus-visible:ring-brand mt-2 flex min-h-12 min-w-0 items-center gap-3 rounded-control border border-border bg-surface px-3">
+                <span className="secondary-button shrink-0">Chọn tệp</span>
+                <span aria-live="polite" className="min-w-0 truncate text-sm text-ink-muted">
+                  {file?.name || "Chưa chọn tệp"}
+                </span>
+              </span>
+            </label>
+            {headers.length > 0 && (
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {columns.map(([key, label]) => (
+                  <label className="field-label min-w-0" key={key}>
+                    {label}
+                    <select
+                      className="apple-input mt-2 w-full min-w-0"
+                      value={mapping[key] || ""}
+                      required={key !== "valid_until"}
+                      onChange={(event) =>
+                        setMapping((current) => ({ ...current, [key]: event.target.value }))
+                      }
+                    >
+                      <option value="">Không có cột</option>
+                      {headers.map((header, index) => (
+                        <option value={header} key={`${header}-${index}`}>
+                          {header || `Cột ${index + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            )}
+            <button className="apple-button" type="submit" disabled={!file || loading}>
+              {loading ? "Đang xử lý" : "Xem trước dữ liệu"}
+            </button>
+          </form>
         </div>
-        <form className="space-y-4" onSubmit={runPreview}>
-          <label className="field-label block">
-            Chọn bảng CSV hoặc XLSX
-            <input
-              className="apple-input mt-2 w-full"
-              type="file"
-              accept=".csv,.xlsx"
-              onChange={(event) => void selectFile(event.target.files?.[0] || null)}
-            />
-          </label>
-          {headers.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {columns.map(([key, label]) => (
-                <label className="field-label" key={key}>
-                  {label}
-                  <select
-                    className="apple-input mt-2 w-full"
-                    value={mapping[key] || ""}
-                    required={key !== "valid_until"}
-                    onChange={(event) =>
-                      setMapping((current) => ({ ...current, [key]: event.target.value }))
-                    }
-                  >
-                    <option value="">Không có cột</option>
-                    {headers.map((header, index) => (
-                      <option value={header} key={`${header}-${index}`}>
-                        {header || `Cột ${index + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
-          )}
-          <button className="apple-button" type="submit" disabled={!file || loading}>
-            {loading ? "Đang xử lý" : "Xem trước dữ liệu"}
-          </button>
-        </form>
       </Panel>
       {preview && (
         <Panel title="Xem trước và xử lý dòng">
-          <div className="max-w-full overflow-x-auto">
+          <div className="max-w-full overflow-x-auto p-4 pt-0">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr>
@@ -481,9 +489,11 @@ export default function PayrollImportPanel() {
       )}
       <Panel title="Đơn giá đã nhập">
         {loading && !rates.length ? (
-          <LoadingState />
+          <div className="p-4">
+            <LoadingState />
+          </div>
         ) : (
-          <div className="max-w-full overflow-x-auto">
+          <div className="max-w-full overflow-x-auto p-4 pt-0">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr>
@@ -509,7 +519,7 @@ export default function PayrollImportPanel() {
               </tbody>
             </table>
             {!rates.length && (
-              <p className="p-4 text-sm text-ink-muted">Chưa có đơn giá nào được nhập.</p>
+              <p className="pt-4 text-sm text-ink-muted">Chưa có đơn giá nào được nhập.</p>
             )}
           </div>
         )}

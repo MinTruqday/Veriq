@@ -490,3 +490,75 @@ test("account and notification pages fit desktop, tablet and mobile viewports", 
     }
   }
 });
+
+test("payroll import uses a localized file control and stays aligned on a narrow admin workspace", async ({
+  page,
+}) => {
+  const admin = {
+    _id: "payroll-import-admin",
+    email: "payroll-admin@example.test",
+    full_name: "Quản trị viên",
+    system_role: "ADMIN",
+  };
+  let headerReadCount = 0;
+
+  await authenticate(page, admin);
+  await page.route(`${apiBase}/**`, async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/xac-thuc/ca-nhan") {
+      await jsonResponse(route, admin);
+      return;
+    }
+    if (pathname === "/kiem-thu/van-hanh") {
+      await jsonResponse(route, {
+        knowledge_indexing_backlog: 0,
+        failed_ingestion_jobs: [],
+        failed_impact_jobs: [],
+        worker_failures: [],
+        ai_models: {},
+        ai_request_metrics: {},
+        storage_usage: [],
+        audit_events: [],
+      });
+      return;
+    }
+    if (pathname === "/kiem-thu/quan-tri/tai-chinh/bang-luong/cot") {
+      headerReadCount += 1;
+      await jsonResponse(route, {
+        headers: ["employee", "hourly_cost", "currency", "valid_from", "valid_until"],
+      });
+      return;
+    }
+    await jsonResponse(route, []);
+  });
+
+  await page.setViewportSize({ width: 680, height: 900 });
+  await page.goto(`${appBaseUrl}/van-hanh`);
+  await page.getByRole("button", { name: "Bảng lương" }).click();
+  const fileInput = page.getByLabel("Chọn bảng CSV hoặc XLSX");
+  await expect(page.getByText("Chưa chọn tệp", { exact: true })).toBeVisible();
+  await expect(page.getByText("Dùng mẫu CSV hoặc tệp CSV/XLSX", { exact: false })).toBeVisible();
+  await expect(page.getByText("Chỉ Admin được xem", { exact: false })).toHaveCount(0);
+  await fileInput.setInputFiles({
+    name: "bang-luong.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("employee,hourly_cost,currency,valid_from,valid_until\n"),
+  });
+  await expect(page.getByText("bang-luong.csv", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Mã nhân viên hoặc email")).toHaveValue("employee");
+  expect(headerReadCount).toBe(1);
+
+  const narrowLayout = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+  }));
+  expect(narrowLayout.document).toBeLessThanOrEqual(narrowLayout.viewport);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const desktopLayout = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+  }));
+  expect(desktopLayout.document).toBeLessThanOrEqual(desktopLayout.viewport);
+});

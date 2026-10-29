@@ -59,7 +59,7 @@ class AIAutomationClient:
 
         async with httpx.AsyncClient(timeout=300) as client:
             response = await client.post(
-                f"{settings.AI_URL.rstrip('/')}/tri-thuc/tiep-nap/chuyen-doi",
+                f"{settings.AI_URL.rstrip('/')}/tri-thuc/chuyen-doi",
                 headers={"X-Internal-Token": settings.SECRET_KEY},
                 json={
                     "data": base64.b64encode(content).decode("ascii"),
