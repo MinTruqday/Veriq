@@ -1606,13 +1606,13 @@ class AutomationEventTaskTests(unittest.TestCase):
         self.assertEqual(
             [call.tool_name for call in task.tool_calls],
             [
-                "recommend_test_design_techniques_for_requirement_change",
                 "process_changed_requirement_version",
+                "recommend_test_design_techniques_for_requirement_change",
             ],
         )
-        self.assertEqual(task.tool_calls[0].arguments["expected_revision"], 3)
-        self.assertEqual(task.tool_calls[1].arguments["requirement_version_id"], "REQV-2")
-        self.assertEqual(task.tool_calls[1].arguments["source_facts"], [state["source_facts"][0]])
+        self.assertEqual(task.tool_calls[0].arguments["requirement_version_id"], "REQV-2")
+        self.assertEqual(task.tool_calls[0].arguments["source_facts"], [state["source_facts"][0]])
+        self.assertEqual(task.tool_calls[1].arguments["expected_revision"], 3)
 
     def test_change_simulation_reads_only_the_explicit_requirement_baseline(self):
         tool_names = {"get_requirement_version", "get_traceability_links"}
