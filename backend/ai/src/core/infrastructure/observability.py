@@ -25,6 +25,7 @@ _SAFE_TRACE_ATTRIBUTE_KEYS = frozenset(
         "document.ingestion.status",
         "event.status",
         "mcp.operation",
+        "mcp.tool_name_sha256",
         "mcp.status",
         "mcp.audit_persisted",
         "veriq.error.type",

@@ -56,7 +56,18 @@ function automationRunTitle(run) {
   return runTitlesByTrigger[run?.trigger] || "Hoạt động xử lý";
 }
 
-export default function AgentRunPanel({ project, showDefinitions = true }) {
+function isOlderRunSnapshot(incoming, current) {
+  if (!incoming || !current) return false;
+  const incomingRevision = Number(incoming.revision);
+  const currentRevision = Number(current.revision);
+  if (!Number.isFinite(incomingRevision) || !Number.isFinite(currentRevision)) return false;
+  return (
+    incomingRevision < currentRevision ||
+    (incomingRevision === currentRevision && incoming.status !== current.status)
+  );
+}
+
+export default function AgentRunPanel({ project, showDefinitions = true, compact = false }) {
   const currentUserId = project.current_membership?.user_id;
   const membershipRoles = project.current_membership?.project_roles;
   const memberRoles =
@@ -183,7 +194,13 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
       selectionVersion === detailRequestVersion.current
     ) {
       const selectedWorkflow = workflowForSelectedRun(items, selectedRunId);
-      if (selectedWorkflow) setWorkflow(selectedWorkflow);
+      const selectedSummary = items.find((item) => item.automation_run_id === selectedRunId);
+      if (
+        selectedWorkflow &&
+        !isOlderRunSnapshot(selectedSummary, selectedRunSnapshotRef.current)
+      ) {
+        setWorkflow(selectedWorkflow);
+      }
     }
     setRunsRefreshError("");
   }, [canReadOwnRuns, canReadProjectRuns, project._id]);
@@ -248,9 +265,14 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             selectionVersion === detailRequestVersion.current
           ) {
             const selectedWorkflow = workflowForSelectedRun(items, selectedRunId);
-            if (selectedWorkflow) setWorkflow(selectedWorkflow);
             const selectedSummary = items.find((item) => item.automation_run_id === selectedRunId);
             const knownSnapshot = selectedRunSnapshotRef.current;
+            if (
+              selectedWorkflow &&
+              !isOlderRunSnapshot(selectedSummary, knownSnapshot)
+            ) {
+              setWorkflow(selectedWorkflow);
+            }
             if (
               selectedSummary &&
               (!knownSnapshot ||
@@ -270,14 +292,27 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                   setDetailRefreshError(messageOf(reason));
                 }
               }
+              let evidence = null;
+              let evidenceError = "";
+              if (
+                detail &&
+                !activeStatuses.has(detail.run.status) &&
+                !(detail.workflow?.active_count > 0)
+              ) {
+                try {
+                  evidence = await testingApi.getAutomationRunEvidence(selectedRunId);
+                } catch (reason) {
+                  evidenceError = messageOf(reason);
+                }
+              }
               if (
                 detail &&
                 active &&
                 requestVersion === runListRequestVersion.current &&
                 selectedRunId === selectedRunIdRef.current &&
-                selectionVersion === detailRequestVersion.current
+                selectionVersion === detailRequestVersion.current &&
+                !isOlderRunSnapshot(detail.run, selectedRunSnapshotRef.current)
               ) {
-                setDetailRefreshError("");
                 selectedRunSnapshotRef.current = {
                   revision: detail.run.revision,
                   status: detail.run.status,
@@ -285,33 +320,9 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 setRun(detail.run);
                 setWorkflow(detail.workflow || selectedWorkflow || null);
                 setCheckpoints(detail.checkpoints || []);
-                setReceipt(detail.receipt || null);
-                if (
-                  !activeStatuses.has(detail.run.status) &&
-                  !(detail.workflow?.active_count > 0)
-                ) {
-                  try {
-                    const evidence = await testingApi.getAutomationRunEvidence(selectedRunId);
-                    if (
-                      active &&
-                      requestVersion === runListRequestVersion.current &&
-                      selectedRunId === selectedRunIdRef.current &&
-                      selectionVersion === detailRequestVersion.current
-                    ) {
-                      setReceipt(evidence.receipt || detail.receipt || null);
-                      setSourceFacts(evidence.source_facts || []);
-                    }
-                  } catch (reason) {
-                    if (
-                      active &&
-                      requestVersion === runListRequestVersion.current &&
-                      selectedRunId === selectedRunIdRef.current &&
-                      selectionVersion === detailRequestVersion.current
-                    ) {
-                      setDetailRefreshError(messageOf(reason));
-                    }
-                  }
-                }
+                setReceipt(evidence?.receipt || detail.receipt || null);
+                setSourceFacts(evidence?.source_facts || []);
+                setDetailRefreshError(evidenceError);
               }
             }
           }
@@ -344,18 +355,39 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
       try {
         const detail = await testingApi.getAutomationRun(run.automation_run_id);
         if (!active || requestVersion !== detailRequestVersion.current) return;
-        setDetailRefreshError("");
+        if (isOlderRunSnapshot(detail.run, selectedRunSnapshotRef.current)) return;
+        let evidence = null;
+        let evidenceError = "";
+        if (!activeStatuses.has(detail.run.status) && !(detail.workflow?.active_count > 0)) {
+          try {
+            evidence = await testingApi.getAutomationRunEvidence(run.automation_run_id);
+          } catch (reason) {
+            evidenceError = messageOf(reason);
+          }
+        }
+        if (
+          !active ||
+          requestVersion !== detailRequestVersion.current ||
+          selectedRunIdRef.current !== run.automation_run_id ||
+          isOlderRunSnapshot(detail.run, selectedRunSnapshotRef.current)
+        ) {
+          return;
+        }
+        selectedRunSnapshotRef.current = {
+          revision: detail.run.revision,
+          status: detail.run.status,
+        };
+        setDetailRefreshError(evidenceError);
         setRun(detail.run);
         setWorkflow(detail.workflow || null);
         setCheckpoints(detail.checkpoints || []);
-        setReceipt(detail.receipt || null);
+        setReceipt(evidence?.receipt || detail.receipt || null);
+        if (evidence) {
+          setSourceFacts(evidence.source_facts || []);
+        } else if (evidenceError) {
+          setSourceFacts([]);
+        }
         if (!activeStatuses.has(detail.run.status) && !(detail.workflow?.active_count > 0)) {
-          const provenance = await testingApi.getAutomationRunEvidence(run.automation_run_id);
-          if (active) {
-            setReceipt(provenance.receipt || detail.receipt || null);
-            setSourceFacts(provenance.source_facts || []);
-            setDetailRefreshError("");
-          }
           try {
             await refreshRuns();
           } catch (reason) {
@@ -499,6 +531,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
     const answer = clarificationAnswers[uncertainty.code]?.trim();
     if (!answer) return;
     const runId = run.automation_run_id;
+    const selectionVersion = detailRequestVersion.current;
     setSubmittingClarification(uncertainty.code);
     setError("");
     try {
@@ -507,23 +540,29 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
         uncertainty_code: uncertainty.code,
         answer,
       });
-      setClarificationAnswers((current) => ({ ...current, [uncertainty.code]: "" }));
+      if (selectionVersion === detailRequestVersion.current) {
+        setClarificationAnswers((current) => ({ ...current, [uncertainty.code]: "" }));
+      }
       try {
         await refreshRuns();
       } catch (reason) {
         setRunsRefreshError(messageOf(reason));
       }
-      try {
-        await loadRun(runId);
-      } catch (reason) {
-        setDetailRefreshError(messageOf(reason));
+      if (selectionVersion === detailRequestVersion.current) {
+        try {
+          await loadRun(runId);
+        } catch (reason) {
+          setDetailRefreshError(messageOf(reason));
+        }
       }
     } catch (reason) {
-      setError(messageOf(reason));
-      try {
-        await loadRun(runId);
-      } catch (refreshReason) {
-        setDetailRefreshError(messageOf(refreshReason));
+      if (selectionVersion === detailRequestVersion.current) {
+        setError(messageOf(reason));
+        try {
+          await loadRun(runId);
+        } catch (refreshReason) {
+          setDetailRefreshError(messageOf(refreshReason));
+        }
       }
     } finally {
       setSubmittingClarification("");
@@ -556,8 +595,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const authorizationGuidance = automationAuthorizationGuidance(run);
 
   return (
-    <Panel title="Hoạt động AI">
-      <div className="grid gap-4 px-4 pb-4 pt-3">
+    <Panel title="Hoạt động AI" className={compact ? "agent-run-panel-compact" : ""}>
+      <div className={`grid px-4 ${compact ? "gap-2 pb-3 pt-2" : "gap-4 pb-4 pt-3"}`}>
         {error && (
           <div className="grid gap-2">
             <ErrorState message={error} />
@@ -590,7 +629,14 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             </button>
           </div>
         )}
-        {loading && <LoadingState />}
+        {loading &&
+          (compact ? (
+            <p className="py-2 text-sm text-ink-muted" role="status" aria-busy="true">
+              Đang tải hoạt động…
+            </p>
+          ) : (
+            <LoadingState />
+          ))}
         {canManageDefinitions && (
           <>
             <label className="grid gap-2 text-sm font-medium text-ink">
@@ -712,7 +758,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
         )}
         {visibleRuns.length > 0 && (
           <div className="grid gap-2 text-sm">
-            <h3 className="font-semibold text-ink">Hoạt động gần đây</h3>
+            {!compact && <h3 className="font-semibold text-ink">Hoạt động gần đây</h3>}
             {visibleRuns.slice(0, 10).map((item) => (
               <button
                 className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border p-3 text-left hover:bg-surface-quiet"
@@ -754,7 +800,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
           !run &&
           visibleRuns.length === 0 &&
           visibleDefinitions.length === 0 && (
-            <p className="px-4 py-3 text-sm text-ink-muted" role="status">
+            <p className="py-2 text-sm text-ink-muted" role="status">
               Chưa có hoạt động gần đây.
             </p>
           )}

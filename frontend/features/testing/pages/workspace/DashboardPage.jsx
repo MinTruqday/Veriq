@@ -152,7 +152,9 @@ export default function DashboardPage({ project }) {
               </div>
             </div>
           </Panel>
-          {canReadAutomationRuns && <AgentRunPanel project={project} showDefinitions={false} />}
+          {canReadAutomationRuns && (
+            <AgentRunPanel project={project} showDefinitions={false} compact />
+          )}
           {(dashboard || coverage) && hasOverviewMetrics && (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
               {can("requirement.read") && dashboard && (

@@ -522,16 +522,6 @@ export default function RunExecutionWorkspace({
                       {" · "}
                       Kỹ năng khớp: {decision.matched_skills?.join(", ") || "Không có"}
                     </p>
-                    {!!decision.matched_skill_evidence?.length && (
-                      <ul className="space-y-1 pl-4 text-xs text-ink-muted">
-                        {decision.matched_skill_evidence.map((item, index) => (
-                          <li className="break-words" key={`${item.name}-${index}`}>
-                            {item.name}: {item.evidence || "Đã xác nhận, không có trích dẫn"}
-                            {item.source_page_no ? ` · Trang ${item.source_page_no} trong CV` : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
                     <p className="break-words text-ink-muted">
                       Trước khi phân công: {decision.active_run_count_before_assignment ?? 0} lần
                       chạy đang hoạt động, {decision.active_case_count_before_assignment ?? 0} ca

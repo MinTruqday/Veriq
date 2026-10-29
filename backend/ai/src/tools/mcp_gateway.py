@@ -648,7 +648,7 @@ async def call_mcp_read_tool(
         {
             "automation.run_id": str(automation_run_id) if automation_run_id else None,
             "automation.task_id": str(task_id) if task_id else None,
-            "mcp.tool_name": tool_name,
+            "mcp.tool_name_sha256": hashlib.sha256(tool_name.encode("utf-8")).hexdigest(),
             "mcp.operation": "read_tool",
         },
     ) as mcp_span:
@@ -785,9 +785,47 @@ async def _discover_project_tools_with_diagnostics(
         }
     values = []
     issues = []
+
+    async def live_project_read_status():
+        try:
+            _, current_permissions = await project_access(
+                project_id, raw_token, automation_run_id
+            )
+        except Exception:
+            return False, "MCP_PROJECT_AUTHORIZATION_UNAVAILABLE"
+        if "project.read" not in current_permissions:
+            return False, "MCP_PROJECT_ACCESS_REVOKED"
+        return True, None
+
     for connection in connections:
         if not connection.enabled:
             continue
+        try:
+            current_connection = await mcp_repository.get(connection.connection_id)
+        except Exception:
+            issues.append({
+                "connection_id": connection.connection_id,
+                "reason_code": "MCP_CONNECTION_REVALIDATION_FAILED",
+            })
+            continue
+        if (
+            not current_connection
+            or not current_connection.enabled
+            or current_connection.revision != connection.revision
+            or current_connection.project_id not in {None, project_id}
+        ):
+            issues.append({
+                "connection_id": connection.connection_id,
+                "reason_code": "MCP_CONNECTION_CHANGED_OR_REVOKED",
+            })
+            continue
+        connection = current_connection
+        authorized, authorization_issue = await live_project_read_status()
+        if not authorized:
+            return {
+                "tools": [],
+                "issues": [{"reason_code": authorization_issue}],
+            }
         try:
             validate_mcp_endpoint(connection.endpoint)
         except ValueError:
@@ -822,6 +860,31 @@ async def _discover_project_tools_with_diagnostics(
             issues.append({
                 "connection_id": connection.connection_id,
                 "reason_code": "MCP_DISCOVERY_FAILED",
+            })
+            continue
+        authorized, authorization_issue = await live_project_read_status()
+        if not authorized:
+            return {
+                "tools": [],
+                "issues": [{"reason_code": authorization_issue}],
+            }
+        try:
+            latest_connection = await mcp_repository.get(connection.connection_id)
+        except Exception:
+            issues.append({
+                "connection_id": connection.connection_id,
+                "reason_code": "MCP_CONNECTION_REVALIDATION_FAILED",
+            })
+            continue
+        if (
+            not latest_connection
+            or not latest_connection.enabled
+            or latest_connection.revision != connection.revision
+            or latest_connection.project_id not in {None, project_id}
+        ):
+            issues.append({
+                "connection_id": connection.connection_id,
+                "reason_code": "MCP_CONNECTION_CHANGED_OR_REVOKED",
             })
             continue
         discovered_allowed_tool = False
@@ -861,6 +924,12 @@ async def _discover_project_tools_with_diagnostics(
                 "connection_id": connection.connection_id,
                 "reason_code": "MCP_ALLOWED_TOOLS_NOT_ADVERTISED",
             })
+    authorized, authorization_issue = await live_project_read_status()
+    if not authorized:
+        return {
+            "tools": [],
+            "issues": [{"reason_code": authorization_issue}],
+        }
     return {"tools": values, "issues": issues}
 
 

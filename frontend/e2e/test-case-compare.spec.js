@@ -2439,6 +2439,8 @@ test("BA can manually run the AI check and send a Requirement draft for review",
   await expect(page.getByRole("heading", { name: "Đăng nhập bằng tài khoản" })).toBeVisible({
     timeout: 15000,
   });
+  await expect(page.getByText("Tiêu chí chấp nhận", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Tiêu chí chấp nhận")).toBeVisible();
   await expect(page.getByRole("button", { name: "Gửi rà soát" })).toHaveCount(0);
   canSubmit = true;
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -3055,10 +3057,14 @@ test("project workspace routes remain within the viewport at the standard deskto
         const recentActivityHeading = activityPanel.getByRole("heading", {
           name: "Hoạt động gần đây",
         });
+        await expect(recentActivityHeading).toHaveCount(0);
+        const recentActivityRun = activityPanel.getByRole("button", {
+          name: /Rà soát tài liệu sau khi tải lên/,
+        });
         const recentActivityEmpty = activityPanel.getByText("Chưa có hoạt động gần đây.", {
           exact: true,
         });
-        await expect(recentActivityHeading.or(recentActivityEmpty)).toBeVisible();
+        await expect(recentActivityRun.or(recentActivityEmpty)).toBeVisible();
         const panelHeight = await activityPanel.evaluate((element) => element.offsetHeight);
         expect(panelHeight).toBeLessThan(230);
       }

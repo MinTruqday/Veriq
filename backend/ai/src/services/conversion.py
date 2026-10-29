@@ -474,6 +474,7 @@ class ConversionService:
                     ConversionService._text_tokens(page.get_text("text") or "")
                 )
                 page_entries = []
+                page_structure_entries = []
                 tables = page.find_tables().tables
                 table_bounds = []
                 for table_index, table in enumerate(tables):
@@ -496,7 +497,7 @@ class ConversionService:
                         "page_no": page_no,
                         "bbox": {"x0": x0, "y0": y0, "x1": x1, "y1": y1},
                     }]
-                    structure.append({
+                    table_block = {
                         "block_id": table_block_id,
                         "parent_block_id": f"#/pages/{page_no}",
                         "text": table_text,
@@ -508,7 +509,8 @@ class ConversionService:
                         "table_metadata": markdown_table_metadata(
                             table_text, table_block_id, "pymupdf_table"
                         ),
-                    })
+                    }
+                    page_structure_entries.append((y0, table_block))
                     structured_token_counts.update(
                         ConversionService._text_tokens(table_text)
                     )
@@ -538,7 +540,7 @@ class ConversionService:
                         "page_no": page_no,
                         "bbox": {"x0": x0, "y0": y0, "x1": x1, "y1": y1},
                     }]
-                    structure.append({
+                    page_structure_entries.append((y0, {
                         "block_id": f"#/pages/{page_no}/blocks/{block_index}",
                         "parent_block_id": f"#/pages/{page_no}",
                         "text": text,
@@ -547,10 +549,14 @@ class ConversionService:
                         "page_no": page_no,
                         "locations": locations,
                         "extraction_status": "EXTRACTED",
-                    })
+                    }))
                     structured_token_counts.update(ConversionService._text_tokens(text))
                     page_entries.append((y0, text))
                 page_markdown.append("\n\n".join(text for _, text in sorted(page_entries, key=lambda item: item[0])))
+                structure.extend(
+                    block
+                    for _, block in sorted(page_structure_entries, key=lambda item: item[0])
+                )
             missing_tokens = sorted(
                 (source_token_counts - structured_token_counts).elements()
             )

@@ -583,10 +583,6 @@ def rank_skill_candidates(
                     {
                         "name": usable[key].get("name"),
                         "level": usable[key].get("level", "NOT_ASSESSED"),
-                        "evidence": usable[key].get("evidence", ""),
-                        "source_block_id": usable[key].get("source_block_id"),
-                        "source_page_no": usable[key].get("source_page_no"),
-                        "source_sha256": usable[key].get("source_sha256"),
                         "source_kind": usable[key].get("source_kind", "MEMBER_DECLARED"),
                         "confirmed": usable[key].get("confirmed") is True,
                     }
@@ -745,10 +741,6 @@ async def automatically_assign_test_cases(
                 {
                     "name": usable_skills[name].get("name"),
                     "level": usable_skills[name].get("level", "NOT_ASSESSED"),
-                    "evidence": usable_skills[name].get("evidence", ""),
-                    "source_block_id": usable_skills[name].get("source_block_id"),
-                    "source_page_no": usable_skills[name].get("source_page_no"),
-                    "source_sha256": usable_skills[name].get("source_sha256"),
                     "source_kind": usable_skills[name].get("source_kind", "MEMBER_DECLARED"),
                     "confirmed": usable_skills[name].get("confirmed") is True,
                 }

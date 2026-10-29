@@ -259,12 +259,16 @@ export default function RequirementCurrentVersionPanel({
                 label="Nội dung yêu cầu"
               />
             </div>
-            <textarea
-              aria-label="Tiêu chí chấp nhận"
-              className="apple-input min-h-28"
-              value={draft.acceptance}
-              onChange={(event) => onDraftChange({ acceptance: event.target.value })}
-            />
+            <label className="field-label grid gap-2">
+              Tiêu chí chấp nhận
+              <textarea
+                aria-label="Tiêu chí chấp nhận"
+                className="apple-input min-h-28"
+                value={draft.acceptance}
+                onChange={(event) => onDraftChange({ acceptance: event.target.value })}
+                placeholder="Mỗi dòng nhập một tiêu chí"
+              />
+            </label>
             <div className="grid gap-3 lg:grid-cols-3">
               <textarea
                 aria-label="Quy tắc nghiệp vụ"
