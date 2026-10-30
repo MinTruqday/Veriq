@@ -776,9 +776,8 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                     {automationRunTitle(item)}
                   </span>
                   <span className="block text-xs text-ink-muted">
-                    {item.trigger === "MANUAL" && "Chạy theo yêu cầu"}
-                    {item.created_at &&
-                      `${item.trigger === "MANUAL" ? " · " : ""}${formatDate(item.created_at)}`}
+                    {automationTriggerLabel(item)}
+                    {item.created_at && ` · ${formatDate(item.created_at)}`}
                   </span>
                 </span>
                 <StatusPill
