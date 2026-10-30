@@ -22,6 +22,7 @@ export default function ChangesPage({ project }) {
   const [selected, setSelected] = useState(null);
   const [impact, setImpact] = useState(null);
   const [regression, setRegression] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
   const [filters, setFilters] = useState({ requirement_id: "", status: "", sort: "-created_at" });
   const [error, setError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
@@ -61,7 +62,7 @@ export default function ChangesPage({ project }) {
     void load();
   }, [load]);
 
-  const openChangeSet = async (item) => {
+  const openChangeSet = async (item, { clearError = true } = {}) => {
     try {
       const detail = await testingApi.getChangeSet(item._id);
       setSelected(detail);
@@ -82,9 +83,85 @@ export default function ChangesPage({ project }) {
           if (reason.status !== 404) throw reason;
         }
       }
-      setError("");
+      if (clearError) setError("");
     } catch (reason) {
       setError(messageOf(reason));
+    }
+  };
+
+  const reviewSelectedChangeSet = async () => {
+    if (!selected || selected.status !== "READY" || !can("changeset.review")) return;
+    setActionBusy(true);
+    setError("");
+    try {
+      const updated = await testingApi.reviewChangeSet(selected._id, {
+        expected_revision: selected.revision,
+        changes: selected.changes || [],
+        review_note: "",
+      });
+      const reviewed = { ...selected, ...updated };
+      setSelected(reviewed);
+      await load();
+      await openChangeSet(reviewed, { clearError: false });
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const analyzeSelectedImpact = async () => {
+    if (
+      !selected ||
+      !["REVIEWED", "ANALYZED"].includes(selected.status) ||
+      !can("impact.execute") ||
+      !can("ai.run_impact")
+    ) {
+      return;
+    }
+    setActionBusy(true);
+    setError("");
+    try {
+      await testingApi.analyzeImpact(selected._id);
+      setImpact(await testingApi.getChangeSetImpact(selected._id));
+      setRegression(null);
+      await load();
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const reviewSelectedImpact = async () => {
+    if (
+      !impact ||
+      impact.status !== "REVIEW_READY" ||
+      !can("impact.close") ||
+      !can("impact.review")
+    ) {
+      return;
+    }
+    setActionBusy(true);
+    setError("");
+    try {
+      const updated = await testingApi.reviewImpact(impact._id, {
+        expected_revision: impact.revision,
+        overrides: [],
+        review_note: "",
+      });
+      setImpact(await testingApi.getImpact(updated._id));
+      if (can("regression.read")) {
+        try {
+          setRegression(await testingApi.getChangeSetRegression(selected._id));
+        } catch (reason) {
+          if (reason.status !== 404) throw reason;
+        }
+      }
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -181,7 +258,36 @@ export default function ChangesPage({ project }) {
 
       {selected && (
         <div className="grid min-w-0 gap-5 2xl:grid-cols-2">
-          <Panel title="Nội dung thay đổi">
+          <Panel
+            title="Nội dung thay đổi"
+            actions={
+              <>
+                {selected.status === "READY" && can("changeset.review") && (
+                  <button
+                    className="primary-button"
+                    disabled={actionBusy || !(selected.changes || []).length}
+                    onClick={reviewSelectedChangeSet}
+                    type="button"
+                  >
+                    {actionBusy ? "Đang lưu…" : "Duyệt thay đổi"}
+                  </button>
+                )}
+                {["REVIEWED", "ANALYZED"].includes(selected.status) &&
+                  !impact &&
+                  can("impact.execute") &&
+                  can("ai.run_impact") && (
+                    <button
+                      className="primary-button"
+                      disabled={actionBusy}
+                      onClick={analyzeSelectedImpact}
+                      type="button"
+                    >
+                      {actionBusy ? "Đang phân tích…" : "Phân tích ảnh hưởng"}
+                    </button>
+                  )}
+              </>
+            }
+          >
             <DataTable
               items={selected.changes || []}
               empty="Không phát hiện khác biệt nội dung"
@@ -208,6 +314,18 @@ export default function ChangesPage({ project }) {
             />
           </Panel>
 
+          {!impact && ["READY", "REVIEWED"].includes(selected.status) && (
+            <Panel title="Ảnh hưởng đến kiểm thử">
+              <p className="p-4 text-sm text-ink-muted" role="status">
+                {selected.status === "READY"
+                  ? "Cần duyệt nội dung thay đổi trước khi phân tích ảnh hưởng."
+                  : can("impact.execute") && can("ai.run_impact")
+                    ? "Chưa có kết quả phân tích ảnh hưởng cho thay đổi này."
+                    : "Bạn không có quyền chạy phân tích ảnh hưởng."}
+              </p>
+            </Panel>
+          )}
+
           {can("regression.read") && (
             <Panel title="Tác động đến kiểm thử hồi quy">
               <DataTable
@@ -229,7 +347,24 @@ export default function ChangesPage({ project }) {
       )}
 
       {impact && (
-        <Panel title={`Kết quả phân tích ảnh hưởng lần ${impact.snapshot_number || 1}`}>
+        <Panel
+          title={`Kết quả phân tích ảnh hưởng lần ${impact.snapshot_number || 1}`}
+          actions={
+            impact.status === "REVIEW_READY" && can("impact.close") && can("impact.review") ? (
+              <button
+                className="primary-button"
+                disabled={actionBusy}
+                onClick={reviewSelectedImpact}
+                type="button"
+              >
+                {actionBusy ? "Đang lưu…" : "Xác nhận đã rà soát"}
+              </button>
+            ) : null
+          }
+        >
+          <div className="border-b border-border px-4 py-3 text-sm text-ink-muted">
+            Trạng thái: <StatusPill value={impact.status} />
+          </div>
           {impact.mode === "DEGRADED_AI" && (
             <div className="p-4 pb-0">
               <DegradedBanner

@@ -154,6 +154,52 @@ def _safe_mcp_input_schema(value, depth=0, budget=None):
     return result
 
 
+def _mcp_schema_rejection_code(value, depth=0, budget=None):
+    if budget is None:
+        budget = [0]
+    budget[0] += 1
+    if budget[0] > _MCP_SCHEMA_MAX_NODES:
+        return "MCP_SCHEMA_NODE_LIMIT"
+    if depth > 4:
+        return "MCP_SCHEMA_DEPTH_LIMIT"
+    if not isinstance(value, dict):
+        return "MCP_SCHEMA_SHAPE_INVALID"
+    schema_type = value.get("type") or "object"
+    if schema_type not in _MCP_SCHEMA_TYPES:
+        return "MCP_SCHEMA_TYPE_UNSUPPORTED"
+    supported_keywords = set(_MCP_SCHEMA_ANNOTATIONS) | {"type", "enum"}
+    if schema_type == "object":
+        supported_keywords.update({"properties", "required", "additionalProperties"})
+    elif schema_type == "array":
+        supported_keywords.update({"items", "minItems", "maxItems"})
+    elif schema_type == "string":
+        supported_keywords.update({"minLength", "maxLength"})
+    elif schema_type in {"integer", "number"}:
+        supported_keywords.update({"minimum", "maximum"})
+    unsupported = set(value).difference(supported_keywords)
+    if unsupported:
+        if unsupported.intersection({"anyOf", "oneOf", "allOf", "not"}):
+            return "MCP_SCHEMA_COMPOSITION_UNSUPPORTED"
+        if unsupported.intersection({"$ref", "$defs", "definitions"}):
+            return "MCP_SCHEMA_REFERENCE_UNSUPPORTED"
+        if unsupported.intersection({"pattern", "patternProperties"}):
+            return "MCP_SCHEMA_PATTERN_UNSUPPORTED"
+        if "format" in unsupported:
+            return "MCP_SCHEMA_FORMAT_UNSUPPORTED"
+        return "MCP_SCHEMA_KEYWORD_UNSUPPORTED"
+    if schema_type == "object":
+        properties = value.get("properties", {})
+        if not isinstance(properties, dict):
+            return "MCP_SCHEMA_SHAPE_INVALID"
+        for definition in properties.values():
+            diagnostic = _mcp_schema_rejection_code(definition, depth + 1, budget)
+            if diagnostic:
+                return diagnostic
+    elif schema_type == "array" and "items" in value:
+        return _mcp_schema_rejection_code(value["items"], depth + 1, budget)
+    return None
+
+
 def _matches_mcp_enum(value, allowed_values):
     for allowed_value in allowed_values:
         if isinstance(value, bool) or isinstance(allowed_value, bool):
@@ -442,6 +488,13 @@ async def call_read_tool(
         return {"status": "failed", "reason_code": "MCP_TOOL_ARGUMENT_INVALID"}
     schema = _safe_mcp_input_schema(getattr(tool_info, "input_schema", None) or {})
     if schema is None:
+        diagnostic_code = _mcp_schema_rejection_code(
+            getattr(tool_info, "input_schema", None) or {}
+        ) or "MCP_SCHEMA_VALIDATOR_REJECTION_UNCLASSIFIED"
+        logger.warning(
+            "MCP remote input schema rejected diagnostic_code={}",
+            diagnostic_code,
+        )
         return {"status": "blocked", "reason_code": "MCP_TOOL_SCHEMA_UNSUPPORTED"}
     if not _matches_mcp_schema(arguments, schema):
         return {"status": "failed", "reason_code": "MCP_TOOL_ARGUMENT_INVALID"}
@@ -901,6 +954,13 @@ async def _discover_project_tools_with_diagnostics(
                 getattr(tool_info, "input_schema", None) or {}
             )
             if schema is None:
+                diagnostic_code = _mcp_schema_rejection_code(
+                    getattr(tool_info, "input_schema", None) or {}
+                ) or "MCP_SCHEMA_VALIDATOR_REJECTION_UNCLASSIFIED"
+                logger.warning(
+                    "MCP remote input schema rejected diagnostic_code={}",
+                    diagnostic_code,
+                )
                 issues.append({
                     "connection_id": connection.connection_id,
                     "tool_name": name,

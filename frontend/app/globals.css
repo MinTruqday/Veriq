@@ -600,6 +600,14 @@
   .data-table-mobile {
     display: none;
   }
+
+  .data-table-responsive-cards .data-table-desktop {
+    display: none;
+  }
+
+  .data-table-responsive-cards .data-table-mobile {
+    display: block;
+  }
 }
 
 @container data-table-wide (min-width: 64rem) {

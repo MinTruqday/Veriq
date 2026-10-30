@@ -67,7 +67,7 @@ function isOlderRunSnapshot(incoming, current) {
   );
 }
 
-export default function AgentRunPanel({ project, showDefinitions = true, compact = false }) {
+export default function AgentRunPanel({ project, showDefinitions = true }) {
   const currentUserId = project.current_membership?.user_id;
   const membershipRoles = project.current_membership?.project_roles;
   const memberRoles =
@@ -592,8 +592,8 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
   const authorizationGuidance = automationAuthorizationGuidance(run);
 
   return (
-    <Panel title="Hoạt động AI" className={compact ? "agent-run-panel-compact" : ""}>
-      <div className={`grid px-4 ${compact ? "gap-2 pb-3 pt-0" : "gap-4 pb-4 pt-3"}`}>
+    <Panel title="Hoạt động AI">
+      <div className="grid gap-4 px-4 pb-4 pt-3">
         {error && (
           <div className="grid gap-2">
             <ErrorState message={error} />
@@ -626,14 +626,7 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
             </button>
           </div>
         )}
-        {loading &&
-          (compact ? (
-            <p className="py-2 text-sm text-ink-muted" role="status" aria-busy="true">
-              Đang tải hoạt động…
-            </p>
-          ) : (
-            <LoadingState />
-          ))}
+        {loading && <LoadingState />}
         {canManageDefinitions && (
           <>
             <label className="grid gap-2 text-sm font-medium text-ink">
@@ -755,7 +748,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
         )}
         {visibleRuns.length > 0 && (
           <div className="grid gap-2 text-sm">
-            {!compact && <h3 className="font-semibold text-ink">Hoạt động gần đây</h3>}
             {visibleRuns.slice(0, 10).map((item) => (
               <button
                 className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border p-3 text-left hover:bg-surface-quiet"
