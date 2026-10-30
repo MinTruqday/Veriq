@@ -435,6 +435,21 @@ export function formatCalendarDate(value) {
 }
 
 export function messageOf(reason) {
+  const profileMessages = {
+    CV_AI_EXTRACTION_UNAVAILABLE:
+      "Dịch vụ trích xuất CV đang tạm thời không phản hồi. Hồ sơ chưa được cập nhật; hãy thử lại sau.",
+    CV_AI_EVIDENCE_INVALID:
+      "AI trả về thông tin CV chưa khớp với trích dẫn nguồn. Hồ sơ chưa được cập nhật; hãy thử lại sau.",
+    CV_CONTENT_UNSAFE:
+      "Không thể xử lý CV này vì nội dung không vượt qua kiểm tra an toàn.",
+    CV_TEXT_LIMIT_EXCEEDED:
+      "CV có quá nhiều nội dung để trích xuất trong một lần. Hãy dùng bản CV ngắn hơn.",
+    CV_CONVERSION_FAILED:
+      "Không đọc được tệp CV. Hãy kiểm tra định dạng hoặc lưu lại tệp rồi thử lại.",
+    CV_TEXT_NOT_EXTRACTED:
+      "Không tìm thấy nội dung văn bản trong CV. Hãy dùng bản PDF có thể chọn văn bản hoặc tệp DOCX/TXT.",
+  };
+  if (profileMessages[reason?.code]) return profileMessages[reason.code];
   const automationMessages = {
     AUTOMATION_PUBLICATION_NOT_AUTHORIZED:
       "Lượt AI chưa được cấp quyền tự động công bố kết quả này.",

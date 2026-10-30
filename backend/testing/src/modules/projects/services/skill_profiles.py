@@ -1,28 +1,31 @@
+import asyncio
 import hashlib
+import logging
 import re
 import unicodedata
 from datetime import datetime, timezone
 from decimal import Decimal
 from itertools import chain
 
+import httpx
 from fastapi import HTTPException, UploadFile
 from pymongo.errors import DuplicateKeyError
 
+from src.clients.ai_automation import ai_automation_client
+from src.clients.document_conversion import convert_requirement_source
 from src.core.auth import roles_for_membership
 from src.core.common import audit, get_project, get_project_entity, load_user_identities, now
+from src.core.configuration import settings
 from src.core.database import database
 from src.repositories.project import project_repository
 from src.repositories.skill_profile import skill_profile_repository
 from src.repositories.test_run import test_run_repository
-from src.clients.ai_automation import ai_automation_client
-from src.clients.document_conversion import convert_requirement_source
-from src.core.configuration import settings
-
 
 CV_SUPPORTED_SUFFIXES = frozenset({".pdf", ".docx", ".txt"})
 CV_MAX_EXTRACTED_CHARACTERS = 100_000
 CV_MAX_SOURCE_BLOCKS = 500
 CV_SOURCE_BLOCK_CHARACTERS = 3_000
+logger = logging.getLogger(__name__)
 
 
 def _cv_source_blocks(conversion):
@@ -275,8 +278,53 @@ async def extract_own_skill_profile_from_cv(project_id, file: UploadFile, user):
     if not source_blocks:
         raise HTTPException(status_code=422, detail={"code": "CV_TEXT_NOT_EXTRACTED"})
     try:
-        extracted = await ai_automation_client.extract_skill_profile(project_id, source_blocks)
+        for attempt in range(2):
+            try:
+                extracted = await ai_automation_client.extract_skill_profile(
+                    project_id, source_blocks
+                )
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                if attempt:
+                    raise
+                await asyncio.sleep(0.5)
+    except httpx.HTTPStatusError as error:
+        response_code = None
+        try:
+            payload = error.response.json()
+            detail = payload.get("detail") if isinstance(payload, dict) else None
+            response_code = detail.get("code") if isinstance(detail, dict) else None
+        except (ValueError, TypeError):
+            pass
+        logger.warning(
+            "CV AI extraction rejected status=%s code=%s",
+            error.response.status_code,
+            response_code or "unavailable",
+        )
+        if error.response.status_code == 413 and response_code == "CV_TEXT_LIMIT_EXCEEDED":
+            raise HTTPException(
+                status_code=413, detail={"code": "CV_TEXT_LIMIT_EXCEEDED"}
+            ) from error
+        if error.response.status_code == 422 and response_code == "CV_CONTENT_UNSAFE":
+            raise HTTPException(
+                status_code=422, detail={"code": "CV_CONTENT_UNSAFE"}
+            ) from error
+        if response_code in {
+            "CV_EVIDENCE_NOT_FOUND",
+            "CV_PAGE_REFERENCE_MISMATCH",
+            "CV_CLAIM_NOT_GROUNDED",
+        }:
+            raise HTTPException(
+                status_code=502, detail={"code": "CV_AI_EVIDENCE_INVALID"}
+            ) from error
+        raise HTTPException(
+            status_code=502, detail={"code": "CV_AI_EXTRACTION_UNAVAILABLE"}
+        ) from error
     except Exception as error:
+        logger.warning(
+            "CV AI extraction request failed error_type=%s",
+            type(error).__name__,
+        )
         raise HTTPException(status_code=502, detail={"code": "CV_AI_EXTRACTION_UNAVAILABLE"}) from error
     if not _validate_cv_candidate_evidence(source_blocks, extracted):
         raise HTTPException(status_code=502, detail={"code": "CV_AI_EVIDENCE_INVALID"})
