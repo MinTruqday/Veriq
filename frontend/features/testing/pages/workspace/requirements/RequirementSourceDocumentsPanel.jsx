@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
