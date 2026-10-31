@@ -247,6 +247,16 @@ export async function downloadTestingFile(path, filename) {
   URL.revokeObjectURL(url);
 }
 
+export async function readTestingFile(path) {
+  const response = await authenticatedFetch(`${API_URL}/kiem-thu${path}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
+    throw new Error(body?.error?.message || "Không thể mở tệp");
+  }
+  return URL.createObjectURL(await response.blob());
+}
+
 export function listQuery(value) {
   if (!value) return "";
   if (typeof value === "string") return `q=${encodeURIComponent(value)}`;

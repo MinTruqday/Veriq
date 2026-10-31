@@ -718,6 +718,8 @@ export default function RequirementImportModal({
                 render: (item) => {
                   const source = item.source_refs?.[0];
                   if (!source) return "Không có";
+                  if (item.source_grounding_status === "NEEDS_REVIEW")
+                    return "Cần đối chiếu với tài liệu gốc";
                   if (source.source_start !== undefined) {
                     return `${source.source_start} đến ${source.source_end}`;
                   }
@@ -865,6 +867,8 @@ export default function RequirementImportModal({
                                 "Thiếu tiêu chí chấp nhận để duyệt",
                               APPLICABLE_SECTION_MISSING_FOR_BASELINE:
                                 "Thiếu thông tin áp dụng để duyệt",
+                              REQUIREMENT_SOURCE_REVIEW_REQUIRED:
+                                "AI diễn đạt lại nội dung; cần đối chiếu với tài liệu gốc trước khi duyệt",
                             })[code] || code,
                         )
                         .join(", ")

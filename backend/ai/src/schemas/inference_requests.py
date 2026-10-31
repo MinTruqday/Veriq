@@ -31,6 +31,7 @@ class KnowledgeDocumentSummaryRequest(BaseModel):
     text: str = Field(
         min_length=1, max_length=15000, description="Document content to summarize for knowledge retrieval"
     )
+    output_language: str | None = Field(default=None, min_length=2, max_length=80)
 
 
 class VerifiedSourceFactCitation(BaseModel):

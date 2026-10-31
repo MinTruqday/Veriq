@@ -296,6 +296,36 @@ class RequirementDocumentAIReadPatch(BaseModel):
     ai_enabled: bool
 
 
+class RequirementDocumentAIStart(BaseModel):
+    expected_revision: int = Field(ge=1)
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9:_-]{7,199}$",
+    )
+
+
+class RequirementDocumentSummaryRequest(BaseModel):
+    document_ids: list[str] = Field(default_factory=list, max_length=100)
+    all_readable: bool = False
+    output_language: str = Field(min_length=2, max_length=80)
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=200,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9:_-]{7,199}$",
+    )
+
+    @model_validator(mode="after")
+    def validate_summary_scope(self):
+        if self.all_readable and self.document_ids:
+            raise ValueError("Chọn tài liệu cụ thể hoặc toàn bộ tài liệu")
+        if not self.all_readable and not self.document_ids:
+            raise ValueError("Chọn ít nhất một tài liệu")
+        if len(set(self.document_ids)) != len(self.document_ids):
+            raise ValueError("Danh sách tài liệu bị trùng")
+        return self
+
+
 class KnowledgeSourceCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     content: str = Field(min_length=1, max_length=2_000_000)

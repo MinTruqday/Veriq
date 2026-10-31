@@ -75,6 +75,7 @@ const defaults = {
 
 export default function TestPlanEditor({
   projectId,
+  initialValue,
   strategies,
   requirements,
   suites,
@@ -83,7 +84,31 @@ export default function TestPlanEditor({
   onSave,
   onCancel,
 }) {
-  const [value, setValue] = useState(defaults);
+  const [value, setValue] = useState(() => {
+    if (!initialValue) return defaults;
+    const localDateTime = (value) => {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0, 16);
+    };
+    return {
+      ...defaults,
+      ...initialValue,
+      schedule: {
+        ...defaults.schedule,
+        ...(initialValue.schedule || {}),
+        planned_start_at: localDateTime(initialValue.schedule?.planned_start_at),
+        planned_end_at: localDateTime(initialValue.schedule?.planned_end_at),
+      },
+      estimation: {
+        ...defaults.estimation,
+        ...(initialValue.estimation || {}),
+        effort_allocations: initialValue.estimation?.effort_allocations || [],
+      },
+    };
+  });
   const [error, setError] = useState("");
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
   return (
@@ -117,16 +142,18 @@ export default function TestPlanEditor({
             return;
           }
           const payload = {
-            project_id: projectId,
-            ...value,
+            ...Object.fromEntries(Object.keys(defaults).map((key) => [key, value[key]])),
             estimation: { ...value.estimation, planned_people: effortAllocations.length },
             strategy_version_id: value.strategy_version_id || null,
-            release: "",
-            release_id: null,
-            build: "",
-            build_id: null,
-            environment_id: null,
           };
+          if (!initialValue) {
+            payload.project_id = projectId;
+            payload.release = "";
+            payload.release_id = null;
+            payload.build = "";
+            payload.build_id = null;
+            payload.environment_id = null;
+          }
           await onSave(payload);
         } catch (reason) {
           setError(reason.message || "Không thể lưu kế hoạch kiểm thử");

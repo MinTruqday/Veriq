@@ -87,6 +87,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const loadGeneration = useRef(0);
   const [planValidation, setPlanValidation] = useState(null);
   const [creatingPlan, setCreatingPlan] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
   const [creatingSuite, setCreatingSuite] = useState(false);
   const [creatingRun, setCreatingRun] = useState(false);
   const [savingRun, setSavingRun] = useState(false);
@@ -424,32 +425,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     }
   };
   const updatePlan = async (item) => {
-    await ask({
-      title: "Sửa kế hoạch kiểm thử",
-      description: item.name,
-      confirmLabel: "Lưu kế hoạch",
-      fields: [
-        { name: "name", label: "Tên", initialValue: item.name, required: true, autoFocus: true },
-        {
-          name: "objective",
-          label: "Mục tiêu",
-          initialValue: item.objective || "",
-          multiline: true,
-        },
-      ],
-      onConfirm: async (answer) => {
-        try {
-          await testingApi.updatePlan(item._id, {
-            expected_revision: item.revision,
-            name: answer.name,
-            objective: answer.objective,
-          });
-          await load();
-        } catch (reason) {
-          throw new Error(messageOf(reason));
-        }
-      },
-    });
+    setEditingPlan(item);
   };
   const transitionPlan = async (item, action) => {
     await ask({
@@ -644,6 +620,37 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               onSave={async (payload) => {
                 await testingApi.createPlan(payload);
                 setCreatingPlan(false);
+                await load();
+              }}
+            />
+          </Modal>
+        )}
+        {editingPlan && can("testplan.update") && (
+          <Modal
+            isOpen
+            onClose={() => setEditingPlan(null)}
+            ariaLabel="Sửa kế hoạch kiểm thử"
+            className="max-h-[94dvh] max-w-5xl overflow-y-auto"
+          >
+            <ModalHeader>
+              <ModalTitle>Sửa kế hoạch kiểm thử</ModalTitle>
+            </ModalHeader>
+            <TestPlanEditor
+              key={`${editingPlan._id}:${editingPlan.revision}`}
+              projectId={project._id}
+              initialValue={editingPlan}
+              strategies={strategies}
+              requirements={requirements}
+              suites={suites}
+              tests={tests}
+              members={members}
+              onCancel={() => setEditingPlan(null)}
+              onSave={async (payload) => {
+                await testingApi.updatePlan(editingPlan._id, {
+                  ...payload,
+                  expected_revision: editingPlan.revision,
+                });
+                setEditingPlan(null);
                 await load();
               }}
             />

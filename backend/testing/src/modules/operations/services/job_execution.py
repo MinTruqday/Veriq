@@ -21,7 +21,7 @@ async def process_delegated_job(
     requester_email: str,
 ):
     
-    if event not in {"impact.analysis.requested", "duplicate.scan.requested", "test.generate.requested", "requirement.semantic_diff.requested", "knowledge.index.requested", "requirement.extract.requested", "document.parse.requested"}:
+    if event not in {"impact.analysis.requested", "duplicate.scan.requested", "test.generate.requested", "requirement.semantic_diff.requested", "knowledge.index.requested", "requirement.extract.requested", "document.parse.requested", "document.summary.requested"}:
         raise HTTPException(
             status_code=422, detail={"code": 'UNSUPPORTED_JOB_EVENT'}
         )
@@ -101,6 +101,10 @@ async def execute_job(event: str, body: dict, payload: dict, user: CurrentUser):
             "status": 'READY_FOR_EXTRACTION',
             "document_id": payload.get("document_id"),
         }
+    if event == 'document.summary.requested':
+        from src.modules.requirements.services.document_reader import process_document_summary_job
+
+        return await process_document_summary_job(body, payload, user)
     return {"status": 'COMPLETED'}
 
 

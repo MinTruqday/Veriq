@@ -21,6 +21,7 @@ from src.modules.requirements.services.requirement_documents import (
     retry_requirement_document_parse_record,
     update_requirement_document_access,
     update_requirement_document_ai_read,
+    start_requirement_document_ai_processing,
     update_requirement_document_record,
     upload_requirement_document_record,
 )
@@ -47,9 +48,21 @@ from src.schemas.contracts.requirements import (
     KnowledgeSourceCreate,
     RequirementDocumentAccessPatch,
     RequirementDocumentAIReadPatch,
+    RequirementDocumentAIStart,
+    RequirementDocumentSummaryRequest,
     RequirementDocumentPatch,
     RequirementExtractionInput,
     RequirementParseRetry,
+)
+from src.modules.requirements.services.document_reader import (
+    cancel_document_summary_job,
+    get_document_summary_job,
+    read_document_page,
+    read_document_source_image,
+    read_document_source_page,
+    search_document,
+    retry_document_summary_job,
+    start_document_summary_job,
 )
 
 router = APIRouter(prefix="/kiem-thu", tags=["Yêu cầu kiểm thử"])
@@ -121,6 +134,43 @@ async def list_requirement_documents(
     return envelope(
         await list_requirement_document_records(project_id, status, q, limit, user)
     )
+
+
+@router.post("/du-an/{project_id}/tai-lieu-yeu-cau/tom-tat", status_code=202)
+async def summarize_project_requirement_documents(
+    project_id: str,
+    payload: RequirementDocumentSummaryRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    result = await start_document_summary_job(project_id, payload, user)
+    return envelope(result, status=result["status"])
+
+
+@router.get("/du-an/{project_id}/tai-lieu-yeu-cau/tom-tat/{job_id}")
+async def get_project_document_summary_job(
+    project_id: str,
+    job_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await get_document_summary_job(project_id, job_id, user))
+
+
+@router.post("/du-an/{project_id}/tai-lieu-yeu-cau/tom-tat/{job_id}/thu-lai", status_code=202)
+async def retry_project_document_summary_job(
+    project_id: str,
+    job_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await retry_document_summary_job(project_id, job_id, user), status="QUEUED")
+
+
+@router.delete("/du-an/{project_id}/tai-lieu-yeu-cau/tom-tat/{job_id}")
+async def cancel_project_document_summary_job(
+    project_id: str,
+    job_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await cancel_document_summary_job(project_id, job_id, user))
 
 
 @router.get("/du-an/{project_id}/tai-lieu-yeu-cau/nguon-ai")
@@ -284,6 +334,43 @@ async def get_requirement_document(document_id: str, user: CurrentUser = Depends
     return envelope(document, revision=document["revision"])
 
 
+@router.get("/tai-lieu-yeu-cau/{document_id}/noi-dung")
+async def read_requirement_document(
+    document_id: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20000, ge=1000, le=40000),
+    sheet: str | None = Query(default=None, max_length=200),
+    row_limit: int = Query(default=100, ge=1, le=500),
+    page_no: int | None = Query(default=None, ge=1),
+    user: CurrentUser = Depends(get_current_user),
+):
+    if page_no is not None:
+        return envelope(await read_document_source_page(document_id, page_no, user))
+    return envelope(await read_document_page(document_id, offset, limit, user, sheet, row_limit))
+
+
+@router.get("/tai-lieu-yeu-cau/{document_id}/anh-nguon/{block_index}")
+async def read_requirement_document_image(
+    document_id: str, block_index: int, user: CurrentUser = Depends(get_current_user)
+):
+    data, content_type = await read_document_source_image(document_id, block_index, user)
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@router.get("/tai-lieu-yeu-cau/{document_id}/tim-kiem")
+async def search_requirement_document(
+    document_id: str,
+    q: str = Query(min_length=2, max_length=200),
+    limit: int = Query(default=50, ge=1, le=100),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await search_document(document_id, q, user, limit))
+
+
 @router.get("/tai-lieu-yeu-cau/{document_id}/tac-dong")
 async def get_requirement_document_impact(
     document_id: str, user: CurrentUser = Depends(get_current_user)
@@ -326,6 +413,16 @@ async def update_requirement_document_ai_read_access(
     return envelope(result.data, revision=result.data["revision"])
 
 
+@router.post("/tai-lieu-yeu-cau/{document_id}/chay-ai", status_code=202)
+async def start_requirement_document_ai(
+    document_id: str,
+    payload: RequirementDocumentAIStart,
+    user: CurrentUser = Depends(get_current_user),
+):
+    result = await start_requirement_document_ai_processing(document_id, payload, user)
+    return envelope(result, status=result["status"])
+
+
 @router.post("/tai-lieu-yeu-cau/{document_id}/lap-chi-muc-lai", status_code=202)
 async def reindex_requirement_document(
     document_id: str, user: CurrentUser = Depends(get_current_user)
@@ -353,6 +450,24 @@ async def download_requirement_document(
         content=data,
         media_type="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/tai-lieu-yeu-cau/{document_id}/xem-ban-goc")
+async def preview_requirement_document(
+    document_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    document = await get_requirement_document_record(document_id, user)
+    if document.get("format") != "pdf":
+        raise HTTPException(status_code=415, detail={"code": "INLINE_PREVIEW_UNAVAILABLE"})
+    data = await read_raw_requirement_source(document)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="document.pdf"',
+            "Cache-Control": "private, no-store",
+        },
     )
 
 

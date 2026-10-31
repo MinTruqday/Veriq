@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class TestingJobEvent(str, Enum):
     DOCUMENT_PARSE = "document.parse.requested"
+    DOCUMENT_SUMMARY = "document.summary.requested"
     REQUIREMENT_EXTRACT = "requirement.extract.requested"
     REQUIREMENT_SEMANTIC_DIFF = "requirement.semantic_diff.requested"
     TEST_GENERATE = "test.generate.requested"

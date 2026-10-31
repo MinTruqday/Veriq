@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 from src.repositories import requirement_import as requirement_import_repository_module
 from src.modules.requirements.services import requirement_import_workflow
+from src.modules.requirements.services import requirement_indexing
 from src.schemas.contracts.requirements import RequirementImportResolution
 
 
@@ -31,6 +32,93 @@ class Session:
 
 
 class RequirementImportCandidateResolutionTests(unittest.IsolatedAsyncioTestCase):
+    def test_paraphrased_ai_citation_returns_reviewable_draft(self):
+        source = "Nếu người dùng nhập sai mật khẩu, hệ thống hiển thị thông báo lỗi."
+        document = {
+            "_id": "DOC-1",
+            "content_hash": "source-hash",
+            "source_version": "1",
+            "normalized_content": source,
+            "format": "docx",
+            "source_type": "SPECIFICATION",
+        }
+        reference = "DOC-1:0"
+        result = {
+            "conflicts": [],
+            "suggestions": [
+                {
+                    "requirement_key": "REQ-1",
+                    "title": "Thông báo khi đăng nhập sai",
+                    "type": "FUNCTIONAL",
+                    "content": "Khi mật khẩu không đúng, hệ thống sẽ thông báo đăng nhập thất bại.",
+                    "evidence_refs": [reference],
+                    "source_quotes": {
+                        reference: "Khi mật khẩu không đúng, hệ thống sẽ thông báo đăng nhập thất bại."
+                    },
+                    "acceptance_criteria": [],
+                    "actors": [],
+                    "business_rules": [],
+                    "dependencies": [],
+                }
+            ],
+        }
+
+        candidates, conflicts = requirement_import_workflow.grounded_requirement_candidates(
+            document, [result]
+        )
+
+        self.assertEqual(conflicts, [])
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["source_grounding_status"], "NEEDS_REVIEW")
+        self.assertEqual(candidates[0]["source_refs"][0]["requirement_document_id"], "DOC-1")
+        self.assertNotIn("source_quote", candidates[0]["source_refs"][0])
+        self.assertIn(
+            "REQUIREMENT_SOURCE_REVIEW_REQUIRED",
+            requirement_import_workflow.prepare_requirement_candidates("JOB-1", candidates)[0]["quality_issues"],
+        )
+
+    async def test_structured_source_span_uses_rendered_document_text(self):
+        source = "Nếu người dùng nhập sai mật khẩu, hệ thống hiển thị thông báo lỗi."
+        source_doc = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": source}],
+                }
+            ],
+        }
+        reference = {
+            "requirement_document_id": "DOC-1",
+            "content_hash": "source-hash",
+            "source_version": "1",
+            "source_start": 0,
+            "source_end": len(source),
+            "source_text_hash": __import__("hashlib").sha256(source.encode("utf-8")).hexdigest(),
+            "source_quote": source,
+        }
+        document = {
+            "_id": "DOC-1",
+            "project_id": "PROJECT-1",
+            "content_hash": "source-hash",
+            "source_version": "1",
+            "normalized_content": source_doc,
+        }
+        with (
+            patch.object(
+                requirement_indexing.requirement_document_repository,
+                "list_by_ids",
+                new=AsyncMock(return_value=[document]),
+            ),
+            patch(
+                "src.modules.requirements.services.requirement_documents.require_document_access",
+                new=AsyncMock(),
+            ),
+        ):
+            await requirement_indexing.validate_requirement_sources(
+                "PROJECT-1", [reference], SimpleNamespace(id="user-1")
+            )
+
     async def test_semantic_duplicate_candidate_is_preserved_for_review(self):
         candidate = {
             "candidate_id": "CAND-1",

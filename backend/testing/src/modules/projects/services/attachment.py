@@ -52,6 +52,8 @@ class AttachmentService:
             user.id,
             payload.url,
             'ACTIVE',
+            payload.artifact_type,
+            payload.artifact_id,
         )
         if existing:
             return existing

@@ -2,6 +2,7 @@ import {
   downloadTestingFile,
   listPage,
   listQuery,
+  readTestingFile,
   testingImageRequest,
   testingRequest,
   testingStreamRequest,
@@ -302,6 +303,32 @@ export const designTestingApi = {
       body: JSON.stringify(payload),
     }),
   getRequirementDocument: (id) => testingRequest(`/tai-lieu-yeu-cau/${id}`),
+  previewRequirementDocument: (id) => readTestingFile(`/tai-lieu-yeu-cau/${id}/xem-ban-goc`),
+  readRequirementDocumentPage: (id, offset = 0, sheet = "", pageNo = null) =>
+    testingRequest(
+      `/tai-lieu-yeu-cau/${id}/noi-dung?offset=${offset}&limit=40000&row_limit=100${sheet ? `&sheet=${encodeURIComponent(sheet)}` : ""}${pageNo ? `&page_no=${pageNo}` : ""}`,
+    ),
+  searchRequirementDocument: (id, query, limit = 50) => {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    return testingRequest(`/tai-lieu-yeu-cau/${id}/tim-kiem?${params.toString()}`);
+  },
+  getRequirementDocumentImage: (documentId, blockIndex) =>
+    testingImageRequest(
+      `/tai-lieu-yeu-cau/${encodeURIComponent(documentId)}/anh-nguon/${encodeURIComponent(blockIndex)}`,
+    ),
+  summarizeRequirementDocuments: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/tai-lieu-yeu-cau/tom-tat`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getRequirementDocumentSummaryJob: (projectId, jobId) =>
+    testingRequest(`/du-an/${projectId}/tai-lieu-yeu-cau/tom-tat/${jobId}`),
+  cancelRequirementDocumentSummaryJob: (projectId, jobId) =>
+    testingRequest(`/du-an/${projectId}/tai-lieu-yeu-cau/tom-tat/${jobId}`, { method: "DELETE" }),
+  retryRequirementDocumentSummaryJob: (projectId, jobId) =>
+    testingRequest(`/du-an/${projectId}/tai-lieu-yeu-cau/tom-tat/${jobId}/thu-lai`, {
+      method: "POST",
+    }),
   updateRequirementDocument: (id, payload) =>
     testingRequest(`/tai-lieu-yeu-cau/${id}`, {
       method: "PATCH",
@@ -315,6 +342,11 @@ export const designTestingApi = {
   updateRequirementDocumentAiRead: (id, payload) =>
     testingRequest(`/tai-lieu-yeu-cau/${id}/ai-doc`, {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  startRequirementDocumentAI: (id, payload) =>
+    testingRequest(`/tai-lieu-yeu-cau/${id}/chay-ai`, {
+      method: "POST",
       body: JSON.stringify(payload),
     }),
   reindexRequirementDocument: (id) =>

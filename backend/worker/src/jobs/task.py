@@ -121,7 +121,8 @@ async def handle_testing_job(payload: dict):
         if not finalized or finalized.matched_count != 1:
             raise PermanentTaskError("Worker execution lease was lost before completion")
         return result
-    async with httpx.AsyncClient(timeout=120) as client:
+    request_timeout = 1800 if payload.get("event") == "document.summary.requested" else 120
+    async with httpx.AsyncClient(timeout=request_timeout) as client:
         response = await client.post(
             f"{settings.TESTING_URL}/kiem-thu/noi-bo/tac-vu/{payload.get('event')}",
             headers={

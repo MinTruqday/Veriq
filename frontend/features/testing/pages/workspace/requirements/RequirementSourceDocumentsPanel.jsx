@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
+import { projectRoute } from "../../../routes";
 import { testingApi } from "../../../services/testing.service";
 import {
   REQUIREMENT_SOURCE_APPROVAL_OPTIONS,
@@ -121,6 +122,8 @@ function documentFormatLabel(format) {
 }
 
 export default function RequirementSourceDocumentsPanel({
+  projectId,
+  projectLocale,
   items,
   members,
   can,
@@ -134,8 +137,21 @@ export default function RequirementSourceDocumentsPanel({
   const [retryingDocumentId, setRetryingDocumentId] = useState("");
   const [continuingImportDocumentId, setContinuingImportDocumentId] = useState("");
   const [activatingAiDocumentId, setActivatingAiDocumentId] = useState("");
+  const [startingAiDocumentId, setStartingAiDocumentId] = useState("");
   const [aiActivationNotice, setAiActivationNotice] = useState("");
   const [expandedReportId, setExpandedReportId] = useState("");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [summaryResult, setSummaryResult] = useState(null);
+  const [summaryJob, setSummaryJob] = useState(null);
+  const [summaryLanguage, setSummaryLanguage] = useState(
+    projectLocale?.toLowerCase().startsWith("en") ? "en" : "vi",
+  );
+  const summaryIdempotencyRef = useRef({ scope: "", key: "" });
+
+  useEffect(() => {
+    setSummaryLanguage(projectLocale?.toLowerCase().startsWith("en") ? "en" : "vi");
+  }, [projectLocale]);
 
   const extractionIssueLabel = (reasonCode) => {
     const labels = {
@@ -244,12 +260,31 @@ export default function RequirementSourceDocumentsPanel({
       });
       await reload();
       setAiActivationNotice(
-        `Đã cho phép AI đọc “${item.filename}”; hệ thống tự tiếp tục lập chỉ mục và xử lý tài liệu.`,
+        `Đã cho phép AI đọc “${item.filename}”. Bạn có thể chủ động bắt đầu sau khi tài liệu sẵn sàng.`,
       );
     } catch (reason) {
       onError(messageOf(reason));
     } finally {
       setActivatingAiDocumentId("");
+    }
+  };
+  const startAiProcessing = async (item) => {
+    setStartingAiDocumentId(item._id);
+    setAiActivationNotice("");
+    try {
+      const result = await testingApi.startRequirementDocumentAI(item._id, {
+        expected_revision: item.revision,
+        idempotency_key: `start-${item._id}-r${item.revision}`,
+      });
+      await reload();
+      setAiActivationNotice(
+        `Đã gửi yêu cầu xử lý “${item.filename}”. Theo dõi trạng thái trong Hoạt động AI.`,
+      );
+      return result;
+    } catch (reason) {
+      onError(messageOf(reason));
+    } finally {
+      setStartingAiDocumentId("");
     }
   };
   const classify = async (item) => {
@@ -336,6 +371,98 @@ export default function RequirementSourceDocumentsPanel({
     });
   };
 
+  const summarizeDocuments = async (documentIds, allReadable = false) => {
+    setSummaryBusy(true);
+    setSummaryJob(null);
+    setSummaryResult(null);
+    setAiActivationNotice("");
+    try {
+      const scope = allReadable ? "all" : [...documentIds].sort().join(",");
+      if (summaryIdempotencyRef.current.scope !== scope) {
+        summaryIdempotencyRef.current = {
+          scope,
+          key: `summary-${crypto.randomUUID()}`,
+        };
+      }
+      const started = await testingApi.summarizeRequirementDocuments(projectId, {
+        document_ids: documentIds,
+        all_readable: allReadable,
+        output_language: summaryLanguage,
+        idempotency_key: summaryIdempotencyRef.current.key,
+      });
+      const jobId = started._id;
+      setSummaryJob({ _id: jobId, status: started.status, progress: started.progress });
+      let current = started;
+      while (["QUEUED", "RUNNING"].includes(current.status)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        current = await testingApi.getRequirementDocumentSummaryJob(projectId, jobId);
+        setSummaryJob(current);
+      }
+      const result = current.result || {
+        status: current.status,
+        results: [],
+        excluded: [],
+        summary: "",
+      };
+      setSummaryResult(result);
+      if (current.status === "CANCELLED") {
+        setAiActivationNotice("Đã hủy yêu cầu tóm tắt.");
+        return;
+      }
+      if (current.status === "FAILED") {
+        onError(
+          current.error_code
+            ? `Không thể hoàn tất tóm tắt (${current.error_code}). Bạn có thể thử lại.`
+            : "Không có tài liệu nào đủ điều kiện để tóm tắt. Kiểm tra quyền AI và trạng thái xử lý tài liệu.",
+        );
+        return;
+      }
+      const skipped = result.excluded?.length || 0;
+      setAiActivationNotice(
+        `${result.status === "COMPLETED" ? "Đã tóm tắt" : "Tóm tắt chưa đầy đủ"} ${result.results.length} tài liệu${skipped ? `; ${skipped} tài liệu bị bỏ qua` : ""}.`,
+      );
+    } catch (reason) {
+      onError(messageOf(reason));
+    } finally {
+      setSummaryBusy(false);
+    }
+  };
+
+  const cancelSummary = async () => {
+    if (!summaryJob?._id) return;
+    try {
+      await testingApi.cancelRequirementDocumentSummaryJob(projectId, summaryJob._id);
+    } catch (reason) {
+      onError(messageOf(reason));
+    }
+  };
+
+  const retrySummary = async () => {
+    if (!summaryJob?._id) return;
+    setSummaryBusy(true);
+    try {
+      const started = await testingApi.retryRequirementDocumentSummaryJob(
+        projectId,
+        summaryJob._id,
+      );
+      let current = started;
+      setSummaryJob({ ...started, _id: summaryJob._id });
+      while (["QUEUED", "RUNNING"].includes(current.status)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        current = await testingApi.getRequirementDocumentSummaryJob(projectId, summaryJob._id);
+        setSummaryJob(current);
+      }
+      setSummaryResult(current.result || null);
+      if (current.status === "FAILED") {
+        onError("Không thể hoàn tất tóm tắt. Bạn có thể thử lại khi dịch vụ xử lý sẵn sàng.");
+      }
+    } catch (reason) {
+      onError(messageOf(reason));
+    } finally {
+      setSummaryBusy(false);
+    }
+  };
+
   return (
     <Panel title="Kho tài liệu nguồn">
       {aiActivationNotice && (
@@ -346,8 +473,93 @@ export default function RequirementSourceDocumentsPanel({
           {aiActivationNotice}
         </p>
       )}
+      {summaryBusy && summaryJob && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 text-sm">
+          <span>
+            {summaryJob.status === "QUEUED" ? "Đang chờ xử lý" : "Đang tóm tắt tài liệu"}
+            {summaryJob.progress?.total
+              ? ` · ${summaryJob.progress.processed}/${summaryJob.progress.total} tệp`
+              : ""}
+            {summaryJob.progress?.chunks_total
+              ? ` · ${summaryJob.progress.chunks_processed}/${summaryJob.progress.chunks_total} phần của ${summaryJob.progress.current_document || "tài liệu hiện tại"}`
+              : ""}
+          </span>
+          <button
+            className="secondary-button !min-h-8 !px-3 !py-1 text-xs"
+            type="button"
+            onClick={cancelSummary}
+          >
+            Hủy
+          </button>
+        </div>
+      )}
+      {summaryResult && summaryResult.status !== "FAILED" && (
+        <div className="mb-4 rounded-xl border border-border bg-surface p-4">
+          <h3 className="font-semibold">
+            {summaryResult.status === "COMPLETED" ? "Tóm tắt tài liệu" : "Tóm tắt chưa đầy đủ"}
+          </h3>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{summaryResult.summary}</p>
+          {summaryResult.results?.length > 0 && (
+            <ul className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
+              {summaryResult.results.map((source) => (
+                <li key={source.document_id}>
+                  <a
+                    className="secondary-button !min-h-8 !px-3 !py-1 text-xs"
+                    href={projectRoute(projectId, "tai-lieu", source.document_id)}
+                  >
+                    Nguồn: {source.filename} · v{source.source_version}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select
+          className="form-input w-auto !min-h-9"
+          aria-label="Ngôn ngữ tóm tắt"
+          value={summaryLanguage}
+          onChange={(event) => setSummaryLanguage(event.target.value)}
+          disabled={summaryBusy}
+        >
+          <option value="vi">Tiếng Việt</option>
+          <option value="en">English</option>
+        </select>
+        <button
+          className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+          type="button"
+          disabled={!selectedIds.length || summaryBusy}
+          onClick={() => summarizeDocuments(selectedIds)}
+        >
+          {summaryBusy
+            ? "Đang tóm tắt…"
+            : `Tóm tắt mục đã chọn${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
+        </button>
+        <button
+          className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+          type="button"
+          disabled={summaryBusy || !items.some((item) => item.status !== "ARCHIVED")}
+          onClick={() => summarizeDocuments([], true)}
+        >
+          Tóm tắt toàn bộ tài liệu được phép đọc
+        </button>
+      </div>
+      {summaryJob && ["FAILED", "INCOMPLETE"].includes(summaryJob.status) && !summaryBusy && (
+        <button
+          className="secondary-button mb-4 !min-h-8 !px-3 !py-1 text-xs"
+          type="button"
+          onClick={retrySummary}
+        >
+          Thử lại phần chưa hoàn tất
+        </button>
+      )}
       <DataTable
         items={items}
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        selectionLabel="Chọn tài liệu"
+        selectionDisabled={!can("requirement_document.extract")}
         empty="Chưa có tài liệu nguồn"
         columns={[
           {
@@ -490,6 +702,17 @@ export default function RequirementSourceDocumentsPanel({
             hideWhenEmpty: true,
             render: (item) => (
               <span className="flex max-w-[32rem] flex-wrap items-center gap-2">
+                {can("requirement_document.read") && item.status === "READY" && (
+                  <button
+                    className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                    type="button"
+                    onClick={() =>
+                      window.location.assign(projectRoute(projectId, "tai-lieu", item._id))
+                    }
+                  >
+                    Mở đọc
+                  </button>
+                )}
                 {can("requirement_document.review_extraction") &&
                   item.status === "EXTRACTED" &&
                   item.last_import_job_id && (
@@ -542,6 +765,7 @@ export default function RequirementSourceDocumentsPanel({
                     </button>
                   )}
                 {(isPlatformAdmin || item.created_by === currentUserId) &&
+                  (isPlatformAdmin || can("requirement_document.extract")) &&
                   item.status !== "ARCHIVED" &&
                   !item.ai_enabled &&
                   (item.status === "READY" ? (
@@ -553,14 +777,32 @@ export default function RequirementSourceDocumentsPanel({
                       onClick={() => enableAiRead(item)}
                     >
                       {activatingAiDocumentId === item._id
-                        ? "Đang khởi chạy xử lý…"
-                        : "Cho phép AI đọc và xử lý"}
+                        ? "Đang cấp quyền đọc…"
+                        : "Cho phép AI đọc"}
                     </button>
                   ) : (
                     <span className="self-center text-xs text-ink-muted">
                       AI xử lý sau khi phân tích tài liệu xong
                     </span>
                   ))}
+                {(isPlatformAdmin || item.created_by === currentUserId) &&
+                  (isPlatformAdmin || can("requirement_document.extract")) &&
+                  item.status !== "ARCHIVED" &&
+                  item.ai_enabled &&
+                  item.status === "READY" &&
+                  ["INDEXED", "DEGRADED"].includes(item.index_status) && (
+                    <button
+                      className="apple-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      type="button"
+                      disabled={startingAiDocumentId === item._id}
+                      aria-busy={startingAiDocumentId === item._id}
+                      onClick={() => startAiProcessing(item)}
+                    >
+                      {startingAiDocumentId === item._id
+                        ? "Đang bắt đầu…"
+                        : "Chạy AI trên tài liệu"}
+                    </button>
+                  )}
                 {(isPlatformAdmin || item.created_by === currentUserId) &&
                   item.status !== "ARCHIVED" && (
                     <button

@@ -21,6 +21,9 @@ const DashboardPage = dynamic(() => import("./workspace/DashboardPage"), {
   loading: workspaceLoading,
 });
 const DefectsPage = dynamic(() => import("./workspace/DefectsPage"), { loading: workspaceLoading });
+const DocumentReaderPage = dynamic(() => import("./workspace/DocumentReaderPage"), {
+  loading: workspaceLoading,
+});
 const ExecutionPage = dynamic(() => import("./workspace/ExecutionPage"), {
   loading: workspaceLoading,
 });
@@ -89,6 +92,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.knowledge]: "knowledge",
     "tim-kiem": "knowledge",
     [PROJECT_SECTION_SLUGS.settings]: "settings",
+    "tai-lieu": "document-reader",
   };
   const legacyRedirectTarget =
     section[0] === PROJECT_SECTION_SLUGS.projectTasks
@@ -141,6 +145,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     knowledge: "knowledge.read",
     reports: null,
     settings: section[0] === PROJECT_SECTION_SLUGS.audit ? "project.audit.read" : null,
+    "document-reader": "requirement_document.read",
   };
   const sectionPermission = {
     [PROJECT_SECTION_SLUGS.assurance]: ["requirement.read", "testcase.read"],
@@ -275,6 +280,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     ),
     reports: <ReportsPage {...props} />,
     settings: <SettingsPage {...props} onProjectChange={state.reload} />,
+    "document-reader": <DocumentReaderPage {...props} />,
   };
   return (
     <div className="workspace-page min-w-0">

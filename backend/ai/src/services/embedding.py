@@ -45,7 +45,7 @@ class EmbeddingService:
 
     async def _embed_batch(self, texts: List[str]) -> List[List[float]]:
         all_embeddings = [None] * len(texts)
-        uncached_indices = []
+        uncached_indices_by_text = {}
         uncached_texts = []
 
         for i, text in enumerate(texts):
@@ -54,8 +54,10 @@ class EmbeddingService:
                 if cached:
                     all_embeddings[i] = json.loads(cached)
                     continue
-            uncached_indices.append(i)
-            uncached_texts.append(text)
+            if text not in uncached_indices_by_text:
+                uncached_indices_by_text[text] = []
+                uncached_texts.append(text)
+            uncached_indices_by_text[text].append(i)
 
         if uncached_texts:
             for batch_start in range(0, len(uncached_texts), self._batch_size):
@@ -63,11 +65,12 @@ class EmbeddingService:
                 batch_embeddings = await auxiliary_client.embed(batch, "passage")
 
                 for j, emb in enumerate(batch_embeddings):
-                    real_idx = uncached_indices[batch_start + j]
-                    all_embeddings[real_idx] = emb
+                    text = batch[j]
+                    for real_idx in uncached_indices_by_text[text]:
+                        all_embeddings[real_idx] = emb
                     if self._cache:
                         self._cache.setex(
-                            self._cache_key(batch[j], "passage"), 86400 * 7, json.dumps(emb)
+                            self._cache_key(text, "passage"), 86400 * 7, json.dumps(emb)
                         )
 
         return all_embeddings

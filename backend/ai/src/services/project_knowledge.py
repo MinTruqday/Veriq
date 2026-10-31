@@ -309,7 +309,7 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
         return batch_end
 
     try:
-        semantic = True
+        semantic = not bool(source_structure)
         chunk_stream = chunker.iter_chunk_document(
             req.text, metadata, structure=source_structure, semantic=semantic
         )

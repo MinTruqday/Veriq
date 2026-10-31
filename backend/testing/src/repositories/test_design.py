@@ -700,14 +700,19 @@ class TestDesignRepository:
             )
         )
 
-    async def find_active_attachment(self, project_id, owner_id, url, active_status):
+    async def find_active_attachment(
+        self, project_id, owner_id, url, active_status, artifact_type=None, artifact_id=None
+    ):
+        query = {
+            "project_id": project_id,
+            "owner_id": owner_id,
+            "url": url,
+            "status": active_status,
+            "artifact_type": artifact_type,
+            "artifact_id": artifact_id,
+        }
         return await database.value.attachments.find_one(
-            {
-                "project_id": project_id,
-                "owner_id": owner_id,
-                "url": url,
-                "status": active_status,
-            }
+            query
         )
 
     async def insert_attachment(self, value):

@@ -104,11 +104,20 @@ def grounded_requirement_candidates(document, result_batches):
                 raise HTTPException(status_code=502, detail={"code": "REQUIREMENT_EVIDENCE_INVALID"})
             source_refs = []
             verified_quotes = []
+            grounding_needs_review = False
             for reference in references:
                 chunk = evidence_by_ref[reference]
                 quote = str((suggestion.get("source_quotes") or {}).get(reference) or "").strip()
                 if not quote or quote not in chunk:
-                    raise HTTPException(status_code=502, detail={"code": "REQUIREMENT_SOURCE_QUOTE_INVALID"})
+                    grounding_needs_review = True
+                    source_refs.append({
+                        "requirement_document_id": document["_id"],
+                        "content_hash": document["content_hash"],
+                        "source_version": document.get("source_version"),
+                        "section": "ai_extraction_needs_source_review",
+                        "format": document["format"],
+                    })
+                    continue
                 source_start = int(reference.rsplit(":", 1)[1])
                 quote_start = chunk.find(quote)
                 source_refs.append({
@@ -124,7 +133,8 @@ def grounded_requirement_candidates(document, result_batches):
                 verified_quotes.append(quote)
             key = suggestion.get("requirement_key")
             if key and not any(key in quote for quote in verified_quotes):
-                raise HTTPException(status_code=502, detail={"code": "REQUIREMENT_KEY_UNGROUNDED"})
+                key = None
+                grounding_needs_review = True
             def contains(value):
                 return bool(value) and str(value).casefold() in text.casefold()
 
@@ -209,6 +219,7 @@ def grounded_requirement_candidates(document, result_batches):
                 "details": details,
                 "section_states": section_states,
                 "source_refs": source_refs,
+                "source_grounding_status": "NEEDS_REVIEW" if grounding_needs_review else "VERIFIED",
             }
             candidates.append(candidate)
     return candidates, conflicts

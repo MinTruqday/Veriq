@@ -6,7 +6,7 @@ from src.core.common import now
 from src.repositories.requirement_document import requirement_document_repository
 from src.repositories.requirement_template import requirement_template_repository
 from src.clients.project_knowledge import index_artifact
-from src.modules.requirements.services.requirement_workflow import serialized_content
+from src.modules.requirements.services.requirement_import import source_document_text
 
 
 
@@ -56,7 +56,7 @@ async def validate_requirement_sources(project_id, source_refs, user):
             content = document.get("normalized_content")
             if content is None:
                 raise HTTPException(status_code=422, detail={"code": "REQUIREMENT_SOURCE_SPAN_UNAVAILABLE"})
-            content = serialized_content(content)
+            content = source_document_text(content)
             start = reference.get("source_start")
             end = reference.get("source_end")
             if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end > len(content) or start >= end:

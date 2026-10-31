@@ -334,7 +334,7 @@ async def inspect_knowledge_chunks(req: KnowledgeChunkSafetyRequest):
 )
 async def summarize_knowledge_document(req: KnowledgeDocumentSummaryRequest):
     try:
-        summary = await summarize_document(req.text)
+        summary = await summarize_document(req.text, req.output_language)
     except ValueError as error:
         raise HTTPException(status_code=422, detail={"code": str(error)}) from error
     return {"summary": summary}

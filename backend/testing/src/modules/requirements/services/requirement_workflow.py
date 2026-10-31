@@ -125,6 +125,8 @@ def candidate_quality_issues(candidate):
         issues.append("REQUIREMENT_CONTENT_MISSING")
     if not candidate.get("source_refs"):
         issues.append("REQUIREMENT_SOURCE_MISSING")
+    if candidate.get("source_grounding_status") == "NEEDS_REVIEW":
+        issues.append("REQUIREMENT_SOURCE_REVIEW_REQUIRED")
     acceptance_criteria = candidate.get("acceptance_criteria") or []
     has_acceptance_criteria = any(
         str(item or "").strip()

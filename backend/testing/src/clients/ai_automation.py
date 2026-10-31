@@ -54,6 +54,20 @@ def _requirement_version_is_baselined(version: dict) -> bool:
 
 
 class AIAutomationClient:
+    async def summarize_knowledge_text(self, text: str, output_language: str) -> str:
+        async with httpx.AsyncClient(timeout=300) as client:
+            response = await client.post(
+                f"{settings.AI_URL.rstrip('/')}/suy-luan/noi-bo/tom-tat-tai-lieu-tri-thuc",
+                headers={"X-Internal-Token": settings.SECRET_KEY},
+                json={"text": text, "output_language": output_language},
+            )
+            response.raise_for_status()
+        value = response.json()
+        summary = value.get("summary") if isinstance(value, dict) else None
+        if not isinstance(summary, str) or not summary.strip():
+            raise RuntimeError("DOCUMENT_SUMMARY_RESPONSE_INVALID")
+        return summary.strip()
+
     async def convert_attachment(self, filename: str, content: bytes) -> dict:
         import base64
 
@@ -367,12 +381,18 @@ async def queue_api_operation_confirmed(operation: dict, user, session) -> str |
     )
 
 
-async def emit_document_ingested(document: dict, user, session=None) -> bool:
+async def emit_document_ingested(
+    document: dict, user, session=None, idempotency_key: str | None = None
+) -> bool:
     if user._ai_automation_run_id:
         return True
     event = (
         "DOCUMENT_INGESTED",
-        f"requirement-document:{document['_id']}:{document.get('revision', 1)}",
+        (
+            f"requirement-document:{document['_id']}:{document.get('revision', 1)}:{idempotency_key}"
+            if idempotency_key
+            else f"requirement-document:{document['_id']}:{document.get('revision', 1)}"
+        ),
         document["project_id"],
         "requirement_document",
         document["_id"],

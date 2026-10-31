@@ -105,6 +105,10 @@ async def close_database():
 
 async def create_indexes():
     db = database.value
+    await db.document_summary_jobs.create_index(
+        [("project_id", 1), ("requester_id", 1), ("idempotency_key", 1)],
+        unique=True,
+    )
     await db.requirement_documents.create_index(
         [("project_id", 1), ("source_series_id", 1), ("source_version_sequence", 1)],
         unique=True,

@@ -141,13 +141,13 @@ async def inspect_chunks(texts: list[str]) -> set[int]:
     return accepted
 
 
-async def summarize_document(text: str) -> str:
+async def summarize_document(text: str, output_language: str | None = None) -> str:
     inspected = await guardrails_engine.async_inspect_input(text)
     if not inspected.get("is_safe", False):
         raise ValueError("knowledge_summary_input_unsafe")
     summary = await chat(
         prompt_messages(
-            document_global_summary(inspected.get("sanitized_text") or text),
+            document_global_summary(inspected.get("sanitized_text") or text, output_language),
             "Produce the requested document summary",
         ),
         max_tokens=512,

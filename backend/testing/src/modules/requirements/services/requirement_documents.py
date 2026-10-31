@@ -55,7 +55,7 @@ class ParseRequirementDocumentCommand:
     expected_revision: int
 
 
-async def queue_document_ingestion(document, user):
+async def queue_document_ingestion(document, user, idempotency_key):
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             await audit(
@@ -67,7 +67,13 @@ async def queue_document_ingestion(document, user):
                 {"source_version": document.get("source_version"), "revision": document.get("revision")},
                 session=session,
             )
-            await emit_document_ingested(document, user, session=session)
+            event_id = await emit_document_ingested(
+                document,
+                user,
+                session=session,
+                idempotency_key=idempotency_key,
+            )
+    return event_id
 
 
 async def recover_document_ingestion(document, user):
@@ -129,7 +135,6 @@ async def recover_document_ingestion(document, user):
         )
         if not source_opened:
             return False
-        await queue_document_ingestion(document, user)
         return True
     return False
 
@@ -550,7 +555,6 @@ async def create_requirement_document_record(project_id, payload, user):
         if not indexed:
             raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
         document = await requirement_document_repository.find(document["_id"], project_id)
-        await queue_document_ingestion(document, user)
     return document
 
 
@@ -1539,7 +1543,6 @@ async def update_requirement_document_ai_read(document_id, payload, user):
                 detail={"code": "KNOWLEDGE_INDEX_FAILED"},
             )
         updated = latest
-        await queue_document_ingestion(updated, user)
     else:
         cancellation_failed = False
         run_access_fence_failed = False
@@ -1674,6 +1677,59 @@ async def update_requirement_document_ai_read(document_id, payload, user):
     )
 
 
+async def start_requirement_document_ai_processing(document_id, payload, user):
+    document = await get_project_entity(
+        "requirement_documents",
+        document_id,
+        user,
+        "requirement_document.extract",
+    )
+    await require_document_owner(document, user)
+    if document.get("revision") != payload.expected_revision:
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+    if document.get("ai_enabled") is not True:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "AI_READ_PERMISSION_REQUIRED"},
+        )
+    if document.get("status") != "READY" or not document.get("normalized_content"):
+        raise HTTPException(status_code=409, detail={"code": "DOCUMENT_PARSE_REQUIRED"})
+
+    if document.get("index_status") not in {"INDEXED", "DEGRADED"}:
+        indexed = await index_requirement_document(document)
+        if not indexed:
+            raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
+        document = await requirement_document_repository.find(
+            document_id,
+            document["project_id"],
+        )
+    if not document or document.get("ai_enabled") is not True:
+        raise HTTPException(status_code=409, detail={"code": "AI_READ_PERMISSION_REQUIRED"})
+    if document.get("index_status") not in {"INDEXED", "DEGRADED"}:
+        raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
+    source_opened = await ai_automation_access_repository.allow_source(
+        f"source:{document_id}"
+    )
+    if not source_opened:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "AI_READ_ACCESS_DRAIN_PENDING"},
+        )
+
+    event_id = await queue_document_ingestion(
+        document,
+        user,
+        payload.idempotency_key,
+    )
+    return {
+        "document_id": document_id,
+        "project_id": document["project_id"],
+        "revision": document["revision"],
+        "event_id": event_id,
+        "status": "QUEUED",
+    }
+
+
 async def reindex_requirement_document_record(document_id, user):
     document = await get_requirement_document_record(
         document_id, user, 'knowledge.manage'
@@ -1694,8 +1750,6 @@ async def reindex_requirement_document_record(document_id, user):
     updated = await requirement_document_repository.find(
         document_id, document["project_id"]
     )
-    if indexed and updated.get("ai_enabled"):
-        await queue_document_ingestion(updated, user)
     await audit(
         user.id,
         'requirement_document_reindexed',
@@ -1838,7 +1892,6 @@ async def restore_requirement_document_record(document_id, payload, user):
                 detail={"code": "DOCUMENT_RESTORE_RECOVERY_PENDING"},
             )
         updated = latest
-        await queue_document_ingestion(updated, user)
     await audit(
         user.id,
         'requirement_document_restored',
@@ -2067,6 +2120,5 @@ async def retry_requirement_document_parse_record(
             return RequirementDocumentResult(
                 latest, 'DEGRADED', 'AI_READ_ACCESS_DRAIN_PENDING'
             )
-        await queue_document_ingestion(latest, user)
         updated = latest
     return RequirementDocumentResult(updated)

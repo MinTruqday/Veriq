@@ -724,11 +724,14 @@ class IngestionPipelineService:
 
         if not raw_markdown.strip():
             raise ValueError("Failed to extract document text")
-        extraction_method = "docling_structure_semantic"
+        semantic = not bool(document_structure)
+        extraction_method = (
+            "docling_structure_semantic" if semantic else "docling_structure"
+        )
         diagnostic_limit = settings.DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS
         quarantined_chunks = BoundedIngestionDiagnostics(diagnostic_limit)
 
-        async def indexed_chunks(semantic=True):
+        async def indexed_chunks(semantic=semantic):
             sampler = DocumentSummarySampler(
                 settings.DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT,
                 f"{document_id}:{metadata['index_generation']}",

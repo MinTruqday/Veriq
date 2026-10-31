@@ -722,11 +722,20 @@ export default function RunExecutionWorkspace({
                         if (!file) return;
                         try {
                           const uploaded = await uploadAssetAPI(file);
+                          const linked = await testingApi.registerAttachment(projectId, {
+                            filename: uploaded.data.filename,
+                            url: uploaded.data.url,
+                            item_id: uploaded.data.item_id,
+                            size: uploaded.data.size,
+                            content_type: uploaded.data.content_type,
+                            artifact_type: "test_result",
+                            artifact_id: result._id,
+                          });
                           onAttachmentsChange((current) => ({
                             ...current,
                             [result._id]: [
                               ...(current[result._id] || result.attachments || []),
-                              uploaded.data,
+                              linked,
                             ],
                           }));
                         } catch (reason) {

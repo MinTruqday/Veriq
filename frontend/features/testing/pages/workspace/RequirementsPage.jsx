@@ -1567,6 +1567,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           {!workspaceView && <RequirementDuplicatePanel result={duplicateScan} />}
           {!workspaceView && can("requirement_document.read") && (
             <RequirementSourceDocumentsPanel
+              projectId={project._id}
+              projectLocale={project.locale}
               items={visibleSourceDocuments}
               members={visibleMembers}
               can={can}

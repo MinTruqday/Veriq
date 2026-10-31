@@ -237,9 +237,45 @@ export default function TestAdequacyPanel({
   const challenges = (item) => {
     const values =
       item.test_case_versions?.flatMap((test) => test.challenge_hypotheses || []) || [];
-    return values.length
-      ? values.map((challenge, index) => <div key={index}>{challenge.hypothetical_fault}</div>)
-      : "Chưa có giả thuyết phản chứng";
+    const evidence =
+      item.test_case_versions?.flatMap((test) =>
+        (test.evidence_quotes || []).map((entry) => ({
+          key: `${test.id}:${entry.evidence_ref}`,
+          testKey: test.key,
+          quote: entry.quote,
+        })),
+      ) || [];
+    return (
+      <div className="space-y-3">
+        <div>
+          <p className="text-xs font-medium text-ink">Trích dẫn trong ca kiểm thử</p>
+          {evidence.length ? (
+            evidence.map((entry) => (
+              <p className="mt-1 break-words" key={entry.key}>
+                {entry.testKey}: “{entry.quote}”
+              </p>
+            ))
+          ) : (
+            <p className="mt-1">Chưa có trích dẫn trong ca kiểm thử</p>
+          )}
+        </div>
+        <div>
+          <p className="text-xs font-medium text-ink">Giả thuyết phản chứng</p>
+          {values.length ? (
+            values.map((challenge, index) => (
+              <p
+                className="mt-1 break-words"
+                key={`${challenge.technique || "challenge"}:${index}`}
+              >
+                {challenge.hypothetical_fault}
+              </p>
+            ))
+          ) : (
+            <p className="mt-1">Chưa có giả thuyết phản chứng</p>
+          )}
+        </div>
+      </div>
+    );
   };
   const decision = (item) => (
     <>

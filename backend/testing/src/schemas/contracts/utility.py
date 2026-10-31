@@ -12,6 +12,7 @@ class DelegatedJobEnqueueInput(BaseModel):
         "knowledge.index.requested",
         "requirement.extract.requested",
         "document.parse.requested",
+        "document.summary.requested",
     ]
     artifact_version_id: str = Field(min_length=1, max_length=200)
     model_version: str = Field(min_length=1, max_length=200)
