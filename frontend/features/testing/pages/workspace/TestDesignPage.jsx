@@ -1289,10 +1289,16 @@ export default function TestDesignPage({ project, workspaceView }) {
                               <ContentOriginBadge origin={item.origin || "manual"} />
                             ),
                           },
-                          { key: "revision", label: "Lần cập nhật" },
+                          {
+                            key: "revision",
+                            label: "Lần cập nhật",
+                            width: 96,
+                            minWidth: 96,
+                          },
                           {
                             key: "comparison",
                             label: "Đối chiếu",
+                            width: 180,
                             minWidth: 180,
                             render: (item) => {
                               const requiresComparison = requiresAiComparison(item);

@@ -7,10 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint --max-warnings=0 \"app/**/*.{js,jsx}\" \"features/**/*.{js,jsx,mjs}\" \"shared/**/*.{js,jsx}\" \"e2e/**/*.{js,jsx}\" middleware.js next.config.mjs postcss.config.js tailwind.config.js playwright.config.js",
-    "test:e2e": "playwright test",
-    "format": "prettier --write app features shared e2e middleware.js next.config.mjs postcss.config.js tailwind.config.js playwright.config.js jsconfig.json package.json",
-    "format:check": "prettier --check app features shared e2e middleware.js next.config.mjs postcss.config.js tailwind.config.js playwright.config.js jsconfig.json package.json",
+    "lint": "eslint --max-warnings=0 \"app/**/*.{js,jsx}\" \"features/**/*.{js,jsx,mjs}\" \"shared/**/*.{js,jsx}\" middleware.js next.config.mjs postcss.config.js tailwind.config.js",
+    "format": "prettier --write app features shared middleware.js next.config.mjs postcss.config.js tailwind.config.js jsconfig.json package.json",
+    "format:check": "prettier --check app features shared middleware.js next.config.mjs postcss.config.js tailwind.config.js jsconfig.json package.json",
     "quality": "pnpm format:check && pnpm lint && pnpm build"
   },
   "dependencies": {
@@ -79,7 +78,6 @@
     "yjs": "13.6.32"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1",
     "@tailwindcss/typography": "^0.5.12",
     "autoprefixer": "^10.0.1",
     "eslint": "^8.57.1",

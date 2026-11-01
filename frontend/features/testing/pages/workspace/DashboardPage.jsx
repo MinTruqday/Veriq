@@ -138,7 +138,7 @@ export default function DashboardPage({ project }) {
         </div>
       )}
       {loading ? (
-        <LoadingState />
+        <LoadingState label="Đang tải tổng quan dự án" variant="dashboard" />
       ) : (
         <>
           <Panel title="Tiến độ dự án">

@@ -2861,11 +2861,11 @@ function Roadmap({
             {(datedItems.length > 0 || projectRange) && (
               <div
                 aria-label="Lộ trình dự án theo thời gian"
-                className="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                className="overflow-x-auto border-y border-border focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
                 role="region"
                 tabIndex={0}
               >
-                <div className="p-4" style={{ minWidth: `${timelineContentWidth}px` }}>
+                <div className="py-2" style={{ minWidth: `${timelineContentWidth}px` }}>
                   <div
                     className="grid items-end gap-3"
                     style={{ gridTemplateColumns: timelineGridColumns }}
@@ -2891,10 +2891,10 @@ function Roadmap({
                       ))}
                     </div>
                   </div>
-                  <ol className="mt-2 space-y-2">
+                  <ol className="divide-y divide-border">
                     {projectRange && (
                       <li
-                        className="grid items-center gap-3 border-b border-border pb-2"
+                        className="grid items-center gap-3 py-3"
                         style={{ gridTemplateColumns: timelineGridColumns }}
                       >
                         <div className="sticky left-0 z-10 min-w-0 border-r border-border bg-surface pr-3">
@@ -2978,7 +2978,7 @@ function Roadmap({
                           : 0;
                       return (
                         <li
-                          className="grid items-center gap-3 rounded-lg border-b border-border py-3"
+                          className="grid items-center gap-3 py-3"
                           key={itemId}
                           style={{ gridTemplateColumns: timelineGridColumns }}
                         >

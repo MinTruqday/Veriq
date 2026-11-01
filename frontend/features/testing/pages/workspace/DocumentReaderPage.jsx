@@ -289,7 +289,9 @@ export default function DocumentReaderPage({ project, section = [] }) {
     loadPage(0, false, selectedSheet, value ? Number(value) : null);
   };
 
-  if (loading && !document) return <LoadingState />;
+  if (loading && !document) {
+    return <LoadingState label="Đang mở tài liệu" variant="reader" />;
+  }
   if (error && !document)
     return (
       <div className="workspace-page min-w-0 space-y-4">

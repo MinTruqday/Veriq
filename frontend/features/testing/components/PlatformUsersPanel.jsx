@@ -270,7 +270,7 @@ export default function PlatformUsersPanel() {
                 minWidth: 64,
                 render: (item) => (
                   <button
-                    aria-label={`Xem chi tiết tài khoản ${item.email}`}
+                    aria-label={`Xem chi tiết tài khoản ${item.full_name || item.email}`}
                     className="icon-button h-9 w-9"
                     title="Xem chi tiết tài khoản"
                     type="button"

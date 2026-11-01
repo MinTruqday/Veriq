@@ -269,12 +269,12 @@ export function WorkspacePage({ title, description, actions, children }) {
   }, [title]);
 
   return (
-    <div className="workspace-page mx-auto w-full max-w-[1480px] min-w-0 space-y-6 py-5 sm:py-6 xl:py-8">
+    <div className="workspace-page mx-auto w-full max-w-[1600px] min-w-0 space-y-5 py-5 sm:py-6 xl:py-7">
       <header
         className={`workspace-page-header min-w-0 gap-4 ${actions ? "workspace-page-header-with-actions" : ""}`}
       >
         <div className="min-w-0">
-          <h1 className="break-words text-[28px] font-semibold leading-[1.12] tracking-[-0.04em] sm:text-[32px] xl:text-[36px]">
+          <h1 className="break-words text-[28px] font-semibold leading-[1.15] tracking-[-0.035em] sm:text-[32px]">
             {title}
           </h1>
           {description && (
@@ -388,21 +388,35 @@ export function EmptyState({ children, actionHref, actionLabel, onAction }) {
   );
 }
 
-export function LoadingState() {
+export function LoadingState({ label = "Đang tải dữ liệu", variant = "rows" }) {
   return (
-    <div className="space-y-4 py-2" role="status" aria-label="Đang tải dữ liệu" aria-busy="true">
-      <span className="sr-only">Đang tải dữ liệu</span>
-      <div aria-hidden="true" className="grid gap-3 sm:grid-cols-3">
-        <div className="skeleton h-20" />
-        <div className="skeleton h-20" />
-        <div className="skeleton h-20" />
-      </div>
-      <div aria-hidden="true" className="skeleton h-10 w-full" />
-      <div aria-hidden="true" className="space-y-2">
-        <div className="skeleton h-12 w-full" />
-        <div className="skeleton h-12 w-full" />
-        <div className="skeleton h-12 w-full" />
-      </div>
+    <div className="space-y-3 py-2" role="status" aria-label={label} aria-busy="true">
+      <span className="sr-only">{label}</span>
+      {variant === "dashboard" && (
+        <div aria-hidden="true" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((item) => (
+            <div className="skeleton h-[88px]" key={item} />
+          ))}
+        </div>
+      )}
+      {variant === "reader" ? (
+        <div
+          aria-hidden="true"
+          className="space-y-4 rounded-panel border border-border bg-surface p-6"
+        >
+          <div className="skeleton h-8 w-2/5" />
+          <div className="skeleton h-4 w-full" />
+          <div className="skeleton h-4 w-11/12" />
+          <div className="skeleton h-4 w-4/5" />
+          <div className="skeleton mt-8 h-[360px] w-full" />
+        </div>
+      ) : (
+        <div aria-hidden="true" className="space-y-2">
+          {[0, 1, 2, 3].map((item) => (
+            <div className="skeleton h-12 w-full" key={item} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

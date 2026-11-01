@@ -363,11 +363,11 @@
   }
 
   .product-heading {
-    @apply text-[24px] font-semibold leading-tight tracking-[-0.02em] text-ink md:text-[28px];
+    @apply text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink md:text-[32px];
   }
 
   .product-description {
-    @apply mt-1 max-w-[65ch] text-[13px] leading-relaxed text-ink-muted;
+    @apply mt-2 max-w-[65ch] text-[14px] leading-relaxed text-ink-muted;
   }
 
   .skeleton {

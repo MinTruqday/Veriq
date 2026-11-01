@@ -551,18 +551,20 @@ export default function ProjectsPage() {
               return (
                 <article
                   key={item._id}
-                  className="grid min-w-0 gap-5 p-5 transition hover:bg-surface-quiet lg:grid-cols-2 lg:items-center xl:grid-cols-[minmax(240px,1.2fr)_minmax(170px,0.8fr)_minmax(210px,1fr)_minmax(220px,0.9fr)]"
+                  className="grid min-w-0 gap-x-5 gap-y-3 p-5 transition hover:bg-surface-quiet lg:grid-cols-2 lg:items-center xl:grid-cols-[minmax(110px,0.68fr)_minmax(190px,1.35fr)_minmax(145px,0.92fr)_minmax(170px,1fr)_minmax(165px,0.95fr)]"
                 >
-                  <div className="flex min-w-0 items-start gap-3">
+                  <div className="min-w-0">
                     <span
-                      className="w-[110px] shrink-0 truncate font-mono text-[12px] font-semibold text-brand xl:w-[130px]"
+                      className="block truncate font-mono text-[12px] font-semibold text-brand"
                       title={item.key}
                     >
                       {item.key}
                     </span>
+                  </div>
+                  <div className="min-w-0">
                     <Link href={`/du-an/${item._id}`} className="min-w-0">
                       <strong
-                        className="line-clamp-2 break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
+                        className="line-clamp-2 break-words text-[14px] font-semibold leading-5 [overflow-wrap:anywhere]"
                         title={item.name}
                       >
                         {item.name}
@@ -623,7 +625,7 @@ export default function ProjectsPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex min-w-0 flex-col items-start gap-1.5 lg:items-end 2xl:flex-row 2xl:items-center 2xl:justify-between">
+                  <div className="flex min-w-0 flex-col items-start gap-1.5">
                     <StatusPill
                       value={item.status ? String(item.status).toUpperCase() : "Chưa có thông tin"}
                     />

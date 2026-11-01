@@ -57,6 +57,14 @@ function automationRunTitle(run) {
   return runTitlesByTrigger[run?.trigger] || "Hoạt động xử lý";
 }
 
+function sourceFactSummary(fact) {
+  const sourceType = fact?.artifact_type ? valueLabel(fact.artifact_type) : "Tài liệu nguồn";
+  const pages = Array.isArray(fact?.source_page_numbers) ? fact.source_page_numbers : [];
+  return pages.length
+    ? `${sourceType} · Trang ${pages.join(", ")}`
+    : `${sourceType} · Đoạn trích đã xác minh`;
+}
+
 function isOlderRunSnapshot(incoming, current) {
   if (!incoming || !current) return false;
   const incomingRevision = Number(incoming.revision);
@@ -653,7 +661,18 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
             </button>
           </div>
         )}
-        {loading && <LoadingState />}
+        {loading &&
+          visibleRuns.length === 0 &&
+          (compact ? (
+            <div className="grid gap-2 py-1" role="status" aria-label="Đang tải hoạt động AI">
+              <span className="sr-only">Đang tải hoạt động AI</span>
+              {[0, 1, 2].map((item) => (
+                <div aria-hidden="true" className="skeleton h-[58px] w-full" key={item} />
+              ))}
+            </div>
+          ) : (
+            <LoadingState />
+          ))}
         {canManageDefinitions && (
           <>
             <label className="grid gap-2 text-sm font-medium text-ink">
@@ -775,6 +794,7 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
         )}
         {visibleRuns.length > 0 && (
           <div className="grid gap-2 text-sm">
+            {!compact && <h3 className="text-sm font-semibold text-ink">Hoạt động gần đây</h3>}
             {visibleRuns.slice(0, compact ? 3 : 10).map((item) => (
               <button
                 className={`flex flex-wrap items-center justify-between gap-3 rounded-control border p-3 text-left transition ${item.automation_run_id === run?.automation_run_id ? "border-brand/50 bg-brand-soft" : "border-border hover:bg-surface-quiet"}`}
@@ -1148,12 +1168,7 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                 {proposalEvidence.length > 0 && (
                   <ul className="mt-2 grid gap-1 text-sm text-ink-muted">
                     {proposalEvidence.map((fact) => (
-                      <li key={fact.source_fact_id}>
-                        {fact.source || valueLabel(fact.artifact_type)}
-                        {fact.source_page_numbers?.length
-                          ? ` · Trang ${fact.source_page_numbers.join(", ")}`
-                          : ""}
-                      </li>
+                      <li key={fact.source_fact_id}>{sourceFactSummary(fact)}</li>
                     ))}
                   </ul>
                 )}
@@ -1272,17 +1287,17 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                                       key={fact.source_fact_id}
                                     >
                                       <p className="break-words text-xs text-ink-muted">
-                                        {fact.source || valueLabel(fact.artifact_type)}
-                                        {fact.source_page_numbers?.length
-                                          ? ` · Trang ${fact.source_page_numbers.join(", ")}`
-                                          : " · Đoạn trích đã xác minh"}
+                                        {sourceFactSummary(fact)}
                                       </p>
                                       <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
                                         {fact.quote}
                                       </blockquote>
                                       <details className="mt-2 text-xs text-ink-muted">
-                                        <summary className="cursor-pointer">Chi tiết nguồn</summary>
+                                        <summary className="cursor-pointer">
+                                          Thông tin nguồn
+                                        </summary>
                                         <p className="mt-1 break-all">
+                                          {fact.source ? `Vị trí nguồn: ${fact.source} · ` : ""}
                                           Mã đối tượng: {fact.artifact_id}
                                           {fact.artifact_version_id
                                             ? ` · Phiên bản: ${fact.artifact_version_id}`
@@ -1360,17 +1375,15 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                             key={fact.source_fact_id}
                           >
                             <p className="break-words text-xs text-ink-muted">
-                              {fact.source || valueLabel(fact.artifact_type)}
-                              {fact.source_page_numbers?.length
-                                ? ` · Trang ${fact.source_page_numbers.join(", ")}`
-                                : " · Đoạn trích đã xác minh"}
+                              {sourceFactSummary(fact)}
                             </p>
                             <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
                               {fact.quote}
                             </blockquote>
                             <details className="mt-2 text-xs text-ink-muted">
-                              <summary className="cursor-pointer">Chi tiết nguồn</summary>
+                              <summary className="cursor-pointer">Thông tin nguồn</summary>
                               <p className="mt-1 break-all">
+                                {fact.source ? `Vị trí nguồn: ${fact.source} · ` : ""}
                                 Mã đối tượng: {fact.artifact_id}
                                 {fact.artifact_version_id
                                   ? ` · Phiên bản: ${fact.artifact_version_id}`
