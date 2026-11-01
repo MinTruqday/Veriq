@@ -46,13 +46,9 @@ export default function TestCaseOwnerRecommendation({
       {result && (
         <div className="space-y-2 rounded-control border border-border p-3">
           <p className="text-sm text-ink-muted">
-            Đề xuất dựa trên kỹ năng đã xác nhận, mức sẵn sàng và tải kiểm thử. Đơn giá lương chỉ
-            dùng để xếp hạng phụ khi có dữ liệu phù hợp
-            {result.currency
-              ? ` theo ${result.currency} tại ngày ${result.payroll_effective_date}`
-              : ""}
-            ; thiếu đơn giá không loại người phù hợp. So ngân sách và phân bổ giờ thực hiện ở kế
-            hoạch kiểm thử. Đề xuất không tự gán người.
+            Đề xuất dựa trên kỹ năng và kinh nghiệm đã xác nhận, mức sẵn sàng và tải kiểm thử. Bảng
+            lương chỉ dùng để dự báo chi phí của kế hoạch, không dùng để xếp hạng nhân sự. Đề xuất
+            không tự gán người.
           </p>
           {result.candidates?.length ? (
             result.candidates.slice(0, 3).map((candidate) => (
@@ -67,7 +63,6 @@ export default function TestCaseOwnerRecommendation({
                       ? `Kỹ năng phù hợp: ${candidate.matched_skills.join(", ")}`
                       : "Chưa khai báo kỹ năng cần thiết"}
                     {` · ${candidate.active_case_count} ca đang được giao`}
-                    {!candidate.payroll_rate_available && " · chưa có dữ liệu đơn giá phù hợp"}
                   </p>
                 </div>
                 <button

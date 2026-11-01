@@ -52,6 +52,41 @@ function metricDays(value, openCount) {
   return Number.isFinite(numericValue) ? `${numericValue} ngày` : "Chưa đủ dữ liệu";
 }
 
+const aiCapabilityLabels = {
+  requirement_quality_analysis: "Rà soát yêu cầu",
+  requirement_template_synthesis: "Tạo mẫu yêu cầu",
+  requirement_template_review: "Rà soát mẫu yêu cầu",
+  testability_blueprint_compilation: "Lập bản đồ điều kiện kiểm thử",
+  scenario_generation: "Tạo kịch bản kiểm thử",
+  test_generation: "Tạo ca kiểm thử",
+  test_condition_generation: "Đề xuất điều kiện kiểm thử",
+  test_plan_draft_generation: "Đề xuất Test Plan",
+  test_data_generation: "Tạo dữ liệu kiểm thử",
+  impact_analysis: "Phân tích ảnh hưởng",
+  project_question: "Hỏi đáp dự án",
+  security_test_generation: "Đề xuất kiểm thử bảo mật",
+  performance_plan_generation: "Đề xuất kiểm thử hiệu năng",
+  automation_script_generation: "Tạo bản nháp mã tự động hóa",
+  causal_analysis: "Phân tích nguyên nhân khả dĩ",
+  status_report_narrative: "Soạn diễn giải báo cáo trạng thái",
+  completion_report_narrative: "Soạn diễn giải báo cáo hoàn tất",
+  lessons_learned_clustering: "Nhóm bài học kinh nghiệm",
+};
+
+function aiCapabilityLabel(value) {
+  return aiCapabilityLabels[value] || valueLabel(value);
+}
+
+function countRows(values, key) {
+  return Object.entries(values || {}).map(([name, count]) => ({
+    _id: name,
+    name,
+    count,
+    label: aiCapabilityLabel(name),
+    key,
+  }));
+}
+
 function ReportMetric({ label, value, detail }) {
   const unavailable = value === "Chưa đủ dữ liệu" || value === "Chưa có lỗi đang mở";
   const unavailableDetail =
@@ -467,23 +502,33 @@ export default function ReportsPage({ project }) {
                     )}
                     {value.ai && (
                       <>
-                        <ReportMetric
-                          label="Lượt AI gặp lỗi hoặc dùng chế độ dự phòng"
-                          value={metricCount(value.ai.degraded_count)}
-                          detail={
-                            value.ai.degraded_rate === null || value.ai.degraded_rate === undefined
-                              ? "Chưa đủ dữ liệu để tính tỷ lệ"
-                              : `${metricRate(value.ai.degraded_rate)} số lượt có dữ liệu AI`
-                          }
-                        />
+                        {(() => {
+                          const requests = value.ai.ai_request_metrics || {};
+                          const requestCount = Number(requests.request_count || 0);
+                          const degradedCount = Number(requests.degraded_count || 0);
+                          const degradedRate = requestCount ? degradedCount / requestCount : null;
+                          return (
+                            <ReportMetric
+                              label="Yêu cầu AI cần xem lại hoặc gặp lỗi"
+                              value={requestCount ? metricCount(degradedCount) : "Chưa đủ dữ liệu"}
+                              detail={
+                                degradedRate === null
+                                  ? "Chưa ghi nhận lượt yêu cầu AI"
+                                  : `${metricRate(degradedRate)} trên ${metricCount(requestCount)} lượt yêu cầu`
+                              }
+                            />
+                          );
+                        })()}
                         <ReportMetric
                           label="Thời gian phản hồi AI trung bình"
                           value={
-                            value.ai.average_latency_ms === null ||
-                            value.ai.average_latency_ms === undefined ||
-                            !Number.isFinite(Number(value.ai.average_latency_ms))
+                            value.ai.ai_request_metrics?.average_latency_ms === null ||
+                            value.ai.ai_request_metrics?.average_latency_ms === undefined ||
+                            !Number.isFinite(
+                              Number(value.ai.ai_request_metrics?.average_latency_ms),
+                            )
                               ? "Chưa đủ dữ liệu"
-                              : `${Math.round(Number(value.ai.average_latency_ms))} ms`
+                              : `${Math.round(Number(value.ai.ai_request_metrics.average_latency_ms))} ms`
                           }
                         />
                       </>
@@ -557,23 +602,88 @@ export default function ReportsPage({ project }) {
                 {value.ai && (
                   <details className="self-start rounded-xl border border-border bg-surface px-5 py-4">
                     <summary className="cursor-pointer font-semibold text-ink">
-                      Chi tiết sử dụng AI
+                      Kết quả AI và phản hồi duyệt
                     </summary>
-                    <div className="mt-4">
-                      <DataTable
-                        items={Object.entries(value.ai.model_versions || {}).map(
-                          ([model, count]) => ({
-                            _id: model,
-                            model,
-                            count,
-                          }),
-                        )}
-                        empty="Chưa có lần chạy AI"
-                        columns={[
-                          { key: "model", label: "Mô hình xử lý" },
-                          { key: "count", label: "Lượt sử dụng" },
-                        ]}
-                      />
+                    <div className="mt-4 space-y-5">
+                      <section>
+                        <h3 className="mb-2 text-sm font-medium">Yêu cầu AI theo chức năng</h3>
+                        <DataTable
+                          items={countRows(value.ai.ai_request_metrics?.by_capability, "request")}
+                          empty="Chưa ghi nhận yêu cầu AI"
+                          columns={[
+                            { key: "label", label: "Chức năng" },
+                            { key: "count", label: "Số lượt" },
+                          ]}
+                        />
+                        <p className="mt-2 text-xs text-ink-muted">
+                          Thành công:{" "}
+                          {metricCount(value.ai.ai_request_metrics?.by_status?.SUCCESS || 0)} · Cần
+                          xem lại: {metricCount(value.ai.ai_request_metrics?.degraded_count || 0)}
+                          {value.ai.ai_request_metrics?.sample_truncated
+                            ? " · Danh sách đang hiển thị tối đa 10.000 lượt gần nhất"
+                            : ""}
+                        </p>
+                      </section>
+                      <section>
+                        <h3 className="mb-2 text-sm font-medium">Kết quả AI đã lưu</h3>
+                        <DataTable
+                          items={countRows(value.ai.ai_result_metrics?.by_capability, "result")}
+                          empty="Chưa có kết quả AI được lưu"
+                          columns={[
+                            { key: "label", label: "Chức năng" },
+                            { key: "count", label: "Số kết quả" },
+                          ]}
+                        />
+                        <p className="mt-2 text-xs text-ink-muted">
+                          Có dẫn chứng nguồn:{" "}
+                          {metricCount(value.ai.ai_result_metrics?.grounded_record_count || 0)} ·
+                          Chưa có tham chiếu nguồn:{" "}
+                          {metricCount(value.ai.ai_result_metrics?.without_evidence_ref_count || 0)}
+                          {value.ai.ai_result_metrics?.sample_truncated
+                            ? " · Danh sách đang hiển thị tối đa 10.000 kết quả gần nhất"
+                            : ""}
+                        </p>
+                      </section>
+                      <section>
+                        <h3 className="mb-2 text-sm font-medium">Quyết định duyệt đề xuất</h3>
+                        <DataTable
+                          items={Object.entries(value.ai.proposal_status || {}).map(
+                            ([status, count]) => ({ _id: status, status, count }),
+                          )}
+                          empty="Chưa có đề xuất được duyệt hoặc từ chối"
+                          columns={[
+                            {
+                              key: "status",
+                              label: "Quyết định",
+                              render: (item) => valueLabel(item.status),
+                            },
+                            { key: "count", label: "Số lượng" },
+                          ]}
+                        />
+                        <p className="mt-2 text-xs text-ink-muted">
+                          Tỷ lệ được chấp nhận:{" "}
+                          {value.ai.proposal_acceptance_rate == null
+                            ? "Chưa đủ dữ liệu"
+                            : metricRate(value.ai.proposal_acceptance_rate)}{" "}
+                          · Đề xuất bị từ chối có ghi lý do:{" "}
+                          {metricCount(value.ai.rejection_review_note_recorded_count || 0)} · Chưa
+                          ghi lý do:{" "}
+                          {metricCount(value.ai.rejection_review_note_missing_count || 0)}
+                        </p>
+                      </section>
+                      <section>
+                        <h3 className="mb-2 text-sm font-medium">Phiên bản mô hình xử lý</h3>
+                        <DataTable
+                          items={Object.entries(
+                            value.ai.ai_request_metrics?.model_versions || {},
+                          ).map(([model, count]) => ({ _id: model, model, count }))}
+                          empty="Chưa ghi nhận phiên bản mô hình"
+                          columns={[
+                            { key: "model", label: "Phiên bản" },
+                            { key: "count", label: "Số lượt" },
+                          ]}
+                        />
+                      </section>
                     </div>
                   </details>
                 )}

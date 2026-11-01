@@ -30,6 +30,10 @@ from src.modules.projects.services.skill_profiles import (
     recommend_test_run_assignments,
     update_own_skill_profile,
 )
+from src.modules.projects.services.project_complexity import (
+    assess_project_complexity,
+    get_latest_project_complexity,
+)
 
 router = APIRouter(prefix="/kiem-thu", tags=["Dự án kiểm thử"])
 
@@ -40,6 +44,19 @@ def _accept_language(request):
         if re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", locale):
             return locale
     return None
+
+
+@router.get("/du-an/{project_id}/do-kho-ai")
+async def latest_project_complexity(project_id: str, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await get_latest_project_complexity(project_id, user))
+
+
+@router.post("/du-an/{project_id}/do-kho-ai/danh-gia")
+async def run_project_complexity_assessment(
+    project_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await assess_project_complexity(project_id, user))
 
 
 @router.get("/du-an/{project_id}/ho-so-nang-luc/cua-toi")

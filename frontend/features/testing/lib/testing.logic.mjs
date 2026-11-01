@@ -594,6 +594,41 @@ export function messageOf(reason) {
       "Cần điền các trường mở rộng bắt buộc trước khi gửi duyệt hoặc duyệt ca.",
     TEST_CASE_CUSTOM_FIELD_UNKNOWN:
       "Có trường mở rộng không còn cấu hình trong dự án. Hãy bỏ trường cũ hoặc tải lại dữ liệu.",
+    PROJECT_COMPLEXITY_EVIDENCE_REQUIRED:
+      "Chưa có tài liệu được phép dùng AI hoặc yêu cầu đã duyệt để đánh giá dự án.",
+    PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE:
+      "Phạm vi tài liệu vượt giới hạn cho một lượt đánh giá. Hãy thu hẹp nguồn hoặc chia phạm vi trước khi chạy; hệ thống chưa đánh giá một phần.",
+    PROJECT_COMPLEXITY_RESPONSE_INVALID:
+      "AI trả về hồ sơ đánh giá chưa đầy đủ. Không có kết quả nào được lưu.",
+    PROJECT_COMPLEXITY_DIMENSIONS_INVALID:
+      "AI chưa đánh giá đủ các chiều cần thiết. Không có kết quả nào được lưu.",
+    PROJECT_COMPLEXITY_EVIDENCE_REFERENCE_INVALID:
+      "AI dẫn đến nguồn không thuộc phạm vi dự án. Không có kết quả nào được lưu.",
+    PROJECT_COMPLEXITY_GROUNDING_REQUIRED:
+      "AI chưa đưa ra căn cứ cho một mức đánh giá. Không có kết quả nào được lưu.",
+    PROJECT_COMPLEXITY_GROUNDING_INVALID:
+      "Một trích dẫn không khớp nguyên văn với nguồn. Không có kết quả nào được lưu.",
+    PROJECT_COMPLEXITY_SOURCES_CHANGED:
+      "Nguồn đã thay đổi trong lúc đánh giá. Hãy chạy lại để dùng phiên bản mới nhất.",
+    EXECUTION_RESULT_NOT_RECORDED: "Cần lưu kết quả kiểm thử trước khi yêu cầu AI phân tích.",
+    EXECUTION_ASSISTANCE_UNAVAILABLE:
+      "Chưa thể phân tích kết quả lúc này. Kết quả kiểm thử vẫn được giữ nguyên; bạn có thể thử lại.",
+    EXECUTION_ASSISTANCE_RESPONSE_INVALID:
+      "AI trả về đề xuất không đầy đủ. Không có thay đổi nào được áp dụng.",
+    EXECUTION_ASSISTANCE_DEFECT_STATUS_INVALID:
+      "Chỉ có thể đề xuất bản nháp lỗi cho kết quả Không đạt hoặc Bị chặn.",
+    EXECUTION_ASSISTANCE_REFERENCE_INVALID:
+      "AI dẫn đến nguồn ngoài kết quả kiểm thử này. Không có đề xuất nào được áp dụng.",
+    EXECUTION_ASSISTANCE_STEP_INVALID:
+      "AI đề cập đến bước không tồn tại trong phiên bản ca kiểm thử đang chạy.",
+    EXECUTION_ASSISTANCE_GROUNDING_INVALID:
+      "Có trích dẫn không khớp với nội dung đã lưu. Không có đề xuất nào được áp dụng.",
+    EXECUTION_ASSISTANCE_GROUNDING_REQUIRED: "Đề xuất thiếu căn cứ từ kết quả kiểm thử đã lưu.",
+    EXECUTION_ASSISTANCE_EVIDENCE_REQUIRED: "Chưa có nội dung kết quả kiểm thử để phân tích.",
+    EXECUTION_ASSISTANCE_SCOPE_TOO_LARGE:
+      "Nội dung kết quả vượt giới hạn phân tích. Hãy bổ sung kết quả ngắn gọn hơn.",
+    EXECUTION_ASSISTANCE_SOURCE_CHANGED:
+      "Kết quả kiểm thử đã thay đổi trong lúc phân tích. Hãy yêu cầu phân tích lại.",
   };
   if (automationMessages[reason?.code]) return automationMessages[reason.code];
   if (

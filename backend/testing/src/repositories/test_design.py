@@ -629,9 +629,14 @@ class TestDesignRepository:
         await database.value.performance_plan_drafts.insert_one(value)
         return value
 
-    async def insert_scenario(self, value):
-        await database.value.test_scenarios.insert_one(value)
+    async def insert_scenario(self, value, session=None):
+        await database.value.test_scenarios.insert_one(value, session=session)
         return value
+
+    async def insert_scenarios(self, values, session=None):
+        if values:
+            await database.value.test_scenarios.insert_many(values, ordered=True, session=session)
+        return values
 
     async def list_scenarios(self, query, sort_field, direction, limit):
         return await database.value.test_scenarios.find(query).sort(

@@ -3,8 +3,6 @@ import hashlib
 import logging
 import re
 import unicodedata
-from datetime import datetime, timezone
-from decimal import Decimal
 from itertools import chain
 
 import httpx
@@ -517,7 +515,7 @@ def _availability_rank(value):
     return {"AVAILABLE": 0, "LIMITED": 1}.get(value, 2)
 
 
-def _owner_score_factors(candidates, profiles, payroll_costs, currency):
+def _owner_score_factors(candidates, profiles):
     member_ids = list(candidates)
     max_workload = max(
         (candidates[member_id]["active_case_count"] + candidates[member_id]["active_run_count"] for member_id in member_ids),
@@ -527,10 +525,6 @@ def _owner_score_factors(candidates, profiles, payroll_costs, currency):
         any(item.get("confirmed") is True for item in (profiles.get(member_id) or {}).get("experiences", []))
         for member_id in member_ids
     )
-    has_comparable_payroll = bool(currency) and all(member_id in payroll_costs for member_id in member_ids)
-    payroll_values = [payroll_costs[member_id] for member_id in member_ids] if has_comparable_payroll else []
-    lowest_rate = min(payroll_values) if payroll_values else None
-    highest_rate = max(payroll_values) if payroll_values else None
     results = {}
     for member_id in member_ids:
         candidate = candidates[member_id]
@@ -571,18 +565,11 @@ def _owner_score_factors(candidates, profiles, payroll_costs, currency):
                 / max(len(candidate["matched_skills"]), 1),
                 3,
             )
-        if has_comparable_payroll:
-            spread = highest_rate - lowest_rate
-            factors["payroll_cost"] = (
-                round(float((highest_rate - payroll_costs[member_id]) / spread), 3)
-                if spread else 1.0
-            )
         results[member_id] = {
             "factors": factors,
             "factor_status": {
                 "skill_level": "ASSESSED" if skill_values else "NOT_ASSESSED_NEUTRAL",
                 "experience_relevance": "ASSESSED" if has_experience_data else "MISSING_FOR_COMPARISON",
-                "payroll_cost": "ASSESSED" if has_comparable_payroll else "MISSING_OR_INCOMPARABLE",
             },
             "score": round(sum(factors.values()) / len(factors), 3),
         }
@@ -977,14 +964,11 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     await get_project(project_id, user, "project.members.read")
 
     project = await database.value.projects.find_one(
-        {"_id": project_id}, {"commercial_terms": 1, "locale": 1}
+        {"_id": project_id}, {"locale": 1}
     )
-    commercial_terms = (project or {}).get("commercial_terms") or {}
     output_language = output_language or (project or {}).get("locale")
     if not output_language:
         raise HTTPException(status_code=409, detail={"code": "PROJECT_OUTPUT_LOCALE_REQUIRED"})
-    currency = commercial_terms.get("currency")
-    effective_date = datetime.now(timezone.utc).date().isoformat() if currency else None
 
     memberships = await project_repository.list_members(project_id)
     eligible = [
@@ -1021,25 +1005,6 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         case_workloads=case_workload,
     )
     identities = await load_user_identities(eligible_ids)
-    payroll_costs = {}
-    if eligible_ids and currency and effective_date:
-        active_rates = await database.value.payroll_rates.find(
-            {
-                "user_id": {"$in": eligible_ids},
-                "currency": currency,
-                "valid_from": {"$lte": effective_date},
-                "$or": [
-                    {"valid_until": None},
-                    {"valid_until": {"$gte": effective_date}},
-                ],
-            },
-            {"user_id": 1, "hourly_cost": 1, "valid_from": 1},
-        ).sort([("user_id", 1), ("valid_from", -1)]).to_list(10000)
-        for rate in active_rates:
-            payroll_costs.setdefault(
-                rate["user_id"], Decimal(str(rate["hourly_cost"]))
-            )
-
     qualified_candidates = []
     for candidate in ranked:
         member_id = candidate["user_id"]
@@ -1056,27 +1021,20 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
                 "active_project_count": len(project_workload[member_id]),
             }
         )
-    candidates = [
-        {
-            **candidate,
-            "payroll_rate_available": candidate["user_id"] in payroll_costs,
-        }
-        for candidate in qualified_candidates
-    ]
+    candidates = list(qualified_candidates)
     candidates.sort(
         key=lambda item: (
             -item["score"],
             _availability_rank(item["availability"]),
             item["active_project_count"],
             item["active_case_count"],
-            payroll_costs.get(item["user_id"], Decimal("Infinity")),
             item["active_run_count"],
             item["user_id"],
         )
     )
 
     candidates_by_user = {item["user_id"]: item for item in candidates}
-    score_factors = _owner_score_factors(candidates_by_user, profiles_by_user, payroll_costs, currency)
+    score_factors = _owner_score_factors(candidates_by_user, profiles_by_user)
     ai_candidate_inputs = []
     facts_by_user = {}
     for candidate in candidates:
@@ -1111,12 +1069,6 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             ("active-runs", f"Số đợt chạy đang tham gia: {candidate['active_run_count']}"),
         ):
             facts.append({"fact_id": fact_id, "description": description})
-        payroll_factor = score_factors[member_id]["factors"].get("payroll_cost")
-        if payroll_factor is not None:
-            facts.append({
-                "fact_id": "payroll-comparison",
-                "description": f"Hệ số chi phí tương đối đã chuẩn hóa: {payroll_factor}",
-            })
         facts_by_user[member_id] = facts
         ai_candidate_inputs.append({
             "candidate_id": member_id,
@@ -1129,9 +1081,6 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             "active_project_count": len(project_workload[member_id]),
             "active_case_count": candidate["active_case_count"],
             "active_run_count": candidate["active_run_count"],
-            "payroll_cost_factor": (
-                score_factors[member_id]["factors"].get("payroll_cost")
-            ),
         })
     ai_result = await ai_automation_client.recommend_test_case_owners(
         project_id, output_language, required, ai_candidate_inputs
@@ -1169,15 +1118,6 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         if not eligible
         else "NO_CONFIRMED_SKILL_MATCH"
     )
-    payroll_data_status = (
-        "MISSING_PROJECT_CURRENCY"
-        if not currency
-        else "COMPLETE"
-        if all(item["user_id"] in payroll_costs for item in qualified_candidates)
-        else "PARTIAL"
-        if payroll_costs
-        else "MISSING_RATES"
-    )
     return {
         "project_id": project_id,
         "draft_id": payload.draft_id,
@@ -1186,19 +1126,15 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         "recommended_user_id": candidates[0]["user_id"] if candidates else None,
         "recommended_user_label": candidates[0]["user_label"] if candidates else None,
         "status": status,
-        "payroll_data_status": payroll_data_status,
-        "currency": currency,
-        "payroll_effective_date": effective_date,
-        "method": "AI_RANKED_CONFIRMED_SKILLS_EXPERIENCE_AVAILABILITY_WORKLOAD_AND_PAYROLL",
+        "method": "AI_RANKED_CONFIRMED_SKILLS_EXPERIENCE_AVAILABILITY_AND_WORKLOAD",
         "recommendation_engine": "AI",
         "score_method": "EQUAL_WEIGHT_MEAN_OF_AVAILABLE_NORMALIZED_FACTORS",
         "score_note": "Điểm 0–1 là mức phù hợp tương đối trong nhóm ứng viên đủ điều kiện, không phải xác suất thành công.",
         "score_factors_considered": list(score_factors[candidates[0]["user_id"]]["factors"]) if candidates else [],
         "score_factors_excluded": [
-            key for key in ("experience_relevance", "payroll_cost")
-            if candidates and score_factors[candidates[0]["user_id"]]["factor_status"][key] in {
-                "MISSING_FOR_COMPARISON", "MISSING_OR_INCOMPARABLE"
-            }
+            key for key in ("experience_relevance",)
+            if candidates and score_factors[candidates[0]["user_id"]]["factor_status"][key]
+            == "MISSING_FOR_COMPARISON"
         ],
         "recommendation_warnings": ai_result.get("warnings") or [],
         "applies_automatically": False,

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import StructuredValueEditor from "./StructuredValueEditor";
+import { testingApi } from "../services/testing.service";
 
 const scopeFields = [
   ["scope_in", "Trong phạm vi"],
@@ -126,8 +127,60 @@ export default function TestPlanEditor({
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [aiError, setAiError] = useState("");
   const savingRef = useRef(false);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
+  const requestAiPlanDraft = async () => {
+    if (aiBusy || !value.requirement_version_ids.length) return;
+    setAiBusy(true);
+    setAiError("");
+    setAiSuggestion(null);
+    try {
+      const result = await testingApi.suggestTestPlanDraft(projectId, {
+        requirement_version_ids: value.requirement_version_ids,
+        instruction: aiInstruction,
+      });
+      setAiSuggestion(result);
+    } catch (reason) {
+      setAiError(reason.message || "Không thể tạo gợi ý kế hoạch");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+  const applyAiPlanDraft = () => {
+    const suggestion = aiSuggestion?.suggestion;
+    if (!suggestion) return;
+    setValue((current) => ({
+      ...current,
+      objective: suggestion.objective || current.objective,
+      scope_in: suggestion.scope_in?.length ? suggestion.scope_in : current.scope_in,
+      scope_out: suggestion.scope_out?.length ? suggestion.scope_out : current.scope_out,
+      test_approach: suggestion.test_approach || current.test_approach,
+      test_types: suggestion.test_types?.length ? suggestion.test_types : current.test_types,
+      entry_criteria: suggestion.entry_criteria?.length
+        ? suggestion.entry_criteria
+        : current.entry_criteria,
+      exit_criteria: suggestion.exit_criteria?.length
+        ? suggestion.exit_criteria
+        : current.exit_criteria,
+      risks: suggestion.risks?.length ? suggestion.risks : current.risks,
+      assumptions: suggestion.assumptions?.length ? suggestion.assumptions : current.assumptions,
+      constraints: suggestion.constraints?.length ? suggestion.constraints : current.constraints,
+      test_data_plan: {
+        ...current.test_data_plan,
+        sources: suggestion.data_sources?.length
+          ? suggestion.data_sources
+          : current.test_data_plan.sources,
+        preparation: suggestion.data_preparation || current.test_data_plan.preparation,
+        privacy: suggestion.data_privacy || current.test_data_plan.privacy,
+        reset_procedure: suggestion.data_reset || current.test_data_plan.reset_procedure,
+      },
+    }));
+    setAiSuggestion(null);
+  };
   return (
     <form
       className="space-y-5 p-5"
@@ -197,6 +250,95 @@ export default function TestPlanEditor({
       }}
     >
       {error && <p className="text-sm text-danger">{error}</p>}
+      {!readOnly && (
+        <section
+          className="space-y-3 rounded-control border border-border p-4"
+          aria-label="Gợi ý kế hoạch từ AI"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold">Gợi ý kế hoạch từ AI</h3>
+              <p className="mt-1 text-sm text-ink-muted">
+                Chỉ dựa trên các phiên bản yêu cầu đã chọn. AI không lưu hoặc duyệt kế hoạch.
+              </p>
+            </div>
+            <button
+              className="secondary-button border-violet-300 text-violet-800"
+              type="button"
+              disabled={aiBusy || !value.requirement_version_ids.length}
+              onClick={requestAiPlanDraft}
+            >
+              {aiBusy ? "Đang tạo gợi ý" : "Tạo gợi ý"}
+            </button>
+          </div>
+          <label className="field-label block">
+            Hướng dẫn bổ sung
+            <textarea
+              className="apple-input mt-2 min-h-16"
+              value={aiInstruction}
+              disabled={aiBusy || readOnly}
+              onChange={(event) => setAiInstruction(event.target.value)}
+            />
+          </label>
+          {aiError && (
+            <p role="alert" className="text-sm text-danger">
+              {aiError}
+            </p>
+          )}
+          {aiSuggestion?.suggestion && (
+            <div className="space-y-3 rounded-control border border-violet-200 p-4">
+              <p className="text-sm font-medium text-violet-800">Bản xem trước, chưa áp dụng</p>
+              <p className="text-sm">
+                {aiSuggestion.suggestion.objective || "Chưa đủ căn cứ đề xuất mục tiêu."}
+              </p>
+              <div className="grid gap-3 text-sm md:grid-cols-2">
+                <div>
+                  <p className="font-medium">Trong phạm vi</p>
+                  <ul className="list-disc pl-5">
+                    {aiSuggestion.suggestion.scope_in?.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-medium">Ngoài phạm vi</p>
+                  <ul className="list-disc pl-5">
+                    {aiSuggestion.suggestion.scope_out?.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              {!!aiSuggestion.suggestion.evidence_quotes?.length && (
+                <details className="text-sm">
+                  <summary className="cursor-pointer">Căn cứ từ yêu cầu nguồn</summary>
+                  <ul className="mt-2 space-y-2">
+                    {aiSuggestion.suggestion.evidence_quotes.map((item, index) => (
+                      <li
+                        className="border-l-2 border-violet-300 pl-3"
+                        key={`${item.evidence_ref}-${index}`}
+                      >
+                        <span className="text-ink-muted">{item.evidence_ref}: </span>
+                        {item.quote}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {!!aiSuggestion.warnings?.length && (
+                <ul className="list-disc pl-5 text-sm text-ink-muted">
+                  {aiSuggestion.warnings.map((item, index) => (
+                    <li key={`${item}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              )}
+              <button className="apple-button" type="button" onClick={applyAiPlanDraft}>
+                Áp dụng vào biểu mẫu
+              </button>
+            </div>
+          )}
+        </section>
+      )}
       <fieldset disabled={readOnly || saving} className="min-w-0 space-y-5">
         <section className="min-w-0 space-y-4" aria-labelledby="test-plan-basics-heading">
           <div>

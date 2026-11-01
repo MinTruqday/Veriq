@@ -280,7 +280,11 @@ export default function TestDesignPage({ project, workspaceView }) {
         operationValues,
         memberResult,
       ] = await Promise.all([
-        (showCases || showAgentRuns || showScenarios || showAdequacy) &&
+        (showCases ||
+          showAgentRuns ||
+          showScenarios ||
+          showAdequacy ||
+          workspaceView === "test-data") &&
         permissions.includes("requirement.read")
           ? testingApi.listRequirements(project._id, {
               page_size: 500,
@@ -682,6 +686,8 @@ export default function TestDesignPage({ project, workspaceView }) {
         name: dataSetForm.name,
         variables: dataSetForm.variables || {},
         secret_refs: dataSetForm.secretRefs || {},
+        generation_source: dataSetForm.generationSource || "USER",
+        source_requirement_version_ids: dataSetForm.sourceRequirementVersionIds || [],
       });
       setDataSetForm(createDataSetForm());
       setCreatingDataSet(false);
@@ -2753,6 +2759,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       {workspaceView === "test-data" && (
         <DataSetsPanel
           projectId={project._id}
+          requirements={requirements}
           can={can}
           canRead={canReadTestData}
           items={dataSets}

@@ -25,9 +25,10 @@ def with_tool_access(
     owner_domain: CapabilityDomain | None = None,
     label: str | None = None,
     user_selectable: bool = False,
+    description: str | None = None,
 ) -> Callable:
     def decorate(function: Callable):
-        value = tool(function)
+        value = tool(function, description=description) if description else tool(function)
         value.metadata = {
             "domains": list(domains),
             "owner_domain": owner_domain,

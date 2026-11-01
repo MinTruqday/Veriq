@@ -428,47 +428,130 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     setResumeContext(null);
     setRun(await testingApi.getRun(run._id));
   };
-  const createDefectFromResult = async (result, version) => {
-    if (defectCreateInFlight.current.has(result._id)) return;
-    defectCreateInFlight.current.add(result._id);
-    setCreatingDefectResultIds((current) => new Set(current).add(result._id));
-    const operationKey = `${project._id}:${result._id}`;
-    let idempotencyKey = defectCreateOperations.current.get(operationKey);
-    if (!idempotencyKey) {
-      idempotencyKey = crypto.randomUUID();
-      defectCreateOperations.current.set(operationKey, idempotencyKey);
-    }
-    try {
-      await testingApi.createDefect(project._id, {
-        idempotency_key: idempotencyKey,
-        project_id: project._id,
-        title: `Lỗi khi thực thi ${version.test_case_key} ${version.title}`,
-        description_doc: textDoc(`Phát hiện trong lần chạy ${run.name}`),
-        steps_to_reproduce: version.steps || [],
-        actual_result_doc: result.actual_result_doc || textDoc(""),
-        expected_result_doc: version.expected_result_doc || textDoc(""),
-        severity: "major",
-        priority: version.priority || "medium",
-        environment: run.environment || "",
-        build: run.build || "",
-        attachments: result.attachments || [],
-        linked_test_result_id: result._id,
-        linked_test_case_version_id: version._id,
-        linked_requirement_version_ids: version.requirement_version_ids || [],
-      });
-      const refreshedRun = await testingApi.getRun(run._id);
-      setRun(refreshedRun);
-      defectCreateOperations.current.delete(operationKey);
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      defectCreateInFlight.current.delete(result._id);
-      setCreatingDefectResultIds((current) => {
-        const next = new Set(current);
-        next.delete(result._id);
-        return next;
-      });
-    }
+  const createDefectFromResult = async (result, version, aiDraft = null) => {
+    const defaultSteps = (version.steps || [])
+      .map((step) => docText(step.action_doc))
+      .filter(Boolean)
+      .join("\n");
+    const defaultExpected = (version.steps || [])
+      .map((step) => docText(step.expected_doc))
+      .filter(Boolean)
+      .join("\n");
+    const knownPriorities = ["critical", "high", "medium", "low"];
+    const initialPriority = String(version.priority || "").toLowerCase();
+    await ask({
+      title: aiDraft ? "Rà soát bản nháp lỗi từ AI" : "Tạo lỗi từ kết quả kiểm thử",
+      description: aiDraft
+        ? "AI chỉ tạo bản nháp dựa trên kết quả đã lưu. Kiểm tra và chỉnh các trường, sau đó xác nhận để tạo lỗi."
+        : `Kiểm tra thông tin của ${version.test_case_key} trước khi tạo lỗi liên kết với lần chạy ${run.name}.`,
+      confirmLabel: "Xác nhận tạo lỗi",
+      fields: [
+        {
+          name: "title",
+          label: "Tiêu đề",
+          initialValue:
+            aiDraft?.title || `Lỗi khi thực thi ${version.test_case_key} ${version.title}`,
+          required: true,
+          autoFocus: true,
+        },
+        {
+          name: "description",
+          label: "Mô tả",
+          initialValue: aiDraft?.description || `Phát hiện trong lần chạy ${run.name}`,
+          required: true,
+          multiline: true,
+        },
+        {
+          name: "steps",
+          label: "Các bước tái hiện",
+          initialValue: aiDraft?.steps_to_reproduce?.join("\n") || defaultSteps,
+          multiline: true,
+        },
+        {
+          name: "expected",
+          label: "Kết quả mong đợi",
+          initialValue: aiDraft?.expected_result || defaultExpected,
+          multiline: true,
+        },
+        {
+          name: "actual",
+          label: "Kết quả thực tế",
+          initialValue: aiDraft?.actual_result || docText(result.actual_result_doc),
+          multiline: true,
+        },
+        {
+          name: "severity",
+          label: "Mức độ ảnh hưởng",
+          required: true,
+          options: [
+            { value: "", label: "Chọn mức độ" },
+            { value: "blocker", label: "Chặn toàn bộ" },
+            { value: "critical", label: "Nghiêm trọng" },
+            { value: "major", label: "Lớn" },
+            { value: "minor", label: "Nhỏ" },
+            { value: "trivial", label: "Không đáng kể" },
+          ],
+        },
+        {
+          name: "priority",
+          label: "Ưu tiên xử lý",
+          required: true,
+          initialValue: knownPriorities.includes(initialPriority) ? initialPriority : "",
+          options: [
+            { value: "", label: "Chọn mức ưu tiên" },
+            { value: "critical", label: "Khẩn cấp" },
+            { value: "high", label: "Cao" },
+            { value: "medium", label: "Trung bình" },
+            { value: "low", label: "Thấp" },
+          ],
+        },
+      ],
+      onConfirm: async (values) => {
+        if (defectCreateInFlight.current.has(result._id)) return;
+        defectCreateInFlight.current.add(result._id);
+        setCreatingDefectResultIds((current) => new Set(current).add(result._id));
+        const operationKey = `${project._id}:${result._id}`;
+        let idempotencyKey = defectCreateOperations.current.get(operationKey);
+        if (!idempotencyKey) {
+          idempotencyKey = crypto.randomUUID();
+          defectCreateOperations.current.set(operationKey, idempotencyKey);
+        }
+        try {
+          await testingApi.createDefect(project._id, {
+            idempotency_key: idempotencyKey,
+            project_id: project._id,
+            title: values.title,
+            description_doc: textDoc(values.description),
+            steps_to_reproduce: values.steps
+              .split("\n")
+              .map((step) => step.trim())
+              .filter(Boolean)
+              .map((action) => ({ action_doc: textDoc(action), expected_doc: textDoc("") })),
+            actual_result_doc: textDoc(values.actual),
+            expected_result_doc: textDoc(values.expected),
+            severity: values.severity,
+            priority: values.priority,
+            environment: run.environment || "",
+            build: run.build || "",
+            attachments: result.attachments || [],
+            linked_test_result_id: result._id,
+            linked_test_case_version_id: version._id,
+            linked_requirement_version_ids: version.requirement_version_ids || [],
+          });
+          setRun(await testingApi.getRun(run._id));
+          defectCreateOperations.current.delete(operationKey);
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        } finally {
+          defectCreateInFlight.current.delete(result._id);
+          setCreatingDefectResultIds((current) => {
+            const next = new Set(current);
+            next.delete(result._id);
+            return next;
+          });
+        }
+      },
+    });
   };
   const updatePlan = async (item) => {
     setEditingPlan(item);

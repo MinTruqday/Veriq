@@ -60,6 +60,7 @@ from src.modules.design.services.test_case_automation import (
 from src.modules.design.services.test_scenario import (
     archive_test_scenario_record,
     clone_test_scenario_record,
+    create_test_scenario_draft_batch,
     create_test_scenario_record,
     generate_test_scenario_records,
     get_test_scenario_record,
@@ -138,6 +139,15 @@ async def create_scenario(
     project_id: str, payload: ScenarioCreate, user: CurrentUser = Depends(get_current_user)
 ):
     return envelope(await create_test_scenario_record(project_id, payload, user), revision=1)
+
+
+@router.post("/du-an/{project_id}/kich-ban-kiem-thu/ban-nhap/lo", status_code=201)
+async def save_generated_scenario_drafts(
+    project_id: str,
+    payload: list[ScenarioCreate],
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await create_test_scenario_draft_batch(project_id, payload, user))
 
 
 @router.get("/du-an/{project_id}/kich-ban-kiem-thu")

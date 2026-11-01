@@ -12,6 +12,7 @@ import StructuredValueEditor, {
 
 export default function DataSetsPanel({
   projectId,
+  requirements = [],
   can,
   canRead,
   items,
@@ -116,6 +117,9 @@ export default function DataSetsPanel({
     >
       {can("testdata.create") && (
         <DataSetCreateModal
+          projectId={projectId}
+          requirements={requirements}
+          can={can}
           isOpen={isCreating}
           onClose={() => {
             if (!saving) setCreating(false);

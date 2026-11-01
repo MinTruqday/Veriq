@@ -12,15 +12,19 @@ from src.core.common import (
     new_id,
     now,
     optimistic_patch,
+    plain_text,
     require_action_policy,
     sort_spec,
 )
 from src.core.database import database
+from src.core.source_evidence import split_source_evidence
 from src.core.human_decisions import require_automation_publication_authority
 from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
 from src.repositories.test_plan import test_plan_repository
 from src.repositories.project import project_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.modules.design.services.test_case_records import require_current_baselined_version
 
 
 LEGACY_PLAN_SNAPSHOT_FIELDS = (
@@ -683,3 +687,68 @@ async def clone_test_plan_record(plan_id, user):
             )
             await emit_test_plan_changed(cloned, user, session=session)
     return cloned
+
+
+async def generate_test_plan_draft_suggestion(project_id, payload, user):
+    await get_project(project_id, user, "testplan.create")
+    requirement_ids = list(dict.fromkeys(payload.requirement_version_ids))
+    if len(requirement_ids) != len(payload.requirement_version_ids):
+        raise HTTPException(422, detail={"code": "DUPLICATE_REQUIREMENT_VERSION"})
+    versions = await database.value.requirement_versions.find({
+        "project_id": project_id,
+        "_id": {"$in": requirement_ids},
+        "status": "BASELINED",
+    }).to_list(len(requirement_ids))
+    if len(versions) != len(requirement_ids):
+        raise HTTPException(422, detail={"code": "TEST_PLAN_REQUIREMENT_NOT_BASELINED"})
+    for version in versions:
+        await require_current_baselined_version(version)
+    criteria = await database.value.acceptance_criteria.find({
+        "project_id": project_id,
+        "requirement_version_id": {"$in": requirement_ids},
+    }).to_list(1000)
+    evidence = []
+    source_text = {}
+    for version in versions:
+        content = str(version.get("plain_text_projection") or plain_text(version.get("content_doc", {}))).strip()
+        if content:
+            evidence.extend(split_source_evidence("requirement_version", version["_id"], content))
+            source_text[version["_id"]] = content
+    for criterion in criteria:
+        content = str(criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))).strip()
+        if content:
+            evidence.extend(split_source_evidence("acceptance_criterion", criterion["_id"], content))
+            source_text[criterion["_id"]] = content
+    if not evidence:
+        raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_REQUIRED"})
+    if len(evidence) > 100:
+        raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_LIMIT_EXCEEDED"})
+    result = await request_ai_automation(
+        "test_plan_draft_generation", project_id, payload.instruction, evidence
+    )
+    if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
+        raise HTTPException(503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True})
+    suggestions = result.get("suggestions") or []
+    if len(suggestions) != 1:
+        raise HTTPException(502, detail={"code": "TEST_PLAN_AI_RESPONSE_INVALID"})
+    if set(result.get("evidence_refs") or []) - set(source_text):
+        raise HTTPException(502, detail={"code": "TEST_PLAN_AI_EVIDENCE_REFERENCE_INVALID"})
+    proposal = suggestions[0]
+    for quote in proposal.get("evidence_quotes") or []:
+        source = source_text.get(quote.get("evidence_ref"))
+        if not source or quote.get("quote", "").strip() not in source:
+            raise HTTPException(502, detail={"code": "TEST_PLAN_AI_GROUNDING_INVALID"})
+    if not proposal.get("evidence_quotes"):
+        raise HTTPException(502, detail={"code": "TEST_PLAN_AI_GROUNDING_REQUIRED"})
+    return {
+        "project_id": project_id,
+        "requirement_version_ids": requirement_ids,
+        "suggestion": proposal,
+        "evidence": [
+            {"artifact_type": item["artifact_type"], "artifact_version_id": item["artifact_version_id"]}
+            for item in evidence
+        ],
+        **ai_contract_metadata(result),
+        "saved": False,
+        "approved": False,
+    }

@@ -451,7 +451,7 @@ class AnalyticsService:
                 {"status": missing["status"], "degraded_mode": missing["degraded_mode"]},
             )
         result = await request_ai_automation(
-            "project_question", project_id, payload.question, evidence
+            "project_question", project_id, payload.question, evidence, request_id=trace_id
         )
         contract = ai_contract_metadata(result)
         await analytics_repository.insert_ai_audit(
@@ -517,7 +517,132 @@ class AnalyticsService:
             for item in proposal_status
             if item["_id"] in set(["ACCEPTED", "EDITED_ACCEPTED"])
         )
-        reviewed = sum(item["count"] for item in proposal_status if item["_id"] != "PENDING")
+        reviewed_statuses = {"ACCEPTED", "EDITED_ACCEPTED", "REJECTED"}
+        reviewed = sum(
+            item["count"] for item in proposal_status if item["_id"] in reviewed_statuses
+        )
+        proposal_rows = await analytics_repository.list_records(
+            "maintenance_proposals",
+            {
+                "project_id": project_id,
+                "status": {"$in": ["ACCEPTED", "EDITED_ACCEPTED", "REJECTED"]},
+            },
+            10000,
+            sort=("reviewed_at", -1),
+            projection={"proposal_type": 1, "status": 1, "review_note": 1},
+        )
+        proposal_type_counts = {}
+        for item in proposal_rows:
+            proposal_type = str(item.get("proposal_type") or "UNCLASSIFIED")
+            proposal_type_counts[proposal_type] = proposal_type_counts.get(proposal_type, 0) + 1
+        rejected_rows = [item for item in proposal_rows if item.get("status") == "REJECTED"]
+        ai_results = await analytics_repository.list_records(
+            "ai_results",
+            {"project_id": project_id},
+            10000,
+            sort=("created_at", -1),
+            projection={
+                "capability": 1,
+                "result_type": 1,
+                "status": 1,
+                "degraded_mode": 1,
+                "latency_ms": 1,
+                "provider": 1,
+                "model": 1,
+                "prompt_version": 1,
+                "reason_codes": 1,
+                "warnings": 1,
+                "evidence_refs": 1,
+            },
+        )
+        ai_requests = await analytics_repository.list_records(
+            "ai_request_audit",
+            {"project_id": project_id, "audit_source": "CORE_AI_REQUEST"},
+            10000,
+            sort=("created_at", -1),
+            projection={
+                "capability": 1,
+                "status": 1,
+                "degraded_mode": 1,
+                "model_version": 1,
+                "reason_codes": 1,
+                "warning_codes": 1,
+                "evidence_count": 1,
+                "latency_ms": 1,
+            },
+        )
+        request_capabilities = {}
+        request_statuses = {}
+        request_reason_codes = {}
+        request_warning_codes = {}
+        request_model_versions = {}
+        request_latencies = []
+        for item in ai_requests:
+            capability = str(item.get("capability") or "UNCLASSIFIED")
+            status = str(item.get("status") or "UNKNOWN")
+            request_capabilities[capability] = request_capabilities.get(capability, 0) + 1
+            request_statuses[status] = request_statuses.get(status, 0) + 1
+            model_version = str(item.get("model_version") or "unknown")
+            request_model_versions[model_version] = request_model_versions.get(model_version, 0) + 1
+            for reason_code in item.get("reason_codes") or []:
+                request_reason_codes[reason_code] = request_reason_codes.get(reason_code, 0) + 1
+            for warning_code in item.get("warning_codes") or []:
+                request_warning_codes[warning_code] = request_warning_codes.get(warning_code, 0) + 1
+            latency = item.get("latency_ms")
+            if isinstance(latency, (int, float)):
+                request_latencies.append(float(latency))
+        sorted_request_latencies = sorted(request_latencies)
+        ai_capabilities = {}
+        ai_result_types = {}
+        ai_statuses = {}
+        ai_reason_codes = {}
+        ai_warning_codes = {}
+        ai_model_versions = {}
+        ai_latencies = []
+        ai_grounded_count = 0
+        ai_degraded_count = 0
+        for item in ai_results:
+            capability = str(item.get("capability") or "UNCLASSIFIED")
+            result_type = str(item.get("result_type") or "UNCLASSIFIED")
+            status = str(item.get("status") or "UNKNOWN")
+            ai_capabilities[capability] = ai_capabilities.get(capability, 0) + 1
+            ai_result_types[result_type] = ai_result_types.get(result_type, 0) + 1
+            ai_statuses[status] = ai_statuses.get(status, 0) + 1
+            if status != "SUCCESS" or item.get("degraded_mode"):
+                ai_degraded_count += 1
+            if item.get("evidence_refs"):
+                ai_grounded_count += 1
+            for reason_code in item.get("reason_codes") or []:
+                if isinstance(reason_code, str) and reason_code:
+                    ai_reason_codes[reason_code] = ai_reason_codes.get(reason_code, 0) + 1
+            for warning in item.get("warnings") or []:
+                if isinstance(warning, str) and warning:
+                    ai_warning_codes[warning] = ai_warning_codes.get(warning, 0) + 1
+            latency = item.get("latency_ms")
+            if isinstance(latency, (int, float)):
+                ai_latencies.append(float(latency))
+            model = item.get("model") if isinstance(item.get("model"), dict) else {}
+            model_version = str(
+                model.get("version")
+                or model.get("model")
+                or item.get("prompt_version")
+                or "unknown"
+            )
+            ai_model_versions[model_version] = ai_model_versions.get(model_version, 0) + 1
+        sorted_latencies = sorted(ai_latencies)
+        percentile = (
+            lambda values, fraction: values[
+                min(len(values) - 1, max(0, int((len(values) - 1) * fraction)))
+            ]
+            if values
+            else None
+        )
+        feedback_actions = await analytics_repository.group_counts(
+            "audit_events",
+            {"project_id": project_id, "action": "requirement_ai_suggestion_applied"},
+            "action",
+            100,
+        )
         impact_rows = await analytics_repository.list_records(
             "impact_analyses",
             {"project_id": project_id},
@@ -545,6 +670,60 @@ class AnalyticsService:
         return {
             "proposal_status": proposal_status,
             "proposal_acceptance_rate": round(accepted / reviewed, 4) if reviewed else None,
+            "edited_acceptance_count": sum(
+                item["count"] for item in proposal_status if item["_id"] == "EDITED_ACCEPTED"
+            ),
+            "rejection_review_note_recorded_count": sum(
+                1 for item in rejected_rows if str(item.get("review_note") or "").strip()
+            ),
+            "rejection_review_note_missing_count": sum(
+                1 for item in rejected_rows if not str(item.get("review_note") or "").strip()
+            ),
+            "proposal_type_counts": proposal_type_counts,
+            "proposal_feedback_sample_truncated": len(proposal_rows) == 10000,
+            "ai_request_metrics": {
+                "request_count": len(ai_requests),
+                "sample_truncated": len(ai_requests) == 10000,
+                "by_capability": request_capabilities,
+                "by_status": request_statuses,
+                "degraded_count": sum(
+                    1
+                    for item in ai_requests
+                    if item.get("status") != "SUCCESS" or item.get("degraded_mode")
+                ),
+                "reason_code_counts": request_reason_codes,
+                "warning_counts": request_warning_codes,
+                "model_versions": request_model_versions,
+                "average_latency_ms": round(sum(request_latencies) / len(request_latencies), 3)
+                if request_latencies
+                else None,
+                "p50_latency_ms": percentile(sorted_request_latencies, 0.5),
+                "p95_latency_ms": percentile(sorted_request_latencies, 0.95),
+                "source": "AI_REQUEST_OUTCOME_LOG",
+            },
+            "ai_result_metrics": {
+                "record_count": len(ai_results),
+                "sample_truncated": len(ai_results) == 10000,
+                "by_capability": ai_capabilities,
+                "by_result_type": ai_result_types,
+                "by_status": ai_statuses,
+                "degraded_count": ai_degraded_count,
+                "degraded_rate": round(ai_degraded_count / len(ai_results), 4)
+                if ai_results
+                else None,
+                "grounded_record_count": ai_grounded_count,
+                "without_evidence_ref_count": len(ai_results) - ai_grounded_count,
+                "reason_code_counts": ai_reason_codes,
+                "warning_counts": ai_warning_codes,
+                "average_latency_ms": round(sum(ai_latencies) / len(ai_latencies), 3)
+                if ai_latencies
+                else None,
+                "p50_latency_ms": percentile(sorted_latencies, 0.5),
+                "p95_latency_ms": percentile(sorted_latencies, 0.95),
+                "model_versions": ai_model_versions,
+                "source": "PERSISTED_AI_RESULTS_ONLY",
+            },
+            "human_feedback_actions": {item["_id"]: item["count"] for item in feedback_actions},
             "override_count": sum(len(item.get("review_overrides") or []) for item in impact_rows),
             "degraded_count": degraded,
             "degraded_rate": round(degraded / len(measured), 4) if measured else 0,

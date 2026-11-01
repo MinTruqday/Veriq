@@ -3,6 +3,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+
+class TestPlanAIDraftInput(BaseModel):
+    requirement_version_ids: list[str] = Field(min_length=1, max_length=200)
+    instruction: str = Field(default="", max_length=5000)
+
 from src.schemas.contracts.common import TestPlanRiskStatus
 
 

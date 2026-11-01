@@ -27,8 +27,8 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
       const payload = { instruction, max_cases: limit, preview_only: true };
       if (mode === "scenarios") {
         const result = await testingApi.generateScenarios(versionId, payload);
-        setNotice(`Đã tạo ${result.items?.length || 0} kịch bản nháp để rà soát.`);
-        await onSaved();
+        setPreview(result);
+        setSelected((result.items || []).map((_, index) => index));
       } else {
         const result = await testingApi.generateTestCases(versionId, payload);
         setPreview(result);
@@ -52,10 +52,18 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
     setError("");
     try {
       const items = selected.map((index) => preview.items[index].draft);
-      await testingApi.createGeneratedTestDrafts(projectId, items);
+      if (mode === "scenarios") {
+        await testingApi.createGeneratedScenarioDrafts(projectId, items);
+      } else {
+        await testingApi.createGeneratedTestDrafts(projectId, items);
+      }
       setPreview(null);
       setSelected([]);
-      setNotice(`Đã lưu ${items.length} ca nháp để chỉnh sửa và duyệt.`);
+      setNotice(
+        mode === "scenarios"
+          ? `Đã lưu ${items.length} kịch bản nháp để chỉnh sửa và duyệt.`
+          : `Đã lưu ${items.length} ca nháp để chỉnh sửa và duyệt.`,
+      );
       await onSaved();
     } catch (reason) {
       setError(messageOf(reason));
@@ -159,7 +167,9 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
                   />
                   {item.draft.title}
                 </label>
-                <p className="text-sm">{docText(item.draft.objective_doc)}</p>
+                <p className="text-sm">
+                  {mode === "scenarios" ? item.draft.objective : docText(item.draft.objective_doc)}
+                </p>
                 {item.similar_cases?.length > 0 && (
                   <p className="text-sm text-ink-muted">
                     Cần đối chiếu với:{" "}
@@ -167,17 +177,34 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
                   </p>
                 )}
                 <details className="text-sm">
-                  <summary className="cursor-pointer">Bước kiểm thử và căn cứ</summary>
-                  <ol className="mt-3 list-decimal space-y-2 pl-5">
-                    {item.draft.steps?.map((step) => (
-                      <li key={step.id}>
-                        {docText(step.action_doc)}
+                  <summary className="cursor-pointer">
+                    {mode === "scenarios" ? "Luồng kịch bản và căn cứ" : "Bước kiểm thử và căn cứ"}
+                  </summary>
+                  {mode === "scenarios" ? (
+                    <div className="mt-3 space-y-2">
+                      {item.draft.business_flow && <p>{item.draft.business_flow}</p>}
+                      {item.draft.expected_outcome && (
                         <p className="text-ink-muted">
-                          Kết quả mong đợi: {docText(step.expected_doc)}
+                          Kết quả mong đợi: {item.draft.expected_outcome}
                         </p>
-                      </li>
-                    ))}
-                  </ol>
+                      )}
+                      <p className="text-ink-muted">
+                        Tiêu chí liên quan:{" "}
+                        {(item.draft.acceptance_criterion_ids || []).join(", ") || "Chưa liên kết"}
+                      </p>
+                    </div>
+                  ) : (
+                    <ol className="mt-3 list-decimal space-y-2 pl-5">
+                      {item.draft.steps?.map((step) => (
+                        <li key={step.id}>
+                          {docText(step.action_doc)}
+                          <p className="text-ink-muted">
+                            Kết quả mong đợi: {docText(step.expected_doc)}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                   {item.evidence_quotes?.map((quote, quoteIndex) => (
                     <blockquote key={quoteIndex} className="mt-3 border-l-2 border-violet-300 pl-3">
                       {quote.quote}
@@ -193,7 +220,9 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
                 disabled={busy || !selected.length}
                 onClick={save}
               >
-                {busy ? "Đang lưu" : `Lưu ${selected.length} ca nháp đã chọn`}
+                {busy
+                  ? "Đang lưu"
+                  : `Lưu ${selected.length} ${mode === "scenarios" ? "kịch bản" : "ca kiểm thử"} nháp đã chọn`}
               </button>
             )}
           </div>

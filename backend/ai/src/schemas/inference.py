@@ -17,14 +17,25 @@ from src.schemas.inference_quality import (
     CausalHypothesisSuggestionOutput,
     CompletionReportNarrativeOutput,
     CompletionReportNarrativeSuggestionOutput,
+    ExecutionAssistanceDefectDraftOutput,
+    ExecutionAssistanceObservationOutput,
+    ExecutionAssistanceOutput,
+    ExecutionAssistanceSuggestionOutput,
     LessonsLearnedClustersOutput,
     LessonsLearnedClusterSuggestionOutput,
     PerformanceSuggestionOutput,
     PerformanceSuggestionsOutput,
+    ProjectComplexityAssessmentOutput,
+    ProjectComplexityAssessmentSuggestionOutput,
+    ProjectComplexityDimensionOutput,
     SecuritySuggestionOutput,
     SecuritySuggestionsOutput,
     StatusReportNarrativeOutput,
     StatusReportNarrativeSuggestionOutput,
+    TestDataSuggestionItemOutput,
+    TestDataSuggestionsOutput,
+    TestPlanDraftOutput,
+    TestPlanDraftSuggestionOutput,
 )
 from src.schemas.inference_requests import (
     CrossDocumentExpansionRequest,
@@ -79,6 +90,10 @@ __all__ = [
     "ClarificationBaselineQuestionOutput",
     "CompletionReportNarrativeOutput",
     "CompletionReportNarrativeSuggestionOutput",
+    "ExecutionAssistanceDefectDraftOutput",
+    "ExecutionAssistanceObservationOutput",
+    "ExecutionAssistanceOutput",
+    "ExecutionAssistanceSuggestionOutput",
     "CrossDocumentExpansionRequest",
     "GeneratedCaseGroundingReview",
     "GeneratedCaseOutput",
@@ -97,6 +112,9 @@ __all__ = [
     "NewTestCandidateOutput",
     "PerformanceSuggestionOutput",
     "PerformanceSuggestionsOutput",
+    "ProjectComplexityAssessmentOutput",
+    "ProjectComplexityAssessmentSuggestionOutput",
+    "ProjectComplexityDimensionOutput",
     "ProjectQuestionOutput",
     "RequirementAcceptanceCriterionSuggestionOutput",
     "RequirementQualityFindingOutput",
@@ -112,6 +130,10 @@ __all__ = [
     "SecuritySuggestionsOutput",
     "StatusReportNarrativeOutput",
     "StatusReportNarrativeSuggestionOutput",
+    "TestPlanDraftOutput",
+    "TestPlanDraftSuggestionOutput",
+    "TestDataSuggestionItemOutput",
+    "TestDataSuggestionsOutput",
     "TechniqueRecommendationItemOutput",
     "TechniqueRecommendationsOutput",
     "TestabilityBlueprintClarificationOutput",
@@ -132,7 +154,9 @@ __all__ = [
 
 def output_schema(capability):
     for schema in BaseModel.__subclasses__():
-        if not schema.__module__.startswith("src.schemas.inference_") or not schema.__name__.endswith("Output"):
+        if not schema.__module__.startswith(
+            "src.schemas.inference_"
+        ) or not schema.__name__.endswith("Output"):
             continue
         field = schema.model_fields.get("capability")
         if field and capability in get_args(field.annotation):

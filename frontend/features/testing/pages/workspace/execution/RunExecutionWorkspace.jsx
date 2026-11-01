@@ -47,6 +47,11 @@ export default function RunExecutionWorkspace({
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [assignmentProposal, setAssignmentProposal] = useState(null);
   const [loadingAssignmentProposal, setLoadingAssignmentProposal] = useState(false);
+  const [executionAssistanceByResult, setExecutionAssistanceByResult] = useState({});
+  const [executionAssistanceErrors, setExecutionAssistanceErrors] = useState({});
+  const [loadingExecutionAssistanceIds, setLoadingExecutionAssistanceIds] = useState(
+    () => new Set(),
+  );
   const [creatingRerun, setCreatingRerun] = useState(false);
   const rerunKey = useRef(null);
   const beginAssignmentEdit = () => {
@@ -139,6 +144,29 @@ export default function RunExecutionWorkspace({
       onError(messageOf(reason));
     } finally {
       setLoadingAssignmentProposal(false);
+    }
+  };
+  const analyzeExecutionResult = async (result) => {
+    setLoadingExecutionAssistanceIds((current) => new Set(current).add(result._id));
+    setExecutionAssistanceErrors((current) => ({ ...current, [result._id]: "" }));
+    try {
+      const cached = await testingApi.getExecutionAssistance(projectId, run._id, result._id);
+      const response =
+        cached && !cached.stale && cached.suggestions?.length
+          ? cached
+          : await testingApi.analyzeExecutionResult(projectId, run._id, result._id);
+      setExecutionAssistanceByResult((current) => ({ ...current, [result._id]: response }));
+    } catch (reason) {
+      setExecutionAssistanceErrors((current) => ({
+        ...current,
+        [result._id]: messageOf(reason),
+      }));
+    } finally {
+      setLoadingExecutionAssistanceIds((current) => {
+        const next = new Set(current);
+        next.delete(result._id);
+        return next;
+      });
     }
   };
   return (
@@ -579,21 +607,50 @@ export default function RunExecutionWorkspace({
                       Chưa có kết quả cho ca này.
                     </p>
                   ) : !["NOT_RUN", "IN_PROGRESS"].includes(result.status) ? (
-                    <div className="flex flex-wrap items-center gap-3">
-                      {result.status === "FAIL" && !linkedDefect && can("defect.create") && (
-                        <button
-                          className="apple-button"
-                          type="button"
-                          disabled={creatingDefectResultIds.has(result._id)}
-                          onClick={() => onCreateDefect(result, item)}
-                        >
-                          {creatingDefectResultIds.has(result._id)
-                            ? "Đang tạo lỗi…"
-                            : "Tạo lỗi từ kết quả thất bại"}
-                        </button>
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-3">
+                        {can("testrun.execute") && (
+                          <button
+                            className="secondary-button border-violet-300 text-violet-800"
+                            type="button"
+                            disabled={loadingExecutionAssistanceIds.has(result._id)}
+                            onClick={() => void analyzeExecutionResult(result)}
+                          >
+                            {loadingExecutionAssistanceIds.has(result._id)
+                              ? "Đang xem kết quả"
+                              : "Nhờ Veriq phân tích kết quả"}
+                          </button>
+                        )}
+                        {result.status === "FAIL" && !linkedDefect && can("defect.create") && (
+                          <button
+                            className="apple-button"
+                            type="button"
+                            disabled={creatingDefectResultIds.has(result._id)}
+                            onClick={() => onCreateDefect(result, item)}
+                          >
+                            {creatingDefectResultIds.has(result._id)
+                              ? "Đang tạo lỗi…"
+                              : "Tạo lỗi từ kết quả thất bại"}
+                          </button>
+                        )}
+                        {linkedDefect && (
+                          <span className="text-sm text-ink-muted">Đã liên kết lỗi</span>
+                        )}
+                      </div>
+                      {executionAssistanceErrors[result._id] && (
+                        <p className="text-sm text-danger" role="alert">
+                          {executionAssistanceErrors[result._id]}
+                        </p>
                       )}
-                      {linkedDefect && (
-                        <span className="text-sm text-ink-muted">Đã liên kết lỗi</span>
+                      {executionAssistanceByResult[result._id]?.suggestions?.[0] && (
+                        <ExecutionAssistanceResult
+                          result={executionAssistanceByResult[result._id]}
+                          testResult={result}
+                          caseVersion={item}
+                          canCreateDefect={can("defect.create") && !linkedDefect}
+                          creatingDefect={creatingDefectResultIds.has(result._id)}
+                          onCreateDefect={onCreateDefect}
+                        />
                       )}
                     </div>
                   ) : run.status !== "IN_PROGRESS" ||
@@ -768,5 +825,100 @@ export default function RunExecutionWorkspace({
       </div>
       {dialog}
     </WorkspacePage>
+  );
+}
+
+function ExecutionAssistanceResult({
+  result,
+  testResult,
+  caseVersion,
+  canCreateDefect,
+  creatingDefect,
+  onCreateDefect,
+}) {
+  const suggestion = result.suggestions[0];
+  const sourceLabel = (reference) =>
+    reference.startsWith(`${testResult._id}:`)
+      ? "Kết quả đã ghi"
+      : reference.startsWith(`${caseVersion._id}:`)
+        ? "Ca kiểm thử đang chạy"
+        : "Thông tin lần chạy";
+
+  return (
+    <section className="space-y-3 rounded-control border border-violet-300 bg-violet-50/60 p-4 text-sm">
+      <div>
+        <p className="font-semibold text-violet-950">Veriq gợi ý xem xét</p>
+        <p className="mt-1 text-violet-900">
+          Đây là nhận xét tham khảo từ ca và kết quả đã lưu. Trạng thái kiểm thử không bị thay đổi.
+        </p>
+      </div>
+      {suggestion.observations.map((observation, index) => (
+        <article
+          className="space-y-1 rounded-control border border-violet-200 bg-white/70 p-3"
+          key={`${observation.step_id || "general"}-${index}`}
+        >
+          <p className="font-medium text-ink">
+            {observation.kind === "OBSERVED"
+              ? "Thông tin đã ghi"
+              : observation.kind === "POSSIBLE_INTERPRETATION"
+                ? "Cách diễn giải có thể có"
+                : "Giới hạn thông tin"}
+            {observation.step_id ? ` · Bước ${observation.step_id}` : ""}
+          </p>
+          <p className="whitespace-pre-wrap text-ink-muted">{observation.text}</p>
+          {observation.evidence_quotes.map((quote, quoteIndex) => (
+            <blockquote
+              className="border-l-2 border-violet-300 pl-3 text-xs text-ink-muted"
+              key={`${quote.evidence_ref}-${quoteIndex}`}
+            >
+              “{quote.quote}” <span>— {sourceLabel(quote.evidence_ref)}</span>
+            </blockquote>
+          ))}
+        </article>
+      ))}
+      {!!suggestion.missing_information.length && (
+        <div>
+          <p className="font-medium">Thông tin nên bổ sung</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5 text-ink-muted">
+            {suggestion.missing_information.map((value, index) => (
+              <li key={`${index}-${value}`}>{value}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {!!result.warnings?.length && <p className="text-ink-muted">{result.warnings.join(" · ")}</p>}
+      {suggestion.defect_draft && (
+        <div className="space-y-2 rounded-control border border-violet-200 bg-white/70 p-3">
+          <div>
+            <p className="font-medium">Bản nháp lỗi</p>
+            <p className="text-xs text-ink-muted">
+              Chưa tạo lỗi. Bạn có thể mở bản nháp, chỉnh nội dung và xác nhận riêng.
+            </p>
+          </div>
+          <p className="font-medium">{suggestion.defect_draft.title}</p>
+          <p className="whitespace-pre-wrap text-ink-muted">
+            {suggestion.defect_draft.description}
+          </p>
+          {suggestion.defect_draft.evidence_quotes.map((quote, index) => (
+            <blockquote
+              className="border-l-2 border-violet-300 pl-3 text-xs text-ink-muted"
+              key={`${quote.evidence_ref}-${index}`}
+            >
+              “{quote.quote}” <span>— {sourceLabel(quote.evidence_ref)}</span>
+            </blockquote>
+          ))}
+          {canCreateDefect && (
+            <button
+              className="secondary-button border-violet-300 text-violet-800"
+              type="button"
+              disabled={creatingDefect}
+              onClick={() => onCreateDefect(testResult, caseVersion, suggestion.defect_draft)}
+            >
+              {creatingDefect ? "Đang mở bản nháp" : "Rà soát bản nháp lỗi"}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
   );
 }

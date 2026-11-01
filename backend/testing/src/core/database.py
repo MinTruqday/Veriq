@@ -256,6 +256,10 @@ async def create_indexes():
     await db.ai_results.create_index(
         [("project_id", 1), ("result_type", 1), ("subject_id", 1), ("created_at", -1)]
     )
+    await db.ai_request_audit.create_index([("project_id", 1), ("created_at", -1)])
+    await db.ai_request_audit.create_index(
+        [("project_id", 1), ("capability", 1), ("created_at", -1)]
+    )
     await ensure_partial_unique_index(
         db.ai_results,
         [("project_id", 1), ("idempotency_key", 1)],

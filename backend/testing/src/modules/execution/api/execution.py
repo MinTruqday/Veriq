@@ -3,6 +3,67 @@ from fastapi.responses import StreamingResponse
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope, get_project
+from src.modules.execution.services.execution_assistance import (
+    generate_execution_assistance,
+    latest_execution_assistance,
+)
+from src.modules.execution.services.test_plan import (
+    approve_test_plan_record,
+    archive_test_plan_record,
+    clone_test_plan_record,
+    create_test_plan_record,
+    generate_test_plan_draft_suggestion,
+    get_test_plan_record,
+    list_test_plan_records,
+    request_test_plan_revision,
+    submit_test_plan_record,
+    update_test_plan_record,
+    validate_test_plan_record,
+)
+from src.modules.execution.services.test_run import (
+    abort_test_run_record,
+    assign_test_run_record,
+    build_test_run_report,
+    complete_test_run_record,
+    correct_test_result_record,
+    create_test_run_record,
+    get_test_run_record,
+    get_test_result_record,
+    list_test_result_records,
+    list_test_run_records,
+    record_test_result_entry,
+    resume_test_run_record,
+    rerun_test_run_record,
+    start_test_run_record,
+    update_test_execution_record,
+    update_test_run_record,
+)
+from src.modules.execution.services.test_suite import (
+    archive_test_suite_record,
+    clone_test_suite_record,
+    create_test_suite_record,
+    get_test_suite_record,
+    list_test_suite_records,
+    update_test_suite_record,
+)
+from src.modules.quality.services.defect_analysis import find_duplicate_defect_pairs
+from src.modules.quality.services.defect_lifecycle import (
+    retest_defect_record,
+    transition_defect_record,
+    update_defect_record,
+)
+from src.modules.quality.services.defect_records import (
+    build_defect_export,
+    create_defect_record,
+    get_defect_record,
+    list_defect_records,
+)
+from src.modules.quality.services.defect_trace import (
+    list_defect_trace_candidates,
+    list_defect_trace_suggestions,
+    suggest_defect_trace_record,
+    update_defect_trace_record,
+)
 from src.schemas.contracts.defects import (
     BugTraceSuggestionInput,
     DefectCreate,
@@ -24,67 +85,20 @@ from src.schemas.contracts.execution import (
     TestSuiteCreate,
     TestSuitePatch,
 )
-from src.schemas.contracts.planning import TestPlanCreate
+from src.schemas.contracts.planning import TestPlanAIDraftInput, TestPlanCreate
 from src.schemas.contracts.project import ProjectArchiveInput
 from src.schemas.contracts.requirements import ReviewTransitionInput
-from src.modules.quality.services.defect_analysis import find_duplicate_defect_pairs
-from src.modules.quality.services.defect_records import (
-    build_defect_export,
-    create_defect_record,
-    get_defect_record,
-    list_defect_records,
-)
-from src.modules.quality.services.defect_lifecycle import (
-    retest_defect_record,
-    transition_defect_record,
-    update_defect_record,
-)
-from src.modules.quality.services.defect_trace import (
-    list_defect_trace_suggestions,
-    list_defect_trace_candidates,
-    suggest_defect_trace_record,
-    update_defect_trace_record,
-)
-from src.modules.execution.services.test_plan import (
-    approve_test_plan_record,
-    archive_test_plan_record,
-    clone_test_plan_record,
-    create_test_plan_record,
-    get_test_plan_record,
-    list_test_plan_records,
-    submit_test_plan_record,
-    request_test_plan_revision,
-    update_test_plan_record,
-    validate_test_plan_record,
-)
-from src.modules.execution.services.test_suite import (
-    archive_test_suite_record,
-    clone_test_suite_record,
-    create_test_suite_record,
-    get_test_suite_record,
-    list_test_suite_records,
-    update_test_suite_record,
-)
-from src.modules.execution.services.test_run import (
-    abort_test_run_record,
-    assign_test_run_record,
-    build_test_run_report,
-    complete_test_run_record,
-    correct_test_result_record,
-    create_test_run_record,
-    get_test_run_record,
-    get_test_result_record,
-    list_test_result_records,
-    list_test_run_records,
-    record_test_result_entry,
-    resume_test_run_record,
-    rerun_test_run_record,
-    start_test_run_record,
-    update_test_execution_record,
-    update_test_run_record,
-)
 
 router = APIRouter(prefix="/kiem-thu", tags=["Thực thi kiểm thử"])
+
+
+@router.post("/du-an/{project_id}/ke-hoach-kiem-thu/ai/de-xuat")
+async def suggest_test_plan_draft(
+    project_id: str,
+    payload: TestPlanAIDraftInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await generate_test_plan_draft_suggestion(project_id, payload, user))
 
 
 @router.post("/ke-hoach-kiem-thu", status_code=201)
@@ -331,6 +345,30 @@ async def list_test_results(
 @router.get("/ket-qua-kiem-thu/{result_id}")
 async def get_test_result(result_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await get_test_result_record(result_id, user))
+
+
+@router.get(
+    "/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/ket-qua/{result_id}/ai/phan-tich"
+)
+async def get_execution_assistance(
+    project_id: str,
+    run_id: str,
+    result_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await latest_execution_assistance(project_id, run_id, result_id, user))
+
+
+@router.post(
+    "/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/ket-qua/{result_id}/ai/phan-tich"
+)
+async def create_execution_assistance(
+    project_id: str,
+    run_id: str,
+    result_id: str,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return envelope(await generate_execution_assistance(project_id, run_id, result_id, user))
 
 
 @router.get("/lan-chay-kiem-thu/{run_id}")

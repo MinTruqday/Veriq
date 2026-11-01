@@ -22,6 +22,62 @@ const statusLabels = {
   INVALID: "Dữ liệu lỗi",
 };
 
+const overviewLabels = {
+  FORECAST_ONLY: "Dự toán tham khảo",
+  MISSING_EFFORT_ESTIMATE: "Chưa nhập giờ công dự kiến",
+  MISSING_EFFORT_ALLOCATION: "Chưa phân bổ giờ công cho thành viên",
+  EFFORT_ALLOCATION_MISMATCH: "Tổng giờ phân bổ chưa khớp kế hoạch",
+  MISSING_PLAN_START_DATE: "Chưa có ngày bắt đầu kế hoạch",
+  MISSING_LABOR_RATES: "Thiếu đơn giá còn hiệu lực",
+  SCHEDULE_REQUIRED: "Chưa có lịch kế hoạch",
+  CAPACITY_NOT_DECLARED: "Chưa khai báo công suất cho kỳ này",
+  AMBIGUOUS_CAPACITY_PERIOD: "Có nhiều kỳ công suất cùng áp dụng",
+  CAPACITY_DECLARED: "Đã khai báo công suất",
+  AVAILABLE: "Có thể nhận việc",
+  LIMITED: "Khả dụng có giới hạn",
+  UNAVAILABLE: "Không khả dụng",
+  NOT_RECORDED: "Chưa khai báo",
+  QA: "QA",
+  TESTER: "Tester",
+  BA: "BA",
+  DEVELOPER: "Nhà phát triển",
+  VIEWER: "Người xem",
+  ALLOCATED_PERSON_NOT_ACTIVE_PROJECT_MEMBER:
+    "Có người được phân bổ không còn là thành viên đang hoạt động của dự án.",
+  PERSON_AVAILABILITY_MISSING_OR_RESTRICTED:
+    "Có người chưa khai báo khả dụng hoặc đang bị giới hạn khả dụng.",
+  CONFIRMED_SKILL_OR_EXPERIENCE_EVIDENCE_MISSING:
+    "Có hồ sơ chưa có kỹ năng hoặc kinh nghiệm được xác nhận.",
+  ALLOCATED_HOURS_EXCEED_DECLARED_CAPACITY:
+    "Tổng giờ phân bổ vượt công suất đã khai báo cho kỳ kế hoạch.",
+  CURRENT_TEST_RUN_LOAD_EXISTS: "Một số thành viên đang tham gia các đợt kiểm thử đang diễn ra.",
+  PLAN_ACTIVITY_WITHOUT_RESPONSIBLE_PERSON:
+    "Có hoạt động trong Test Plan chưa có người thực hiện được chỉ định.",
+  PLAN_ACTIVITY_WITHOUT_ACCOUNTABLE_PERSON:
+    "Có hoạt động trong Test Plan chưa có người chịu trách nhiệm cuối cùng.",
+  RESPONSIBILITY_ASSIGNED_TO_INACTIVE_OR_NONMEMBER:
+    "Ma trận trách nhiệm có người không còn là thành viên đang hoạt động của dự án.",
+  RESPONSIBILITY_PERSON_WITHOUT_PLAN_EFFORT_ALLOCATION:
+    "Có người trong ma trận trách nhiệm nhưng chưa được phân bổ giờ trong kế hoạch.",
+  PLAN_OBJECTIVE_NOT_DECLARED: "Chưa nêu mục tiêu kiểm thử.",
+  PLAN_INCLUDED_SCOPE_NOT_DECLARED: "Chưa xác định phạm vi kiểm thử bao gồm.",
+  PLAN_ENVIRONMENT_NOT_DECLARED: "Chưa xác định môi trường kiểm thử.",
+  PLAN_ENTRY_OR_EXIT_CRITERIA_INCOMPLETE: "Chưa khai báo đủ điều kiện bắt đầu và kết thúc.",
+  PLAN_TEST_DATA_SOURCE_NOT_DECLARED: "Chưa nêu nguồn dữ liệu kiểm thử.",
+  PLAN_DEFECT_PROCESS_INCOMPLETE: "Quy trình xử lý lỗi chưa được khai báo đầy đủ.",
+  NO_ACTIVE_QA_IN_PLAN_ALLOCATIONS: "Chưa có QA đang hoạt động trong phân bổ nguồn lực.",
+  NO_ACTIVE_TESTER_IN_PLAN_ALLOCATIONS: "Chưa có Tester đang hoạt động trong phân bổ nguồn lực.",
+  AVAILABILITY_NOT_CONFIRMED: "Chưa xác nhận khả dụng",
+  NOT_ACTIVE_PROJECT_MEMBER: "Không còn là thành viên đang hoạt động của dự án",
+  CAPACITY_NOT_DECLARED_FOR_MEMBER: "Chưa khai báo công suất cho người này",
+  PLANNED_HOURS_EXCEED_AVAILABLE_CAPACITY: "Giờ của vị trí vượt công suất đã khai báo",
+  NO_CONFIRMED_SKILL_OR_EXPERIENCE: "Chưa có kỹ năng hoặc kinh nghiệm được xác nhận",
+};
+
+function valueLabel(value) {
+  return overviewLabels[value] || statusLabels[value] || String(value || "Chưa khai báo");
+}
+
 function displayAmount(value) {
   if (value == null || value === "") return "—";
   const amount = Number(value);
@@ -392,6 +448,470 @@ export default function PayrollImportPanel() {
                     Trạng thái: {valueLabel(forecast.status)}. Kiểm tra giờ phân bổ, ngày bắt đầu kế
                     hoạch và đơn giá còn hiệu lực.
                   </p>
+                )}
+                {forecast.resource_overview && (
+                  <section className="mt-4 border-t border-border pt-4">
+                    <h3 className="font-medium">Nguồn lực và bối cảnh kế hoạch</h3>
+                    <div className="mt-3 grid gap-2 text-ink-muted sm:grid-cols-2 lg:grid-cols-4">
+                      <p>
+                        Người được phân bổ:{" "}
+                        {forecast.resource_overview.people_summary.planned_people}
+                      </p>
+                      <p>
+                        Thành viên dự án đang hoạt động:{" "}
+                        {forecast.resource_overview.people_summary.active_project_members}
+                      </p>
+                      <p>
+                        Hồ sơ chưa có dẫn chứng xác nhận:{" "}
+                        {
+                          forecast.resource_overview.people_summary
+                            .without_confirmed_profile_evidence
+                        }
+                      </p>
+                      <p>
+                        Rủi ro đang mở: {forecast.resource_overview.plan_context.open_risk_count}
+                        {forecast.resource_overview.plan_context.risk_exposure_total
+                          ? ` · mức phơi nhiễm ${displayAmount(forecast.resource_overview.plan_context.risk_exposure_total)}`
+                          : ""}
+                      </p>
+                      <p>
+                        Mốc kế hoạch đang mở:{" "}
+                        {forecast.resource_overview.plan_context.open_milestone_count} /{" "}
+                        {forecast.resource_overview.plan_context.milestone_count}
+                      </p>
+                      <p>
+                        Phụ thuộc / bên liên quan:{" "}
+                        {forecast.resource_overview.plan_context.dependency_count} /{" "}
+                        {forecast.resource_overview.plan_context.stakeholder_count}
+                      </p>
+                      <p>
+                        Thời lượng kế hoạch:{" "}
+                        {forecast.resource_overview.plan_context.schedule_duration_days == null
+                          ? "Chưa xác định"
+                          : `${forecast.resource_overview.plan_context.schedule_duration_days} ngày`}
+                      </p>
+                      <p>
+                        Yêu cầu trong phạm vi:{" "}
+                        {forecast.resource_overview.plan_context.requirement_version_count}
+                      </p>
+                      <p>
+                        Ca kiểm thử trong phạm vi:{" "}
+                        {forecast.resource_overview.plan_context.test_case_version_count}
+                      </p>
+                      <p>
+                        Bộ kiểm thử trong phạm vi:{" "}
+                        {forecast.resource_overview.plan_context.test_suite_count}
+                      </p>
+                      <p>
+                        Môi trường:{" "}
+                        {forecast.resource_overview.plan_context.environment || "Chưa chọn"}
+                      </p>
+                      <p>
+                        Cấp kiểm thử:{" "}
+                        {forecast.resource_overview.plan_context.test_level || "Chưa chọn"}
+                      </p>
+                      <p>
+                        Phiên bản phát hành:{" "}
+                        {forecast.resource_overview.plan_context.release || "Chưa chọn"}
+                      </p>
+                      <p>
+                        Thời gian:{" "}
+                        {displayCalendarDate(
+                          forecast.resource_overview.plan_context.planned_start_at,
+                        )}{" "}
+                        –{" "}
+                        {displayCalendarDate(
+                          forecast.resource_overview.plan_context.planned_end_at,
+                        )}
+                      </p>
+                      <p>
+                        Phạm vi bao gồm / loại trừ:{" "}
+                        {forecast.resource_overview.plan_context.scope_in_count} /{" "}
+                        {forecast.resource_overview.plan_context.scope_out_count}
+                      </p>
+                      <p>
+                        Điều kiện bắt đầu / kết thúc:{" "}
+                        {forecast.resource_overview.plan_context.entry_criteria_count} /{" "}
+                        {forecast.resource_overview.plan_context.exit_criteria_count}
+                      </p>
+                      <p className="sm:col-span-2 lg:col-span-4">
+                        Hoạt động có người thực hiện / người chịu trách nhiệm cuối:{" "}
+                        {forecast.resource_overview.plan_context.responsibility_activity_count -
+                          forecast.resource_overview.plan_context
+                            .activities_without_responsible_person}{" "}
+                        / {forecast.resource_overview.plan_context.accountable_activity_count}
+                      </p>
+                      <p className="sm:col-span-2 lg:col-span-4">
+                        Loại kiểm thử:{" "}
+                        {forecast.resource_overview.plan_context.test_types
+                          .map(valueLabel)
+                          .join(", ") || "Chưa xác định"}
+                      </p>
+                      {forecast.resource_overview.plan_context.test_approach && (
+                        <p className="sm:col-span-2 lg:col-span-4">
+                          Cách tiếp cận: {forecast.resource_overview.plan_context.test_approach}
+                        </p>
+                      )}
+                      {forecast.resource_overview.plan_context.objective && (
+                        <p className="sm:col-span-2 lg:col-span-4">
+                          Mục tiêu: {forecast.resource_overview.plan_context.objective}
+                        </p>
+                      )}
+                      {forecast.commercial_scope_note && (
+                        <p className="sm:col-span-2 lg:col-span-4">
+                          Ghi chú phạm vi và giá khách hàng: {forecast.commercial_scope_note}
+                        </p>
+                      )}
+                      <p>
+                        Công suất theo lịch:{" "}
+                        {valueLabel(forecast.resource_overview.capacity.status)}
+                      </p>
+                      <p>
+                        Giờ được phân bổ / công suất đã khai báo:{" "}
+                        {displayAmount(forecast.resource_overview.capacity.allocated_hours)}
+                        {forecast.resource_overview.capacity.declared_available_hours == null
+                          ? " / chưa có dữ liệu"
+                          : ` / ${displayAmount(forecast.resource_overview.capacity.declared_available_hours)}`}
+                      </p>
+                    </div>
+                    <div className="mt-3 rounded-control border border-border p-3">
+                      <h4 className="font-medium">Độ phủ đội ngũ và trách nhiệm</h4>
+                      <div className="mt-2 grid gap-2 text-sm text-ink-muted sm:grid-cols-2 lg:grid-cols-4">
+                        <p>
+                          QA được phân bổ:{" "}
+                          {forecast.resource_overview.team_coverage.role_member_counts.QA}
+                        </p>
+                        <p>
+                          Tester được phân bổ:{" "}
+                          {forecast.resource_overview.team_coverage.role_member_counts.TESTER}
+                        </p>
+                        <p>
+                          Người trong ma trận trách nhiệm:{" "}
+                          {forecast.resource_overview.team_coverage.responsibility_user_count}
+                        </p>
+                        <p>
+                          Người chịu trách nhiệm cuối:{" "}
+                          {forecast.resource_overview.team_coverage.accountable_user_count}
+                        </p>
+                        <p className="sm:col-span-2 lg:col-span-4">
+                          Người trong ma trận nhưng chưa có phân bổ giờ trong kế hoạch:{" "}
+                          {
+                            forecast.resource_overview.team_coverage
+                              .responsibility_assignments_outside_plan_allocations
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <details className="mt-3 rounded-control border border-border p-3">
+                      <summary className="cursor-pointer font-medium">
+                        Mức đầy đủ của Test Plan
+                      </summary>
+                      <div className="mt-3 grid gap-2 text-sm text-ink-muted sm:grid-cols-2 lg:grid-cols-3">
+                        <p>
+                          Mục tiêu:{" "}
+                          {forecast.resource_overview.plan_context.plan_completeness
+                            .objective_declared
+                            ? "Đã nêu"
+                            : "Chưa nêu"}
+                        </p>
+                        <p>
+                          Nguồn dữ liệu kiểm thử:{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .test_data_sources_count
+                          }
+                        </p>
+                        <p>
+                          Chuẩn bị dữ liệu:{" "}
+                          {forecast.resource_overview.plan_context.plan_completeness
+                            .test_data_preparation_declared
+                            ? "Đã nêu"
+                            : "Chưa nêu"}
+                        </p>
+                        <p>
+                          Quy trình xử lý lỗi:{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .defect_process_fields_completed
+                          }{" "}
+                          / 5 nội dung
+                        </p>
+                        <p>
+                          Tần suất báo cáo:{" "}
+                          {forecast.resource_overview.plan_context.plan_completeness
+                            .communication_frequency_declared
+                            ? "Đã nêu"
+                            : "Chưa nêu"}
+                        </p>
+                        <p>
+                          Mục tiêu chất lượng / chỉ số theo dõi:{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .quality_target_count
+                          }{" "}
+                          /{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .monitoring_metric_count
+                          }
+                        </p>
+                        <p>
+                          Giả định / ràng buộc:{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .assumption_count
+                          }{" "}
+                          /{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .constraint_count
+                          }
+                        </p>
+                        <p>
+                          Hoạt động có người thực hiện:{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .responsible_activity_count
+                          }{" "}
+                          /{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .responsibility_activity_count
+                          }
+                        </p>
+                        <p>
+                          Hoạt động có người chịu trách nhiệm cuối:{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .accountable_activity_count
+                          }{" "}
+                          /{" "}
+                          {
+                            forecast.resource_overview.plan_context.plan_completeness
+                              .responsibility_activity_count
+                          }
+                        </p>
+                      </div>
+                      {!!forecast.resource_overview.plan_context.scope_in.length && (
+                        <div className="mt-3 text-sm">
+                          <p className="font-medium">Trong phạm vi</p>
+                          <ul className="mt-1 list-inside list-disc text-ink-muted">
+                            {forecast.resource_overview.plan_context.scope_in.map((item, index) => (
+                              <li key={`${index}-${item}`}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {!!forecast.resource_overview.plan_context.scope_out.length && (
+                        <div className="mt-3 text-sm">
+                          <p className="font-medium">Ngoài phạm vi</p>
+                          <ul className="mt-1 list-inside list-disc text-ink-muted">
+                            {forecast.resource_overview.plan_context.scope_out.map(
+                              (item, index) => (
+                                <li key={`${index}-${item}`}>{item}</li>
+                              ),
+                            )}
+                          </ul>
+                        </div>
+                      )}
+                    </details>
+                    {forecast.resource_overview.capacity.hours_covered === false && (
+                      <p className="mt-2 text-danger">
+                        Tổng giờ phân bổ vượt công suất đã khai báo cho kỳ kế hoạch.
+                      </p>
+                    )}
+                    {forecast.resource_overview.warnings.length > 0 && (
+                      <ul className="mt-3 list-inside list-disc space-y-1 text-ink-muted">
+                        {forecast.resource_overview.warnings.map((warning) => (
+                          <li key={warning}>{valueLabel(warning)}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {forecast.resource_overview.people.length > 0 && (
+                      <div className="mt-3 overflow-x-auto rounded-control border border-border">
+                        <table className="w-full min-w-[760px] text-left">
+                          <thead className="bg-surface-muted text-xs text-ink-muted">
+                            <tr>
+                              <th className="p-2 font-medium">Người được phân bổ</th>
+                              <th className="p-2 font-medium">Vai trò</th>
+                              <th className="p-2 font-medium">Kỹ năng / kinh nghiệm xác nhận</th>
+                              <th className="p-2 font-medium">Khả dụng</th>
+                              <th className="p-2 font-medium">Giờ kế hoạch</th>
+                              <th className="p-2 font-medium">Tải đang chạy</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {forecast.resource_overview.people.map((person) => (
+                              <tr key={person.user_id} className="border-t border-border">
+                                <td className="p-2">{person.label}</td>
+                                <td className="p-2">
+                                  {person.roles.map(valueLabel).join(", ") ||
+                                    "Chưa có vai trò đang hoạt động"}
+                                </td>
+                                <td className="p-2">
+                                  {person.confirmed_skills.length ||
+                                  person.confirmed_experience_count ? (
+                                    <details>
+                                      <summary className="cursor-pointer">
+                                        {person.confirmed_skill_count} kỹ năng ·{" "}
+                                        {person.confirmed_experience_count} kinh nghiệm
+                                      </summary>
+                                      <div className="mt-1 space-y-1 text-xs text-ink-muted">
+                                        {!!person.confirmed_skills.length && (
+                                          <p>Kỹ năng: {person.confirmed_skills.join(", ")}</p>
+                                        )}
+                                        {person.confirmed_experiences.map((experience, index) => (
+                                          <p key={`${person.user_id}-${index}`}>
+                                            {experience.title}
+                                            {experience.domain ? ` · ${experience.domain}` : ""}
+                                            {experience.technologies.length
+                                              ? ` · ${experience.technologies.join(", ")}`
+                                              : ""}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    </details>
+                                  ) : (
+                                    "Chưa có dữ liệu xác nhận"
+                                  )}
+                                </td>
+                                <td className="p-2">{valueLabel(person.availability)}</td>
+                                <td className="p-2">{displayAmount(person.planned_hours)}</td>
+                                <td className="p-2">
+                                  {person.active_test_case_count_across_projects} ca ·{" "}
+                                  {person.active_test_run_count_across_projects} lượt chạy ·{" "}
+                                  {person.active_project_count} dự án có lượt chạy mở
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {forecast.resource_overview.staffing_options && (
+                      <div className="mt-4 rounded-control border border-border p-3">
+                        <h4 className="font-medium">So sánh phương án nhân sự</h4>
+                        <p className="mt-1 text-sm text-ink-muted">
+                          Mỗi dòng giữ nguyên số giờ của một vị trí và thay tối đa một người trong
+                          đội hiện tại. Đơn giá cho biết tác động ngân sách; kỹ năng, kinh nghiệm,
+                          khả dụng và tải việc được trình bày riêng để người phụ trách cân nhắc.
+                        </p>
+                        {forecast.resource_overview.staffing_options.slots.length ? (
+                          <div className="mt-3 space-y-3">
+                            {forecast.resource_overview.staffing_options.slots.map((slot) => (
+                              <details
+                                key={slot.current_user_id}
+                                className="rounded-control border border-border p-3"
+                              >
+                                <summary className="cursor-pointer font-medium">
+                                  {slot.current_label} ·{" "}
+                                  {slot.current_roles.map(valueLabel).join(", ") ||
+                                    "Chưa rõ vai trò"}{" "}
+                                  · {displayAmount(slot.planned_hours)} giờ
+                                </summary>
+                                <div className="mt-3 overflow-x-auto">
+                                  <table className="w-full min-w-[1050px] text-left text-sm">
+                                    <thead className="bg-surface-muted text-xs text-ink-muted">
+                                      <tr>
+                                        <th className="p-2 font-medium">Người</th>
+                                        <th className="p-2 font-medium">Vai trò</th>
+                                        <th className="p-2 font-medium">Kỹ năng / kinh nghiệm</th>
+                                        <th className="p-2 font-medium">Khả dụng · tải</th>
+                                        <th className="p-2 font-medium">Đơn giá/giờ</th>
+                                        <th className="p-2 font-medium">
+                                          Chi phí đội sau thay đổi
+                                        </th>
+                                        <th className="p-2 font-medium">Chênh lệch</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {slot.candidates.map((candidate) => (
+                                        <tr
+                                          key={candidate.user_id}
+                                          className="border-t border-border align-top"
+                                        >
+                                          <td className="p-2">
+                                            {candidate.label}
+                                            {candidate.is_current_assignee && (
+                                              <span className="ml-1 text-ink-muted">
+                                                (hiện tại)
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="p-2">
+                                            {candidate.roles.map(valueLabel).join(", ") || "—"}
+                                          </td>
+                                          <td className="max-w-64 p-2">
+                                            {candidate.confirmed_skills.join(", ") ||
+                                              "Chưa có kỹ năng"}
+                                            {candidate.confirmed_experiences.length > 0 && (
+                                              <span className="block text-ink-muted">
+                                                {candidate.confirmed_experiences.join(", ")}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="p-2">
+                                            {valueLabel(candidate.availability)} ·{" "}
+                                            {candidate.active_test_case_count} ca ·{" "}
+                                            {candidate.active_test_run_count} lượt ·{" "}
+                                            {candidate.active_project_count} dự án
+                                            {candidate.declared_available_hours != null && (
+                                              <span className="block text-ink-muted">
+                                                Công suất:{" "}
+                                                {displayAmount(candidate.declared_available_hours)}{" "}
+                                                giờ
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="p-2">
+                                            {candidate.hourly_cost == null
+                                              ? "Thiếu đơn giá"
+                                              : `${displayAmount(candidate.hourly_cost)} ${candidate.currency}`}
+                                          </td>
+                                          <td className="p-2">
+                                            {candidate.estimated_team_labor_cost == null
+                                              ? "Chưa đủ đơn giá đội"
+                                              : `${displayAmount(candidate.estimated_team_labor_cost)} ${forecast.resource_overview.staffing_options.currency}`}
+                                          </td>
+                                          <td className="p-2">
+                                            {candidate.cost_change_from_current == null
+                                              ? "Chưa tính được"
+                                              : `${Number(candidate.cost_change_from_current) > 0 ? "+" : ""}${displayAmount(candidate.cost_change_from_current)} ${forecast.resource_overview.staffing_options.currency}`}
+                                            {!!candidate.review_factors.length && (
+                                              <span className="block text-ink-muted">
+                                                {candidate.review_factors
+                                                  .map(valueLabel)
+                                                  .join("; ")}
+                                              </span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </details>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-sm text-ink-muted">
+                            Chưa có phân bổ nhân sự trong Test Plan để so sánh.
+                          </p>
+                        )}
+                        <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-ink-muted">
+                          {forecast.resource_overview.staffing_options.limitations.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <p className="mt-3 text-xs text-ink-muted">
+                      Đánh giá nguồn lực dựa trên vai trò, năng lực có xác nhận, khả dụng, tải và
+                      công suất. Đơn giá dùng để so sánh tác động ngân sách giữa các phương án,
+                      không phải thước đo năng lực; người phụ trách tự chọn và cập nhật phân công
+                      trong Test Plan.
+                    </p>
+                  </section>
                 )}
               </div>
             )}

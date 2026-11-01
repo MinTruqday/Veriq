@@ -316,18 +316,23 @@ async def search_related_testcases(
     """Find related test cases within a project"""
     return await call("GET", f"/du-an/{project_id}/ca-kiem-thu?q={query}", config)
 
-@with_tool_access(("test_design",), "PROPOSE", "ai.generate_scenario")
+@with_tool_access(
+    ("test_design",),
+    "PROPOSE",
+    "ai.generate_scenario",
+    label="Generate test scenarios",
+    description="Generate source-grounded test scenario proposals for preview only.",
+)
 async def generate_test_scenarios(
     requirement_version_id: Annotated[str, Field(description="Requirement version identifier")],
     instruction: Annotated[str, Field(description="Scenario generation instruction")] = "",
     config: RunnableConfig = None,
 ) -> str:
-    """Generate a test scenario draft from a requirement version"""
     return await call(
         "POST",
         f"/phien-ban-yeu-cau/{requirement_version_id}/ai/sinh-kich-ban",
         config,
-        {"instruction": instruction},
+        {"instruction": instruction, "preview_only": True},
         timeout=settings.MODEL_TIMEOUT_SECONDS,
     )
 

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import AgentRunPanel from "../../components/AgentRunPanel";
+import ProjectComplexityAssessmentPanel from "../../components/ProjectComplexityAssessmentPanel";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
@@ -177,6 +178,7 @@ export default function DashboardPage({ project }) {
           {canReadAutomationRuns && (
             <AgentRunPanel project={project} showDefinitions={false} compact />
           )}
+          <ProjectComplexityAssessmentPanel project={project} />
           {(dashboard || coverage) && hasOverviewMetrics && (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
               {can("requirement.read") && dashboard && (

@@ -171,7 +171,13 @@ export function scenarioFormFromRecord(item) {
 }
 
 export function createDataSetForm() {
-  return { name: "", variables: {}, secretRefs: {} };
+  return {
+    name: "",
+    variables: {},
+    secretRefs: {},
+    generationSource: "USER",
+    sourceRequirementVersionIds: [],
+  };
 }
 
 export function selectedValues(event) {

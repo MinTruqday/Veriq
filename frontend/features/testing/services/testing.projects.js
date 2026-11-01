@@ -80,6 +80,9 @@ export const projectTestingApi = {
   createProject: (payload) =>
     testingRequest("/du-an", { method: "POST", body: JSON.stringify(payload) }),
   getProject: (id) => testingRequest(`/du-an/${id}`),
+  getProjectComplexityAssessment: (id) => testingRequest(`/du-an/${id}/do-kho-ai`),
+  assessProjectComplexity: (id) =>
+    testingRequest(`/du-an/${id}/do-kho-ai/danh-gia`, { method: "POST" }),
   listMembers: (id) => testingRequest(`/du-an/${id}/thanh-vien`),
   getMySkillProfile: (id) => testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi`),
   recommendTestCaseOwner: (projectId, payload) =>

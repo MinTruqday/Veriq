@@ -423,6 +423,11 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  suggestTestData: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/du-lieu-kiem-thu/ai/de-xuat`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listDataSetVersions: (id) => testingRequest(`/du-lieu-kiem-thu/${id}/phien-ban`),
   createDataSetVersion: (id, payload) =>
     testingRequest(`/du-lieu-kiem-thu/${id}/phien-ban`, {
@@ -466,6 +471,11 @@ export const designTestingApi = {
     }),
   createScenario: (id, payload) =>
     testingRequest(`/du-an/${id}/kich-ban-kiem-thu`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createGeneratedScenarioDrafts: (id, payload) =>
+    testingRequest(`/du-an/${id}/kich-ban-kiem-thu/ban-nhap/lo`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

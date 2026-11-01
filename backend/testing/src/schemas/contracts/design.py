@@ -427,6 +427,8 @@ class DataSetCreate(BaseModel):
     name: str = Field(min_length=2, max_length=300)
     variables: dict[str, Any] = Field(default_factory=dict)
     secret_refs: dict[str, str] = Field(default_factory=dict)
+    generation_source: Literal["USER", "AI_ASSISTED"] = "USER"
+    source_requirement_version_ids: list[str] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
     def validate_secret_policy(self):
@@ -443,6 +445,21 @@ class DataSetCreate(BaseModel):
         ]
         if invalid_refs:
             raise ValueError("Secret reference phải bắt đầu bằng secret://")
+        if len(set(self.source_requirement_version_ids)) != len(self.source_requirement_version_ids):
+            raise ValueError("Nguồn yêu cầu không được trùng")
+        if self.generation_source == "AI_ASSISTED" and not self.source_requirement_version_ids:
+            raise ValueError("Bộ dữ liệu có hỗ trợ AI phải lưu nguồn yêu cầu")
+        return self
+
+
+class DataSetAISuggestionInput(BaseModel):
+    requirement_version_ids: list[str] = Field(min_length=1, max_length=20)
+    instruction: str = Field(default="", max_length=3000)
+
+    @model_validator(mode="after")
+    def unique_requirement_versions(self):
+        if len(set(self.requirement_version_ids)) != len(self.requirement_version_ids):
+            raise ValueError("Không được chọn phiên bản yêu cầu trùng")
         return self
 
 

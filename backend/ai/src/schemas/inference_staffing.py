@@ -19,7 +19,6 @@ class StaffingCandidateInput(BaseModel):
     active_project_count: int = Field(ge=0)
     active_case_count: int = Field(ge=0)
     active_run_count: int = Field(ge=0)
-    payroll_cost_factor: float | None = Field(default=None, ge=0, le=1)
 
 
 class StaffingRecommendationRequest(BaseModel):

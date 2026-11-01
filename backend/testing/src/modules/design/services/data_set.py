@@ -4,7 +4,11 @@ from math import prod
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.common import audit, get_project, get_project_entity, new_id, now
+from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.database import database
+from src.core.source_evidence import split_source_evidence
+from src.modules.design.services.test_case_records import require_current_baselined_version
 from src.repositories.execution_asset import execution_asset_repository
 
 
@@ -44,6 +48,96 @@ def expand_variables(variables, max_rows):
 
 class DataSetService:
     @staticmethod
+    async def suggest(project_id, payload, user):
+        await get_project(project_id, user, 'testdata.create')
+        await get_project(project_id, user, 'ai.generate_testcase')
+        await get_project(project_id, user, 'requirement.read')
+        requirement_ids = list(dict.fromkeys(payload.requirement_version_ids))
+        versions = await database.value.requirement_versions.find({
+            "project_id": project_id,
+            "_id": {"$in": requirement_ids},
+            "status": "BASELINED",
+        }).to_list(len(requirement_ids))
+        if len(versions) != len(requirement_ids):
+            raise HTTPException(422, detail={"code": "TEST_DATA_REQUIREMENT_NOT_BASELINED"})
+        for version in versions:
+            await require_current_baselined_version(version)
+        criteria = await database.value.acceptance_criteria.find({
+            "project_id": project_id,
+            "requirement_version_id": {"$in": requirement_ids},
+        }).to_list(1000)
+        evidence = []
+        source_text = {}
+        source_labels = {}
+        for version in versions:
+            text = str(version.get("plain_text_projection") or plain_text(version.get("content_doc", {}))).strip()
+            if text:
+                evidence.extend(split_source_evidence("requirement_version", version["_id"], text))
+                source_text[version["_id"]] = text
+                source_labels[version["_id"]] = " · ".join(
+                    value for value in (
+                        str(version.get("title") or "Yêu cầu"),
+                        f"v{version['version']}" if version.get("version") else "",
+                    ) if value
+                )
+        for criterion in criteria:
+            text = str(criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))).strip()
+            if text:
+                evidence.extend(split_source_evidence("acceptance_criterion", criterion["_id"], text))
+                source_text[criterion["_id"]] = text
+                source_labels[criterion["_id"]] = " · ".join(
+                    value for value in (
+                        source_labels.get(criterion.get("requirement_version_id"), "Yêu cầu"),
+                        str(criterion.get("criterion_key") or criterion.get("key") or "Tiêu chí chấp nhận"),
+                    ) if value
+                )
+        if not evidence:
+            raise HTTPException(422, detail={"code": "TEST_DATA_EVIDENCE_REQUIRED"})
+        if len(evidence) > 100:
+            raise HTTPException(422, detail={"code": "TEST_DATA_EVIDENCE_LIMIT_EXCEEDED"})
+        result = await request_ai_automation(
+            "test_data_generation", project_id, payload.instruction, evidence
+        )
+        if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
+            raise HTTPException(503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True})
+        suggestions = result.get("suggestions") or []
+        if set(result.get("evidence_refs") or []) - set(source_text):
+            raise HTTPException(502, detail={"code": "TEST_DATA_AI_EVIDENCE_REFERENCE_INVALID"})
+        variable_names = set()
+        for suggestion in suggestions:
+            name = str(suggestion.get("variable_name") or "").strip()
+            if not name or any(
+                marker in name.casefold()
+                for marker in ("password", "passwd", "token", "secret", "api_key", "private_key")
+            ):
+                raise HTTPException(502, detail={"code": "TEST_DATA_AI_SENSITIVE_FIELD_REJECTED"})
+            normalized_name = name.casefold()
+            if normalized_name in variable_names:
+                raise HTTPException(502, detail={"code": "TEST_DATA_AI_VARIABLE_DUPLICATE"})
+            variable_names.add(normalized_name)
+            if not suggestion.get("values"):
+                raise HTTPException(502, detail={"code": "TEST_DATA_AI_VALUES_REQUIRED"})
+            quotes = suggestion.get("evidence_quotes") or []
+            if not quotes:
+                raise HTTPException(502, detail={"code": "TEST_DATA_AI_GROUNDING_REQUIRED"})
+            for quote in quotes:
+                source = source_text.get(quote.get("evidence_ref"))
+                if not source or str(quote.get("quote") or "").strip() not in source:
+                    raise HTTPException(502, detail={"code": "TEST_DATA_AI_GROUNDING_INVALID"})
+        return {
+            "project_id": project_id,
+            "requirement_version_ids": requirement_ids,
+            "suggestions": suggestions,
+            "evidence_labels": source_labels,
+            "evidence": [
+                {"artifact_type": item["artifact_type"], "artifact_version_id": item["artifact_version_id"]}
+                for item in evidence
+            ],
+            **ai_contract_metadata(result),
+            "saved": False,
+        }
+
+    @staticmethod
     async def _get_version(data_set_id, version_id, user, permission=None):
         data_set = await get_project_entity(
             'data_sets',
@@ -61,6 +155,17 @@ class DataSetService:
     @staticmethod
     async def create(project_id, payload, user):
         await get_project(project_id, user, 'testdata.create')
+        if payload.generation_source == "AI_ASSISTED":
+            source_ids = payload.source_requirement_version_ids
+            versions = await database.value.requirement_versions.find({
+                "project_id": project_id,
+                "_id": {"$in": source_ids},
+                "status": "BASELINED",
+            }).to_list(len(source_ids))
+            if len(versions) != len(source_ids):
+                raise HTTPException(422, detail={"code": "TEST_DATA_SOURCE_REQUIREMENT_INVALID"})
+            for version in versions:
+                await require_current_baselined_version(version)
         timestamp = now()
         data_set_id = new_id('DATA')
         version = {
@@ -88,7 +193,17 @@ class DataSetService:
             await execution_asset_repository.create_data_set(data_set, version)
         except DuplicateKeyError:
             raise HTTPException(status_code=409, detail={"code": 'DATA_SET_NAME_EXISTS'})
-        await audit(user.id, 'data_set_created', 'DataSet', data_set_id, project_id)
+        await audit(
+            user.id,
+            'data_set_created',
+            'DataSet',
+            data_set_id,
+            project_id,
+            {
+                "generation_source": version.get("generation_source", "USER"),
+                "source_requirement_version_ids": version.get("source_requirement_version_ids", []),
+            },
+        )
         return {**data_set, "current_version": public_version(version)}
 
     @staticmethod
