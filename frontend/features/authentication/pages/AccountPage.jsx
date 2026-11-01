@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import NotificationPreferencesPanel from "@/features/notification/components/NotificationPreferencesPanel";
@@ -269,8 +270,14 @@ export default function AccountPage() {
               <p className="text-sm text-danger" role="alert">
                 {sessionsError}
               </p>
-              <button className="secondary-button" type="button" onClick={loadSessions}>
-                Thử lại
+              <button
+                className="icon-button h-9 w-9"
+                type="button"
+                aria-label="Tải lại phiên đăng nhập"
+                title="Tải lại phiên đăng nhập"
+                onClick={loadSessions}
+              >
+                <RefreshCw aria-hidden="true" size={16} />
               </button>
             </div>
           ) : visibleSessions.length ? (
@@ -287,7 +294,14 @@ export default function AccountPage() {
                     </p>
                     <p className="text-xs text-ink-muted">
                       {session.created_at
-                        ? new Date(session.created_at).toLocaleString("vi-VN")
+                        ? new Date(session.created_at).toLocaleString(user?.locale || undefined, {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: profile.timezone || undefined,
+                          })
                         : "Không rõ thời điểm"}
                     </p>
                   </div>

@@ -16,6 +16,7 @@ from src.core.common import (
     sort_spec,
 )
 from src.core.database import database
+from src.core.human_decisions import require_automation_publication_authority
 from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
 from src.repositories.test_plan import test_plan_repository
 from src.repositories.project import project_repository
@@ -46,7 +47,14 @@ PLAN_SNAPSHOT_FIELDS = (
 
 
 def plan_snapshot(plan):
-    return {field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS}
+    return {
+        **{field: plan.get(field) for field in PLAN_SNAPSHOT_FIELDS},
+        **{
+            field: plan[field]
+            for field in ('test_data_plan', 'defect_management')
+            if field in plan
+        },
+    }
 
 
 def plan_snapshot_hash(plan):
@@ -129,7 +137,8 @@ def plan_completeness(plan, settings=None):
     checks = [
         (
             'TEST_PLAN_STRATEGY_REQUIRED',
-            all(plan.get(field) for field in ['strategy_version_id', 'strategy_snapshot_hash']),
+            all(plan.get(field) for field in ['strategy_version_id', 'strategy_snapshot_hash'])
+            or bool(str(plan.get('test_approach') or '').strip()),
         ),
         *[
             (requirement["code"], bool(plan.get(requirement["field"])))
@@ -185,6 +194,14 @@ async def validate_effort_allocation_members(project_id, estimation, session=Non
             status_code=422,
             detail={"code": "TEST_PLAN_EFFORT_MEMBER_NOT_ACTIVE", "user_ids": unknown},
         )
+
+
+async def validate_plan_data_owner(project_id, data_plan):
+    if not data_plan.owner_id:
+        return
+    members = await project_repository.list_members(project_id)
+    if not any(item.get('user_id') == data_plan.owner_id and item.get('status') == 'ACTIVE' for item in members):
+        raise HTTPException(422, detail={'code': 'TEST_PLAN_DATA_OWNER_NOT_ACTIVE'})
 
 
 async def validate_plan_scope(project_id, requirement_version_ids, test_suite_ids, test_case_version_ids):
@@ -292,6 +309,7 @@ async def create_test_plan_record(payload, project_id, user):
             set(['QA']),
         )
     await validate_effort_allocation_members(payload.project_id, payload.estimation)
+    await validate_plan_data_owner(payload.project_id, payload.test_data_plan)
     strategy_binding = await resolve_strategy_binding(
         payload.project_id,
         payload.strategy_version_id,
@@ -395,6 +413,9 @@ async def update_test_plan_record(plan_id, payload, user):
         )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
+    if 'test_data_plan' in changes:
+        validated = TestPlanCreate.model_validate({**plan, **changes})
+        await validate_plan_data_owner(plan['project_id'], validated.test_data_plan)
     if "estimation" in changes:
         await validate_effort_allocation_members(
             plan["project_id"], TestPlanCreate.model_validate({**plan, **changes}).estimation
@@ -491,6 +512,7 @@ async def submit_test_plan_record(plan_id, payload, user):
 
 
 async def approve_test_plan_record(plan_id, payload, user):
+    require_automation_publication_authority(user, 'testplan.approve')
     
     plan = await get_test_plan_record(plan_id, user, "testplan.approve")
     if plan.get("status") not in ['DRAFT', 'IN_REVIEW']:
@@ -562,6 +584,25 @@ async def approve_test_plan_record(plan_id, payload, user):
                 session=session,
             )
             await emit_test_plan_approved(updated, user, session=session)
+    return updated
+
+
+async def request_test_plan_revision(plan_id, payload, user):
+    plan = await get_test_plan_record(plan_id, user, 'testplan.review')
+    if plan.get('status') != 'IN_REVIEW':
+        raise HTTPException(409, detail={'code': 'INVALID_STATE_TRANSITION'})
+    if not payload.review_note.strip():
+        raise HTTPException(422, detail={'code': 'TEST_PLAN_REVISION_REASON_REQUIRED'})
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await optimistic_patch(
+                'test_plans', plan_id, plan['project_id'], payload.expected_revision,
+                {'status': 'DRAFT', 'review_note': payload.review_note,
+                 'approval_history': [*plan.get('approval_history', []),
+                                      {'actor_id': user.id, 'action': 'CHANGES_REQUESTED', 'note': payload.review_note, 'at': now()}]},
+                session=session,
+            )
+            await audit(user.id, 'test_plan_changes_requested', 'TestPlan', plan_id, plan['project_id'], session=session)
     return updated
 
 

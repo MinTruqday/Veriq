@@ -10,6 +10,8 @@ from src.schemas.contracts.common import (
     empty_doc,
 )
 from src.schemas.contracts.planning import (
+    DefectManagementPlan,
+    TestDataPlan,
     TestPlanCommunication,
     TestPlanEstimation,
     TestPlanMilestone,
@@ -82,6 +84,8 @@ class TestPlanPatch(BaseModel):
     quality_targets: list[dict[str, Any]] | None = Field(default=None, max_length=200)
     risk_register: list[TestPlanRisk] | None = Field(default=None, max_length=500)
     communication_plan: TestPlanCommunication | None = None
+    test_data_plan: TestDataPlan | None = None
+    defect_management: DefectManagementPlan | None = None
 
 
 class TestSuiteCreate(BaseModel):

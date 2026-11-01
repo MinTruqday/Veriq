@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { RotateCcw } from "lucide-react";
 import DataTable from "../components/DataTable";
 import PlatformOperationsPanel from "../components/PlatformOperationsPanel";
 import PlatformUsersPanel from "../components/PlatformUsersPanel";
@@ -278,12 +279,14 @@ export default function OperationsPage() {
                   label: "Thao tác",
                   render: (item) => (
                     <button
-                      className="secondary-button"
+                      aria-label={`Thử lại công việc ${item._id}`}
+                      title={retryingJobs.has(item._id) ? "Đang thử lại" : "Thử lại"}
+                      className="icon-button h-9 w-9"
                       type="button"
                       disabled={retryingJobs.has(item._id)}
                       onClick={() => retryJob(item._id)}
                     >
-                      {retryingJobs.has(item._id) ? "Đang thử lại…" : "Thử lại"}
+                      <RotateCcw aria-hidden="true" size={16} />
                     </button>
                   ),
                 },

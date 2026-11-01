@@ -195,6 +195,8 @@ class AutomationService:
         )
 
     async def enqueue_event(self, event: AutomationEventRequest) -> list[AutomationRun]:
+        if not settings.AI_DOMAIN_AUTOMATION_ENABLED:
+            return []
         if event.trigger == AutomationTrigger.MANUAL:
             raise HTTPException(
                 status_code=422,

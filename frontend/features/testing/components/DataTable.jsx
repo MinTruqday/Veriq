@@ -34,9 +34,14 @@ export default function DataTable({
   getRowKey,
   minTableWidth = 0,
   layout = "table",
+  renderMobileCard,
 }) {
   const selectable = Array.isArray(selectedIds) && typeof onSelectionChange === "function";
   const itemId = (item) => item._id ?? item.id ?? item.key ?? item.code;
+  const isActiveRow = (item) => {
+    const id = itemId(item);
+    return activeRowId != null && id != null && activeRowId === id;
+  };
   const itemLabel = (item, index) =>
     item.title ||
     item.name ||
@@ -92,6 +97,30 @@ export default function DataTable({
     visibleColumns.reduce((width, column) => width + (column.minWidth || 144), 0) +
       (selectable ? 48 : 0),
   );
+  const fixedTable = layout === "wide-table";
+  const hasPercentageWidths =
+    !selectable &&
+    visibleColumns.length > 0 &&
+    visibleColumns.every(
+      (column) => typeof column.width === "string" && /^\d+(?:\.\d+)?%$/.test(column.width),
+    );
+  const flexibleColumnCandidates = visibleColumns
+    .map((column, index) => ({ column, index }))
+    .filter(
+      ({ column }) =>
+        !/(?:^|_)(?:actions?|lifecycle|operations?)(?:$|_)/i.test(column.key) &&
+        !/^(?:thao tác|actions?)$/i.test(column.label),
+    );
+  const flexibleColumns = flexibleColumnCandidates.length
+    ? flexibleColumnCandidates
+    : visibleColumns.map((column, index) => ({ column, index }));
+  const flexibleColumnIndex = hasPercentageWidths
+    ? -1
+    : (flexibleColumns.reduce((widest, current) => {
+        const currentWidth = Math.max(1, Number(current.column.minWidth) || 144);
+        const widestWidth = widest ? Math.max(1, Number(widest.column.minWidth) || 144) : -1;
+        return currentWidth > widestWidth ? current : widest;
+      }, null)?.index ?? -1);
   const selectRow = (event, item) => {
     if (
       !onSelect ||
@@ -118,9 +147,29 @@ export default function DataTable({
           viewportClassName="min-w-0 overflow-x-auto"
         >
           <table
-            className="w-full text-left text-[13px]"
-            style={{ minWidth: `${desktopTableWidth}px` }}
+            className={`${fixedTable ? "w-full table-fixed" : "w-full"} text-left text-[13px]`}
+            style={{
+              minWidth: `${desktopTableWidth}px`,
+              ...(fixedTable ? { tableLayout: "fixed" } : {}),
+            }}
           >
+            {fixedTable && (
+              <colgroup>
+                {selectable && <col style={{ width: "48px" }} />}
+                {visibleColumns.map((column, index) => (
+                  <col
+                    key={column.key}
+                    style={
+                      column.width
+                        ? { width: column.width }
+                        : index === flexibleColumnIndex
+                          ? undefined
+                          : { width: `${Math.max(1, Number(column.minWidth) || 144)}px` }
+                    }
+                  />
+                ))}
+              </colgroup>
+            )}
             <thead className="bg-surface-quiet text-[11px] uppercase tracking-wide text-ink-muted">
               <tr>
                 {selectable && (
@@ -139,7 +188,16 @@ export default function DataTable({
                   <th
                     className="whitespace-nowrap px-4 py-3 font-semibold"
                     key={column.key}
-                    style={column.minWidth ? { minWidth: `${column.minWidth}px` } : undefined}
+                    style={
+                      fixedTable && (column.width || column.minWidth)
+                        ? {
+                            ...(column.width ? { width: column.width } : {}),
+                            ...(column.minWidth ? { minWidth: `${column.minWidth}px` } : {}),
+                          }
+                        : column.minWidth
+                          ? { minWidth: `${column.minWidth}px` }
+                          : undefined
+                    }
                   >
                     {column.label}
                   </th>
@@ -150,7 +208,7 @@ export default function DataTable({
               {items.map((item, index) => (
                 <tr
                   key={rowKey(item, index)}
-                  className={`${onSelect ? "cursor-pointer hover:bg-surface-quiet" : ""} ${activeRowId === itemId(item) ? "bg-brand-soft/60" : ""}`}
+                  className={`${onSelect ? "cursor-pointer hover:bg-surface-quiet" : ""} ${isActiveRow(item) ? "bg-brand-soft/60" : ""}`}
                   onClick={(event) => selectRow(event, item)}
                   onKeyDown={(event) => openFromKeyboard(event, item)}
                   tabIndex={onSelect ? 0 : undefined}
@@ -172,9 +230,18 @@ export default function DataTable({
                   )}
                   {visibleColumns.map((column) => (
                     <td
-                      className="min-w-0 break-words px-4 py-3 align-top [&_button]:whitespace-nowrap"
+                      className="min-w-0 break-words px-4 py-3 align-top [overflow-wrap:anywhere] [&_button]:whitespace-nowrap"
                       key={column.key}
-                      style={column.minWidth ? { minWidth: `${column.minWidth}px` } : undefined}
+                      style={
+                        fixedTable && (column.width || column.minWidth)
+                          ? {
+                              ...(column.width ? { width: column.width } : {}),
+                              ...(column.minWidth ? { minWidth: `${column.minWidth}px` } : {}),
+                            }
+                          : column.minWidth
+                            ? { minWidth: `${column.minWidth}px` }
+                            : undefined
+                      }
                     >
                       {renderValue(column, item)}
                     </td>
@@ -207,7 +274,7 @@ export default function DataTable({
         {items.map((item, index) => (
           <article
             key={rowKey(item, index)}
-            className={`py-4 first:pt-0 last:pb-0 ${activeRowId === itemId(item) || (selectable && selectedIds.includes(itemId(item))) ? "rounded-lg bg-brand-soft/40 px-3" : ""} ${onSelect ? "cursor-pointer hover:bg-surface-quiet active:bg-brand-soft/40" : ""}`}
+            className={`py-4 first:pt-0 last:pb-0 ${isActiveRow(item) || (selectable && selectedIds.includes(itemId(item))) ? "rounded-lg bg-brand-soft/40 px-3" : ""} ${onSelect ? "cursor-pointer hover:bg-surface-quiet active:bg-brand-soft/40" : ""}`}
             onClick={(event) => selectRow(event, item)}
             onKeyDown={(event) => openFromKeyboard(event, item)}
             tabIndex={onSelect ? 0 : undefined}
@@ -231,20 +298,30 @@ export default function DataTable({
                 Chọn
               </label>
             )}
-            <dl className="space-y-3">
-              {visibleColumns.map((column) => {
-                const value = renderMobileValue(column, item);
-                if (value === null || value === undefined || value === "") return null;
-                return (
-                  <div className="grid grid-cols-[minmax(0,40%)_1fr] gap-3" key={column.key}>
-                    <dt className="min-w-0 break-words text-[12px] font-semibold leading-5 text-ink-muted">
-                      {column.label}
-                    </dt>
-                    <dd className="min-w-0 break-words text-[13px] text-ink">{value}</dd>
-                  </div>
-                );
-              })}
-            </dl>
+            {renderMobileCard ? (
+              renderMobileCard(item, index)
+            ) : (
+              <dl className={layout === "wide-table" ? "grid gap-3" : "space-y-3"}>
+                {visibleColumns.map((column) => {
+                  const value = renderMobileValue(column, item);
+                  if (value === null || value === undefined || value === "") return null;
+                  return (
+                    <div
+                      className="grid min-w-0 grid-cols-[minmax(0,40%)_minmax(0,1fr)] gap-3"
+                      data-column-key={column.key}
+                      key={column.key}
+                    >
+                      <dt className="min-w-0 break-words text-[12px] font-semibold leading-5 text-ink-muted">
+                        {column.label}
+                      </dt>
+                      <dd className="min-w-0 break-words [overflow-wrap:anywhere] text-[13px] text-ink">
+                        {value}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            )}
           </article>
         ))}
       </div>

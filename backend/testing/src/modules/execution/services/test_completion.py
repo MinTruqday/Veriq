@@ -5,6 +5,7 @@ from src.clients.ai_automation import emit_test_completion_report_created
 from src.core.auth import roles_for_membership
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
+from src.core.human_decisions import require_automation_publication_authority
 from src.modules.execution.services.exit_criteria import quality_gate_status
 from src.modules.execution.services.test_completion_automation import completion_ai_result
 from src.modules.execution.services.test_completion_query import (
@@ -198,8 +199,10 @@ async def create_completion_report(project_id, payload, user):
         "release_id": release["_id"],
         "build_id": build["_id"],
         "build_ids": [build["_id"]],
-        "strategy_version_id": strategy["_id"],
-        "strategy_snapshot_hash": strategy["snapshot_hash"],
+        "strategy_version_id": strategy.get("_id"),
+        "strategy_snapshot_hash": strategy.get("snapshot_hash"),
+        "strategy_approach_snapshot": strategy.get("approach"),
+        "strategy_source": strategy.get("source", "APPROVED_TEST_STRATEGY"),
         "monitoring_snapshot_id": snapshot["_id"],
         "final_snapshot_id": snapshot["_id"],
         "scope_snapshot": {
@@ -497,11 +500,13 @@ async def sign_off_completion(report_id, payload, user):
     membership = await find_active_member(report["project_id"], user.id, "ACTIVE")
     if not membership:
         raise HTTPException(status_code=403, detail={"code": "PROJECT_MEMBERSHIP_REQUIRED"})
+    member_roles = roles_for_membership(membership)
     sign_offs = [item for item in report.get("sign_offs", []) if item.get("user_id") != user.id]
     sign_offs.append(
         {
             "user_id": user.id,
-            "role": membership.get("project_role"),
+            "role": "QA" if "QA" in member_roles else membership.get("project_role"),
+            "roles": sorted(member_roles),
             "decision": payload.decision,
             "note": payload.note,
             "at": now(),
@@ -556,6 +561,8 @@ async def transition_completion(report_id, payload, user, transition_action):
     }[transition_action]
     source = transition["source"]
     target = transition["target"]
+    if target in {'APPROVED', 'CLOSED'}:
+        require_automation_publication_authority(user, transition['permission'])
     report = await get_completion_for_user(report_id, user, transition["permission"])
     if target == "APPROVED":
         await validate_completion_readiness(report)

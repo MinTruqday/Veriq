@@ -1,11 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DataTable from "../../../components/DataTable";
 import FilePicker from "../../../components/FilePicker";
 import { ErrorState } from "../../../components/WorkspacePrimitives";
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { docText, textDoc, valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
-import { REQUIREMENT_IMPORT_FORMATS } from "./requirements.model";
+import { REQUIREMENT_IMPORT_FORMATS, REQUIREMENT_SOURCE_TYPE_OPTIONS } from "./requirements.model";
 import RequirementTemplatePanel from "./RequirementTemplatePanel";
 
 function updateAcceptanceCriterion(criteria, index, content) {
@@ -236,6 +236,18 @@ export default function RequirementImportModal({
   const [confirmingImport, setConfirmingImport] = useState(false);
   const [inputMethod, setInputMethod] = useState("file");
   const confirmingImportRef = useRef(false);
+  const previewRef = useRef(null);
+  const lastScrolledPreviewKey = useRef("");
+  useEffect(() => {
+    if (!isOpen || preview?.status !== "PREVIEW_READY") return undefined;
+    const previewKey = `${preview._id}:${preview.revision}`;
+    if (lastScrolledPreviewKey.current === previewKey) return undefined;
+    lastScrolledPreviewKey.current = previewKey;
+    const frame = window.requestAnimationFrame(() =>
+      previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [isOpen, preview?._id, preview?.revision, preview?.status]);
   const confirmImport = async () => {
     if (confirmingImportRef.current) return;
     confirmingImportRef.current = true;
@@ -346,10 +358,11 @@ export default function RequirementImportModal({
               setUploadAccess((value) => ({ ...value, source_type: event.target.value }))
             }
           >
-            <option value="SRS">Đặc tả yêu cầu</option>
-            <option value="USER_STORY">Câu chuyện người dùng</option>
-            <option value="API_SPEC">Định nghĩa API</option>
-            <option value="REFERENCE">Tài liệu khác</option>
+            {REQUIREMENT_SOURCE_TYPE_OPTIONS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
           </select>
         </label>
         {upload && upload.name.split(".").pop().toLowerCase() === "pdf" && (
@@ -441,10 +454,11 @@ export default function RequirementImportModal({
             disabled={Boolean(importValue.supersedes_document_id)}
             onChange={(event) => updateImportValue({ source_type: event.target.value })}
           >
-            <option value="SRS">Đặc tả yêu cầu</option>
-            <option value="USER_STORY">Câu chuyện người dùng</option>
-            <option value="API_SPEC">Định nghĩa API</option>
-            <option value="REFERENCE">Tài liệu khác</option>
+            {REQUIREMENT_SOURCE_TYPE_OPTIONS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="field-label">
@@ -510,7 +524,7 @@ export default function RequirementImportModal({
         </div>
       </form>
       {preview && (
-        <div className="border-t border-border p-5">
+        <div className="border-t border-border p-5" ref={previewRef}>
           {preview.warnings?.includes("NO_DOCUMENTED_BEHAVIOR_TO_DRAFT") && (
             <p className="mb-3 text-sm text-ink-muted">
               Tài liệu chưa mô tả hành vi đủ rõ để tạo bản nháp yêu cầu. Bạn có thể bổ sung tài liệu

@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Activity, Archive, BadgeCheck, Check, Download, FilePlus2, Pin } from "lucide-react";
 import DataTable from "./DataTable";
 import MetricTrendChart from "./MetricTrendChart";
 import QualityMetricCard from "./QualityMetricCard";
@@ -270,13 +271,16 @@ export default function MetricDefinitionPanel({ project }) {
           {
             key: "actions",
             label: "Thao tác",
+            minWidth: 252,
             hideWhenEmpty: true,
             render: (item) => (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-nowrap gap-1.5">
                 {item.status === "DRAFT" && can("measurement.manage") && (
                   <button
-                    className="secondary-button"
+                    aria-label="Kích hoạt chỉ số"
+                    className="icon-button h-9 w-9 shrink-0"
                     type="button"
+                    title="Kích hoạt chỉ số"
                     onClick={async () => {
                       await testingApi.transitionMeasurementDefinition(item._id, {
                         expected_revision: item.revision,
@@ -286,13 +290,15 @@ export default function MetricDefinitionPanel({ project }) {
                       await load();
                     }}
                   >
-                    Kích hoạt
+                    <Check size={16} aria-hidden="true" />
                   </button>
                 )}
                 {item.status === "ACTIVE" && can("measurement.snapshot.create") && (
                   <button
-                    className="secondary-button"
+                    aria-label="Đo ngay"
+                    className="icon-button h-9 w-9 shrink-0"
                     type="button"
+                    title="Đo ngay"
                     onClick={async () => {
                       try {
                         await testingApi.createMeasurementSnapshot(project._id, {
@@ -307,14 +313,16 @@ export default function MetricDefinitionPanel({ project }) {
                       }
                     }}
                   >
-                    Đo ngay
+                    <Activity size={16} aria-hidden="true" />
                   </button>
                 )}
                 {can("measurement.manage") && item.status !== "ARCHIVED" && (
                   <>
                     <button
-                      className="secondary-button"
+                      aria-label="Tạo phiên bản"
+                      className="icon-button h-9 w-9 shrink-0"
                       type="button"
+                      title="Tạo phiên bản"
                       onClick={async () => {
                         await testingApi.versionMeasurementDefinition(item._id, {
                           expected_revision: item.revision,
@@ -324,11 +332,13 @@ export default function MetricDefinitionPanel({ project }) {
                         await load();
                       }}
                     >
-                      Tạo phiên bản
+                      <FilePlus2 size={16} aria-hidden="true" />
                     </button>
                     <button
-                      className="secondary-button"
+                      aria-label="Lưu trữ định nghĩa"
+                      className="icon-button h-9 w-9 shrink-0"
                       type="button"
+                      title="Lưu trữ định nghĩa"
                       onClick={async () => {
                         await testingApi.transitionMeasurementDefinition(item._id, {
                           expected_revision: item.revision,
@@ -338,42 +348,48 @@ export default function MetricDefinitionPanel({ project }) {
                         await load();
                       }}
                     >
-                      Lưu trữ
+                      <Archive size={16} aria-hidden="true" />
                     </button>
                   </>
                 )}
                 <button
-                  className="secondary-button"
+                  aria-label="Xác thực chỉ số"
+                  className="icon-button h-9 w-9 shrink-0"
                   type="button"
+                  title="Xác thực chỉ số"
                   onClick={async () => {
                     const result = await testingApi.validateMeasurementDefinition(item._id);
                     setError(result.valid ? "" : "Công thức hoặc nguồn dữ liệu không hợp lệ");
                   }}
                 >
-                  Xác thực
+                  <BadgeCheck size={16} aria-hidden="true" />
                 </button>
                 <button
-                  className="secondary-button"
+                  aria-label="Ghim chỉ số"
+                  className="icon-button h-9 w-9 shrink-0"
                   type="button"
+                  title="Ghim chỉ số"
                   onClick={() =>
                     testingApi
                       .pinMeasurementToDashboard(item._id, true)
                       .catch((reason) => setError(messageOf(reason)))
                   }
                 >
-                  Ghim
+                  <Pin size={16} aria-hidden="true" />
                 </button>
                 {can("report.export") && (
                   <button
-                    className="secondary-button"
+                    aria-label="Xuất CSV"
+                    className="icon-button h-9 w-9 shrink-0"
                     type="button"
+                    title="Xuất CSV"
                     onClick={() =>
                       testingApi
                         .exportMeasurementData(item._id, item.key)
                         .catch((reason) => setError(messageOf(reason)))
                     }
                   >
-                    Xuất CSV
+                    <Download size={16} aria-hidden="true" />
                   </button>
                 )}
               </div>

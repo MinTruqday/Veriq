@@ -408,6 +408,11 @@ export const projectTestingApi = {
   getTestStatusReport: (reportId) => testingRequest(`/bao-cao-trang-thai/${reportId}`),
   getTestStatusReportNarrative: (reportId) =>
     testingRequest(`/bao-cao-trang-thai/${reportId}/ai/ban-nhap`),
+  generateTestStatusReportNarrative: (reportId, payload) =>
+    testingRequest(`/bao-cao-trang-thai/${reportId}/ai/ban-nhap`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   updateTestStatusReport: (reportId, payload) =>
     testingRequest(`/bao-cao-trang-thai/${reportId}`, {
       method: "PATCH",
@@ -469,6 +474,16 @@ export const projectTestingApi = {
     }),
   getTestCompletionNarrative: (reportId) =>
     testingRequest(`/hoan-tat-kiem-thu/${reportId}/ai/ban-nhap`),
+  generateTestCompletionNarrative: (reportId, payload) =>
+    testingRequest(`/hoan-tat-kiem-thu/${reportId}/ai/ban-nhap`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  generateTestCompletionLessonClusters: (reportId, payload) =>
+    testingRequest(`/hoan-tat-kiem-thu/${reportId}/ai/gom-bai-hoc`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   getTestCompletionLessonClusters: (reportId) =>
     testingRequest(`/hoan-tat-kiem-thu/${reportId}/ai/gom-bai-hoc`),
   addTestCompletionResidualRisk: (reportId, payload) =>

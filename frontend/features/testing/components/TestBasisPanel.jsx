@@ -1,4 +1,5 @@
 import DataTable from "./DataTable";
+import { X } from "lucide-react";
 import { valueLabel } from "../lib/testing";
 
 export default function TestBasisPanel({ refs, onChange, requirements }) {
@@ -62,11 +63,13 @@ export default function TestBasisPanel({ refs, onChange, requirements }) {
             label: "Thao tác",
             render: (item) => (
               <button
-                className="secondary-button"
+                className="icon-button h-9 w-9"
                 type="button"
+                aria-label={`Bỏ cơ sở ${item.label || item.artifact_version_id}`}
+                title="Bỏ cơ sở"
                 onClick={() => onChange(refs.filter((value) => value !== item))}
               >
-                Bỏ
+                <X aria-hidden="true" size={16} />
               </button>
             ),
           },

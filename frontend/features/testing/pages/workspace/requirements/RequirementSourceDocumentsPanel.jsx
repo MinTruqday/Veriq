@@ -1,4 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  Archive,
+  ArrowRight,
+  BookOpen,
+  BrainCircuit,
+  Download,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Shield,
+  Tags,
+} from "lucide-react";
 import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
@@ -515,7 +527,7 @@ export default function RequirementSourceDocumentsPanel({
           )}
         </div>
       )}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2 px-4 pt-4">
         <select
           className="form-input w-auto !min-h-9"
           aria-label="Ngôn ngữ tóm tắt"
@@ -565,7 +577,7 @@ export default function RequirementSourceDocumentsPanel({
           {
             key: "document",
             label: "Tài liệu",
-            minWidth: 210,
+            minWidth: 180,
             render: (item) => (
               <div className="space-y-1">
                 <p className="break-words font-medium">{item.title || item.filename}</p>
@@ -581,7 +593,7 @@ export default function RequirementSourceDocumentsPanel({
           {
             key: "scope",
             label: "Phạm vi",
-            minWidth: 180,
+            minWidth: 145,
             render: (item) => {
               const moduleScope = [item.product_area, item.module, item.component]
                 .filter(Boolean)
@@ -604,7 +616,7 @@ export default function RequirementSourceDocumentsPanel({
           {
             key: "processing",
             label: "Tình trạng xử lý",
-            minWidth: 280,
+            minWidth: 220,
             render: (item) => {
               const issues = item.parse_report?.unprocessed_blocks || [];
               const parseReport = item.parse_report;
@@ -684,7 +696,7 @@ export default function RequirementSourceDocumentsPanel({
           {
             key: "version",
             label: "Phiên bản nguồn",
-            minWidth: 140,
+            minWidth: 120,
             render: (item) => (
               <div className="space-y-1 text-sm">
                 <p>Phiên bản {item.source_version || "1"}</p>
@@ -698,70 +710,84 @@ export default function RequirementSourceDocumentsPanel({
           {
             key: "actions",
             label: "Thao tác",
-            minWidth: 220,
+            minWidth: 160,
             hideWhenEmpty: true,
             render: (item) => (
-              <span className="flex max-w-[32rem] flex-wrap items-center gap-2">
+              <span className="grid w-max grid-cols-3 gap-1.5">
                 {can("requirement_document.read") && item.status === "READY" && (
                   <button
-                    className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                    aria-label="Mở đọc tài liệu"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    title="Mở đọc tài liệu"
                     onClick={() =>
                       window.location.assign(projectRoute(projectId, "tai-lieu", item._id))
                     }
                   >
-                    Mở đọc
+                    <BookOpen size={16} aria-hidden="true" />
                   </button>
                 )}
                 {can("requirement_document.review_extraction") &&
                   item.status === "EXTRACTED" &&
                   item.last_import_job_id && (
                     <button
-                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      aria-label="Tiếp tục nhập yêu cầu"
+                      className="icon-button h-9 w-9"
                       type="button"
+                      title="Tiếp tục nhập yêu cầu"
                       disabled={continuingImportDocumentId === item._id}
                       aria-busy={continuingImportDocumentId === item._id}
                       onClick={() => continueImport(item)}
                     >
-                      {continuingImportDocumentId === item._id
-                        ? "Đang mở bản xem trước…"
-                        : "Tiếp tục nhập yêu cầu"}
+                      <ArrowRight size={16} aria-hidden="true" />
                     </button>
                   )}
                 {can("knowledge.manage") && item.status !== "ARCHIVED" && (
                   <>
                     <button
-                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      aria-label="Phân loại tài liệu"
+                      className="icon-button h-9 w-9"
                       type="button"
+                      title="Phân loại tài liệu"
                       onClick={() => classify(item)}
                     >
-                      Phân loại
+                      <Tags size={16} aria-hidden="true" />
                     </button>
                     <button
-                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      aria-label="Lập chỉ mục lại"
+                      className="icon-button h-9 w-9"
                       type="button"
+                      title="Lập chỉ mục lại"
                       onClick={() => reindex(item)}
                     >
-                      Lập chỉ mục lại
+                      <RefreshCw size={15} aria-hidden="true" />
                     </button>
                   </>
                 )}
                 {can("requirement_document.extract") &&
                   (["UPLOADED", "PARSE_FAILED"].includes(item.status) || item.can_retry_parse) && (
                     <button
-                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      aria-label={
+                        item.status === "UPLOADED"
+                          ? "Tiếp tục xử lý tài liệu"
+                          : item.status === "PARSING"
+                            ? "Khôi phục phân tích bị gián đoạn"
+                            : "Thử phân tích lại"
+                      }
+                      className="icon-button h-9 w-9"
                       type="button"
+                      title={
+                        item.status === "UPLOADED"
+                          ? "Tiếp tục xử lý tài liệu"
+                          : item.status === "PARSING"
+                            ? "Khôi phục phân tích bị gián đoạn"
+                            : "Thử phân tích lại"
+                      }
                       disabled={retryingDocumentId === item._id}
                       aria-busy={retryingDocumentId === item._id}
                       onClick={() => retryParse(item)}
                     >
-                      {retryingDocumentId === item._id
-                        ? "Đang tiếp tục…"
-                        : item.status === "UPLOADED"
-                          ? "Tiếp tục xử lý"
-                          : item.status === "PARSING"
-                            ? "Khôi phục phân tích bị gián đoạn"
-                            : "Thử phân tích lại"}
+                      <RotateCcw size={16} aria-hidden="true" />
                     </button>
                   )}
                 {(isPlatformAdmin || item.created_by === currentUserId) &&
@@ -770,15 +796,15 @@ export default function RequirementSourceDocumentsPanel({
                   !item.ai_enabled &&
                   (item.status === "READY" ? (
                     <button
-                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      aria-label="Cho phép AI đọc tài liệu"
+                      className="icon-button h-9 w-9"
                       type="button"
+                      title="Cho phép AI đọc tài liệu"
                       disabled={activatingAiDocumentId === item._id}
                       aria-busy={activatingAiDocumentId === item._id}
                       onClick={() => enableAiRead(item)}
                     >
-                      {activatingAiDocumentId === item._id
-                        ? "Đang cấp quyền đọc…"
-                        : "Cho phép AI đọc"}
+                      <BrainCircuit size={16} aria-hidden="true" />
                     </button>
                   ) : (
                     <span className="self-center text-xs text-ink-muted">
@@ -792,53 +818,61 @@ export default function RequirementSourceDocumentsPanel({
                   item.status === "READY" &&
                   ["INDEXED", "DEGRADED"].includes(item.index_status) && (
                     <button
-                      className="apple-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      aria-label="Chạy AI trên tài liệu"
+                      className="apple-button inline-flex size-9 items-center justify-center p-0"
                       type="button"
+                      title="Chạy AI trên tài liệu"
                       disabled={startingAiDocumentId === item._id}
                       aria-busy={startingAiDocumentId === item._id}
                       onClick={() => startAiProcessing(item)}
                     >
-                      {startingAiDocumentId === item._id
-                        ? "Đang bắt đầu…"
-                        : "Chạy AI trên tài liệu"}
+                      <Play size={16} aria-hidden="true" />
                     </button>
                   )}
                 {(isPlatformAdmin || item.created_by === currentUserId) &&
                   item.status !== "ARCHIVED" && (
                     <button
-                      className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                      aria-label="Quyền xem tài liệu"
+                      className="icon-button h-9 w-9"
                       type="button"
+                      title="Quyền xem tài liệu"
                       onClick={() => changeAccess(item)}
                     >
-                      Quyền xem
+                      <Shield size={16} aria-hidden="true" />
                     </button>
                   )}
                 {can("requirement_document.download") && (
                   <button
-                    className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                    aria-label="Tải tài liệu xuống"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    title="Tải tài liệu xuống"
                     onClick={() => download(item)}
                   >
-                    Tải xuống
+                    <Download size={16} aria-hidden="true" />
                   </button>
                 )}
                 {item.status === "ARCHIVED"
                   ? can("requirement_document.restore") && (
                       <button
-                        className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                        aria-label="Khôi phục tài liệu"
+                        className="icon-button h-9 w-9"
                         type="button"
+                        title="Khôi phục tài liệu"
                         onClick={() => changeArchiveStatus(item, true)}
                       >
-                        Khôi phục
+                        <RotateCcw size={16} aria-hidden="true" />
                       </button>
                     )
                   : can("requirement_document.archive") && (
                       <button
-                        className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+                        aria-label="Lưu trữ tài liệu"
+                        className="icon-button h-9 w-9"
                         type="button"
+                        title="Lưu trữ tài liệu"
                         onClick={() => changeArchiveStatus(item, false)}
                       >
-                        Lưu trữ
+                        <Archive size={16} aria-hidden="true" />
                       </button>
                     )}
               </span>

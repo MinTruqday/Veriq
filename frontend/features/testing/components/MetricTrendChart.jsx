@@ -5,7 +5,7 @@ export default function MetricTrendChart({ snapshots = [] }) {
     <div className="min-w-0 rounded-xl border border-border p-3">
       <p className="mb-2 text-sm font-semibold text-ink">Xu hướng qua các lần đo</p>
       <div className="flex h-32 min-w-0 items-end gap-2" role="img" aria-label="Xu hướng chỉ số">
-        {values.length ? (
+        {values.length >= 2 ? (
           values.map((item, index) => (
             <div
               className="min-w-2 flex-1 rounded-t bg-accent"
@@ -15,7 +15,11 @@ export default function MetricTrendChart({ snapshots = [] }) {
             />
           ))
         ) : (
-          <p className="self-center text-sm text-ink-muted">Chưa có dữ liệu xu hướng</p>
+          <p className="self-center text-sm text-ink-muted">
+            {values.length === 1
+              ? "Cần ít nhất hai lần đo để hiển thị xu hướng."
+              : "Chưa có dữ liệu đo lường."}
+          </p>
         )}
       </div>
     </div>

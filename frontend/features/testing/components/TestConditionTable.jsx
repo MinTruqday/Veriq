@@ -1,4 +1,5 @@
 import DataTable from "./DataTable";
+import { Eye } from "lucide-react";
 import { StatusPill } from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { valueLabel } from "../lib/testing";
@@ -42,8 +43,14 @@ export default function TestConditionTable({ items, onSelect }) {
           key: "actions",
           label: "Thao tác",
           render: (item) => (
-            <button className="secondary-button" type="button" onClick={() => onSelect(item)}>
-              Mở
+            <button
+              className="icon-button h-9 w-9"
+              type="button"
+              aria-label={`Mở điều kiện ${item.condition_key || item.title}`}
+              title="Mở điều kiện"
+              onClick={() => onSelect(item)}
+            >
+              <Eye aria-hidden="true" size={16} />
             </button>
           ),
         },

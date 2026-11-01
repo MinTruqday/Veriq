@@ -2,6 +2,27 @@ import DataTable from "../../../components/DataTable";
 import { Panel } from "../../../components/WorkspacePrimitives";
 import { valueLabel } from "../../../lib/testing";
 
+function sourceFormatLabel(reference, source) {
+  const extension = source?.filename?.split(".").pop()?.toLowerCase();
+  const format = String(reference.format || source?.format || extension || "").toLowerCase();
+  if (!format) return "Không ghi nhận";
+  const labels = {
+    csv: "CSV",
+    doc: "Word",
+    docx: "Word",
+    json: "JSON",
+    md: "Markdown",
+    markdown: "Markdown",
+    pdf: "PDF",
+    postman: "Postman",
+    xls: "Excel",
+    xlsx: "Excel",
+    yaml: "OpenAPI YAML",
+    yml: "OpenAPI YAML",
+  };
+  return labels[format] || valueLabel(format);
+}
+
 export default function RequirementTracePanel({ current, sourceDocuments }) {
   return (
     <Panel title="Nguồn tài liệu">
@@ -26,7 +47,16 @@ export default function RequirementTracePanel({ current, sourceDocuments }) {
               );
             },
           },
-          { key: "format", label: "Định dạng", render: (item) => valueLabel(item.format) },
+          {
+            key: "format",
+            label: "Định dạng",
+            render: (item) => {
+              const source = sourceDocuments.find(
+                (document) => document._id === item.requirement_document_id,
+              );
+              return sourceFormatLabel(item, source);
+            },
+          },
           {
             key: "location",
             label: "Vị trí",
@@ -35,7 +65,7 @@ export default function RequirementTracePanel({ current, sourceDocuments }) {
                 ? `${item.source_start} đến ${item.source_end}`
                 : item.candidate_index !== undefined
                   ? `Mục ${item.candidate_index + 1}`
-                  : "Toàn bộ tài liệu",
+                  : "Không có vị trí cụ thể",
           },
         ]}
       />

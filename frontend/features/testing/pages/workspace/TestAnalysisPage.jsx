@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BadgeCheck, Check, FilePlus2, Pencil, UserRoundPlus } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import TestConditionEditor from "../../components/TestConditionEditor";
@@ -264,9 +265,7 @@ export default function TestAnalysisPage({ project }) {
         <div className="space-y-5" hidden={visibleTab !== "ai"}>
           <Panel title="Điều kiện do AI đề xuất">
             <div className="space-y-4 p-5">
-              <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
-                <ContentOriginBadge origin="ai_generated" />
-              </div>
+              <ContentOriginBadge origin="ai_generated" />
               <p className="text-sm text-ink-muted">
                 Đề xuất được tạo khi phiên bản yêu cầu được đặt làm phiên bản chuẩn. Mỗi đề xuất có
                 dẫn chứng nguồn để bạn xem trước khi dùng làm bản nháp.
@@ -275,60 +274,98 @@ export default function TestAnalysisPage({ project }) {
                 items={aiCandidateItems}
                 empty="Chưa có ứng viên từ các yêu cầu đã được đặt làm phiên bản chuẩn"
                 columns={[
-                  { key: "title", label: "Ứng viên" },
                   {
-                    key: "category",
-                    label: "Nhóm",
-                    render: (item) => valueLabel(item.category),
-                  },
-                  { key: "coverage_item", label: "Điểm cần kiểm thử" },
-                  {
-                    key: "evidence_quotes",
-                    label: "Dẫn chứng nguồn",
+                    key: "candidate",
+                    label: "Ứng viên",
+                    minWidth: 180,
                     render: (item) => (
-                      <div className="max-w-md space-y-1 whitespace-normal text-xs">
-                        {(item.evidence_quotes || []).map((citation, index) => (
-                          <p key={`${citation.evidence_ref}-${index}`}>
-                            <span className="font-medium">{citation.evidence_ref}:</span> “
-                            {citation.quote}”
-                          </p>
-                        ))}
+                      <div className="min-w-0">
+                        <p className="font-medium">{item.title}</p>
+                        <p className="mt-1 text-xs text-ink-muted">{valueLabel(item.category)}</p>
                       </div>
                     ),
                   },
                   {
-                    key: "requirement_version_id",
-                    label: "Yêu cầu nguồn",
+                    key: "coverage_item",
+                    label: "Điểm cần kiểm thử",
+                    minWidth: 170,
+                  },
+                  {
+                    key: "source",
+                    label: "Nguồn và căn cứ",
+                    minWidth: 260,
                     render: (item) => {
                       const requirement = requirements.find(
                         (value) => value.current_version_id === item.requirement_version_id,
                       );
-                      return requirement
-                        ? `${requirement.requirement_key} · v${requirement.current_version?.version} · ${requirement.current_version?.title || "Không có tiêu đề"}`
-                        : "Yêu cầu phiên bản hiện không có trong danh sách";
+                      const citations = item.evidence_quotes || [];
+                      const [firstCitation, ...additionalCitations] = citations;
+                      return (
+                        <div className="min-w-0 space-y-2 whitespace-normal text-xs">
+                          {requirement ? (
+                            <p className="min-w-0">
+                              <strong className="font-semibold">
+                                {requirement.requirement_key} · v
+                                {requirement.current_version?.version}
+                              </strong>
+                              <span
+                                className="mt-0.5 line-clamp-2 text-ink-muted"
+                                title={requirement.current_version?.title || undefined}
+                              >
+                                {requirement.current_version?.title || "Yêu cầu nguồn"}
+                              </span>
+                            </p>
+                          ) : (
+                            <p className="text-ink-muted">
+                              Yêu cầu phiên bản hiện không có trong danh sách
+                            </p>
+                          )}
+                          {firstCitation && (
+                            <p className="line-clamp-3 break-words border-l-2 border-violet-300 pl-2">
+                              <span className="font-medium">{firstCitation.evidence_ref}:</span> “
+                              {firstCitation.quote}”
+                            </p>
+                          )}
+                          {additionalCitations.length > 0 && (
+                            <details>
+                              <summary className="w-fit cursor-pointer font-medium text-ink-muted">
+                                Xem thêm {additionalCitations.length} dẫn chứng
+                              </summary>
+                              <div className="mt-2 space-y-2">
+                                {additionalCitations.map((citation, index) => (
+                                  <p
+                                    className="break-words border-l-2 border-violet-300 pl-2"
+                                    key={`${citation.evidence_ref}-${index + 1}`}
+                                  >
+                                    <span className="font-medium">{citation.evidence_ref}:</span> “
+                                    {citation.quote}”
+                                  </p>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      );
                     },
                   },
                   {
                     key: "risk",
                     label: "Rủi ro",
-                    render: (item) => (
-                      <span className="status-badge">{severityLabel(item.risk)}</span>
-                    ),
-                  },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    render: () => <span className="status-badge">Đề xuất</span>,
+                    minWidth: 112,
+                    render: (item) => <StatusPill value={severityLabel(item.risk)} />,
                   },
                   ...(can("testcondition.create")
                     ? [
                         {
                           key: "actions",
                           label: "Thao tác",
+                          minWidth: 72,
                           hideWhenEmpty: true,
                           render: (item) => (
                             <button
-                              className="secondary-button"
+                              aria-label={`Dùng điều kiện ${item.condition_key} làm bản nháp`}
+                              title="Dùng làm bản nháp"
+                              className="icon-button h-9 w-9"
                               type="button"
                               onClick={() => {
                                 setSelected({
@@ -339,7 +376,7 @@ export default function TestAnalysisPage({ project }) {
                                 setEditing(true);
                               }}
                             >
-                              Dùng làm bản nháp
+                              <FilePlus2 aria-hidden="true" size={16} />
                             </button>
                           ),
                         },
@@ -359,11 +396,13 @@ export default function TestAnalysisPage({ project }) {
               <div className="flex flex-wrap gap-2">
                 {can("testcondition.update") && selected.status === "DRAFT" && (
                   <button
-                    className="secondary-button"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    aria-label={`Chỉnh sửa điều kiện ${selected.condition_key}`}
+                    title="Chỉnh sửa điều kiện"
                     onClick={() => setEditing(true)}
                   >
-                    Chỉnh sửa
+                    <Pencil aria-hidden="true" size={16} />
                   </button>
                 )}
                 {can("testcondition.review") && selected.status === "DRAFT" && (
@@ -482,9 +521,7 @@ export default function TestAnalysisPage({ project }) {
                 {
                   key: "severity",
                   label: "Mức độ",
-                  render: (item) => (
-                    <span className="status-badge">{severityLabel(item.severity)}</span>
-                  ),
+                  render: (item) => <StatusPill value={severityLabel(item.severity)} />,
                 },
                 { key: "description", label: "Mô tả" },
                 { key: "suggestion", label: "Đề xuất" },
@@ -501,7 +538,9 @@ export default function TestAnalysisPage({ project }) {
                         render: (finding) =>
                           finding.status === "OPEN" ? (
                             <button
-                              className="secondary-button"
+                              aria-label={`Giải quyết phát hiện ${finding.finding_id}`}
+                              className="icon-button h-9 w-9"
+                              title="Giải quyết phát hiện"
                               type="button"
                               onClick={async () => {
                                 await ask({
@@ -546,7 +585,7 @@ export default function TestAnalysisPage({ project }) {
                                 });
                               }}
                             >
-                              Giải quyết
+                              <Check aria-hidden="true" size={16} />
                             </button>
                           ) : null,
                       },
@@ -593,11 +632,13 @@ export default function TestAnalysisPage({ project }) {
                   label: "Thao tác",
                   hideWhenEmpty: true,
                   render: (item) => (
-                    <span className="flex flex-wrap gap-2">
+                    <span className="flex items-center gap-1">
                       {can("testanalysis.finding.assign") &&
                         ["OPEN", "IN_PROGRESS"].includes(item.status) && (
                           <button
-                            className="secondary-button"
+                            aria-label={`Phân công phát hiện ${item.finding_id}`}
+                            className="icon-button h-9 w-9"
+                            title="Phân công phát hiện"
                             type="button"
                             onClick={async () => {
                               await ask({
@@ -638,13 +679,15 @@ export default function TestAnalysisPage({ project }) {
                               });
                             }}
                           >
-                            Phân công
+                            <UserRoundPlus aria-hidden="true" size={16} />
                           </button>
                         )}
                       {can("testanalysis.resolve_finding") &&
                         ["OPEN", "IN_PROGRESS"].includes(item.status) && (
                           <button
-                            className="secondary-button"
+                            aria-label={`Giải quyết phát hiện ${item.finding_id}`}
+                            className="icon-button h-9 w-9"
+                            title="Giải quyết phát hiện"
                             type="button"
                             onClick={async () => {
                               await ask({
@@ -676,12 +719,14 @@ export default function TestAnalysisPage({ project }) {
                               });
                             }}
                           >
-                            Giải quyết
+                            <Check aria-hidden="true" size={16} />
                           </button>
                         )}
                       {can("testanalysis.verify_finding") && item.status === "RESOLVED" && (
                         <button
-                          className="secondary-button"
+                          aria-label={`Xác minh phát hiện ${item.finding_id}`}
+                          className="icon-button h-9 w-9"
+                          title="Xác minh phát hiện"
                           type="button"
                           onClick={async () => {
                             await ask({
@@ -710,7 +755,7 @@ export default function TestAnalysisPage({ project }) {
                             });
                           }}
                         >
-                          Xác minh
+                          <BadgeCheck aria-hidden="true" size={16} />
                         </button>
                       )}
                     </span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Pencil } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CompletionReportEditor from "../../components/CompletionReportEditor";
 import DataTable from "../../components/DataTable";
@@ -49,7 +50,10 @@ export default function CompletionPage({ project }) {
   const [lessonClusters, setLessonClusters] = useState(null);
   const [error, setError] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiTimedOut, setAiTimedOut] = useState(false);
+  const aiInFlight = useRef(false);
+  const aiOperation = useRef(null);
+  const selectedReport = useRef(selected);
+  selectedReport.current = selected;
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
@@ -91,55 +95,63 @@ export default function CompletionPage({ project }) {
   }, [load]);
 
   useEffect(() => {
-    if (!selected?._id) {
-      setNarrativeDraft(null);
-      setLessonClusters(null);
-      setAiLoading(false);
-      setAiTimedOut(false);
-      return undefined;
-    }
-    let active = true;
-    let timer;
-    let attempts = 0;
-    const lessonsExpected = Boolean(selected.lessons_learned?.length);
     setNarrativeDraft(null);
     setLessonClusters(null);
-    setAiLoading(selected.status === "DRAFT");
-    setAiTimedOut(false);
-    const refresh = async () => {
-      try {
-        const [narrative, lessons] = await Promise.all([
-          testingApi.getTestCompletionNarrative(selected._id),
-          lessonsExpected
-            ? testingApi.getTestCompletionLessonClusters(selected._id)
-            : Promise.resolve(null),
-        ]);
-        if (!active) return;
-        setNarrativeDraft(narrative);
-        setLessonClusters(lessons);
-        const narrativeReady = Boolean(narrative);
-        const lessonsReady = !lessonsExpected || Boolean(lessons);
-        if (narrativeReady && lessonsReady) {
-          setAiLoading(false);
-          return;
+    if (!selected?._id) return undefined;
+    let active = true;
+    Promise.all([
+      testingApi.getTestCompletionNarrative(selected._id),
+      selected.lessons_learned?.length
+        ? testingApi.getTestCompletionLessonClusters(selected._id)
+        : Promise.resolve(null),
+    ])
+      .then(([narrative, lessons]) => {
+        if (active) {
+          setNarrativeDraft(narrative);
+          setLessonClusters(lessons);
         }
-      } catch (reason) {
+      })
+      .catch((reason) => {
         if (active) setError(messageOf(reason));
-      }
-      attempts += 1;
-      if (active && selected.status === "DRAFT" && attempts < 20) {
-        timer = setTimeout(refresh, 3000);
-      } else if (active) {
-        setAiLoading(false);
-        setAiTimedOut(selected.status === "DRAFT");
-      }
-    };
-    void refresh();
+      });
     return () => {
       active = false;
-      clearTimeout(timer);
     };
-  }, [selected?._id, selected?.revision, selected?.status, selected?.lessons_learned]);
+  }, [selected?._id, selected?.revision, selected?.lessons_learned]);
+
+  const generateAi = async (lessons = false) => {
+    if (aiInFlight.current || !selected) return;
+    aiInFlight.current = true;
+    setAiLoading(true);
+    setError("");
+    const report = selected;
+    const key = `${report._id}:${report.revision}:${lessons}`;
+    if (aiOperation.current?.key !== key)
+      aiOperation.current = {
+        key,
+        payload: { idempotency_key: crypto.randomUUID(), source_event_revision: report.revision },
+      };
+    try {
+      const result = lessons
+        ? await testingApi.generateTestCompletionLessonClusters(
+            report._id,
+            aiOperation.current.payload,
+          )
+        : await testingApi.generateTestCompletionNarrative(report._id, aiOperation.current.payload);
+      if (
+        selectedReport.current?._id === report._id &&
+        selectedReport.current?.revision === report.revision
+      ) {
+        if (lessons) setLessonClusters(result);
+        else setNarrativeDraft(result);
+      }
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      aiInFlight.current = false;
+      setAiLoading(false);
+    }
+  };
 
   const run = async (operation) => {
     try {
@@ -457,11 +469,13 @@ export default function CompletionPage({ project }) {
                   <QualityGateBadge status={selected.quality_gate_status} />
                   {selected.status === "DRAFT" && can("testcompletion.update") && (
                     <button
-                      className="secondary-button"
+                      className="icon-button h-9 w-9"
                       type="button"
+                      aria-label="Chỉnh sửa báo cáo hoàn tất"
+                      title="Chỉnh sửa báo cáo hoàn tất"
                       onClick={() => setEditing(true)}
                     >
-                      Chỉnh sửa
+                      <Pencil aria-hidden="true" size={16} />
                     </button>
                   )}
                   {selected.status === "DRAFT" && can("testcompletion.risk.manage") && (
@@ -564,16 +578,27 @@ export default function CompletionPage({ project }) {
                     </>
                   )}
                 </div>
-                {aiLoading && !narrativeDraft && (
-                  <p className="text-sm text-ink-muted" role="status">
-                    Báo cáo vừa tạo; đang chờ AI xử lý.
-                  </p>
-                )}
-                {aiTimedOut && !narrativeDraft && (
-                  <p className="text-sm text-ink-muted" role="status">
-                    Chưa nhận được kết quả tự động. Báo cáo gốc vẫn được giữ nguyên; xem trạng thái
-                    hoạt động AI.
-                  </p>
+                {selected.status === "DRAFT" && can("testcompletion.update") && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="secondary-button border-violet-300 text-violet-800"
+                      disabled={aiLoading}
+                      onClick={() => generateAi(false)}
+                    >
+                      {aiLoading ? "Đang xử lý" : "AI đề xuất diễn giải báo cáo"}
+                    </button>
+                    {selected.lessons_learned?.length > 0 && (
+                      <button
+                        type="button"
+                        className="secondary-button border-violet-300 text-violet-800"
+                        disabled={aiLoading}
+                        onClick={() => generateAi(true)}
+                      >
+                        AI tổng hợp bài học
+                      </button>
+                    )}
+                  </div>
                 )}
                 {narrativeDraft?.suggestions?.[0] && (
                   <Panel title="Diễn giải AI cho báo cáo hoàn tất">
@@ -613,9 +638,7 @@ export default function CompletionPage({ project }) {
                 {lessonClusters?.suggestions?.length > 0 && (
                   <Panel title="Nhóm bài học do AI đề xuất">
                     <div className="space-y-3">
-                      <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
-                        <ContentOriginBadge origin="ai_generated" />
-                      </div>
+                      <ContentOriginBadge origin="ai_generated" />
                       {lessonClusters.suggestions.map((item, index) => (
                         <article
                           className="rounded-xl border border-violet-200 bg-violet-50/30 p-3 text-sm"
@@ -678,9 +701,11 @@ export default function CompletionPage({ project }) {
                       {selected.test_plan_id ? "Đã ghi nhận" : "Chưa ghi nhận"}
                     </p>
                     <p>
-                      <span className="field-label">Chiến lược kiểm thử</span>
+                      <span className="field-label">Chiến lược hoặc cách tiếp cận</span>
                       <br />
-                      {selected.strategy_version_id ? "Đã ghi nhận" : "Chưa ghi nhận"}
+                      {selected.strategy_version_id
+                        ? `Phiên bản ${selected.strategy_version_id}`
+                        : selected.strategy_approach_snapshot || "Chưa ghi nhận"}
                     </p>
                     <p>
                       <span className="field-label">Bản phát hành</span>

@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Eye } from "lucide-react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
@@ -278,8 +279,10 @@ export default function ReleaseQualityPanel({ project }) {
             label: "Thao tác",
             render: (item) => (
               <button
-                className="secondary-button"
+                className="icon-button h-9 w-9"
                 type="button"
+                aria-label={`Mở đánh giá ${item.name || item._id}`}
+                title="Mở đánh giá"
                 onClick={() =>
                   runAction(
                     () => testingApi.getQualityEvaluation(item._id),
@@ -287,7 +290,7 @@ export default function ReleaseQualityPanel({ project }) {
                   )
                 }
               >
-                Mở
+                <Eye aria-hidden="true" size={16} />
               </button>
             ),
           },

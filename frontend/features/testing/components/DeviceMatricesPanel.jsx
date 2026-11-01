@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Archive, Pencil } from "lucide-react";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
@@ -265,18 +266,22 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
               {can("device_matrix.manage") && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
-                    className="secondary-button"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    aria-label={`Sửa ma trận ${matrix.name}`}
+                    title="Sửa ma trận"
                     onClick={() => renameMatrix(matrix)}
                   >
-                    Sửa
+                    <Pencil aria-hidden="true" size={16} />
                   </button>
                   <button
-                    className="secondary-button"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    aria-label={`Lưu trữ ma trận ${matrix.name}`}
+                    title="Lưu trữ ma trận"
                     onClick={() => archiveMatrix(matrix)}
                   >
-                    Lưu trữ
+                    <Archive aria-hidden="true" size={16} />
                   </button>
                 </div>
               )}

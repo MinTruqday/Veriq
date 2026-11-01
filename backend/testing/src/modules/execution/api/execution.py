@@ -53,6 +53,7 @@ from src.modules.execution.services.test_plan import (
     get_test_plan_record,
     list_test_plan_records,
     submit_test_plan_record,
+    request_test_plan_revision,
     update_test_plan_record,
     validate_test_plan_record,
 )
@@ -164,6 +165,12 @@ async def archive_test_plan(
 ):
     updated = await archive_test_plan_record(plan_id, payload, user)
     return envelope(updated, revision=updated["revision"])
+
+
+@router.post('/ke-hoach-kiem-thu/{plan_id}/yeu-cau-chinh-sua')
+async def revise_test_plan(plan_id: str, payload: ReviewTransitionInput, user: CurrentUser = Depends(get_current_user)):
+    result = await request_test_plan_revision(plan_id, payload, user)
+    return envelope(result, revision=result['revision'])
 
 
 @router.post("/ke-hoach-kiem-thu/{plan_id}/nhan-ban", status_code=201)

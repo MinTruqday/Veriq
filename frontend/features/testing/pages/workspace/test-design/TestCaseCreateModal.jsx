@@ -1,4 +1,5 @@
 import DocumentEditor from "../../../editor/DocumentEditor";
+import { Trash2 } from "lucide-react";
 import { docText, valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
@@ -50,12 +51,13 @@ function TestDataEntries({ label, entries, onChange }) {
           <div className="flex gap-2">
             {entries.length > 1 && (
               <button
-                className="secondary-button"
+                className="icon-button h-9 w-9 text-danger"
                 type="button"
                 aria-label={`Xóa dòng dữ liệu ${index + 1}`}
+                title="Xóa dòng dữ liệu"
                 onClick={() => onChange(entries.filter((_, entryIndex) => entryIndex !== index))}
               >
-                Xóa
+                <Trash2 aria-hidden="true" size={16} />
               </button>
             )}
           </div>
@@ -77,6 +79,7 @@ export default function TestCaseCreateModal({
   reusableSteps,
   customFields,
   requirements = [],
+  scenarios = [],
   members = [],
   canReadMembers = false,
   membersUnavailable = false,
@@ -113,6 +116,35 @@ export default function TestCaseCreateModal({
         <ModalTitle>Tạo ca kiểm thử</ModalTitle>
       </ModalHeader>
       <form onSubmit={onSubmit} className="space-y-4 p-5">
+        <label className="field-label block">
+          Kịch bản kiểm thử
+          <select
+            className="apple-input mt-2"
+            value={form.scenarioId || ""}
+            onChange={(event) => {
+              const scenario = scenarios.find((item) => item._id === event.target.value);
+              update({
+                scenarioId: event.target.value,
+                ...(scenario
+                  ? {
+                      requirementVersionIds: scenario.requirement_version_ids || [],
+                      acceptanceCriterionIds: scenario.acceptance_criterion_ids || [],
+                      testConditionIds: scenario.test_condition_ids || [],
+                    }
+                  : {}),
+              });
+            }}
+          >
+            <option value="">Chưa liên kết kịch bản</option>
+            {scenarios
+              .filter((item) => item.status !== "archived")
+              .map((item) => (
+                <option key={item._id} value={item._id}>
+                  {item.scenario_key} · {item.title}
+                </option>
+              ))}
+          </select>
+        </label>
         <label className="field-label">
           Tên
           <input
@@ -426,13 +458,15 @@ export default function TestCaseCreateModal({
                 <h4 className="font-medium">Bước {index + 1}</h4>
                 {form.steps.length > 1 && (
                   <button
-                    className="secondary-button"
+                    aria-label={`Xóa bước ${index + 1}`}
+                    className="icon-button h-9 w-9 text-danger"
+                    title="Xóa bước"
                     type="button"
                     onClick={() =>
                       update({ steps: form.steps.filter((_, stepIndex) => stepIndex !== index) })
                     }
                   >
-                    Xóa bước
+                    <Trash2 aria-hidden="true" size={16} />
                   </button>
                 )}
               </div>

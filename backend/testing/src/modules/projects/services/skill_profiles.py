@@ -666,7 +666,7 @@ async def automatically_assign_test_cases(
     memberships = await project_repository.list_members(project_id, session=session)
     eligible = [
         item for item in memberships
-        if item.get("status") == "ACTIVE" and "TESTER" in roles_for_membership(item)
+        if item.get("status") == "ACTIVE" and roles_for_membership(item).intersection({"QA", "TESTER"})
     ]
     eligible_ids = [item["user_id"] for item in eligible]
     profiles = await skill_profile_repository.list_for_members(
@@ -840,7 +840,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
     eligible = [
         item for item in memberships
         if item.get("status") == "ACTIVE"
-        and "TESTER" in roles_for_membership(item)
+        and roles_for_membership(item).intersection({"QA", "TESTER"})
         and (not plan_staffing or item.get("user_id") in planned_tester_ids)
     ]
     eligible_ids = [item["user_id"] for item in eligible]
@@ -990,7 +990,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     eligible = [
         item
         for item in memberships
-        if item.get("status") == "ACTIVE" and "TESTER" in roles_for_membership(item)
+        if item.get("status") == "ACTIVE" and roles_for_membership(item).intersection({"QA", "TESTER"})
     ]
     eligible_ids = [item["user_id"] for item in eligible]
     profiles = await skill_profile_repository.list_for_members(project_id, eligible_ids)

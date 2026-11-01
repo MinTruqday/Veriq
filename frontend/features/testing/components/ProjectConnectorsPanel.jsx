@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Pencil, RefreshCw, Unplug } from "lucide-react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
@@ -227,25 +228,35 @@ export default function ProjectConnectorsPanel({ project }) {
                 return (
                   <span className="flex flex-wrap gap-2">
                     {canSyncItem && (
-                      <button className="secondary-button" type="button" onClick={() => sync(item)}>
-                        Đồng bộ
+                      <button
+                        aria-label={`Đồng bộ ${valueLabel(item.provider)}`}
+                        className="icon-button h-9 w-9"
+                        title="Đồng bộ"
+                        type="button"
+                        onClick={() => sync(item)}
+                      >
+                        <RefreshCw aria-hidden="true" size={16} />
                       </button>
                     )}
                     {canManageItem && (
                       <>
                         <button
-                          className="secondary-button"
+                          aria-label={`Sửa ánh xạ ${valueLabel(item.provider)}`}
+                          className="icon-button h-9 w-9"
+                          title="Sửa ánh xạ"
                           type="button"
                           onClick={() => editMapping(item)}
                         >
-                          Sửa ánh xạ
+                          <Pencil aria-hidden="true" size={16} />
                         </button>
                         <button
-                          className="secondary-button"
+                          aria-label={`Ngắt kết nối ${valueLabel(item.provider)}`}
+                          className="icon-button h-9 w-9"
+                          title="Ngắt kết nối"
                           type="button"
                           onClick={() => unbind(item)}
                         >
-                          Ngắt kết nối
+                          <Unplug aria-hidden="true" size={16} />
                         </button>
                       </>
                     )}

@@ -47,7 +47,7 @@ export default function HorizontalScrollCue({
 
   return (
     <div
-      className={`grid min-w-0 items-center gap-1 ${className}`}
+      className={`grid min-w-0 items-start gap-1 ${className}`}
       role={ariaLabel ? "region" : undefined}
       aria-label={ariaLabel}
       style={{
@@ -59,7 +59,7 @@ export default function HorizontalScrollCue({
       {edges.overflow && !edges.start && (
         <button
           aria-label={`Cuộn ${scrollLabel} sang trái`}
-          className="flex h-8 w-8 items-center justify-center rounded-control bg-surface text-ink-muted shadow-sm"
+          className="sticky top-2 z-10 flex h-8 w-8 items-center justify-center self-start rounded-control bg-surface text-ink-muted shadow-sm"
           onClick={() => scroll(-1)}
           type="button"
         >
@@ -77,7 +77,7 @@ export default function HorizontalScrollCue({
       {edges.overflow && !edges.end && (
         <button
           aria-label={`Cuộn ${scrollLabel} sang phải`}
-          className="flex h-8 w-8 items-center justify-center rounded-control bg-surface text-ink-muted shadow-sm"
+          className="sticky top-2 z-10 flex h-8 w-8 items-center justify-center self-start rounded-control bg-surface text-ink-muted shadow-sm"
           onClick={() => scroll(1)}
           type="button"
         >

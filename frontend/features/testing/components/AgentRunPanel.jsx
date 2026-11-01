@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   automationAuthorizationGuidance,
   canResumeAutomationRun,
@@ -38,7 +39,7 @@ const runTitlesByTrigger = {
 function automationTriggerLabel(run) {
   const providedLabel = String(run?.trigger_label || run?.trigger_display_name || "").trim();
   if (providedLabel) return providedLabel;
-  return run?.trigger === "MANUAL" ? "Theo yêu cầu người dùng" : "Sự kiện dự án";
+  return run?.trigger === "MANUAL" ? "Theo yêu cầu người dùng" : "Cập nhật dự án";
 }
 
 function automationRunTitle(run) {
@@ -67,7 +68,7 @@ function isOlderRunSnapshot(incoming, current) {
   );
 }
 
-export default function AgentRunPanel({ project, showDefinitions = true }) {
+export default function AgentRunPanel({ project, showDefinitions = true, compact = false }) {
   const currentUserId = project.current_membership?.user_id;
   const membershipRoles = project.current_membership?.project_roles;
   const memberRoles =
@@ -579,6 +580,12 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const proposalEvidence = (proposal?.evidence_refs || [])
     .map((reference) => sourceFactsById.get(reference))
     .filter(Boolean);
+  const linkedSourceFactIds = new Set(
+    blueprintClaims.flatMap((claim) => claim.source_fact_ids || []),
+  );
+  const unlinkedSourceFacts = sourceFacts.filter(
+    (fact) => !linkedSourceFactIds.has(fact.source_fact_id),
+  );
   const busyRun = run && activeStatuses.has(run.status);
   const visibleRuns = recentRuns.filter(canViewRun);
   const visibleDefinitions = canReadDefinitions ? definitions : [];
@@ -590,10 +597,30 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
   const mcpDiscoveryIssues = automationMcpDiscoveryIssues(run);
   const sourceExtractionGaps = automationSourceExtractionGaps(run);
   const authorizationGuidance = automationAuthorizationGuidance(run);
+  const showCompactEmptyState =
+    compact && !loading && !error && visibleRuns.length === 0 && visibleDefinitions.length === 0;
 
   return (
-    <Panel title="Hoạt động AI">
-      <div className="grid gap-4 px-4 pb-4 pt-3">
+    <Panel
+      title={
+        compact ? (
+          <span className="flex w-full flex-wrap items-center justify-between gap-3">
+            <span>Hoạt động AI</span>
+            <Link
+              className="text-sm font-medium text-brand hover:text-brand-hover"
+              href={`/du-an/${encodeURIComponent(project._id)}/ra-soat-ai`}
+            >
+              Xem tất cả
+            </Link>
+          </span>
+        ) : showDefinitions ? (
+          "Hoạt động AI"
+        ) : (
+          "Lịch sử hoạt động"
+        )
+      }
+    >
+      <div className={`grid gap-3 px-4 ${compact ? "py-3" : "pb-4 pt-3"}`}>
         {error && (
           <div className="grid gap-2">
             <ErrorState message={error} />
@@ -748,9 +775,9 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
         )}
         {visibleRuns.length > 0 && (
           <div className="grid gap-2 text-sm">
-            {visibleRuns.slice(0, 10).map((item) => (
+            {visibleRuns.slice(0, compact ? 3 : 10).map((item) => (
               <button
-                className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border p-3 text-left hover:bg-surface-quiet"
+                className={`flex flex-wrap items-center justify-between gap-3 rounded-control border p-3 text-left transition ${item.automation_run_id === run?.automation_run_id ? "border-brand/50 bg-brand-soft" : "border-border hover:bg-surface-quiet"}`}
                 key={item.automation_run_id}
                 type="button"
                 onClick={async () => {
@@ -768,8 +795,9 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                     {automationRunTitle(item)}
                   </span>
                   <span className="block text-xs text-ink-muted">
-                    {automationTriggerLabel(item)}
-                    {item.created_at && ` · ${formatDate(item.created_at)}`}
+                    {compact
+                      ? formatDate(item.created_at)
+                      : `${automationTriggerLabel(item)}${item.created_at ? ` · ${formatDate(item.created_at)}` : ""}`}
                   </span>
                 </span>
                 <StatusPill
@@ -783,9 +811,17 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
             ))}
           </div>
         )}
+        {showCompactEmptyState && (
+          <div className="text-sm">
+            <p className="text-ink-muted" role="status">
+              Chưa có hoạt động gần đây.
+            </p>
+          </div>
+        )}
         {!loading &&
           !error &&
           !run &&
+          !compact &&
           visibleRuns.length === 0 &&
           visibleDefinitions.length === 0 && (
             <p className="py-2 text-sm text-ink-muted" role="status">
@@ -816,15 +852,8 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
               </div>
             )}
             <div className="flex flex-wrap items-center gap-3">
-              <StatusPill value={run.status} />
-              <span className="min-w-0 break-words font-medium">{automationRunTitle(run)}</span>
-              {run.created_at && (
-                <time className="text-xs text-ink-muted" dateTime={run.created_at}>
-                  {formatDate(run.created_at)}
-                </time>
-              )}
               <details className="text-xs text-ink-muted">
-                <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                <summary className="cursor-pointer">Thông tin thêm</summary>
                 <dl className="mt-2 grid gap-1">
                   <div>
                     <dt className="inline">Nguồn khởi chạy: </dt>
@@ -842,40 +871,44 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
               </details>
             </div>
             {workflow && (
-              <section
-                aria-label="Tiến độ xử lý AI"
-                className="grid gap-3 rounded-control border border-border bg-surface-quiet p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-ink">Tình trạng xử lý</h3>
-                  </div>
-                  <StatusPill value={workflow.status} />
-                </div>
-                <p className="text-xs text-ink-muted">
-                  {workflow.run_count} lượt · {workflow.active_count} đang chạy ·{" "}
-                  {workflow.blocked_count} đang chờ · {workflow.failed_count} lỗi
-                </p>
+              <section aria-label="Tiến độ xử lý AI" className="grid gap-3">
                 {workflow.truncated && (
-                  <p className="text-xs text-warning" role="status">
-                    Còn hoạt động AI chưa được tải hết nên chưa thể xác nhận toàn bộ đã hoàn tất.
+                  <p
+                    className="rounded-control border border-warning/40 bg-warning/5 p-3 text-sm text-warning"
+                    role="status"
+                  >
+                    Chưa tải đủ lịch sử hoạt động để xác nhận toàn bộ đã hoàn tất.
                   </p>
                 )}
-                {workflow.runs?.length > 1 && (
-                  <ul className="grid gap-2">
-                    {workflow.runs.slice(1).map((item) => (
-                      <li
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface p-3"
-                        key={item.automation_run_id}
-                      >
-                        <span className="min-w-0 text-xs text-ink-muted">
-                          {automationRunTitle(item)}
-                        </span>
-                        <StatusPill value={item.status} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <details className="rounded-control border border-border bg-surface-quiet p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-ink">
+                    Tiến độ hoạt động
+                  </summary>
+                  <div className="mt-3 grid gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="text-sm text-ink-muted">
+                        {workflow.run_count} lượt · {workflow.active_count} đang chạy ·{" "}
+                        {workflow.blocked_count} đang chờ · {workflow.failed_count} lỗi
+                      </span>
+                      <StatusPill value={workflow.status} />
+                    </div>
+                    {workflow.runs?.length > 1 && (
+                      <ul className="grid gap-2">
+                        {workflow.runs.slice(1).map((item) => (
+                          <li
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface p-3"
+                            key={item.automation_run_id}
+                          >
+                            <span className="min-w-0 text-sm text-ink-muted">
+                              {automationRunTitle(item)}
+                            </span>
+                            <StatusPill value={item.status} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </details>
               </section>
             )}
             {sourceExtractionGaps.length > 0 && (
@@ -900,7 +933,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                     >
                       <p className="font-medium text-ink">Tài liệu cần xử lý</p>
                       <details className="text-xs text-ink-muted">
-                        <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                        <summary className="cursor-pointer">Thông tin thêm</summary>
                         <p className="mt-1 break-all">Mã tài liệu: {gap.document_id}</p>
                       </details>
                       <p className="text-xs text-ink-muted">
@@ -936,7 +969,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                       )}
                       {gap.parser && (
                         <details className="text-xs text-ink-muted">
-                          <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                          <summary className="cursor-pointer">Thông tin thêm</summary>
                           <p className="mt-1 break-all">Bộ đọc: {gap.parser}</p>
                         </details>
                       )}
@@ -965,7 +998,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                       <p>{item.message}</p>
                       {item.tool_name && (
                         <details className="mt-2 text-xs">
-                          <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                          <summary className="cursor-pointer">Thông tin thêm</summary>
                           <p className="mt-1 break-all">Tên thao tác: {item.tool_name}</p>
                         </details>
                       )}
@@ -1006,7 +1039,7 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                               Nguồn liên quan: {item.evidence_refs.length} trích dẫn đã xác minh
                             </p>
                             <details className="mt-1">
-                              <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
+                              <summary className="cursor-pointer">Thông tin thêm</summary>
                               <p className="mt-1 break-all">
                                 Mã nguồn: {item.evidence_refs.join(", ")}
                               </p>
@@ -1126,218 +1159,236 @@ export default function AgentRunPanel({ project, showDefinitions = true }) {
                 )}
               </div>
             )}
-            {checkpoints.length > 0 && (
-              <div>
-                <h3 className="font-semibold text-ink">Các bước đã thực hiện</h3>
-                <ol className="mt-2 grid gap-2">
-                  {checkpoints.map((checkpoint) => {
-                    const item = automationCheckpointView(checkpoint);
-                    if (!item) return null;
-                    return (
-                      <li
-                        className="grid min-w-0 gap-2 rounded-control border border-border bg-surface p-3"
-                        key={checkpoint.checkpoint_id}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-medium text-ink">
-                            {item.sequence !== null ? `${item.sequence}. ` : ""}
-                            {item.phase}
-                          </span>
-                          <StatusPill value={item.status} />
-                        </div>
-                        <time
-                          className="text-xs text-ink-muted"
-                          dateTime={checkpoint.created_at || undefined}
-                        >
-                          {item.createdAt}
-                        </time>
-                        {item.facts.length > 0 && (
-                          <ul className="grid gap-1 text-xs text-ink-muted">
-                            {item.facts.map((fact) => (
-                              <li key={fact}>{fact}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
-            )}
-            {receipt && (
-              <div>
-                <h3 className="font-semibold text-ink">Nguồn đã dùng</h3>
-                <p className="mt-1 text-ink-muted">
-                  {receipt.source_fact_ids?.length || 0} nguồn được dùng để tạo kết quả này
-                </p>
-              </div>
-            )}
-            {blueprintClaims.length > 0 && (
-              <section
-                aria-label="Liên kết bản thiết kế kiểm thử với nguồn và kết quả"
-                className="grid gap-3"
-              >
-                <div>
-                  <h3 className="font-semibold text-ink">Từ nguồn đến yêu cầu và ca kiểm thử</h3>
-                  <p className="mt-1 text-ink-muted">
-                    Mỗi nghĩa vụ dưới đây được nối với trích dẫn đã kiểm chứng và kết quả được đọc
-                    lại từ dự án.
-                  </p>
-                </div>
-                <ul className="grid gap-3">
-                  {blueprintClaims.map((claim) => {
-                    const claimFacts = (claim.source_fact_ids || [])
-                      .map((factId) => sourceFactsById.get(factId))
-                      .filter(Boolean);
-                    const linkedArtifacts = blueprintArtifacts.filter(
-                      (artifact) =>
-                        claim.claim_type === "OBLIGATION" &&
-                        artifact.obligation_key === claim.claim_key &&
-                        (artifact.source_fact_ids || []).some((factId) =>
-                          claim.source_fact_ids?.includes(factId),
-                        ),
-                    );
-                    return (
-                      <li
-                        className="grid min-w-0 gap-3 rounded-control border border-border bg-surface p-3"
-                        key={`${claim.claim_type}-${claim.claim_key}`}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="status-badge">
-                            {claim.claim_type === "OBLIGATION"
-                              ? "Nghĩa vụ kiểm thử"
-                              : "Yêu cầu làm rõ"}
-                          </span>
-                          <span className="font-medium text-ink">
-                            {claim.claim_type === "OBLIGATION"
-                              ? "Điểm cần kiểm thử"
-                              : "Điểm cần làm rõ"}
-                          </span>
-                          <details className="text-xs text-ink-muted">
-                            <summary className="cursor-pointer">Thông tin hỗ trợ</summary>
-                            <p className="mt-1 break-all">Mã liên kết: {claim.claim_key}</p>
-                          </details>
-                        </div>
-                        <div className="grid gap-2">
-                          <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                            Căn cứ nguồn
-                          </h4>
-                          {claimFacts.length > 0 ? (
-                            claimFacts.map((fact) => (
-                              <div
-                                className="min-w-0 rounded-control bg-surface-quiet p-3"
-                                key={fact.source_fact_id}
+            {(checkpoints.length > 0 ||
+              receipt ||
+              blueprintClaims.length > 0 ||
+              unlinkedSourceFacts.length > 0) && (
+              <details className="rounded-control border border-border bg-surface-quiet p-4">
+                <summary className="cursor-pointer font-semibold text-ink">
+                  Xem nguồn và quá trình tạo kết quả
+                </summary>
+                <div className="mt-4 grid gap-5">
+                  {checkpoints.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold text-ink">Các bước đã thực hiện</h3>
+                      <ol className="mt-2 grid gap-2">
+                        {checkpoints.map((checkpoint) => {
+                          const item = automationCheckpointView(checkpoint);
+                          if (!item) return null;
+                          return (
+                            <li
+                              className="grid min-w-0 gap-2 rounded-control border border-border bg-surface p-3"
+                              key={checkpoint.checkpoint_id}
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-medium text-ink">
+                                  {item.sequence !== null ? `${item.sequence}. ` : ""}
+                                  {item.phase}
+                                </span>
+                                <StatusPill value={item.status} />
+                              </div>
+                              <time
+                                className="text-xs text-ink-muted"
+                                dateTime={checkpoint.created_at || undefined}
                               >
-                                <p className="break-words text-xs text-ink-muted">
-                                  {valueLabel(fact.artifact_type)}
-                                  {fact.source_page_numbers?.length
-                                    ? ` · Trang ${fact.source_page_numbers.join(", ")}`
-                                    : " · Đoạn trích đã xác minh"}
-                                </p>
-                                <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
-                                  {fact.quote}
-                                </blockquote>
-                                {fact.source_start !== null && fact.source_start !== undefined && (
-                                  <p className="mt-2 break-all text-xs text-ink-muted">
-                                    Vị trí nội dung {fact.source_start}–{fact.source_end}
-                                  </p>
-                                )}
-                                <details className="mt-2 text-xs text-ink-muted">
-                                  <summary className="cursor-pointer">Thông tin nguồn</summary>
-                                  <p className="mt-1 break-all">
-                                    Nguồn: {fact.source} · Mã đối tượng: {fact.artifact_id}
-                                    {fact.artifact_version_id
-                                      ? ` · Phiên bản: ${fact.artifact_version_id}`
-                                      : ""}
-                                  </p>
+                                {item.createdAt}
+                              </time>
+                              {item.facts.length > 0 && (
+                                <ul className="grid gap-1 text-xs text-ink-muted">
+                                  {item.facts.map((fact) => (
+                                    <li key={fact}>{fact}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </div>
+                  )}
+                  {receipt && (
+                    <div>
+                      <h3 className="font-semibold text-ink">Nguồn đã dùng</h3>
+                      <p className="mt-1 text-ink-muted">
+                        {receipt.source_fact_ids?.length || 0} nguồn được dùng để tạo kết quả này
+                      </p>
+                    </div>
+                  )}
+                  {blueprintClaims.length > 0 && (
+                    <section
+                      aria-label="Liên kết bản thiết kế kiểm thử với nguồn và kết quả"
+                      className="grid gap-3"
+                    >
+                      <div>
+                        <h3 className="font-semibold text-ink">
+                          Liên kết với yêu cầu và ca kiểm thử
+                        </h3>
+                        <p className="mt-1 text-ink-muted">
+                          Các mục dưới đây được tạo từ nội dung trích dẫn trong tài liệu.
+                        </p>
+                      </div>
+                      <ul className="grid gap-3">
+                        {blueprintClaims.map((claim) => {
+                          const claimFacts = (claim.source_fact_ids || [])
+                            .map((factId) => sourceFactsById.get(factId))
+                            .filter(Boolean);
+                          const linkedArtifacts = blueprintArtifacts.filter(
+                            (artifact) =>
+                              claim.claim_type === "OBLIGATION" &&
+                              artifact.obligation_key === claim.claim_key &&
+                              (artifact.source_fact_ids || []).some((factId) =>
+                                claim.source_fact_ids?.includes(factId),
+                              ),
+                          );
+                          return (
+                            <li
+                              className="grid min-w-0 gap-3 rounded-control border border-border bg-surface p-3"
+                              key={`${claim.claim_type}-${claim.claim_key}`}
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="status-badge">
+                                  {claim.claim_type === "OBLIGATION"
+                                    ? "Nghĩa vụ kiểm thử"
+                                    : "Yêu cầu làm rõ"}
+                                </span>
+                                <span className="font-medium text-ink">
+                                  {claim.claim_type === "OBLIGATION"
+                                    ? "Điểm cần kiểm thử"
+                                    : "Điểm cần làm rõ"}
+                                </span>
+                                <details className="text-xs text-ink-muted">
+                                  <summary className="cursor-pointer">Thông tin thêm</summary>
+                                  <p className="mt-1 break-all">Mã liên kết: {claim.claim_key}</p>
                                 </details>
                               </div>
-                            ))
-                          ) : (
-                            <p className="text-ink-muted">
-                              Không đọc được trích dẫn đã lưu cho nghĩa vụ này.
-                            </p>
-                          )}
-                        </div>
-                        {claim.claim_type === "OBLIGATION" && (
-                          <div className="grid gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                Kết quả đã xác minh trong dự án
-                              </h4>
-                              {linkedArtifacts.length > 0 && (
-                                <ContentOriginBadge
-                                  origin="ai_generated"
-                                  aiLabel="AI tạo · đã đọc lại"
-                                />
+                              <div className="grid gap-2">
+                                <h4 className="text-sm font-semibold text-ink-muted">
+                                  Căn cứ nguồn
+                                </h4>
+                                {claimFacts.length > 0 ? (
+                                  claimFacts.map((fact) => (
+                                    <div
+                                      className="min-w-0 rounded-control bg-surface-quiet p-3"
+                                      key={fact.source_fact_id}
+                                    >
+                                      <p className="break-words text-xs text-ink-muted">
+                                        {fact.source || valueLabel(fact.artifact_type)}
+                                        {fact.source_page_numbers?.length
+                                          ? ` · Trang ${fact.source_page_numbers.join(", ")}`
+                                          : " · Đoạn trích đã xác minh"}
+                                      </p>
+                                      <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
+                                        {fact.quote}
+                                      </blockquote>
+                                      <details className="mt-2 text-xs text-ink-muted">
+                                        <summary className="cursor-pointer">Chi tiết nguồn</summary>
+                                        <p className="mt-1 break-all">
+                                          Mã đối tượng: {fact.artifact_id}
+                                          {fact.artifact_version_id
+                                            ? ` · Phiên bản: ${fact.artifact_version_id}`
+                                            : ""}
+                                        </p>
+                                        {fact.source_start !== null &&
+                                          fact.source_start !== undefined && (
+                                            <p className="mt-1 break-all">
+                                              Vị trí trong nội dung {fact.source_start}–
+                                              {fact.source_end}
+                                            </p>
+                                          )}
+                                      </details>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-ink-muted">
+                                    Không đọc được trích dẫn đã lưu cho nghĩa vụ này.
+                                  </p>
+                                )}
+                              </div>
+                              {claim.claim_type === "OBLIGATION" && (
+                                <div className="grid gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="text-sm font-semibold text-ink-muted">
+                                      Đã ghi nhận trong dự án
+                                    </h4>
+                                    {linkedArtifacts.length > 0 && (
+                                      <ContentOriginBadge
+                                        origin="ai_generated"
+                                        aiLabel="AI tạo · đã đọc lại"
+                                      />
+                                    )}
+                                  </div>
+                                  {linkedArtifacts.length > 0 ? (
+                                    <ul className="grid gap-1">
+                                      {linkedArtifacts.map((artifact) => (
+                                        <li
+                                          className="break-all rounded-control bg-surface-quiet px-3 py-2 text-ink"
+                                          key={`${artifact.artifact_type}-${artifact.artifact_id}`}
+                                        >
+                                          {valueLabel(artifact.artifact_type)}
+                                          <details className="mt-1 text-xs text-ink-muted">
+                                            <summary className="cursor-pointer">
+                                              Mã liên kết
+                                            </summary>
+                                            <span className="mt-1 block break-all">
+                                              {artifact.artifact_id}
+                                            </span>
+                                          </details>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <p className="text-ink-muted">
+                                      Chưa có yêu cầu hoặc ca kiểm thử được xác minh cho nghĩa vụ
+                                      này.
+                                    </p>
+                                  )}
+                                </div>
                               )}
-                            </div>
-                            {linkedArtifacts.length > 0 ? (
-                              <ul className="grid gap-1">
-                                {linkedArtifacts.map((artifact) => (
-                                  <li
-                                    className="break-all rounded-control bg-surface-quiet px-3 py-2 text-ink"
-                                    key={`${artifact.artifact_type}-${artifact.artifact_id}`}
-                                  >
-                                    {valueLabel(artifact.artifact_type)}
-                                    <details className="mt-1 text-xs text-ink-muted">
-                                      <summary className="cursor-pointer">Mã liên kết</summary>
-                                      <span className="mt-1 block break-all">
-                                        {artifact.artifact_id}
-                                      </span>
-                                    </details>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p className="text-ink-muted">
-                                Chưa có yêu cầu hoặc ca kiểm thử được xác minh cho nghĩa vụ này.
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  )}
+                  {unlinkedSourceFacts.length > 0 && (
+                    <section aria-label="Trích dẫn nguồn đã kiểm chứng" className="grid gap-2">
+                      <h3 className="font-semibold text-ink">Trích dẫn nguồn đã kiểm chứng</h3>
+                      <ul className="grid gap-2">
+                        {unlinkedSourceFacts.map((fact) => (
+                          <li
+                            className="min-w-0 rounded-control border border-border bg-surface p-3"
+                            key={fact.source_fact_id}
+                          >
+                            <p className="break-words text-xs text-ink-muted">
+                              {fact.source || valueLabel(fact.artifact_type)}
+                              {fact.source_page_numbers?.length
+                                ? ` · Trang ${fact.source_page_numbers.join(", ")}`
+                                : " · Đoạn trích đã xác minh"}
+                            </p>
+                            <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
+                              {fact.quote}
+                            </blockquote>
+                            <details className="mt-2 text-xs text-ink-muted">
+                              <summary className="cursor-pointer">Chi tiết nguồn</summary>
+                              <p className="mt-1 break-all">
+                                Mã đối tượng: {fact.artifact_id}
+                                {fact.artifact_version_id
+                                  ? ` · Phiên bản: ${fact.artifact_version_id}`
+                                  : ""}
                               </p>
-                            )}
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            )}
-            {sourceFacts.length > 0 && (
-              <section aria-label="Trích dẫn nguồn đã kiểm chứng" className="grid gap-2">
-                <h3 className="font-semibold text-ink">Trích dẫn nguồn đã kiểm chứng</h3>
-                <ul className="grid gap-2">
-                  {sourceFacts.map((fact) => (
-                    <li
-                      className="min-w-0 rounded-control border border-border bg-surface p-3"
-                      key={fact.source_fact_id}
-                    >
-                      <p className="break-words text-xs text-ink-muted">
-                        {valueLabel(fact.artifact_type)}
-                        {fact.source_page_numbers?.length
-                          ? ` · Trang ${fact.source_page_numbers.join(", ")}`
-                          : " · Đoạn trích đã xác minh"}
-                      </p>
-                      <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
-                        {fact.quote}
-                      </blockquote>
-                      {fact.source_start !== null && fact.source_start !== undefined && (
-                        <p className="mt-2 break-all text-xs text-ink-muted">
-                          Vị trí nội dung {fact.source_start}–{fact.source_end}
-                        </p>
-                      )}
-                      <details className="mt-2 text-xs text-ink-muted">
-                        <summary className="cursor-pointer">Thông tin nguồn</summary>
-                        <p className="mt-1 break-all">
-                          Nguồn: {fact.source} · Mã đối tượng: {fact.artifact_id}
-                          {fact.artifact_version_id
-                            ? ` · Phiên bản: ${fact.artifact_version_id}`
-                            : ""}
-                        </p>
-                      </details>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+                              {fact.source_start !== null && fact.source_start !== undefined && (
+                                <p className="mt-1 break-all">
+                                  Vị trí trong nội dung {fact.source_start}–{fact.source_end}
+                                </p>
+                              )}
+                            </details>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+              </details>
             )}
           </div>
         )}

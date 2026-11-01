@@ -247,19 +247,3 @@ export const passkeyRegisterFinishAPI = async (email, credential) => {
   if (!res.ok) throw new Error(errorMessage(data, "Lỗi hoàn tất luồng đăng ký chứng thư số"));
   return data?.data || data;
 };
-export const getGoogleLoginUrlAPI = async () => {
-  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/google/dang-nhap`);
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data?.data?.url)
-    throw new Error("Không thể tải điểm cuối xác thực định danh Google");
-  return data.data.url;
-};
-export const completeGoogleLoginAPI = async (code, state) => {
-  const res = await fetchWithNetworkError(
-    `${API_URL}/xac-thuc/google/chuyen-huong?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
-    { credentials: "include" },
-  );
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(data, "Không thể xác thực bằng Google"));
-  return data?.data || data;
-};

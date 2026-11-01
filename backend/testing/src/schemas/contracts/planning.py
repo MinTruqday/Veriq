@@ -98,6 +98,22 @@ class TestPlanCommunication(BaseModel):
     escalation_roles: list[str] = Field(default_factory=list, max_length=100)
 
 
+class TestDataPlan(BaseModel):
+    sources: list[str] = Field(default_factory=list, max_length=200)
+    preparation: str = Field(default="", max_length=5000)
+    privacy: str = Field(default="", max_length=5000)
+    reset_procedure: str = Field(default="", max_length=5000)
+    owner_id: str | None = Field(default=None, max_length=200)
+
+
+class DefectManagementPlan(BaseModel):
+    reporting: str = Field(default="", max_length=5000)
+    classification: str = Field(default="", max_length=5000)
+    triage: str = Field(default="", max_length=5000)
+    retest: str = Field(default="", max_length=5000)
+    closure: str = Field(default="", max_length=5000)
+
+
 class TestPlanCreate(BaseModel):
     project_id: str
     name: str = Field(min_length=2, max_length=300)
@@ -139,6 +155,8 @@ class TestPlanCreate(BaseModel):
     quality_targets: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     risk_register: list[TestPlanRisk] = Field(default_factory=list, max_length=500)
     communication_plan: TestPlanCommunication = Field(default_factory=TestPlanCommunication)
+    test_data_plan: TestDataPlan = Field(default_factory=TestDataPlan)
+    defect_management: DefectManagementPlan = Field(default_factory=DefectManagementPlan)
 
     @model_validator(mode="after")
     def validate_test_plan_management_fields(self):

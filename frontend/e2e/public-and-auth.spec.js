@@ -56,6 +56,7 @@ test("failed login preserves user input and shows the returned error", async ({ 
   });
 
   await page.goto("/dang-nhap");
+  await expect(page.getByRole("button", { name: /Google/i })).toHaveCount(0);
   await page.getByLabel("Email").fill("ui-check@example.invalid");
   await page.locator("#login-password").fill("incorrect-test-password");
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
@@ -173,7 +174,7 @@ test("successful password login verifies the session before opening the project 
   let identityAuthorization;
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/dang-nhap") {
       await route.fulfill({
         status: 200,
@@ -210,93 +211,6 @@ test("successful password login verifies the session before opening the project 
   await expect.poll(() => page.evaluate(() => localStorage.getItem("veriq_token"))).toBe(token);
 });
 
-test("Google callback completes once and returns only to its saved internal destination", async ({
-  page,
-}) => {
-  const token = "e2e-google-login-token";
-  let callbackRequests = 0;
-  await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
-    if (pathname === "/xac-thuc/google/chuyen-huong") {
-      callbackRequests += 1;
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: {
-            access_token: token,
-            user: { email: "google@example.test", has_passkey: true },
-          },
-        }),
-      });
-      return;
-    }
-    if (pathname === "/xac-thuc/ca-nhan") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: { _id: "user-e2e-google", email: "google@example.test" } }),
-      });
-      return;
-    }
-    if (pathname === "/kiem-thu/du-an/PRJ-E2E") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          data: {
-            _id: "PRJ-E2E",
-            name: "Dự án kiểm thử callback",
-            planning_method: "SCRUM",
-            current_permissions: ["project.read"],
-          },
-        }),
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ data: [] }),
-    });
-  });
-
-  await page.goto("/dang-nhap");
-  await page.evaluate(() => sessionStorage.setItem("veriq_return_path", "/du-an/PRJ-E2E"));
-  await page.goto("/dang-nhap/google/chuyen-huong?code=e2e-code&state=e2e-state");
-
-  await expect(page).toHaveURL(/\/du-an\/PRJ-E2E$/);
-  expect(callbackRequests).toBe(1);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("veriq_token"))).toBe(token);
-  await expect
-    .poll(() => page.evaluate(() => sessionStorage.getItem("veriq_return_path")))
-    .toBeNull();
-});
-
-test("Google callback failure gives a recoverable path back to login", async ({ page }) => {
-  await page.route(`${apiBase}/**`, async (route) => {
-    if (new URL(route.request().url()).pathname === "/xac-thuc/google/chuyen-huong") {
-      await route.fulfill({
-        status: 401,
-        contentType: "application/json",
-        body: JSON.stringify({ detail: "Không thể xác thực Google trong kiểm thử" }),
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ data: [] }),
-    });
-  });
-
-  await page.goto("/dang-nhap/google/chuyen-huong?code=e2e-code&state=e2e-state");
-
-  await expect(page.getByText("Không thể xác thực Google trong kiểm thử")).toBeVisible();
-  await page.getByRole("button", { name: "Quay lại đăng nhập" }).click();
-  await expect(page).toHaveURL(/\/dang-nhap$/);
-});
-
 test("an expired session clears local credentials and preserves the protected destination", async ({
   page,
 }) => {
@@ -305,7 +219,7 @@ test("an expired session clears local credentials and preserves the protected de
   await page.context().addCookies([{ name: "token", value: token, url: appBaseUrl }]);
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
   await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan" || pathname === "/xac-thuc/lam-moi-phien") {
       await route.fulfill({
         status: 401,
@@ -340,7 +254,7 @@ test("a temporary refresh failure keeps the session and offers retry", async ({ 
   await page.context().addCookies([{ name: "token", value: token, url: appBaseUrl }]);
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
   await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan") {
       await route.fulfill({ status: 401, body: "{}" });
       return;
@@ -380,7 +294,7 @@ test("a delayed identity response from an old session cannot replace a new login
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), oldToken);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan") {
       if (request.headers().authorization === `Bearer ${oldToken}`) {
         oldIdentityStarted();
@@ -483,7 +397,7 @@ test("an authenticated member is redirected away from a project route they canno
   await page.context().addCookies([{ name: "token", value: token, url: appBaseUrl }]);
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
   await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/api(?=\/|$)/, "");
     const data =
       pathname === "/xac-thuc/ca-nhan"
         ? { _id: "member-e2e", email: "member@example.test", full_name: "Thành viên" }
@@ -522,7 +436,7 @@ test("an unverified JWT role cannot open the platform administration UI", async 
   await page.context().addCookies([{ name: "token", value: token, url: appBaseUrl }]);
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
   await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan") {
       identityLookups += 1;
       if (identityLookups === 1) {
@@ -565,7 +479,7 @@ test("a verified platform admin can open the platform administration route direc
   await page.context().addCookies([{ name: "token", value: token, url: appBaseUrl }]);
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
   await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/api(?=\/|$)/, "");
     const data =
       pathname === "/xac-thuc/ca-nhan"
         ? {
@@ -614,7 +528,7 @@ test("platform operations load errors can be retried", async ({ page }) => {
   await page.context().addCookies([{ name: "token", value: token, url: appBaseUrl }]);
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
   await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan") {
       await route.fulfill({
         status: 200,
@@ -688,7 +602,7 @@ test("a regular user cannot open the platform administration route directly", as
   await page.context().addCookies([{ name: "token", value: token, url: appBaseUrl }]);
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
   await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/kiem-thu/van-hanh") operationsRequests += 1;
     if (pathname.startsWith("/quan-tri/")) platformAdministrationRequests += 1;
     const data =

@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from src.api.google import router as google_router
 from src.api.internal import router as internal_router
 from src.api.passkey import router as passkey_router
 from src.api.platform import router as platform_router
@@ -42,7 +41,6 @@ app.add_middleware(
 )
 app.include_router(session_router)
 app.include_router(passkey_router)
-app.include_router(google_router)
 app.include_router(internal_router)
 app.include_router(platform_router)
 app.include_router(platform_controls_router)

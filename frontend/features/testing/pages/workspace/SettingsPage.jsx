@@ -21,6 +21,9 @@ import {
   minimumProjectEndDate,
 } from "../../lib/projectSchedule.logic.mjs";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
+import { Pagination } from "@/shared/components/ui/Pagination";
+
+const AUDIT_PAGE_SIZE = 25;
 
 const toggleSettings = [
   ["requirement_lint_blocking", "Chặn duyệt yêu cầu khi còn lỗi kiểm tra"],
@@ -119,6 +122,7 @@ const settingValueLabels = {
 export default function SettingsPage({ project, onProjectChange, workspaceView }) {
   const { ask, dialog } = useActionDialog();
   const [audit, setAudit] = useState([]);
+  const [auditPage, setAuditPage] = useState(1);
   const [members, setMembers] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
@@ -272,7 +276,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
     return (
       <WorkspacePage title="Nhật ký kiểm toán" actions={<ProjectCrumb projectId={project._id} />}>
         {error && <ErrorState message={error} />}
-        <Panel title="Nhật ký kiểm toán">
+        <Panel>
           {dataLoading ? (
             <div className="p-5">
               <LoadingState />
@@ -289,40 +293,48 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
               </button>
             </div>
           ) : (
-            <DataTable
-              items={audit}
-              empty="Chưa có sự kiện"
-              columns={[
-                { key: "action", label: "Hành động", render: (item) => valueLabel(item.action) },
-                {
-                  key: "artifact_type",
-                  label: "Loại dữ liệu",
-                  render: (item) => valueLabel(item.artifact_type),
-                },
-                {
-                  key: "artifact_id",
-                  label: "Đối tượng",
-                  render: (item) => (
-                    <details>
-                      <summary className="cursor-pointer text-sm">Xem chi tiết</summary>
-                      <span className="mt-1 block break-all text-xs text-ink-muted">
-                        Mã đối tượng: {item.artifact_id || "Không có"}
-                      </span>
-                    </details>
-                  ),
-                },
-                {
-                  key: "actor_id",
-                  label: "Người thực hiện",
-                  render: (item) => item.actor_label || "Thành viên dự án",
-                },
-                {
-                  key: "created_at",
-                  label: "Thời điểm",
-                  render: (item) => formatDate(item.created_at),
-                },
-              ]}
-            />
+            <>
+              <DataTable
+                items={audit.slice((auditPage - 1) * AUDIT_PAGE_SIZE, auditPage * AUDIT_PAGE_SIZE)}
+                empty="Chưa có sự kiện"
+                columns={[
+                  { key: "action", label: "Hành động", render: (item) => valueLabel(item.action) },
+                  {
+                    key: "entity_type",
+                    label: "Loại dữ liệu",
+                    render: (item) => valueLabel(item.entity_type),
+                  },
+                  {
+                    key: "entity_id",
+                    label: "Đối tượng",
+                    render: (item) => (
+                      <details>
+                        <summary className="cursor-pointer text-sm">Xem chi tiết</summary>
+                        <span className="mt-1 block break-all text-xs text-ink-muted">
+                          Mã đối tượng: {item.entity_id || "Không có"}
+                        </span>
+                      </details>
+                    ),
+                  },
+                  {
+                    key: "actor_id",
+                    label: "Người thực hiện",
+                    render: (item) => item.actor_label || "Thành viên dự án",
+                  },
+                  {
+                    key: "created_at",
+                    label: "Thời điểm",
+                    render: (item) => formatDate(item.created_at),
+                  },
+                ]}
+              />
+              <Pagination
+                page={auditPage}
+                pageSize={AUDIT_PAGE_SIZE}
+                total={audit.length}
+                onChange={setAuditPage}
+              />
+            </>
           )}
         </Panel>
       </WorkspacePage>
@@ -404,7 +416,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   onChange={(event) => setName(event.target.value)}
                 />
               </label>
-              <div className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <label className="field-label">
                   Loại dự án
                   <select
@@ -439,7 +451,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   />
                 </label>
               </div>
-              <section className="space-y-3 rounded-xl border border-border p-4">
+              <section className="space-y-3 border-t border-border pt-4">
                 <div>
                   <h3 className="text-sm font-semibold text-ink">Tự động hóa kiểm thử</h3>
                   <p className="mt-1 text-sm text-ink-muted">
@@ -493,8 +505,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 </div>
               </section>
               {can("project.update") && (
-                <Panel title="Thời gian dự án">
-                  <div className="grid gap-3 p-4 sm:grid-cols-2">
+                <section className="space-y-3 border-t border-border pt-4">
+                  <h3 className="text-sm font-semibold text-ink">Thời gian dự án</h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <label className="field-label">
                       Bắt đầu dự kiến
                       <input
@@ -548,7 +561,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                       </button>
                     </div>
                   </div>
-                </Panel>
+                </section>
               )}
               {can("project.settings.manage") && (
                 <details className="rounded-xl border border-border p-4">

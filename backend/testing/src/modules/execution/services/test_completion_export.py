@@ -23,6 +23,7 @@ def completion_rows(report):
         ("Dự án", report.get("project_id")),
         ("Kế hoạch kiểm thử", report.get("test_plan_id")),
         ("Chiến lược kiểm thử", report.get("strategy_version_id")),
+        ("Cách tiếp cận kiểm thử", report.get("strategy_approach_snapshot")),
         ("Bản phát hành", report.get("release_id")),
         ("Các bản dựng", report.get("build_ids", [report.get("build_id")])),
         ("Ảnh chụp cuối", report.get("final_snapshot_id") or report.get("monitoring_snapshot_id")),

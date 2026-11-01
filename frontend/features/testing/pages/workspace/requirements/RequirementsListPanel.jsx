@@ -182,27 +182,57 @@ export default function RequirementsListPanel({
             selectionLabel="Chọn yêu cầu"
             empty="Chưa có yêu cầu"
             columns={[
-              { key: "requirement_key", label: "Mã" },
-              { key: "title", label: "Tên", render: (item) => item.current_version?.title },
+              {
+                key: "requirement_key",
+                label: "Mã",
+                minWidth: 92,
+                render: (item) => (
+                  <span className="whitespace-nowrap font-mono text-xs">
+                    {item.requirement_key}
+                  </span>
+                ),
+              },
+              {
+                key: "title",
+                label: "Tên",
+                minWidth: 260,
+                render: (item) => (
+                  <span
+                    className="line-clamp-2 break-words [overflow-wrap:anywhere]"
+                    title={item.current_version?.title || ""}
+                  >
+                    {item.current_version?.title}
+                  </span>
+                ),
+                mobileRender: (item) => item.current_version?.title,
+              },
               {
                 key: "type",
                 label: "Loại",
-                render: (item) => valueLabel(item.current_version?.type),
+                minWidth: 130,
+                render: (item) => (
+                  <span className="break-words">{valueLabel(item.current_version?.type)}</span>
+                ),
               },
               {
                 key: "risk",
                 label: "Rủi ro",
-                render: (item) => valueLabel(item.current_version?.risk),
+                minWidth: 104,
+                render: (item) => (
+                  <span className="break-words">{valueLabel(item.current_version?.risk)}</span>
+                ),
               },
               {
                 key: "status",
                 label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
+                minWidth: 140,
+                render: (item) => <StatusPill value={item.status} wrap />,
               },
               {
                 key: "assurance_status",
                 label: "Hồ sơ đảm bảo",
-                render: (item) => <StatusPill value={item.assurance_status} />,
+                minWidth: 164,
+                render: (item) => <StatusPill value={item.assurance_status} wrap />,
               },
             ]}
           />

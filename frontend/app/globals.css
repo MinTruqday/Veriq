@@ -229,6 +229,14 @@
     grid-template-columns: minmax(9rem, 22%) minmax(0, 1fr);
   }
 
+  .data-table-responsive-wide .data-table-mobile article dl > div {
+    grid-template-columns: minmax(8rem, 22%) minmax(0, 1fr);
+  }
+
+  .data-table-responsive-wide .data-table-mobile dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .data-table-responsive-cards .data-table-desktop {
     display: none;
   }
@@ -242,6 +250,10 @@
     border-radius: 9px;
     margin-bottom: 1rem;
     padding: 1rem;
+  }
+
+  .data-table-responsive-wide .data-table-mobile article dl > div {
+    margin-top: 0;
   }
 
   .data-table-desktop {
@@ -320,6 +332,10 @@
 
   .secondary-button {
     @apply inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-control border border-border-strong bg-surface px-3.5 py-2 text-center text-[14px] font-semibold leading-5 text-ink transition duration-150 hover:bg-surface-quiet active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .icon-button {
+    @apply inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-control border border-border-strong bg-surface text-ink-muted transition duration-150 hover:bg-surface-quiet hover:text-ink active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .apple-input {
@@ -608,15 +624,35 @@
   .data-table-responsive-cards .data-table-mobile {
     display: block;
   }
+
+  .execution-plan-actions {
+    flex-wrap: nowrap;
+    width: max-content;
+  }
 }
 
-@container data-table-wide (min-width: 64rem) {
+@container data-table-wide (min-width: 56rem) {
   .data-table-desktop {
     display: block;
   }
 
   .data-table-mobile {
     display: none;
+  }
+}
+
+@container data-table-wide (min-width: 40rem) and (max-width: 71.999rem) {
+  .data-table-responsive-wide .data-table-mobile dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .data-table-responsive-wide .data-table-mobile article dl > div {
+    grid-template-columns: minmax(5rem, 35%) minmax(0, 1fr);
+  }
+
+  .data-table-responsive-wide .data-table-mobile article dl > div[data-column-key="title"] {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(8rem, 18%) minmax(0, 1fr);
   }
 }
 

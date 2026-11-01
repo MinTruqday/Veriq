@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
+import FilePicker from "./FilePicker";
 
 const emptySkill = () => ({
   name: "",
@@ -220,11 +222,11 @@ export default function MemberSkillProfilePanel({ projectId }) {
         <section className="space-y-3 rounded-xl border border-border p-4">
           <h3 className="font-semibold">Trích xuất từ CV để rà soát</h3>
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <input
-              aria-label="Chọn CV PDF DOCX hoặc TXT"
-              ref={cvInputRef}
-              className="apple-input min-w-0 flex-1"
-              type="file"
+            <FilePicker
+              ariaLabel="Chọn CV PDF DOCX hoặc TXT"
+              className="min-w-0 flex-1"
+              fileName={cvFile?.name || ""}
+              inputRef={cvInputRef}
               accept=".pdf,.docx,.txt"
               onChange={(event) => {
                 cvExtractionGeneration.current += 1;
@@ -370,13 +372,15 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 Tôi xác nhận kỹ năng này
               </label>
               <button
-                className="secondary-button justify-self-start"
+                aria-label={`Xóa kỹ năng ${index + 1}`}
+                className="icon-button h-9 w-9 justify-self-start text-danger"
+                title="Xóa kỹ năng"
                 type="button"
                 onClick={() =>
                   setSkills((items) => items.filter((_, itemIndex) => itemIndex !== index))
                 }
               >
-                Xóa kỹ năng
+                <Trash2 aria-hidden="true" size={16} />
               </button>
             </div>
           ))}
@@ -501,13 +505,15 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 Tôi xác nhận kinh nghiệm này
               </label>
               <button
-                className="secondary-button justify-self-start"
+                aria-label={`Xóa kinh nghiệm ${index + 1}`}
+                className="icon-button h-9 w-9 justify-self-start text-danger"
+                title="Xóa kinh nghiệm"
                 type="button"
                 onClick={() =>
                   setExperiences((items) => items.filter((_, itemIndex) => itemIndex !== index))
                 }
               >
-                Xóa kinh nghiệm
+                <Trash2 aria-hidden="true" size={16} />
               </button>
             </div>
           ))}

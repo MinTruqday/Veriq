@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Eye, Pencil } from "lucide-react";
 import { platformApi } from "@/features/authentication/services/platform.service";
 import DataTable from "./DataTable";
 import {
@@ -266,13 +267,16 @@ export default function PlatformUsersPanel() {
               {
                 key: "open",
                 label: "Thao tác",
+                minWidth: 64,
                 render: (item) => (
                   <button
-                    className="secondary-button"
+                    aria-label={`Xem chi tiết tài khoản ${item.email}`}
+                    className="icon-button h-9 w-9"
+                    title="Xem chi tiết tài khoản"
                     type="button"
                     onClick={() => setSelectedId(item._id)}
                   >
-                    Xem chi tiết
+                    <Eye aria-hidden="true" size={17} />
                   </button>
                 ),
               },
@@ -318,8 +322,10 @@ export default function PlatformUsersPanel() {
               </summary>
               <div className="grid gap-2 border-t border-border p-5 sm:grid-cols-2 xl:grid-cols-3">
                 <button
-                  className="secondary-button"
+                  className="icon-button h-9 w-9"
                   type="button"
+                  aria-label={`Sửa hồ sơ ${detail.email}`}
+                  title="Sửa hồ sơ"
                   disabled={accountActionInFlight}
                   onClick={() =>
                     void runAccountAction(async () => {
@@ -352,7 +358,7 @@ export default function PlatformUsersPanel() {
                     })
                   }
                 >
-                  Sửa hồ sơ
+                  <Pencil aria-hidden="true" size={16} />
                 </button>
                 {detail.account_status === "ACTIVE" ? (
                   <>

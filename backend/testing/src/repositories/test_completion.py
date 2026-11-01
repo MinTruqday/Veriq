@@ -82,7 +82,7 @@ async def find_latest_completion_ai_result(project_id, report_id, result_type):
             "project_id": project_id,
             "subject_id": report_id,
             "result_type": result_type,
-            "source_event_trigger": "TEST_COMPLETION_REPORT_CREATED",
+            "source_event_trigger": {"$in": ["TEST_COMPLETION_REPORT_CREATED", "MANUAL"]},
         },
         sort=[("created_at", -1), ("_id", -1)],
     )

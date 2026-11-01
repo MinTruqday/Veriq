@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
-import DataTable from "../../../components/DataTable";
 import FilePicker from "../../../components/FilePicker";
 import {
   ErrorState,
@@ -40,7 +39,7 @@ export default function RunExecutionWorkspace({
 }) {
   const activeTesters = (members || []).filter((member) => {
     const roles = member.project_roles || [member.project_role];
-    return member.status === "ACTIVE" && roles.includes("TESTER");
+    return member.status === "ACTIVE" && roles.some((role) => ["QA", "TESTER"].includes(role));
   });
   const [assignmentEditing, setAssignmentEditing] = useState(false);
   const [assignmentDraft, setAssignmentDraft] = useState({});
@@ -535,45 +534,53 @@ export default function RunExecutionWorkspace({
             </div>
           </Panel>
         )}
-      <Panel title="Kết quả từng ca">
-        {savingExecution && (
-          <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
-            Đang lưu kết quả thực thi…
-          </p>
-        )}
-        <DataTable
-          items={run.test_case_versions || []}
-          columns={[
-            { key: "test_case_key", label: "Ca kiểm thử" },
-            { key: "version", label: "Phiên bản", render: (item) => `v${item.version}` },
-            { key: "title", label: "Tên" },
-            {
-              key: "assignee",
-              label: "Người thực hiện",
-              render: (item) => {
-                const assigneeId = run.test_case_assignments?.[item._id];
-                return assigneeId
-                  ? run.test_case_assignment_identities?.[assigneeId]?.display_name ||
-                      "Thành viên không còn trong dự án"
-                  : "Chưa phân công";
-              },
-            },
-            {
-              key: "result",
-              label: "Kết quả",
-              render: (item) => {
-                const result = run.results?.find(
-                  (value) => value.test_case_version_id === item._id,
-                );
-                if (!result) return "Chưa có kết quả cho ca này";
-                if (!["NOT_RUN", "IN_PROGRESS"].includes(result.status)) {
-                  const hasDefect = run.defects?.some(
-                    (defect) => defect.linked_test_result_id === result._id,
-                  );
-                  return (
-                    <span className="flex min-w-0 flex-col items-start gap-2">
-                      <StatusPill value={result.status} />
-                      {result.status === "FAIL" && !hasDefect && can("defect.create") && (
+      <div className="w-full">
+        <Panel title="Kết quả từng ca">
+          {savingExecution && (
+            <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
+              Đang lưu kết quả thực thi…
+            </p>
+          )}
+          <div className="divide-y divide-border">
+            {(run.test_case_versions || []).map((item) => {
+              const result = run.results?.find((value) => value.test_case_version_id === item._id);
+              const assigneeId = run.test_case_assignments?.[item._id];
+              const assignee = assigneeId
+                ? run.test_case_assignment_identities?.[assigneeId]?.display_name ||
+                  "Thành viên không còn trong dự án"
+                : "Chưa phân công";
+              const linkedDefect = result
+                ? run.defects?.some((defect) => defect.linked_test_result_id === result._id)
+                : false;
+
+              return (
+                <article className="min-w-0 space-y-4 p-5" key={item._id}>
+                  <header className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-semibold">{item.test_case_key}</span>
+                        <span className="text-sm text-ink-muted">v{item.version}</span>
+                      </div>
+                      <h3 className="mt-1 break-words font-medium">{item.title}</h3>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      {result ? (
+                        <StatusPill value={result.status} />
+                      ) : (
+                        <span className="text-sm text-ink-muted">Chưa có kết quả</span>
+                      )}
+                    </div>
+                  </header>
+                  <p className="text-sm text-ink-muted">
+                    Người thực hiện: <span className="text-ink">{assignee}</span>
+                  </p>
+                  {!result ? (
+                    <p className="rounded-control bg-surface-raised px-3 py-2 text-sm text-ink-muted">
+                      Chưa có kết quả cho ca này.
+                    </p>
+                  ) : !["NOT_RUN", "IN_PROGRESS"].includes(result.status) ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      {result.status === "FAIL" && !linkedDefect && can("defect.create") && (
                         <button
                           className="apple-button"
                           type="button"
@@ -585,21 +592,13 @@ export default function RunExecutionWorkspace({
                             : "Tạo lỗi từ kết quả thất bại"}
                         </button>
                       )}
-                      {hasDefect && (
-                        <span className="text-[11px] text-ink-muted">Đã liên kết lỗi</span>
+                      {linkedDefect && (
+                        <span className="text-sm text-ink-muted">Đã liên kết lỗi</span>
                       )}
-                    </span>
-                  );
-                }
-                if (run.status !== "IN_PROGRESS") {
-                  return <StatusPill value={result.status} />;
-                }
-                if (!can("testrun.execute")) {
-                  return <StatusPill value={result.status} />;
-                }
-                if (result.status === "NOT_RUN") {
-                  return (
-                    <span className="flex flex-wrap gap-2">
+                    </div>
+                  ) : run.status !== "IN_PROGRESS" ||
+                    !can("testrun.execute") ? null : result.status === "NOT_RUN" ? (
+                    <div className="flex flex-wrap gap-2">
                       <button
                         className="secondary-button"
                         type="button"
@@ -616,166 +615,157 @@ export default function RunExecutionWorkspace({
                       >
                         Bỏ qua
                       </button>
-                    </span>
-                  );
-                }
-                return (
-                  <div className="min-w-0 space-y-3">
-                    {(item.steps || []).map((step, stepIndex) => {
-                      const existing = result.step_results?.find(
-                        (value) => value.step_id === step.id,
-                      );
-                      const edited = stepResults[result._id]?.[step.id] || {};
-                      return (
-                        <fieldset
-                          className="space-y-2 rounded-xl border border-border p-3"
-                          key={step.id}
-                        >
-                          <legend className="px-2 text-[12px] font-semibold">
-                            Bước {stepIndex + 1}
-                          </legend>
-                          <p className="text-[12px]">{docText(step.action_doc)}</p>
-                          <p className="text-[12px] text-ink-muted">
-                            Mong đợi {docText(step.expected_doc)}
-                          </p>
-                          <select
-                            aria-label={`Trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
-                            className="apple-input"
-                            disabled={savingExecution}
-                            value={edited.status || existing?.status || "PASS"}
-                            onChange={(event) =>
-                              onStepResultsChange((values) => ({
-                                ...values,
-                                [result._id]: {
-                                  ...values[result._id],
-                                  [step.id]: {
-                                    ...values[result._id]?.[step.id],
-                                    status: event.target.value,
-                                  },
-                                },
-                              }))
-                            }
+                    </div>
+                  ) : (
+                    <div className="min-w-0 space-y-4">
+                      {(item.steps || []).map((step, stepIndex) => {
+                        const existing = result.step_results?.find(
+                          (value) => value.step_id === step.id,
+                        );
+                        const edited = stepResults[result._id]?.[step.id] || {};
+                        return (
+                          <fieldset
+                            className="min-w-0 space-y-2 rounded-xl border border-border p-3"
+                            key={step.id}
                           >
-                            {terminalResultStatuses.map((value) => (
-                              <option value={value} key={value}>
-                                {valueLabel(value)}
-                              </option>
-                            ))}
-                          </select>
-                          <textarea
-                            aria-label={`Kết quả bước ${stepIndex + 1} ${item.test_case_key}`}
-                            className="apple-input min-h-16"
-                            disabled={savingExecution}
-                            value={edited.actual ?? docText(existing?.actual_doc)}
-                            onChange={(event) =>
-                              onStepResultsChange((values) => ({
-                                ...values,
-                                [result._id]: {
-                                  ...values[result._id],
-                                  [step.id]: {
-                                    ...values[result._id]?.[step.id],
-                                    actual: event.target.value,
+                            <legend className="px-2 text-[12px] font-semibold">
+                              Bước {stepIndex + 1}
+                            </legend>
+                            <p className="break-words text-[13px]">{docText(step.action_doc)}</p>
+                            <p className="break-words text-[13px] text-ink-muted">
+                              Mong đợi: {docText(step.expected_doc)}
+                            </p>
+                            <select
+                              aria-label={`Trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
+                              className="apple-input w-full min-w-0"
+                              disabled={savingExecution}
+                              value={edited.status || existing?.status || "PASS"}
+                              onChange={(event) =>
+                                onStepResultsChange((values) => ({
+                                  ...values,
+                                  [result._id]: {
+                                    ...values[result._id],
+                                    [step.id]: {
+                                      ...values[result._id]?.[step.id],
+                                      status: event.target.value,
+                                    },
                                   },
-                                },
-                              }))
-                            }
-                            placeholder="Kết quả thực tế của bước"
-                          />
-                          <textarea
-                            aria-label={`Lý do trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
-                            className="apple-input min-h-16"
-                            disabled={savingExecution}
-                            value={edited.note ?? existing?.note ?? ""}
-                            onChange={(event) =>
-                              onStepResultsChange((values) => ({
-                                ...values,
-                                [result._id]: {
-                                  ...values[result._id],
-                                  [step.id]: {
-                                    ...values[result._id]?.[step.id],
-                                    note: event.target.value,
+                                }))
+                              }
+                            >
+                              {terminalResultStatuses.map((value) => (
+                                <option value={value} key={value}>
+                                  {valueLabel(value)}
+                                </option>
+                              ))}
+                            </select>
+                            <textarea
+                              aria-label={`Kết quả bước ${stepIndex + 1} ${item.test_case_key}`}
+                              className="apple-input min-h-16 w-full min-w-0"
+                              disabled={savingExecution}
+                              value={edited.actual ?? docText(existing?.actual_doc)}
+                              onChange={(event) =>
+                                onStepResultsChange((values) => ({
+                                  ...values,
+                                  [result._id]: {
+                                    ...values[result._id],
+                                    [step.id]: {
+                                      ...values[result._id]?.[step.id],
+                                      actual: event.target.value,
+                                    },
                                   },
-                                },
-                              }))
-                            }
-                            placeholder="Ghi chú hoặc lý do Không áp dụng"
-                          />
-                        </fieldset>
-                      );
-                    })}
-                    <textarea
-                      aria-label={`Kết quả thực tế ${item.test_case_key}`}
-                      className="apple-input min-h-20"
-                      disabled={savingExecution}
-                      value={actuals[result._id] ?? docText(result.actual_result_doc)}
-                      onChange={(event) =>
-                        onActualsChange({ ...actuals, [result._id]: event.target.value })
-                      }
-                      placeholder="Kết quả thực tế và bằng chứng"
-                    />
-                    <FilePicker
-                      ariaLabel={`Tệp bằng chứng ${item.test_case_key}`}
-                      buttonLabel="Chọn tệp bằng chứng"
-                      disabled={savingExecution}
-                      onChange={async (event) => {
-                        const file = event.target.files?.[0];
-                        if (!file) return;
-                        try {
-                          const uploaded = await uploadAssetAPI(file);
-                          const linked = await testingApi.registerAttachment(projectId, {
-                            filename: uploaded.data.filename,
-                            url: uploaded.data.url,
-                            item_id: uploaded.data.item_id,
-                            size: uploaded.data.size,
-                            content_type: uploaded.data.content_type,
-                            artifact_type: "test_result",
-                            artifact_id: result._id,
-                          });
-                          onAttachmentsChange((current) => ({
-                            ...current,
-                            [result._id]: [
-                              ...(current[result._id] || result.attachments || []),
-                              linked,
-                            ],
-                          }));
-                        } catch (reason) {
-                          onError(messageOf(reason));
+                                }))
+                              }
+                              placeholder="Kết quả thực tế của bước"
+                            />
+                            <textarea
+                              aria-label={`Lý do trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
+                              className="apple-input min-h-16 w-full min-w-0"
+                              disabled={savingExecution}
+                              value={edited.note ?? existing?.note ?? ""}
+                              onChange={(event) =>
+                                onStepResultsChange((values) => ({
+                                  ...values,
+                                  [result._id]: {
+                                    ...values[result._id],
+                                    [step.id]: {
+                                      ...values[result._id]?.[step.id],
+                                      note: event.target.value,
+                                    },
+                                  },
+                                }))
+                              }
+                              placeholder="Ghi chú hoặc lý do Không áp dụng"
+                            />
+                          </fieldset>
+                        );
+                      })}
+                      <textarea
+                        aria-label={`Kết quả thực tế ${item.test_case_key}`}
+                        className="apple-input min-h-20 w-full min-w-0"
+                        disabled={savingExecution}
+                        value={actuals[result._id] ?? docText(result.actual_result_doc)}
+                        onChange={(event) =>
+                          onActualsChange({ ...actuals, [result._id]: event.target.value })
                         }
-                      }}
-                    />
-                    {(attachments[result._id] || result.attachments || []).map((attachment) => (
-                      <p className="break-all text-[11px] text-ink-muted" key={attachment.url}>
-                        {attachment.filename}
-                      </p>
-                    ))}
-                    <span className="flex flex-wrap gap-2">
-                      {terminalResultStatuses.map((value) => (
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          disabled={savingExecution}
-                          key={value}
-                          onClick={() => onTransition(result, value, item)}
-                        >
-                          {valueLabel(value)}
-                        </button>
+                        placeholder="Kết quả thực tế và bằng chứng"
+                      />
+                      <FilePicker
+                        ariaLabel={`Tệp bằng chứng ${item.test_case_key}`}
+                        buttonLabel="Chọn tệp bằng chứng"
+                        disabled={savingExecution}
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const uploaded = await uploadAssetAPI(file);
+                            const linked = await testingApi.registerAttachment(projectId, {
+                              filename: uploaded.data.filename,
+                              url: uploaded.data.url,
+                              item_id: uploaded.data.item_id,
+                              size: uploaded.data.size,
+                              content_type: uploaded.data.content_type,
+                              artifact_type: "test_result",
+                              artifact_id: result._id,
+                            });
+                            onAttachmentsChange((current) => ({
+                              ...current,
+                              [result._id]: [
+                                ...(current[result._id] || result.attachments || []),
+                                linked,
+                              ],
+                            }));
+                          } catch (reason) {
+                            onError(messageOf(reason));
+                          }
+                        }}
+                      />
+                      {(attachments[result._id] || result.attachments || []).map((attachment) => (
+                        <p className="break-all text-[11px] text-ink-muted" key={attachment.url}>
+                          {attachment.filename}
+                        </p>
                       ))}
-                    </span>
-                  </div>
-                );
-              },
-              mobileRender: (item) => {
-                const result = run.results?.find(
-                  (value) => value.test_case_version_id === item._id,
-                );
-                return result
-                  ? `Kết quả ${valueLabel(result.status)}`
-                  : "Chưa có kết quả cho ca này";
-              },
-            },
-          ]}
-        />
-      </Panel>
+                      <div className="flex flex-wrap gap-2">
+                        {terminalResultStatuses.map((value) => (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            disabled={savingExecution}
+                            key={value}
+                            onClick={() => onTransition(result, value, item)}
+                          >
+                            {valueLabel(value)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </Panel>
+      </div>
       {dialog}
     </WorkspacePage>
   );

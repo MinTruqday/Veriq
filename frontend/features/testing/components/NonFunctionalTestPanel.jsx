@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Eye, Pencil } from "lucide-react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import {
@@ -803,8 +804,10 @@ export default function NonFunctionalTestPanel({ project }) {
             label: "Thao tác",
             render: (item) => (
               <button
-                className="secondary-button"
+                className="icon-button h-9 w-9"
                 type="button"
+                aria-label={`Mở kế hoạch ${item.name}`}
+                title="Mở kế hoạch"
                 onClick={async () => {
                   try {
                     setSelected(await testingApi.getNonFunctionalTestPlan(item._id));
@@ -813,7 +816,7 @@ export default function NonFunctionalTestPanel({ project }) {
                   }
                 }}
               >
-                Mở
+                <Eye aria-hidden="true" size={16} />
               </button>
             ),
           },
@@ -830,8 +833,14 @@ export default function NonFunctionalTestPanel({ project }) {
             </div>
             <div className="flex flex-wrap gap-2">
               {["DRAFT", "IN_REVIEW"].includes(selected.status) && can("nfrtest.manage") && (
-                <button className="secondary-button" type="button" onClick={edit}>
-                  Chỉnh sửa
+                <button
+                  className="icon-button h-9 w-9"
+                  type="button"
+                  aria-label={`Chỉnh sửa kế hoạch ${selected.name}`}
+                  title="Chỉnh sửa kế hoạch"
+                  onClick={edit}
+                >
+                  <Pencil aria-hidden="true" size={16} />
                 </button>
               )}
               {selected.status === "DRAFT" && can("nfrtest.review") && (

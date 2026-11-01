@@ -989,6 +989,7 @@ async def update_test_run_record(project_id, run_id, payload, user):
 
 
 async def assign_test_run_record(project_id, run_id, payload, user):
+    execution_roles = ("QA", "TESTER")
     run = await get_project_entity('test_runs', run_id, user, 'testrun.assign')
     if run["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
@@ -997,7 +998,7 @@ async def assign_test_run_record(project_id, run_id, payload, user):
             project_id,
             payload.assignee_id,
             'ACTIVE',
-            'TESTER',
+            execution_roles,
         )
         if not assignee:
             raise HTTPException(
@@ -1010,7 +1011,7 @@ async def assign_test_run_record(project_id, run_id, payload, user):
             project_id,
             list(assigned_users),
             'ACTIVE',
-            'TESTER',
+            execution_roles,
         )
         if valid_members != len(assigned_users):
             raise HTTPException(status_code=422, detail={"code": 'INVALID_TEST_CASE_ASSIGNEE'})
@@ -1034,6 +1035,7 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                     project_id,
                     assigned_users | {payload.assignee_id},
                     session=session,
+                    roles=execution_roles,
                 )
                 if stale_members:
                     raise HTTPException(

@@ -10,7 +10,7 @@ import { useLogin } from "../hooks/useLogin";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { submitting, error, passwordLogin, passkeyLogin, googleLogin } = useLogin();
+  const { submitting, error, passwordLogin, passkeyLogin } = useLogin();
   const submit = (event) => {
     event.preventDefault();
     passwordLogin(email, password);
@@ -25,7 +25,7 @@ export default function LoginPage() {
           <InlineState title="Không thể đăng nhập" detail={error} tone="danger" />
         </div>
       )}
-      <form className="space-y-5" onSubmit={submit}>
+      <form className="space-y-5" method="post" onSubmit={submit}>
         <AuthField
           id="login-email"
           name="email"
@@ -57,22 +57,15 @@ export default function LoginPage() {
           {submitting ? "Đang xử lý" : "Đăng nhập"}
         </Button>
       </form>
-      <div className="my-6 flex items-center gap-3" aria-hidden="true">
-        <span className="h-px flex-1 bg-border" />
-        <span className="text-[12px] text-ink-faint">Hoặc</span>
-        <span className="h-px flex-1 bg-border" />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="mt-4">
         <Button
           type="button"
           variant="secondary"
+          className="w-full"
           disabled={submitting}
           onClick={() => passkeyLogin(email)}
         >
           Đăng nhập bằng khóa truy cập
-        </Button>
-        <Button type="button" variant="secondary" disabled={submitting} onClick={googleLogin}>
-          Đăng nhập bằng Google
         </Button>
       </div>
     </AuthFrame>

@@ -15,7 +15,7 @@ import {
   WorkspacePage,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
-import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import { formatCalendarDate, formatDate, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 
 const controlTypes = [
@@ -30,6 +30,13 @@ const controlTypes = [
   "REPRIORITIZE_REGRESSION",
   "EXTEND_TEST_WINDOW",
 ];
+
+function displayDeviationValue(value) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value)) {
+    return formatCalendarDate(value);
+  }
+  return value ?? "—";
+}
 
 const decisionLabels = {
   APPROVE_RELEASE: "Phê duyệt phát hành",
@@ -480,12 +487,6 @@ export default function MonitoringPage({ project }) {
             }
           >
             <div className="space-y-5 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-quiet p-4">
-                <div>
-                  <p className="field-label">Kết quả đánh giá</p>
-                </div>
-                <QualityGateBadge status={gate?.overall_status} />
-              </div>
               <DataTable
                 items={gate?.rules || []}
                 empty="Chưa có điều kiện phát hành"
@@ -533,8 +534,16 @@ export default function MonitoringPage({ project }) {
               empty="Không có sai lệch hoặc trở ngại"
               columns={[
                 { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
-                { key: "planned", label: "Kế hoạch" },
-                { key: "actual", label: "Thực tế" },
+                {
+                  key: "planned",
+                  label: "Kế hoạch",
+                  render: (item) => displayDeviationValue(item.planned),
+                },
+                {
+                  key: "actual",
+                  label: "Thực tế",
+                  render: (item) => displayDeviationValue(item.actual),
+                },
                 { key: "unit", label: "Đơn vị" },
               ]}
             />

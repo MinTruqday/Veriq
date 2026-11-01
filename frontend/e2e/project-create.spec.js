@@ -14,7 +14,7 @@ async function installProjectList(page, { createStatus = 409, projects = [] } = 
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), token);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan") {
       await route.fulfill({
         status: 200,
@@ -111,7 +111,7 @@ async function installProjectOverview(page, role) {
   await page.addInitScript((value) => localStorage.setItem("veriq_token", value), sessionToken);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan") {
       await route.fulfill({
         status: 200,

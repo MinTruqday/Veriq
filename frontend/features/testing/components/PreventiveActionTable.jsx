@@ -1,4 +1,5 @@
 import DataTable from "./DataTable";
+import { UserRound } from "lucide-react";
 import { StatusPill } from "./WorkspacePrimitives";
 import { formatDate, valueLabel } from "../lib/testing";
 
@@ -56,8 +57,14 @@ export default function PreventiveActionTable({ items = [], canManage, onAssign,
           render: (item) =>
             canManage ? (
               <div className="flex flex-wrap gap-2">
-                <button className="secondary-button" type="button" onClick={() => onAssign(item)}>
-                  Phân công
+                <button
+                  aria-label={`Phân công: ${item.title}`}
+                  className="icon-button h-9 w-9"
+                  title="Phân công"
+                  type="button"
+                  onClick={() => onAssign(item)}
+                >
+                  <UserRound aria-hidden="true" size={16} />
                 </button>
                 {next[item.status] && (
                   <button

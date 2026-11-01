@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Eye } from "lucide-react";
 import DataTable from "./DataTable";
 import ReviewChecklist from "./ReviewChecklist";
 import ReviewFindingsTable from "./ReviewFindingsTable";
@@ -418,11 +419,13 @@ export default function FormalReviewPanel({
             label: "Thao tác",
             render: (item) => (
               <button
-                className="secondary-button"
+                className="icon-button h-9 w-9"
                 type="button"
+                aria-label={`Mở phiên rà soát ${item.review_type || item._id}`}
+                title="Mở phiên rà soát"
                 onClick={async () => setSelected(await testingApi.getReviewSession(item._id))}
               >
-                Mở
+                <Eye aria-hidden="true" size={16} />
               </button>
             ),
           },

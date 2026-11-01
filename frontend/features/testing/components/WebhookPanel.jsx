@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Power, RotateCcw } from "lucide-react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { formatDate, messageOf } from "../lib/testing";
@@ -126,7 +127,9 @@ export default function WebhookPanel({ project }) {
               render: (item) =>
                 canManage ? (
                   <button
-                    className="secondary-button"
+                    aria-label={`${item.enabled ? "Vô hiệu hóa" : "Kích hoạt"} đăng ký ${item.event_type || item._id}`}
+                    className="icon-button h-9 w-9"
+                    title={item.enabled ? "Vô hiệu hóa đăng ký" : "Kích hoạt đăng ký"}
                     type="button"
                     onClick={async () => {
                       try {
@@ -140,7 +143,7 @@ export default function WebhookPanel({ project }) {
                       }
                     }}
                   >
-                    {item.enabled ? "Vô hiệu hóa" : "Kích hoạt"}
+                    <Power aria-hidden="true" size={16} />
                   </button>
                 ) : null,
             },
@@ -170,7 +173,9 @@ export default function WebhookPanel({ project }) {
               render: (item) =>
                 canReplay && item.status === "FAILED" ? (
                   <button
-                    className="secondary-button"
+                    aria-label={`Phát lại lần gửi ${item.event_type || item._id}`}
+                    className="icon-button h-9 w-9"
+                    title="Phát lại"
                     type="button"
                     onClick={async () => {
                       await ask({
@@ -209,7 +214,7 @@ export default function WebhookPanel({ project }) {
                       });
                     }}
                   >
-                    Phát lại
+                    <RotateCcw aria-hidden="true" size={16} />
                   </button>
                 ) : null,
             },

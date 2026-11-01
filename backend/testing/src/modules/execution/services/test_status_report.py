@@ -7,6 +7,7 @@ from src.clients.ai_automation import emit_status_report_created
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
+from src.core.human_decisions import require_automation_publication_authority
 from src.modules.execution.services.test_monitoring import effective_snapshot
 from src.repositories.test_status_report import (
     find_ai_result,
@@ -262,18 +263,19 @@ async def generate_status_report_narrative(report_id, payload, user):
     expected_event_id = (
         f"status-report:{report_id}:{payload.source_event_revision}:STATUS_REPORT_CREATED"
     )
-    if (
-        not automation_run_id
-        or getattr(user, "_ai_automation_trigger", None) != payload.source_event_trigger
+    if automation_run_id and (
+        getattr(user, "_ai_automation_trigger", None) != payload.source_event_trigger
         or getattr(user, "_ai_automation_source_event_id", None) != payload.source_event_id
     ):
         raise HTTPException(
             status_code=403, detail={"code": "VERIFIED_STATUS_REPORT_EVENT_REQUIRED"}
         )
-    if payload.source_event_id != expected_event_id or payload.source_event_revision != report.get(
-        "revision"
-    ):
+    if payload.source_event_revision != report.get("revision") or (automation_run_id and payload.source_event_id != expected_event_id):
         raise HTTPException(status_code=409, detail={"code": "STATUS_REPORT_EVENT_SUPERSEDED"})
+    if not automation_run_id:
+        if payload.source_event_id or payload.source_event_trigger:
+            raise HTTPException(403, detail={'code': 'VERIFIED_STATUS_REPORT_EVENT_REQUIRED'})
+        payload = payload.model_copy(update={'source_event_id': f'manual:status-report:{report_id}:{report["revision"]}:{user.id}'})
     existing = await find_ai_result(report["project_id"], payload.idempotency_key)
     if existing:
         if (
@@ -318,6 +320,11 @@ async def generate_status_report_narrative(report_id, payload, user):
     ai = await request_ai_automation(
         "status_report_narrative", report["project_id"], instruction, evidence
     )
+    if ai.get('status') != 'SUCCESS' or ai.get('degraded_mode'):
+        raise HTTPException(502, detail={'code': 'STATUS_REPORT_AI_UNAVAILABLE'})
+    current = await get_report_for_user(report_id, user, 'teststatusreport.update')
+    if current.get('revision') != payload.source_event_revision or current.get('status') != 'DRAFT':
+        raise HTTPException(409, detail={'code': 'STATUS_REPORT_EVENT_SUPERSEDED'})
     result = {
         "_id": new_id("AIR"),
         "project_id": report["project_id"],
@@ -328,7 +335,7 @@ async def generate_status_report_narrative(report_id, payload, user):
         "source_event_trigger": payload.source_event_trigger,
         "source_automation_run_id": automation_run_id,
         "candidate_only": True,
-        "human_confirmation_required": False,
+        "human_confirmation_required": True,
         "suggestions": ai.get("suggestions", []),
         **ai_contract_metadata(ai),
         "idempotency_key": payload.idempotency_key,
@@ -418,6 +425,8 @@ async def transition_status_report(report_id, payload, user, transition_action):
     }[transition_action]
     source = transition["source"]
     target = transition["target"]
+    if target in {'APPROVED', 'PUBLISHED'}:
+        require_automation_publication_authority(user, transition['permission'])
     report = await get_report_for_user(report_id, user, transition["permission"])
     timestamp = now()
     event = {"actor_id": user.id, "action": target, "note": payload.note, "at": timestamp}

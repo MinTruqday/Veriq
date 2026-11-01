@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Archive, Eye, FilePlus2, LoaderCircle } from "lucide-react";
 import DataTable from "../../../components/DataTable";
 import { ErrorState, Panel } from "../../../components/WorkspacePrimitives";
 import { messageOf } from "../../../lib/testing";
@@ -158,30 +159,44 @@ export default function DataSetsPanel({
             render: (item) => (
               <span className="flex flex-wrap gap-2">
                 <button
-                  className="secondary-button"
+                  className="icon-button h-9 w-9"
                   type="button"
+                  aria-label={`Xem dữ liệu mẫu của ${item.name}`}
+                  title="Xem dữ liệu mẫu"
                   disabled={previewingId === item._id}
                   onClick={() => void previewDataSet(item)}
                 >
-                  {previewingId === item._id ? "Đang xem…" : "Xem dữ liệu mẫu"}
+                  {previewingId === item._id ? (
+                    <LoaderCircle aria-hidden="true" className="animate-spin" size={16} />
+                  ) : (
+                    <Eye aria-hidden="true" size={16} />
+                  )}
                 </button>
                 {can("testdata.update") && (
                   <button
-                    className="secondary-button"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    aria-label={`Tạo phiên bản mới cho ${item.name}`}
+                    title="Tạo phiên bản mới"
                     disabled={Boolean(versioningId)}
                     onClick={() => void createDataSetVersion(item)}
                   >
-                    Tạo phiên bản mới
+                    {versioningId === item._id ? (
+                      <LoaderCircle aria-hidden="true" className="animate-spin" size={16} />
+                    ) : (
+                      <FilePlus2 aria-hidden="true" size={16} />
+                    )}
                   </button>
                 )}
                 {can("testdata.archive") && (
                   <button
-                    className="secondary-button"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    aria-label={`Lưu trữ ${item.name}`}
+                    title="Lưu trữ"
                     onClick={() => void archiveDataSet(item)}
                   >
-                    Lưu trữ
+                    <Archive aria-hidden="true" size={16} />
                   </button>
                 )}
               </span>

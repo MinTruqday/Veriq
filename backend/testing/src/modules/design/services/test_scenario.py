@@ -11,12 +11,14 @@ from src.core.common import (
     next_key,
     now,
     optimistic_patch,
+    require_action_policy,
     sort_spec,
 )
 from src.repositories.test_design import test_design_repository
-from src.core.ai_automation import ai_contract_metadata, require_ai_automation_event
+from src.core.human_decisions import require_automation_publication_authority
+from src.core.ai_automation import ai_contract_metadata
 from src.modules.design.services.generation import generate_requirement_drafts, select_generation_criteria
-from src.modules.design.services.test_case_records import validate_design_sources
+from src.modules.design.services.test_case_records import validate_design_sources, validate_test_case_owner, require_current_baselined_version
 
 
 
@@ -24,6 +26,9 @@ from src.modules.design.services.test_case_records import validate_design_source
 
 async def create_test_scenario_record(project_id, payload, user):
     await get_project(project_id, user, "testscenario.create")
+    if payload.status != 'draft':
+        raise HTTPException(422, detail={"code": "SCENARIO_DRAFT_REQUIRED"})
+    await validate_test_case_owner(project_id, payload.owner_id)
     await validate_design_sources(
         project_id,
         payload.requirement_version_ids,
@@ -90,6 +95,8 @@ async def update_test_scenario_record(scenario_id, payload, user):
         raise HTTPException(
             status_code=409, detail={"code": 'IMMUTABLE_SCENARIO'}
         )
+    if payload.owner_id is not None:
+        await validate_test_case_owner(scenario["project_id"], payload.owner_id)
     await validate_design_sources(
         scenario["project_id"],
         payload.requirement_version_ids
@@ -107,7 +114,7 @@ async def update_test_scenario_record(scenario_id, payload, user):
         scenario_id,
         scenario["project_id"],
         payload.expected_revision,
-        payload.model_dump(),
+        payload.model_dump(exclude_unset=True),
     )
     await audit(user.id, "test_scenario_updated", "TestScenario", scenario_id, scenario["project_id"])
     return updated
@@ -127,6 +134,8 @@ async def clone_test_scenario_record(scenario_id, user):
         "title": f"{scenario['title']} bản sao",
         "status": "draft",
         "origin": "manual",
+        "review_history": [],
+        "review_note": "",
         "revision": 1,
         "created_by": user.id,
         "created_at": timestamp,
@@ -163,17 +172,15 @@ async def archive_test_scenario_record(scenario_id, payload, user):
 
 
 async def generate_test_scenario_records(version_id, payload, user):
-    require_ai_automation_event(
-        user,
-        {"DOCUMENT_INGESTED", "REQUIREMENT_BASELINED", "REQUIREMENT_CHANGED"},
-    )
     version = await get_project_entity(
         "requirement_versions", version_id, user, "ai.generate_scenario"
     )
     await get_project(version["project_id"], user, "testscenario.create")
+    await require_current_baselined_version(version)
     criteria = await test_design_repository.list_acceptance_criteria(version_id)
     criteria = select_generation_criteria(criteria, payload.acceptance_criterion_ids)
     drafts, result = await generate_requirement_drafts(version, criteria, payload, scenario=True)
+    await require_current_baselined_version(version)
     created = [
         await create_test_scenario_record(version["project_id"], draft, user) for draft in drafts
     ]
@@ -191,3 +198,37 @@ async def generate_test_scenario_records(version_id, payload, user):
         **ai_contract_metadata(result),
         "generation_status": result["status"],
     }
+
+
+async def transition_test_scenario_record(scenario_id, payload, user, action):
+    scenario = await get_project_entity('test_scenarios', scenario_id, user, 'testscenario.update')
+    await require_action_policy(scenario['project_id'], user, 'testscenario.review', {'QA'})
+    transitions = {
+        'submit': ('draft', 'in_review'),
+        'approve': ('in_review', 'approved'),
+        'revise': ('in_review', 'draft'),
+    }
+    previous, target = transitions[action]
+    if scenario.get('status') != previous:
+        raise HTTPException(409, detail={'code': 'INVALID_STATE_TRANSITION'})
+    if action == 'approve':
+        require_automation_publication_authority(user, 'testscenario.update')
+        if not scenario.get('objective') or not scenario.get('requirement_version_ids'):
+            raise HTTPException(409, detail={'code': 'SCENARIO_INCOMPLETE'})
+        await validate_design_sources(
+            scenario['project_id'], scenario.get('requirement_version_ids', []),
+            scenario.get('acceptance_criterion_ids', []),
+            test_condition_ids=scenario.get('test_condition_ids', []),
+        )
+        for version_id in scenario['requirement_version_ids']:
+            version = await get_project_entity('requirement_versions', version_id, user, 'requirement.read')
+            await require_current_baselined_version(version)
+        await validate_test_case_owner(scenario['project_id'], scenario.get('owner_id'))
+    updated = await optimistic_patch(
+        'test_scenarios', scenario_id, scenario['project_id'], payload.expected_revision,
+        {'status': target, 'review_note': payload.review_note,
+         'review_history': [*scenario.get('review_history', []),
+                            {'action': action, 'actor_id': user.id, 'note': payload.review_note, 'at': now()}]},
+    )
+    await audit(user.id, f'test_scenario_{action}', 'TestScenario', scenario_id, scenario['project_id'])
+    return updated

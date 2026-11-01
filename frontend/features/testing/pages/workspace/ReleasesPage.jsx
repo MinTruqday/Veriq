@@ -12,7 +12,7 @@ import {
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
-import { formatDate, messageOf } from "../../lib/testing";
+import { formatCalendarDate, messageOf } from "../../lib/testing";
 
 export default function ReleasesPage({ project }) {
   const { ask, dialog } = useActionDialog();
@@ -176,7 +176,7 @@ export default function ReleasesPage({ project }) {
                 key: "planned_end_at",
                 label: "Kết thúc dự kiến",
                 render: (item) =>
-                  item.planned_end_at ? formatDate(item.planned_end_at) : "Chưa đặt",
+                  item.planned_end_at ? formatCalendarDate(item.planned_end_at) : "Chưa đặt",
               },
               ...(can("release.manage") || can("release.close")
                 ? [

@@ -39,6 +39,11 @@ export const executionTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  requestPlanRevision: (id, payload) =>
+    testingRequest(`/ke-hoach-kiem-thu/${id}/yeu-cau-chinh-sua`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   archivePlan: (id, payload) =>
     testingRequest(`/ke-hoach-kiem-thu/${id}/luu-tru`, {
       method: "POST",
@@ -349,7 +354,13 @@ export const executionTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  audit: (id) => testingRequest(`/du-an/${id}/nhat-ky`),
+  audit: (id, filters = {}) => {
+    const query = new URLSearchParams();
+    if (filters.entity_type) query.set("entity_type", filters.entity_type);
+    if (filters.entity_id) query.set("entity_id", filters.entity_id);
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return testingRequest(`/du-an/${id}/nhat-ky${suffix}`);
+  },
   maintenanceAnalytics: (id) => testingRequest(`/du-an/${id}/phan-tich-bao-tri`),
   aiAnalytics: (id) => testingRequest(`/du-an/${id}/phan-tich-ai`),
   executionReport: (id, scope = {}) =>

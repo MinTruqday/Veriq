@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Eye } from "lucide-react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
 import FilePicker from "../../components/FilePicker";
@@ -125,10 +126,6 @@ export default function DefectsPage({ project }) {
     if (status === "CLOSED") return can("defect.close");
     return can("defect.update");
   };
-  const hasTransitionActions = (item) =>
-    item.status === "READY_FOR_RETEST"
-      ? can("defect.retest") && eligibleRetestResults(item, results).length > 0
-      : (nextStates[item.status] || []).some((status) => transitionAllowed(item, status));
   const load = useCallback(async () => {
     const requestGeneration = ++loadGeneration.current;
     if (loadedProjectId.current !== project._id) {
@@ -416,6 +413,63 @@ export default function DefectsPage({ project }) {
         }
       },
     });
+  };
+  const renderTransition = (item) => {
+    if (item.status === "READY_FOR_RETEST") {
+      if (!can("defect.retest")) return null;
+      const eligibleResults = eligibleRetestResults(item, results);
+      if (!eligibleResults.length) return null;
+      return (
+        <select
+          aria-label={`Kết quả retest ${item.defect_key}`}
+          className="apple-input w-full min-w-0"
+          value=""
+          onChange={async (event) => {
+            if (!event.target.value) return;
+            try {
+              await testingApi.retestDefect(project._id, item._id, {
+                test_result_id: event.target.value,
+                expected_revision: item.revision,
+                note: "Kiểm thử lại từ giao diện quản lý lỗi",
+                idempotency_key: crypto.randomUUID(),
+              });
+              await load();
+            } catch (reason) {
+              if (shouldReloadAfterAmbiguousMutation(reason)) await load();
+              setError(messageOf(reason));
+            }
+          }}
+        >
+          <option value="">Chọn kết quả kiểm thử lại</option>
+          {eligibleResults.map((result) => (
+            <option key={result._id} value={result._id}>
+              {valueLabel(result.status)} ·{" "}
+              {result.test_case_key || result.test_case_name || result.build || "Kết quả kiểm thử"}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    const allowedTransitions = (nextStates[item.status] || []).filter((value) =>
+      transitionAllowed(item, value),
+    );
+    if (!allowedTransitions.length) return null;
+    return (
+      <select
+        aria-label={`Chuyển trạng thái ${item.defect_key}`}
+        className="apple-input w-full min-w-0"
+        title="Chuyển trạng thái"
+        value=""
+        onChange={(event) => transition(item, event.target.value)}
+      >
+        <option value="">Chuyển…</option>
+        {allowedTransitions.map((value) => (
+          <option key={value} value={value}>
+            {valueLabel(value)}
+          </option>
+        ))}
+      </select>
+    );
   };
   if (initialLoading || initialLoadFailed) {
     return (
@@ -898,41 +952,50 @@ export default function DefectsPage({ project }) {
           </div>
         </details>
         <DataTable
-          layout="wide-table"
           items={items}
           empty="Chưa có lỗi"
           columns={[
             {
               key: "defect_key",
-              label: "Mã",
-              minWidth: 88,
-              render: (item) => <span className="whitespace-nowrap">{item.defect_key}</span>,
+              label: "Lỗi",
+              minWidth: 170,
+              render: (item) => (
+                <div className="min-w-0 max-w-64 space-y-1">
+                  <span className="block whitespace-nowrap text-xs font-medium text-ink-muted">
+                    {item.defect_key}
+                  </span>
+                  <span className="block break-words font-medium">{item.title}</span>
+                </div>
+              ),
             },
-            { key: "title", label: "Tên", minWidth: 205 },
             {
-              key: "severity",
-              label: "Mức độ",
-              minWidth: 82,
-              render: (item) => valueLabel(item.severity),
-            },
-            {
-              key: "priority",
-              label: "Ưu tiên",
-              minWidth: 82,
-              render: (item) => valueLabel(item.priority),
+              key: "impact",
+              label: "Mức độ và ưu tiên",
+              minWidth: 126,
+              render: (item) => (
+                <div className="space-y-1 text-sm">
+                  <p>Mức độ: {valueLabel(item.severity)}</p>
+                  <p className="text-xs text-ink-muted">Ưu tiên: {valueLabel(item.priority)}</p>
+                </div>
+              ),
             },
             {
               key: "status",
               label: "Trạng thái",
-              minWidth: 116,
-              render: (item) => <StatusPill value={item.status} />,
+              minWidth: 156,
+              render: (item) => (
+                <div className="flex min-w-0 flex-col items-start gap-2">
+                  <StatusPill value={item.status} />
+                  {renderTransition(item)}
+                </div>
+              ),
             },
             {
               key: "trace",
               label: "Truy vết",
-              minWidth: 178,
+              minWidth: 170,
               render: (item) => (
-                <span className="flex min-w-0 flex-col items-start gap-2 sm:min-w-48">
+                <span className="flex min-w-0 flex-col items-start gap-2">
                   <span className="text-[11px] text-ink-muted">
                     {item.linked_test_case_version_id
                       ? "Đã liên kết ca kiểm thử"
@@ -942,13 +1005,15 @@ export default function DefectsPage({ project }) {
                     {can("ai.suggest_bug_trace") &&
                       traceSuggestions[item._id]?.source_event_revision === item.revision && (
                         <button
-                          className="secondary-button"
+                          aria-label={`Xem gợi ý AI cho ${item.defect_key}`}
+                          className="icon-button h-10 w-10"
+                          title="Xem gợi ý AI"
                           type="button"
                           onClick={() =>
                             setTraceReview({ defect: item, result: traceSuggestions[item._id] })
                           }
                         >
-                          Xem gợi ý AI
+                          <Eye aria-hidden="true" size={17} />
                         </button>
                       )}
                     {can("ai.suggest_bug_trace") &&
@@ -992,7 +1057,7 @@ export default function DefectsPage({ project }) {
             {
               key: "assignee",
               label: "Người xử lý",
-              minWidth: 150,
+              minWidth: 140,
               render: (item) =>
                 can("defect.assign") ? (
                   <button
@@ -1012,74 +1077,6 @@ export default function DefectsPage({ project }) {
                   "Chưa gán"
                 ),
             },
-            ...(items.some(hasTransitionActions)
-              ? [
-                  {
-                    key: "transition",
-                    label: "Chuyển trạng thái",
-                    minWidth: 170,
-                    render: (item) => {
-                      if (item.status === "READY_FOR_RETEST") {
-                        if (!can("defect.retest")) return null;
-                        const eligibleResults = eligibleRetestResults(item, results);
-                        if (!eligibleResults.length) return null;
-                        return (
-                          <select
-                            aria-label={`Kết quả retest ${item.defect_key}`}
-                            className="apple-input min-w-44"
-                            value=""
-                            onChange={async (event) => {
-                              if (!event.target.value) return;
-                              try {
-                                await testingApi.retestDefect(project._id, item._id, {
-                                  test_result_id: event.target.value,
-                                  expected_revision: item.revision,
-                                  note: "Kiểm thử lại từ giao diện quản lý lỗi",
-                                  idempotency_key: crypto.randomUUID(),
-                                });
-                                await load();
-                              } catch (reason) {
-                                if (shouldReloadAfterAmbiguousMutation(reason)) await load();
-                                setError(messageOf(reason));
-                              }
-                            }}
-                          >
-                            <option value="">Chọn kết quả kiểm thử lại</option>
-                            {eligibleResults.map((result) => (
-                              <option key={result._id} value={result._id}>
-                                {valueLabel(result.status)} ·{" "}
-                                {result.test_case_key ||
-                                  result.test_case_name ||
-                                  result.build ||
-                                  "Kết quả kiểm thử"}
-                              </option>
-                            ))}
-                          </select>
-                        );
-                      }
-                      const allowedTransitions = (nextStates[item.status] || []).filter((value) =>
-                        transitionAllowed(item, value),
-                      );
-                      if (!allowedTransitions.length) return null;
-                      return (
-                        <select
-                          aria-label={`Chuyển trạng thái ${item.defect_key}`}
-                          className="apple-input min-w-44"
-                          value=""
-                          onChange={(event) => transition(item, event.target.value)}
-                        >
-                          <option value="">Chọn</option>
-                          {allowedTransitions.map((value) => (
-                            <option key={value} value={value}>
-                              {valueLabel(value)}
-                            </option>
-                          ))}
-                        </select>
-                      );
-                    },
-                  },
-                ]
-              : []),
           ]}
         />
         <Pagination value={pageInfo} onChange={setPage} />

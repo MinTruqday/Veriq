@@ -1,4 +1,5 @@
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
+import Link from "next/link";
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
@@ -58,6 +59,14 @@ export default function RequirementCurrentVersionPanel({
       title="Phiên bản hiện tại"
       actions={
         <div className="flex flex-wrap gap-2">
+          {current.status === "BASELINED" && can("testplan.create") && (
+            <Link
+              className="secondary-button"
+              href={`/du-an/${projectId}/ke-hoach-kiem-thu?requirementVersionId=${encodeURIComponent(current._id)}`}
+            >
+              Lập kế hoạch kiểm thử
+            </Link>
+          )}
           {can("ai.run_lint") && (
             <button
               className="secondary-button"

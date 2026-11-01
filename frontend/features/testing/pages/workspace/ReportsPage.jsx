@@ -376,7 +376,7 @@ export default function ReportsPage({ project }) {
                       trường.
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
                     <ReportMetric
                       label="Yêu cầu có liên kết kiểm thử"
                       value={metricPercentage(value.coverage.requirement_coverage)}
@@ -413,7 +413,7 @@ export default function ReportsPage({ project }) {
                       </p>
                     )}
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                     {value.execution && (
                       <ReportMetric
                         label="Kết quả kiểm thử đạt"
@@ -446,7 +446,7 @@ export default function ReportsPage({ project }) {
                       Chỉ số toàn dự án
                     </h2>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
                     {value.dashboard && (
                       <ReportMetric
                         label="Lỗi đang mở"
@@ -491,7 +491,9 @@ export default function ReportsPage({ project }) {
                   </div>
                 </section>
               )}
-              <div className="grid gap-5 xl:grid-cols-2">
+              <div
+                className={`grid gap-5 ${value.execution && value.defects ? "xl:grid-cols-2" : "grid-cols-1"}`}
+              >
                 {value.execution && (
                   <Panel title="Kết quả thực thi">
                     <DataTable
@@ -529,7 +531,7 @@ export default function ReportsPage({ project }) {
                   </Panel>
                 )}
               </div>
-              <div className="grid gap-5 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-5">
                 {value.coverage && (
                   <Panel title="Yêu cầu theo nhóm tình huống kiểm thử">
                     <DataTable
@@ -553,7 +555,7 @@ export default function ReportsPage({ project }) {
                   </Panel>
                 )}
                 {value.ai && (
-                  <details className="rounded-xl border border-border bg-surface px-5 py-4">
+                  <details className="self-start rounded-xl border border-border bg-surface px-5 py-4">
                     <summary className="cursor-pointer font-semibold text-ink">
                       Chi tiết sử dụng AI
                     </summary>
@@ -638,7 +640,8 @@ export default function ReportsPage({ project }) {
                             item.entity_key ||
                             item.entity_name ||
                             item.entity_title ||
-                            "Không có tên hiển thị",
+                            valueLabel(item.entity_type) ||
+                            "—",
                         },
                         {
                           key: "created_at",

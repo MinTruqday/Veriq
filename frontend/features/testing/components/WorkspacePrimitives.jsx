@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { hasNavigationPermission } from "@/shared/components/layout/navigation";
 import HorizontalScrollCue from "@/shared/components/navigation/HorizontalScrollCue";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
@@ -213,6 +214,7 @@ export function useActionDialog() {
                     disabled={submitting || Boolean(field.disabled)}
                     required={field.required}
                     value={values[field.name] || ""}
+                    placeholder={field.placeholder}
                     onChange={(event) =>
                       setValues((current) => ({ ...current, [field.name]: event.target.value }))
                     }
@@ -228,6 +230,7 @@ export function useActionDialog() {
                     max={field.max}
                     step={field.step}
                     value={values[field.name] || ""}
+                    placeholder={field.placeholder}
                     onChange={(event) =>
                       setValues((current) => ({ ...current, [field.name]: event.target.value }))
                     }
@@ -353,10 +356,14 @@ export function Panel({ title, description, actions, children, className = "" })
   );
 }
 
-export function StatusPill({ value }) {
+export function StatusPill({ value, wrap = false }) {
+  const label = valueLabel(value);
   return (
-    <span className="inline-flex rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand">
-      {valueLabel(value)}
+    <span
+      className={`inline-flex max-w-full rounded-full bg-surface-quiet px-2.5 py-1 text-[11px] font-semibold text-ink-muted ${wrap ? "whitespace-normal text-center" : "whitespace-nowrap"}`}
+      title={label}
+    >
+      {label}
     </span>
   );
 }
@@ -364,7 +371,7 @@ export function StatusPill({ value }) {
 export function EmptyState({ children, actionHref, actionLabel, onAction }) {
   return (
     <div
-      className="flex min-h-28 min-w-0 flex-col items-center justify-center px-5 py-8 text-center text-[13px] text-ink-muted sm:px-8"
+      className="flex min-h-16 min-w-0 flex-col items-center justify-center px-5 py-4 text-center text-[13px] text-ink-muted sm:px-8"
       role="status"
     >
       <p className="font-medium">{children}</p>
@@ -408,8 +415,14 @@ export function InitialLoadState({ title, projectId, loading, error, onRetry }) 
       ) : (
         <div className="space-y-3">
           <ErrorState message={error || "Không thể tải dữ liệu"} />
-          <button className="secondary-button" type="button" onClick={onRetry}>
-            Tải lại
+          <button
+            className="icon-button h-10 w-10"
+            type="button"
+            aria-label="Tải lại dữ liệu"
+            title="Tải lại dữ liệu"
+            onClick={onRetry}
+          >
+            <RefreshCw aria-hidden="true" size={16} />
           </button>
         </div>
       )}

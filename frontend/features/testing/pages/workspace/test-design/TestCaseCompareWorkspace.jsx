@@ -1298,9 +1298,6 @@ export default function TestCaseCompareWorkspace({
                   {saving ? "Đang lưu…" : "Lưu bản ghép"}
                 </button>
               )}
-              <button type="button" className="secondary-button" disabled={saving} onClick={close}>
-                Đóng
-              </button>
             </div>
             <div className="grid min-w-0 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
               <section className="min-w-0 rounded-control border border-border bg-surface-quiet p-4">

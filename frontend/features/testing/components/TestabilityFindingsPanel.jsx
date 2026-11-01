@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
 import { valueLabel } from "../lib/testing";
@@ -29,11 +30,13 @@ export default function TestabilityFindingsPanel({ condition, canResolve, onReso
                 render: (item) =>
                   item.status === "OPEN" ? (
                     <button
-                      className="secondary-button"
+                      className="icon-button h-9 w-9"
                       type="button"
+                      aria-label="Đánh dấu phát hiện đã giải quyết"
+                      title="Đánh dấu đã giải quyết"
                       onClick={() => onResolve(item)}
                     >
-                      Giải quyết
+                      <Check aria-hidden="true" size={16} />
                     </button>
                   ) : null,
               },

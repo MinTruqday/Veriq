@@ -1,6 +1,7 @@
 "use client";
 
 import { valueLabel } from "../lib/testing";
+import { Trash2 } from "lucide-react";
 
 const severityValues = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
@@ -107,8 +108,14 @@ export default function ResidualRiskPanel({
                 />
               </label>
               {allowRemove && (
-                <button className="danger-button" type="button" onClick={() => remove(index)}>
-                  Xóa rủi ro
+                <button
+                  aria-label={`Xóa rủi ro ${index + 1}`}
+                  className="icon-button h-9 w-9 text-danger"
+                  title="Xóa rủi ro"
+                  type="button"
+                  onClick={() => remove(index)}
+                >
+                  <Trash2 aria-hidden="true" size={16} />
                 </button>
               )}
             </>

@@ -1,9 +1,16 @@
 import DataTable from "../../../components/DataTable";
+import { useRef, useState } from "react";
+import { Archive, Copy, Send, Check, RotateCcw } from "lucide-react";
 import { Panel } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 import ScenarioCreateModal from "./ScenarioCreateModal";
-import { TEST_LEVELS, TEST_SCENARIO_CATEGORIES } from "./testDesign.model";
+import {
+  TEST_LEVELS,
+  TEST_SCENARIO_CATEGORIES,
+  scenarioPayload,
+  scenarioFormFromRecord,
+} from "./testDesign.model";
 
 export default function ScenariosPanel({
   can,
@@ -20,7 +27,30 @@ export default function ScenariosPanel({
   ask,
   reload,
   onError,
+  requirements = [],
+  members = [],
+  canReview = false,
 }) {
+  const [selected, setSelected] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editError, setEditError] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const editInFlight = useRef(false);
+  const transition = async (item, action, label) => {
+    await ask({
+      title: label,
+      description: item.title,
+      confirmLabel: label,
+      fields: [{ name: "note", label: "Nhận xét", multiline: true }],
+      onConfirm: async (answer) => {
+        await testingApi.transitionScenario(item._id, action, {
+          expected_revision: item.revision,
+          review_note: answer.note || "",
+        });
+        await reload();
+      },
+    });
+  };
   return (
     <Panel
       title="Kịch bản"
@@ -42,8 +72,66 @@ export default function ScenariosPanel({
           form={form}
           setForm={setForm}
           testConditions={testConditions}
+          requirements={requirements}
+          members={members}
           onSubmit={onSubmit}
         />
+      )}
+      {selected && editForm && (
+        <ScenarioCreateModal
+          isOpen
+          title={selected.title}
+          form={editForm}
+          setForm={setEditForm}
+          onClose={() => {
+            if (!savingEdit) setSelected(null);
+          }}
+          saving={savingEdit}
+          readOnly={selected.status !== "draft" || !can("testscenario.update")}
+          testConditions={testConditions}
+          requirements={requirements}
+          members={members}
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (editInFlight.current) return;
+            editInFlight.current = true;
+            setSavingEdit(true);
+            setEditError("");
+            try {
+              await testingApi.updateScenario(selected._id, {
+                ...scenarioPayload(editForm),
+                expected_revision: selected.revision,
+              });
+              setSelected(null);
+              await reload();
+            } catch (reason) {
+              setEditError(messageOf(reason));
+            } finally {
+              editInFlight.current = false;
+              setSavingEdit(false);
+            }
+          }}
+        >
+          {editError && (
+            <p role="alert" className="text-sm text-danger">
+              {editError}
+            </p>
+          )}
+          <div className="border-t border-border pt-3 text-sm">
+            <p className="font-medium">Ca kiểm thử liên quan</p>
+            {selected.test_cases?.length ? (
+              <ul className="mt-2 space-y-1">
+                {selected.test_cases.map((item) => (
+                  <li key={item._id}>
+                    {item.test_case_key} {item.title || item.current_version?.title}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-ink-muted">Chưa có ca kiểm thử liên kết.</p>
+            )}
+          </div>
+        </ScenarioCreateModal>
       )}
       <details className="border-b border-border p-4">
         <summary className="cursor-pointer text-sm font-medium">Tìm, lọc và sắp xếp</summary>
@@ -109,33 +197,14 @@ export default function ScenariosPanel({
       </details>
       <DataTable
         onSelect={async (item) => {
-          if (item.status !== "draft" || !can("testscenario.update")) return;
-          await ask({
-            title: "Đổi tên kịch bản kiểm thử",
-            description: item.scenario_key,
-            confirmLabel: "Lưu tên",
-            fields: [
-              {
-                name: "title",
-                label: "Tên kịch bản",
-                initialValue: item.title,
-                required: true,
-                autoFocus: true,
-              },
-            ],
-            onConfirm: async (answer) => {
-              if (answer.title === item.title) return;
-              try {
-                await testingApi.updateScenario(item._id, {
-                  expected_revision: item.revision,
-                  title: answer.title,
-                });
-                await reload();
-              } catch (reason) {
-                throw new Error(messageOf(reason));
-              }
-            },
-          });
+          try {
+            const record = await testingApi.getScenario(item._id);
+            setEditError("");
+            setEditForm(scenarioFormFromRecord(record));
+            setSelected(record);
+          } catch (reason) {
+            onError(messageOf(reason));
+          }
         }}
         items={scenarios}
         empty="Chưa có kịch bản"
@@ -143,6 +212,9 @@ export default function ScenariosPanel({
           { key: "scenario_key", label: "Mã" },
           { key: "title", label: "Tên" },
           { key: "category", label: "Nhóm" },
+          { key: "priority", label: "Ưu tiên" },
+          { key: "risk", label: "Rủi ro" },
+          { key: "status", label: "Trạng thái" },
           { key: "origin", label: "Nguồn" },
           {
             key: "actions",
@@ -150,10 +222,37 @@ export default function ScenariosPanel({
             hideWhenEmpty: true,
             render: (item) => (
               <span className="flex flex-wrap gap-2">
+                {canReview &&
+                  can("testscenario.update") &&
+                  [
+                    ...(item.status === "draft" ? [["gui-ra-soat", "Gửi rà soát", Send]] : []),
+                    ...(item.status === "in_review"
+                      ? [
+                          ["phe-duyet", "Duyệt kịch bản", Check],
+                          ["yeu-cau-chinh-sua", "Yêu cầu chỉnh sửa", RotateCcw],
+                        ]
+                      : []),
+                  ].map(([action, label, Icon]) => (
+                    <button
+                      key={action}
+                      type="button"
+                      className="icon-button h-9 w-9"
+                      title={label}
+                      aria-label={`${label} ${item.title}`}
+                      onClick={async (event) => {
+                        event.stopPropagation();
+                        await transition(item, action, label);
+                      }}
+                    >
+                      <Icon aria-hidden="true" size={16} />
+                    </button>
+                  ))}
                 {can("testscenario.clone") && (
                   <button
-                    className="secondary-button"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    aria-label={`Nhân bản kịch bản ${item.title}`}
+                    title="Nhân bản kịch bản"
                     onClick={async (event) => {
                       event.stopPropagation();
                       try {
@@ -164,13 +263,15 @@ export default function ScenariosPanel({
                       }
                     }}
                   >
-                    Nhân bản
+                    <Copy aria-hidden="true" size={16} />
                   </button>
                 )}
                 {item.status !== "archived" && can("testscenario.archive") && (
                   <button
-                    className="secondary-button"
+                    className="icon-button h-9 w-9"
                     type="button"
+                    aria-label={`Lưu trữ kịch bản ${item.title}`}
+                    title="Lưu trữ kịch bản"
                     onClick={async (event) => {
                       event.stopPropagation();
                       await ask({
@@ -201,7 +302,7 @@ export default function ScenariosPanel({
                       });
                     }}
                   >
-                    Lưu trữ
+                    <Archive aria-hidden="true" size={16} />
                   </button>
                 )}
               </span>

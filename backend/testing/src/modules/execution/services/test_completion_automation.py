@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
-from src.core.common import audit, new_id, now
+from src.core.common import audit, get_project_entity, new_id, now
 from src.repositories.test_completion import find_ai_result, insert_ai_result
 
 
@@ -16,15 +16,19 @@ async def completion_ai_result(report, payload, user, capability, result_type):
         f"completion-report:{report['_id']}:{payload.source_event_revision}:"
         "TEST_COMPLETION_REPORT_CREATED"
     )
-    if (
-        not run_id
-        or trigger != payload.source_event_trigger
+    if run_id and (
+        trigger != payload.source_event_trigger
         or trigger != "TEST_COMPLETION_REPORT_CREATED"
         or source_event_id != payload.source_event_id
         or source_event_id != expected_event_id
         or report.get("revision") != payload.source_event_revision
     ):
         raise HTTPException(status_code=409, detail={"code": "COMPLETION_AI_EVENT_SOURCE_INVALID"})
+    if not run_id:
+        if payload.source_event_id or payload.source_event_trigger or report.get('revision') != payload.source_event_revision:
+            raise HTTPException(409, detail={'code': 'COMPLETION_AI_SOURCE_CHANGED'})
+        source_event_id = f"manual:completion-report:{report['_id']}:{payload.source_event_revision}:{user.id}"
+        trigger = 'MANUAL'
     if report["status"] != "DRAFT":
         raise HTTPException(status_code=409, detail={"code": "COMPLETION_REPORT_IMMUTABLE"})
     existing = await find_ai_result(report["project_id"], payload.idempotency_key)
@@ -69,13 +73,18 @@ async def completion_ai_result(report, payload, user, capability, result_type):
     ]
     instruction = json.dumps({"user_instruction": payload.instruction}, ensure_ascii=False)
     ai = await request_ai_automation(capability, report["project_id"], instruction, evidence)
+    if ai.get('status') != 'SUCCESS' or ai.get('degraded_mode'):
+        raise HTTPException(502, detail={'code': 'COMPLETION_AI_UNAVAILABLE'})
+    current = await get_project_entity('test_completion_reports', report['_id'], user, 'testcompletion.update')
+    if current.get('revision') != payload.source_event_revision or current.get('status') != 'DRAFT':
+        raise HTTPException(409, detail={'code': 'COMPLETION_AI_SOURCE_CHANGED'})
     result = {
         "_id": new_id("AIR"),
         "project_id": report["project_id"],
         "result_type": result_type,
         "subject_id": report["_id"],
         "candidate_only": True,
-        "human_confirmation_required": False,
+        "human_confirmation_required": True,
         "suggestions": ai.get("suggestions", []),
         **ai_contract_metadata(ai),
         "idempotency_key": payload.idempotency_key,

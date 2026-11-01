@@ -66,7 +66,7 @@ async def select_resume_execution(run, user):
     assignments = run.get("test_case_assignments") or {}
     eligible_ids = version_ids
     
-    if "TESTER" in roles_for_membership(membership):
+    if roles_for_membership(membership).intersection({"QA", "TESTER"}):
         explicit_ids = [
             version_id for version_id in version_ids if assignments.get(version_id) == user.id
         ]

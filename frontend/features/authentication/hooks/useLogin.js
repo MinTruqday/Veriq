@@ -3,13 +3,12 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import {
-  getGoogleLoginUrlAPI,
   login,
   passkeyLoginBeginAPI,
   passkeyLoginFinishAPI,
 } from "@/features/authentication/services/session.service";
 import { b64urlToBuffer, bufferToB64url } from "../lib/webauthn";
-import { authReturnPath, isSafeAuthReturnPath } from "../lib/authReturnPath.mjs";
+import { authReturnPath } from "../lib/authReturnPath.mjs";
 export function useLogin() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -77,21 +76,5 @@ export function useLogin() {
       setSubmitting(false);
     }
   };
-  const googleLogin = async () => {
-    if (submitting) return;
-    setSubmitting(true);
-    setError("");
-    try {
-      const requested = searchParams.get("next") || "";
-      sessionStorage.removeItem("veriq_return_path");
-      if (isSafeAuthReturnPath(requested)) {
-        sessionStorage.setItem("veriq_return_path", requested);
-      }
-      window.location.assign(await getGoogleLoginUrlAPI());
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể kết nối với Google");
-      setSubmitting(false);
-    }
-  };
-  return { submitting, error, passwordLogin, passkeyLogin, googleLogin };
+  return { submitting, error, passwordLogin, passkeyLogin };
 }

@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CalendarDays, Plus, Search } from "lucide-react";
+import { CalendarDays, Plus, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import { Pagination } from "@/shared/components/ui/Pagination";
 import {
   EmptyState,
   ErrorState,
@@ -27,8 +28,17 @@ function projectSchedule(project) {
   if (start && end) return `${start} – ${end}`;
   if (start) return `Từ ${start}`;
   if (end) return `Đến ${end}`;
-  return "Chưa có lịch";
+  return null;
 }
+
+const projectTypeLabels = {
+  web: "Ứng dụng web",
+  mobile: "Ứng dụng di động",
+  api: "API",
+  desktop: "Ứng dụng máy tính",
+  embedded: "Thiết bị nhúng",
+  other: "Khác",
+};
 
 function projectIncludesDate(project, day) {
   if (!day) return true;
@@ -67,6 +77,7 @@ export default function ProjectsPage() {
   const [invitationActionId, setInvitationActionId] = useState("");
   const [query, setQuery] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
+  const [projectPage, setProjectPage] = useState(1);
   const [status, setStatus] = useState("active");
   const [invitationError, setInvitationError] = useState("");
   const [invitationActionError, setInvitationActionError] = useState("");
@@ -95,6 +106,12 @@ export default function ProjectsPage() {
     form.planned_end_at,
   );
   const filteredItems = items.filter((item) => projectIncludesDate(item, scheduleDate));
+  const projectPageSize = 15;
+  const projectPageCount = Math.max(1, Math.ceil(filteredItems.length / projectPageSize));
+  const visibleProjects = filteredItems.slice(
+    (Math.min(projectPage, projectPageCount) - 1) * projectPageSize,
+    Math.min(projectPage, projectPageCount) * projectPageSize,
+  );
   const openCreateModal = () => {
     setCreateError("");
     setCreating(true);
@@ -217,20 +234,28 @@ export default function ProjectsPage() {
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <ErrorState message={error} />
           <button
-            className="secondary-button"
+            aria-label="Tải lại danh sách dự án"
+            className="icon-button h-9 w-9"
             type="button"
+            title="Tải lại danh sách"
             disabled={loading}
             onClick={() => void load(query, status)}
           >
-            Thử tải lại danh sách
+            <RefreshCw aria-hidden="true" size={16} />
           </button>
         </div>
       )}
       {capabilityError && (
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <ErrorState message={`Không thể xác định quyền tạo dự án: ${capabilityError}`} />
-          <button type="button" className="apple-button" onClick={() => void loadCapabilities()}>
-            Thử lại
+          <button
+            aria-label="Thử tải lại quyền tạo dự án"
+            type="button"
+            className="icon-button h-9 w-9"
+            title="Thử lại"
+            onClick={() => void loadCapabilities()}
+          >
+            <RefreshCw aria-hidden="true" size={16} />
           </button>
         </div>
       )}
@@ -442,6 +467,7 @@ export default function ProjectsPage() {
           className="grid min-w-0 gap-3 border-b border-border p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end xl:grid-cols-[minmax(260px,1fr)_auto_minmax(170px,220px)_minmax(170px,210px)] xl:items-center"
           onSubmit={(event) => {
             event.preventDefault();
+            setProjectPage(1);
             void load(query, status);
           }}
         >
@@ -460,8 +486,13 @@ export default function ProjectsPage() {
               placeholder="Tìm theo mã hoặc tên dự án"
             />
           </label>
-          <button className="secondary-button h-10" type="submit">
-            Tìm
+          <button
+            aria-label="Tìm dự án"
+            className="icon-button h-10 w-10 shrink-0"
+            title="Tìm dự án"
+            type="submit"
+          >
+            <Search aria-hidden="true" size={16} />
           </button>
           <select
             aria-label="Trạng thái dự án"
@@ -470,6 +501,7 @@ export default function ProjectsPage() {
             onChange={(event) => {
               const nextStatus = event.target.value;
               setStatus(nextStatus);
+              setProjectPage(1);
               void load(query, nextStatus);
             }}
           >
@@ -484,7 +516,10 @@ export default function ProjectsPage() {
               className="apple-input h-10 w-full"
               type="date"
               value={scheduleDate}
-              onChange={(event) => setScheduleDate(event.target.value)}
+              onChange={(event) => {
+                setScheduleDate(event.target.value);
+                setProjectPage(1);
+              }}
             />
           </label>
         </form>
@@ -504,7 +539,7 @@ export default function ProjectsPage() {
           </EmptyState>
         ) : (
           <div className="divide-y divide-border">
-            {filteredItems.map((item) => {
+            {visibleProjects.map((item) => {
               const taskProgress = taskProgressPresentation(item.task_summary);
               const schedule = projectSchedule(item);
               const activityDate = item.updated_at || item.created_at;
@@ -516,17 +551,30 @@ export default function ProjectsPage() {
               return (
                 <article
                   key={item._id}
-                  className="grid min-w-0 gap-5 p-5 transition hover:bg-surface-quiet lg:grid-cols-2 lg:items-center xl:grid-cols-[minmax(220px,1.2fr)_minmax(205px,1fr)_minmax(190px,1fr)_minmax(180px,0.9fr)]"
+                  className="grid min-w-0 gap-5 p-5 transition hover:bg-surface-quiet lg:grid-cols-2 lg:items-center xl:grid-cols-[minmax(240px,1.2fr)_minmax(170px,0.8fr)_minmax(210px,1fr)_minmax(220px,0.9fr)]"
                 >
                   <div className="flex min-w-0 items-start gap-3">
-                    <span className="shrink-0 font-mono text-[13px] font-semibold text-brand">
+                    <span
+                      className="w-[110px] shrink-0 truncate font-mono text-[12px] font-semibold text-brand xl:w-[130px]"
+                      title={item.key}
+                    >
                       {item.key}
                     </span>
                     <Link href={`/du-an/${item._id}`} className="min-w-0">
-                      <strong className="block break-words text-[14px]">{item.name}</strong>
+                      <strong
+                        className="line-clamp-2 break-words text-[14px] leading-5 [overflow-wrap:anywhere]"
+                        title={item.name}
+                      >
+                        {item.name}
+                      </strong>
                       {item.description && (
-                        <small className="mt-1 line-clamp-2 block text-ink-muted">
+                        <small className="mt-1 line-clamp-2 text-ink-muted">
                           {item.description}
+                        </small>
+                      )}
+                      {item.project_type && (
+                        <small className="mt-1 block text-[12px] text-ink-muted">
+                          {projectTypeLabels[item.project_type] || valueLabel(item.project_type)}
                         </small>
                       )}
                     </Link>
@@ -537,15 +585,19 @@ export default function ProjectsPage() {
                       className="mt-0.5 shrink-0 text-ink-muted"
                       size={15}
                     />
-                    <span className="min-w-0 break-words font-medium">{schedule}</span>
+                    <span className="min-w-0 break-words font-medium">
+                      {schedule || "Chưa có lịch"}
+                    </span>
                   </div>
                   <div className="min-w-0 space-y-2 text-[12px]">
                     {taskProgress.completionPercent == null ? (
-                      <span className="text-ink-muted">{taskProgress.label}</span>
+                      <span className="text-ink-muted">
+                        {taskProgress.label || "Chưa có công việc"}
+                      </span>
                     ) : (
                       <div className="space-y-1">
                         <div className="flex justify-between gap-2">
-                          <span>Tiến độ công việc</span>
+                          <span>Tiến độ dự án</span>
                           <strong>{taskProgress.completionPercent}%</strong>
                         </div>
                         <div
@@ -557,7 +609,7 @@ export default function ProjectsPage() {
                           role="progressbar"
                         >
                           <div
-                            className="h-full rounded-full bg-sky-500"
+                            className="h-full rounded-full bg-brand"
                             style={{ width: `${taskProgress.completionPercent}%` }}
                           />
                         </div>
@@ -571,10 +623,12 @@ export default function ProjectsPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex min-w-0 flex-col items-start gap-1.5 lg:items-end">
-                    <StatusPill value={String(item.status).toUpperCase()} />
+                  <div className="flex min-w-0 flex-col items-start gap-1.5 lg:items-end 2xl:flex-row 2xl:items-center 2xl:justify-between">
+                    <StatusPill
+                      value={item.status ? String(item.status).toUpperCase() : "Chưa có thông tin"}
+                    />
                     <p
-                      className="text-[11px] text-ink-muted lg:text-right"
+                      className="text-[11px] text-ink-muted 2xl:text-right"
                       title={`${activityLabel}${activityDate ? ` ${formatProjectUpdatedAt(activityDate)}` : ""}`}
                     >
                       {activityDate
@@ -585,7 +639,9 @@ export default function ProjectsPage() {
                       item.current_permissions?.includes("project.restore") && (
                         <button
                           type="button"
-                          className="secondary-button"
+                          aria-label={`Khôi phục dự án ${item.name || item.key}`}
+                          className="icon-button h-9 w-9"
+                          title="Khôi phục dự án"
                           onClick={async () => {
                             await ask({
                               title: "Khôi phục dự án",
@@ -613,7 +669,7 @@ export default function ProjectsPage() {
                             });
                           }}
                         >
-                          Khôi phục
+                          <RotateCcw aria-hidden="true" size={16} />
                         </button>
                       )}
                   </div>
@@ -621,6 +677,14 @@ export default function ProjectsPage() {
               );
             })}
           </div>
+        )}
+        {!loading && filteredItems.length > projectPageSize && (
+          <Pagination
+            page={Math.min(projectPage, projectPageCount)}
+            pageSize={projectPageSize}
+            total={filteredItems.length}
+            onChange={setProjectPage}
+          />
         )}
         {!loading && items.length >= 200 && (
           <p className="border-t border-border px-4 py-3 text-xs text-ink-muted">

@@ -1,3 +1,4 @@
+import { Check, Play } from "lucide-react";
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
 import { formatDate, valueLabel } from "../lib/testing";
@@ -57,19 +58,23 @@ export default function TestControlActionPanel({
                   render: (item) =>
                     item.status === "OPEN" ? (
                       <button
-                        className="secondary-button"
+                        className="icon-button h-9 w-9"
                         type="button"
+                        aria-label="Bắt đầu hành động"
+                        title="Bắt đầu"
                         onClick={() => onUpdate(item, "IN_PROGRESS")}
                       >
-                        Bắt đầu
+                        <Play aria-hidden="true" size={16} />
                       </button>
                     ) : item.status === "IN_PROGRESS" ? (
                       <button
-                        className="secondary-button"
+                        className="icon-button h-9 w-9"
                         type="button"
+                        aria-label="Hoàn tất hành động"
+                        title="Hoàn tất"
                         onClick={() => onUpdate(item, "DONE")}
                       >
-                        Hoàn tất
+                        <Check aria-hidden="true" size={16} />
                       </button>
                     ) : null,
                 },

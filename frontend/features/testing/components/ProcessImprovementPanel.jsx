@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Eye } from "lucide-react";
 import DataTable from "./DataTable";
 import StatisticalControlChart from "./StatisticalControlChart";
 import { ErrorState, LoadingState, Panel, useActionDialog } from "./WorkspacePrimitives";
@@ -469,8 +470,14 @@ export default function ProcessImprovementPanel({ project }) {
                 key: "actions",
                 label: "Thao tác",
                 render: (item) => (
-                  <button className="text-button" type="button" onClick={() => setSelected(item)}>
-                    Mở
+                  <button
+                    className="icon-button h-9 w-9"
+                    type="button"
+                    aria-label={`Mở đề xuất ${item.title || item._id}`}
+                    title="Mở đề xuất"
+                    onClick={() => setSelected(item)}
+                  >
+                    <Eye aria-hidden="true" size={16} />
                   </button>
                 ),
               },

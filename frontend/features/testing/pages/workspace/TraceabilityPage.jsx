@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, RotateCcw, X } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
@@ -68,7 +69,7 @@ export default function TraceabilityPage({ project }) {
   if (initialLoading || initialLoadFailed)
     return (
       <InitialLoadState
-        title="Liên kết yêu cầu và kiểm thử"
+        title="Truy vết"
         projectId={project._id}
         loading={initialLoading}
         error={error}
@@ -85,7 +86,7 @@ export default function TraceabilityPage({ project }) {
   };
   return (
     <WorkspacePage
-      title="Liên kết yêu cầu và kiểm thử"
+      title="Truy vết"
       actions={
         <div className="flex flex-wrap items-center gap-3">
           {can("report.export") && (
@@ -171,7 +172,7 @@ export default function TraceabilityPage({ project }) {
     >
       {error && <ErrorState message={error} />}
       {can("coverage.read") && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
           <Metric
             label="Yêu cầu có liên kết kiểm thử"
             value={`${coverage.requirement_coverage || 0}%`}
@@ -266,102 +267,121 @@ export default function TraceabilityPage({ project }) {
       )}
       <Panel title="Liên kết yêu cầu và ca kiểm thử">
         <DataTable
-          layout="cards"
           items={matrix.trace_links || []}
           empty="Chưa có liên kết giữa yêu cầu và ca kiểm thử"
           columns={[
             {
-              key: "source_type",
-              label: "Nguồn",
-              render: (item) => valueLabel(item.source_type),
-            },
-            {
               key: "source_id",
-              label: "Yêu cầu nguồn",
-              render: (item) => item.source_label || "Yêu cầu không còn khả dụng",
+              label: "Yêu cầu",
+              minWidth: 200,
+              render: (item) => {
+                const sourceEvidence = item.evidence?.find(
+                  (evidence) => evidence.artifact_version_id === item.source_id,
+                );
+                return (
+                  <div className="space-y-1">
+                    <span className="font-medium">
+                      {item.source_label || "Yêu cầu không còn khả dụng"}
+                    </span>
+                    <p className="text-xs text-ink-muted">{valueLabel(item.source_type)}</p>
+                    {sourceEvidence?.text && (
+                      <p
+                        className="line-clamp-2 text-xs leading-5 text-ink-muted"
+                        title={sourceEvidence.text}
+                      >
+                        {sourceEvidence.text}
+                      </p>
+                    )}
+                  </div>
+                );
+              },
             },
             {
               key: "target_id",
               label: "Ca kiểm thử",
-              render: (item) => item.target_label || "Ca kiểm thử không còn khả dụng",
-            },
-            {
-              key: "confidence",
-              label: "Mức độ phù hợp",
-              render: (item) =>
-                typeof item.confidence === "number"
-                  ? `${Math.round(item.confidence * 100)}%`
-                  : "Chưa đánh giá",
-            },
-            {
-              key: "freshness",
-              label: "Hiệu lực",
-              render: (item) => {
-                const testCase = (matrix.test_cases || []).find(
-                  (value) => value.current_version_id === item.target_id,
-                );
-                return <StatusPill value={testCase?.status || "HISTORICAL"} />;
-              },
-            },
-            {
-              key: "latest_execution",
-              label: "Thực thi mới nhất",
-              render: (item) => {
-                const result = coverage.latest_execution?.[item.target_id];
-                return result ? <StatusPill value={result.status} /> : "Chưa thực thi";
-              },
-            },
-            {
-              key: "defects",
-              label: "Lỗi đang mở",
-              render: (item) =>
-                (matrix.defects || []).filter(
-                  (defect) => defect.linked_test_case_version_id === item.target_id,
-                ).length,
-            },
-            {
-              key: "status",
-              label: "Trạng thái",
+              minWidth: 200,
               render: (item) => (
-                <span className="flex flex-col items-start gap-1">
-                  <StatusPill value={item.status} />
-                  {item.obsolete && (
-                    <span className="text-[11px] font-semibold text-danger">
-                      Liên kết này đã lỗi thời
-                    </span>
-                  )}
+                <span className="font-medium">
+                  {item.target_label || "Ca kiểm thử không còn khả dụng"}
                 </span>
               ),
             },
             {
+              key: "confidence",
+              label: "Độ phù hợp",
+              minWidth: 120,
+              render: (item) => (
+                <div className="space-y-1">
+                  <span className="font-medium">
+                    {typeof item.confidence === "number"
+                      ? `${Math.round(item.confidence * 100)}%`
+                      : "Chưa đánh giá"}
+                  </span>
+                  {item.obsolete && <p className="text-xs text-danger">Cần rà soát lại</p>}
+                </div>
+              ),
+            },
+            {
+              key: "latest_execution",
+              label: "Kết quả gần nhất",
+              minWidth: 150,
+              render: (item) => {
+                const result = coverage.latest_execution?.[item.target_id];
+                const defectCount = (matrix.defects || []).filter(
+                  (defect) => defect.linked_test_case_version_id === item.target_id,
+                ).length;
+                return (
+                  <div className="space-y-1">
+                    {result ? <StatusPill value={result.status} /> : "Chưa chạy"}
+                    <p className="text-xs text-ink-muted">
+                      {defectCount ? `${defectCount} lỗi đang mở` : "Không có lỗi đang mở"}
+                    </p>
+                  </div>
+                );
+              },
+            },
+            {
+              key: "status",
+              label: "Trạng thái",
+              minWidth: 120,
+              render: (item) => <StatusPill value={item.status} />,
+            },
+            {
               key: "decision",
-              label: "Quyết định",
+              label: "Thao tác",
+              minWidth: 190,
               hideWhenEmpty: true,
               render: (item) =>
                 item.status === "SUGGESTED" && (can("trace.confirm") || can("trace.review")) ? (
-                  <span className="flex flex-wrap gap-2">
+                  <span className="flex flex-nowrap gap-2">
                     {can("trace.confirm") && (
                       <button
-                        className="secondary-button"
+                        aria-label="Xác nhận liên kết truy vết"
+                        title="Xác nhận liên kết"
+                        className="icon-button h-9 w-9"
                         type="button"
                         onClick={() => decision(item, true)}
                       >
-                        Xác nhận
+                        <Check aria-hidden="true" size={16} />
                       </button>
                     )}
                     {can("trace.review") && (
                       <button
-                        className="secondary-button"
+                        aria-label="Từ chối liên kết truy vết"
+                        title="Từ chối liên kết"
+                        className="icon-button h-9 w-9"
                         type="button"
                         onClick={() => decision(item, false)}
                       >
-                        Từ chối
+                        <X aria-hidden="true" size={16} />
                       </button>
                     )}
                   </span>
                 ) : item.status === "CONFIRMED" && can("trace.revoke") ? (
                   <button
-                    className="secondary-button"
+                    aria-label="Thu hồi liên kết truy vết"
+                    title="Thu hồi liên kết"
+                    className="icon-button h-9 w-9"
                     type="button"
                     onClick={async () => {
                       try {
@@ -372,7 +392,7 @@ export default function TraceabilityPage({ project }) {
                       }
                     }}
                   >
-                    Thu hồi
+                    <RotateCcw aria-hidden="true" size={16} />
                   </button>
                 ) : (
                   ""

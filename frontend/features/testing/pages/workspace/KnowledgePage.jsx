@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Archive, Eye, RotateCw } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import {
   DegradedBanner,
@@ -532,108 +533,116 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
               Tải lại
             </button>
           </div>
-        ) : (
-          <DataTable
-            items={sources}
-            empty="Chưa có tài liệu tham chiếu"
-            columns={[
-              { key: "title", label: "Tài liệu" },
-              { key: "source_type", label: "Loại", render: (item) => valueLabel(item.source_type) },
-              {
-                key: "authority",
-                label: "Mức độ chính thức",
-                render: (item) => valueLabel(item.authority),
-              },
-              {
-                key: "module",
-                label: "Phạm vi",
-                render: (item) =>
-                  [item.product_area, item.module, item.component].filter(Boolean).join(" · ") ||
-                  "Chưa khai báo",
-              },
-              {
-                key: "index_status",
-                label: "Lập chỉ mục",
-                render: (item) => valueLabel(String(item.index_status).toUpperCase()),
-              },
-              ...(canManage
-                ? [
-                    {
-                      key: "actions",
-                      label: "Thao tác",
-                      render: (item) => (
-                        <span className="flex max-w-[28rem] flex-wrap items-center gap-2">
-                          <button
-                            className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await testingApi.reindexKnowledgeSource(item._id);
-                                await loadSources();
-                              } catch (reason) {
-                                setError(messageOf(reason));
-                              }
-                            }}
-                          >
-                            Lập chỉ mục lại
-                          </button>
-                          <button
-                            className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
-                            type="button"
-                            onClick={async () => {
-                              await ask({
-                                title: "Lưu trữ tài liệu tham chiếu",
-                                description: item.title || item.filename,
-                                confirmLabel: "Lưu trữ",
-                                danger: true,
-                                fields: [
-                                  {
-                                    name: "reason",
-                                    label: "Lý do",
-                                    required: true,
-                                    multiline: true,
-                                  },
-                                ],
-                                onConfirm: async (answer) => {
-                                  try {
-                                    await testingApi.archiveKnowledgeSource(item._id, {
-                                      expected_revision: item.revision,
-                                      reason: answer.reason,
-                                    });
-                                    await loadSources();
-                                  } catch (reason) {
-                                    throw new Error(messageOf(reason));
-                                  }
+        ) : sources.length ? (
+          <div className="divide-y divide-border">
+            {sources.map((item) => {
+              const title = item.title || item.filename || item._id;
+              const scope =
+                [item.product_area, item.module, item.component].filter(Boolean).join(" · ") ||
+                "Chưa khai báo";
+              return (
+                <article className="min-w-0 space-y-3 p-4 sm:p-5" key={item._id}>
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="break-words text-sm font-semibold text-ink" title={title}>
+                        {title}
+                      </h3>
+                      {item.source_version && (
+                        <p className="mt-1 text-xs text-ink-muted">
+                          Phiên bản {item.source_version}
+                        </p>
+                      )}
+                    </div>
+                    <StatusPill value={String(item.index_status || "UNKNOWN").toUpperCase()} />
+                  </div>
+                  <dl className="grid min-w-0 gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {[
+                      ["Loại", valueLabel(item.source_type)],
+                      ["Mức độ chính thức", valueLabel(item.authority)],
+                      ["Phạm vi", scope],
+                    ].map(([label, value]) => (
+                      <div className="min-w-0" key={label}>
+                        <dt className="text-xs text-ink-muted">{label}</dt>
+                        <dd className="mt-1 break-words text-sm text-ink">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-border pt-3">
+                    {canManage && (
+                      <>
+                        <button
+                          aria-label={`Lập chỉ mục lại ${title}`}
+                          className="icon-button h-9 w-9"
+                          title="Lập chỉ mục lại"
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await testingApi.reindexKnowledgeSource(item._id);
+                              await loadSources();
+                            } catch (reason) {
+                              setError(messageOf(reason));
+                            }
+                          }}
+                        >
+                          <RotateCw aria-hidden="true" size={16} />
+                        </button>
+                        <button
+                          aria-label={`Lưu trữ ${title}`}
+                          className="icon-button h-9 w-9"
+                          title="Lưu trữ"
+                          type="button"
+                          onClick={async () => {
+                            await ask({
+                              title: "Lưu trữ tài liệu tham chiếu",
+                              description: item.title || item.filename,
+                              confirmLabel: "Lưu trữ",
+                              danger: true,
+                              fields: [
+                                {
+                                  name: "reason",
+                                  label: "Lý do",
+                                  required: true,
+                                  multiline: true,
                                 },
-                              });
-                            }}
-                          >
-                            Lưu trữ
-                          </button>
-                        </span>
-                      ),
-                    },
-                  ]
-                : []),
-              {
-                key: "metadata",
-                label: "Chỉ mục",
-                render: (item) => (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => {
-                      clearSourceInspection();
-                      setMetadataSource(item);
-                      void loadChunkMetadata(item);
-                    }}
-                  >
-                    Xem chi tiết chỉ mục
-                  </button>
-                ),
-              },
-            ]}
-          />
+                              ],
+                              onConfirm: async (answer) => {
+                                try {
+                                  await testingApi.archiveKnowledgeSource(item._id, {
+                                    expected_revision: item.revision,
+                                    reason: answer.reason,
+                                  });
+                                  await loadSources();
+                                } catch (reason) {
+                                  throw new Error(messageOf(reason));
+                                }
+                              },
+                            });
+                          }}
+                        >
+                          <Archive aria-hidden="true" size={16} />
+                        </button>
+                      </>
+                    )}
+                    <button
+                      aria-label={`Xem chi tiết chỉ mục ${item.title || item.filename || "tài liệu"}`}
+                      className="icon-button h-9 w-9"
+                      title="Xem chi tiết chỉ mục"
+                      type="button"
+                      onClick={() => {
+                        clearSourceInspection();
+                        setMetadataSource(item);
+                        void loadChunkMetadata(item);
+                      }}
+                    >
+                      <Eye aria-hidden="true" size={17} />
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="p-5 text-sm text-ink-muted">Chưa có tài liệu tham chiếu</p>
         )}
       </Panel>
       <Modal

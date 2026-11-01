@@ -1,33 +1,20 @@
 import re
 
-from src.core.common import get_project, load_user_identities, now
-from src.schemas.contracts.utility import SearchInput
-from src.repositories.analytics import analytics_repository
 from src.clients.project_knowledge import search_project_with_status
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
-
-
+from src.core.common import get_project, load_user_identities, now
+from src.repositories.analytics import analytics_repository
+from src.schemas.contracts.utility import SearchInput
 
 
 def percentage(value, total):
-    return (
-        round(
-            value * 100 / total,
-            2,
-        )
-        if total
-        else 0
-    )
+    return round(value * 100 / total, 2) if total else 0
 
 
 def lexical_score(query, text):
-    
-    terms = set(re.findall('[\\w-]+', query.lower()))
-    words = set(re.findall('[\\w-]+', text.lower()))
-    return round(
-        len(terms & words) / max(1, len(terms)),
-        4,
-    )
+    terms = set(re.findall("[\\w-]+", query.lower()))
+    words = set(re.findall("[\\w-]+", text.lower()))
+    return round(len(terms & words) / max(1, len(terms)), 4)
 
 
 class AnalyticsService:
@@ -35,19 +22,32 @@ class AnalyticsService:
     async def search(project_id, query_text, limit, user):
         await get_project(project_id, user, "project.read")
         pattern = re.escape(query_text)
-        
+
         items = []
-        per_source = max(1, limit // len([['requirement', 'requirements', ['title', 'requirement_key']],
- ['test_case', 'test_cases', ['title', 'test_case_key']],
- ['test_run', 'test_runs', ['name']],
- ['defect', 'defects', ['title', 'defect_key']],
- ['test_plan', 'test_plans', ['name']]]))
-        for artifact_type, collection, fields in [['requirement', 'requirements', ['title', 'requirement_key']],
- ['test_case', 'test_cases', ['title', 'test_case_key']],
- ['test_run', 'test_runs', ['name']],
- ['defect', 'defects', ['title', 'defect_key']],
- ['test_plan', 'test_plans', ['name']]]:
-            query = {"project_id": project_id, "$or": [{field: {"$regex": pattern, "$options": "i"}} for field in fields]}
+        per_source = max(
+            1,
+            limit
+            // len(
+                [
+                    ["requirement", "requirements", ["title", "requirement_key"]],
+                    ["test_case", "test_cases", ["title", "test_case_key"]],
+                    ["test_run", "test_runs", ["name"]],
+                    ["defect", "defects", ["title", "defect_key"]],
+                    ["test_plan", "test_plans", ["name"]],
+                ]
+            ),
+        )
+        for artifact_type, collection, fields in [
+            ["requirement", "requirements", ["title", "requirement_key"]],
+            ["test_case", "test_cases", ["title", "test_case_key"]],
+            ["test_run", "test_runs", ["name"]],
+            ["defect", "defects", ["title", "defect_key"]],
+            ["test_plan", "test_plans", ["name"]],
+        ]:
+            query = {
+                "project_id": project_id,
+                "$or": [{field: {"$regex": pattern, "$options": "i"}} for field in fields],
+            }
             rows = await analytics_repository.list_records(
                 collection, query, per_source, ("updated_at", -1)
             )
@@ -55,7 +55,11 @@ class AnalyticsService:
                 {
                     "artifact_type": artifact_type,
                     "artifact_id": row["_id"],
-                    "title": row.get("title") or row.get("name") or row.get("defect_key") or row.get("requirement_key") or row.get("test_case_key"),
+                    "title": row.get("title")
+                    or row.get("name")
+                    or row.get("defect_key")
+                    or row.get("requirement_key")
+                    or row.get("test_case_key"),
                     "status": row.get("status"),
                     "project_id": project_id,
                 }
@@ -66,21 +70,36 @@ class AnalyticsService:
     @classmethod
     async def dashboard(cls, project_id, user):
         await get_project(project_id, user, "analytics.read")
-        requirements = await analytics_repository.count_records("requirements", {"project_id": project_id, "status": 'BASELINED'})
-        active_tests = await analytics_repository.count_records("test_cases", {"project_id": project_id, "status": 'ACTIVE'})
-        stale_tests = await analytics_repository.count_records("test_cases", {"project_id": project_id, "status": 'NEEDS_UPDATE'})
-        pending_proposals = await analytics_repository.count_records("maintenance_proposals", {"project_id": project_id, "status": 'PENDING'})
-        current_runs = await analytics_repository.count_records("test_runs", {"project_id": project_id, "status": {"$in": ['READY', 'IN_PROGRESS']}})
-        open_defects = await analytics_repository.count_records("defects", {"project_id": project_id, "status": {"$nin": ['CLOSED', 'REJECTED', 'DUPLICATE']}})
+        requirements = await analytics_repository.count_records(
+            "requirements", {"project_id": project_id, "status": "BASELINED"}
+        )
+        active_tests = await analytics_repository.count_records(
+            "test_cases", {"project_id": project_id, "status": "ACTIVE"}
+        )
+        stale_tests = await analytics_repository.count_records(
+            "test_cases", {"project_id": project_id, "status": "NEEDS_UPDATE"}
+        )
+        pending_proposals = await analytics_repository.count_records(
+            "maintenance_proposals", {"project_id": project_id, "status": "PENDING"}
+        )
+        current_runs = await analytics_repository.count_records(
+            "test_runs", {"project_id": project_id, "status": {"$in": ["READY", "IN_PROGRESS"]}}
+        )
+        open_defects = await analytics_repository.count_records(
+            "defects",
+            {"project_id": project_id, "status": {"$nin": ["CLOSED", "REJECTED", "DUPLICATE"]}},
+        )
         defect_severity_rows = await analytics_repository.group_counts(
             "defects",
-            {"project_id": project_id, "status": {"$nin": ['CLOSED', 'REJECTED', 'DUPLICATE']}},
+            {"project_id": project_id, "status": {"$nin": ["CLOSED", "REJECTED", "DUPLICATE"]}},
             "severity",
             20,
         )
         open_defects_by_severity = {
-            severity: next((item["count"] for item in defect_severity_rows if item["_id"] == severity), 0)
-            for severity in ['blocker', 'critical', 'major', 'minor', 'trivial']
+            severity: next(
+                (item["count"] for item in defect_severity_rows if item["_id"] == severity), 0
+            )
+            for severity in ["blocker", "critical", "major", "minor", "trivial"]
         }
         latest_run = await analytics_repository.find_latest("test_runs", {"project_id": project_id})
         latest_run_summary = None
@@ -102,28 +121,32 @@ class AnalyticsService:
             }
         changes_waiting_impact = await analytics_repository.count_records(
             "requirement_change_sets",
-            {"project_id": project_id, "status": {"$in": ['READY', 'REVIEWED']}},
+            {"project_id": project_id, "status": {"$in": ["READY", "REVIEWED"]}},
         )
         changes_waiting_impact += await analytics_repository.count_records(
-            "impact_analyses", {"project_id": project_id, "status": 'REVIEW_READY'}
+            "impact_analyses", {"project_id": project_id, "status": "REVIEW_READY"}
         )
         coverage = await cls.coverage_snapshot(project_id)
         recent_changes = await analytics_repository.list_records(
-            "requirement_change_sets",
-            {"project_id": project_id},
-            10,
-            ("created_at", -1),
+            "requirement_change_sets", {"project_id": project_id}, 10, ("created_at", -1)
         )
-        requirement_ids = [item.get("requirement_id") for item in recent_changes if item.get("requirement_id")]
+        requirement_ids = [
+            item.get("requirement_id") for item in recent_changes if item.get("requirement_id")
+        ]
         recent_requirements = await analytics_repository.list_records(
             "requirements",
             {"project_id": project_id, "_id": {"$in": requirement_ids}},
             len(requirement_ids),
             projection={"_id": 1, "requirement_key": 1, "title": 1},
         )
-        labels = {item["_id"]: item.get("requirement_key") or item.get("title") for item in recent_requirements}
+        labels = {
+            item["_id"]: item.get("requirement_key") or item.get("title")
+            for item in recent_requirements
+        }
         for item in recent_changes:
-            item["requirement_label"] = labels.get(item.get("requirement_id")) or item.get("requirement_id")
+            item["requirement_label"] = labels.get(item.get("requirement_id")) or item.get(
+                "requirement_id"
+            )
         return {
             "requirements": requirements,
             "active_tests": active_tests,
@@ -145,24 +168,29 @@ class AnalyticsService:
             project_id, payload.query, payload.artifact_types, payload.limit, user
         )
         dense = dense_result["items"]
-        
+
         pattern = re.escape(payload.query)
         requested = set(payload.artifact_types)
         results = []
-        
-        for artifact_type, collection, text_field in [['requirement_version', 'requirement_versions', 'plain_text_projection'],
- ['test_case_version', 'test_case_versions', 'plain_text_projection'],
- ['defect', 'defects', 'title'],
- ['test_plan', 'test_plans', 'objective'],
- ['requirement_document', 'requirement_documents', 'normalized_content']]:
+
+        for artifact_type, collection, text_field in [
+            ["requirement_version", "requirement_versions", "plain_text_projection"],
+            ["test_case_version", "test_case_versions", "plain_text_projection"],
+            ["defect", "defects", "title"],
+            ["test_plan", "test_plans", "objective"],
+            ["requirement_document", "requirement_documents", "normalized_content"],
+        ]:
             if requested and artifact_type not in requested:
                 continue
             source_query = {
                 "project_id": project_id,
-                "$or": [{text_field: {"$regex": pattern, "$options": "i"}}, {"title": {"$regex": pattern, "$options": "i"}}],
+                "$or": [
+                    {text_field: {"$regex": pattern, "$options": "i"}},
+                    {"title": {"$regex": pattern, "$options": "i"}},
+                ],
             }
             if collection == "requirement_documents":
-                source_query["status"] = {"$ne": 'ARCHIVED'}
+                source_query["status"] = {"$ne": "ARCHIVED"}
                 if not user.is_system_admin:
                     source_query["$and"] = [
                         {"$or": source_query.pop("$or")},
@@ -179,34 +207,43 @@ class AnalyticsService:
             )
             for item in documents:
                 authority = item.get("authority") or (
-                    'APPROVED_SOURCE'
-                    if item.get("status") == 'BASELINED'
-                    else 'DRAFT'
+                    "APPROVED_SOURCE" if item.get("status") == "BASELINED" else "DRAFT"
                 )
-                results.append({
-                    "artifact_type": artifact_type,
-                    "artifact_id": item.get("requirement_id") or item.get("test_case_id") or item["_id"],
-                    "artifact_version_id": item["_id"],
-                    "title": item.get("title") or item.get("name") or item.get("filename"),
-                    "text": str(item.get(text_field, ""))[:1000],
-                    "status": item.get("status"),
-                    "authority": authority,
-                    "source_type": item.get("source_type"),
-                    "owner_id": item.get("owner_id"),
-                    "module": item.get("module"),
-                    "component": item.get("component"),
-                    "product_area": item.get("product_area"),
-                    "release_id": item.get("release_id"),
-                    "external_source_id": item.get("external_source_id"),
-                    "approval_status": item.get("approval_status"),
-                    "approved_by": item.get("approved_by"),
-                    "approved_at": item.get("approved_at"),
-                    "source_version": item.get("source_version"),
-                    "effective_from": item.get("effective_from"),
-                    "tags": item.get("tags", []),
-                    "project_id": project_id,
-                    "score": lexical_score(payload.query, str(item.get(text_field, "")) + " " + str(item.get("title", "")) + " " + str(item.get("filename", ""))),
-                })
+                results.append(
+                    {
+                        "artifact_type": artifact_type,
+                        "artifact_id": item.get("requirement_id")
+                        or item.get("test_case_id")
+                        or item["_id"],
+                        "artifact_version_id": item["_id"],
+                        "title": item.get("title") or item.get("name") or item.get("filename"),
+                        "text": str(item.get(text_field, ""))[:1000],
+                        "status": item.get("status"),
+                        "authority": authority,
+                        "source_type": item.get("source_type"),
+                        "owner_id": item.get("owner_id"),
+                        "module": item.get("module"),
+                        "component": item.get("component"),
+                        "product_area": item.get("product_area"),
+                        "release_id": item.get("release_id"),
+                        "external_source_id": item.get("external_source_id"),
+                        "approval_status": item.get("approval_status"),
+                        "approved_by": item.get("approved_by"),
+                        "approved_at": item.get("approved_at"),
+                        "source_version": item.get("source_version"),
+                        "effective_from": item.get("effective_from"),
+                        "tags": item.get("tags", []),
+                        "project_id": project_id,
+                        "score": lexical_score(
+                            payload.query,
+                            str(item.get(text_field, ""))
+                            + " "
+                            + str(item.get("title", ""))
+                            + " "
+                            + str(item.get("filename", "")),
+                        ),
+                    }
+                )
         dense_ids_by_type = {}
         for item in dense:
             reference = item.get("artifact_version_id") or item.get("artifact_id")
@@ -214,11 +251,13 @@ class AnalyticsService:
                 dense_ids_by_type.setdefault(item.get("artifact_type"), set()).add(reference)
         valid_dense_refs = set()
         dense_authoritative_records = {}
-        for artifact_type, collection, _ in [['requirement_version', 'requirement_versions', 'plain_text_projection'],
- ['test_case_version', 'test_case_versions', 'plain_text_projection'],
- ['defect', 'defects', 'title'],
- ['test_plan', 'test_plans', 'objective'],
- ['requirement_document', 'requirement_documents', 'normalized_content']]:
+        for artifact_type, collection, _ in [
+            ["requirement_version", "requirement_versions", "plain_text_projection"],
+            ["test_case_version", "test_case_versions", "plain_text_projection"],
+            ["defect", "defects", "title"],
+            ["test_plan", "test_plans", "objective"],
+            ["requirement_document", "requirement_documents", "normalized_content"],
+        ]:
             if requested and artifact_type not in requested:
                 continue
             references = dense_ids_by_type.get(artifact_type, set())
@@ -226,7 +265,7 @@ class AnalyticsService:
                 continue
             dense_query = {"project_id": project_id, "_id": {"$in": list(references)}}
             if collection == "requirement_documents":
-                dense_query["status"] = {"$ne": 'ARCHIVED'}
+                dense_query["status"] = {"$ne": "ARCHIVED"}
                 if not user.is_system_admin:
                     dense_query["$or"] = [
                         {"created_by": user.id},
@@ -234,9 +273,7 @@ class AnalyticsService:
                         {"visibility": "shared", "shared_with": user.id},
                     ]
             documents = await analytics_repository.list_records(
-                collection,
-                dense_query,
-                len(references),
+                collection, dense_query, len(references)
             )
             for record in documents:
                 reference = (artifact_type, record["_id"])
@@ -247,20 +284,15 @@ class AnalyticsService:
                     or record.get("test_case_id")
                     or record["_id"],
                     "artifact_version_id": record["_id"],
-                    "title": record.get("title")
-                    or record.get("name")
-                    or record.get("filename"),
+                    "title": record.get("title") or record.get("name") or record.get("filename"),
                     "status": record.get("status"),
                     "authority": record.get("authority")
-                    or (
-                        'APPROVED_SOURCE'
-                        if record.get("status") == 'BASELINED'
-                        else 'DRAFT'
-                    ),
+                    or ("APPROVED_SOURCE" if record.get("status") == "BASELINED" else "DRAFT"),
                     "project_id": project_id,
                 }
         dense = [
-            item for item in dense
+            item
+            for item in dense
             if (
                 item.get("artifact_type"),
                 item.get("artifact_version_id") or item.get("artifact_id"),
@@ -272,9 +304,7 @@ class AnalyticsService:
             version_id = item.get("artifact_version_id") or item.get("artifact_id")
             if not version_id:
                 continue
-            dense_by_version.setdefault(
-                (item.get("artifact_type"), version_id), []
-            ).append(item)
+            dense_by_version.setdefault((item.get("artifact_type"), version_id), []).append(item)
 
         def passage_rank(item):
             return float(item.get("score") or 0)
@@ -326,8 +356,7 @@ class AnalyticsService:
             if identity in by_version:
                 merged = by_version[identity]
                 merged["score"] = round(
-                    0.45 * merged["score"] + 0.55 * float(item.get("score") or 0),
-                    4,
+                    0.45 * merged["score"] + 0.55 * float(item.get("score") or 0), 4
                 )
                 merged["retrieval_source"] = "hybrid_fusion"
                 merged["retrieved_passages"] = retrieved_passages
@@ -336,9 +365,7 @@ class AnalyticsService:
                     if field in item:
                         merged[field] = item[field]
             else:
-                authoritative = dense_authoritative_records.get(
-                    identity, {}
-                )
+                authoritative = dense_authoritative_records.get(identity, {})
                 by_version[identity] = {
                     **authoritative,
                     **item,
@@ -354,21 +381,33 @@ class AnalyticsService:
         results = list(by_version.values())
         authority_order = (project.get("settings") or {}).get(
             "knowledge_authority_order",
-            ['APPROVED_SOURCE', 'CONTROLLED_SOURCE', 'PROJECT_REFERENCE', 'SUPPLEMENTAL', 'DRAFT', 'UNVERIFIED'],
+            [
+                "APPROVED_SOURCE",
+                "CONTROLLED_SOURCE",
+                "PROJECT_REFERENCE",
+                "SUPPLEMENTAL",
+                "DRAFT",
+                "UNVERIFIED",
+            ],
         )
         authority_rank = {value: index for index, value in enumerate(authority_order)}
-        results.sort(key=lambda item: (authority_rank.get(item.get("authority"), len(authority_rank)), -item.get("score", 0)))
+        results.sort(
+            key=lambda item: (
+                authority_rank.get(item.get("authority"), len(authority_rank)),
+                -item.get("score", 0),
+            )
+        )
         data = {
-            "items": results[:payload.limit],
+            "items": results[: payload.limit],
             "filters": {"project_id": project_id, "artifact_types": list(requested)},
-            "retrieval_version": 'hybrid_project_evidence',
+            "retrieval_version": "hybrid_project_evidence",
             "degraded_mode": dense_result["degraded_mode"],
-            "fallback": dense_result["degraded_mode"] != 'NORMAL',
+            "fallback": dense_result["degraded_mode"] != "NORMAL",
             "error_code": dense_result["error_code"],
         }
         metadata = {
             "degraded_mode": dense_result["degraded_mode"]
-            if dense_result["degraded_mode"] != 'NORMAL'
+            if dense_result["degraded_mode"] != "NORMAL"
             else None
         }
         return data, metadata
@@ -434,13 +473,26 @@ class AnalyticsService:
         )
 
     @staticmethod
-    async def project_audit(project_id, limit, user):
+    async def project_audit(project_id, limit, user, entity_type="", entity_id=""):
         await get_project(project_id, user, "project.audit.read")
+        query = {"project_id": project_id}
+        if entity_type:
+            query["entity_type"] = entity_type
+        if entity_id:
+            query["entity_id"] = entity_id
         events = await analytics_repository.list_records(
-            "audit_events", {"project_id": project_id}, limit, ("created_at", -1)
+            "audit_events", query, limit, ("created_at", -1)
         )
         identities = await load_user_identities(item.get("actor_id") for item in events)
-        return [{**event, "actor": identities.get(event.get("actor_id")), "actor_label": (identities.get(event.get("actor_id")) or {}).get("label") or event.get("actor_id")} for event in events]
+        return [
+            {
+                **event,
+                "actor": identities.get(event.get("actor_id")),
+                "actor_label": (identities.get(event.get("actor_id")) or {}).get("label")
+                or event.get("actor_id"),
+            }
+            for event in events
+        ]
 
     @staticmethod
     async def maintenance(project_id, user):
@@ -450,8 +502,7 @@ class AnalyticsService:
                 "impact_analyses", {"project_id": project_id}
             ),
             "tests_stale": await analytics_repository.count_records(
-                "test_cases",
-                {"project_id": project_id, "status": 'NEEDS_UPDATE'},
+                "test_cases", {"project_id": project_id, "status": "NEEDS_UPDATE"}
             ),
         }
 
@@ -459,21 +510,14 @@ class AnalyticsService:
     async def ai(project_id, user):
         await get_project(project_id, user, "analytics.ai.read")
         proposal_status = await analytics_repository.group_counts(
-            "maintenance_proposals",
-            {"project_id": project_id},
-            "status",
-            100,
+            "maintenance_proposals", {"project_id": project_id}, "status", 100
         )
         accepted = sum(
             item["count"]
             for item in proposal_status
-            if item["_id"] in set(['ACCEPTED', 'EDITED_ACCEPTED'])
+            if item["_id"] in set(["ACCEPTED", "EDITED_ACCEPTED"])
         )
-        reviewed = sum(
-            item["count"]
-            for item in proposal_status
-            if item["_id"] != 'PENDING'
-        )
+        reviewed = sum(item["count"] for item in proposal_status if item["_id"] != "PENDING")
         impact_rows = await analytics_repository.list_records(
             "impact_analyses",
             {"project_id": project_id},
@@ -484,47 +528,43 @@ class AnalyticsService:
         degraded = sum(
             1
             for item in measured
-            if item["ai_result"].get("status") != 'SUCCESS'
+            if item["ai_result"].get("status") != "SUCCESS"
             or item["ai_result"].get("degraded_mode")
         )
-        latencies = [item["ai_result"].get("latency_ms") for item in measured if isinstance(item["ai_result"].get("latency_ms"), (int, float))]
+        latencies = [
+            item["ai_result"].get("latency_ms")
+            for item in measured
+            if isinstance(item["ai_result"].get("latency_ms"), (int, float))
+        ]
         model_versions = {}
         for item in impact_rows:
             ai_result = item.get("ai_result") or {}
             model = ai_result.get("model") if isinstance(ai_result.get("model"), dict) else {}
-            model_version = (
-                item.get("model_version")
-                or model.get("version")
-                or 'unknown'
-            )
+            model_version = item.get("model_version") or model.get("version") or "unknown"
             model_versions[model_version] = model_versions.get(model_version, 0) + 1
         return {
             "proposal_status": proposal_status,
-            "proposal_acceptance_rate": round(
-                accepted / reviewed, 4
-            )
-            if reviewed
-            else None,
+            "proposal_acceptance_rate": round(accepted / reviewed, 4) if reviewed else None,
             "override_count": sum(len(item.get("review_overrides") or []) for item in impact_rows),
             "degraded_count": degraded,
-            "degraded_rate": round(
-                degraded / len(measured), 4
-            )
-            if measured
-            else 0,
-            "average_latency_ms": round(
-                sum(latencies) / len(latencies), 3
-            )
-            if latencies
-            else 0,
+            "degraded_rate": round(degraded / len(measured), 4) if measured else 0,
+            "average_latency_ms": round(sum(latencies) / len(latencies), 3) if latencies else 0,
             "model_versions": model_versions,
         }
 
     @staticmethod
-    async def execution_report(project_id, release, release_id, environment, environment_id, build, build_id, user):
+    async def execution_report(
+        project_id, release, release_id, environment, environment_id, build, build_id, user
+    ):
         await get_project(project_id, user, "report.read")
         run_query = {"project_id": project_id}
-        for key, value in (("environment", environment), ("environment_id", environment_id), ("build", build), ("build_id", build_id), ("release_id", release_id)):
+        for key, value in (
+            ("environment", environment),
+            ("environment_id", environment_id),
+            ("build", build),
+            ("build_id", build_id),
+            ("release_id", release_id),
+        ):
             if value:
                 run_query[key] = value
         if not release_id and release:
@@ -536,10 +576,7 @@ class AnalyticsService:
             )
             run_query["test_plan_id"] = {"$in": [item["_id"] for item in plans]}
         runs = await analytics_repository.list_records(
-            "test_runs",
-            run_query,
-            10000,
-            projection={"_id": 1, "status": 1},
+            "test_runs", run_query, 10000, projection={"_id": 1, "status": 1}
         )
         run_ids = [item["_id"] for item in runs]
         result_rows = await analytics_repository.group_counts(
@@ -550,92 +587,100 @@ class AnalyticsService:
         )
         run_status_rows = {}
         for item in runs:
-            status = item.get("status", 'UNKNOWN')
+            status = item.get("status", "UNKNOWN")
             run_status_rows[status] = run_status_rows.get(status, 0) + 1
         result_counts = {item["_id"]: item["count"] for item in result_rows}
         terminal_count = sum(
             result_counts.get(status, 0)
-            for status in ['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'NOT_APPLICABLE']
+            for status in ["PASS", "FAIL", "BLOCKED", "SKIPPED", "NOT_APPLICABLE"]
         )
         return {
             "run_count": len(runs),
             "run_status_counts": run_status_rows,
             "result_counts": result_counts,
             "terminal_result_count": terminal_count,
-            "pass_rate": round(
-                result_counts.get('PASS', 0) / terminal_count,
-                4,
-            )
+            "pass_rate": round(result_counts.get("PASS", 0) / terminal_count, 4)
             if terminal_count
             else None,
-            "scope": {"release": release or None, "release_id": release_id or None, "environment": environment or None, "environment_id": environment_id or None, "build": build or None, "build_id": build_id or None},
+            "scope": {
+                "release": release or None,
+                "release_id": release_id or None,
+                "environment": environment or None,
+                "environment_id": environment_id or None,
+                "build": build or None,
+                "build_id": build_id or None,
+            },
         }
 
     @staticmethod
-    async def defect_report(project_id, release, release_id, environment, environment_id, build, build_id, user):
+    async def defect_report(
+        project_id, release, release_id, environment, environment_id, build, build_id, user
+    ):
         await get_project(project_id, user, "report.read")
         query = {"project_id": project_id}
-        for key, value in (("release", release), ("release_id", release_id), ("environment", environment), ("environment_id", environment_id), ("build", build), ("build_id", build_id)):
+        for key, value in (
+            ("release", release),
+            ("release_id", release_id),
+            ("environment", environment),
+            ("environment_id", environment_id),
+            ("build", build),
+            ("build_id", build_id),
+        ):
             if value:
                 query[key] = value
         defects = await analytics_repository.list_records(
-            "defects",
-            query,
-            50000,
-            projection={"status": 1, "severity": 1, "created_at": 1},
+            "defects", query, 50000, projection={"status": 1, "severity": 1, "created_at": 1}
         )
         status_counts = {}
         severity_counts = {}
         open_ages = []
         timestamp = now()
-        terminal_statuses = set(['CLOSED', 'REJECTED', 'DUPLICATE'])
+        terminal_statuses = set(["CLOSED", "REJECTED", "DUPLICATE"])
         for item in defects:
-            status_value = item.get("status", 'UNKNOWN')
-            severity_value = item.get(
-                "severity", 'unknown'
-            )
+            status_value = item.get("status", "UNKNOWN")
+            severity_value = item.get("severity", "unknown")
             status_counts[status_value] = status_counts.get(status_value, 0) + 1
             severity_counts[severity_value] = severity_counts.get(severity_value, 0) + 1
             if status_value not in terminal_statuses and item.get("created_at"):
-                open_ages.append(
-                    max(
-                        0,
-                        (timestamp - item["created_at"]).total_seconds()
-                        / 86400,
-                    )
-                )
+                open_ages.append(max(0, (timestamp - item["created_at"]).total_seconds() / 86400))
         reopened_count = await analytics_repository.count_records(
             "defect_retests",
-            {
-                "project_id": project_id,
-                "outcome": 'FAIL',
-                "application_status": 'APPLIED',
-            },
+            {"project_id": project_id, "outcome": "FAIL", "application_status": "APPLIED"},
         )
         return {
             "defect_count": len(defects),
-            "open_count": sum(count for status_value, count in status_counts.items() if status_value not in terminal_statuses),
+            "open_count": sum(
+                count
+                for status_value, count in status_counts.items()
+                if status_value not in terminal_statuses
+            ),
             "status_counts": status_counts,
             "severity_counts": severity_counts,
             "reopened_count": reopened_count,
-            "average_open_age_days": round(
-                sum(open_ages) / len(open_ages),
-                2,
-            )
-            if open_ages
-            else 0,
-            "scope": {"release": release or None, "release_id": release_id or None, "environment": environment or None, "environment_id": environment_id or None, "build": build or None, "build_id": build_id or None},
+            "average_open_age_days": round(sum(open_ages) / len(open_ages), 2) if open_ages else 0,
+            "scope": {
+                "release": release or None,
+                "release_id": release_id or None,
+                "environment": environment or None,
+                "environment_id": environment_id or None,
+                "build": build or None,
+                "build_id": build_id or None,
+            },
         }
 
     @staticmethod
     async def activity(project_id, limit, user):
         await get_project(project_id, user, "analytics.read")
-        excluded_actions = set(['project_member_added',
- 'project_member_updated',
- 'project_member_removed',
- 'project_invitation_created',
- 'project_invitation_cancelled',
- 'project_invitation_resent'])
+        excluded_actions = set(
+            [
+                "project_member_added",
+                "project_member_updated",
+                "project_member_removed",
+                "project_invitation_created",
+                "project_invitation_cancelled",
+                "project_invitation_resent",
+            ]
+        )
         return await analytics_repository.list_records(
             "audit_events",
             {"project_id": project_id, "action": {"$nin": sorted(excluded_actions)}},
@@ -647,9 +692,7 @@ class AnalyticsService:
     @staticmethod
     async def coverage_snapshot(project_id):
         requirements = await analytics_repository.list_records(
-            "requirements",
-            {"project_id": project_id, "status": 'BASELINED'},
-            10000,
+            "requirements", {"project_id": project_id, "status": "BASELINED"}, 10000
         )
         requirement_versions = {item["current_version_id"] for item in requirements}
         criteria = await analytics_repository.list_records(
@@ -657,30 +700,31 @@ class AnalyticsService:
             {
                 "project_id": project_id,
                 "requirement_version_id": {"$in": list(requirement_versions)},
-                "status": {"$ne": 'obsolete'},
+                "status": {"$ne": "obsolete"},
             },
             20000,
         )
         links = await analytics_repository.list_records(
-            "trace_links",
-            {"project_id": project_id, "status": 'CONFIRMED'},
-            50000,
+            "trace_links", {"project_id": project_id, "status": "CONFIRMED"}, 50000
         )
         covered_requirements = {
-            item["source_id"]
-            for item in links
-            if item["source_type"] == 'requirement_version'
+            item["source_id"] for item in links if item["source_type"] == "requirement_version"
         }
         covered_criteria = {
-            item["source_id"]
-            for item in links
-            if item["source_type"] == 'acceptance_criterion'
+            item["source_id"] for item in links if item["source_type"] == "acceptance_criterion"
         }
         return {
-            "requirement_coverage": percentage(len(requirement_versions & covered_requirements), len(requirement_versions)),
-            "acceptance_criterion_coverage": percentage(len({item["_id"] for item in criteria} & covered_criteria), len(criteria)),
+            "requirement_coverage": percentage(
+                len(requirement_versions & covered_requirements), len(requirement_versions)
+            ),
+            "acceptance_criterion_coverage": percentage(
+                len({item["_id"] for item in criteria} & covered_criteria), len(criteria)
+            ),
             "unlinked_tests": await analytics_repository.count_records(
                 "test_cases",
-                {"project_id": project_id, "current_version_id": {"$nin": [item["target_id"] for item in links]}},
+                {
+                    "project_id": project_id,
+                    "current_version_id": {"$nin": [item["target_id"] for item in links]},
+                },
             ),
         }

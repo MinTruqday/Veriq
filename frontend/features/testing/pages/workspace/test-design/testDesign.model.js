@@ -49,6 +49,7 @@ export function createTestCaseForm() {
     assessmentReason: "",
     requiredSkills: "",
     ownerId: "",
+    scenarioId: "",
     requirementVersionIds: [],
     acceptanceCriterionIds: [],
     objective: emptyDoc(),
@@ -105,6 +106,67 @@ export function createScenarioForm() {
     objective: "",
     category: "happy_path",
     testConditionIds: [],
+    requirementVersionIds: [],
+    acceptanceCriterionIds: [],
+    risk: "medium",
+    priority: "medium",
+    description: "",
+    actors: "",
+    preconditions: "",
+    business_flow: "",
+    expected_outcome: "",
+    test_data_notes: "",
+    test_level: "",
+    test_kind: "",
+    owner_id: "",
+    tags: "",
+  };
+}
+
+export function scenarioPayload(form) {
+  return {
+    ...Object.fromEntries(
+      [
+        "title",
+        "objective",
+        "category",
+        "risk",
+        "priority",
+        "description",
+        "preconditions",
+        "business_flow",
+        "expected_outcome",
+        "test_data_notes",
+        "test_kind",
+      ].map((key) => [key, form[key]]),
+    ),
+    actors: form.actors
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    tags: form.tags
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    test_level: form.test_level || "",
+    owner_id: form.owner_id || "",
+    requirement_version_ids: form.requirementVersionIds,
+    acceptance_criterion_ids: form.acceptanceCriterionIds,
+    test_condition_ids: form.testConditionIds,
+  };
+}
+
+export function scenarioFormFromRecord(item) {
+  return {
+    ...createScenarioForm(),
+    ...item,
+    actors: (item.actors || []).join("\n"),
+    tags: (item.tags || []).join(", "),
+    requirementVersionIds: item.requirement_version_ids || [],
+    acceptanceCriterionIds: item.acceptance_criterion_ids || [],
+    testConditionIds: item.test_condition_ids || [],
+    test_level: item.test_level || "",
+    owner_id: item.owner_id || "",
   };
 }
 
@@ -119,7 +181,7 @@ export function selectedValues(event) {
 export function buildTestCaseDraftChanges(snapshot, draft) {
   const structuredValue = (value) =>
     typeof value === "string" ? JSON.parse(value || "{}") : value || {};
-  const steps = snapshot.steps.map((step, index) => ({
+  const steps = snapshot.steps?.map((step, index) => ({
     id: step.id || crypto.randomUUID(),
     order: index + 1,
     action_doc: textDoc(step.action),
@@ -137,7 +199,7 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     "expected_impact",
     "assessment_reason",
   ]) {
-    if (snapshot[field] !== draft[field]) {
+    if (snapshot[field] !== undefined && snapshot[field] !== draft[field]) {
       changes[field] =
         ["test_level", "test_kind"].includes(field) && !snapshot[field] ? null : snapshot[field];
     }
@@ -148,7 +210,8 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     ["expected_result_doc", "expected"],
     ["postconditions_doc", "postconditions"],
   ]) {
-    if (snapshot[input] !== docText(draft[field])) changes[field] = textDoc(snapshot[input]);
+    if (snapshot[input] !== undefined && snapshot[input] !== docText(draft[field]))
+      changes[field] = textDoc(snapshot[input]);
   }
   const existingStepContent = (draft.steps || []).map((step) => ({
     id: step.id,
@@ -157,31 +220,31 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     test_data: step.test_data || {},
     expected: docText(step.expected_doc),
   }));
-  const changedStepContent = snapshot.steps.map((step, index) => ({
+  const changedStepContent = snapshot.steps?.map((step, index) => ({
     id: steps[index].id,
     order: index + 1,
     action: step.action,
     test_data: steps[index].test_data,
     expected: step.expected,
   }));
-  if (JSON.stringify(changedStepContent) !== JSON.stringify(existingStepContent)) {
+  if (steps && JSON.stringify(changedStepContent) !== JSON.stringify(existingStepContent)) {
     changes.steps = steps;
   }
   const otherValues = {
-    test_data: structuredValue(snapshot.testData),
-    required_skills: (snapshot.requiredSkills || "")
-      .split(",")
+    test_data: snapshot.testData === undefined ? undefined : structuredValue(snapshot.testData),
+    required_skills: snapshot.requiredSkills
+      ?.split(",")
       .map((value) => value.trim())
       .filter(Boolean),
     techniques: snapshot.techniques
-      .split(",")
+      ?.split(",")
       .map((value) => value.trim())
       .filter(Boolean),
     tags: snapshot.tags
-      .split(",")
+      ?.split(",")
       .map((value) => value.trim())
       .filter(Boolean),
-    owner_id: snapshot.ownerId.trim(),
+    owner_id: snapshot.ownerId?.trim(),
     automation_status: snapshot.automationStatus,
     attachments: snapshot.attachments,
     data_set_version_ids: snapshot.dataSetVersionIds,
@@ -189,10 +252,11 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     requirement_version_ids: snapshot.requirementVersionIds,
     acceptance_criterion_ids: snapshot.acceptanceCriterionIds,
     repository_node_id: snapshot.repositoryNodeId,
-    bdd: snapshot.bdd || null,
-    custom_values: snapshot.customValues || {},
+    bdd: snapshot.bdd,
+    custom_values: snapshot.customValues,
   };
   for (const [field, value] of Object.entries(otherValues)) {
+    if (value === undefined) continue;
     let previous = draft[field];
     if (previous === undefined) {
       previous = Array.isArray(value)

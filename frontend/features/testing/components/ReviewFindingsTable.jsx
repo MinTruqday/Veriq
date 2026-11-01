@@ -1,3 +1,4 @@
+import { Check, ShieldCheck, UserRound } from "lucide-react";
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
 import { valueLabel } from "../lib/testing";
@@ -37,18 +38,36 @@ export default function ReviewFindingsTable({
           render: (item) => (
             <div className="flex flex-wrap gap-2">
               {["OPEN", "IN_PROGRESS"].includes(item.status) && canAssign(item) && onAssign && (
-                <button className="secondary-button" type="button" onClick={() => onAssign(item)}>
-                  Gán
+                <button
+                  className="icon-button h-9 w-9"
+                  type="button"
+                  aria-label="Gán người phụ trách"
+                  title="Gán người phụ trách"
+                  onClick={() => onAssign(item)}
+                >
+                  <UserRound aria-hidden="true" size={16} />
                 </button>
               )}
               {["OPEN", "IN_PROGRESS"].includes(item.status) && canResolve(item) && onResolve && (
-                <button className="secondary-button" type="button" onClick={() => onResolve(item)}>
-                  Giải quyết
+                <button
+                  className="icon-button h-9 w-9"
+                  type="button"
+                  aria-label="Đánh dấu đã giải quyết"
+                  title="Đánh dấu đã giải quyết"
+                  onClick={() => onResolve(item)}
+                >
+                  <Check aria-hidden="true" size={16} />
                 </button>
               )}
               {item.status === "RESOLVED" && canVerify(item) && onVerify && (
-                <button className="secondary-button" type="button" onClick={() => onVerify(item)}>
-                  Xác minh
+                <button
+                  className="icon-button h-9 w-9"
+                  type="button"
+                  aria-label="Xác minh kết quả"
+                  title="Xác minh kết quả"
+                  onClick={() => onVerify(item)}
+                >
+                  <ShieldCheck aria-hidden="true" size={16} />
                 </button>
               )}
             </div>

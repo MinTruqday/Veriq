@@ -17,7 +17,9 @@ RUN pnpm install --frozen-lockfile
 FROM base AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
+ARG INTERNAL_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV INTERNAL_API_URL=$INTERNAL_API_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ .
 RUN mkdir -p public && pnpm run format:check && pnpm run lint && pnpm run build

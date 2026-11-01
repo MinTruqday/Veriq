@@ -65,6 +65,7 @@ from src.modules.design.services.test_scenario import (
     get_test_scenario_record,
     list_test_scenario_records,
     update_test_scenario_record,
+    transition_test_scenario_record,
 )
 from src.modules.design.services.test_case_custom_fields import (
     create_test_case_custom_field,
@@ -180,6 +181,24 @@ async def update_scenario(
 @router.post("/kich-ban-kiem-thu/{scenario_id}/nhan-ban", status_code=201)
 async def clone_scenario(scenario_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await clone_test_scenario_record(scenario_id, user), revision=1)
+
+
+@router.post("/kich-ban-kiem-thu/{scenario_id}/gui-ra-soat")
+async def submit_scenario(scenario_id: str, payload: ReviewTransitionInput, user: CurrentUser = Depends(get_current_user)):
+    result = await transition_test_scenario_record(scenario_id, payload, user, 'submit')
+    return envelope(result, revision=result['revision'])
+
+
+@router.post("/kich-ban-kiem-thu/{scenario_id}/phe-duyet")
+async def approve_scenario(scenario_id: str, payload: ReviewTransitionInput, user: CurrentUser = Depends(get_current_user)):
+    result = await transition_test_scenario_record(scenario_id, payload, user, 'approve')
+    return envelope(result, revision=result['revision'])
+
+
+@router.post("/kich-ban-kiem-thu/{scenario_id}/yeu-cau-chinh-sua")
+async def revise_scenario(scenario_id: str, payload: ReviewTransitionInput, user: CurrentUser = Depends(get_current_user)):
+    result = await transition_test_scenario_record(scenario_id, payload, user, 'revise')
+    return envelope(result, revision=result['revision'])
 
 
 @router.post("/kich-ban-kiem-thu/{scenario_id}/luu-tru")

@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Pencil } from "lucide-react";
 import DataTable from "./DataTable";
 import FormalReviewPanel from "./FormalReviewPanel";
 import QualityGateBadge from "./QualityGateBadge";
@@ -42,7 +43,10 @@ export default function TestStatusReportPanel({ project }) {
   const [narrativeResult, setNarrativeResult] = useState(null);
   const [error, setError] = useState("");
   const [narrativeLoading, setNarrativeLoading] = useState(false);
-  const [narrativeTimedOut, setNarrativeTimedOut] = useState(false);
+  const aiInFlight = useRef(false);
+  const aiOperation = useRef(null);
+  const selectedReport = useRef(selected);
+  selectedReport.current = selected;
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     try {
@@ -71,43 +75,51 @@ export default function TestStatusReportPanel({ project }) {
   }, [load]);
 
   useEffect(() => {
-    if (!selected?._id) {
-      setNarrativeResult(null);
-      setNarrativeLoading(false);
-      return undefined;
-    }
-    let active = true;
-    let timer;
-    let attempts = 0;
     setNarrativeResult(null);
-    setNarrativeLoading(true);
-    setNarrativeTimedOut(false);
-    const refreshNarrative = async () => {
-      try {
-        const value = await testingApi.getTestStatusReportNarrative(selected._id);
-        if (!active) return;
-        if (value) {
-          setNarrativeResult(value);
-          setNarrativeLoading(false);
-          return;
-        }
-      } catch (reason) {
+    if (!selected?._id) return undefined;
+    let active = true;
+    testingApi
+      .getTestStatusReportNarrative(selected._id)
+      .then((value) => {
+        if (active) setNarrativeResult(value);
+      })
+      .catch((reason) => {
         if (active) setError(messageOf(reason));
-      }
-      attempts += 1;
-      if (active && attempts < 20) {
-        timer = setTimeout(refreshNarrative, 3000);
-      } else if (active) {
-        setNarrativeLoading(false);
-        setNarrativeTimedOut(true);
-      }
-    };
-    void refreshNarrative();
+      });
     return () => {
       active = false;
-      clearTimeout(timer);
     };
   }, [selected?._id, selected?.revision]);
+
+  const generateNarrative = async () => {
+    if (aiInFlight.current || !selected) return;
+    const report = selected;
+    const key = `${report._id}:${report.revision}`;
+    if (aiOperation.current?.key !== key)
+      aiOperation.current = {
+        key,
+        payload: { idempotency_key: crypto.randomUUID(), source_event_revision: report.revision },
+      };
+    aiInFlight.current = true;
+    setNarrativeLoading(true);
+    setError("");
+    try {
+      const result = await testingApi.generateTestStatusReportNarrative(
+        report._id,
+        aiOperation.current.payload,
+      );
+      if (
+        selectedReport.current?._id === report._id &&
+        selectedReport.current?.revision === report.revision
+      )
+        setNarrativeResult(result);
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      aiInFlight.current = false;
+      setNarrativeLoading(false);
+    }
+  };
 
   const run = async (operation, { retainDialog = false } = {}) => {
     try {
@@ -422,8 +434,14 @@ export default function TestStatusReportPanel({ project }) {
                 <StatusPill value={selected.status} />
                 <QualityGateBadge status={selected.snapshot_basis?.quality_gate_status} />
                 {selected.status === "DRAFT" && can("teststatusreport.update") && (
-                  <button className="secondary-button" type="button" onClick={edit}>
-                    Chỉnh sửa
+                  <button
+                    className="icon-button h-9 w-9"
+                    type="button"
+                    aria-label="Chỉnh sửa báo cáo trạng thái"
+                    title="Chỉnh sửa báo cáo trạng thái"
+                    onClick={edit}
+                  >
+                    <Pencil aria-hidden="true" size={16} />
                   </button>
                 )}
                 {selected.status === "DRAFT" && can("teststatusreport.update") && (
@@ -503,19 +521,18 @@ export default function TestStatusReportPanel({ project }) {
                     </button>
                   ))}
               </div>
-              {narrativeLoading && !narrativeResult && (
-                <p className="text-sm text-ink-muted" role="status">
-                  Báo cáo đã được tạo; đang chờ AI tạo phần diễn giải.
-                </p>
-              )}
-              {narrativeTimedOut && !narrativeResult && (
-                <p className="text-sm text-ink-muted" role="status">
-                  Chưa nhận được kết quả tự động. Báo cáo gốc vẫn được giữ nguyên; kiểm tra trạng
-                  thái xử lý AI.
-                </p>
+              {selected.status === "DRAFT" && can("teststatusreport.update") && (
+                <button
+                  type="button"
+                  className="secondary-button border-violet-300 text-violet-800"
+                  disabled={narrativeLoading}
+                  onClick={generateNarrative}
+                >
+                  {narrativeLoading ? "Đang xử lý" : "AI đề xuất diễn giải báo cáo"}
+                </button>
               )}
               {narrativeResult?.suggestions?.[0] && (
-                <Panel title="Diễn giải được tạo tự động">
+                <Panel title="Diễn giải AI đề xuất">
                   <div className="space-y-4 text-sm">
                     <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
                       <ContentOriginBadge origin="ai_generated" />
@@ -553,7 +570,7 @@ export default function TestStatusReportPanel({ project }) {
               )}
               {narrativeResult && !narrativeResult.suggestions?.[0] && (
                 <p className="text-sm text-ink-muted" role="status">
-                  Lượt AI tự động chưa tạo được phần diễn giải: {valueLabel(narrativeResult.status)}
+                  AI chưa tạo được phần diễn giải: {valueLabel(narrativeResult.status)}
                 </p>
               )}
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

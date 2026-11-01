@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Eye } from "lucide-react";
 import { testingApi } from "../../../services/testing.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { docText, messageOf, textDoc, valueLabel } from "../../../lib/testing";
@@ -531,11 +532,13 @@ export default function RequirementTemplatePanel({
                   {template.status === "STARTER" ? "Mẫu khởi đầu" : `v${template.version}`}
                 </label>
                 <button
-                  className="text-accent underline"
+                  className="icon-button h-9 w-9"
                   type="button"
+                  aria-label={`Mở mẫu ${template.name}`}
+                  title="Mở mẫu"
                   onClick={() => loadTemplate(template)}
                 >
-                  Mở
+                  <Eye aria-hidden="true" size={16} />
                 </button>
               </div>
             ))
@@ -578,12 +581,14 @@ export default function RequirementTemplatePanel({
                           <StatusPill value={eventRun.status} />
                           {outputTemplates.map((template) => (
                             <button
-                              className="text-accent underline"
+                              className="icon-button h-9 w-9"
                               type="button"
                               key={template._id}
+                              aria-label={`Mở mẫu ${template.name}`}
+                              title="Mở mẫu đã đọc lại"
                               onClick={() => loadTemplate(template)}
                             >
-                              Mở mẫu đã đọc lại
+                              <Eye aria-hidden="true" size={16} />
                             </button>
                           ))}
                           <a

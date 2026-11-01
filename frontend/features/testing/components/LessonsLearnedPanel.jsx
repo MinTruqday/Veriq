@@ -1,6 +1,7 @@
 "use client";
 
 import { valueLabel } from "../lib/testing";
+import { Trash2 } from "lucide-react";
 import { StructuredValueView } from "./StructuredValueEditor";
 
 export default function LessonsLearnedPanel({
@@ -91,13 +92,15 @@ export default function LessonsLearnedPanel({
                 onChange={(event) => updateLesson(index, "observation", event.target.value)}
               />
               <button
-                className="danger-button"
+                aria-label={`Xóa bài học ${index + 1}`}
+                className="icon-button h-9 w-9 text-danger"
+                title="Xóa bài học"
                 type="button"
                 onClick={() =>
                   onLessonsChange?.(lessons.filter((_, itemIndex) => itemIndex !== index))
                 }
               >
-                Xóa
+                <Trash2 aria-hidden="true" size={16} />
               </button>
             </div>
           ) : (
@@ -194,13 +197,15 @@ export default function LessonsLearnedPanel({
                 </select>
               </label>
               <button
-                className="danger-button md:col-span-2 md:justify-self-start"
+                aria-label={`Xóa hành động ${index + 1}`}
+                className="icon-button h-9 w-9 text-danger md:col-span-2 md:justify-self-start"
+                title="Xóa hành động"
                 type="button"
                 onClick={() =>
                   onActionsChange?.(actions.filter((_, itemIndex) => itemIndex !== index))
                 }
               >
-                Xóa hành động
+                <Trash2 aria-hidden="true" size={16} />
               </button>
             </div>
           ) : (

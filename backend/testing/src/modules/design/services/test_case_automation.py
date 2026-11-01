@@ -7,7 +7,6 @@ from src.repositories.test_design import test_design_repository
 from src.core.ai_automation import (
     ai_contract_metadata,
     request_ai_automation,
-    require_ai_automation_event,
 )
 from src.modules.design.services.generation import (
     generate_requirement_drafts,
@@ -20,10 +19,6 @@ from src.modules.design.services.test_evidence import requirement_test_evidence_
 
 
 async def generate_test_case_draft_records(version_id, payload, user):
-    require_ai_automation_event(
-        user,
-        {"DOCUMENT_INGESTED", "REQUIREMENT_BASELINED", "REQUIREMENT_CHANGED"},
-    )
     if not payload.preview_only:
         raise HTTPException(422, detail={"code": "TEST_CASE_PREVIEW_REQUIRED", "message": "Cần xem trước và chọn ca kiểm thử trước khi lưu"})
     version = await get_project_entity(
@@ -138,7 +133,6 @@ async def generate_test_case_draft_records(version_id, payload, user):
 
 
 async def recommend_test_design_techniques(version_id, payload, user):
-    require_ai_automation_event(user, {"REQUIREMENT_CHANGED", "REQUIREMENT_BASELINED"})
     version = await get_project_entity(
         "requirement_versions", version_id, user, "ai.generate_testcase"
     )

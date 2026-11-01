@@ -469,6 +469,12 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  getScenario: (id) => testingRequest(`/kich-ban-kiem-thu/${id}`),
+  transitionScenario: (id, action, payload) =>
+    testingRequest(`/kich-ban-kiem-thu/${id}/${action}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   updateScenario: (id, payload) =>
     testingRequest(`/kich-ban-kiem-thu/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   cloneScenario: (id) => testingRequest(`/kich-ban-kiem-thu/${id}/nhan-ban`, { method: "POST" }),

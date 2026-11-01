@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Activity, Gauge, Pause, Play, PlugZap, Power, RotateCcw, Trash2, X } from "lucide-react";
 import { platformApi } from "@/features/authentication/services/platform.service";
 import DataTable from "./DataTable";
 import {
@@ -77,8 +78,14 @@ export default function PlatformOperationsPanel() {
       <Panel title="Cấu hình nền tảng">
         <div className="space-y-3 p-5">
           <ErrorState message={error} />
-          <button className="secondary-button" type="button" onClick={() => void load()}>
-            Thử tải lại
+          <button
+            aria-label="Thử tải lại cấu hình nền tảng"
+            title="Thử tải lại"
+            className="icon-button h-9 w-9"
+            type="button"
+            onClick={() => void load()}
+          >
+            <RotateCcw aria-hidden="true" size={16} />
           </button>
         </div>
       </Panel>
@@ -90,8 +97,14 @@ export default function PlatformOperationsPanel() {
       {error && (
         <div className="space-y-3">
           <ErrorState message={error} />
-          <button className="secondary-button" type="button" onClick={() => void load()}>
-            Thử tải lại
+          <button
+            aria-label="Thử tải lại cấu hình nền tảng"
+            title="Thử tải lại"
+            className="icon-button h-9 w-9"
+            type="button"
+            onClick={() => void load()}
+          >
+            <RotateCcw aria-hidden="true" size={16} />
           </button>
         </div>
       )}
@@ -184,7 +197,9 @@ export default function PlatformOperationsPanel() {
               render: (item) => (
                 <span className="flex flex-wrap gap-2">
                   <button
-                    className="secondary-button"
+                    aria-label={`Chẩn đoán dự án ${item.name || item.key}`}
+                    title="Chẩn đoán dự án"
+                    className="icon-button h-9 w-9"
                     type="button"
                     onClick={async () => {
                       try {
@@ -199,10 +214,16 @@ export default function PlatformOperationsPanel() {
                       }
                     }}
                   >
-                    Chẩn đoán
+                    <Activity aria-hidden="true" size={16} />
                   </button>
                   <button
-                    className="secondary-button"
+                    aria-label={`${item.administrative_status === "SUSPENDED" ? "Kích hoạt lại" : "Tạm ngưng"} dự án ${item.name || item.key}`}
+                    title={
+                      item.administrative_status === "SUSPENDED"
+                        ? "Kích hoạt lại dự án"
+                        : "Tạm ngưng dự án"
+                    }
+                    className="icon-button h-9 w-9"
                     type="button"
                     onClick={async () => {
                       const suspended = item.administrative_status === "SUSPENDED";
@@ -227,10 +248,16 @@ export default function PlatformOperationsPanel() {
                       }
                     }}
                   >
-                    {item.administrative_status === "SUSPENDED" ? "Kích hoạt" : "Tạm ngưng"}
+                    {item.administrative_status === "SUSPENDED" ? (
+                      <Play aria-hidden="true" size={16} />
+                    ) : (
+                      <Pause aria-hidden="true" size={16} />
+                    )}
                   </button>
                   <button
-                    className="secondary-button"
+                    aria-label={`Cập nhật hạn mức dự án ${item.name || item.key}`}
+                    title="Cập nhật hạn mức"
+                    className="icon-button h-9 w-9"
                     type="button"
                     onClick={async () => {
                       const answer = await ask({
@@ -272,10 +299,12 @@ export default function PlatformOperationsPanel() {
                       }
                     }}
                   >
-                    Hạn mức
+                    <Gauge aria-hidden="true" size={16} />
                   </button>
                   <button
-                    className="danger-button"
+                    aria-label={`Xóa cứng dự án ${item.name || item.key}`}
+                    title="Xóa cứng dự án"
+                    className="icon-button h-9 w-9 text-danger"
                     type="button"
                     onClick={async () => {
                       const answer = await ask({
@@ -305,7 +334,7 @@ export default function PlatformOperationsPanel() {
                       }
                     }}
                   >
-                    Xóa cứng
+                    <Trash2 aria-hidden="true" size={16} />
                   </button>
                 </span>
               ),
@@ -377,7 +406,9 @@ export default function PlatformOperationsPanel() {
               render: (item) => (
                 <span className="flex flex-wrap gap-2">
                   <button
-                    className="secondary-button"
+                    aria-label={`Kiểm tra kết nối nhà cung cấp ${valueLabel(item._id)}`}
+                    title="Kiểm tra kết nối"
+                    className="icon-button h-9 w-9"
                     type="button"
                     onClick={async () => {
                       try {
@@ -387,10 +418,12 @@ export default function PlatformOperationsPanel() {
                       }
                     }}
                   >
-                    Kiểm tra kết nối
+                    <PlugZap aria-hidden="true" size={16} />
                   </button>
                   <button
-                    className="secondary-button"
+                    aria-label={`${item.enabled ? "Tắt" : "Bật"} nhà cung cấp AI ${valueLabel(item._id)}`}
+                    title={item.enabled ? "Tắt nhà cung cấp" : "Bật nhà cung cấp"}
+                    className="icon-button h-9 w-9"
                     type="button"
                     onClick={async () => {
                       const answer = await ask({
@@ -417,7 +450,7 @@ export default function PlatformOperationsPanel() {
                       }
                     }}
                   >
-                    {item.enabled ? "Tắt" : "Bật"}
+                    <Power aria-hidden="true" size={16} />
                   </button>
                 </span>
               ),
@@ -467,7 +500,9 @@ export default function PlatformOperationsPanel() {
               render: (item) =>
                 String(item.status).toLowerCase() === "failed" ? (
                   <button
-                    className="secondary-button"
+                    aria-label={`Thử lại tác vụ ${item._id}`}
+                    title="Thử lại tác vụ"
+                    className="icon-button h-9 w-9"
                     type="button"
                     onClick={async () => {
                       try {
@@ -478,11 +513,13 @@ export default function PlatformOperationsPanel() {
                       }
                     }}
                   >
-                    Thử lại
+                    <RotateCcw aria-hidden="true" size={16} />
                   </button>
                 ) : String(item.status).toLowerCase() === "queued" ? (
                   <button
-                    className="danger-button"
+                    aria-label={`Hủy tác vụ ${item._id}`}
+                    title="Hủy tác vụ"
+                    className="icon-button h-9 w-9 text-danger"
                     type="button"
                     onClick={async () => {
                       try {
@@ -493,7 +530,7 @@ export default function PlatformOperationsPanel() {
                       }
                     }}
                   >
-                    Hủy
+                    <X aria-hidden="true" size={16} />
                   </button>
                 ) : null,
             },

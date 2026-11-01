@@ -1,3 +1,4 @@
+import { Eye } from "lucide-react";
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
 
@@ -22,9 +23,16 @@ export default function StrategyVersionHistory({ items, lineageId, onSelect }) {
         {
           key: "actions",
           label: "Thao tác",
+          minWidth: 64,
           render: (item) => (
-            <button className="secondary-button" type="button" onClick={() => onSelect(item)}>
-              Mở
+            <button
+              aria-label={`Mở phiên bản ${item.version}`}
+              className="icon-button h-10 w-10"
+              title="Mở phiên bản"
+              type="button"
+              onClick={() => onSelect(item)}
+            >
+              <Eye aria-hidden="true" size={17} />
             </button>
           ),
         },

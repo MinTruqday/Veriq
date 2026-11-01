@@ -34,6 +34,16 @@ class ScenarioCreate(BaseModel):
     status: Literal["draft", "in_review", "approved", "archived"] = "draft"
     origin: Literal["manual", "ai_generated", "import"] = "manual"
     category: TestScenarioCategory = "happy_path"
+    description: str = Field(default="", max_length=10000)
+    actors: list[str] = Field(default_factory=list, max_length=100)
+    preconditions: str = Field(default="", max_length=5000)
+    business_flow: str = Field(default="", max_length=10000)
+    expected_outcome: str = Field(default="", max_length=5000)
+    test_data_notes: str = Field(default="", max_length=5000)
+    test_level: Literal["", "UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"] | None = None
+    test_kind: str = Field(default="", max_length=100)
+    owner_id: str | None = Field(default=None, max_length=200)
+    tags: list[str] = Field(default_factory=list, max_length=100)
 
 
 class ScenarioPatch(BaseModel):
@@ -46,6 +56,16 @@ class ScenarioPatch(BaseModel):
     acceptance_criterion_ids: list[str] | None = Field(default=None, max_length=500)
     test_condition_ids: list[str] | None = Field(default=None, max_length=500)
     category: TestScenarioCategory | None = None
+    description: str | None = Field(default=None, max_length=10000)
+    actors: list[str] | None = Field(default=None, max_length=100)
+    preconditions: str | None = Field(default=None, max_length=5000)
+    business_flow: str | None = Field(default=None, max_length=10000)
+    expected_outcome: str | None = Field(default=None, max_length=5000)
+    test_data_notes: str | None = Field(default=None, max_length=5000)
+    test_level: Literal["", "UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"] | None = None
+    test_kind: str | None = Field(default=None, max_length=100)
+    owner_id: str | None = Field(default=None, max_length=200)
+    tags: list[str] | None = Field(default=None, max_length=100)
 
 
 class TestStep(BaseModel):

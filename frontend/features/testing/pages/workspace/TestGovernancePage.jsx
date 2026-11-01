@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Eye, Pencil } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import StrategyVersionHistory from "../../components/StrategyVersionHistory";
 import TestStrategyEditor from "../../components/TestStrategyEditor";
@@ -9,7 +10,6 @@ import {
   InitialLoadState,
   Panel,
   ProjectCrumb,
-  StatusPill,
   WorkspacePage,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
@@ -29,6 +29,8 @@ const strategyFindingLabels = {
   STRATEGY_REPORTING_CADENCE_MISSING: "Bổ sung chu kỳ báo cáo.",
   STRATEGY_QUALITY_OBJECTIVE_MISSING: "Bổ sung mục tiêu chất lượng.",
 };
+const governanceBadgeClass =
+  "inline-flex max-w-full items-center whitespace-nowrap rounded-full bg-surface-quiet px-2.5 py-1 text-[11px] font-semibold leading-4 text-ink-muted";
 
 export default function TestGovernancePage({ project }) {
   const { ask, dialog } = useActionDialog();
@@ -188,31 +190,93 @@ export default function TestGovernancePage({ project }) {
         <DataTable
           items={items}
           empty="Chưa có chiến lược kiểm thử"
+          layout="table"
+          renderMobileCard={(item) => {
+            const reviewers = (item.reviewer_ids || item.reviewers || []).length;
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="rounded-md bg-surface-quiet px-2.5 py-1 text-xs font-semibold text-ink">
+                      {item.key}
+                    </span>
+                    <span className={governanceBadgeClass}>{valueLabel(item.status)}</span>
+                    {item.active_approved && (
+                      <span className={governanceBadgeClass}>Đang áp dụng</span>
+                    )}
+                  </div>
+                  <button
+                    aria-label={`Mở chiến lược ${item.key}`}
+                    className="icon-button h-10 w-10 shrink-0"
+                    title="Mở chiến lược"
+                    type="button"
+                    onClick={() => setSelected(item)}
+                  >
+                    <Eye aria-hidden="true" size={17} />
+                  </button>
+                </div>
+                <div className="min-w-0">
+                  <h3 className="break-words text-[15px] font-semibold leading-6 text-ink [overflow-wrap:anywhere]">
+                    {item.name}
+                  </h3>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
+                    <span>Phiên bản {item.version}</span>
+                    {reviewers > 0 && <span>{reviewers} người rà soát</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          }}
           columns={[
-            { key: "key", label: "Mã" },
-            { key: "name", label: "Tên" },
-            { key: "version", label: "Phiên bản" },
-            { key: "created_by", label: "Người soạn" },
+            {
+              key: "key",
+              label: "Mã",
+              minWidth: 88,
+              render: (item) => <span className="whitespace-nowrap font-semibold">{item.key}</span>,
+            },
+            {
+              key: "name",
+              label: "Tên",
+              minWidth: 220,
+              render: (item) => (
+                <span className="block break-words font-medium [overflow-wrap:anywhere]">
+                  {item.name}
+                </span>
+              ),
+            },
+            { key: "version", label: "Phiên bản", minWidth: 72 },
             {
               key: "status",
               label: "Trạng thái",
-              render: (item) => <StatusPill value={item.status} />,
+              minWidth: 136,
+              render: (item) => (
+                <span className={governanceBadgeClass}>{valueLabel(item.status)}</span>
+              ),
             },
             {
               key: "active",
               label: "Hiệu lực",
-              render: (item) => (item.active_approved ? "Đang áp dụng" : ""),
+              minWidth: 126,
+              render: (item) =>
+                item.active_approved ? (
+                  <span className={governanceBadgeClass}>Đang áp dụng</span>
+                ) : (
+                  ""
+                ),
             },
             {
               key: "actions",
               label: "Thao tác",
+              minWidth: 64,
               render: (item) => (
                 <button
-                  className="secondary-button"
+                  aria-label={`Mở chiến lược ${item.key}`}
+                  className="icon-button h-10 w-10"
+                  title="Mở chiến lược"
                   type="button"
                   onClick={() => setSelected(item)}
                 >
-                  Mở
+                  <Eye aria-hidden="true" size={17} />
                 </button>
               ),
             },
@@ -225,8 +289,14 @@ export default function TestGovernancePage({ project }) {
           actions={
             <div className="flex flex-wrap gap-2">
               {can("teststrategy.update") && ["DRAFT", "IN_REVIEW"].includes(selected.status) && (
-                <button className="secondary-button" type="button" onClick={() => setEditing(true)}>
-                  Chỉnh sửa
+                <button
+                  className="icon-button h-9 w-9"
+                  type="button"
+                  aria-label={`Chỉnh sửa chiến lược ${selected.key}`}
+                  title="Chỉnh sửa chiến lược"
+                  onClick={() => setEditing(true)}
+                >
+                  <Pencil aria-hidden="true" size={16} />
                 </button>
               )}
               {can("teststrategy.review") && (

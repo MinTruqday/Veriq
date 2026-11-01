@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { projectTestingApi } from "../services/testing.projects";
+import FilePicker from "./FilePicker";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
 
 const columns = [
@@ -20,6 +21,22 @@ const statusLabels = {
   CONFLICT_EXISTING: "Trùng thời hạn với đơn giá hiện có",
   INVALID: "Dữ liệu lỗi",
 };
+
+function displayAmount(value) {
+  if (value == null || value === "") return "—";
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? amount.toLocaleString("vi-VN", { maximumFractionDigits: 4 })
+    : "—";
+}
+
+function displayCalendarDate(value) {
+  if (!value) return "—";
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("vi-VN");
+}
 
 export default function PayrollImportPanel() {
   const [file, setFile] = useState(null);
@@ -183,6 +200,13 @@ export default function PayrollImportPanel() {
 
   const saveCommercialTerms = async (event) => {
     event.preventDefault();
+    const contractPriceValue = String(commercialTerms.contract_price ?? "");
+    const contractPrice = Number(contractPriceValue);
+    const decimalPlaces = contractPriceValue.split(".")[1]?.length || 0;
+    if (!Number.isFinite(contractPrice) || contractPrice <= 0 || decimalPlaces > 4) {
+      setError("Nhập giá khách hàng lớn hơn 0 và tối đa 4 chữ số thập phân.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -252,6 +276,11 @@ export default function PayrollImportPanel() {
                     }))
                   }
                 />
+                {commercialTerms.contract_price !== "" && (
+                  <span className="mt-1 block text-sm font-medium text-ink">
+                    {displayAmount(commercialTerms.contract_price)} {commercialTerms.currency}
+                  </span>
+                )}
               </label>
               <label className="field-label">
                 Tiền tệ
@@ -338,15 +367,17 @@ export default function PayrollImportPanel() {
                 {forecast.status === "FORECAST_ONLY" ? (
                   <div className="mt-2 grid gap-1 text-ink-muted sm:grid-cols-2">
                     <p>
-                      Giá khách hàng: {forecast.customer_price} {forecast.currency}
+                      Giá khách hàng: {displayAmount(forecast.customer_price)} {forecast.currency}
                     </p>
                     <p>
-                      Nhân công dự kiến: {forecast.estimated_labor_cost} {forecast.currency}
+                      Nhân công dự kiến: {displayAmount(forecast.estimated_labor_cost)}{" "}
+                      {forecast.currency}
                     </p>
                     <p>
-                      Chênh lệch trước chi phí khác: {forecast.variance} {forecast.currency}
+                      Chênh lệch trước chi phí khác: {displayAmount(forecast.variance)}{" "}
+                      {forecast.currency}
                     </p>
-                    <p>Số giờ: {forecast.planned_effort_hours}</p>
+                    <p>Số giờ: {displayAmount(forecast.planned_effort_hours)}</p>
                     <p className="sm:col-span-2">
                       {forecast.comparison === "PRICE_BELOW_ESTIMATED_LABOR"
                         ? "Giá khách hàng thấp hơn riêng chi phí nhân công dự kiến."
@@ -368,7 +399,7 @@ export default function PayrollImportPanel() {
         )}
       </Panel>
       <Panel title="Bảng đơn giá nhân công">
-        <div className="space-y-4 p-4">
+        <div className="min-w-0 space-y-4 p-4">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
             <p className="min-w-0 max-w-3xl text-sm leading-5 text-ink-muted">
               Dùng mẫu CSV hoặc tệp CSV/XLSX có mã hoặc email nhân viên, đơn giá theo giờ, tiền tệ
@@ -382,22 +413,16 @@ export default function PayrollImportPanel() {
               Tải mẫu CSV
             </button>
           </div>
-          <form className="space-y-4" onSubmit={runPreview}>
-            <label className="field-label block">
-              Chọn bảng CSV hoặc XLSX
-              <input
-                className="peer sr-only"
-                type="file"
-                accept=".csv,.xlsx"
-                onChange={(event) => void selectFile(event.target.files?.[0] || null)}
-              />
-              <span className="peer-focus-visible:ring-2 peer-focus-visible:ring-brand mt-2 flex min-h-12 min-w-0 items-center gap-3 rounded-control border border-border bg-surface px-3">
-                <span className="secondary-button shrink-0">Chọn tệp</span>
-                <span aria-live="polite" className="min-w-0 truncate text-sm text-ink-muted">
-                  {file?.name || "Chưa chọn tệp"}
-                </span>
-              </span>
-            </label>
+          <form className="min-w-0 space-y-4" onSubmit={runPreview}>
+            <FilePicker
+              accept=".csv,.xlsx"
+              ariaLabel="Chọn bảng CSV hoặc XLSX"
+              className="w-full min-w-0 max-w-full"
+              fileName={file?.name || ""}
+              label="Chọn bảng CSV hoặc XLSX"
+              stacked
+              onChange={(event) => void selectFile(event.target.files?.[0] || null)}
+            />
             {headers.length > 0 && (
               <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {columns.map(([key, label]) => (
@@ -448,10 +473,11 @@ export default function PayrollImportPanel() {
                   <tr className="border-t border-border" key={row.row_number}>
                     <td className="p-2">{row.row_number}</td>
                     <td className="p-2">{row.user_id || row.employee_reference || "—"}</td>
-                    <td className="p-2">{row.hourly_cost || "—"}</td>
+                    <td className="p-2">{displayAmount(row.hourly_cost)}</td>
                     <td className="p-2">{row.currency || "—"}</td>
                     <td className="p-2">
-                      {row.valid_from || "—"} – {row.valid_until || "Không thời hạn"}
+                      {displayCalendarDate(row.valid_from)} –{" "}
+                      {row.valid_until ? displayCalendarDate(row.valid_until) : "Không thời hạn"}
                     </td>
                     <td className="p-2">
                       {row.error_code || statusLabels[row.status] || row.status}
@@ -509,10 +535,11 @@ export default function PayrollImportPanel() {
                     <td className="p-2">
                       {rate.employee?.display_name || rate.employee?.email || rate.user_id}
                     </td>
-                    <td className="p-2">{rate.hourly_cost}</td>
+                    <td className="p-2">{displayAmount(rate.hourly_cost)}</td>
                     <td className="p-2">{rate.currency}</td>
                     <td className="p-2">
-                      {rate.valid_from} – {rate.valid_until || "Không thời hạn"}
+                      {displayCalendarDate(rate.valid_from)} –{" "}
+                      {rate.valid_until ? displayCalendarDate(rate.valid_until) : "Không thời hạn"}
                     </td>
                   </tr>
                 ))}

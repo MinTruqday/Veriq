@@ -2,11 +2,8 @@ from fastapi import APIRouter, Depends, Query
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope, new_id
-from src.schemas.contracts.utility import (
-    ProjectQuestionInput,
-    SearchInput,
-)
 from src.modules.quality.services.analytics import AnalyticsService
+from src.schemas.contracts.utility import ProjectQuestionInput, SearchInput
 
 router = APIRouter(prefix="/kiem-thu", tags=["Phân tích kiểm thử"])
 
@@ -31,9 +28,7 @@ async def dashboard(project_id: str, user: CurrentUser = Depends(get_current_use
 
 @router.post("/du-an/{project_id}/tri-thuc/tim-kiem")
 async def search_knowledge(
-    project_id: str,
-    payload: SearchInput,
-    user: CurrentUser = Depends(get_current_user),
+    project_id: str, payload: SearchInput, user: CurrentUser = Depends(get_current_user)
 ):
     data, metadata = await AnalyticsService.search_knowledge(project_id, payload, user)
     return envelope(data, **metadata)
@@ -41,9 +36,7 @@ async def search_knowledge(
 
 @router.post("/du-an/{project_id}/ai/hoi-dap")
 async def ask_project(
-    project_id: str,
-    payload: ProjectQuestionInput,
-    user: CurrentUser = Depends(get_current_user),
+    project_id: str, payload: ProjectQuestionInput, user: CurrentUser = Depends(get_current_user)
 ):
     trace_id = new_id("TRC")
     data, metadata = await AnalyticsService.ask_project(project_id, payload, user, trace_id)
@@ -54,16 +47,19 @@ async def ask_project(
 async def project_audit(
     project_id: str,
     limit: int = Query(default=100, ge=1, le=500),
+    entity_type: str = Query(default="", max_length=100),
+    entity_id: str = Query(default="", max_length=200),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return envelope(await AnalyticsService.project_audit(project_id, limit, user))
+    return envelope(
+        await AnalyticsService.project_audit(
+            project_id, limit, user, entity_type=entity_type, entity_id=entity_id
+        )
+    )
 
 
 @router.get("/du-an/{project_id}/phan-tich-bao-tri")
-async def maintenance_analytics(
-    project_id: str,
-    user: CurrentUser = Depends(get_current_user),
-):
+async def maintenance_analytics(project_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await AnalyticsService.maintenance(project_id, user))
 
 
@@ -85,14 +81,7 @@ async def execution_report(
 ):
     return envelope(
         await AnalyticsService.execution_report(
-            project_id,
-            release,
-            release_id,
-            environment,
-            environment_id,
-            build,
-            build_id,
-            user,
+            project_id, release, release_id, environment, environment_id, build, build_id, user
         )
     )
 
@@ -110,14 +99,7 @@ async def defect_report(
 ):
     return envelope(
         await AnalyticsService.defect_report(
-            project_id,
-            release,
-            release_id,
-            environment,
-            environment_id,
-            build,
-            build_id,
-            user,
+            project_id, release, release_id, environment, environment_id, build, build_id, user
         )
     )
 

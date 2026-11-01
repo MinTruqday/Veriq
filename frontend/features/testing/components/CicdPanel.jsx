@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Power, RefreshCw } from "lucide-react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
@@ -131,8 +132,14 @@ export default function CicdPanel({ project }) {
               label: "Thao tác",
               render: (item) =>
                 can("cicd.manage") && canReadConnectors ? (
-                  <button className="secondary-button" type="button" onClick={() => toggle(item)}>
-                    {item.enabled ? "Tắt" : "Bật"}
+                  <button
+                    className="icon-button h-9 w-9"
+                    type="button"
+                    aria-label={item.enabled ? "Tắt kết nối CI/CD" : "Bật kết nối CI/CD"}
+                    title={item.enabled ? "Tắt kết nối CI/CD" : "Bật kết nối CI/CD"}
+                    onClick={() => toggle(item)}
+                  >
+                    <Power aria-hidden="true" size={16} />
                   </button>
                 ) : null,
             },
@@ -154,8 +161,14 @@ export default function CicdPanel({ project }) {
               label: "Đối soát",
               render: (item) =>
                 item.status === "FAILED" && can("cicd.retry") ? (
-                  <button className="secondary-button" type="button" onClick={() => retry(item)}>
-                    Thử đối soát lại
+                  <button
+                    className="icon-button h-9 w-9"
+                    type="button"
+                    aria-label="Thử đối soát lại"
+                    title="Thử đối soát lại"
+                    onClick={() => retry(item)}
+                  >
+                    <RefreshCw aria-hidden="true" size={16} />
                   </button>
                 ) : null,
             },

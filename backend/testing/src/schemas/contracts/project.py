@@ -2,7 +2,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
 
 class ProjectCreate(BaseModel):
     key: str = Field(min_length=2, max_length=30, pattern=r"^[A-Z][A-Z0-9_-]+$")
@@ -10,10 +11,7 @@ class ProjectCreate(BaseModel):
     description: str = Field(default="", max_length=5000)
     project_type: Literal["web", "mobile", "api", "desktop", "embedded", "other"] = "web"
     locale: str | None = Field(
-        default=None,
-        min_length=2,
-        max_length=35,
-        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+        default=None, min_length=2, max_length=35, pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
     )
     timezone: str = Field(default="Asia/Ho_Chi_Minh", min_length=2, max_length=80)
     settings: dict[str, Any] = Field(default_factory=dict)
@@ -103,6 +101,22 @@ class WorkItemCreate(BaseModel):
     due_at: datetime | None = None
     requirement_ids: list[str] = Field(default_factory=list, max_length=500)
     release_id: str | None = Field(default=None, min_length=1, max_length=200)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, values):
+        normalized = []
+        seen = set()
+        for value in values:
+            label = value.strip()
+            if not label or len(label) > 40:
+                raise ValueError("Mỗi thẻ phải có từ 1 đến 40 ký tự")
+            identity = label.casefold()
+            if identity not in seen:
+                seen.add(identity)
+                normalized.append(label)
+        return normalized
 
 
 class WorkItemPatch(BaseModel):
@@ -117,6 +131,24 @@ class WorkItemPatch(BaseModel):
     due_at: datetime | None = None
     requirement_ids: list[str] | None = Field(default=None, max_length=500)
     release_id: str | None = Field(default=None, min_length=1, max_length=200)
+    tags: list[str] | None = Field(default=None, max_length=20)
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, values):
+        if values is None:
+            return values
+        normalized = []
+        seen = set()
+        for value in values:
+            label = value.strip()
+            if not label or len(label) > 40:
+                raise ValueError("Mỗi thẻ phải có từ 1 đến 40 ký tự")
+            identity = label.casefold()
+            if identity not in seen:
+                seen.add(identity)
+                normalized.append(label)
+        return normalized
 
 
 class WorkItemTransition(BaseModel):
@@ -215,7 +247,9 @@ class ProjectTaskCreate(BaseModel):
     weight: float = Field(gt=0, le=1_000_000)
     assignee_id: str | None = Field(default=None, min_length=1, max_length=200)
     due_at: str | None = Field(default=None, max_length=80)
-    status: Literal["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "CANCELLED"] = "NOT_STARTED"
+    status: Literal["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED", "CANCELLED"] = (
+        "NOT_STARTED"
+    )
 
 
 class ProjectTaskPatch(BaseModel):
@@ -246,4 +280,3 @@ class ProjectMemberPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     project_role: Literal["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"] | None = None
     status: Literal["ACTIVE", "INACTIVE"] | None = None
-

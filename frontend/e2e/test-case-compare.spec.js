@@ -283,7 +283,7 @@ async function installWorkspace(
 
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname;
+    const path = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     let data = [];
 
     if (path === "/xac-thuc/ca-nhan") {
@@ -2347,7 +2347,7 @@ test("BA can manually run the AI check and send a Requirement draft for review",
   });
   await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/yeu-cau**`, async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname !== `/kiem-thu/du-an/${projectId}/yeu-cau`) {
+    if (url.pathname.replace(/^\/api(?=\/|$)/, "") !== `/kiem-thu/du-an/${projectId}/yeu-cau`) {
       await route.fallback();
       return;
     }
@@ -2512,7 +2512,7 @@ test("QA can accept a Requirement in review and baseline the current version", a
   });
   await page.route(`${apiBase}/kiem-thu/du-an/${projectId}/yeu-cau**`, async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname !== `/kiem-thu/du-an/${projectId}/yeu-cau`) {
+    if (url.pathname.replace(/^\/api(?=\/|$)/, "") !== `/kiem-thu/du-an/${projectId}/yeu-cau`) {
       await route.fallback();
       return;
     }
@@ -2718,7 +2718,7 @@ test("CV extraction stays private until the member confirms profile evidence", a
   await page.addInitScript(() => localStorage.setItem("veriq_token", "ui-skill-profile-session"));
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname;
+    const path = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     let data = [];
     if (path === "/xac-thuc/ca-nhan") {
       data = {
@@ -3026,7 +3026,9 @@ test("project workspace routes remain within the viewport at the standard deskto
       ).toBeVisible({ timeout: 15000 });
       await expect(page.locator('#main-content [aria-busy="true"]')).toHaveCount(0);
       if (route === "ca-kiem-thu" && width === 1440) {
-        await expect(page.getByRole("cell", { name: "Chức năng", exact: true })).toBeVisible();
+        await expect(
+          page.getByRole("cell", { name: "Ca kiểm thử đăng nhập", exact: true }),
+        ).toBeVisible();
         await expect(page.getByRole("cell", { name: "FUNCTIONAL", exact: true })).toHaveCount(0);
       }
       if (route === "yeu-cau" && width === 1440) {
@@ -3039,7 +3041,7 @@ test("project workspace routes remain within the viewport at the standard deskto
           viewport: table.parentElement.clientWidth,
         }));
         expect(tableDimensions.table).toBeLessThanOrEqual(tableDimensions.viewport + 2);
-        await expect(sourceTable.getByRole("columnheader")).toHaveCount(5);
+        await expect(sourceTable.getByRole("columnheader")).toHaveCount(6);
         await expect(sourceTable.getByText("Markdown")).toBeVisible();
         await expect(sourceTable.getByText("Không có số trang")).toHaveCount(0);
         await expect(sourceTable.getByText("Không nhận dạng chữ trong ảnh")).toHaveCount(0);

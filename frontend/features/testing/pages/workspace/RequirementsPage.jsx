@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import ReviewCommentsPanel from "../../components/ReviewCommentsPanel";
 import FormalReviewPanel from "../../components/FormalReviewPanel";
@@ -1437,8 +1438,14 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         <div className="space-y-2">
           <ErrorState message={error} />
           {!projectDataReady && (
-            <button type="button" className="secondary-button" onClick={() => void load()}>
-              Tải lại yêu cầu
+            <button
+              aria-label="Tải lại yêu cầu"
+              className="icon-button h-9 w-9"
+              title="Tải lại yêu cầu"
+              type="button"
+              onClick={() => void load()}
+            >
+              <RefreshCw aria-hidden="true" size={16} />
             </button>
           )}
         </div>

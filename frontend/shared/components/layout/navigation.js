@@ -117,7 +117,14 @@ export function testDesignSectionItems(projectId) {
       group.items.some((item) => item.id === "test-repository"),
     )?.items || [];
   return designItems.filter((item) =>
-    ["test-repository", "test-cases", "reusable-steps", "test-data", "test-sets"].includes(item.id),
+    [
+      "test-scenarios",
+      "test-repository",
+      "test-cases",
+      "reusable-steps",
+      "test-data",
+      "test-sets",
+    ].includes(item.id),
   );
 }
 
@@ -402,8 +409,38 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
       items: projectItems.planning,
     },
     { label: "Bảo đảm yêu cầu", items: projectItems.requirements },
-    { label: "Thiết kế kiểm thử", items: projectItems.design },
-    { label: "Kế hoạch và thực thi", items: projectItems.execution },
+    {
+      label: "Kế hoạch kiểm thử",
+      items: [
+        ...projectItems.execution.filter((item) => item.id === "test-plans"),
+        ...projectItems.design.filter((item) => item.id === "test-strategy"),
+      ],
+    },
+    {
+      label: "Thiết kế kiểm thử",
+      items: [
+        ...projectItems.design.filter((item) => item.id === "test-analysis"),
+        ...(projectId
+          ? [
+              {
+                id: "test-scenarios",
+                label: "Kịch bản kiểm thử",
+                href: `${root}/${PROJECT_SECTION_SLUGS.testCases}/kich-ban`,
+                icon: TestTube2,
+                permission: "testscenario.read",
+                permissions: ["testcase.read"],
+              },
+            ]
+          : []),
+        ...projectItems.design.filter(
+          (item) => !["test-strategy", "test-analysis"].includes(item.id),
+        ),
+      ],
+    },
+    {
+      label: "Thực thi kiểm thử",
+      items: projectItems.execution.filter((item) => item.id !== "test-plans"),
+    },
     { label: "Theo dõi", items: projectItems.quality },
     { label: "Tài liệu và cài đặt", items: projectItems.resources },
     {

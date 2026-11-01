@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Eye } from "lucide-react";
 import DataTable from "./DataTable";
 import PreventiveActionTable from "./PreventiveActionTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
@@ -446,8 +447,8 @@ export default function CausalAnalysisPanel({ project }) {
     >
       {dialog}
       <p className="px-5 pt-4 text-sm text-ink-muted">
-        Khi lỗi được ghi nhận, luồng AI tự động có thể tạo giả thuyết dựa trên bằng chứng. Màn hình
-        này chỉ đọc kết quả; giả thuyết không tự trở thành nguyên nhân gốc đã xác nhận.
+        Chọn “Tạo phân tích” khi cần AI xem xét lỗi. Kết quả là giả thuyết tham khảo, không tự xác
+        nhận nguyên nhân gốc.
       </p>
       {error && (
         <div className="p-4">
@@ -489,8 +490,10 @@ export default function CausalAnalysisPanel({ project }) {
               label: "Thao tác",
               render: (item) => (
                 <button
-                  className="secondary-button"
+                  className="icon-button h-9 w-9"
                   type="button"
+                  aria-label={`Mở phân tích nguyên nhân ${item.title || item._id}`}
+                  title="Mở phân tích nguyên nhân"
                   onClick={async () => {
                     try {
                       setSelected(await testingApi.getCausalAnalysis(item._id));
@@ -502,7 +505,7 @@ export default function CausalAnalysisPanel({ project }) {
                     }
                   }}
                 >
-                  Mở
+                  <Eye aria-hidden="true" size={16} />
                 </button>
               ),
             },

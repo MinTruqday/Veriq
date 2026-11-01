@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { Pencil } from "lucide-react";
 import DataTable from "./DataTable";
 import {
   EmptyState,
@@ -273,8 +274,14 @@ export default function TestCaseTemplatesPanel({ project }) {
                 </dl>
                 {canManage && (
                   <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-                    <button className="secondary-button" type="button" onClick={editTemplate}>
-                      Chỉnh sửa
+                    <button
+                      className="icon-button h-9 w-9"
+                      type="button"
+                      aria-label={`Chỉnh sửa mẫu ${selected.name}`}
+                      title="Chỉnh sửa mẫu"
+                      onClick={editTemplate}
+                    >
+                      <Pencil aria-hidden="true" size={16} />
                     </button>
                     {canArchive && (
                       <button className="danger-button" type="button" onClick={archiveTemplate}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Check, RotateCcw } from "lucide-react";
 import { docText, formatDate, messageOf, textDoc } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { ErrorState, Panel, StatusPill } from "./WorkspacePrimitives";
@@ -98,11 +99,17 @@ export default function ReviewCommentsPanel({
                   </div>
                   {(canModerate || (canUpdateOwn && item.author_id === currentUserId)) && (
                     <button
-                      className="secondary-button"
+                      className="icon-button h-9 w-9"
                       type="button"
+                      aria-label={item.status === "OPEN" ? "Đánh dấu đã xử lý" : "Mở lại nhận xét"}
+                      title={item.status === "OPEN" ? "Đánh dấu đã xử lý" : "Mở lại nhận xét"}
                       onClick={() => transition(item)}
                     >
-                      {item.status === "OPEN" ? "Đánh dấu đã xử lý" : "Mở lại"}
+                      {item.status === "OPEN" ? (
+                        <Check aria-hidden="true" size={16} />
+                      ) : (
+                        <RotateCcw aria-hidden="true" size={16} />
+                      )}
                     </button>
                   )}
                 </div>

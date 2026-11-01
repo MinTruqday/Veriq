@@ -119,7 +119,8 @@ class ProjectRepository:
             }
         )
 
-    async def fence_active_testers(self, project_id, user_ids, *, session):
+    async def fence_active_testers(self, project_id, user_ids, *, session, roles=("TESTER",)):
+        eligible_roles = list(roles)
         for user_id in sorted(set(user_ids)):
             result = await self.members.update_one(
                 {
@@ -127,8 +128,8 @@ class ProjectRepository:
                     "user_id": user_id,
                     "status": "ACTIVE",
                     "$or": [
-                        {"project_role": "TESTER"},
-                        {"project_roles": "TESTER"},
+                        {"project_role": {"$in": eligible_roles}},
+                        {"project_roles": {"$in": eligible_roles}},
                     ],
                 },
                 {"$inc": {"assignment_fence_revision": 1}},

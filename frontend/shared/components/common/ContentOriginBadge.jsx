@@ -1,4 +1,5 @@
-import { Sparkles, UserRound } from "lucide-react";
+import Image from "next/image";
+import { UserRound } from "lucide-react";
 
 const AI_ORIGINS = new Set([
   "ai",
@@ -29,7 +30,14 @@ export default function ContentOriginBadge({ origin, aiLabel, humanLabel = "Ngư
         className="inline-flex items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-900"
         data-content-origin="ai"
       >
-        <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+        <Image
+          alt=""
+          aria-hidden="true"
+          className="h-3.5 w-3.5 object-contain"
+          height={14}
+          src="/brand/veriq-logo.png"
+          width={14}
+        />
         {label}
       </span>
     );

@@ -127,14 +127,29 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
                 {item.unresolved.map((row, index) => {
                   const key = `${item._id}:${index}`;
                   return (
-                    <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]" key={key}>
-                      <p className="self-center text-sm">
-                        {row.classname ? `${row.classname} ` : ""}
-                        {row.name || "Kết quả không có tên ca kiểm thử"}
-                      </p>
+                    <div
+                      className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                      key={key}
+                    >
+                      <div className="min-w-0 self-center">
+                        <p
+                          className="line-clamp-3 break-words text-sm font-medium [overflow-wrap:anywhere]"
+                          title={row.name || "Kết quả không có tên ca kiểm thử"}
+                        >
+                          {row.name || "Kết quả không có tên ca kiểm thử"}
+                        </p>
+                        {row.classname && (
+                          <p
+                            className="mt-1 line-clamp-2 break-words text-xs text-ink-muted [overflow-wrap:anywhere]"
+                            title={row.classname}
+                          >
+                            {row.classname}
+                          </p>
+                        )}
+                      </div>
                       <select
                         aria-label={`Liên kết kết quả JUnit ${row.name || index + 1}`}
-                        className="apple-input"
+                        className="apple-input min-w-0"
                         value={mappings[key] || ""}
                         onChange={(event) =>
                           setMappings((current) => ({ ...current, [key]: event.target.value }))

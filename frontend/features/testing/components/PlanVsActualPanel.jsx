@@ -1,4 +1,5 @@
 import DataTable from "./DataTable";
+import { formatCalendarDate } from "../lib/testing";
 
 export default function PlanVsActualPanel({ snapshot }) {
   const metrics = snapshot?.metrics || {};
@@ -16,20 +17,27 @@ export default function PlanVsActualPanel({ snapshot }) {
       actual: metrics.expected_completion,
     },
   ];
-  const display = (value) =>
-    value == null || value === ""
-      ? "Chưa có"
-      : typeof value === "string" && value.includes("T")
-        ? new Date(value).toLocaleString("vi-VN")
-        : String(value);
+  const display = (value) => (value == null || value === "" ? "Chưa có" : String(value));
+  const displayDate = (value) =>
+    value == null || value === "" ? "Chưa có" : formatCalendarDate(value);
   return (
     <DataTable
       items={snapshot ? rows : []}
       empty="Chưa có bản ghi kế hoạch và kết quả để đối chiếu"
       columns={[
         { key: "metric", label: "Chỉ số" },
-        { key: "planned", label: "Kế hoạch", render: (item) => display(item.planned) },
-        { key: "actual", label: "Thực tế", render: (item) => display(item.actual) },
+        {
+          key: "planned",
+          label: "Kế hoạch",
+          render: (item) =>
+            item.metric.startsWith("Ngày") ? displayDate(item.planned) : display(item.planned),
+        },
+        {
+          key: "actual",
+          label: "Thực tế",
+          render: (item) =>
+            item.metric.startsWith("Ngày") ? displayDate(item.actual) : display(item.actual),
+        },
       ]}
     />
   );

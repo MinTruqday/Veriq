@@ -3,18 +3,6 @@ from src.core.infrastructure.redis import redis
 
 class CacheRepository:
     @staticmethod
-    async def store_google_oauth_state(state: str):
-        return await redis.setex(
-            f"google_oauth_state:{state}",
-            600,
-            "valid",
-        )
-
-    @staticmethod
-    async def consume_google_oauth_state(state: str):
-        return await redis.get_client().getdel(f"google_oauth_state:{state}")
-
-    @staticmethod
     async def count_patterns(patterns: list[str]):
         client = redis.get_client()
         total = 0

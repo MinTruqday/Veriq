@@ -107,6 +107,7 @@ services:
       - --api.dashboard=false
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      - --providers.docker.constraints=Label(`com.docker.compose.project`,`veriq`)
       - --entrypoints.web.address=:8000
       - --ping=true
       - --ping.entrypoint=web
@@ -151,6 +152,7 @@ services:
       target: runner
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+        INTERNAL_API_URL: ${INTERNAL_API_URL:?INTERNAL_API_URL is required}
     container_name: veriq_frontend
     restart: always
     logging: *container-logging
@@ -159,6 +161,7 @@ services:
     environment:
       NEXT_TELEMETRY_DISABLED: "1"
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:?INTERNAL_API_URL is required}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
@@ -265,6 +268,7 @@ services:
       NEO4J_USER: ${NEO4J_USER:?NEO4J_USER is required}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
       AI_TRACE_ENABLED: ${AI_TRACE_ENABLED:-true}
+      AI_DOMAIN_AUTOMATION_ENABLED: ${AI_DOMAIN_AUTOMATION_ENABLED:-false}
       AI_TRACE_ENDPOINT: ${AI_TRACE_ENDPOINT:-http://phoenix:6006/v1/traces}
       AI_TRACE_PROJECT: ${AI_TRACE_PROJECT:-veriq-ai}
       MCP_GITHUB_TOKEN: ${MCP_GITHUB_TOKEN:-}
@@ -462,12 +466,6 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:?EMBEDDING_MODEL is required}
       RERANKER_MODEL: ${RERANKER_MODEL:?RERANKER_MODEL is required}
       WORKER_INTERNAL_URL: ${WORKER_INTERNAL_URL:?WORKER_INTERNAL_URL is required}
-      GOOGLE_AUTH_URL: ${GOOGLE_AUTH_URL:?GOOGLE_AUTH_URL is required}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:?GOOGLE_REDIRECT_URI is required}
-      GOOGLE_TOKEN_URL: ${GOOGLE_TOKEN_URL:?GOOGLE_TOKEN_URL is required}
-      GOOGLE_USERINFO_URL: ${GOOGLE_USERINFO_URL:?GOOGLE_USERINFO_URL is required}
       PASSKEY_ALLOWED_ORIGINS: ${PASSKEY_ALLOWED_ORIGINS:?PASSKEY_ALLOWED_ORIGINS is required}
       PASSKEY_RP_ID: ${PASSKEY_RP_ID:?PASSKEY_RP_ID is required}
       PASSKEY_RP_NAME: ${PASSKEY_RP_NAME:?PASSKEY_RP_NAME is required}

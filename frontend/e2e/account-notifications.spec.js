@@ -38,7 +38,7 @@ test("account profile, session controls and notification preferences use their A
   await authenticate(page, user);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     const method = request.method();
     if (pathname === "/xac-thuc/ca-nhan" && method === "GET") {
       await jsonResponse(route, { ...user, full_name: profileName });
@@ -134,7 +134,7 @@ test("password change preserves entered values after a rejection and updates ses
   await authenticate(page, user);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     const method = request.method();
     if (pathname === "/xac-thuc/ca-nhan" && method === "GET") {
       await jsonResponse(route, user);
@@ -206,7 +206,7 @@ test("notification list reads, marks, deletes and reports API failures without l
   await authenticate(page, user);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     const method = request.method();
     if (pathname === "/xac-thuc/ca-nhan" && method === "GET") {
       await jsonResponse(route, user);
@@ -292,7 +292,7 @@ test("notification settings retry after load failure and retain edits after save
   await authenticate(page, user);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     const method = request.method();
     if (pathname === "/xac-thuc/ca-nhan" && method === "GET") {
       await jsonResponse(route, user);
@@ -342,7 +342,7 @@ test("notification settings retry after load failure and retain edits after save
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const responsePromise = page.waitForResponse(
       (response) =>
-        new URL(response.url()).pathname === "/thong-bao/cai-dat" &&
+        new URL(response.url()).pathname.replace(/^\/api(?=\/|$)/, "") === "/thong-bao/cai-dat" &&
         response.request().method() === "GET",
     );
     await page.getByRole("button", { name: "Tải lại" }).click();
@@ -376,7 +376,7 @@ test("a platform admin can create an account through the account administration 
   await authenticate(page, admin);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     const method = request.method();
     if (pathname === "/xac-thuc/ca-nhan" && method === "GET") {
       await jsonResponse(route, admin);
@@ -448,7 +448,7 @@ test("account and notification pages fit desktop, tablet and mobile viewports", 
   };
   await authenticate(page, user);
   await page.route(`${apiBase}/**`, async (route) => {
-    const pathname = new URL(route.request().url()).pathname;
+    const pathname = new URL(route.request().url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan") {
       await jsonResponse(route, user);
       return;
@@ -505,7 +505,7 @@ test("payroll import uses a localized file control and stays aligned on a narrow
   await authenticate(page, admin);
   await page.route(`${apiBase}/**`, async (route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const pathname = new URL(request.url()).pathname.replace(/^\/api(?=\/|$)/, "");
     if (pathname === "/xac-thuc/ca-nhan") {
       await jsonResponse(route, admin);
       return;
@@ -540,25 +540,66 @@ test("payroll import uses a localized file control and stays aligned on a narrow
   await expect(page.getByText("Chưa chọn tệp", { exact: true })).toBeVisible();
   await expect(page.getByText("Dùng mẫu CSV hoặc tệp CSV/XLSX", { exact: false })).toBeVisible();
   await expect(page.getByText("Chỉ Admin được xem", { exact: false })).toHaveCount(0);
+  const longFileName = `bang-luong-${"nhan-vien-kiem-thu-van-hanh-".repeat(8)}2026.xlsx`;
   await fileInput.setInputFiles({
-    name: "bang-luong.csv",
-    mimeType: "text/csv",
-    buffer: Buffer.from("employee,hourly_cost,currency,valid_from,valid_until\n"),
+    name: longFileName,
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(""),
   });
-  await expect(page.getByText("bang-luong.csv", { exact: true })).toBeVisible();
+  await expect(page.locator('span[title="' + longFileName + '"]')).toBeVisible();
   await expect(page.getByLabel("Mã nhân viên hoặc email")).toHaveValue("employee");
   expect(headerReadCount).toBe(1);
 
-  const narrowLayout = await page.evaluate(() => ({
-    viewport: window.innerWidth,
-    document: document.documentElement.scrollWidth,
-  }));
-  expect(narrowLayout.document).toBeLessThanOrEqual(narrowLayout.viewport);
-
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const desktopLayout = await page.evaluate(() => ({
-    viewport: window.innerWidth,
-    document: document.documentElement.scrollWidth,
-  }));
-  expect(desktopLayout.document).toBeLessThanOrEqual(desktopLayout.viewport);
+  for (const width of [390, 680, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await fileInput.evaluate((input) => {
+      const frame = input.parentElement;
+      const fileName = frame?.querySelector("span[title]");
+      const chooseButton = frame?.querySelector("label[for]");
+      const panel = frame?.closest("section.workspace-panel");
+      const panelBounds = panel?.getBoundingClientRect();
+      const frameBounds = frame?.getBoundingClientRect();
+      const buttonBounds = chooseButton?.getBoundingClientRect();
+      const fileNameBounds = fileName?.getBoundingClientRect();
+      return {
+        viewport: window.innerWidth,
+        document: document.documentElement.scrollWidth,
+        panelLeft: panelBounds?.left,
+        panelRight: panelBounds?.right,
+        frameLeft: frameBounds?.left,
+        frameRight: frameBounds?.right,
+        frameContentOverflows: frame ? frame.scrollWidth > frame.clientWidth : true,
+        buttonLeft: buttonBounds?.left,
+        buttonRight: buttonBounds?.right,
+        fileNameLeft: fileNameBounds?.left,
+        fileNameRight: fileNameBounds?.right,
+        textOverflow: fileName ? getComputedStyle(fileName).textOverflow : "",
+        filenameClips: fileName ? fileName.scrollWidth > fileName.clientWidth : false,
+      };
+    });
+    expect(layout.document, `page overflows at ${width}px`).toBeLessThanOrEqual(width);
+    expect(layout.frameLeft, `file control escapes the panel at ${width}px`).toBeGreaterThanOrEqual(
+      layout.panelLeft,
+    );
+    expect(layout.frameRight, `file control escapes the panel at ${width}px`).toBeLessThanOrEqual(
+      layout.panelRight,
+    );
+    expect(layout.frameContentOverflows, `file control content overflows at ${width}px`).toBe(
+      false,
+    );
+    expect(layout.buttonLeft, `file button escapes the frame at ${width}px`).toBeGreaterThanOrEqual(
+      layout.frameLeft,
+    );
+    expect(layout.buttonRight, `file button escapes the frame at ${width}px`).toBeLessThanOrEqual(
+      layout.frameRight,
+    );
+    expect(layout.fileNameLeft, `filename escapes the frame at ${width}px`).toBeGreaterThanOrEqual(
+      layout.frameLeft,
+    );
+    expect(layout.fileNameRight, `filename escapes the frame at ${width}px`).toBeLessThanOrEqual(
+      layout.frameRight,
+    );
+    expect(layout.textOverflow).toBe("ellipsis");
+    expect(layout.filenameClips, `long filename is not clipped at ${width}px`).toBe(true);
+  }
 });

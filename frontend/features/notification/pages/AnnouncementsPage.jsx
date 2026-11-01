@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Check, Trash2 } from "lucide-react";
 import EmptyState from "@/shared/components/common/EmptyState";
 import PageLoader from "@/shared/components/common/PageLoader";
 import { Button } from "@/shared/components/ui/Button";
@@ -116,20 +117,24 @@ export default function AnnouncementsPage() {
                       )}
                       {!item.is_read && (
                         <button
+                          aria-label="Đánh dấu đã đọc"
                           type="button"
                           onClick={() => markRead(id)}
-                          className="font-semibold text-ink-muted underline-offset-4 hover:text-ink hover:underline"
+                          className="icon-button h-9 w-9"
+                          title="Đánh dấu đã đọc"
                         >
-                          Đánh dấu đã đọc
+                          <Check aria-hidden="true" size={16} />
                         </button>
                       )}
                       <button
+                        aria-label="Xóa thông báo"
                         type="button"
                         onClick={() => remove(id)}
                         disabled={processing}
-                        className="font-semibold text-ink-muted underline-offset-4 hover:text-danger hover:underline disabled:opacity-50"
+                        className="icon-button h-9 w-9 text-danger"
+                        title="Xóa thông báo"
                       >
-                        Xóa
+                        <Trash2 aria-hidden="true" size={16} />
                       </button>
                     </div>
                   </div>

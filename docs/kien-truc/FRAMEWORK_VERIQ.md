@@ -1,5 +1,7 @@
 # Framework Veriq
 
+Luồng nghiệp vụ đang được nâng cấp theo [Luồng nghiệp vụ kiểm thử](LUONG_NGHIEP_VU_KIEM_THU.md). Tài liệu đó ghi hợp đồng mới, thay đổi tương thích và bằng chứng kiểm chứng. Các mô tả sự kiện AI tự động bên dưới cần được đọc cùng chế độ mặc định người dùng bấm chạy của luồng mới.
+
 ## Mục đích và căn cứ
 
 Tài liệu này thay thế bản framework trước và chỉ mô tả hành vi đã đối chiếu trong mã nguồn Veriq
