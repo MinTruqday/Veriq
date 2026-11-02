@@ -120,7 +120,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-quiet hover:text-ink"
+            className="sticky top-0 z-30 ml-auto -mb-10 mr-4 flex h-10 w-10 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-quiet hover:text-ink"
             aria-label="Đóng"
           >
             <X className="w-5 h-5" />
@@ -133,7 +133,11 @@ export function Modal({
   );
 }
 export function ModalHeader({ children, className }) {
-  return <div className={cn("border-b border-border p-6 pr-16", className)}>{children}</div>;
+  return (
+    <div className={cn("sticky top-0 z-20 border-b border-border bg-surface p-6 pr-16", className)}>
+      {children}
+    </div>
+  );
 }
 export function ModalTitle({ children, className }) {
   return (
