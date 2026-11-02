@@ -318,9 +318,8 @@ async def run_ai_analysis(project_id, payload, user):
     event_scoped = bool(payload.source_event_id or payload.source_event_revision)
     automation_trigger = str(getattr(user, "_ai_automation_trigger", "") or "")
     source_version_id = None
-    if (
-        not event_scoped
-        or not payload.source_event_id
+    if event_scoped and (
+        not payload.source_event_id
         or payload.source_event_revision is None
         or not getattr(user, "_ai_automation_run_id", "")
         or automation_trigger != "REQUIREMENT_CHANGED"
@@ -360,6 +359,12 @@ async def run_ai_analysis(project_id, payload, user):
             raise HTTPException(409, detail={"code": "TEST_CONDITION_EVENT_KEY_CONFLICT"})
         return existing
     basis_snapshots = await resolve_basis(project_id, payload.basis_refs, user)
+    if not event_scoped and any(
+        item.get("artifact_type") == "REQUIREMENT_VERSION"
+        and item.get("status") != "BASELINED"
+        for item in basis_snapshots
+    ):
+        raise HTTPException(409, detail={"code": "TEST_BASIS_NOT_BASELINED"})
     if event_scoped:
         version = await requirement_analysis_repository.find_version(
             source_version_id, project_id
@@ -423,6 +428,16 @@ async def run_ai_analysis(project_id, payload, user):
             or current_basis[0].get("source_hash") != initial_source_hash
         ):
             raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
+        basis_snapshots = current_basis
+    else:
+        current_basis = await resolve_basis(project_id, payload.basis_refs, user)
+        if len(current_basis) != len(basis_snapshots) or any(
+            current.get("resolved_id") != initial.get("resolved_id")
+            or current.get("source_hash") != initial.get("source_hash")
+            or current.get("text") != initial.get("text")
+            for initial, current in zip(basis_snapshots, current_basis)
+        ):
+            raise HTTPException(409, detail={"code": "TEST_BASIS_SOURCE_CHANGED"})
         basis_snapshots = current_basis
     suggestions = ai_result.get("suggestions", [])
     if not isinstance(suggestions, list) or any(not isinstance(item, dict) for item in suggestions):
@@ -511,20 +526,39 @@ async def run_ai_analysis(project_id, payload, user):
 
 
 async def condition_coverage(project_id, user):
-    
     await get_project(project_id, user, 'testcondition.read')
-    conditions = await test_analysis_repository.list_conditions(
-        project_id, 'ARCHIVED', 5000
+    condition_limit = 5000
+    scenario_limit = 5000
+    case_limit = 10000
+    condition_values = await test_analysis_repository.list_conditions(
+        project_id, 'ARCHIVED', condition_limit
     )
+    conditions_truncated = len(condition_values) > condition_limit
+    conditions = condition_values[:condition_limit]
     condition_ids = [item["_id"] for item in conditions]
-    scenarios = await test_analysis_repository.list_scenarios(
-        project_id, condition_ids, 5000
+    scenario_values = (
+        await test_analysis_repository.list_scenarios(
+            project_id, condition_ids, scenario_limit
+        )
+        if condition_ids
+        else []
     )
-    case_versions = await test_analysis_repository.list_case_versions(
-        project_id,
-        condition_ids,
-        [item["_id"] for item in scenarios],
-        10000,
+    scenarios_truncated = len(scenario_values) > scenario_limit
+    scenarios = scenario_values[:scenario_limit]
+    case_values = (
+        await test_analysis_repository.list_case_versions(
+            project_id,
+            condition_ids,
+            [item["_id"] for item in scenarios],
+            case_limit,
+        )
+        if condition_ids
+        else []
+    )
+    cases_truncated = len(case_values) > case_limit
+    case_versions = case_values[:case_limit]
+    scope_complete = not (
+        conditions_truncated or scenarios_truncated or cases_truncated
     )
     rows = []
     for condition in conditions:
@@ -539,6 +573,13 @@ async def condition_coverage(project_id, user):
             if condition["_id"] in item.get("test_condition_ids", [])
             or item.get("scenario_id") in linked_scenarios
         ]
+        coverage_status = (
+            "COVERED"
+            if linked_cases
+            else "UNCOVERED"
+            if scope_complete
+            else "UNKNOWN"
+        )
         rows.append(
             {
                 "condition_id": condition["_id"],
@@ -547,13 +588,30 @@ async def condition_coverage(project_id, user):
                 "basis_refs": condition["basis_refs"],
                 "scenario_ids": linked_scenarios,
                 "test_case_version_ids": linked_cases,
-                "uncovered": not linked_cases,
+                "coverage_status": coverage_status,
+                "uncovered": coverage_status == "UNCOVERED",
             }
         )
+    truncated_sources = [
+        name
+        for name, truncated in (
+            ("conditions", conditions_truncated),
+            ("scenarios", scenarios_truncated),
+            ("test_case_versions", cases_truncated),
+        )
+        if truncated
+    ]
     return {
         "items": rows,
         "condition_count": len(rows),
         "uncovered_count": sum(item["uncovered"] for item in rows),
+        "scope_complete": scope_complete,
+        "scope_limits": {
+            "conditions": condition_limit,
+            "scenarios": scenario_limit,
+            "test_case_versions": case_limit,
+        },
+        "truncated_sources": truncated_sources,
     }
 
 

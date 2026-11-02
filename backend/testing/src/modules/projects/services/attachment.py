@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
-from src.core.common import audit, get_project, get_project_entity, get_project_role, new_id, now
+from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now
 from src.repositories.test_design import test_design_repository
 from src.schemas.contracts.requirements import (
     AttachmentCreate,
@@ -20,6 +20,16 @@ class AttachmentService:
                 detail={"code": 'ATTACHMENT_REFERENCE_INCOMPLETE'},
             )
         if payload.artifact_type and payload.artifact_id:
+            target_permissions = {
+                "requirement": "requirement.update",
+                "requirement_document": "requirement_document.upload",
+                "test_case_draft": "testcase.update",
+                "test_case_version": "testcase.update",
+                "test_result": "testrun.execute",
+            }
+            target_permission = target_permissions.get(payload.artifact_type)
+            if target_permission:
+                await get_project(project_id, user, target_permission)
             collection = {
                 "requirement": "requirements",
                 "requirement_document": "requirement_documents",
@@ -40,6 +50,31 @@ class AttachmentService:
                 from src.modules.requirements.services.requirement_documents import get_requirement_document_record
 
                 await get_requirement_document_record(payload.artifact_id, user)
+            elif collection == "test_results":
+                from src.modules.execution.services.execution_state import require_case_execution_assignment
+                from src.repositories.test_run import test_run_repository
+
+                result = await test_run_repository.find_result(payload.artifact_id)
+                if not result or result.get("project_id") != project_id:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": 'ATTACHMENT_ARTIFACT_NOT_FOUND'},
+                    )
+                run = await test_run_repository.find_run(result.get("test_run_id"), project_id)
+                if not run:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": 'ATTACHMENT_ARTIFACT_NOT_FOUND'},
+                    )
+                await require_case_execution_assignment(
+                    run, result.get("test_case_version_id"), user
+                )
+                executor_id = result.get("executed_by") or result.get("executor_id")
+                if executor_id and executor_id != user.id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail={"code": 'TEST_RESULT_EXECUTOR_MISMATCH'},
+                    )
             elif not await test_design_repository.artifact_exists(
                 collection, project_id, payload.artifact_id
             ):
@@ -87,10 +122,10 @@ class AttachmentService:
     ):
         await get_project(project_id, user, "attachment.read")
         query = {"project_id": project_id, "status": 'ACTIVE'}
-        role = await get_project_role(project_id, user.id)
-        if role == 'VIEWER' and artifact_type == "defect":
+        roles = await get_project_roles(project_id, user.id)
+        if 'VIEWER' in roles and artifact_type == "defect":
             return []
-        if role == 'VIEWER':
+        if 'VIEWER' in roles:
             query["artifact_type"] = {"$ne": "defect"}
         if artifact_type:
             query["artifact_type"] = artifact_type

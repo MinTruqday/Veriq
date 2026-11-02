@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
-from src.core.common import audit, get_project, get_project_role, get_project_roles, new_id, now, resolve_user_reference
+from src.core.common import audit, get_project, get_project_roles, new_id, now, resolve_user_reference
 from src.core.database import database
 from src.repositories.project import project_repository
 from src.repositories.work_item import work_item_repository

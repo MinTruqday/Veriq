@@ -43,7 +43,16 @@ class InternalAdminRepository:
             {
                 "project_id": project_id,
                 "status": "ACTIVE",
-                "$or": [{"project_role": role}, {"project_roles": role}],
+                "$or": [
+                    {"project_role": role},
+                    {
+                        "$and": [
+                            {"project_role": {"$exists": False}},
+                            {"project_roles": role},
+                            {"project_roles": {"$size": 1}},
+                        ]
+                    },
+                ],
             }
         ).sort([("created_at", 1), ("_id", 1)]).to_list(1000)
 

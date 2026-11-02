@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import timedelta
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
@@ -35,20 +36,116 @@ async def get_latest_requirement_quality_analysis(version_id, user):
 
 
 async def analyze_requirement_quality(version_id, payload, user):
-    
     version = await get_project_entity("requirement_versions", version_id, user, "ai.run_lint")
-    query = {
+    idempotency_query = {
         "project_id": version["project_id"],
         "artifact_id": version_id,
-        "result_type": 'REQUIREMENT_QUALITY_ANALYSIS',
         "idempotency_key": payload.idempotency_key,
     }
-    existing = await requirement_ai_repository.find_finding(query)
-    if existing:
-        return existing
     acceptance_criteria = await requirement_ai_repository.list_acceptance_criteria(
         version_id, 200
     )
+    source_text = json.dumps(
+        {
+            "title": version.get("title"),
+            "content": version.get("plain_text_projection")
+            or plain_text(version.get("content_doc", {})),
+            "actors": version.get("actors", []),
+            "business_rules": version.get("business_rules", []),
+            "acceptance_criteria": [
+                str(item.get("plain_text") or "").strip()
+                for item in acceptance_criteria
+                if str(item.get("plain_text") or "").strip()
+            ],
+            "dependencies": version.get("dependencies", []),
+            "tags": version.get("tags", []),
+        },
+        ensure_ascii=False,
+    )
+    source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    request_fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "actor_id": user.id,
+                "requirement_version_id": version_id,
+                "revision": version.get("revision"),
+                "status": version.get("status"),
+                "source_hash": source_hash,
+                "instruction": payload.instruction,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    timestamp = now()
+    claim_token = new_id("RQAI")
+    lease_expires_at = timestamp + timedelta(minutes=5)
+    existing = await requirement_ai_repository.find_quality_analysis_request(
+        idempotency_query
+    )
+    if existing:
+        if existing.get("request_fingerprint") and existing["request_fingerprint"] != request_fingerprint:
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+        if existing.get("result_type") == "REQUIREMENT_QUALITY_ANALYSIS":
+            return existing
+        claim = await requirement_ai_repository.reclaim_quality_analysis_claim(
+            existing["_id"],
+            request_fingerprint,
+            timestamp,
+            claim_token,
+            lease_expires_at,
+        )
+        if not claim:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "REQUIREMENT_QUALITY_ANALYSIS_IN_PROGRESS", "retryable": True},
+            )
+        claim_id = claim["_id"]
+    else:
+        claim_id = new_id("AIF")
+        claim = {
+            "_id": claim_id,
+            **idempotency_query,
+            "artifact_type": "requirement_version",
+            "result_type": "REQUIREMENT_QUALITY_ANALYSIS_PENDING",
+            "request_fingerprint": request_fingerprint,
+            "source_hash": source_hash,
+            "artifact_revision": version.get("revision"),
+            "created_by": user.id,
+            "created_at": timestamp,
+            "claimed_at": timestamp,
+            "lease_expires_at": lease_expires_at,
+            "claim_token": claim_token,
+            "attempt": 1,
+        }
+        try:
+            await requirement_ai_repository.insert_quality_analysis_claim(claim)
+        except DuplicateKeyError:
+            existing = await requirement_ai_repository.find_quality_analysis_request(
+                idempotency_query
+            )
+            if existing and existing.get("request_fingerprint") and existing["request_fingerprint"] != request_fingerprint:
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            if existing and existing.get("result_type") == "REQUIREMENT_QUALITY_ANALYSIS":
+                return existing
+            if existing:
+                claim = await requirement_ai_repository.reclaim_quality_analysis_claim(
+                    existing["_id"],
+                    request_fingerprint,
+                    timestamp,
+                    claim_token,
+                    lease_expires_at,
+                )
+                if claim:
+                    claim_id = claim["_id"]
+                else:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "REQUIREMENT_QUALITY_ANALYSIS_IN_PROGRESS", "retryable": True},
+                    )
+            else:
+                raise
     deterministic_findings = [
         {
             **item,
@@ -66,93 +163,120 @@ async def analyze_requirement_quality(version_id, payload, user):
             "authority": 'PROJECT_BASELINE'
             if version.get("status") == 'BASELINED'
             else 'DRAFT',
-            "text": json.dumps(
-                {
-                    "title": version.get("title"),
-                    "content": version.get("plain_text_projection")
-                    or plain_text(version.get("content_doc", {})),
-                    "actors": version.get("actors", []),
-                    "business_rules": version.get("business_rules", []),
-                    "acceptance_criteria": [
-                        str(item.get("plain_text") or "").strip()
-                        for item in acceptance_criteria
-                        if str(item.get("plain_text") or "").strip()
-                    ],
-                    "dependencies": version.get("dependencies", []),
-                    "tags": version.get("tags", []),
-                },
-                ensure_ascii=False,
-            ),
+            "text": source_text,
         }
     ]
     instruction = json.dumps({"user_instruction": payload.instruction}, ensure_ascii=False)
-    ai_result = await request_ai_automation(
-        "requirement_quality_analysis", version["project_id"], instruction, evidence
-    )
-    ai_findings = [
-        {
-            **item,
-            "rule_id": item.get(
-                "reason_codes", [item.get("category", 'AI_FINDING')]
-            )[0],
-            "origin": 'AI',
-            "span": None,
-        }
-        for item in ai_result.get("findings", [])
-    ]
-    aggregate = {"patch": {}, "target_fields": [], "evidence_refs": [], "reason_codes": []}
-    for candidate in ai_result.get("suggestions", []):
-        ai_suggestion = prepare_requirement_ai_suggestion(candidate, acceptance_criteria)
-        if not requirement_suggestion_changes(version, ai_suggestion, acceptance_criteria):
-            continue
-        for field in ("revised_title", "revised_content", "rationale"):
-            if ai_suggestion.get(field):
-                aggregate[field] = ai_suggestion[field]
-        if isinstance(ai_suggestion.get("patch"), dict):
-            aggregate["patch"].update(ai_suggestion["patch"])
-        for field in ("target_fields", "evidence_refs", "reason_codes"):
-            aggregate[field] = list(
-                dict.fromkeys([*aggregate[field], *ai_suggestion.get(field, [])])
-            )
-    aggregate["origin"] = 'AI'
-    suggestions = []
-    if requirement_suggestion_changes(version, aggregate, acceptance_criteria):
-        suggestions.append(
-            {
-                **aggregate,
-                "suggestion_id": 'REQ-SUG-1',
-                "status": 'CANDIDATE',
-                "candidate_only": True,
-            }
-        )
-    findings = deterministic_findings + ai_findings
-    contract_metadata = ai_contract_metadata(ai_result)
-    if contract_metadata.get("degraded_mode") is None:
-        contract_metadata["degraded_mode"] = False
-    result = {
-        "_id": new_id('AIF'),
-        "project_id": version["project_id"],
-        "artifact_type": 'requirement_version',
-        "artifact_id": version_id,
-        "result_type": 'REQUIREMENT_QUALITY_ANALYSIS',
-        "requirement_version_id": version_id,
-        "artifact_revision": version.get("revision"),
-        "source_hash": hashlib.sha256(evidence[0]["text"].encode("utf-8")).hexdigest(),
-        "findings": findings,
-        "suggestions": suggestions,
-        "valid": ai_result.get("status") == 'SUCCESS'
-        and not ai_result.get("degraded_mode")
-        and not any(item["severity"] == 'error' for item in findings),
-        **contract_metadata,
-        "idempotency_key": payload.idempotency_key,
-        "human_confirmation_required": True,
-        "created_by": user.id,
-        "created_at": now(),
-    }
     try:
+        ai_result = await request_ai_automation(
+            "requirement_quality_analysis", version["project_id"], instruction, evidence
+        )
+        current_version = await get_project_entity(
+            "requirement_versions", version_id, user, "ai.run_lint"
+        )
+        current_criteria = await requirement_ai_repository.list_acceptance_criteria(
+            version_id, 200
+        )
+        current_source_text = json.dumps(
+            {
+                "title": (current_version or {}).get("title"),
+                "content": (current_version or {}).get("plain_text_projection")
+                or plain_text((current_version or {}).get("content_doc", {})),
+                "actors": (current_version or {}).get("actors", []),
+                "business_rules": (current_version or {}).get("business_rules", []),
+                "acceptance_criteria": [
+                    str(item.get("plain_text") or "").strip()
+                    for item in current_criteria
+                    if str(item.get("plain_text") or "").strip()
+                ],
+                "dependencies": (current_version or {}).get("dependencies", []),
+                "tags": (current_version or {}).get("tags", []),
+            },
+            ensure_ascii=False,
+        )
+        current_source_hash = hashlib.sha256(current_source_text.encode("utf-8")).hexdigest()
+        if (
+            not current_version
+            or current_version.get("project_id") != version["project_id"]
+            or current_version.get("revision") != version.get("revision")
+            or current_version.get("status") != version.get("status")
+            or current_source_hash != source_hash
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "REQUIREMENT_QUALITY_ANALYSIS_SOURCE_CHANGED", "retryable": True},
+            )
+        ai_findings = [
+            {
+                **item,
+                "rule_id": item.get(
+                    "reason_codes", [item.get("category", 'AI_FINDING')]
+                )[0],
+                "origin": 'AI',
+                "span": None,
+            }
+            for item in ai_result.get("findings", [])
+        ]
+        aggregate = {"patch": {}, "target_fields": [], "evidence_refs": [], "reason_codes": []}
+        for candidate in ai_result.get("suggestions", []):
+            ai_suggestion = prepare_requirement_ai_suggestion(candidate, acceptance_criteria)
+            if not requirement_suggestion_changes(version, ai_suggestion, acceptance_criteria):
+                continue
+            for field in ("revised_title", "revised_content", "rationale"):
+                if ai_suggestion.get(field):
+                    aggregate[field] = ai_suggestion[field]
+            if isinstance(ai_suggestion.get("patch"), dict):
+                aggregate["patch"].update(ai_suggestion["patch"])
+            for field in ("target_fields", "evidence_refs", "reason_codes"):
+                aggregate[field] = list(
+                    dict.fromkeys([*aggregate[field], *ai_suggestion.get(field, [])])
+                )
+        aggregate["origin"] = 'AI'
+        suggestions = []
+        if requirement_suggestion_changes(version, aggregate, acceptance_criteria):
+            suggestions.append(
+                {
+                    **aggregate,
+                    "suggestion_id": 'REQ-SUG-1',
+                    "status": 'CANDIDATE',
+                    "candidate_only": True,
+                }
+            )
+        findings = deterministic_findings + ai_findings
+        contract_metadata = ai_contract_metadata(ai_result)
+        if contract_metadata.get("degraded_mode") is None:
+            contract_metadata["degraded_mode"] = False
+        result = {
+            "_id": claim_id,
+            "project_id": version["project_id"],
+            "artifact_type": 'requirement_version',
+            "artifact_id": version_id,
+            "result_type": 'REQUIREMENT_QUALITY_ANALYSIS',
+            "requirement_version_id": version_id,
+            "artifact_revision": version.get("revision"),
+            "source_hash": source_hash,
+            "request_fingerprint": request_fingerprint,
+            "findings": findings,
+            "suggestions": suggestions,
+            "valid": ai_result.get("status") == 'SUCCESS'
+            and not ai_result.get("degraded_mode")
+            and not any(item["severity"] == 'error' for item in findings),
+            **contract_metadata,
+            "idempotency_key": payload.idempotency_key,
+            "human_confirmation_required": True,
+            "created_by": user.id,
+            "created_at": timestamp,
+        }
         async with await database.client.start_session() as session:
             async with session.start_transaction():
-                await requirement_ai_repository.insert_finding(result, session=session)
+                replaced = await requirement_ai_repository.replace_quality_analysis_claim(
+                    claim_id, claim_token, result, session=session
+                )
+                if not replaced:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "REQUIREMENT_QUALITY_ANALYSIS_CLAIM_LOST", "retryable": True},
+                    )
                 await audit(
                     user.id,
                     "requirement_quality_analyzed",
@@ -162,10 +286,10 @@ async def analyze_requirement_quality(version_id, payload, user):
                     {"requirement_version_id": version_id, "status": result["status"]},
                     session=session,
                 )
-    except DuplicateKeyError:
-        existing = await requirement_ai_repository.find_finding(query)
-        if existing:
-            return existing
+    except Exception:
+        await requirement_ai_repository.release_quality_analysis_claim(
+            claim_id, claim_token
+        )
         raise
     return result
 

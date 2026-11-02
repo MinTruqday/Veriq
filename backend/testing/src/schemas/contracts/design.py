@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.core.sensitive_data import secret_pattern
 from src.schemas.contracts.common import empty_doc
 from src.schemas.contracts.utility import TestDesignChallengeInput
 
@@ -432,11 +433,10 @@ class DataSetCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_secret_policy(self):
-        sensitive_markers = ("password", "passwd", "token", "secret", "api_key", "private_key")
         unsafe_keys = [
             key
             for key in self.variables
-            if any(marker in key.lower() for marker in sensitive_markers)
+            if secret_pattern().search(key)
         ]
         if unsafe_keys:
             raise ValueError("Dữ liệu bí mật phải được khai báo bằng secret_refs")
@@ -525,6 +525,15 @@ class ProposalAction(BaseModel):
     expected_revision: int = Field(ge=1)
     patch: dict[str, Any] | None = None
     review_note: str = Field(default="", max_length=2000)
+    review_reason_code: Literal[
+        "OUT_OF_SCOPE",
+        "INCORRECT",
+        "INCOMPLETE",
+        "DUPLICATE",
+        "UNSUPPORTED_BY_SOURCE",
+        "RISK_ACCEPTED",
+        "OTHER",
+    ] | None = None
 
 
 class ProposalRegenerateInput(BaseModel):

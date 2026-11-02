@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from src.clients.ai_automation import ai_automation_client
 from src.core.common import new_id, now
 from src.core.database import database
+from src.core.sensitive_data import redact_sensitive_data
 from src.core.metrics import AI_GENERATION_LATENCY, AI_REQUESTS
 
 stream_sink: ContextVar[Callable[[dict], Awaitable[None]] | None] = ContextVar(
@@ -109,21 +110,23 @@ async def request_ai_automation(capability, project_id, instruction, evidence, *
             project = await database.value.projects.find_one({"_id": project_id}, {"locale": 1})
             output_language = (project or {}).get("locale")
         sink = stream_sink.get()
+        safe_instruction = redact_sensitive_data(instruction)
+        safe_evidence = redact_sensitive_data(evidence)
         if sink:
             await sink(
                 {
                     "type": "accepted",
-                    "characters": len(str(instruction or ""))
-                    + sum(len(str(item.get("text") or "")) for item in evidence),
+                    "characters": len(str(safe_instruction or ""))
+                    + sum(len(str(item.get("text") or "")) for item in safe_evidence),
                 }
             )
         result = await ai_automation_client.request(
             {
                 "capability": capability,
                 "project_id": project_id,
-                "instruction": instruction,
+                "instruction": safe_instruction,
                 "output_language": output_language,
-                "evidence": evidence,
+                "evidence": safe_evidence,
             },
             sink,
         )

@@ -39,6 +39,30 @@ class ProjectCapabilities(BaseModel):
     can_create_project: bool
 
 
+class ProjectComplexityAssessmentInput(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    instruction: str = Field(default="", max_length=5000)
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    document_ids: list[str] = Field(max_length=5000)
+    requirement_version_ids: list[str] = Field(max_length=5000)
+
+    @field_validator("document_ids", "requirement_version_ids")
+    @classmethod
+    def validate_scope_ids(cls, values):
+        if len(values) != len(set(values)) or any(
+            not value.strip() or len(value) > 200 for value in values
+        ):
+            raise ValueError("INVALID_PROJECT_COMPLEXITY_SCOPE_IDS")
+        return values
+
+    @model_validator(mode="after")
+    def require_scope(self):
+        if not self.document_ids and not self.requirement_version_ids:
+            raise ValueError("PROJECT_COMPLEXITY_SOURCE_SCOPE_REQUIRED")
+        return self
+
+
 class ProjectPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)

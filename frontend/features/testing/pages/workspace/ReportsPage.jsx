@@ -62,6 +62,7 @@ const aiCapabilityLabels = {
   test_condition_generation: "Đề xuất điều kiện kiểm thử",
   test_plan_draft_generation: "Đề xuất Test Plan",
   test_data_generation: "Tạo dữ liệu kiểm thử",
+  execution_assistance: "Hỗ trợ thực thi kiểm thử",
   impact_analysis: "Phân tích ảnh hưởng",
   project_question: "Hỏi đáp dự án",
   security_test_generation: "Đề xuất kiểm thử bảo mật",
@@ -78,14 +79,44 @@ function aiCapabilityLabel(value) {
 }
 
 function countRows(values, key) {
-  return Object.entries(values || {}).map(([name, count]) => ({
-    _id: name,
-    name,
-    count,
-    label: aiCapabilityLabel(name),
-    key,
-  }));
+  const rows = [];
+  let otherCount = 0;
+  for (const [name, count] of Object.entries(values || {})) {
+    const label = aiCapabilityLabels[name];
+    if (!label) {
+      otherCount += Number(count || 0);
+      continue;
+    }
+    rows.push({ _id: name, name, count, label, key });
+  }
+  if (otherCount)
+    rows.push({ _id: "other", name: "other", count: otherCount, label: "Chức năng khác", key });
+  return rows;
 }
+
+const aiDecisionReasonLabels = {
+  OUT_OF_SCOPE: "Ngoài phạm vi",
+  INCORRECT: "Thông tin chưa đúng",
+  INCOMPLETE: "Thiếu nội dung",
+  DUPLICATE: "Trùng lặp",
+  UNSUPPORTED_BY_SOURCE: "Nguồn chưa đủ căn cứ",
+  RISK_ACCEPTED: "Đã chấp nhận rủi ro",
+  OTHER: "Lý do khác",
+};
+
+const aiChangedFieldLabels = {
+  title: "Tên ca kiểm thử",
+  objective_doc: "Mục tiêu",
+  preconditions_doc: "Điều kiện trước",
+  steps: "Các bước",
+  test_data: "Dữ liệu kiểm thử",
+  expected_result_doc: "Kết quả mong đợi",
+  postconditions_doc: "Điều kiện sau",
+  tags: "Nhãn",
+  techniques: "Kỹ thuật kiểm thử",
+  requirement_version_ids: "Liên kết yêu cầu",
+  acceptance_criterion_ids: "Tiêu chí chấp nhận",
+};
 
 function ReportMetric({ label, value, detail }) {
   const unavailable = value === "Chưa đủ dữ liệu" || value === "Chưa có lỗi đang mở";
@@ -139,7 +170,7 @@ export default function ReportsPage({ project }) {
       scope.build,
   );
   const reportTabs = [
-    ...(canReadAnalytics || canReadCoverage || canReadReports
+    ...(canReadAnalytics || canReadAiAnalytics || canReadCoverage || canReadReports
       ? [{ id: "summary", label: "Tổng quan" }]
       : []),
     ...(can("teststatusreport.read") || can("testcompletion.read")
@@ -647,9 +678,17 @@ export default function ReportsPage({ project }) {
                       <section>
                         <h3 className="mb-2 text-sm font-medium">Quyết định duyệt đề xuất</h3>
                         <DataTable
-                          items={Object.entries(value.ai.proposal_status || {}).map(
-                            ([status, count]) => ({ _id: status, status, count }),
-                          )}
+                          items={
+                            Array.isArray(value.ai.proposal_status)
+                              ? value.ai.proposal_status.map((item) => ({
+                                  _id: item._id || item.status,
+                                  status: item._id || item.status,
+                                  count: item.count,
+                                }))
+                              : Object.entries(value.ai.proposal_status || {}).map(
+                                  ([status, count]) => ({ _id: status, status, count }),
+                                )
+                          }
                           empty="Chưa có đề xuất được duyệt hoặc từ chối"
                           columns={[
                             {
@@ -670,19 +709,142 @@ export default function ReportsPage({ project }) {
                           ghi lý do:{" "}
                           {metricCount(value.ai.rejection_review_note_missing_count || 0)}
                         </p>
+                        <p className="mt-2 text-xs text-ink-muted">
+                          Báo cáo chỉ tổng hợp dữ liệu đã lưu. Những quyết định cũ chưa có mã lý do
+                          hoặc danh sách trường thay đổi sẽ được giữ là chưa ghi nhận.
+                        </p>
+                        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">Lý do đã chọn</h4>
+                            <DataTable
+                              items={Object.entries(
+                                value.ai.decision_feedback?.reason_code_counts || {},
+                              ).map(([reason, count]) => ({
+                                _id: reason,
+                                reason,
+                                count,
+                                label: aiDecisionReasonLabels[reason] || valueLabel(reason),
+                              }))}
+                              empty="Chưa có mã lý do được ghi nhận"
+                              columns={[
+                                { key: "label", label: "Lý do" },
+                                { key: "count", label: "Số lần" },
+                              ]}
+                            />
+                          </div>
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">Nội dung thường được chỉnh</h4>
+                            <DataTable
+                              items={Object.entries(
+                                value.ai.decision_feedback?.changed_field_counts || {},
+                              ).map(([field, count]) => ({
+                                _id: field,
+                                field,
+                                count,
+                                label: aiChangedFieldLabels[field] || valueLabel(field),
+                              }))}
+                              empty="Chưa ghi nhận trường được chỉnh"
+                              columns={[
+                                { key: "label", label: "Nội dung" },
+                                { key: "count", label: "Số lần" },
+                              ]}
+                            />
+                          </div>
+                        </div>
+                        <p className="mt-2 text-xs text-ink-muted">
+                          Đã từ chối nhưng chưa chọn lý do:{" "}
+                          {metricCount(
+                            value.ai.decision_feedback?.decisions_without_reason_code || 0,
+                          )}
+                          {value.ai.decision_feedback?.sample_truncated
+                            ? " · Số liệu dựa trên tối đa 10.000 quyết định gần nhất"
+                            : ""}
+                        </p>
                       </section>
                       <section>
-                        <h3 className="mb-2 text-sm font-medium">Phiên bản mô hình xử lý</h3>
-                        <DataTable
-                          items={Object.entries(
-                            value.ai.ai_request_metrics?.model_versions || {},
-                          ).map(([model, count]) => ({ _id: model, model, count }))}
-                          empty="Chưa ghi nhận phiên bản mô hình"
-                          columns={[
-                            { key: "model", label: "Phiên bản" },
-                            { key: "count", label: "Số lượt" },
-                          ]}
-                        />
+                        <h3 className="mb-2 text-sm font-medium">
+                          Phản hồi với Test Case do AI đề xuất
+                        </h3>
+                        <p className="mb-3 text-xs text-ink-muted">
+                          Chỉ tính ca có nguồn gốc AI. Bản duyệt được so với đề xuất ban đầu; nội
+                          dung ghi chú và người duyệt không xuất hiện trong báo cáo này.
+                        </p>
+                        <div className="grid gap-4 xl:grid-cols-3">
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">Quyết định đã duyệt</h4>
+                            <DataTable
+                              items={Object.entries(
+                                value.ai.ai_test_case_feedback?.approved_decision_counts || {},
+                              ).map(([decision, count]) => ({
+                                _id: decision,
+                                decision,
+                                count,
+                                label: valueLabel(decision),
+                              }))}
+                              empty="Chưa có Test Case AI được duyệt"
+                              columns={[
+                                { key: "label", label: "Kết quả" },
+                                { key: "count", label: "Số lượng" },
+                              ]}
+                            />
+                          </div>
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">Lý do yêu cầu chỉnh sửa</h4>
+                            <DataTable
+                              items={Object.entries(
+                                value.ai.ai_test_case_feedback?.changes_requested_reason_counts ||
+                                  {},
+                              ).map(([reason, count]) => ({
+                                _id: reason,
+                                reason,
+                                count,
+                                label: aiDecisionReasonLabels[reason] || valueLabel(reason),
+                              }))}
+                              empty="Chưa có lý do được ghi nhận"
+                              columns={[
+                                { key: "label", label: "Lý do" },
+                                { key: "count", label: "Số lần" },
+                              ]}
+                            />
+                          </div>
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">Trường thường được chỉnh</h4>
+                            <DataTable
+                              items={Object.entries(
+                                value.ai.ai_test_case_feedback?.changed_field_counts || {},
+                              ).map(([field, count]) => ({
+                                _id: field,
+                                field,
+                                count,
+                                label: aiChangedFieldLabels[field] || valueLabel(field),
+                              }))}
+                              empty="Chưa ghi nhận trường được chỉnh"
+                              columns={[
+                                { key: "label", label: "Nội dung" },
+                                { key: "count", label: "Số lần" },
+                              ]}
+                            />
+                          </div>
+                        </div>
+                        <p className="mt-3 text-xs text-ink-muted">
+                          Đề xuất đã tạo:{" "}
+                          {metricCount(value.ai.ai_test_case_feedback?.generated_draft_count || 0)}{" "}
+                          · Yêu cầu chỉnh sửa:{" "}
+                          {metricCount(
+                            value.ai.ai_test_case_feedback?.changes_requested_count || 0,
+                          )}{" "}
+                          · Phiên bản AI đã duyệt trong báo cáo:{" "}
+                          {metricCount(
+                            Object.values(
+                              value.ai.ai_test_case_feedback?.approved_decision_counts || {},
+                            ).reduce((total, count) => total + Number(count || 0), 0),
+                          )}
+                          {value.ai.ai_test_case_feedback?.generated_draft_sample_truncated ||
+                          value.ai.ai_test_case_feedback?.changes_requested_sample_truncated ||
+                          value.ai.ai_test_case_feedback?.approved_version_sample_truncated
+                            ? " · Một hoặc nhiều danh sách được giới hạn ở 10.000 bản ghi gần nhất"
+                            : ""}
+                        </p>
                       </section>
                     </div>
                   </details>

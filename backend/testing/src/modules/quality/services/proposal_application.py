@@ -12,6 +12,7 @@ from src.modules.quality.services.maintenance_proposal import (
     require_pending_revision,
     update_proposal_acceptance_rate,
 )
+from src.modules.quality.services.impact_analysis import require_current_impact_source
 from src.clients.project_knowledge import index_artifact
 from src.modules.design.services.test_case_records import create_test_case_draft_record, project_test_text
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
@@ -54,6 +55,13 @@ async def apply_maintenance_proposal(proposal_id, payload, user, final_status):
         )
         return {"proposal": proposal, "result": result}
     previous_status = proposal["status"]
+    if previous_status == 'PENDING':
+        analysis = await proposal_application_repository.find_impact_analysis(
+            proposal.get("impact_analysis_id")
+        )
+        if not analysis or analysis.get("status") != 'REVIEWED':
+            raise HTTPException(status_code=409, detail={"code": 'IMPACT_REVIEW_REQUIRED'})
+        await require_current_impact_source(analysis, user, "proposal.approve")
     if previous_status == 'APPLYING':
         if proposal.get("revision") != payload.expected_revision:
             raise HTTPException(
@@ -128,7 +136,14 @@ async def apply_maintenance_proposal(proposal_id, payload, user, final_status):
         raise HTTPException(
             status_code=409, detail={"code": 'PROPOSAL_APPLY_IN_PROGRESS'}
         )
+    original_patch = proposal.get("ai_original_patch", proposal.get("patch", {}))
     patch = {**proposal.get("patch", {}), **(payload.patch or {})}
+    changed_fields = sorted(
+        key
+        for key in set(original_patch) | set(patch)
+        if original_patch.get(key) != patch.get(key)
+    )
+    final_status = "EDITED_ACCEPTED" if final_status == "EDITED_ACCEPTED" or changed_fields else "ACCEPTED"
     try:
         if previous_status in {'APPLY_PARTIAL', 'APPLYING'} and proposal.get("partial_version_id"):
             partial_version = await proposal_application_repository.find_test_version(
@@ -261,6 +276,9 @@ async def apply_maintenance_proposal(proposal_id, payload, user, final_status):
             "applied_artifact_id": result.get("_id"),
             "apply_lease_expires_at": None,
             "review_note": payload.review_note,
+            "decision_reason_code": payload.review_reason_code or proposal.get("review_reason_code"),
+            "changed_fields": changed_fields,
+            "ai_original_patch": original_patch,
             "reviewed_by": user.id,
             "reviewed_at": now(),
             "updated_at": now(),

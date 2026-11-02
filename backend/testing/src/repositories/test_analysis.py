@@ -22,12 +22,12 @@ class TestAnalysisRepository:
     async def list_conditions(self, project_id, archived_status, limit):
         return await database.value.test_conditions.find(
             {"project_id": project_id, "status": {"$ne": archived_status}}
-        ).to_list(limit)
+        ).sort([("_id", 1)]).limit(limit + 1).to_list(limit + 1)
 
     async def list_scenarios(self, project_id, condition_ids, limit):
         return await database.value.test_scenarios.find(
             {"project_id": project_id, "test_condition_ids": {"$in": condition_ids}}
-        ).to_list(limit)
+        ).sort([("_id", 1)]).limit(limit + 1).to_list(limit + 1)
 
     async def list_case_versions(self, project_id, condition_ids, scenario_ids, limit):
         return await database.value.test_cases.aggregate([
@@ -42,8 +42,9 @@ class TestAnalysisRepository:
                     {"scenario_id": {"$in": scenario_ids}},
                 ],
             }},
-            {"$limit": limit},
-        ]).to_list(limit)
+            {"$sort": {"_id": 1}},
+            {"$limit": limit + 1},
+        ]).to_list(limit + 1)
 
     async def list_findings(self, query, limit):
         return await database.value.test_analysis_findings.find(query).sort(

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LoaderCircle, Sparkles } from "lucide-react";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import StructuredValueEditor from "../../../components/StructuredValueEditor";
 import { ErrorState } from "../../../components/WorkspacePrimitives";
 import { messageOf } from "../../../lib/testing";
@@ -82,7 +83,7 @@ export default function DataSetCreateModal({
         <ModalTitle>Tạo bộ dữ liệu</ModalTitle>
       </ModalHeader>
       <form className="grid min-w-0 gap-3 p-5" onSubmit={onSubmit}>
-        {can("ai.generate_testcase") && (
+        {can("testdata.create") && (
           <section className="grid min-w-0 gap-3 rounded-control border border-border p-4">
             <div>
               <h3 className="font-medium">Đề xuất dữ liệu từ yêu cầu</h3>
@@ -181,8 +182,20 @@ export default function DataSetCreateModal({
                         )
                       }
                     />
-                    <span className="min-w-0 break-words text-sm">
-                      <strong>{item.variable_name}</strong> · {item.purpose}
+                    <div className="min-w-0 break-words text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong>{item.variable_name}</strong>
+                        <ContentOriginBadge origin="ai_generated" />
+                      </div>
+                      <p className="mt-1 text-ink-muted">{item.purpose}</p>
+                      <p className="mt-2 text-xs font-medium text-ink-muted">Đang có</p>
+                      <p className="mt-1 whitespace-pre-wrap">
+                        {Array.isArray(form.variables?.[item.variable_name])
+                          ? form.variables[item.variable_name].join(", ")
+                          : String(form.variables?.[item.variable_name] ?? "").trim() ||
+                            "Chưa có giá trị"}
+                      </p>
+                      <p className="mt-2 text-xs font-medium text-violet-800">AI đề xuất</p>
                       <span className="mt-1 block text-ink-muted">
                         {{ positive: "Hợp lệ", negative: "Không hợp lệ", boundary: "Biên" }[
                           item.category
@@ -206,7 +219,7 @@ export default function DataSetCreateModal({
                           })
                           .join(" · ")}
                       </span>
-                    </span>
+                    </div>
                   </label>
                 ))}
                 <button

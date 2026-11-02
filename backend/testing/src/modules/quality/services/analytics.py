@@ -529,16 +529,37 @@ class AnalyticsService:
             },
             10000,
             sort=("reviewed_at", -1),
-            projection={"proposal_type": 1, "status": 1, "review_note": 1},
+            projection={
+                "proposal_type": 1,
+                "status": 1,
+                "review_note": 1,
+                "decision_reason_code": 1,
+                "changed_fields": 1,
+            },
         )
         proposal_type_counts = {}
+        decision_reason_counts = {}
+        changed_field_counts = {}
+        decision_counts = {"ACCEPTED": 0, "EDITED_ACCEPTED": 0, "REJECTED": 0}
         for item in proposal_rows:
             proposal_type = str(item.get("proposal_type") or "UNCLASSIFIED")
             proposal_type_counts[proposal_type] = proposal_type_counts.get(proposal_type, 0) + 1
+            status = item.get("status")
+            if status in decision_counts:
+                decision_counts[status] += 1
+            reason_code = item.get("decision_reason_code")
+            if isinstance(reason_code, str) and reason_code:
+                decision_reason_counts[reason_code] = decision_reason_counts.get(reason_code, 0) + 1
+            for field_name in item.get("changed_fields") or []:
+                if isinstance(field_name, str) and field_name:
+                    changed_field_counts[field_name] = changed_field_counts.get(field_name, 0) + 1
         rejected_rows = [item for item in proposal_rows if item.get("status") == "REJECTED"]
         ai_results = await analytics_repository.list_records(
             "ai_results",
-            {"project_id": project_id},
+            {
+                "project_id": project_id,
+                "result_type": {"$ne": "EXECUTION_ASSISTANCE_PENDING"},
+            },
             10000,
             sort=("created_at", -1),
             projection={
@@ -643,6 +664,52 @@ class AnalyticsService:
             "action",
             100,
         )
+        ai_test_drafts = await analytics_repository.list_records(
+            "test_case_drafts",
+            {"project_id": project_id, "origin": "ai_generated"},
+            10000,
+            sort=("created_at", -1),
+            projection={"_id": 1},
+        )
+        ai_test_draft_ids = [item["_id"] for item in ai_test_drafts]
+        ai_test_change_events = (
+            await analytics_repository.list_records(
+                "audit_events",
+                {
+                    "project_id": project_id,
+                    "action": "test_case_changes_requested",
+                    "entity_id": {"$in": ai_test_draft_ids},
+                },
+                10000,
+                sort=("created_at", -1),
+                projection={"details.review_reason_code": 1},
+            )
+            if ai_test_draft_ids
+            else []
+        )
+        ai_case_versions = await analytics_repository.list_records(
+            "test_case_versions",
+            {"project_id": project_id, "origin": "ai_generated", "ai_review_feedback": {"$ne": None}},
+            10000,
+            sort=("created_at", -1),
+            projection={"ai_review_feedback": 1},
+        )
+        ai_case_decisions = {}
+        ai_case_changed_fields = {}
+        for item in ai_case_versions:
+            feedback = item.get("ai_review_feedback") or {}
+            decision = feedback.get("decision")
+            if isinstance(decision, str):
+                ai_case_decisions[decision] = ai_case_decisions.get(decision, 0) + 1
+            for field_name in feedback.get("changed_fields") or []:
+                if isinstance(field_name, str) and field_name:
+                    ai_case_changed_fields[field_name] = ai_case_changed_fields.get(field_name, 0) + 1
+        ai_case_change_reasons = {}
+        for item in ai_test_change_events:
+            details = item.get("details") if isinstance(item.get("details"), dict) else {}
+            reason_code = details.get("review_reason_code")
+            if isinstance(reason_code, str) and reason_code:
+                ai_case_change_reasons[reason_code] = ai_case_change_reasons.get(reason_code, 0) + 1
         impact_rows = await analytics_repository.list_records(
             "impact_analyses",
             {"project_id": project_id},
@@ -680,6 +747,29 @@ class AnalyticsService:
                 1 for item in rejected_rows if not str(item.get("review_note") or "").strip()
             ),
             "proposal_type_counts": proposal_type_counts,
+            "decision_feedback": {
+                "sample_count": len(proposal_rows),
+                "sample_truncated": len(proposal_rows) == 10000,
+                "decision_counts": decision_counts,
+                "reason_code_counts": decision_reason_counts,
+                "changed_field_counts": changed_field_counts,
+                "decisions_without_reason_code": sum(
+                    1
+                    for item in proposal_rows
+                    if item.get("status") == "REJECTED" and not item.get("decision_reason_code")
+                ),
+                "source": "FINALIZED_MAINTENANCE_PROPOSALS",
+            },
+            "ai_test_case_feedback": {
+                "generated_draft_count": len(ai_test_drafts),
+                "generated_draft_sample_truncated": len(ai_test_drafts) == 10000,
+                "approved_decision_counts": ai_case_decisions,
+                "changed_field_counts": ai_case_changed_fields,
+                "changes_requested_count": len(ai_test_change_events),
+                "changes_requested_reason_counts": ai_case_change_reasons,
+                "changes_requested_sample_truncated": len(ai_test_change_events) == 10000,
+                "approved_version_sample_truncated": len(ai_case_versions) == 10000,
+            },
             "proposal_feedback_sample_truncated": len(proposal_rows) == 10000,
             "ai_request_metrics": {
                 "request_count": len(ai_requests),

@@ -1,3 +1,4 @@
+import re
 from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -123,13 +124,9 @@ class StatusReportNarrativeSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     executive_summary: str = Field(min_length=2, max_length=10000)
-    progress_summary: str = Field(min_length=2, max_length=10000)
-    coverage_summary: str = Field(min_length=2, max_length=10000)
-    defect_summary: str = Field(min_length=2, max_length=10000)
+    risk_explanation: str = Field(min_length=2, max_length=10000)
     forecast: str = Field(min_length=2, max_length=10000)
-    recommendation: Literal[
-        "ON_TRACK", "AT_RISK", "BLOCKED", "CONTINUE_TESTING", "READY_WITH_RISK", "NOT_READY"
-    ]
+    recommendation_narrative: str = Field(min_length=2, max_length=10000)
 
 
 class StatusReportNarrativeOutput(BaseModel):
@@ -142,6 +139,35 @@ class StatusReportNarrativeOutput(BaseModel):
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def reject_machine_status_values(self):
+        machine_values = (
+            "ON_TRACK",
+            "AT_RISK",
+            "BLOCKED",
+            "CONTINUE_TESTING",
+            "READY_WITH_RISK",
+            "NOT_READY",
+            "NOT_MET",
+        )
+        for suggestion in self.suggestions:
+            for field in (
+                suggestion.executive_summary,
+                suggestion.risk_explanation,
+                suggestion.forecast,
+                suggestion.recommendation_narrative,
+            ):
+                if any(
+                    re.search(
+                        rf"\b{value}\b",
+                        field,
+                        flags=0 if value == "BLOCKED" else re.IGNORECASE,
+                    )
+                    for value in machine_values
+                ):
+                    raise ValueError("status_report_machine_status_value_exposed")
+        return self
 
 
 class CompletionReportNarrativeSuggestionOutput(BaseModel):
@@ -165,6 +191,19 @@ class CompletionReportNarrativeOutput(BaseModel):
     warnings: List[str] = Field(default_factory=list, max_length=20)
 
 
+class TestPlanFieldEvidenceOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: Literal[
+        "objective", "scope_in", "scope_out", "test_approach", "test_level", "test_types",
+        "environment", "entry_criteria", "exit_criteria", "risks", "assumptions",
+        "constraints", "data_sources", "data_preparation", "data_privacy", "data_reset",
+        "role_guidance", "milestones", "deliverables", "tools", "defect_reporting",
+        "defect_classification", "defect_triage", "defect_retest", "defect_closure",
+    ]
+    evidence_quotes: List[EvidenceQuoteOutput] = Field(min_length=1, max_length=20)
+
+
 class TestPlanDraftSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -172,7 +211,9 @@ class TestPlanDraftSuggestionOutput(BaseModel):
     scope_in: List[str] = Field(default_factory=list, max_length=100)
     scope_out: List[str] = Field(default_factory=list, max_length=100)
     test_approach: str = Field(default="", max_length=5000)
+    test_level: str = Field(default="", max_length=100)
     test_types: List[str] = Field(default_factory=list, max_length=50)
+    environment: str = Field(default="", max_length=200)
     entry_criteria: List[str] = Field(default_factory=list, max_length=100)
     exit_criteria: List[str] = Field(default_factory=list, max_length=100)
     risks: List[str] = Field(default_factory=list, max_length=100)
@@ -182,6 +223,16 @@ class TestPlanDraftSuggestionOutput(BaseModel):
     data_preparation: str = Field(default="", max_length=5000)
     data_privacy: str = Field(default="", max_length=5000)
     data_reset: str = Field(default="", max_length=5000)
+    role_guidance: List[str] = Field(default_factory=list, max_length=100)
+    milestones: List[str] = Field(default_factory=list, max_length=100)
+    deliverables: List[str] = Field(default_factory=list, max_length=100)
+    tools: List[str] = Field(default_factory=list, max_length=100)
+    defect_reporting: str = Field(default="", max_length=5000)
+    defect_classification: str = Field(default="", max_length=5000)
+    defect_triage: str = Field(default="", max_length=5000)
+    defect_retest: str = Field(default="", max_length=5000)
+    defect_closure: str = Field(default="", max_length=5000)
+    field_evidence: List[TestPlanFieldEvidenceOutput] = Field(default_factory=list, max_length=100)
     evidence_quotes: List[EvidenceQuoteOutput] = Field(default_factory=list, max_length=100)
 
 
@@ -190,7 +241,7 @@ class TestPlanDraftOutput(BaseModel):
 
     capability: Literal["test_plan_draft_generation"]
     suggestions: List[TestPlanDraftSuggestionOutput] = Field(min_length=1, max_length=1)
-    evidence_refs: List[str] = Field(min_length=1, max_length=200)
+    evidence_refs: List[str] = Field(default_factory=list, max_length=200)
     confidence: float = Field(ge=0, le=1)
     warnings: List[str] = Field(default_factory=list, max_length=30)
 

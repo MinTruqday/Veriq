@@ -23,14 +23,11 @@ async def project_access(
     permissions = project.get("current_permissions") or []
     if not project.get("_id") or not membership.get("project_role"):
         raise HTTPException(status_code=403, detail={"code": "PROJECT_ACCESS_DENIED"})
-    roles = set(membership.get("project_roles") or [membership["project_role"]])
+    effective_role = membership["project_role"]
     if preferred_role:
-        if preferred_role not in roles:
+        if preferred_role != effective_role:
             raise HTTPException(
                 status_code=403,
                 detail={"code": "PROJECT_ROLE_NOT_ACTIVE", "required_role": preferred_role},
             )
-        effective_role = preferred_role
-    else:
-        effective_role = "QA" if "QA" in roles else membership["project_role"]
     return effective_role, permissions

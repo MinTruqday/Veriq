@@ -174,12 +174,8 @@ export default function TestDesignPage({ project, workspaceView }) {
   const creationInFlight = useRef(new Set());
   const testImportPanelRef = useRef(null);
   const can = (permission) => project.current_permissions?.includes(permission);
-  const membershipRoles = project.current_membership?.project_roles;
-  const memberRoles =
-    Array.isArray(membershipRoles) && membershipRoles.length
-      ? membershipRoles
-      : [project.current_membership?.project_role].filter(Boolean);
-  const canManageTestCaseFields = can("project.update") && memberRoles.includes("QA");
+  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
+  const canManageTestCaseFields = can("testcase.template.manage") && memberRoles.includes("QA");
   const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
   const permissions = useMemo(
     () => project.current_permissions || [],
@@ -848,6 +844,23 @@ export default function TestDesignPage({ project, workspaceView }) {
         .join("\n"),
       confirmLabel: "Đối chiếu và duyệt nhóm",
       fields: [
+        ...(action === "changes"
+          ? [
+              {
+                name: "reasonCode",
+                label: "Lý do cần chỉnh sửa",
+                options: [
+                  { value: "INCOMPLETE", label: "Thiếu nội dung" },
+                  { value: "INCORRECT", label: "Thông tin chưa đúng" },
+                  { value: "DUPLICATE", label: "Trùng lặp" },
+                  { value: "UNSUPPORTED_BY_SOURCE", label: "Nguồn chưa đủ căn cứ" },
+                  { value: "OUT_OF_SCOPE", label: "Ngoài phạm vi" },
+                  { value: "OTHER", label: "Lý do khác" },
+                ],
+                required: true,
+              },
+            ]
+          : []),
         {
           name: "note",
           label: "Ghi chú duyệt",
@@ -979,7 +992,11 @@ export default function TestDesignPage({ project, workspaceView }) {
       ],
       onConfirm: async (answer) => {
         try {
-          const payload = { expected_revision: draft.revision, review_note: answer.note };
+          const payload = {
+            expected_revision: draft.revision,
+            review_note: answer.note,
+            ...(action === "changes" ? { review_reason_code: answer.reasonCode } : {}),
+          };
           if (action === "submit") {
             await testingApi.submitTestCaseReview(project._id, draft._id, payload);
           } else {

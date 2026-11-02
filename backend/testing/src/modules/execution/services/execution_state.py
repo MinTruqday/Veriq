@@ -58,31 +58,46 @@ async def enforce_not_applicable_policy(project_id, status, step_results=None):
         )
 
 
-async def select_resume_execution(run, user):
-    version_ids = list(run.get("test_case_version_ids", []))
+async def assigned_execution_versions(run, user):
     membership = await execution_state_repository.active_membership_role(
         run["project_id"], user.id, 'ACTIVE'
     )
+    if not roles_for_membership(membership).intersection({"TESTER"}):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": 'TEST_EXECUTION_ROLE_REQUIRED'},
+        )
+    version_ids = list(run.get("test_case_version_ids", []))
     assignments = run.get("test_case_assignments") or {}
-    eligible_ids = version_ids
-    
-    if roles_for_membership(membership).intersection({"QA", "TESTER"}):
-        explicit_ids = [
-            version_id for version_id in version_ids if assignments.get(version_id) == user.id
+    explicit_ids = [
+        version_id for version_id in version_ids if assignments.get(version_id) == user.id
+    ]
+    if explicit_ids:
+        return explicit_ids
+    if run.get("assignee_id") == user.id:
+        run_assigned_ids = [
+            version_id for version_id in version_ids if version_id not in assignments
         ]
-        if explicit_ids:
-            eligible_ids = explicit_ids
-            
-        elif run.get("assignee_id") == user.id:
-            eligible_ids = [
-                version_id for version_id in version_ids if version_id not in assignments
-            ]
-            
-        elif run.get("assignee_id") or assignments:
-            raise HTTPException(
-                status_code=403,
-                detail={"code": 'TEST_RUN_ASSIGNMENT_REQUIRED'},
-            )
+        if run_assigned_ids:
+            return run_assigned_ids
+    raise HTTPException(
+        status_code=403,
+        detail={"code": 'TEST_RUN_ASSIGNMENT_REQUIRED'},
+    )
+
+
+async def require_case_execution_assignment(run, test_case_version_id, user):
+    eligible_ids = await assigned_execution_versions(run, user)
+    if test_case_version_id not in eligible_ids:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": 'TEST_CASE_ASSIGNMENT_REQUIRED'},
+        )
+
+
+async def select_resume_execution(run, user):
+    version_ids = list(run.get("test_case_version_ids", []))
+    eligible_ids = await assigned_execution_versions(run, user)
     results = await execution_state_repository.list_results(run["_id"], eligible_ids)
     by_version = {item["test_case_version_id"]: item for item in results}
     current_version_id = next(

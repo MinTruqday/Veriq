@@ -39,6 +39,7 @@ class CustomerCommercialTerms(BaseModel):
 class CapacityEntry(BaseModel):
     user_id: str = Field(min_length=1, max_length=200)
     available_hours: Decimal = Field(ge=0, max_digits=8, decimal_places=2)
+    max_concurrent_projects: int | None = Field(default=None, ge=1)
 
 
 class CapacityUpdate(BaseModel):

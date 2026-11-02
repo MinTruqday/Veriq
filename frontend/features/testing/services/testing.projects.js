@@ -27,6 +27,12 @@ export const projectTestingApi = {
       body: JSON.stringify(payload),
     }),
   listPayrollRates: () => testingRequest("/quan-tri/tai-chinh/bang-luong"),
+  listCapacityPeriods: () => testingRequest("/quan-tri/tai-chinh/cong-suat"),
+  updateCapacityPeriod: (payload) =>
+    testingRequest("/quan-tri/tai-chinh/cong-suat", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   listFinancialProjects: () => testingRequest("/quan-tri/tai-chinh/du-an"),
   getProjectCommercialTerms: (projectId) =>
     testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/dieu-khoan`),
@@ -81,8 +87,12 @@ export const projectTestingApi = {
     testingRequest("/du-an", { method: "POST", body: JSON.stringify(payload) }),
   getProject: (id) => testingRequest(`/du-an/${id}`),
   getProjectComplexityAssessment: (id) => testingRequest(`/du-an/${id}/do-kho-ai`),
-  assessProjectComplexity: (id) =>
-    testingRequest(`/du-an/${id}/do-kho-ai/danh-gia`, { method: "POST" }),
+  getProjectComplexityScope: (id) => testingRequest(`/du-an/${id}/do-kho-ai/pham-vi`),
+  assessProjectComplexity: (id, payload) =>
+    testingRequest(`/du-an/${id}/do-kho-ai/danh-gia`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listMembers: (id) => testingRequest(`/du-an/${id}/thanh-vien`),
   getMySkillProfile: (id) => testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi`),
   recommendTestCaseOwner: (projectId, payload) =>
@@ -320,6 +330,11 @@ export const projectTestingApi = {
       `/du-an/${projectId}/phan-tich-kiem-thu/co-so${query ? `?${query}` : ""}`,
     );
   },
+  runTestAnalysisAI: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/phan-tich-kiem-thu/ai`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   runDeterministicTestAnalysis: (projectId, payload) =>
     testingRequest(`/du-an/${projectId}/phan-tich-kiem-thu/kiem-tra`, {
       method: "POST",

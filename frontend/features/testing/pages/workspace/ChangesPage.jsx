@@ -17,6 +17,24 @@ import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import { testingApi } from "../../services/testing.service";
 import { StructuredValueView } from "../../components/StructuredValueEditor";
 
+const IMPACT_LIMITATION_LABELS = {
+  NO_CONFIRMED_TRACE_LINKS_FOUND: "Chưa tìm thấy liên kết truy vết đã xác nhận.",
+  STALE_TRACE_LINKS_REQUIRE_REVIEW: "Có liên kết truy vết cũ cần được rà soát.",
+  SCOPE_TRUNCATED_ACCEPTANCE_CRITERIA: "Số tiêu chí vượt giới hạn xử lý.",
+  SCOPE_TRUNCATED_TRACE_LINKS: "Số liên kết truy vết vượt giới hạn xử lý.",
+  SCOPE_TRUNCATED_TEST_SCENARIOS: "Số kịch bản vượt giới hạn xử lý.",
+  SCOPE_TRUNCATED_TEST_CASES: "Số Test Case vượt giới hạn xử lý.",
+  SCOPE_TRUNCATED_TEST_CASE_VERSIONS: "Số phiên bản Test Case vượt giới hạn xử lý.",
+  SCOPE_TRUNCATED_TEST_CASE_VERSION_IDS: "Số phiên bản Test Case liên quan vượt giới hạn xử lý.",
+  SCOPE_TRUNCATED_TEST_PLANS: "Số Test Plan vượt giới hạn xử lý.",
+  SCOPE_TRUNCATED_TEST_RUNS: "Số Test Run vượt giới hạn xử lý.",
+};
+
+function impactLimitationMessage(limitation) {
+  if (IMPACT_LIMITATION_LABELS[limitation]) return IMPACT_LIMITATION_LABELS[limitation];
+  return valueLabel(limitation);
+}
+
 export default function ChangesPage({ project }) {
   const [sets, setSets] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -127,6 +145,9 @@ export default function ChangesPage({ project }) {
       setRegression(null);
       await load();
     } catch (reason) {
+      if (reason?.code === "IMPACT_SOURCE_CHANGED") {
+        setImpact((current) => (current ? { ...current, source_stale: true } : current));
+      }
       setError(messageOf(reason));
     } finally {
       setActionBusy(false);
@@ -158,6 +179,29 @@ export default function ChangesPage({ project }) {
           if (reason.status !== 404) throw reason;
         }
       }
+    } catch (reason) {
+      if (reason?.code === "IMPACT_SOURCE_CHANGED") {
+        setImpact((current) => (current ? { ...current, source_stale: true } : current));
+      }
+      setError(messageOf(reason));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const rerunSelectedImpact = async () => {
+    if (!impact || !impact.source_stale || !can("impact.execute") || !can("ai.run_impact")) {
+      return;
+    }
+    setActionBusy(true);
+    setError("");
+    try {
+      await testingApi.rerunImpact(impact._id, {
+        expected_revision: impact.revision,
+        reason: "Nguồn hoặc liên kết truy vết đã thay đổi sau lần phân tích.",
+      });
+      setImpact(await testingApi.getChangeSetImpact(selected._id));
+      setRegression(null);
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -350,7 +394,16 @@ export default function ChangesPage({ project }) {
         <Panel
           title={`Kết quả phân tích ảnh hưởng lần ${impact.snapshot_number || 1}`}
           actions={
-            impact.status === "REVIEW_READY" && can("impact.close") && can("impact.review") ? (
+            impact.source_stale && can("impact.execute") && can("ai.run_impact") ? (
+              <button
+                className="primary-button"
+                disabled={actionBusy}
+                onClick={rerunSelectedImpact}
+                type="button"
+              >
+                {actionBusy ? "Đang phân tích…" : "Chạy lại phân tích"}
+              </button>
+            ) : impact.status === "REVIEW_READY" && can("impact.close") && can("impact.review") ? (
               <button
                 className="primary-button"
                 disabled={actionBusy}
@@ -365,6 +418,15 @@ export default function ChangesPage({ project }) {
           <div className="border-b border-border px-4 py-3 text-sm text-ink-muted">
             Trạng thái: <StatusPill value={impact.status} />
           </div>
+          {impact.source_stale && (
+            <div
+              className="border-b border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger"
+              role="alert"
+            >
+              Nguồn hoặc liên kết truy vết đã đổi sau lần phân tích. Không thể duyệt kết quả cũ; hãy
+              chạy lại phân tích.
+            </div>
+          )}
           {impact.mode === "DEGRADED_AI" && (
             <div className="p-4 pb-0">
               <DegradedBanner
@@ -387,6 +449,114 @@ export default function ChangesPage({ project }) {
               { key: "reasons", label: "Bằng chứng", render: (item) => item.reasons?.join("; ") },
             ]}
           />
+          {impact.impact_limitations?.length > 0 && (
+            <div className="border-t border-border px-4 py-3 text-sm text-ink-muted" role="status">
+              {impact.scope_complete === false && (
+                <p className="mb-2 font-medium text-ink">
+                  Phân tích chỉ bao phủ một phần dữ liệu. Chưa thể kết luận rằng danh sách ảnh hưởng
+                  đã đầy đủ.
+                </p>
+              )}
+              <ul className="list-disc space-y-1 pl-5">
+                {impact.impact_limitations.map((limitation) => (
+                  <li key={limitation}>{impactLimitationMessage(limitation)}</li>
+                ))}
+              </ul>
+              {impact.scope_complete === false && (
+                <p className="mt-2">
+                  Hãy chia nhỏ phạm vi thay đổi rồi chạy phân tích cho từng phần.
+                </p>
+              )}
+            </div>
+          )}
+          <div className="grid min-w-0 gap-4 border-t border-border p-4">
+            <section aria-label="Kịch bản kiểm thử bị ảnh hưởng">
+              <h3 className="mb-2 text-sm font-semibold text-ink">Kịch bản cần rà soát</h3>
+              <DataTable
+                items={impact.affected_test_scenarios || []}
+                empty="Không tìm thấy kịch bản liên kết trực tiếp với phiên bản yêu cầu này"
+                columns={[
+                  { key: "name", label: "Kịch bản" },
+                  {
+                    key: "status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.status} />,
+                  },
+                  {
+                    key: "related_test_case_version_ids",
+                    label: "Ca liên quan",
+                    render: (item) => item.related_test_case_version_ids?.length || 0,
+                  },
+                  {
+                    key: "reasons",
+                    label: "Căn cứ",
+                    render: (item) => item.reasons?.map(valueLabel).join("; "),
+                  },
+                ]}
+              />
+            </section>
+            <section aria-label="Kế hoạch kiểm thử bị ảnh hưởng">
+              <h3 className="mb-2 text-sm font-semibold text-ink">Kế hoạch cần xem lại</h3>
+              <DataTable
+                items={impact.affected_test_plans || []}
+                empty="Không tìm thấy kế hoạch có chứa phiên bản yêu cầu hoặc ca bị ảnh hưởng"
+                columns={[
+                  { key: "name", label: "Kế hoạch" },
+                  {
+                    key: "status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.status} />,
+                  },
+                  {
+                    key: "related_test_case_version_ids",
+                    label: "Ca liên quan",
+                    render: (item) => item.related_test_case_version_ids?.length || 0,
+                  },
+                  {
+                    key: "reasons",
+                    label: "Căn cứ",
+                    render: (item) => item.reasons?.map(valueLabel).join("; "),
+                  },
+                ]}
+              />
+            </section>
+            <section aria-label="Lượt chạy kiểm thử có phạm vi liên quan">
+              <h3 className="mb-2 text-sm font-semibold text-ink">
+                Lượt chạy có phạm vi liên quan
+              </h3>
+              <p className="mb-2 text-xs text-ink-muted">
+                Đây là bản ghi lịch sử. Phân tích không sửa kết quả hoặc phạm vi của lượt chạy đã
+                tạo.
+              </p>
+              <DataTable
+                items={impact.affected_test_runs || []}
+                empty="Không tìm thấy lượt chạy có snapshot liên quan đến thay đổi này"
+                columns={[
+                  { key: "name", label: "Lượt chạy" },
+                  {
+                    key: "execution_status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.execution_status} />,
+                  },
+                  {
+                    key: "test_plan_id",
+                    label: "Có kế hoạch",
+                    render: (item) => (item.test_plan_id ? "Có" : "Không"),
+                  },
+                  {
+                    key: "related_test_case_version_ids",
+                    label: "Ca liên quan",
+                    render: (item) => item.related_test_case_version_ids?.length || 0,
+                  },
+                  {
+                    key: "reasons",
+                    label: "Căn cứ",
+                    render: (item) => item.reasons?.map(valueLabel).join("; "),
+                  },
+                ]}
+              />
+            </section>
+          </div>
         </Panel>
       )}
 

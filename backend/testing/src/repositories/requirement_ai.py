@@ -9,6 +9,53 @@ class RequirementAiRepository:
             query, **({"session": session} if session is not None else {})
         )
 
+    async def find_quality_analysis_request(self, query):
+        return await database.value.ai_findings.find_one(query)
+
+    async def insert_quality_analysis_claim(self, value):
+        await database.value.ai_findings.insert_one(value)
+        return value
+
+    async def reclaim_quality_analysis_claim(self, claim_id, fingerprint, timestamp, token, lease_expires_at):
+        return await database.value.ai_findings.find_one_and_update(
+            {
+                "_id": claim_id,
+                "result_type": "REQUIREMENT_QUALITY_ANALYSIS_PENDING",
+                "request_fingerprint": fingerprint,
+                "lease_expires_at": {"$lte": timestamp},
+            },
+            {
+                "$set": {
+                    "claim_token": token,
+                    "lease_expires_at": lease_expires_at,
+                    "claimed_at": timestamp,
+                },
+                "$inc": {"attempt": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def replace_quality_analysis_claim(self, claim_id, token, result, session=None):
+        response = await database.value.ai_findings.replace_one(
+            {
+                "_id": claim_id,
+                "result_type": "REQUIREMENT_QUALITY_ANALYSIS_PENDING",
+                "claim_token": token,
+            },
+            result,
+            **({"session": session} if session is not None else {}),
+        )
+        return response.modified_count == 1
+
+    async def release_quality_analysis_claim(self, claim_id, token):
+        await database.value.ai_findings.delete_one(
+            {
+                "_id": claim_id,
+                "result_type": "REQUIREMENT_QUALITY_ANALYSIS_PENDING",
+                "claim_token": token,
+            }
+        )
+
     async def find_latest_quality_analysis(self, project_id, version_id):
         values = await (
             database.value.ai_findings.find(

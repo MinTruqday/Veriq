@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from src.core.common import audit, get_project, get_project_entity, new_id, now, page_payload, sort_spec
 from src.core.metrics import PROPOSAL_ACCEPTANCE_RATE
 from src.repositories.maintenance_proposal import maintenance_proposal_repository
+from src.modules.quality.services.impact_analysis import require_current_impact_source
 
 
 async def create_maintenance_proposal_records(analysis_id, user):
@@ -13,6 +14,7 @@ async def create_maintenance_proposal_records(analysis_id, user):
     analysis = await get_project_entity("impact_analyses", analysis_id, user, "ai.create_proposal")
     if analysis.get("status") != 'REVIEWED':
         raise HTTPException(status_code=409, detail={"code": 'IMPACT_REVIEW_REQUIRED'})
+    await require_current_impact_source(analysis, user, "ai.create_proposal")
     existing = await maintenance_proposal_repository.list_by_impact_and_status(
         analysis_id, 'PENDING', 10000
     )
@@ -200,7 +202,10 @@ async def review_maintenance_proposal_record(project_id, proposal_id, payload, u
         "last_reviewed_by": user.id,
         "last_reviewed_at": now(),
     }
+    if payload.review_reason_code is not None:
+        changes["review_reason_code"] = payload.review_reason_code
     if payload.patch is not None:
+        changes["ai_original_patch"] = proposal.get("ai_original_patch", proposal.get("patch", {}))
         changes["patch"] = payload.patch
     updated = await maintenance_proposal_repository.update(
         {
@@ -263,6 +268,8 @@ async def reject_maintenance_proposal_record(proposal_id, payload, user):
         {
             "status": 'REJECTED',
             "review_note": payload.review_note,
+            "decision_reason_code": payload.review_reason_code,
+            "changed_fields": [],
             "reviewed_by": user.id,
             "reviewed_at": timestamp,
             "updated_at": timestamp,

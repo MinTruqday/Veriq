@@ -3,6 +3,7 @@ import hashlib
 import logging
 import re
 import unicodedata
+from datetime import date, timedelta
 from itertools import chain
 
 import httpx
@@ -515,6 +516,239 @@ def _availability_rank(value):
     return {"AVAILABLE": 0, "LIMITED": 1}.get(value, 2)
 
 
+async def _project_capacity_limits(
+    user_ids,
+    period_start=None,
+    period_end=None,
+    *,
+    session=None,
+    fence_periods=False,
+):
+    if not user_ids:
+        return "CAPACITY_NOT_DECLARED", {}
+    start = str(period_start or now().date().isoformat())[:10]
+    end = str(period_end or start)[:10]
+    periods = await database.value.resource_capacity_periods.find(
+        {"period_start": {"$lte": end}, "period_end": {"$gte": start}},
+        session=session,
+    ).to_list(100)
+    if fence_periods and session is not None:
+        for period in sorted(periods, key=lambda item: item["_id"]):
+            fenced = await database.value.resource_capacity_periods.update_one(
+                {"_id": period["_id"], "revision": period.get("revision", 1)},
+                {"$inc": {"assignment_fence_revision": 1}},
+                session=session,
+            )
+            if fenced.matched_count != 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "RESOURCE_CAPACITY_CHANGED_RETRY_ASSIGNMENT"},
+                )
+    if not periods:
+        if await database.value.resource_capacity_periods.count_documents(
+            {}, session=session
+        ):
+            return "CAPACITY_PERIOD_NOT_COVERING_SCHEDULE", {}
+        return "CAPACITY_NOT_DECLARED", {}
+    periods.sort(key=lambda item: (item.get("period_start", ""), item.get("period_end", "")))
+    requested_start = date.fromisoformat(start)
+    requested_end = date.fromisoformat(end)
+    first_start = date.fromisoformat(periods[0]["period_start"])
+    covered_until = date.fromisoformat(periods[0]["period_end"])
+    if first_start > requested_start or covered_until < requested_start:
+        return "CAPACITY_PERIOD_NOT_COVERING_SCHEDULE", {}
+    for period in periods[1:]:
+        period_start = date.fromisoformat(period["period_start"])
+        period_end = date.fromisoformat(period["period_end"])
+        if period_start <= covered_until:
+            return "AMBIGUOUS_CAPACITY_PERIOD", {}
+        if period_start > covered_until + timedelta(days=1):
+            return "CAPACITY_PERIOD_NOT_COVERING_SCHEDULE", {}
+        covered_until = max(covered_until, period_end)
+    if covered_until < requested_end:
+        return "CAPACITY_PERIOD_NOT_COVERING_SCHEDULE", {}
+    limits_by_period = [
+        {
+            item.get("user_id"): item["max_concurrent_projects"]
+            for item in period.get("entries") or []
+            if item.get("user_id") and item.get("max_concurrent_projects") is not None
+        }
+        for period in periods
+    ]
+    user_ids_with_limits = set().union(*(set(item) for item in limits_by_period))
+    limits = {
+        user_id: min(period_limits[user_id] for period_limits in limits_by_period)
+        for user_id in user_ids_with_limits
+        if all(user_id in period_limits for period_limits in limits_by_period)
+    }
+    return "PROJECT_LIMITS_PARTIALLY_DECLARED" if limits else "PROJECT_LIMIT_NOT_DECLARED", limits
+
+
+async def _check_test_run_assignment_capacity(
+    project_id,
+    run,
+    user_ids,
+    *,
+    session,
+    existing_run_user_ids=(),
+):
+    user_ids = set(user_ids)
+    if not user_ids:
+        return
+    schedule = run.get("test_plan_schedule_snapshot") or {}
+    capacity_status, limits = await _project_capacity_limits(
+        sorted(user_ids),
+        schedule.get("planned_start_at"),
+        schedule.get("planned_end_at"),
+        session=session,
+        fence_periods=True,
+    )
+    if not limits:
+        return
+    project_workload = await _member_project_workload(
+        user_ids,
+        schedule,
+        session=session,
+        exclude_run_id=run.get("_id"),
+    )
+    for user_id in set(existing_run_user_ids).intersection(user_ids):
+        project_workload[user_id].add(project_id)
+    exceeded = {
+        user_id: {
+            "active_project_count": len(projects),
+            "max_concurrent_projects": limits[user_id],
+        }
+        for user_id, projects in project_workload.items()
+        if user_id in limits
+        and project_id not in projects
+        and len(projects) >= limits[user_id]
+    }
+    if exceeded:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "MAX_CONCURRENT_PROJECTS_REACHED",
+                "users": exceeded,
+                "capacity_status": capacity_status,
+            },
+        )
+
+
+async def _member_project_workload(
+    user_ids,
+    schedule,
+    *,
+    session=None,
+    exclude_run_id=None,
+    exclude_plan_id=None,
+):
+    user_ids = set(user_ids)
+    workload = {user_id: set() for user_id in user_ids}
+    start_value = str(schedule.get("planned_start_at") or now().date().isoformat())[:10]
+    end_value = str(schedule.get("planned_end_at") or start_value)[:10]
+    async for active_run in skill_profile_repository.iter_active_runs_for_members(
+        sorted(user_ids),
+        session=session,
+        exclude_run_id=exclude_run_id,
+        include_drafts=True,
+    ):
+        run_schedule = active_run.get("test_plan_schedule_snapshot") or {}
+        run_start = str(run_schedule.get("planned_start_at") or "")[:10]
+        run_end = str(run_schedule.get("planned_end_at") or "")[:10]
+        if (
+            run_start
+            and run_end
+            and (run_start > end_value or run_end < start_value)
+        ):
+            continue
+        assigned = set((active_run.get("test_case_assignments") or {}).values())
+        if active_run.get("assignee_id"):
+            assigned.add(active_run["assignee_id"])
+        project_id = active_run.get("project_id")
+        if project_id:
+            for user_id in assigned.intersection(user_ids):
+                workload[user_id].add(project_id)
+
+    plan_query = {
+        "status": {"$in": ["IN_REVIEW", "APPROVED"]},
+        "schedule.planned_start_at": {"$lte": f"{end_value}T23:59:59.999999"},
+        "schedule.planned_end_at": {"$gte": start_value},
+    }
+    if exclude_plan_id:
+        plan_query["_id"] = {"$ne": exclude_plan_id}
+    plans = database.value.test_plans.find(
+        plan_query,
+        {
+            "project_id": 1,
+            "schedule.planned_start_at": 1,
+            "schedule.planned_end_at": 1,
+            "estimation.effort_allocations": 1,
+        },
+        session=session,
+    )
+    async for plan in plans:
+        other_schedule = plan.get("schedule") or {}
+        other_start = str(other_schedule.get("planned_start_at") or "")[:10]
+        other_end = str(other_schedule.get("planned_end_at") or "")[:10]
+        if not other_start or not other_end or other_start > end_value or other_end < start_value:
+            continue
+        project_id = plan.get("project_id")
+        if not project_id:
+            continue
+        for allocation in (plan.get("estimation") or {}).get("effort_allocations") or []:
+            user_id = allocation.get("user_id")
+            if user_id in user_ids:
+                workload[user_id].add(project_id)
+    return workload
+
+
+async def _check_test_plan_assignment_capacity(
+    project_id,
+    schedule,
+    user_ids,
+    *,
+    session,
+    exclude_plan_id=None,
+):
+    user_ids = set(user_ids)
+    if not user_ids:
+        return
+    start = (schedule or {}).get("planned_start_at")
+    end = (schedule or {}).get("planned_end_at")
+    if not start or not end:
+        return
+    capacity_status, limits = await _project_capacity_limits(
+        sorted(user_ids), start, end, session=session, fence_periods=True
+    )
+    if not limits:
+        return
+    workload = await _member_project_workload(
+        user_ids,
+        schedule,
+        session=session,
+        exclude_plan_id=exclude_plan_id,
+    )
+    exceeded = {
+        user_id: {
+            "active_project_count": len(projects),
+            "max_concurrent_projects": limits[user_id],
+        }
+        for user_id, projects in workload.items()
+        if user_id in limits
+        and project_id not in projects
+        and len(projects) >= limits[user_id]
+    }
+    if exceeded:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "MAX_CONCURRENT_PROJECTS_REACHED",
+                "users": exceeded,
+                "capacity_status": capacity_status,
+            },
+        )
+
+
 def _owner_score_factors(candidates, profiles):
     member_ids = list(candidates)
     max_workload = max(
@@ -643,17 +877,48 @@ def rank_skill_candidates(
     return required, candidates
 
 
+def _opaque_staffing_candidate_refs(user_ids):
+    return {
+        f"candidate-{index + 1}": user_id
+        for index, user_id in enumerate(user_ids)
+    }
+
+
+def _map_staffing_recommendations(recommendations, candidate_ref_to_user):
+    recommendation_ids = [
+        item.get("candidate_id")
+        for item in recommendations
+        if isinstance(item, dict)
+    ]
+    if (
+        len(recommendation_ids) != len(recommendations)
+        or any(not isinstance(item, str) or not item for item in recommendation_ids)
+        or len(recommendation_ids) != len(set(recommendation_ids))
+        or set(recommendation_ids) != set(candidate_ref_to_user)
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "AI_OWNER_RECOMMENDATION_CANDIDATES_INVALID"},
+        )
+    return {
+        candidate_ref_to_user[item["candidate_id"]]: item
+        for item in recommendations
+    }
+
+
 async def automatically_assign_test_cases(
     project_id,
     versions,
     session=None,
     existing_case_assignments=None,
     existing_assignee_id=None,
+    exclude_run_id=None,
+    schedule=None,
 ):
     memberships = await project_repository.list_members(project_id, session=session)
     eligible = [
         item for item in memberships
-        if item.get("status") == "ACTIVE" and roles_for_membership(item).intersection({"QA", "TESTER"})
+        if item.get("status") == "ACTIVE" and "TESTER" in roles_for_membership(item)
     ]
     eligible_ids = [item["user_id"] for item in eligible]
     profiles = await skill_profile_repository.list_for_members(
@@ -662,8 +927,22 @@ async def automatically_assign_test_cases(
     profiles_by_user = {item["user_id"]: item for item in profiles}
     case_load = {member_id: 0 for member_id in eligible_ids}
     run_load = {member_id: 0 for member_id in eligible_ids}
+    schedule = schedule or {}
+    project_workload = await _member_project_workload(
+        eligible_ids,
+        schedule,
+        session=session,
+        exclude_run_id=exclude_run_id,
+    )
+    _, project_limits = await _project_capacity_limits(
+        eligible_ids,
+        schedule.get("planned_start_at"),
+        schedule.get("planned_end_at"),
+        session=session,
+        fence_periods=session is not None,
+    )
     async for active_run in skill_profile_repository.iter_active_runs_for_members(
-        eligible_ids, session=session
+        eligible_ids, session=session, exclude_run_id=exclude_run_id
     ):
         case_assignments = list((active_run.get("test_case_assignments") or {}).values())
         case_assignees = set(case_assignments)
@@ -684,6 +963,7 @@ async def automatically_assign_test_cases(
     for member_id in existing_run_assignees:
         if member_id in run_load:
             run_load[member_id] += 1
+            project_workload[member_id].add(project_id)
     for member_id in existing_case_assignments.values():
         if member_id in case_load:
             case_load[member_id] += 1
@@ -699,6 +979,8 @@ async def automatically_assign_test_cases(
         candidates = []
         has_usable_skill = False
         has_available_profile = False
+        has_skill_match = False
+        has_capacity_eligible_profile = False
         for member_id in eligible_ids:
             profile = profiles_by_user.get(member_id)
             if not profile:
@@ -713,6 +995,15 @@ async def automatically_assign_test_cases(
             has_available_profile = True
             if required and not required.issubset(usable_skills):
                 continue
+            has_skill_match = True
+            limit = project_limits.get(member_id)
+            if (
+                limit is not None
+                and project_id not in project_workload[member_id]
+                and len(project_workload[member_id]) >= limit
+            ):
+                continue
+            has_capacity_eligible_profile = True
             candidates.append(member_id)
         candidate_map[version["_id"]] = candidates
         candidate_reason_by_version[version["_id"]] = (
@@ -723,7 +1014,9 @@ async def automatically_assign_test_cases(
             else "NO_AVAILABLE_TESTER"
             if not has_available_profile
             else "NO_FULL_SKILL_MATCH"
-            if required and not candidates
+            if required and not has_skill_match
+            else "MAX_CONCURRENT_PROJECTS_REACHED"
+            if has_skill_match and not has_capacity_eligible_profile
             else "NO_ELIGIBLE_TESTER"
         )
     ordered = sorted(
@@ -794,6 +1087,7 @@ async def automatically_assign_test_cases(
         }
         assignments[version["_id"]] = assignee
         case_load[assignee] += 1
+        project_workload[assignee].add(project_id)
         if assignee not in assigned_run_members:
             assigned_run_members.add(assignee)
             run_load[assignee] += 1
@@ -813,6 +1107,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
             detail={"code": "TEST_RUN_CHANGED_RECOMMEND_AGAIN"},
         )
     plan_staffing = []
+    plan_schedule = {}
     if run.get("test_plan_id"):
         plan = await database.value.test_plans.find_one(
             {"_id": run["test_plan_id"], "project_id": project_id}
@@ -820,6 +1115,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
         if plan:
             plan_source = (plan.get("approved_snapshot") or plan) if plan.get("status") == "APPROVED" else plan
             plan_staffing = (plan_source.get("estimation") or {}).get("effort_allocations") or []
+            plan_schedule = plan_source.get("schedule") or {}
     planned_tester_ids = {
         item.get("user_id") for item in plan_staffing if item.get("user_id")
     }
@@ -827,7 +1123,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
     eligible = [
         item for item in memberships
         if item.get("status") == "ACTIVE"
-        and roles_for_membership(item).intersection({"QA", "TESTER"})
+        and "TESTER" in roles_for_membership(item)
         and (not plan_staffing or item.get("user_id") in planned_tester_ids)
     ]
     eligible_ids = [item["user_id"] for item in eligible]
@@ -835,6 +1131,12 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
     by_user = {item["user_id"]: item for item in profiles}
     workload = {member_id: 0 for member_id in eligible_ids}
     case_workload = {member_id: 0 for member_id in eligible_ids}
+    project_workload = await _member_project_workload(eligible_ids, plan_schedule)
+    capacity_status, project_limits = await _project_capacity_limits(
+        eligible_ids,
+        plan_schedule.get("planned_start_at"),
+        plan_schedule.get("planned_end_at"),
+    )
     async for active_run in skill_profile_repository.iter_active_runs_for_members(
         eligible_ids
     ):
@@ -861,6 +1163,14 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
     for candidate in candidates:
         member_id = candidate["user_id"]
         candidate["user_label"] = (identities.get(member_id) or {}).get("label") or member_id
+        limit = project_limits.get(member_id)
+        candidate["active_project_count"] = len(project_workload[member_id])
+        candidate["max_concurrent_projects"] = limit
+        candidate["project_limit_reached"] = bool(
+            limit is not None
+            and project_id not in project_workload[member_id]
+            and len(project_workload[member_id]) >= limit
+        )
 
     versions = await test_run_repository.list_versions(
         list(dict.fromkeys(run.get("test_case_version_ids", []))),
@@ -868,6 +1178,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
     )
     versions_by_id = {item["_id"]: item for item in versions}
     proposed_workload = dict(case_workload)
+    proposed_projects = {member_id: set(projects) for member_id, projects in project_workload.items()}
     existing_assignments = run.get("test_case_assignments") or {}
     case_recommendations = []
     unresolved_cases = []
@@ -897,12 +1208,27 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
             case_required,
             case_workloads=proposed_workload,
         )
-        suitable = [
+        for candidate in ranked:
+            member_id = candidate["user_id"]
+            limit = project_limits.get(member_id)
+            candidate["active_project_count"] = len(proposed_projects[member_id])
+            candidate["max_concurrent_projects"] = limit
+            candidate["project_limit_reached"] = bool(
+                limit is not None
+                and project_id not in proposed_projects[member_id]
+                and len(proposed_projects[member_id]) >= limit
+            )
+        skill_matches = [
             candidate
             for candidate in ranked
             if candidate["profile_exists"]
             and candidate["availability"] in {"AVAILABLE", "LIMITED"}
             and not candidate["unmatched_skills"]
+        ]
+        suitable = [
+            candidate
+            for candidate in skill_matches
+            if not candidate["project_limit_reached"]
         ]
         for candidate in suitable:
             member_id = candidate["user_id"]
@@ -910,6 +1236,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
         if suitable:
             chosen = suitable[0]
             proposed_workload[chosen["user_id"]] = proposed_workload.get(chosen["user_id"], 0) + 1
+            proposed_projects[chosen["user_id"]].add(project_id)
             case_recommendations.append({
                 "test_case_version_id": version_id,
                 "required_skills": case_required,
@@ -924,7 +1251,13 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
                 "test_case_version_id": version_id,
                 "required_skills": case_required,
                 "assignee_id": None,
-                "status": "NO_FULL_SKILL_MATCH" if case_required else "NO_ELIGIBLE_TESTER",
+                "status": (
+                    "MAX_CONCURRENT_PROJECTS_REACHED"
+                    if skill_matches and not suitable
+                    else "NO_FULL_SKILL_MATCH"
+                    if case_required
+                    else "NO_ELIGIBLE_TESTER"
+                ),
                 "candidates": ranked,
             })
     return {
@@ -936,15 +1269,23 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
         },
         "required_skills": required,
         "recommendations": candidates,
-        "status": "CANDIDATES_FOUND" if candidates else "NO_MATCHING_SKILL_EVIDENCE",
+        "status": (
+            "CANDIDATES_FOUND"
+            if any(not item["project_limit_reached"] for item in candidates)
+            else "PROJECT_LIMIT_REACHED"
+            if candidates
+            else "NO_MATCHING_SKILL_EVIDENCE"
+        ),
         "method": "SOURCE_EVIDENCE_AVAILABILITY_AND_ACTIVE_CASE_AND_RUN_LOAD",
+        "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
+        "project_capacity_status": capacity_status,
         "staffing_source": "TEST_PLAN_EFFORT_ALLOCATION" if plan_staffing else "ACTIVE_PROJECT_TESTERS",
         "test_plan_staffing": plan_staffing,
         "applies_automatically": False,
         "case_recommendations": case_recommendations,
         "unresolved_cases": unresolved_cases,
         "assignment_plan_status": (
-            "READY" if not unresolved_cases and all(item["status"] != "NO_FULL_SKILL_MATCH" and item["status"] != "NO_ELIGIBLE_TESTER" for item in case_recommendations)
+            "READY" if not unresolved_cases and all(item["status"] not in {"NO_FULL_SKILL_MATCH", "NO_ELIGIBLE_TESTER", "MAX_CONCURRENT_PROJECTS_REACHED"} for item in case_recommendations)
             else "PARTIAL"
         ),
     }
@@ -974,14 +1315,23 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     eligible = [
         item
         for item in memberships
-        if item.get("status") == "ACTIVE" and roles_for_membership(item).intersection({"QA", "TESTER"})
+        if item.get("status") == "ACTIVE" and "QA" in roles_for_membership(item)
     ]
     eligible_ids = [item["user_id"] for item in eligible]
     profiles = await skill_profile_repository.list_for_members(project_id, eligible_ids)
     profiles_by_user = {item["user_id"]: item for item in profiles}
     case_workload = {member_id: 0 for member_id in eligible_ids}
     run_workload = {member_id: 0 for member_id in eligible_ids}
-    project_workload = {member_id: set() for member_id in eligible_ids}
+    staffing_schedule = {
+        "planned_start_at": now().date().isoformat(),
+        "planned_end_at": now().date().isoformat(),
+    }
+    project_workload = await _member_project_workload(eligible_ids, staffing_schedule)
+    project_capacity_status, project_limits = await _project_capacity_limits(
+        eligible_ids,
+        staffing_schedule["planned_start_at"],
+        staffing_schedule["planned_end_at"],
+    )
     if eligible_ids:
         async for active_run in skill_profile_repository.iter_active_runs_for_members(eligible_ids):
             assigned_cases = list((active_run.get("test_case_assignments") or {}).values())
@@ -991,8 +1341,6 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             for member_id in assigned_members:
                 if member_id in run_workload:
                     run_workload[member_id] += 1
-                    if active_run.get("project_id"):
-                        project_workload[member_id].add(active_run["project_id"])
             for member_id in assigned_cases:
                 if member_id in case_workload:
                     case_workload[member_id] += 1
@@ -1006,6 +1354,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     )
     identities = await load_user_identities(eligible_ids)
     qualified_candidates = []
+    excluded_by_project_limit = 0
     for candidate in ranked:
         member_id = candidate["user_id"]
         profile = profiles_by_user.get(member_id)
@@ -1013,12 +1362,22 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             continue
         if candidate["unmatched_skills"]:
             continue
+        project_limit = project_limits.get(member_id)
+        if (
+            project_limit is not None
+            and project_id not in project_workload[member_id]
+            and len(project_workload[member_id]) >= project_limit
+        ):
+            excluded_by_project_limit += 1
+            continue
         qualified_candidates.append(
             {
                 **candidate,
                 "user_label": (identities.get(member_id) or {}).get("label") or member_id,
                 "skill_profile_revision": profile.get("revision", 0),
                 "active_project_count": len(project_workload[member_id]),
+                "max_concurrent_projects": project_limit,
+                "project_limit_reached": False,
             }
         )
     candidates = list(qualified_candidates)
@@ -1034,6 +1393,13 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     )
 
     candidates_by_user = {item["user_id"]: item for item in candidates}
+    candidate_ref_to_user = _opaque_staffing_candidate_refs(
+        list(candidates_by_user)
+    )
+    candidate_ref_by_user = {
+        user_id: candidate_ref
+        for candidate_ref, user_id in candidate_ref_to_user.items()
+    }
     score_factors = _owner_score_factors(candidates_by_user, profiles_by_user)
     ai_candidate_inputs = []
     facts_by_user = {}
@@ -1064,14 +1430,17 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
                 })
         for fact_id, description in (
             ("availability", f"Khả dụng: {candidate['availability']}"),
-            ("active-projects", f"Số dự án đang tham gia: {len(project_workload[member_id])}"),
+            (
+                "active-projects",
+                f"Dự án có Test Run mở hoặc Test Plan được duyệt trùng lịch: {len(project_workload[member_id])}",
+            ),
             ("active-cases", f"Số ca đang được giao: {candidate['active_case_count']}"),
             ("active-runs", f"Số đợt chạy đang tham gia: {candidate['active_run_count']}"),
         ):
             facts.append({"fact_id": fact_id, "description": description})
         facts_by_user[member_id] = facts
         ai_candidate_inputs.append({
-            "candidate_id": member_id,
+            "candidate_id": candidate_ref_by_user[member_id],
             "confirmed_skills": candidate["matched_skills"],
             "relevant_experience": [
                 fact["description"] for fact in facts if fact["fact_id"].startswith("experience-")
@@ -1085,14 +1454,12 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     ai_result = await ai_automation_client.recommend_test_case_owners(
         project_id, output_language, required, ai_candidate_inputs
     ) if ai_candidate_inputs else {"recommendations": [], "warnings": []}
-    recommendation_by_user = {
-        item["candidate_id"]: item for item in ai_result.get("recommendations") or []
-    }
-    if set(recommendation_by_user) != set(candidates_by_user):
-        raise HTTPException(status_code=502, detail={"code": "AI_OWNER_RECOMMENDATION_CANDIDATES_INVALID"})
+    recommendation_by_user = _map_staffing_recommendations(
+        ai_result.get("recommendations") or [], candidate_ref_to_user
+    )
 
     ai_rank_by_user = {
-        item["candidate_id"]: rank
+        candidate_ref_to_user[item["candidate_id"]]: rank
         for rank, item in enumerate(ai_result.get("recommendations") or [], start=1)
     }
     for member_id, candidate in candidates_by_user.items():
@@ -1116,6 +1483,8 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         if candidates
         else "NO_ELIGIBLE_TESTER"
         if not eligible
+        else "PROJECT_LIMIT_REACHED"
+        if excluded_by_project_limit and not candidates
         else "NO_CONFIRMED_SKILL_MATCH"
     )
     return {
@@ -1127,6 +1496,9 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         "recommended_user_label": candidates[0]["user_label"] if candidates else None,
         "status": status,
         "method": "AI_RANKED_CONFIRMED_SKILLS_EXPERIENCE_AVAILABILITY_AND_WORKLOAD",
+        "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
+        "project_capacity_status": project_capacity_status,
+        "excluded_by_project_limit_count": excluded_by_project_limit,
         "recommendation_engine": "AI",
         "score_method": "EQUAL_WEIGHT_MEAN_OF_AVAILABLE_NORMALIZED_FACTORS",
         "score_note": "Điểm 0–1 là mức phù hợp tương đối trong nhóm ứng viên đủ điều kiện, không phải xác suất thành công.",

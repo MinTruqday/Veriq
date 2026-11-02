@@ -3,6 +3,7 @@ import json
 
 from fastapi import HTTPException
 
+from src.core.auth import roles_for_membership
 from src.core.common import (
     audit,
     get_project,
@@ -259,7 +260,10 @@ async def validate_test_case_owner(project_id, owner_id):
     if not owner:
         return None
     membership = await common_repository.find_membership(
-        project_id, owner, status="ACTIVE", projection={"_id": 1, "user_id": 1}
+        project_id,
+        owner,
+        status="ACTIVE",
+        projection={"_id": 1, "user_id": 1, "project_role": 1, "project_roles": 1},
     )
     if (
         not membership
@@ -271,6 +275,14 @@ async def validate_test_case_owner(project_id, owner_id):
             detail={
                 "code": "TEST_CASE_OWNER_NOT_ACTIVE_PROJECT_MEMBER",
                 "message": "Người phụ trách phải là thành viên đang hoạt động của dự án.",
+            },
+        )
+    if "QA" not in roles_for_membership(membership):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "TEST_CASE_OWNER_ROLE_INVALID",
+                "message": "Người phụ trách ca kiểm thử phải có vai trò QA trong dự án.",
             },
         )
     return owner
@@ -558,7 +570,9 @@ async def create_test_case_draft_record(
     return draft
 
 
-async def create_generated_test_case_draft_batch(project_id, payloads, user):
+async def create_generated_test_case_draft_batch(
+    project_id, payloads, user, idempotency_key=None
+):
     await get_project(project_id, user, "testcase.create")
     if not payloads or len(payloads) > 100:
         raise HTTPException(422, detail={"code": "TEST_CASE_BATCH_SIZE_INVALID"})
@@ -576,12 +590,21 @@ async def create_generated_test_case_draft_batch(project_id, payloads, user):
         raise HTTPException(422, detail={"code": "TEST_CASE_BATCH_SOURCE_MISMATCH"})
     targets = [item.target_version_id for item in payloads if item.target_version_id]
     if len(targets) != len(set(targets)):
-        raise HTTPException(422, detail={"code": "TEST_CASE_BATCH_TARGET_CONFLICT", "message": "Không thể tạo nhiều bản nháp phiên bản cho cùng một ca trong một lượt"})
+        raise HTTPException(
+            422,
+            detail={
+                "code": "TEST_CASE_BATCH_TARGET_CONFLICT",
+                "message": "Không thể tạo nhiều bản nháp phiên bản cho cùng một ca trong một lượt",
+            },
+        )
     settings = await test_design_repository.find_project_settings(project_id)
     threshold = settings.get("testcase_duplicate_threshold", 0.72)
     for index, item in enumerate(payloads):
         if any(
-            duplicate_score(item.model_dump(), previous.model_dump(), threshold)[0] >= threshold
+            duplicate_score(
+                item.model_dump(), previous.model_dump(), threshold
+            )[0]
+            >= threshold
             for previous in payloads[:index]
         ) and (item.target_version_id or not (item.duplicate_reason or "").strip()):
             raise HTTPException(
@@ -592,21 +615,114 @@ async def create_generated_test_case_draft_batch(project_id, payloads, user):
                     "message": "Các ca trong cùng lượt tạo gần giống nhau  Hãy bỏ ca trùng hoặc ghi lý do tạo riêng",
                 },
             )
+    request_hash = hashlib.sha256(
+        json.dumps(
+            [item.model_dump(mode="json") for item in payloads],
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    if idempotency_key:
+        existing = await database.value.bulk_operations.find_one(
+            {"project_id": project_id, "idempotency_key": idempotency_key}
+        )
+        if existing:
+            if (
+                existing.get("operation_type") != "AI_TEST_CASE_DRAFT_BATCH"
+                or existing.get("request_hash") != request_hash
+                or existing.get("created_by") != user.id
+            ):
+                raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            drafts = await database.value.test_case_drafts.find(
+                {
+                    "_id": {"$in": existing.get("draft_ids", [])},
+                    "project_id": project_id,
+                }
+            ).to_list(length=len(existing.get("draft_ids", [])))
+            drafts_by_id = {item["_id"]: item for item in drafts}
+            ordered = [
+                drafts_by_id[item]
+                for item in existing.get("draft_ids", [])
+                if item in drafts_by_id
+            ]
+            if len(ordered) != len(existing.get("draft_ids", [])):
+                raise HTTPException(
+                    409, detail={"code": "IDEMPOTENCY_RECEIPT_INCOMPLETE"}
+                )
+            return ordered
     created = []
-    async with await database.client.start_session() as session:
-        async with session.start_transaction():
-            for index, item in enumerate(payloads):
-                try:
-                    created.append(
-                        await create_test_case_draft_record(
-                            project_id, item, user, session=session
-                        )
+    receipt_collision = False
+
+    async def persist_batch(session):
+        nonlocal created, receipt_collision
+        created = []
+        receipt_collision = False
+        for index, item in enumerate(payloads):
+            try:
+                created.append(
+                    await create_test_case_draft_record(
+                        project_id, item, user, session=session
                     )
-                except HTTPException as error:
-                    detail = error.detail
-                    if isinstance(detail, dict):
-                        detail = {**detail, "index": index}
-                    raise HTTPException(error.status_code, detail=detail) from error
+                )
+            except HTTPException as error:
+                detail = error.detail
+                if isinstance(detail, dict):
+                    detail = {**detail, "index": index}
+                raise HTTPException(error.status_code, detail=detail) from error
+        if idempotency_key:
+            try:
+                await database.value.bulk_operations.insert_one(
+                    {
+                        "_id": new_id("OP"),
+                        "operation_id": new_id("OPR"),
+                        "project_id": project_id,
+                        "operation_type": "AI_TEST_CASE_DRAFT_BATCH",
+                        "idempotency_key": idempotency_key,
+                        "request_hash": request_hash,
+                        "draft_ids": [item["_id"] for item in created],
+                        "created_by": user.id,
+                        "created_at": now(),
+                    },
+                    session=session,
+                )
+            except DuplicateKeyError:
+                receipt_collision = True
+                raise
+
+    try:
+        async with await database.client.start_session() as session:
+            await session.with_transaction(persist_batch)
+    except DuplicateKeyError as error:
+        if not idempotency_key or not receipt_collision:
+            raise
+        existing = await database.value.bulk_operations.find_one(
+            {"project_id": project_id, "idempotency_key": idempotency_key}
+        )
+        if (
+            not existing
+            or existing.get("operation_type") != "AI_TEST_CASE_DRAFT_BATCH"
+            or existing.get("request_hash") != request_hash
+            or existing.get("created_by") != user.id
+        ):
+            raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"}) from error
+        drafts = await database.value.test_case_drafts.find(
+            {
+                "_id": {"$in": existing.get("draft_ids", [])},
+                "project_id": project_id,
+            }
+        ).to_list(length=len(existing.get("draft_ids", [])))
+        drafts_by_id = {item["_id"]: item for item in drafts}
+        ordered = [
+            drafts_by_id[item]
+            for item in existing.get("draft_ids", [])
+            if item in drafts_by_id
+        ]
+        if len(ordered) != len(existing.get("draft_ids", [])):
+            raise HTTPException(
+                409, detail={"code": "IDEMPOTENCY_RECEIPT_INCOMPLETE"}
+            ) from error
+        return ordered
     return created
 
 

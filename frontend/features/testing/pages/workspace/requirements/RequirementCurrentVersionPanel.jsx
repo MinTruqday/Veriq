@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import Link from "next/link";
 import DocumentEditor from "../../../editor/DocumentEditor";
@@ -9,6 +10,7 @@ export default function RequirementCurrentVersionPanel({
   projectId,
   current,
   selected,
+  focusAcceptanceCriterionId,
   draft,
   members,
   customFields,
@@ -24,6 +26,13 @@ export default function RequirementCurrentVersionPanel({
   reload,
   onDraftChange,
 }) {
+  useEffect(() => {
+    if (!focusAcceptanceCriterionId || !current?._id) return;
+    document
+      .getElementById(`acceptance-criterion-${focusAcceptanceCriterionId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [current?._id, focusAcceptanceCriterionId]);
+
   const submitReview = async () => {
     await ask({
       title: "Gửi yêu cầu đi rà soát",
@@ -200,6 +209,39 @@ export default function RequirementCurrentVersionPanel({
       }
     >
       <div className="grid gap-5 p-5 md:grid-cols-3">
+        {focusAcceptanceCriterionId && (
+          <section
+            aria-label="Tiêu chí nguồn được trích dẫn"
+            className="rounded-control border border-violet-300 bg-violet-50/60 p-4 md:col-span-3"
+          >
+            <h3 className="text-sm font-semibold">Tiêu chí nguồn được trích dẫn</h3>
+            {(current?.acceptance_criteria || [])
+              .filter((criterion) => criterion._id === focusAcceptanceCriterionId)
+              .map((criterion) => (
+                <div
+                  className="mt-2 rounded-control border border-violet-300 bg-white p-3"
+                  id={`acceptance-criterion-${criterion._id}`}
+                  key={criterion._id}
+                  tabIndex={-1}
+                >
+                  <p className="text-xs font-medium text-ink-muted">
+                    {criterion.key || "Tiêu chí chấp nhận"}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    {criterion.plain_text || "Không có nội dung văn bản để hiển thị."}
+                  </p>
+                </div>
+              ))}
+            {!(current?.acceptance_criteria || []).some(
+              (criterion) => criterion._id === focusAcceptanceCriterionId,
+            ) && (
+              <p className="mt-2 text-sm text-ink-muted">
+                Tiêu chí này không còn thuộc phiên bản yêu cầu đang mở. Hãy kiểm tra lại phiên bản
+                nguồn.
+              </p>
+            )}
+          </section>
+        )}
         <div>
           <p className="field-label">Trạng thái</p>
           <div className="mt-2">

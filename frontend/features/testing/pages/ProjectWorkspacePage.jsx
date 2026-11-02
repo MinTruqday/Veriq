@@ -166,6 +166,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       ? [
           "report.read",
           "analytics.read",
+          "analytics.ai.read",
           "coverage.read",
           "teststatusreport.read",
           "testcompletion.read",

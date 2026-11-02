@@ -16,6 +16,13 @@ RequirementQualityCategory = Literal[
 ]
 
 
+class RequirementEvidenceQuoteOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_ref: str = Field(min_length=1, max_length=200)
+    quote: str = Field(min_length=2, max_length=1000)
+
+
 class RequirementQualityFindingOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -24,6 +31,7 @@ class RequirementQualityFindingOutput(BaseModel):
     message: str = Field(min_length=2, max_length=5000)
     suggestion: str = Field(min_length=2, max_length=5000)
     evidence_refs: List[str] = Field(min_length=1, max_length=100)
+    evidence_quotes: List[RequirementEvidenceQuoteOutput] = Field(min_length=1, max_length=20)
     reason_codes: List[str] = Field(min_length=1, max_length=100)
 
 class RequirementAcceptanceCriterionSuggestionOutput(BaseModel):
@@ -91,6 +99,7 @@ class RequirementQualityModelOutput(BaseModel):
         default_factory=list,
         max_length=1,
     )
+    findings: List[RequirementQualityFindingOutput] = Field(max_length=100)
 
 class RequirementTemplateAPIOperationOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")

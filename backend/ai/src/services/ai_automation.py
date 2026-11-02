@@ -29,6 +29,44 @@ from src.schemas.inference_test_design import GeneratedCasesGroundingReview
 from src.services.automation_provenance import source_quote_spans
 from src.services.inference import model_metadata, structured
 
+EXECUTION_ASSISTANCE_SENSITIVE_TERMS = (
+    "password",
+    "passphrase",
+    "passcode",
+    "one-time password",
+    "verification code",
+    "otp code",
+    "credential",
+    "secret",
+    "token",
+    "api key",
+    "private key",
+    "client secret",
+    "access token",
+    "refresh token",
+    "session cookie",
+    "mật khẩu",
+    "mat khau",
+    "mã pin",
+    "ma pin",
+    "mã otp",
+    "ma otp",
+    "mã xác thực",
+    "ma xac thuc",
+    "mã bảo mật",
+    "ma bao mat",
+    "khóa bí mật",
+    "khoa bi mat",
+    "khóa riêng tư",
+    "khoa rieng tu",
+    "mã truy cập",
+    "ma truy cap",
+    "thông tin đăng nhập",
+    "thong tin dang nhap",
+    "authentication header",
+    "authorization header",
+)
+
 
 def evidence_text(evidence, compact=False):
     values = []
@@ -81,6 +119,37 @@ def evidence_reference_ids(evidence):
         for item in evidence
         if item.get("artifact_version_id") or item.get("artifact_id")
     ]
+
+
+def suppress_execution_assistance_credential_requests(generated_data):
+    suggestions = generated_data.get("suggestions")
+    if not isinstance(suggestions, list):
+        return False
+    suppressed = False
+    for suggestion in suggestions:
+        if not isinstance(suggestion, dict):
+            continue
+        missing_information = suggestion.get("missing_information")
+        if not isinstance(missing_information, list):
+            continue
+        safe_items = []
+        for item in missing_information:
+            normalized = str(item).casefold() if isinstance(item, str) else ""
+            if any(term in normalized for term in EXECUTION_ASSISTANCE_SENSITIVE_TERMS):
+                suppressed = True
+            else:
+                safe_items.append(item)
+        suggestion["missing_information"] = safe_items
+    if suppressed:
+        warnings = generated_data.get("warnings")
+        if not isinstance(warnings, list):
+            warnings = []
+        generated_data["warnings"] = list(
+            dict.fromkeys(
+                [*warnings, "SENSITIVE_REQUEST_SUPPRESSED"]
+            )
+        )
+    return suppressed
 
 
 def nested_values(value, key_name):
@@ -180,6 +249,39 @@ def generated_cases_have_grounded_citations(cases, evidence):
     return True
 
 
+def grounded_requirement_findings(findings, evidence):
+    source_text = {
+        str(item.get("artifact_version_id") or item.get("artifact_id")): str(
+            item.get("text") or ""
+        )
+        for item in evidence
+        if item.get("artifact_version_id") or item.get("artifact_id")
+    }
+    accepted = []
+    rejected = False
+    for finding in findings:
+        refs = set(finding.get("evidence_refs") or [])
+        quotes = finding.get("evidence_quotes") or []
+        valid = bool(refs) and refs.issubset(source_text) and bool(quotes)
+        if valid:
+            for quote in quotes:
+                reference = quote.get("evidence_ref")
+                text = str(quote.get("quote") or "").strip()
+                if (
+                    reference not in refs
+                    or reference not in source_text
+                    or not text
+                    or not source_quote_spans(source_text[reference], text)
+                ):
+                    valid = False
+                    break
+        if valid:
+            accepted.append(finding)
+        else:
+            rejected = True
+    return accepted, rejected
+
+
 async def generate_ai_automation(req: TestingAutomationRequest):
     with trace_span(
         "ai.testing_automation",
@@ -255,6 +357,21 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
         generated_data["capability"] = req.capability
         generated_data.setdefault("confidence", 0)
         generated_data.setdefault("warnings", [])
+        if req.capability == "execution_assistance":
+            suppress_execution_assistance_credential_requests(generated_data)
+        if req.capability == "requirement_quality_analysis":
+            generated_data["findings"], rejected_findings = grounded_requirement_findings(
+                generated_data.get("findings") or [], evidence
+            )
+            if rejected_findings:
+                generated_data["warnings"] = list(
+                    dict.fromkeys(
+                        [
+                            *generated_data["warnings"],
+                            "AI_UNGROUNDED_CANDIDATES_REJECTED",
+                        ]
+                    )
+                )
         unknown_refs = sorted(
             set(nested_values(generated_data, "evidence_refs")) - set(allowed_evidence_refs)
         )

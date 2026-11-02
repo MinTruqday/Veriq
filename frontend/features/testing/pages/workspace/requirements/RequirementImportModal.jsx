@@ -228,7 +228,6 @@ export default function RequirementImportModal({
   sourceDocument,
   onRetrySource,
   project,
-  isPlatformAdmin,
   sourceDocuments,
   onTemplatePreview,
   onError,
@@ -312,7 +311,6 @@ export default function RequirementImportModal({
         <RequirementTemplatePanel
           key={project._id}
           project={project}
-          isPlatformAdmin={isPlatformAdmin}
           members={members}
           sourceDocuments={sourceDocuments}
           onPreview={onTemplatePreview}

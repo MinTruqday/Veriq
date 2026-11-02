@@ -91,11 +91,7 @@ export default function DefectsPage({ project }) {
     attachments: [],
   });
   const can = (permission) => project.current_permissions?.includes(permission);
-  const membershipRoles = project.current_membership?.project_roles;
-  const memberRoles =
-    Array.isArray(membershipRoles) && membershipRoles.length
-      ? membershipRoles
-      : [project.current_membership?.project_role].filter(Boolean);
+  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const userId = project.current_membership?.user_id;
   const canManageTrace = (item) =>
     can("defect.trace.manage") || (memberRoles.includes("DEVELOPER") && item.assignee === userId);
@@ -122,7 +118,13 @@ export default function DefectsPage({ project }) {
         (memberRoles.includes("DEVELOPER") && item.assignee === userId)
       );
     }
-    if (["READY_FOR_RETEST", "REOPENED"].includes(status)) return can("defect.retest");
+    if (status === "READY_FOR_RETEST") {
+      return (
+        can("defect.transition.developer") ||
+        (memberRoles.includes("DEVELOPER") && item.assignee === userId)
+      );
+    }
+    if (status === "REOPENED") return can("defect.triage");
     if (status === "CLOSED") return can("defect.close");
     return can("defect.update");
   };
@@ -416,7 +418,7 @@ export default function DefectsPage({ project }) {
   };
   const renderTransition = (item) => {
     if (item.status === "READY_FOR_RETEST") {
-      if (!can("defect.retest")) return null;
+      if (!can("defect.retest") || !can("testrun.execute")) return null;
       const eligibleResults = eligibleRetestResults(item, results);
       if (!eligibleResults.length) return null;
       return (

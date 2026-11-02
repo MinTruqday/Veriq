@@ -7,6 +7,7 @@ from src.core.common import envelope
 from src.schemas.contracts.project import (
     ProjectArchiveInput,
     ProjectCapabilities,
+    ProjectComplexityAssessmentInput,
     ProjectCreate,
     ProjectMemberCreate,
     ProjectMemberPatch,
@@ -32,6 +33,7 @@ from src.modules.projects.services.skill_profiles import (
 )
 from src.modules.projects.services.project_complexity import (
     assess_project_complexity,
+    get_project_complexity_scope,
     get_latest_project_complexity,
 )
 
@@ -51,12 +53,18 @@ async def latest_project_complexity(project_id: str, user: CurrentUser = Depends
     return envelope(await get_latest_project_complexity(project_id, user))
 
 
+@router.get("/du-an/{project_id}/do-kho-ai/pham-vi")
+async def project_complexity_scope(project_id: str, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await get_project_complexity_scope(project_id, user))
+
+
 @router.post("/du-an/{project_id}/do-kho-ai/danh-gia")
 async def run_project_complexity_assessment(
     project_id: str,
+    payload: ProjectComplexityAssessmentInput,
     user: CurrentUser = Depends(get_current_user),
 ):
-    return envelope(await assess_project_complexity(project_id, user))
+    return envelope(await assess_project_complexity(project_id, user, payload))
 
 
 @router.get("/du-an/{project_id}/ho-so-nang-luc/cua-toi")

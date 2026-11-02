@@ -302,8 +302,8 @@ export default function ProjectsPage() {
               placeholder="qa@congty.vn hoặc mã tài khoản QA"
             />
             <span className="mt-1 block text-xs leading-5 text-ink-muted" id="initial-qa-help">
-              Có thể nhập email hoặc mã tài khoản. Nếu là chính bạn, tài khoản sẽ có cả vai trò BA
-              và QA trong dự án.
+              Có thể nhập email hoặc mã tài khoản. Chọn một tài khoản khác người tạo dự án để quyền
+              BA và QA được tách riêng.
             </span>
           </label>
           <label className="field-label block min-w-0">

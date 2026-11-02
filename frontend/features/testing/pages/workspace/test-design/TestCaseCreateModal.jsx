@@ -284,15 +284,24 @@ export default function TestCaseCreateModal({
                 onChange={(event) => update({ ownerId: event.target.value })}
               >
                 <option value="">Chưa phân công</option>
-                {members.map((member) => (
-                  <option key={member.user_id} value={member.user_id}>
-                    {member.user_label ||
-                      member.user?.full_name ||
-                      member.user?.email ||
-                      "Thành viên dự án"}
-                    {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
-                  </option>
-                ))}
+                {members
+                  .filter((member) => {
+                    const roles = member.project_role
+                      ? [member.project_role]
+                      : Array.isArray(member.project_roles) && member.project_roles.length === 1
+                        ? member.project_roles
+                        : [];
+                    return member.status === "ACTIVE" && roles.includes("QA");
+                  })
+                  .map((member) => (
+                    <option key={member.user_id} value={member.user_id}>
+                      {member.user_label ||
+                        member.user?.full_name ||
+                        member.user?.email ||
+                        "Thành viên dự án"}
+                      {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
+                    </option>
+                  ))}
               </select>
             </label>
             <TestCaseOwnerRecommendation

@@ -224,11 +224,12 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   )
     ? activeSettingsSection
     : settingsSections[0]?.id;
+  const memberRoles = (item) => [item.project_role].filter(Boolean);
   const activeQaCount = members.filter(
-    (item) => item.project_role === "QA" && item.status === "ACTIVE",
+    (item) => item.status === "ACTIVE" && memberRoles(item).includes("QA"),
   ).length;
   const isOnlyActiveQa = (item) =>
-    item.project_role === "QA" && item.status === "ACTIVE" && activeQaCount === 1;
+    item.status === "ACTIVE" && memberRoles(item).includes("QA") && activeQaCount === 1;
   const loadSettingsData = useCallback(async () => {
     const requestRevision = ++settingsLoadRevision.current;
     if (loadedProjectId.current !== project._id) {
@@ -377,6 +378,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                             "testplan.assignments": settings.tester_can_assign_testplans
                               ? ["QA", "TESTER"]
                               : ["QA"],
+                            "testresult.correct": settings.tester_can_correct_results
+                              ? ["TESTER"]
+                              : [],
                             "testcase.template.archive":
                               settings.tester_can_archive_testcase_templates
                                 ? ["QA", "TESTER"]
@@ -763,44 +767,64 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         {
                           key: "project_role",
                           label: "Vai trò",
-                          render: (item) =>
-                            can("project.members.manage") ? (
-                              <select
-                                aria-label={`Vai trò ${memberDisplayName(item)}`}
-                                className="apple-input"
-                                value={item.project_role}
-                                disabled={item.status !== "ACTIVE" || isOnlyActiveQa(item)}
-                                onChange={async (event) => {
-                                  try {
-                                    await testingApi.updateMember(project._id, item.user_id, {
-                                      expected_revision: item.membership_revision,
-                                      project_role: event.target.value,
-                                    });
-                                    setMembers(await testingApi.listMembers(project._id));
-                                  } catch (reason) {
-                                    setError(messageOf(reason));
-                                  }
-                                }}
-                              >
-                                {["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"].map((role) => (
-                                  <option key={role} value={role}>
-                                    {
-                                      {
-                                        QA: "QA",
-                                        TESTER: "Kiểm thử viên",
-                                        BA: "Phân tích nghiệp vụ",
-                                        DEVELOPER: "Lập trình viên",
-                                        VIEWER: "Người xem",
-                                      }[role]
+                          render: (item) => {
+                            const roles = memberRoles(item);
+                            const roleLabels = roles.map(
+                              (role) =>
+                                ({
+                                  QA: "QA",
+                                  TESTER: "Kiểm thử viên",
+                                  BA: "Phân tích nghiệp vụ",
+                                  DEVELOPER: "Lập trình viên",
+                                  VIEWER: "Người xem",
+                                })[role] || role,
+                            );
+                            return can("project.members.manage") ? (
+                              <span className="flex min-w-36 flex-col gap-1">
+                                <select
+                                  aria-label={`Vai trò ${memberDisplayName(item)}`}
+                                  className="apple-input"
+                                  value={item.project_role}
+                                  disabled={item.status !== "ACTIVE" || isOnlyActiveQa(item)}
+                                  onChange={async (event) => {
+                                    try {
+                                      await testingApi.updateMember(project._id, item.user_id, {
+                                        expected_revision: item.membership_revision,
+                                        project_role: event.target.value,
+                                      });
+                                      setMembers(await testingApi.listMembers(project._id));
+                                    } catch (reason) {
+                                      setError(messageOf(reason));
                                     }
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span>
-                                {settingValueLabels[item.project_role] || item.project_role}
+                                  }}
+                                >
+                                  {["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"].map((role) => (
+                                    <option key={role} value={role}>
+                                      {
+                                        {
+                                          QA: "QA",
+                                          TESTER: "Kiểm thử viên",
+                                          BA: "Phân tích nghiệp vụ",
+                                          DEVELOPER: "Lập trình viên",
+                                          VIEWER: "Người xem",
+                                        }[role]
+                                      }
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="text-[11px] text-ink-muted">
+                                  Được cấp: {roleLabels.join(", ")}
+                                </span>
+                                {roles.length > 1 && (
+                                  <span className="text-[11px] text-ink-muted">
+                                    Đổi lựa chọn sẽ thay thế toàn bộ vai trò này.
+                                  </span>
+                                )}
                               </span>
-                            ),
+                            ) : (
+                              <span>{roleLabels.join(", ")}</span>
+                            );
+                          },
                         },
                         {
                           key: "status",

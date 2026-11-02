@@ -10,7 +10,7 @@ from src.core.ai_automation import (
     request_ai_automation,
     require_document_ingestion_event,
 )
-from src.core.common import audit, get_project, get_project_role, get_project_roles, new_id, now, plain_text
+from src.core.common import audit, get_project, get_project_roles, new_id, now, plain_text
 from src.modules.requirements.services.requirement_documents import require_document_access
 from src.modules.requirements.services.requirement_import import api_operation_identifiers
 from src.modules.requirements.services.requirement_import_workflow import create_requirement_preview_from_candidates
@@ -230,9 +230,7 @@ async def list_custom_fields(project_id, user):
 
 
 async def create_custom_field(project_id, payload, user):
-    await get_project(project_id, user, "project.update")
-    if "QA" not in await get_project_roles(project_id, user.id) and not user.is_system_admin:
-        raise HTTPException(status_code=403, detail={"code": "CUSTOM_FIELD_MANAGER_REQUIRED"})
+    await get_project(project_id, user, "requirement.update")
     field = {"_id": new_id("RCF"), "project_id": project_id, **payload.model_dump(), "created_at": now(), "created_by": user.id}
     try:
         await requirement_template_repository.insert_field(field)
@@ -966,8 +964,8 @@ async def consent_publication(project_id, template_id, payload, user):
 
 
 async def approve_publication(project_id, template_id, user):
-    await get_project(project_id, user, "project.update")
-    if "QA" not in await get_project_roles(project_id, user.id) and not user.is_system_admin:
+    await get_project(project_id, user, "requirement.read")
+    if "QA" not in await get_project_roles(project_id, user.id):
         raise HTTPException(status_code=403, detail={"code": "TEMPLATE_APPROVER_REQUIRED"})
     template = await requirement_template_repository.find(template_id)
     if not template or template.get("project_id") != project_id or template.get("status") != "PENDING_PUBLICATION" or template.get("publication_requested_by") == user.id:

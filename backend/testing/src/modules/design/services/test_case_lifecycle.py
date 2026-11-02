@@ -153,6 +153,7 @@ async def request_test_case_changes_record(project_id, draft_id, payload, user):
         'DRAFT',
         {
             "review_note": payload.review_note,
+            "review_reason_code": payload.review_reason_code,
             "changes_requested_by": user.id,
             "changes_requested_at": timestamp,
             "updated_at": timestamp,
@@ -167,7 +168,7 @@ async def request_test_case_changes_record(project_id, draft_id, payload, user):
         'TestCaseDraft',
         draft_id,
         project_id,
-        {"review_note": payload.review_note},
+        {"review_note": payload.review_note, "review_reason_code": payload.review_reason_code},
     )
     return draft
 
@@ -538,6 +539,24 @@ def build_test_case_version(draft, test_case_id, version_number, parent_version_
         "repository_node_id": draft.get("repository_node_id"),
         "bdd": draft.get("bdd"),
         "ai_proposal_snapshot": draft.get("ai_proposal_snapshot"),
+        "origin": draft.get("origin", "manual"),
+        "ai_review_feedback": (
+            {
+                "decision": "EDITED_ACCEPTED"
+                if any(
+                    draft.get(key) != draft.get("ai_proposal_snapshot", {}).get(key)
+                    for key in (draft.get("ai_proposal_snapshot") or {})
+                )
+                else "ACCEPTED",
+                "changed_fields": sorted(
+                    key
+                    for key in (draft.get("ai_proposal_snapshot") or {})
+                    if draft.get(key) != draft.get("ai_proposal_snapshot", {}).get(key)
+                ),
+            }
+            if draft.get("origin") == "ai_generated" and draft.get("ai_proposal_snapshot")
+            else None
+        ),
         "review_acceptance_criteria_snapshot_ids": draft.get("review_acceptance_criteria_snapshot_ids"),
         "merge_decision_ids": draft.get("merge_decision_ids", []),
         "source_evidence": (

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.internal import require_internal_token
@@ -239,9 +239,19 @@ async def create_test_case_draft(
 async def create_generated_test_case_batch(
     project_id: str,
     payload: list[CaseDraftCreate],
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        min_length=8,
+        max_length=200,
+    ),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return envelope(await create_generated_test_case_draft_batch(project_id, payload, user))
+    return envelope(
+        await create_generated_test_case_draft_batch(
+            project_id, payload, user, idempotency_key=idempotency_key
+        )
+    )
 
 
 @router.get("/du-an/{project_id}/ban-nhap-ca-kiem-thu")

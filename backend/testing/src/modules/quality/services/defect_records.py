@@ -11,7 +11,7 @@ from src.core.common import (
     audit,
     get_project,
     get_project_entity,
-    get_project_role,
+    get_project_roles,
     new_id,
     next_key,
     now,
@@ -383,8 +383,8 @@ async def list_defect_records(
     items = await defect_repository.list_defects(
         query, sort_field, direction, (page - 1) * page_size, page_size
     )
-    role = await get_project_role(project_id, user.id)
-    return page_payload([visible_defect(item, role) for item in items], page, page_size, total)
+    roles = await get_project_roles(project_id, user.id)
+    return page_payload([visible_defect(item, roles) for item in items], page, page_size, total)
 
 
 async def build_defect_export(project_id, user):
@@ -405,7 +405,7 @@ async def get_defect_record(defect_id, project_id, user):
     defect = await get_project_entity("defects", defect_id, user, "defect.read")
     if project_id is not None and defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
-    role = await get_project_role(defect["project_id"], user.id)
+    roles = await get_project_roles(defect["project_id"], user.id)
     trace_links = await defect_repository.list_trace_links(
         defect["project_id"],
         defect_id,
@@ -414,7 +414,7 @@ async def get_defect_record(defect_id, project_id, user):
     )
     comments = (
         []
-        if role == 'VIEWER'
+        if 'VIEWER' in roles
         else await defect_repository.list_comments(
             defect["project_id"],
             defect_id,
@@ -424,7 +424,7 @@ async def get_defect_record(defect_id, project_id, user):
     )
     attachments = (
         []
-        if role == 'VIEWER'
+        if 'VIEWER' in roles
         else await defect_repository.list_attachments(
             defect["project_id"],
             defect_id,
@@ -434,7 +434,7 @@ async def get_defect_record(defect_id, project_id, user):
         )
     )
     return {
-        **visible_defect(defect, role),
+        **visible_defect(defect, roles),
         "trace_links": trace_links,
         "comments": comments,
         "attachments": attachments,

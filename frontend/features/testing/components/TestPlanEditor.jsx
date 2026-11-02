@@ -1,7 +1,58 @@
 import { useRef, useState } from "react";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
+import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import StructuredValueEditor from "./StructuredValueEditor";
 import { testingApi } from "../services/testing.service";
+
+const aiPlanFields = [
+  ["objective", "Mục tiêu", true],
+  ["scope_in", "Trong phạm vi", true],
+  ["scope_out", "Ngoài phạm vi", true],
+  ["test_approach", "Cách tiếp cận", true],
+  ["test_level", "Cấp độ kiểm thử", true],
+  ["test_types", "Loại kiểm thử", true],
+  ["environment", "Môi trường", true],
+  ["entry_criteria", "Tiêu chí đầu vào", true],
+  ["exit_criteria", "Tiêu chí đầu ra", true],
+  ["risks", "Rủi ro và ứng phó", true],
+  ["assumptions", "Giả định", true],
+  ["constraints", "Ràng buộc", true],
+  ["data_sources", "Nguồn dữ liệu", true],
+  ["data_preparation", "Chuẩn bị dữ liệu", true],
+  ["data_privacy", "Quyền riêng tư dữ liệu", true],
+  ["data_reset", "Khôi phục dữ liệu", true],
+  ["role_guidance", "Gợi ý trách nhiệm theo vai trò", false],
+  ["milestones", "Mốc kiểm thử", true],
+  ["deliverables", "Bàn giao và báo cáo", true],
+  ["tools", "Công cụ", true],
+  ["defect_reporting", "Báo cáo lỗi", true],
+  ["defect_classification", "Phân loại lỗi", true],
+  ["defect_triage", "Rà soát và phân công lỗi", true],
+  ["defect_retest", "Kiểm thử lại lỗi", true],
+  ["defect_closure", "Đóng lỗi", true],
+];
+
+function hasSuggestedValue(value) {
+  return Array.isArray(value)
+    ? value.some((item) => String(item || "").trim())
+    : Boolean(String(value || "").trim());
+}
+
+function planFieldValue(plan, field) {
+  if (field === "data_sources") return plan.test_data_plan?.sources || [];
+  if (field === "data_preparation") return plan.test_data_plan?.preparation || "";
+  if (field === "data_privacy") return plan.test_data_plan?.privacy || "";
+  if (field === "data_reset") return plan.test_data_plan?.reset_procedure || "";
+  if (field === "milestones") return (plan.milestones || []).map((item) => item.name || "");
+  if (field.startsWith("defect_"))
+    return plan.defect_management?.[field.replace("defect_", "")] || "";
+  return plan[field];
+}
+
+function displayPlanFieldValue(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).join("\n");
+  return String(value || "").trim();
+}
 
 const scopeFields = [
   ["scope_in", "Trong phạm vi"],
@@ -130,6 +181,8 @@ export default function TestPlanEditor({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [selectedAiFields, setSelectedAiFields] = useState(() => new Set());
+  const [appliedAiFields, setAppliedAiFields] = useState(() => new Set());
   const [aiError, setAiError] = useState("");
   const savingRef = useRef(false);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
@@ -144,6 +197,16 @@ export default function TestPlanEditor({
         instruction: aiInstruction,
       });
       setAiSuggestion(result);
+      const suggestion = result?.suggestion || {};
+      const selectableFields = aiPlanFields
+        .filter(([field, , applicable]) => applicable && hasSuggestedValue(suggestion[field]))
+        .map(([field]) => field);
+      setSelectedAiFields(
+        new Set(
+          selectableFields.filter((field) => !hasSuggestedValue(planFieldValue(value, field))),
+        ),
+      );
+      setAppliedAiFields(new Set());
     } catch (reason) {
       setAiError(reason.message || "Không thể tạo gợi ý kế hoạch");
     } finally {
@@ -152,34 +215,43 @@ export default function TestPlanEditor({
   };
   const applyAiPlanDraft = () => {
     const suggestion = aiSuggestion?.suggestion;
-    if (!suggestion) return;
-    setValue((current) => ({
-      ...current,
-      objective: suggestion.objective || current.objective,
-      scope_in: suggestion.scope_in?.length ? suggestion.scope_in : current.scope_in,
-      scope_out: suggestion.scope_out?.length ? suggestion.scope_out : current.scope_out,
-      test_approach: suggestion.test_approach || current.test_approach,
-      test_types: suggestion.test_types?.length ? suggestion.test_types : current.test_types,
-      entry_criteria: suggestion.entry_criteria?.length
-        ? suggestion.entry_criteria
-        : current.entry_criteria,
-      exit_criteria: suggestion.exit_criteria?.length
-        ? suggestion.exit_criteria
-        : current.exit_criteria,
-      risks: suggestion.risks?.length ? suggestion.risks : current.risks,
-      assumptions: suggestion.assumptions?.length ? suggestion.assumptions : current.assumptions,
-      constraints: suggestion.constraints?.length ? suggestion.constraints : current.constraints,
-      test_data_plan: {
-        ...current.test_data_plan,
-        sources: suggestion.data_sources?.length
-          ? suggestion.data_sources
-          : current.test_data_plan.sources,
-        preparation: suggestion.data_preparation || current.test_data_plan.preparation,
-        privacy: suggestion.data_privacy || current.test_data_plan.privacy,
-        reset_procedure: suggestion.data_reset || current.test_data_plan.reset_procedure,
-      },
-    }));
-    setAiSuggestion(null);
+    if (!suggestion || !selectedAiFields.size) return;
+    const selected = new Set(selectedAiFields);
+    setValue((current) => {
+      const next = { ...current };
+      const testDataPlan = { ...current.test_data_plan };
+      const defectManagement = { ...current.defect_management };
+      for (const field of selected) {
+        if (field === "data_sources") testDataPlan.sources = suggestion[field];
+        else if (field === "data_preparation") testDataPlan.preparation = suggestion[field];
+        else if (field === "data_privacy") testDataPlan.privacy = suggestion[field];
+        else if (field === "data_reset") testDataPlan.reset_procedure = suggestion[field];
+        else if (field === "milestones")
+          next.milestones = suggestion[field].map((name) => ({
+            name,
+            planned_at: null,
+            actual_at: null,
+            status: "PLANNED",
+            evidence_refs: [],
+          }));
+        else if (field.startsWith("defect_"))
+          defectManagement[field.replace("defect_", "")] = suggestion[field];
+        else next[field] = suggestion[field];
+      }
+      if (
+        ["data_sources", "data_preparation", "data_privacy", "data_reset"].some((field) =>
+          selected.has(field),
+        )
+      ) {
+        next.test_data_plan = testDataPlan;
+      }
+      if ([...selected].some((field) => field.startsWith("defect_"))) {
+        next.defect_management = defectManagement;
+      }
+      return next;
+    });
+    setAppliedAiFields((current) => new Set([...current, ...selected]));
+    setSelectedAiFields(new Set());
   };
   return (
     <form
@@ -287,28 +359,96 @@ export default function TestPlanEditor({
           )}
           {aiSuggestion?.suggestion && (
             <div className="space-y-3 rounded-control border border-violet-200 p-4">
-              <p className="text-sm font-medium text-violet-800">Bản xem trước, chưa áp dụng</p>
-              <p className="text-sm">
-                {aiSuggestion.suggestion.objective || "Chưa đủ căn cứ đề xuất mục tiêu."}
-              </p>
-              <div className="grid gap-3 text-sm md:grid-cols-2">
-                <div>
-                  <p className="font-medium">Trong phạm vi</p>
-                  <ul className="list-disc pl-5">
-                    {aiSuggestion.suggestion.scope_in?.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-medium">Ngoài phạm vi</p>
-                  <ul className="list-disc pl-5">
-                    {aiSuggestion.suggestion.scope_out?.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-violet-800">
+                  So sánh đề xuất với nội dung đang có
+                </p>
+                <ContentOriginBadge origin="ai_generated" />
               </div>
+              <p className="text-sm text-ink-muted">
+                Chỉ các trường đang để trống được chọn sẵn. Bỏ chọn trường muốn giữ nguyên; đề xuất
+                không được lưu hoặc duyệt cho đến khi bạn lưu kế hoạch.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {aiPlanFields
+                  .filter(([field]) => hasSuggestedValue(aiSuggestion.suggestion[field]))
+                  .map(([field, label, applicable]) => {
+                    const selected = selectedAiFields.has(field);
+                    const applied = appliedAiFields.has(field);
+                    const currentValue = displayPlanFieldValue(planFieldValue(value, field));
+                    const proposedValue = displayPlanFieldValue(aiSuggestion.suggestion[field]);
+                    const fieldEvidence = (aiSuggestion.suggestion.field_evidence || []).find(
+                      (item) => item.field === field,
+                    );
+                    return (
+                      <article
+                        className="min-w-0 rounded-control border border-border p-3"
+                        key={field}
+                      >
+                        <div className="flex items-start gap-2 text-sm font-medium">
+                          {applicable && (
+                            <input
+                              className="mt-1"
+                              type="checkbox"
+                              checked={selected}
+                              onChange={(event) =>
+                                setSelectedAiFields((current) => {
+                                  const next = new Set(current);
+                                  if (event.target.checked) next.add(field);
+                                  else next.delete(field);
+                                  return next;
+                                })
+                              }
+                            />
+                          )}
+                          <span>
+                            {label}
+                            {!applicable ? " · chỉ tham khảo" : ""}
+                          </span>
+                        </div>
+                        <div className="mt-3 space-y-2 text-sm">
+                          <div>
+                            <p className="text-xs font-medium text-ink-muted">Đang có</p>
+                            <p className="mt-1 whitespace-pre-wrap break-words">
+                              {currentValue || "Chưa có nội dung"}
+                            </p>
+                          </div>
+                          <div className="border-t border-border pt-2">
+                            <p className="text-xs font-medium text-violet-800">AI đề xuất</p>
+                            <p className="mt-1 whitespace-pre-wrap break-words">{proposedValue}</p>
+                          </div>
+                          {fieldEvidence?.evidence_quotes?.length > 0 && (
+                            <details className="border-t border-border pt-2">
+                              <summary className="cursor-pointer text-xs font-medium text-violet-800">
+                                Căn cứ cho trường này
+                              </summary>
+                              <ul className="mt-2 space-y-2 text-xs font-normal">
+                                {fieldEvidence.evidence_quotes.map((item, index) => (
+                                  <li key={`${item.evidence_ref}-${index}`}>
+                                    <span className="text-ink-muted">{item.evidence_ref}: </span>
+                                    {item.quote}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
+                          {applied && (
+                            <p className="text-xs font-medium text-violet-800">
+                              Đã áp dụng vào biểu mẫu; cần lưu kế hoạch để ghi nhận.
+                            </p>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+              </div>
+              {!aiPlanFields.some(([field]) =>
+                hasSuggestedValue(aiSuggestion.suggestion[field]),
+              ) && (
+                <p className="text-sm text-ink-muted">
+                  Chưa có trường nào đủ căn cứ để đề xuất. Xem các thông tin còn thiếu bên dưới.
+                </p>
+              )}
               {!!aiSuggestion.suggestion.evidence_quotes?.length && (
                 <details className="text-sm">
                   <summary className="cursor-pointer">Căn cứ từ yêu cầu nguồn</summary>
@@ -332,14 +472,22 @@ export default function TestPlanEditor({
                   ))}
                 </ul>
               )}
-              <button className="apple-button" type="button" onClick={applyAiPlanDraft}>
-                Áp dụng vào biểu mẫu
+              <button
+                className="apple-button"
+                type="button"
+                disabled={!selectedAiFields.size}
+                onClick={applyAiPlanDraft}
+              >
+                Áp dụng{" "}
+                {selectedAiFields.size
+                  ? `${selectedAiFields.size} trường đã chọn`
+                  : "trường đã chọn"}
               </button>
             </div>
           )}
         </section>
       )}
-      <fieldset disabled={readOnly || saving} className="min-w-0 space-y-5">
+      <fieldset disabled={readOnly || saving || aiBusy} className="min-w-0 space-y-5">
         <section className="min-w-0 space-y-4" aria-labelledby="test-plan-basics-heading">
           <div>
             <h3 id="test-plan-basics-heading" className="text-base font-semibold text-ink">
@@ -481,7 +629,12 @@ export default function TestPlanEditor({
               }))}
               searchPlaceholder="Tìm yêu cầu"
               value={value.requirement_version_ids}
-              onChange={(selected) => setField("requirement_version_ids", selected)}
+              onChange={(selected) => {
+                setField("requirement_version_ids", selected);
+                setAiSuggestion(null);
+                setSelectedAiFields(new Set());
+                setAppliedAiFields(new Set());
+              }}
             />
             <MultiSelect
               label="Bộ kiểm thử trong phạm vi"

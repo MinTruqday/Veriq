@@ -60,6 +60,10 @@ export default function TestAnalysisPage({ project }) {
   const [activeTab, setActiveTab] = useState("conditions");
   const [editing, setEditing] = useState(false);
   const [aiResults, setAiResults] = useState([]);
+  const [selectedRequirementVersions, setSelectedRequirementVersions] = useState([]);
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiGenerationError, setAiGenerationError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -142,10 +146,41 @@ export default function TestAnalysisPage({ project }) {
       ...candidate,
       ai_result_id: result._id,
       source_event_id: result.source_event_id,
-      requirement_version_id: result.requirement_version_id,
+      requirement_version_id:
+        result.requirement_version_id ||
+        candidate.basis_refs?.find((item) => item.artifact_type === "REQUIREMENT_VERSION")
+          ?.artifact_version_id ||
+        candidate.basis_refs?.find((item) => item.artifact_type === "REQUIREMENT_VERSION")
+          ?.artifact_id,
       created_at: result.created_at,
     })),
   );
+  const generateAiConditions = async () => {
+    const selectedRequirements = requirements.filter(
+      (item) =>
+        item.current_version_id && selectedRequirementVersions.includes(item.current_version_id),
+    );
+    if (!selectedRequirements.length || aiGenerating) return;
+    setAiGenerating(true);
+    setAiGenerationError("");
+    try {
+      const result = await testingApi.runTestAnalysisAI(project._id, {
+        basis_refs: selectedRequirements.map((item) => ({
+          artifact_type: "REQUIREMENT_VERSION",
+          artifact_id: item._id,
+          artifact_version_id: item.current_version_id,
+          relationship: "DERIVED_FROM",
+        })),
+        instruction: aiInstruction.trim(),
+        idempotency_key: `manual-test-condition:${crypto.randomUUID()}`,
+      });
+      setAiResults((current) => [result, ...current.filter((item) => item._id !== result._id)]);
+    } catch (reason) {
+      setAiGenerationError(messageOf(reason));
+    } finally {
+      setAiGenerating(false);
+    }
+  };
   useEffect(() => {
     if (!can("testanalysis.read") || visibleTab !== "ai") return undefined;
     let active = true;
@@ -267,9 +302,99 @@ export default function TestAnalysisPage({ project }) {
             <div className="space-y-4 p-5">
               <ContentOriginBadge origin="ai_generated" />
               <p className="text-sm text-ink-muted">
-                Đề xuất được tạo khi phiên bản yêu cầu được đặt làm phiên bản chuẩn. Mỗi đề xuất có
-                dẫn chứng nguồn để bạn xem trước khi dùng làm bản nháp.
+                Chọn yêu cầu đã duyệt làm căn cứ rồi bấm tạo đề xuất. Kết quả chỉ là bản xem trước;
+                mỗi đề xuất có dẫn chứng để bạn kiểm tra trước khi dùng làm bản nháp.
               </p>
+              {can("testanalysis.run_ai") && (
+                <div className="space-y-3 rounded-lg border border-border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-medium">Yêu cầu nguồn</h3>
+                    <div className="flex gap-2">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          setSelectedRequirementVersions(
+                            requirements.map((item) => item.current_version_id).filter(Boolean),
+                          )
+                        }
+                      >
+                        Chọn tất cả
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => setSelectedRequirementVersions([])}
+                      >
+                        Bỏ chọn
+                      </button>
+                    </div>
+                  </div>
+                  {requirements.length ? (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {requirements
+                        .filter((item) => item.current_version_id)
+                        .map((item) => {
+                          const checked = selectedRequirementVersions.includes(
+                            item.current_version_id,
+                          );
+                          return (
+                            <label
+                              className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border p-3"
+                              key={item.current_version_id}
+                            >
+                              <input
+                                checked={checked}
+                                className="mt-1"
+                                onChange={(event) =>
+                                  setSelectedRequirementVersions((current) =>
+                                    event.target.checked
+                                      ? [...new Set([...current, item.current_version_id])]
+                                      : current.filter((id) => id !== item.current_version_id),
+                                  )
+                                }
+                                type="checkbox"
+                              />
+                              <span className="min-w-0 text-sm">
+                                <span className="block font-medium">{item.requirement_key}</span>
+                                <span className="block break-words text-ink-muted">
+                                  {item.current_version?.title || "Yêu cầu đã duyệt"}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-ink-muted">
+                      Chưa có yêu cầu đã duyệt để làm căn cứ.
+                    </p>
+                  )}
+                  <label className="block space-y-1 text-sm">
+                    <span>Hướng dẫn thêm (không bắt buộc)</span>
+                    <textarea
+                      className="apple-input min-h-20 w-full"
+                      maxLength={5000}
+                      onChange={(event) => setAiInstruction(event.target.value)}
+                      value={aiInstruction}
+                    />
+                  </label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      className="apple-button"
+                      disabled={aiGenerating || selectedRequirementVersions.length === 0}
+                      onClick={() => void generateAiConditions()}
+                      type="button"
+                    >
+                      {aiGenerating ? "Đang tạo đề xuất…" : "Tạo đề xuất AI"}
+                    </button>
+                    <span className="text-sm text-ink-muted">
+                      Đã chọn {selectedRequirementVersions.length} yêu cầu
+                    </span>
+                  </div>
+                  {aiGenerationError && <ErrorState message={aiGenerationError} />}
+                </div>
+              )}
               <DataTable
                 items={aiCandidateItems}
                 empty="Chưa có ứng viên từ các yêu cầu đã được đặt làm phiên bản chuẩn"
@@ -769,6 +894,20 @@ export default function TestAnalysisPage({ project }) {
       {can("testcondition.read") && (
         <div className="space-y-5" hidden={visibleTab !== "traceability"}>
           <Panel title="Liên kết yêu cầu, điều kiện và ca kiểm thử">
+            {coverage?.scope_complete === false && (
+              <div
+                className="mx-5 mt-5 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                role="status"
+              >
+                Chưa thể xác định toàn bộ độ phủ vì danh sách vượt giới hạn xử lý. Các mục chưa tìm
+                thấy liên kết được giữ ở trạng thái chưa xác định.
+                {coverage.truncated_sources?.length > 0 && (
+                  <span className="mt-1 block">
+                    Cần thu hẹp phạm vi: {coverage.truncated_sources.join(", ")}.
+                  </span>
+                )}
+              </div>
+            )}
             <DataTable
               items={coverage?.items || []}
               empty="Chưa có điều kiện để tính độ phủ"
@@ -803,7 +942,17 @@ export default function TestAnalysisPage({ project }) {
                 {
                   key: "uncovered",
                   label: "Độ phủ",
-                  render: (item) => <StatusPill value={item.uncovered ? "UNCOVERED" : "COVERED"} />,
+                  render: (item) => (
+                    <StatusPill
+                      value={
+                        item.coverage_status === "UNKNOWN"
+                          ? "Chưa xác định"
+                          : item.coverage_status === "UNCOVERED"
+                            ? "Chưa có ca kiểm thử"
+                            : "Đã liên kết ca kiểm thử"
+                      }
+                    />
+                  ),
                 },
               ]}
             />

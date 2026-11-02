@@ -13,6 +13,10 @@ from src.core.auth import CurrentUser, get_current_user, roles_for_membership
 from src.core.common import audit, envelope, new_id, now
 from src.core.configuration import settings
 from src.core.database import database
+from src.modules.projects.services.skill_profiles import (
+    _member_project_workload,
+    _project_capacity_limits,
+)
 from src.repositories.project import project_repository
 from src.repositories.skill_profile import skill_profile_repository
 from src.schemas.contracts.finance import (
@@ -77,7 +81,8 @@ async def _plan_resource_overview(project_id, plan):
 
     active_run_counts = {user_id: 0 for user_id in allocated_ids}
     active_case_counts = {user_id: 0 for user_id in allocated_ids}
-    active_project_ids = {user_id: set() for user_id in allocated_ids}
+    schedule = plan.get("schedule") or {}
+    active_project_ids = await _member_project_workload(allocated_ids, schedule)
     async for run in skill_profile_repository.iter_active_runs_for_members(allocated_ids):
         assignments = run.get("test_case_assignments") or {}
         assigned_ids = set(assignments.values())
@@ -91,7 +96,6 @@ async def _plan_resource_overview(project_id, plan):
             if user_id in active_case_counts:
                 active_case_counts[user_id] += 1
 
-    schedule = plan.get("schedule") or {}
     start = str(schedule.get("planned_start_at") or "")[:10]
     end = str(schedule.get("planned_end_at") or "")[:10]
     capacity_status = "SCHEDULE_REQUIRED" if not start else "CAPACITY_NOT_DECLARED"
@@ -407,8 +411,25 @@ async def _plan_staffing_options(project_id, plan, currency, effective_date):
         }
     elif len(periods) > 1:
         capacity_status = "AMBIGUOUS_CAPACITY_PERIOD"
+    elif await database.value.resource_capacity_periods.count_documents({}) > 0:
+        capacity_status = "CAPACITY_PERIOD_NOT_COVERING_SCHEDULE"
+    schedule = plan.get("schedule") or {}
+    schedule_start = str(schedule.get("planned_start_at") or effective_date)[:10]
+    project_limit_status, project_limit_by_user = await _project_capacity_limits(
+        member_ids, schedule_start, end
+    )
 
-    workload = {user_id: {"runs": 0, "cases": 0, "projects": set()} for user_id in member_ids}
+    project_workload = await _member_project_workload(
+        member_ids,
+        {
+            "planned_start_at": schedule_start,
+            "planned_end_at": end,
+        },
+    )
+    workload = {
+        user_id: {"runs": 0, "cases": 0, "projects": project_workload[user_id]}
+        for user_id in member_ids
+    }
     async for run in skill_profile_repository.iter_active_runs_for_members(member_ids):
         assignments = run.get("test_case_assignments") or {}
         assigned = set(assignments.values())
@@ -506,6 +527,14 @@ async def _plan_staffing_options(project_id, plan, currency, effective_date):
             if not skills and not experiences:
                 factors.append("NO_CONFIRMED_SKILL_OR_EXPERIENCE")
             load = workload[member_id]
+            project_limit = project_limit_by_user.get(member_id)
+            project_limit_reached = bool(
+                project_limit is not None
+                and project_id not in load["projects"]
+                and len(load["projects"]) >= project_limit
+            )
+            if project_limit_reached:
+                factors.append("MAX_CONCURRENT_PROJECTS_REACHED")
             candidates.append(
                 {
                     "user_id": member_id,
@@ -523,6 +552,9 @@ async def _plan_staffing_options(project_id, plan, currency, effective_date):
                     "active_test_case_count": load["cases"],
                     "active_test_run_count": load["runs"],
                     "active_project_count": len(load["projects"]),
+                    "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
+                    "max_concurrent_projects": project_limit,
+                    "project_limit_reached": project_limit_reached,
                     "hourly_cost": str(rate["hourly_cost"]) if rate else None,
                     "currency": currency if rate else None,
                     "estimated_team_labor_cost": str(team_cost) if team_cost is not None else None,
@@ -551,6 +583,9 @@ async def _plan_staffing_options(project_id, plan, currency, effective_date):
         "current_team_labor_cost": str(current_cost) if current_cost_complete else None,
         "current_team_cost_complete": current_cost_complete,
         "replacement_model": "ONE_MEMBER_AT_A_TIME_WITH_SAME_PLANNED_HOURS_AND_ROLE_OVERLAP",
+        "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
+        "project_limit_status": project_limit_status,
+        "project_limit_configured": bool(project_limit_by_user),
         "limitations": [
             "Mỗi phương án chỉ thay một người, giữ nguyên giờ công của vị trí đang phân bổ.",
             "Kỹ năng và kinh nghiệm hiển thị lấy từ hồ sơ đã xác nhận; Test Plan chưa gắn kỹ năng bắt buộc vào từng vị trí.",
@@ -1184,6 +1219,32 @@ async def project_cost_estimate(
     )
 
 
+@router.get("/cong-suat")
+async def list_capacity_periods(user: CurrentUser = Depends(get_current_user)):
+    _require_admin(user)
+    periods = (
+        await database.value.resource_capacity_periods.find({})
+        .sort([("period_start", -1), ("period_end", -1)])
+        .to_list(500)
+    )
+    user_ids = list(
+        dict.fromkeys(
+            entry.get("user_id")
+            for period in periods
+            for entry in period.get("entries") or []
+            if entry.get("user_id")
+        )
+    )
+    identities = await load_accounts(user_ids)
+    for period in periods:
+        period.pop("assignment_fence_revision", None)
+        period["entries"] = [
+            {**entry, "employee": identities.get(entry.get("user_id"))}
+            for entry in period.get("entries") or []
+        ]
+    return envelope(periods)
+
+
 @router.put("/cong-suat")
 async def update_capacity(payload: CapacityUpdate, user: CurrentUser = Depends(get_current_user)):
     _require_admin(user)
@@ -1200,7 +1261,17 @@ async def update_capacity(payload: CapacityUpdate, user: CurrentUser = Depends(g
             "period_end": payload.period_end.isoformat(),
         }
     )
+    overlapping_period = await collection.find_one(
+        {
+            "_id": {"$ne": existing["_id"] if existing else None},
+            "period_start": {"$lte": payload.period_end.isoformat()},
+            "period_end": {"$gte": payload.period_start.isoformat()},
+        }
+    )
+    if overlapping_period:
+        raise HTTPException(status_code=409, detail={"code": "CAPACITY_PERIOD_OVERLAP"})
     current_revision = existing.get("revision", 0) if existing else 0
+    fence_revision = existing.get("assignment_fence_revision", 0) if existing else 0
     if current_revision != payload.expected_revision:
         raise HTTPException(
             status_code=409,
@@ -1212,12 +1283,21 @@ async def update_capacity(payload: CapacityUpdate, user: CurrentUser = Depends(g
         "period_end": payload.period_end.isoformat(),
         "entries": [item.model_dump(mode="json") for item in payload.entries],
         "revision": current_revision + 1,
+        "assignment_fence_revision": fence_revision,
         "updated_by": user.id,
         "updated_at": now(),
     }
     if existing:
         result = await collection.replace_one(
-            {"_id": existing["_id"], "revision": current_revision}, document
+            {
+                "_id": existing["_id"],
+                "revision": current_revision,
+                "$or": [
+                    {"assignment_fence_revision": fence_revision},
+                    {"assignment_fence_revision": {"$exists": False}},
+                ],
+            },
+            document,
         )
         if result.modified_count != 1:
             raise HTTPException(status_code=409, detail={"code": "CAPACITY_REVISION_CONFLICT"})
@@ -1236,4 +1316,7 @@ async def update_capacity(payload: CapacityUpdate, user: CurrentUser = Depends(g
         None,
         {"revision": document["revision"], "member_count": len(document["entries"])},
     )
-    return envelope(document, revision=document["revision"])
+    return envelope(
+        {key: value for key, value in document.items() if key != "assignment_fence_revision"},
+        revision=document["revision"],
+    )

@@ -78,11 +78,7 @@ function isOlderRunSnapshot(incoming, current) {
 
 export default function AgentRunPanel({ project, showDefinitions = true, compact = false }) {
   const currentUserId = project.current_membership?.user_id;
-  const membershipRoles = project.current_membership?.project_roles;
-  const memberRoles =
-    Array.isArray(membershipRoles) && membershipRoles.length
-      ? membershipRoles
-      : [project.current_membership?.project_role].filter(Boolean);
+  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const permissions = project.current_permissions || [];
   const canManageDefinitions =
     showDefinitions &&

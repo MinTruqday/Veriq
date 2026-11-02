@@ -197,6 +197,15 @@ class RequirementRestoreInput(BaseModel):
 class ReviewTransitionInput(BaseModel):
     expected_revision: int = Field(ge=1)
     review_note: str = Field(default="", max_length=2000)
+    review_reason_code: Literal[
+        "OUT_OF_SCOPE",
+        "INCORRECT",
+        "INCOMPLETE",
+        "DUPLICATE",
+        "UNSUPPORTED_BY_SOURCE",
+        "RISK_ACCEPTED",
+        "OTHER",
+    ] | None = None
 
 
 class RequirementCompareInput(BaseModel):

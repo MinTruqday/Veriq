@@ -23,11 +23,7 @@ export default function FormalReviewPanel({
   const { ask, dialog } = useActionDialog();
   const can = (permission) => project.current_permissions?.includes(permission);
   const userId = project.current_membership?.user_id;
-  const membershipRoles = project.current_membership?.project_roles;
-  const memberRoles =
-    Array.isArray(membershipRoles) && membershipRoles.length
-      ? membershipRoles
-      : [project.current_membership?.project_role].filter(Boolean);
+  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const load = useCallback(async () => {
     try {
       const permissions = new Set(project.current_permissions || []);

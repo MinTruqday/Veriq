@@ -73,7 +73,8 @@ def visible_defect(defect, role):
         for key, value in defect.items()
         if key not in {"idempotency_key", "idempotency_request_hash"}
     }
-    if role != 'VIEWER':
+    roles = {role} if isinstance(role, str) else set(role or [])
+    if 'VIEWER' not in roles:
         return public_defect
     return {
         key: value
@@ -350,7 +351,11 @@ async def require_action_policy(
             status_code=403, detail={"code": 'PROJECT_MEMBERSHIP_REQUIRED'}
         )
     configured = (project.get("settings") or {}).get("action_policies", {}).get(action)
-    allowed_roles = set(configured) if isinstance(configured, list) else default_roles
+    allowed_roles = (
+        set(configured).intersection(default_roles)
+        if isinstance(configured, list)
+        else set(default_roles)
+    )
     if not roles_for_membership(membership).intersection(allowed_roles):
         raise HTTPException(
             status_code=403,

@@ -12,7 +12,7 @@ class ImpactAnalysisRepository:
     async def list_acceptance_criteria(self, version_ids, limit):
         return await database.value.acceptance_criteria.find(
             {"requirement_version_id": {"$in": version_ids}}
-        ).to_list(limit)
+        ).sort("_id", 1).to_list(limit + 1)
 
     async def list_trace_links(self, project_id, source_ids, statuses, limit):
         return await database.value.trace_links.find(
@@ -21,17 +21,65 @@ class ImpactAnalysisRepository:
                 "source_id": {"$in": source_ids},
                 "status": {"$in": statuses},
             }
-        ).to_list(limit)
+        ).sort("_id", 1).to_list(limit + 1)
 
     async def list_current_tests(self, project_id, statuses, limit):
         return await database.value.test_cases.find(
             {"project_id": project_id, "status": {"$in": statuses}}
-        ).to_list(limit)
+        ).sort("_id", 1).to_list(limit + 1)
+
+    async def list_scenarios_for_sources(self, project_id, source_ids, limit):
+        if not source_ids:
+            return []
+        return await database.value.test_scenarios.find(
+            {
+                "project_id": project_id,
+                "$or": [
+                    {"requirement_version_ids": {"$in": source_ids}},
+                    {"acceptance_criterion_ids": {"$in": source_ids}},
+                ],
+            }
+        ).sort("_id", 1).to_list(limit + 1)
+
+    async def list_plans_for_impact(
+        self, project_id, requirement_version_ids, test_case_version_ids, limit
+    ):
+        branches = []
+        if requirement_version_ids:
+            branches.append({"requirement_version_ids": {"$in": requirement_version_ids}})
+        if test_case_version_ids:
+            branches.extend(
+                [
+                    {"test_case_version_ids": {"$in": test_case_version_ids}},
+                    {"test_suite_snapshots.test_case_version_ids": {"$in": test_case_version_ids}},
+                ]
+            )
+        if not branches:
+            return []
+        return await database.value.test_plans.find(
+            {"project_id": project_id, "$or": branches}
+        ).sort("_id", 1).to_list(limit + 1)
+
+    async def list_runs_for_impact(
+        self, project_id, requirement_version_ids, test_case_version_ids, test_plan_ids, limit
+    ):
+        branches = []
+        if requirement_version_ids:
+            branches.append({"requirement_version_ids": {"$in": requirement_version_ids}})
+        if test_case_version_ids:
+            branches.append({"test_case_version_ids": {"$in": test_case_version_ids}})
+        if test_plan_ids:
+            branches.append({"test_plan_id": {"$in": test_plan_ids}})
+        if not branches:
+            return []
+        return await database.value.test_runs.find(
+            {"project_id": project_id, "$or": branches}
+        ).sort("_id", 1).to_list(limit + 1)
 
     async def list_test_versions(self, project_id, version_ids, limit):
         return await database.value.test_case_versions.find(
             {"project_id": project_id, "_id": {"$in": version_ids}}
-        ).to_list(limit)
+        ).sort("_id", 1).to_list(limit + 1)
 
     async def find_requirement_version(self, version_id, project_id):
         return await database.value.requirement_versions.find_one(
@@ -93,7 +141,7 @@ class ImpactAnalysisRepository:
     ):
         update = {"$set": changes, "$inc": {"revision": 1}}
         if unset:
-            update["$unset"] = unset
+            update["$unset"] = {field: "" for field in unset}
         return await database.value.impact_analyses.find_one_and_update(
             {
                 "_id": analysis_id,

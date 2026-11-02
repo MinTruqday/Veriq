@@ -19,7 +19,9 @@ Propose evidence-linked cause hypotheses only; do not confirm root cause, approv
 </causal_analysis_rules>"""
 
 STATUS_REPORT_NARRATIVE_CONTRACT = """<status_report_narrative_rules>
-Draft from supplied metrics and evidence only. Preserve metric values, do not add unsupported conclusions, and do not approve or alter the report's quality-gate recommendation.
+Return exactly one proposal with executive_summary, risk_explanation, forecast, and recommendation_narrative fields. Write narrative text only; do not return replacement metrics, a recommendation enum, dates, confidence values, or other structured report data.
+Use only the supplied saved status report snapshot. Preserve every metric and recommendation exactly as recorded; never calculate or revise them, and do not introduce numeric values absent from the snapshot. Explain risks only when supported by the recorded risks, blockers, deviations, control actions, or exit-criteria evaluation. Explain the existing forecast only from the supplied forecast fields; never invent a completion date, probability, trend, or assumption. Explain the existing recommendation without changing, approving, or overruling it. Translate status and recommendation values into natural wording in the requested output language; never expose machine enum identifiers such as ON_TRACK, AT_RISK, BLOCKED, CONTINUE_TESTING, READY_WITH_RISK, NOT_READY, or NOT_MET. If evidence is absent or insufficient for a field, state that limitation plainly in the requested output language rather than filling the gap with an inference.
+Do not claim that tests, reviews, mitigations, or release decisions occurred unless the saved snapshot says so. Keep the four fields consistent with the supplied report and with each other.
 </status_report_narrative_rules>"""
 
 COMPLETION_REPORT_NARRATIVE_CONTRACT = """<completion_report_narrative_rules>
@@ -27,7 +29,8 @@ Draft closure and residual-risk explanations from supplied metrics and evidence 
 </completion_report_narrative_rules>"""
 
 TEST_PLAN_DRAFT_GENERATION_CONTRACT = """<test_plan_draft_generation_rules>
-Draft only the Test Plan fields directly supported by the supplied approved Requirement evidence. Keep unsupported fields empty and explain missing decisions in warnings. Cite exact source text with its supplied evidence reference for every material proposal. Do not invent dates, effort, staffing, environment, tools, thresholds, prices, salary data, test outcomes, or release decisions. Return a draft proposal only; do not save, approve, or claim a plan was created.
+Draft only Test Plan fields directly supported by the supplied approved Requirement evidence. Include objective, included/excluded scope, approach, test level and types, environment, entry/exit criteria, risks and mitigations, assumptions, constraints, test-data sources/preparation/privacy/reset, role-level responsibility guidance, milestone names, deliverables, tools, and defect reporting/classification/triage/retest/closure when the sources state them. For every non-empty proposed field, include a field_evidence entry with that field name and at least one exact quote plus its supplied evidence_ref. Keep unsupported fields empty and identify missing decisions in warnings.
+Role guidance is informational only; do not name or assign a project member. Milestones are names only: never assign dates, duration, ordering, or completion status unless the exact value is explicitly stated in the evidence. Do not populate planned start/end dates, environment IDs, named people, role assignments, effort, cost, prices, salary data, performance thresholds, test outcomes, or release decisions. Never convert an example, assumption, or unresolved question into an approved plan value. Return a proposal only; do not save, approve, or claim that a plan was created.
 </test_plan_draft_generation_rules>"""
 
 TEST_DATA_GENERATION_CONTRACT = """<test_data_generation_rules>
@@ -49,7 +52,7 @@ Customer price and payroll must not change the twelve technical/business complex
 EXECUTION_ASSISTANCE_CONTRACT = """<execution_assistance_rules>
 Use only the supplied saved Test Case version and recorded Test Result. Explain what the recorded step data shows, label possible interpretations as such, and list the specific missing details or evidence needed to investigate further. Cite exact short quotations from supplied evidence and use only supplied evidence_ref values. A missing field is unknown, not proof of failure.
 Draft a defect only when the saved result is FAIL or BLOCKED and the evidence supports a useful draft. Preserve the recorded expected and actual results without inventing values, severity, priority, root cause, or reproduction steps. If the record does not support a complete draft, leave defect_draft null and explain what is missing.
-Never decide or change PASS/FAIL, update a result or Test Case, create/link a Defect, or imply that a suggested action has been performed. The Tester must review and confirm any draft before the existing defect creation flow is used. Do not include attachment URLs, credentials, personal data, or unrelated project content.
+Never decide or change PASS/FAIL, update a result or Test Case, create/link a Defect, or imply that a suggested action has been performed. The Tester must review and confirm any draft before the existing defect creation flow is used. Never ask the user to provide a password, secret, token, authentication header, or other credential, even when needed to reproduce a failure. If account or input context is missing, request a masked account identifier, a synthetic test-data reference, or an authorized secure test-data reference without its secret value. Do not include attachment URLs, credentials, personal data, or unrelated project content.
 </execution_assistance_rules>"""
 
 QUALITY_CAPABILITY_CONTRACTS = {

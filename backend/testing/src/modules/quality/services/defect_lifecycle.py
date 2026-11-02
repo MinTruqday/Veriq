@@ -9,6 +9,7 @@ from src.core.common import (
     audit,
     get_project,
     get_project_entity,
+    get_project_roles,
     new_id,
     now,
     optimistic_patch,
@@ -97,6 +98,18 @@ async def update_defect_record(defect_id, payload, project_id, user):
     )
     if project_id is not None and defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
+    roles = await get_project_roles(defect["project_id"], user.id)
+    developer_fields = {
+        "root_cause_category",
+        "root_cause_detail",
+        "injected_phase",
+        "escape_reason",
+        "prevention_candidate",
+    }
+    if "QA" in roles and developer_fields.intersection(payload):
+        raise HTTPException(status_code=403, detail={"code": "DEFECT_DEVELOPER_FIELDS_REQUIRED"})
+    if "DEVELOPER" in roles and defect.get("assignee") != user.id:
+        raise HTTPException(status_code=403, detail={"code": "ASSIGNED_DEVELOPER_REQUIRED"})
     expected_revision = payload.get("expected_revision")
     if not isinstance(expected_revision, int):
         raise HTTPException(status_code=422, detail={"code": "EXPECTED_REVISION_REQUIRED"})
@@ -273,8 +286,8 @@ async def transition_defect_record(defect_id, payload, user):
         "DUPLICATE": "defect.triage",
         "IN_PROGRESS": "defect.transition.developer",
         "RESOLVED": "defect.transition.developer",
-        "READY_FOR_RETEST": "defect.retest",
-        "REOPENED": "defect.retest",
+        "READY_FOR_RETEST": "defect.transition.developer",
+        "REOPENED": "defect.triage",
         "CLOSED": "defect.close",
     }.get(payload.to_status, "defect.update")
     defect = await get_project_entity(
@@ -348,6 +361,16 @@ async def retest_defect_record(project_id, defect_id, payload, user):
     defect = await get_project_entity("defects", defect_id, user, "defect.retest")
     if defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
+    result = await defect_repository.find_test_result(payload.test_result_id, project_id)
+    if not result:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_RETEST_RESULT"})
+    from src.repositories.test_run import test_run_repository
+    from src.modules.execution.services.execution_state import require_case_execution_assignment
+
+    run = await test_run_repository.find_run(result.get("test_run_id"), project_id)
+    if not run:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_RETEST_RUN"})
+    await require_case_execution_assignment(run, result.get("test_case_version_id"), user)
     request_hash = _retest_request_fingerprint(payload)
     existing = await defect_repository.find_retest(defect_id, payload.idempotency_key)
     if existing:
@@ -359,9 +382,6 @@ async def retest_defect_record(project_id, defect_id, payload, user):
             status_code=409,
             detail={"code": "DEFECT_NOT_READY_FOR_RETEST", "status": defect["status"]},
         )
-    result = await defect_repository.find_test_result(payload.test_result_id, project_id)
-    if not result:
-        raise HTTPException(status_code=422, detail={"code": "INVALID_RETEST_RESULT"})
     if result.get("status") not in ["PASS", "FAIL"]:
         raise HTTPException(status_code=422, detail={"code": "RETEST_RESULT_MUST_PASS_OR_FAIL"})
     original_result = None

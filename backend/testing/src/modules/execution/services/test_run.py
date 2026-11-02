@@ -12,7 +12,10 @@ from src.core.common import (
 from src.core.database import database
 from src.repositories.test_run import test_run_repository
 from src.repositories.project import project_repository
-from src.modules.projects.services.skill_profiles import automatically_assign_test_cases
+from src.modules.projects.services.skill_profiles import (
+    _check_test_run_assignment_capacity,
+    automatically_assign_test_cases,
+)
 from src.repositories.skill_profile import skill_profile_repository
 from src.modules.execution.services.execution_context import resolve_execution_context
 from src.modules.execution.services.execution_state import validate_test_versions
@@ -85,6 +88,8 @@ def _idempotent_run_matches(existing, payload, version_ids, context):
 def _pin_run_to_plan(run, snapshot, snapshot_hash):
     run["test_plan_snapshot_hash"] = snapshot_hash
     run["requirement_version_ids"] = list(snapshot.get("requirement_version_ids") or [])
+    schedule = snapshot.get("schedule")
+    run["test_plan_schedule_snapshot"] = dict(schedule) if isinstance(schedule, dict) else {}
     if snapshot.get("device_matrix_id"):
         run.update(
             {
@@ -299,6 +304,7 @@ async def create_test_run_record(payload, project_id, user):
                         payload.project_id,
                         versions,
                         session=session,
+                        schedule=(approved_snapshot or {}).get("schedule"),
                     )
                     stale_members = await project_repository.fence_active_testers(
                         payload.project_id,
@@ -881,6 +887,8 @@ async def _update_test_run_record(project_id, run_id, payload, user):
                     session=session,
                     existing_case_assignments=current_assignments,
                     existing_assignee_id=effective_run.get("assignee_id"),
+                    exclude_run_id=effective_run.get("_id"),
+                    schedule=effective_run.get("test_plan_schedule_snapshot"),
                 )
                 assigned_users = set(assigned.values())
                 stale_members = await project_repository.fence_active_testers(
@@ -989,7 +997,7 @@ async def update_test_run_record(project_id, run_id, payload, user):
 
 
 async def assign_test_run_record(project_id, run_id, payload, user):
-    execution_roles = ("QA", "TESTER")
+    execution_roles = ("TESTER",)
     run = await get_project_entity('test_runs', run_id, user, 'testrun.assign')
     if run["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
@@ -1031,6 +1039,11 @@ async def assign_test_run_record(project_id, run_id, payload, user):
     async with await database.client.start_session() as session:
         try:
             async with session.start_transaction():
+                current_run = await test_run_repository.find_run(
+                    run_id, project_id, session=session
+                )
+                if not current_run:
+                    raise HTTPException(status_code=404, detail={"code": "TEST_RUN_NOT_FOUND"})
                 stale_members = await project_repository.fence_active_testers(
                     project_id,
                     assigned_users | {payload.assignee_id},
@@ -1045,6 +1058,19 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                             "user_ids": stale_members,
                         },
                     )
+                proposed_users = assigned_users | {payload.assignee_id}
+                current_run_users = set(
+                    (current_run.get("test_case_assignments") or {}).values()
+                )
+                if current_run.get("assignee_id"):
+                    current_run_users.add(current_run["assignee_id"])
+                await _check_test_run_assignment_capacity(
+                    project_id,
+                    current_run,
+                    proposed_users,
+                    session=session,
+                    existing_run_user_ids=current_run_users.intersection(proposed_users),
+                )
                 if expected_profile_revisions:
                     stale_assignees = await skill_profile_repository.fence_assignment_revisions(
                         project_id,

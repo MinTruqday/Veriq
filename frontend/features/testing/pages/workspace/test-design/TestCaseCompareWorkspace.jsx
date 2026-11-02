@@ -626,17 +626,32 @@ function FieldEditor({
         onChange={(event) => onChange(event.target.value || null)}
       >
         <option value="">Chưa phân công</option>
-        {value && !members.some((member) => member.user_id === value) && (
-          <option value={value}>Người phụ trách hiện tại không còn hoạt động trong dự án</option>
-        )}
-        {members.map((member) => (
-          <option key={member.user_id} value={member.user_id}>
-            {[member.user?.full_name, member.user?.email, member.user_label].find(
-              (label) => label && label !== member.user_id,
-            ) || "Thành viên dự án"}
-            {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
-          </option>
-        ))}
+        {value &&
+          !members.some((member) => {
+            const roles = member.project_role
+              ? [member.project_role]
+              : Array.isArray(member.project_roles) && member.project_roles.length === 1
+                ? member.project_roles
+                : [];
+            return member.user_id === value && member.status === "ACTIVE" && roles.includes("QA");
+          }) && <option value={value}>Người phụ trách hiện tại không còn đủ điều kiện QA</option>}
+        {members
+          .filter((member) => {
+            const roles = member.project_role
+              ? [member.project_role]
+              : Array.isArray(member.project_roles) && member.project_roles.length === 1
+                ? member.project_roles
+                : [];
+            return member.status === "ACTIVE" && roles.includes("QA");
+          })
+          .map((member) => (
+            <option key={member.user_id} value={member.user_id}>
+              {[member.user?.full_name, member.user?.email, member.user_label].find(
+                (label) => label && label !== member.user_id,
+              ) || "Thành viên dự án"}
+              {member.project_role ? ` · ${valueLabel(member.project_role)}` : ""}
+            </option>
+          ))}
       </select>
     ) : (
       <ReadValue value={value ? "Người phụ trách đã được thiết lập" : "Chưa phân công"} />

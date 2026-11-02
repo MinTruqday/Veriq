@@ -261,11 +261,7 @@ export default function PlanningPage({ project, section }) {
             : tab === "roadmap"
               ? "Lộ trình"
               : "Lập kế hoạch";
-  const membershipRoles = project.current_membership?.project_roles;
-  const memberRoles =
-    Array.isArray(membershipRoles) && membershipRoles.length
-      ? membershipRoles
-      : [project.current_membership?.project_role].filter(Boolean);
+  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const isBa = memberRoles.includes("BA");
   const currentUserId = project.current_membership?.user_id;
   const canReadProjectMembers = (project.current_permissions || []).includes(

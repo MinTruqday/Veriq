@@ -4,7 +4,14 @@ import json
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.common import audit, get_project_entity, new_id, now, plain_text
+from src.core.common import (
+    audit,
+    get_project_entity,
+    new_id,
+    now,
+    plain_text,
+    require_action_policy,
+)
 from src.core.database import database
 from src.repositories.test_run import test_run_repository
 from src.repositories.execution_context import execution_context_repository
@@ -13,6 +20,7 @@ from src.modules.execution.services.execution_state import (
     enforce_not_applicable_policy,
     frozen_run_scope,
     frozen_run_scope_hash,
+    require_case_execution_assignment,
     replay_resume_event,
     select_resume_execution,
 )
@@ -57,7 +65,7 @@ def _verify_idempotency_replay(existing, payload, *, entity):
 async def start_test_run_record(run_id, user):
     
     run = await get_project_entity(
-        'test_runs', run_id, user, 'testrun.execute'
+        'test_runs', run_id, user, 'testrun.start'
     )
     if run["status"] == 'IN_PROGRESS':
         return run
@@ -200,6 +208,7 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
         )
     if test_case_version_id not in run["test_case_version_ids"]:
         raise HTTPException(status_code=422, detail={"code": 'TEST_NOT_IN_RUN_SNAPSHOT'})
+    await require_case_execution_assignment(run, test_case_version_id, user)
     existing = await test_run_repository.find_result_for_case(run_id, test_case_version_id)
     if existing and existing.get("idempotency_key") == payload.idempotency_key:
         if not _stored_result_matches_request(existing, payload):
@@ -324,6 +333,13 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
     run = await test_run_repository.find_run(result["test_run_id"], project_id)
     if not run or run.get("status") != 'IN_PROGRESS':
         raise HTTPException(status_code=409, detail={"code": 'TEST_RUN_NOT_IN_PROGRESS'})
+    await require_case_execution_assignment(run, result["test_case_version_id"], user)
+    executor_id = result.get("executed_by") or result.get("executor_id")
+    if executor_id and executor_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": 'TEST_RESULT_EXECUTOR_MISMATCH'},
+        )
     if run.get("execution_paused"):
         raise HTTPException(
             status_code=409,
@@ -417,6 +433,13 @@ async def correct_test_result_record(result_id, payload, user):
     result = await get_project_entity(
         'test_results', result_id, user, 'testresult.correct'
     )
+    run = await test_run_repository.find_run(result.get("test_run_id"), result["project_id"])
+    if not run:
+        raise HTTPException(status_code=404, detail={"code": "TEST_RUN_NOT_FOUND"})
+    await require_action_policy(
+        result["project_id"], user, "testresult.correct", {"TESTER"}
+    )
+    await require_case_execution_assignment(run, result.get("test_case_version_id"), user)
     existing = await test_run_repository.find_correction(result_id, payload.idempotency_key)
     if existing:
         _verify_idempotency_replay(existing, payload, entity="TEST_RESULT_CORRECTION")
@@ -438,7 +461,6 @@ async def correct_test_result_record(result_id, payload, user):
         "created_at": now(),
     }
     timestamp = now()
-    run = await test_run_repository.find_run(result.get("test_run_id"), result["project_id"])
     release = None
     if run and run.get("release_id"):
         release = await execution_context_repository.find_release(
@@ -494,7 +516,7 @@ async def correct_test_result_record(result_id, payload, user):
 async def complete_test_run_record(run_id, user):
     
     run = await get_project_entity(
-        'test_runs', run_id, user, 'testrun.execute'
+        'test_runs', run_id, user, 'testrun.complete'
     )
     if run["status"] == 'COMPLETED':
         return run

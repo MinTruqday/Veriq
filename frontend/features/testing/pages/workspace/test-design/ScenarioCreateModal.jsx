@@ -151,7 +151,14 @@ export default function ScenarioCreateModal({
               >
                 <option value="">Chưa phân công</option>
                 {members
-                  .filter((item) => item.status === "ACTIVE")
+                  .filter((item) => {
+                    const roles = item.project_role
+                      ? [item.project_role]
+                      : Array.isArray(item.project_roles) && item.project_roles.length === 1
+                        ? item.project_roles
+                        : [];
+                    return item.status === "ACTIVE" && roles.includes("QA");
+                  })
                   .map((item) => (
                     <option key={item.user_id} value={item.user_id}>
                       {item.user_label ||

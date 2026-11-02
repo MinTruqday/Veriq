@@ -37,10 +37,9 @@ export default function RunExecutionWorkspace({
   dialog,
   savingExecution = false,
 }) {
-  const activeTesters = (members || []).filter((member) => {
-    const roles = member.project_roles || [member.project_role];
-    return member.status === "ACTIVE" && roles.some((role) => ["QA", "TESTER"].includes(role));
-  });
+  const activeTesters = (members || []).filter(
+    (member) => member.status === "ACTIVE" && member.project_role === "TESTER",
+  );
   const [assignmentEditing, setAssignmentEditing] = useState(false);
   const [assignmentDraft, setAssignmentDraft] = useState({});
   const [runAssigneeDraft, setRunAssigneeDraft] = useState("");
@@ -149,8 +148,16 @@ export default function RunExecutionWorkspace({
   const analyzeExecutionResult = async (result) => {
     setLoadingExecutionAssistanceIds((current) => new Set(current).add(result._id));
     setExecutionAssistanceErrors((current) => ({ ...current, [result._id]: "" }));
+    setExecutionAssistanceByResult((current) => {
+      const next = { ...current };
+      delete next[result._id];
+      return next;
+    });
     try {
       const cached = await testingApi.getExecutionAssistance(projectId, run._id, result._id);
+      if (cached?.stale) {
+        setExecutionAssistanceByResult((current) => ({ ...current, [result._id]: cached }));
+      }
       const response =
         cached && !cached.stale && cached.suggestions?.length
           ? cached
@@ -445,6 +452,8 @@ export default function RunExecutionWorkspace({
                             </>
                           ) : item.status === "EXISTING_ASSIGNMENT_PRESERVED" ? (
                             "Giữ nguyên phân công hiện tại"
+                          ) : item.status === "MAX_CONCURRENT_PROJECTS_REACHED" ? (
+                            "Ứng viên đủ kỹ năng đã chạm mức dự án tối đa được Admin khai báo. Hãy xem lại giới hạn trước khi phân công thủ công."
                           ) : (
                             "Chưa có người khớp điều kiện; hãy chọn thủ công nếu cần."
                           )}
@@ -642,6 +651,11 @@ export default function RunExecutionWorkspace({
                           {executionAssistanceErrors[result._id]}
                         </p>
                       )}
+                      {executionAssistanceByResult[result._id]?.stale && (
+                        <p className="text-sm text-ink-muted" role="status">
+                          Kết quả thực thi đã thay đổi. Gợi ý cũ đã được ẩn; hãy chạy phân tích lại.
+                        </p>
+                      )}
                       {executionAssistanceByResult[result._id]?.suggestions?.[0] && (
                         <ExecutionAssistanceResult
                           result={executionAssistanceByResult[result._id]}
@@ -837,6 +851,13 @@ function ExecutionAssistanceResult({
   onCreateDefect,
 }) {
   const suggestion = result.suggestions[0];
+  const warningLabels = (result.warnings || []).flatMap((warning) => {
+    if (warning === "SENSITIVE_REQUEST_SUPPRESSED")
+      return [
+        "AI đã bỏ qua yêu cầu cung cấp thông tin đăng nhập; không gửi mật khẩu hoặc mã truy cập.",
+      ];
+    return /^[A-Z0-9]+(?:_[A-Z0-9]+)*$/.test(warning) ? [] : [warning];
+  });
   const sourceLabel = (reference) =>
     reference.startsWith(`${testResult._id}:`)
       ? "Kết quả đã ghi"
@@ -886,7 +907,7 @@ function ExecutionAssistanceResult({
           </ul>
         </div>
       )}
-      {!!result.warnings?.length && <p className="text-ink-muted">{result.warnings.join(" · ")}</p>}
+      {!!warningLabels.length && <p className="text-ink-muted">{warningLabels.join(" · ")}</p>}
       {suggestion.defect_draft && (
         <div className="space-y-2 rounded-control border border-violet-200 bg-white/70 p-3">
           <div>

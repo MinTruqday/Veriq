@@ -36,11 +36,7 @@ import {
 export default function RequirementsPage({ project, section, workspaceView }) {
   const { user } = useAuth();
   const { ask, dialog } = useActionDialog();
-  const membershipRoles = project.current_membership?.project_roles;
-  const memberRoles =
-    Array.isArray(membershipRoles) && membershipRoles.length
-      ? membershipRoles
-      : [project.current_membership?.project_role].filter(Boolean);
+  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const sectionKey = section[0] || "";
   const requirementId = sectionKey && !["new", "import"].includes(sectionKey) ? sectionKey : "";
   const [items, setItems] = useState([]);
@@ -71,6 +67,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const [lint, setLint] = useState(null);
   const [lintLoading, setLintLoading] = useState(false);
   const [checkingWithAi, setCheckingWithAi] = useState(false);
+  const [focusAcceptanceCriterionId, setFocusAcceptanceCriterionId] = useState("");
   const [importValue, setImportValue] = useState({
     filename: "requirements.md",
     format: "md",
@@ -133,6 +130,11 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   useEffect(() => {
     if (sectionKey === "import") setImporting(true);
   }, [sectionKey]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setFocusAcceptanceCriterionId(params.get("acceptanceCriterionId") || "");
+  }, [requirementId]);
   useEffect(() => {
     if (!preview?._id || preview.status !== "PREVIEW_READY") {
       setImportComparison(null);
@@ -1463,6 +1465,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               projectId={project._id}
               current={current}
               selected={routeSelected}
+              focusAcceptanceCriterionId={focusAcceptanceCriterionId}
               draft={draft}
               members={visibleMembers}
               customFields={customFields}
@@ -1638,7 +1641,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 sourceDocument={sourceDocument}
                 onRetrySource={retrySourceDocument}
                 project={project}
-                isPlatformAdmin={user?.system_role === "ADMIN"}
                 sourceDocuments={visibleSourceDocuments}
                 onTemplatePreview={(job) => {
                   setPreview(job);

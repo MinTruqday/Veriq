@@ -7,6 +7,7 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.database import database
+from src.core.sensitive_data import secret_pattern
 from src.core.source_evidence import split_source_evidence
 from src.modules.design.services.test_case_records import require_current_baselined_version
 from src.repositories.execution_asset import execution_asset_repository
@@ -49,8 +50,7 @@ def expand_variables(variables, max_rows):
 class DataSetService:
     @staticmethod
     async def suggest(project_id, payload, user):
-        await get_project(project_id, user, 'testdata.create')
-        await get_project(project_id, user, 'ai.generate_testcase')
+        project = await get_project(project_id, user, 'testdata.create')
         await get_project(project_id, user, 'requirement.read')
         requirement_ids = list(dict.fromkeys(payload.requirement_version_ids))
         versions = await database.value.requirement_versions.find({
@@ -104,36 +104,72 @@ class DataSetService:
         if set(result.get("evidence_refs") or []) - set(source_text):
             raise HTTPException(502, detail={"code": "TEST_DATA_AI_EVIDENCE_REFERENCE_INVALID"})
         variable_names = set()
+        sensitive_name_pattern = secret_pattern()
+        accepted_suggestions = []
+        warnings = list(result.get("warnings") or [])
+        omitted_sensitive = 0
+        omitted_unverified = 0
+        omitted_duplicate = 0
         for suggestion in suggestions:
             name = str(suggestion.get("variable_name") or "").strip()
-            if not name or any(
-                marker in name.casefold()
-                for marker in ("password", "passwd", "token", "secret", "api_key", "private_key")
-            ):
-                raise HTTPException(502, detail={"code": "TEST_DATA_AI_SENSITIVE_FIELD_REJECTED"})
+            if not name or sensitive_name_pattern.search(name):
+                omitted_sensitive += 1
+                continue
             normalized_name = name.casefold()
             if normalized_name in variable_names:
-                raise HTTPException(502, detail={"code": "TEST_DATA_AI_VARIABLE_DUPLICATE"})
-            variable_names.add(normalized_name)
+                omitted_duplicate += 1
+                continue
             if not suggestion.get("values"):
-                raise HTTPException(502, detail={"code": "TEST_DATA_AI_VALUES_REQUIRED"})
+                omitted_unverified += 1
+                continue
             quotes = suggestion.get("evidence_quotes") or []
             if not quotes:
-                raise HTTPException(502, detail={"code": "TEST_DATA_AI_GROUNDING_REQUIRED"})
+                omitted_unverified += 1
+                continue
+            grounded = True
             for quote in quotes:
                 source = source_text.get(quote.get("evidence_ref"))
                 if not source or str(quote.get("quote") or "").strip() not in source:
-                    raise HTTPException(502, detail={"code": "TEST_DATA_AI_GROUNDING_INVALID"})
+                    grounded = False
+                    break
+            if not grounded:
+                omitted_unverified += 1
+                continue
+            variable_names.add(normalized_name)
+            accepted_suggestions.append(suggestion)
+        warning_text = {
+            "SENSITIVE": {
+                "vi": "Một số trường có thể chứa mật khẩu, khóa hoặc bí mật đã bị loại khỏi đề xuất.",
+                "en": "Suggestions for fields that may contain passwords, keys, or secrets were omitted.",
+            },
+            "UNVERIFIED": {
+                "vi": "Một số đề xuất thiếu giá trị hoặc không có dẫn chứng khớp nguồn nên đã bị loại.",
+                "en": "Suggestions without values or source-matched evidence were omitted.",
+            },
+            "DUPLICATE": {
+                "vi": "Các đề xuất trùng tên biến đã được gộp bằng cách giữ đề xuất đầu tiên.",
+                "en": "Duplicate variable suggestions were omitted; the first valid suggestion was kept.",
+            },
+        }
+        language = str(project.get("locale") or "").split("-")[0].casefold()
+        language = language if language in {"vi", "en"} else "en"
+        if omitted_sensitive:
+            warnings.append(warning_text["SENSITIVE"][language])
+        if omitted_unverified:
+            warnings.append(warning_text["UNVERIFIED"][language])
+        if omitted_duplicate:
+            warnings.append(warning_text["DUPLICATE"][language])
         return {
             "project_id": project_id,
             "requirement_version_ids": requirement_ids,
-            "suggestions": suggestions,
+            "suggestions": accepted_suggestions,
             "evidence_labels": source_labels,
             "evidence": [
                 {"artifact_type": item["artifact_type"], "artifact_version_id": item["artifact_version_id"]}
                 for item in evidence
             ],
             **ai_contract_metadata(result),
+            "warnings": warnings,
             "saved": False,
         }
 

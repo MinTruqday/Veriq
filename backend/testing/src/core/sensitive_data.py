@@ -1,11 +1,29 @@
 import re
 
 REDACTED_VALUE = "Đã ẩn"
-FIELD_NAME_PATTERN = r"token|secret|password|authorization|cookie|api[-_]?key"
-AUTHORIZATION_PATTERN = r"(authorization)(\s*[:=]\s*)(?!['\"]?Đã(?:%20|\s)ẩn)['\"]?[^'\";,&]+"
-RAW_ASSIGNMENT_PATTERN = r"(password|secret|token|api[_-]?key)(\s*[:=]\s*)['\"](?!\$\{|<|Đã ẩn)[^'\"]{4,}['\"]"
-INLINE_VALUE_PATTERN = r"(authorization|token|secret|password|api[-_]?key)(\s*[:=]\s*)(?!['\"]?Đã(?:%20|\s)ẩn)['\"]?(?!\$\{|<)[^'\"\s;,&]+"
-URL_VALUE_PATTERN = r"(?i)([?&](?:token|secret|password|api[-_]?key)=)(?!Đã%20ẩn|Đã ẩn)[^&#\s]+"
+FIELD_NAME_PATTERN = (
+    r"token|secret|password|passwd|passcode|passphrase|pwd|credential|authorization|cookie"
+    r"|api[-_]?key|private[-_]?key|access[-_]?key|client[-_]?secret|refresh[-_]?token"
+    r"|session[-_]?(?:cookie|token)"
+)
+AUTHORIZATION_PATTERN = (
+    r"(authorization)(\s*[:=]\s*)(?!['\"]?Đã(?:%20|\s)ẩn)['\"]?[^'\";,&]+"
+)
+RAW_ASSIGNMENT_PATTERN = (
+    r"(password|passwd|passcode|passphrase|pwd|secret|credential|token|api[_-]?key"
+    r"|private[_-]?key|access[_-]?key|client[_-]?secret|refresh[_-]?token"
+    r"|session[_-]?(?:cookie|token))(\s*[:=]\s*)['\"](?!\$\{|<|Đã ẩn)[^'\"]{4,}['\"]"
+)
+INLINE_VALUE_PATTERN = (
+    r"(authorization|password|passwd|passcode|passphrase|pwd|secret|credential|token|cookie"
+    r"|api[-_]?key|private[-_]?key|access[-_]?key|client[-_]?secret|refresh[-_]?token"
+    r"|session[-_]?(?:cookie|token))(\s*[:=]\s*)(?!['\"]?Đã(?:%20|\s)ẩn)"
+    r"['\"]?(?!\$\{|<)[^'\"\s;,&]+"
+)
+URL_VALUE_PATTERN = (
+    r"(?i)([?&](?:token|secret|password|passwd|passcode|credential|api[-_]?key"
+    r"|private[-_]?key|access[-_]?key)=)(?!Đã%20ẩn|Đã ẩn)[^&#\s]+"
+)
 
 
 def secret_pattern():

@@ -2,6 +2,7 @@ from fastapi import HTTPException
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.repositories.regression_recommendation import regression_recommendation_repository
+from src.modules.quality.services.impact_analysis import require_current_impact_source
 
 
 
@@ -26,9 +27,6 @@ async def create_regression_recommendation_record(change_set_id, user):
         'requirement_change_sets', change_set_id, user, 'regression.generate'
     )
     await get_project(change_set["project_id"], user, 'ai.generate_regression')
-    existing = await regression_recommendation_repository.find_by_change_set(change_set_id)
-    if existing:
-        return existing
     analysis = await regression_recommendation_repository.find_latest_impact_analysis(
         change_set_id
     )
@@ -36,6 +34,14 @@ async def create_regression_recommendation_record(change_set_id, user):
         raise HTTPException(status_code=409, detail={"code": 'IMPACT_ANALYSIS_REQUIRED'})
     if analysis.get("status") != 'REVIEWED':
         raise HTTPException(status_code=409, detail={"code": 'IMPACT_REVIEW_REQUIRED'})
+    await require_current_impact_source(analysis, user, "regression.generate")
+    existing = await regression_recommendation_repository.find_by_change_set(
+        change_set_id, change_set["project_id"]
+    )
+    if existing:
+        if existing.get("impact_analysis_id") != analysis.get("_id"):
+            raise HTTPException(status_code=409, detail={"code": 'IMPACT_SOURCE_CHANGED'})
+        return existing
     recent_failures = await recent_failure_versions(change_set["project_id"])
     items = []
     for impact in analysis.get("reviewed_affected_test_cases", analysis["affected_test_cases"]):
@@ -125,6 +131,15 @@ async def edit_regression_recommendation_record(recommendation_id, payload, user
     )
     if recommendation.get("status") != 'PENDING_APPROVAL':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
+    analysis = await get_project_entity(
+        "impact_analyses",
+        recommendation["impact_analysis_id"],
+        user,
+        "regression.generate",
+    )
+    if analysis.get("status") != 'REVIEWED':
+        raise HTTPException(status_code=409, detail={"code": 'IMPACT_REVIEW_REQUIRED'})
+    await require_current_impact_source(analysis, user, "regression.generate")
     selected = payload.selected_test_case_version_ids
     items = recommendation.get("items", [])
     if selected is not None:
@@ -187,6 +202,15 @@ async def approve_regression_recommendation_record(recommendation_id, payload, u
             status_code=409,
             detail={"code": 'REVISION_CONFLICT', "current_revision": recommendation["revision"]},
         )
+    analysis = await get_project_entity(
+        "impact_analyses",
+        recommendation["impact_analysis_id"],
+        user,
+        "regression.approve",
+    )
+    if analysis.get("status") != 'REVIEWED':
+        raise HTTPException(status_code=409, detail={"code": 'IMPACT_REVIEW_REQUIRED'})
+    await require_current_impact_source(analysis, user, "regression.approve")
     recommended_ids = {item["test_case_version_id"] for item in recommendation["items"]}
     selected_ids = payload.selected_test_case_version_ids
     if selected_ids is None:

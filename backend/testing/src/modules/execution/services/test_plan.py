@@ -343,6 +343,19 @@ async def create_test_plan_record(payload, project_id, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
+            from src.modules.projects.services.skill_profiles import (
+                _check_test_plan_assignment_capacity,
+            )
+
+            await _check_test_plan_assignment_capacity(
+                payload.project_id,
+                payload.schedule.model_dump() if payload.schedule else {},
+                {
+                    item.user_id
+                    for item in (payload.estimation.effort_allocations or [])
+                },
+                session=session,
+            )
             await test_plan_repository.insert_plan(plan, session=session)
             await audit(
                 user.id,
@@ -466,6 +479,22 @@ async def update_test_plan_record(plan_id, payload, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
+            if {"schedule", "estimation"}.intersection(changes):
+                from src.modules.projects.services.skill_profiles import (
+                    _check_test_plan_assignment_capacity,
+                )
+
+                candidate = TestPlanCreate.model_validate({**plan, **changes})
+                await _check_test_plan_assignment_capacity(
+                    plan["project_id"],
+                    candidate.schedule.model_dump() if candidate.schedule else {},
+                    {
+                        item.user_id
+                        for item in (candidate.estimation.effort_allocations or [])
+                    },
+                    session=session,
+                    exclude_plan_id=plan_id,
+                )
             updated = await optimistic_patch(
                 "test_plans",
                 plan_id,
@@ -495,6 +524,21 @@ async def submit_test_plan_record(plan_id, payload, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
+            from src.modules.projects.services.skill_profiles import (
+                _check_test_plan_assignment_capacity,
+            )
+
+            await _check_test_plan_assignment_capacity(
+                plan["project_id"],
+                plan.get("schedule") or {},
+                {
+                    item.get("user_id")
+                    for item in (plan.get("estimation") or {}).get("effort_allocations") or []
+                    if item.get("user_id")
+                },
+                session=session,
+                exclude_plan_id=plan_id,
+            )
             updated = await optimistic_patch(
                 "test_plans",
                 plan_id,
@@ -561,6 +605,21 @@ async def approve_test_plan_record(plan_id, payload, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
+            from src.modules.projects.services.skill_profiles import (
+                _check_test_plan_assignment_capacity,
+            )
+
+            await _check_test_plan_assignment_capacity(
+                plan["project_id"],
+                plan.get("schedule") or {},
+                {
+                    item.get("user_id")
+                    for item in (plan.get("estimation") or {}).get("effort_allocations") or []
+                    if item.get("user_id")
+                },
+                session=session,
+                exclude_plan_id=plan_id,
+            )
             updated = await optimistic_patch(
                 "test_plans",
                 plan_id,
@@ -689,6 +748,47 @@ async def clone_test_plan_record(plan_id, user):
     return cloned
 
 
+def validate_test_plan_ai_field_grounding(proposal, source_text):
+    fields = (
+        "objective", "scope_in", "scope_out", "test_approach", "test_level", "test_types",
+        "environment", "entry_criteria", "exit_criteria", "risks", "assumptions",
+        "constraints", "data_sources", "data_preparation", "data_privacy", "data_reset",
+        "role_guidance", "milestones", "deliverables", "tools", "defect_reporting",
+        "defect_classification", "defect_triage", "defect_retest", "defect_closure",
+    )
+    field_evidence = {}
+    for item in proposal.get("field_evidence") or []:
+        field_name = item.get("field")
+        if field_name in field_evidence:
+            raise HTTPException(502, detail={"code": "TEST_PLAN_AI_FIELD_EVIDENCE_DUPLICATE"})
+        quotes = item.get("evidence_quotes") or []
+        if not quotes:
+            raise HTTPException(502, detail={"code": "TEST_PLAN_AI_FIELD_GROUNDING_REQUIRED"})
+        for quote in quotes:
+            source = source_text.get(quote.get("evidence_ref"))
+            if not source or quote.get("quote", "").strip() not in source:
+                raise HTTPException(502, detail={"code": "TEST_PLAN_AI_GROUNDING_INVALID"})
+        field_evidence[field_name] = quotes
+    for field_name in fields:
+        value = proposal.get(field_name)
+        has_value = (
+            any(str(item or "").strip() for item in value)
+            if isinstance(value, list)
+            else bool(str(value or "").strip())
+        )
+        if has_value and field_name not in field_evidence:
+            raise HTTPException(
+                502,
+                detail={"code": "TEST_PLAN_AI_FIELD_GROUNDING_REQUIRED", "field": field_name},
+            )
+        if not has_value and field_name in field_evidence:
+            raise HTTPException(
+                502,
+                detail={"code": "TEST_PLAN_AI_FIELD_WITHOUT_PROPOSAL", "field": field_name},
+            )
+    return field_evidence
+
+
 async def generate_test_plan_draft_suggestion(project_id, payload, user):
     await get_project(project_id, user, "testplan.create")
     requirement_ids = list(dict.fromkeys(payload.requirement_version_ids))
@@ -706,14 +806,17 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
     criteria = await database.value.acceptance_criteria.find({
         "project_id": project_id,
         "requirement_version_id": {"$in": requirement_ids},
-    }).to_list(1000)
+    }).to_list(1001)
+    if len(criteria) > 1000:
+        raise HTTPException(422, detail={"code": "TEST_PLAN_ACCEPTANCE_CRITERIA_LIMIT_EXCEEDED"})
     evidence = []
     source_text = {}
     for version in versions:
         content = str(version.get("plain_text_projection") or plain_text(version.get("content_doc", {}))).strip()
-        if content:
-            evidence.extend(split_source_evidence("requirement_version", version["_id"], content))
-            source_text[version["_id"]] = content
+        if not content:
+            raise HTTPException(422, detail={"code": "TEST_PLAN_REQUIREMENT_CONTENT_EMPTY"})
+        evidence.extend(split_source_evidence("requirement_version", version["_id"], content))
+        source_text[version["_id"]] = content
     for criterion in criteria:
         content = str(criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))).strip()
         if content:
@@ -734,12 +837,38 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
     if set(result.get("evidence_refs") or []) - set(source_text):
         raise HTTPException(502, detail={"code": "TEST_PLAN_AI_EVIDENCE_REFERENCE_INVALID"})
     proposal = suggestions[0]
+    validate_test_plan_ai_field_grounding(proposal, source_text)
     for quote in proposal.get("evidence_quotes") or []:
         source = source_text.get(quote.get("evidence_ref"))
         if not source or quote.get("quote", "").strip() not in source:
             raise HTTPException(502, detail={"code": "TEST_PLAN_AI_GROUNDING_INVALID"})
-    if not proposal.get("evidence_quotes"):
-        raise HTTPException(502, detail={"code": "TEST_PLAN_AI_GROUNDING_REQUIRED"})
+    await get_project(project_id, user, "testplan.create")
+    latest_versions = await database.value.requirement_versions.find({
+        "project_id": project_id,
+        "_id": {"$in": requirement_ids},
+        "status": "BASELINED",
+    }).to_list(len(requirement_ids))
+    if len(latest_versions) != len(requirement_ids):
+        raise HTTPException(409, detail={"code": "TEST_PLAN_SOURCE_CHANGED", "retryable": True})
+    for version in latest_versions:
+        await require_current_baselined_version(version)
+    latest_criteria = await database.value.acceptance_criteria.find({
+        "project_id": project_id,
+        "requirement_version_id": {"$in": requirement_ids},
+    }).to_list(1001)
+    if len(latest_criteria) > 1000:
+        raise HTTPException(409, detail={"code": "TEST_PLAN_SOURCE_CHANGED", "retryable": True})
+    latest_source_text = {}
+    for version in latest_versions:
+        content = str(version.get("plain_text_projection") or plain_text(version.get("content_doc", {}))).strip()
+        if content:
+            latest_source_text[version["_id"]] = content
+    for criterion in latest_criteria:
+        content = str(criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))).strip()
+        if content:
+            latest_source_text[criterion["_id"]] = content
+    if latest_source_text != source_text:
+        raise HTTPException(409, detail={"code": "TEST_PLAN_SOURCE_CHANGED", "retryable": True})
     return {
         "project_id": project_id,
         "requirement_version_ids": requirement_ids,

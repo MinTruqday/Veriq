@@ -1,9 +1,11 @@
 import hashlib
 import json
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.common import audit, get_project, new_id, now, plain_text
@@ -111,10 +113,22 @@ async def _commercial_feasibility(project_id, user):
     }
 
 
-async def _source_scope(project_id, user, *, include_text=False):
+async def _source_scope(
+    project_id,
+    user,
+    *,
+    include_text=False,
+    document_ids=None,
+    requirement_version_ids=None,
+    include_documents=True,
+):
     await get_project(project_id, user, "ai.ask_project")
-    await get_project(project_id, user, "requirement_document.read")
     await get_project(project_id, user, "requirement.read")
+    if include_documents and (document_ids is None or document_ids):
+        await get_project(project_id, user, "requirement_document.read")
+    scoped = document_ids is not None or requirement_version_ids is not None
+    selected_document_ids = set(document_ids or []) if scoped else None
+    selected_requirement_version_ids = set(requirement_version_ids or []) if scoped else None
     documents = await database.value.requirement_documents.find(
         {"project_id": project_id}
     ).sort([("source_series_id", 1), ("source_version_sequence", -1), ("_id", -1)]).to_list(None)
@@ -134,16 +148,20 @@ async def _source_scope(project_id, user, *, include_text=False):
     current_documents = [*standalone, *latest_by_series.values()]
     manifest = []
     evidence = []
+    source_options = {"documents": [], "requirements": []}
     excluded = {"not_readable": 0, "ai_not_allowed": 0, "not_ready": 0, "empty": 0}
     extraction_gaps = []
-    for document in current_documents:
+    for document in current_documents if include_documents else []:
+        document_id = str(document["_id"])
+        if selected_document_ids is not None and document_id not in selected_document_ids:
+            continue
         if not can_read_requirement_document(document, user):
             excluded["not_readable"] += 1
-            manifest.append({"id": str(document["_id"]), "access": "unavailable"})
+            if not scoped:
+                manifest.append({"id": document_id, "access": "unavailable"})
             continue
         if document.get("status") == "ARCHIVED":
             continue
-        document_id = str(document["_id"])
         entry = {
             "id": document_id,
             "revision": document.get("revision"),
@@ -154,13 +172,29 @@ async def _source_scope(project_id, user, *, include_text=False):
             "unprocessed_block_count": len((document.get("parse_report") or {}).get("unprocessed_blocks") or []),
             "extraction_warning_count": len((document.get("parse_report") or {}).get("extraction_warnings") or []),
         }
-        manifest.append(entry)
         if document.get("ai_enabled") is not True:
             excluded["ai_not_allowed"] += 1
+            if not scoped:
+                manifest.append(entry)
             continue
         if document.get("status") != "READY":
             excluded["not_ready"] += 1
+            if not scoped:
+                manifest.append(entry)
             continue
+        source_options["documents"].append(
+            {
+                "id": document_id,
+                "filename": document.get("filename") or document.get("title") or document_id,
+                "source_version": str(
+                    document.get("source_version")
+                    or document.get("source_version_sequence")
+                    or "1"
+                ),
+                "revision": document.get("revision"),
+            }
+        )
+        manifest.append(entry)
         report = document.get("parse_report") or {}
         if report.get("unprocessed_blocks") or report.get("extraction_warnings"):
             extraction_gaps.append(
@@ -189,8 +223,13 @@ async def _source_scope(project_id, user, *, include_text=False):
 
     requirements = await database.value.requirements.find(
         {"project_id": project_id, "status": {"$ne": "ARCHIVED"}},
-        {"_id": 1, "current_version_id": 1},
+        {"_id": 1, "current_version_id": 1, "requirement_key": 1},
     ).to_list(None)
+    requirements_by_version = {
+        str(item["current_version_id"]): item
+        for item in requirements
+        if item.get("current_version_id")
+    }
     current_version_ids = [
         item["current_version_id"] for item in requirements if item.get("current_version_id")
     ]
@@ -205,6 +244,36 @@ async def _source_scope(project_id, user, *, include_text=False):
     for criterion in criteria:
         criteria_by_version.setdefault(criterion["requirement_version_id"], []).append(criterion)
     for version in versions:
+        version_id = str(version["_id"])
+        requirement = requirements_by_version.get(version_id, {})
+        source_options["requirements"].append(
+            {
+                "version_id": version_id,
+                "requirement_id": str(version.get("requirement_id") or requirement.get("_id") or ""),
+                "requirement_key": requirement.get("requirement_key") or "",
+                "title": version.get("title") or "",
+                "revision": version.get("revision"),
+            }
+        )
+    available_document_ids = {item["id"] for item in source_options["documents"]}
+    available_requirement_version_ids = {
+        item["version_id"] for item in source_options["requirements"]
+    }
+    if scoped and (
+        not selected_document_ids.issubset(available_document_ids)
+        or not selected_requirement_version_ids.issubset(available_requirement_version_ids)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "PROJECT_COMPLEXITY_SOURCE_SCOPE_UNAVAILABLE", "retryable": True},
+        )
+    selected_versions = [
+        version
+        for version in versions
+        if selected_requirement_version_ids is None
+        or str(version["_id"]) in selected_requirement_version_ids
+    ]
+    for version in selected_versions:
         version_id = str(version["_id"])
         manifest.append(
             {
@@ -238,7 +307,10 @@ async def _source_scope(project_id, user, *, include_text=False):
                         "text": chunk["text"],
                     }
                 )
+    selected_version_ids = {str(item["_id"]) for item in selected_versions}
     for criterion in criteria:
+        if str(criterion.get("requirement_version_id") or "") not in selected_version_ids:
+            continue
         criterion_text = str(
             criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))
         ).strip()
@@ -257,15 +329,104 @@ async def _source_scope(project_id, user, *, include_text=False):
         "evidence": evidence,
         "excluded": excluded,
         "extraction_gaps": extraction_gaps,
-        "requirement_count": len(versions),
+        "requirement_count": len(selected_versions),
         "document_count": sum(
-            1 for item in manifest if item.get("ai_enabled") and item.get("status") == "READY"
+            1
+            for item in manifest
+            if item.get("ai_enabled") and item.get("status") == "READY"
         ),
+        "source_options": source_options,
     }
 
 
-async def assess_project_complexity(project_id, user, instruction=""):
-    scope = await _source_scope(project_id, user, include_text=True)
+async def get_project_complexity_scope(project_id, user):
+    include_documents = True
+    try:
+        await get_project(project_id, user, "requirement_document.read")
+    except HTTPException as error:
+        if error.status_code != 403:
+            raise
+        include_documents = False
+    scope = await _source_scope(
+        project_id,
+        user,
+        include_documents=include_documents,
+    )
+    return {
+        **scope["source_options"],
+        "excluded": scope["excluded"],
+        "document_count": scope["document_count"],
+        "requirement_count": scope["requirement_count"],
+    }
+
+
+async def _claim_project_complexity_request(project_id, user, payload, fingerprint):
+    request_fingerprint = _fingerprint(
+        {
+            "actor_id": user.id,
+            "source_fingerprint": fingerprint,
+            "instruction": payload.instruction.strip(),
+        }
+    )
+    claim_token = new_id("AIC")
+    timestamp = now()
+    reservation = {
+        "_id": new_id("AIR"),
+        "project_id": project_id,
+        "result_type": "PROJECT_COMPLEXITY_ASSESSMENT_PENDING",
+        "idempotency_key": payload.idempotency_key,
+        "request_fingerprint": request_fingerprint,
+        "source_fingerprint": fingerprint,
+        "claim_token": claim_token,
+        "lease_expires_at": timestamp + timedelta(minutes=35),
+        "created_by": user.id,
+        "created_at": timestamp,
+    }
+    try:
+        await database.value.ai_results.insert_one(reservation)
+        return reservation, None
+    except DuplicateKeyError:
+        existing = await database.value.ai_results.find_one(
+            {"project_id": project_id, "idempotency_key": payload.idempotency_key}
+        )
+        if not existing or existing.get("request_fingerprint") != request_fingerprint:
+            raise HTTPException(status_code=409, detail={"code": "PROJECT_COMPLEXITY_IDEMPOTENCY_KEY_REUSED"})
+        if existing.get("result_type") == "PROJECT_COMPLEXITY_ASSESSMENT":
+            return None, existing
+        if existing.get("result_type") != "PROJECT_COMPLEXITY_ASSESSMENT_PENDING":
+            raise HTTPException(status_code=409, detail={"code": "PROJECT_COMPLEXITY_RESERVATION_INVALID"})
+        reclaimed = await database.value.ai_results.find_one_and_update(
+            {
+                "_id": existing["_id"],
+                "result_type": "PROJECT_COMPLEXITY_ASSESSMENT_PENDING",
+                "lease_expires_at": {"$lte": timestamp},
+            },
+            {
+                "$set": {
+                    "claim_token": claim_token,
+                    "lease_expires_at": timestamp + timedelta(minutes=35),
+                    "updated_at": timestamp,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if not reclaimed:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "PROJECT_COMPLEXITY_ASSESSMENT_IN_PROGRESS", "retryable": True},
+            )
+        return reclaimed, None
+
+
+async def assess_project_complexity(project_id, user, payload):
+    scope = await _source_scope(
+        project_id,
+        user,
+        include_text=True,
+        document_ids=payload.document_ids,
+        requirement_version_ids=payload.requirement_version_ids,
+        include_documents=bool(payload.document_ids),
+    )
     evidence = scope["evidence"]
     if not evidence:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_COMPLEXITY_EVIDENCE_REQUIRED", "excluded": scope["excluded"]})
@@ -282,106 +443,150 @@ async def assess_project_complexity(project_id, user, instruction=""):
             "extraction_gaps": scope["extraction_gaps"],
             "historical_projects": "NOT_USED_NO_VALIDATED_ORG_POLICY",
         },
-        "user_instruction": instruction.strip(),
+        "user_instruction": payload.instruction.strip(),
     }
-    result = await request_ai_automation(
-        "project_complexity_assessment",
-        project_id,
-        json.dumps(context, ensure_ascii=False),
-        evidence,
+    reservation, replay = await _claim_project_complexity_request(
+        project_id, user, payload, scope["fingerprint"]
     )
-    if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
-        raise HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True})
-    suggestions = result.get("suggestions") or []
-    if len(suggestions) != 1:
-        raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_RESPONSE_INVALID"})
-    suggestion = suggestions[0]
-    dimensions = suggestion.get("dimensions") or []
-    if len(dimensions) != 12 or {item.get("dimension_id") for item in dimensions} != DIMENSION_IDS:
-        raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_DIMENSIONS_INVALID"})
-    sources = {item["artifact_version_id"]: item for item in evidence}
-    project = await database.value.projects.find_one({"_id": project_id}, {"locale": 1})
-    locale = str((project or {}).get("locale") or "en").lower()
-    insufficient_explanation = (
-        "Không đủ dẫn chứng đã xác minh để đánh giá chiều này."
-        if locale.startswith("vi")
-        else "There is not enough verified source evidence to assess this dimension."
-    )
-    citations = []
-    grounded_dimension_count = 0
-    for dimension in dimensions:
-        valid_quotes = []
-        for quote in dimension.get("evidence_quotes") or []:
-            source = sources.get(quote.get("evidence_ref"))
-            text = str(quote.get("quote") or "").strip()
-            if source and text and text in source["text"]:
-                valid_quotes.append({"evidence_ref": quote["evidence_ref"], "quote": text})
-        dimension["evidence_quotes"] = valid_quotes
-        if dimension.get("level") != "INSUFFICIENT_EVIDENCE" and valid_quotes:
-            grounded_dimension_count += 1
-        elif dimension.get("level") != "INSUFFICIENT_EVIDENCE":
-            dimension["level"] = "INSUFFICIENT_EVIDENCE"
-            dimension["explanation"] = insufficient_explanation
-            dimension["confidence"] = 0
-            dimension["uncertainty"] = list(dict.fromkeys([*(dimension.get("uncertainty") or []), "EVIDENCE_NOT_GROUNDED"]))
-            dimension["testing_impacts"] = []
-        for quote in valid_quotes:
-            source = sources.get(quote["evidence_ref"])
-            citations.append(
-                {
-                    "evidence_ref": quote["evidence_ref"],
-                    "artifact_type": source["artifact_type"],
-                    "artifact_id": source["artifact_id"],
-                    "source_version": source.get("source_version"),
-                    "quote": quote["quote"],
-                }
-            )
-    if grounded_dimension_count < len(dimensions):
-        if locale.startswith("vi"):
-            suggestion["readiness_summary"] = (
-                f"Có đủ dẫn chứng đã xác minh cho {grounded_dimension_count} trên 12 chiều đánh giá; "
-                f"{len(dimensions) - grounded_dimension_count} chiều chưa đủ căn cứ."
-            )
-        else:
-            suggestion["readiness_summary"] = (
-                f"Verified evidence supports {grounded_dimension_count} of 12 assessment dimensions; "
-                f"{len(dimensions) - grounded_dimension_count} dimensions lack sufficient evidence."
-            )
-    result["evidence_refs"] = list(
-        dict.fromkeys(
-            quote["evidence_ref"]
-            for dimension in dimensions
-            for quote in dimension.get("evidence_quotes") or []
+    if replay:
+        latest_scope = await _source_scope(
+            project_id,
+            user,
+            document_ids=payload.document_ids,
+            requirement_version_ids=payload.requirement_version_ids,
+            include_documents=bool(payload.document_ids),
         )
-    )
-    latest_scope = await _source_scope(project_id, user)
-    if latest_scope["fingerprint"] != scope["fingerprint"]:
-        raise HTTPException(status_code=409, detail={"code": "PROJECT_COMPLEXITY_SOURCES_CHANGED", "retryable": True})
-    record = {
-        "_id": new_id("AIR"),
-        "project_id": project_id,
-        "result_type": "PROJECT_COMPLEXITY_ASSESSMENT",
-        "candidate_only": True,
-        "human_confirmation_required": True,
-        "suggestions": suggestions,
-        "citations": citations,
-        "source_manifest": scope["manifest"],
-        "source_fingerprint": scope["fingerprint"],
-        "scope_summary": {
-            "current_ai_readable_documents": scope["document_count"],
-            "baselined_requirements": scope["requirement_count"],
-            "excluded_sources": scope["excluded"],
-            "extraction_gaps": scope["extraction_gaps"],
-            "historical_projects": "NOT_USED_NO_VALIDATED_ORG_POLICY",
-        },
-        "created_by": user.id,
-        "created_at": now(),
-        **ai_contract_metadata(result),
-    }
-    await database.value.ai_results.insert_one(record)
+        if latest_scope["fingerprint"] != scope["fingerprint"]:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "PROJECT_COMPLEXITY_SOURCES_CHANGED", "retryable": True},
+            )
+        response = {**replay, "stale": False, "saved": True, "approved": False}
+        response.pop("source_manifest", None)
+        response.pop("claim_token", None)
+        response.pop("lease_expires_at", None)
+        response["commercial_feasibility"] = await _commercial_feasibility(project_id, user)
+        return response
+    try:
+        result = await request_ai_automation(
+            "project_complexity_assessment",
+            project_id,
+            json.dumps(context, ensure_ascii=False),
+            evidence,
+        )
+        if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
+            raise HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True})
+        suggestions = result.get("suggestions") or []
+        if len(suggestions) != 1:
+            raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_RESPONSE_INVALID"})
+        suggestion = suggestions[0]
+        dimensions = suggestion.get("dimensions") or []
+        if len(dimensions) != 12 or {item.get("dimension_id") for item in dimensions} != DIMENSION_IDS:
+            raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_DIMENSIONS_INVALID"})
+        sources = {item["artifact_version_id"]: item for item in evidence}
+        project = await database.value.projects.find_one({"_id": project_id}, {"locale": 1})
+        locale = str((project or {}).get("locale") or "en").lower()
+        insufficient_explanation = (
+            "Không đủ dẫn chứng đã xác minh để đánh giá chiều này."
+            if locale.startswith("vi")
+            else "There is not enough verified source evidence to assess this dimension."
+        )
+        citations = []
+        grounded_dimension_count = 0
+        for dimension in dimensions:
+            valid_quotes = []
+            for quote in dimension.get("evidence_quotes") or []:
+                source = sources.get(quote.get("evidence_ref"))
+                text = str(quote.get("quote") or "").strip()
+                if source and text and text in source["text"]:
+                    valid_quotes.append({"evidence_ref": quote["evidence_ref"], "quote": text})
+            dimension["evidence_quotes"] = valid_quotes
+            if dimension.get("level") != "INSUFFICIENT_EVIDENCE" and valid_quotes:
+                grounded_dimension_count += 1
+            elif dimension.get("level") != "INSUFFICIENT_EVIDENCE":
+                dimension["level"] = "INSUFFICIENT_EVIDENCE"
+                dimension["explanation"] = insufficient_explanation
+                dimension["confidence"] = 0
+                dimension["uncertainty"] = list(dict.fromkeys([*(dimension.get("uncertainty") or []), "EVIDENCE_NOT_GROUNDED"]))
+                dimension["testing_impacts"] = []
+            for quote in valid_quotes:
+                source = sources.get(quote["evidence_ref"])
+                citations.append(
+                    {
+                        "evidence_ref": quote["evidence_ref"],
+                        "artifact_type": source["artifact_type"],
+                        "artifact_id": source["artifact_id"],
+                        "source_version": source.get("source_version"),
+                        "quote": quote["quote"],
+                    }
+                )
+        if grounded_dimension_count < len(dimensions):
+            if locale.startswith("vi"):
+                suggestion["readiness_summary"] = (
+                    f"Có đủ dẫn chứng đã xác minh cho {grounded_dimension_count} trên 12 chiều đánh giá; "
+                    f"{len(dimensions) - grounded_dimension_count} chiều chưa đủ căn cứ."
+                )
+            else:
+                suggestion["readiness_summary"] = (
+                    f"Verified evidence supports {grounded_dimension_count} of 12 assessment dimensions; "
+                    f"{len(dimensions) - grounded_dimension_count} dimensions lack sufficient evidence."
+                )
+        result["evidence_refs"] = list(
+            dict.fromkeys(
+                quote["evidence_ref"]
+                for dimension in dimensions
+                for quote in dimension.get("evidence_quotes") or []
+            )
+        )
+        latest_scope = await _source_scope(
+            project_id,
+            user,
+            document_ids=payload.document_ids,
+            requirement_version_ids=payload.requirement_version_ids,
+            include_documents=bool(payload.document_ids),
+        )
+        if latest_scope["fingerprint"] != scope["fingerprint"]:
+            raise HTTPException(status_code=409, detail={"code": "PROJECT_COMPLEXITY_SOURCES_CHANGED", "retryable": True})
+        record = {
+            **reservation,
+            "result_type": "PROJECT_COMPLEXITY_ASSESSMENT",
+            "candidate_only": True,
+            "human_confirmation_required": True,
+            "suggestions": suggestions,
+            "citations": citations,
+            "source_manifest": scope["manifest"],
+            "source_selection": {
+                "document_ids": payload.document_ids,
+                "requirement_version_ids": payload.requirement_version_ids,
+            },
+            "source_fingerprint": scope["fingerprint"],
+            "scope_summary": {
+                "current_ai_readable_documents": scope["document_count"],
+                "baselined_requirements": scope["requirement_count"],
+                "excluded_sources": scope["excluded"],
+                "extraction_gaps": scope["extraction_gaps"],
+                "historical_projects": "NOT_USED_NO_VALIDATED_ORG_POLICY",
+            },
+            "created_at": now(),
+            **ai_contract_metadata(result),
+        }
+        record.pop("lease_expires_at", None)
+        persisted = await database.value.ai_results.replace_one(
+            {"_id": reservation["_id"], "claim_token": reservation["claim_token"]},
+            record,
+        )
+        if persisted.matched_count != 1:
+            raise HTTPException(status_code=409, detail={"code": "PROJECT_COMPLEXITY_RESERVATION_EXPIRED", "retryable": True})
+    except Exception:
+        await database.value.ai_results.delete_one(
+            {"_id": reservation["_id"], "claim_token": reservation["claim_token"]}
+        )
+        raise
     await audit(user.id, "project_complexity_assessed", "Project", project_id, project_id, {"result_id": record["_id"], "source_count": len(evidence)})
     response = {**record, "stale": False, "saved": True, "approved": False}
     response.pop("source_manifest", None)
+    response.pop("claim_token", None)
+    response.pop("lease_expires_at", None)
     response["commercial_feasibility"] = await _commercial_feasibility(project_id, user)
     return response
 
@@ -394,8 +599,30 @@ async def get_latest_project_complexity(project_id, user):
     )
     if not record:
         return None
-    scope = await _source_scope(project_id, user)
-    stale = scope["fingerprint"] != record.get("source_fingerprint")
+    selection = record.get("source_selection") or {}
+    try:
+        scope = await _source_scope(
+            project_id,
+            user,
+            document_ids=selection.get("document_ids"),
+            requirement_version_ids=selection.get("requirement_version_ids"),
+        include_documents=(
+            selection.get("document_ids") is None or bool(selection.get("document_ids"))
+        ),
+        )
+        stale = scope["fingerprint"] != record.get("source_fingerprint")
+    except HTTPException as error:
+        error_detail = error.detail if isinstance(error.detail, dict) else {}
+        inaccessible_selected_documents = (
+            error_detail.get("code") == "PROJECT_PERMISSION_DENIED"
+            and error_detail.get("permission") == "requirement_document.read"
+        )
+        if not inaccessible_selected_documents and error_detail.get("code") not in {
+            "PROJECT_COMPLEXITY_SOURCE_SCOPE_UNAVAILABLE",
+            "PROJECT_COMPLEXITY_SOURCE_SCOPE_CHANGED",
+        }:
+            raise
+        stale = True
     if stale:
         record["citations"] = []
         record["suggestions"] = []

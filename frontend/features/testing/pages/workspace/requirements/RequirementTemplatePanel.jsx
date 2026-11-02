@@ -176,7 +176,6 @@ function toStored(item, fields) {
 
 export default function RequirementTemplatePanel({
   project,
-  isPlatformAdmin = false,
   members,
   sourceDocuments,
   onPreview,
@@ -255,15 +254,10 @@ export default function RequirementTemplatePanel({
   const canReadAutomationRuns =
     project.current_permissions?.includes("proposal.read") ||
     project.current_permissions?.includes("automation.read");
-  const membershipRoles = project.current_membership?.project_roles;
-  const projectRoles =
-    Array.isArray(membershipRoles) && membershipRoles.length
-      ? membershipRoles
-      : [project.current_membership?.project_role].filter(Boolean);
+  const projectRoles = [project.current_membership?.project_role].filter(Boolean);
   const canApprovePublication =
-    project.current_permissions?.includes("project.update") &&
-    (projectRoles.includes("QA") || isPlatformAdmin);
-  const canManageRequirementFields = canApprovePublication;
+    project.current_permissions?.includes("requirement.read") && projectRoles.includes("QA");
+  const canManageRequirementFields = project.current_permissions?.includes("requirement.update");
   const documentEventKey = sourceDocuments
     .filter((document) => document.ai_enabled)
     .map((document) => `${document._id}:${document.revision || 1}`)

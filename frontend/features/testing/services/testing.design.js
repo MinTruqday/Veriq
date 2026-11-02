@@ -424,7 +424,7 @@ export const designTestingApi = {
       body: JSON.stringify(payload),
     }),
   suggestTestData: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/du-lieu-kiem-thu/ai/de-xuat`, {
+    testingStreamRequest(`/du-an/${projectId}/du-lieu-kiem-thu/ai/de-xuat`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -504,10 +504,11 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  createGeneratedTestDrafts: (id, payload) =>
+  createGeneratedTestDrafts: (id, payload, idempotencyKey) =>
     testingRequest(`/du-an/${id}/ban-nhap-ca-kiem-thu/lo`, {
       method: "POST",
       body: JSON.stringify(payload),
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
     }),
   getTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}`),
   compareTestDraft: (id) => testingRequest(`/ban-nhap-ca-kiem-thu/${id}/so-sanh`),

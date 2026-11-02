@@ -58,7 +58,13 @@ class TestRunRepository:
                 "status": status,
                 "$or": [
                     {"project_role": {"$in": roles}},
-                    {"project_roles": {"$in": roles}},
+                    {
+                        "$and": [
+                            {"project_role": {"$exists": False}},
+                            {"project_roles": {"$in": roles}},
+                            {"project_roles": {"$size": 1}},
+                        ]
+                    },
                 ],
             }
         )
@@ -72,7 +78,13 @@ class TestRunRepository:
                 "status": status,
                 "$or": [
                     {"project_role": {"$in": roles}},
-                    {"project_roles": {"$in": roles}},
+                    {
+                        "$and": [
+                            {"project_role": {"$exists": False}},
+                            {"project_roles": {"$in": roles}},
+                            {"project_roles": {"$size": 1}},
+                        ]
+                    },
                 ],
             }
         )

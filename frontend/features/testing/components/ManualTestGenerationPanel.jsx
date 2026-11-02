@@ -15,6 +15,7 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const inFlight = useRef(false);
+  const saveIdempotencyKey = useRef(null);
   const source = requirements.find((item) => item.current_version_id === versionId);
   const generate = async () => {
     if (inFlight.current || !versionId) return;
@@ -23,6 +24,8 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
     setError("");
     setNotice("");
     setPreview(null);
+    setSelected([]);
+    saveIdempotencyKey.current = null;
     try {
       const payload = { instruction, max_cases: limit, preview_only: true };
       if (mode === "scenarios") {
@@ -55,8 +58,10 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
       if (mode === "scenarios") {
         await testingApi.createGeneratedScenarioDrafts(projectId, items);
       } else {
-        await testingApi.createGeneratedTestDrafts(projectId, items);
+        saveIdempotencyKey.current ||= window.crypto.randomUUID();
+        await testingApi.createGeneratedTestDrafts(projectId, items, saveIdempotencyKey.current);
       }
+      saveIdempotencyKey.current = null;
       setPreview(null);
       setSelected([]);
       setNotice(
@@ -94,6 +99,7 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
                 setVersionId(event.target.value);
                 setPreview(null);
                 setSelected([]);
+                saveIdempotencyKey.current = null;
                 setNotice("");
               }}
             >
@@ -157,13 +163,14 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
                     type="checkbox"
                     checked={selected.includes(index)}
                     disabled={busy}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      saveIdempotencyKey.current = null;
                       setSelected((current) =>
                         event.target.checked
                           ? [...current, index]
                           : current.filter((value) => value !== index),
-                      )
-                    }
+                      );
+                    }}
                   />
                   {item.draft.title}
                 </label>
@@ -206,8 +213,29 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
                     </ol>
                   )}
                   {item.evidence_quotes?.map((quote, quoteIndex) => (
-                    <blockquote key={quoteIndex} className="mt-3 border-l-2 border-violet-300 pl-3">
-                      {quote.quote}
+                    <blockquote
+                      key={`${quote.evidence_ref || "source"}-${quoteIndex}`}
+                      className="mt-3 border-l-2 border-violet-300 pl-3"
+                    >
+                      <p>{quote.quote}</p>
+                      {source && quote.evidence_ref && (
+                        <Link
+                          className="mt-1 inline-flex text-xs font-medium text-brand underline"
+                          href={
+                            source.current_version?.acceptance_criteria?.some(
+                              (criterion) => criterion._id === quote.evidence_ref,
+                            )
+                              ? `/du-an/${projectId}/yeu-cau/${source._id}?acceptanceCriterionId=${encodeURIComponent(quote.evidence_ref)}#acceptance-criterion-${encodeURIComponent(quote.evidence_ref)}`
+                              : `/du-an/${projectId}/yeu-cau/${source._id}`
+                          }
+                        >
+                          {source.current_version?.acceptance_criteria?.some(
+                            (criterion) => criterion._id === quote.evidence_ref,
+                          )
+                            ? "Mở đúng tiêu chí nguồn"
+                            : "Mở yêu cầu nguồn"}
+                        </Link>
+                      )}
                     </blockquote>
                   ))}
                 </details>

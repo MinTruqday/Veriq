@@ -332,6 +332,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             anyPermission: [
               "report.read",
               "analytics.read",
+              "analytics.ai.read",
               "coverage.read",
               "teststatusreport.read",
               "testcompletion.read",

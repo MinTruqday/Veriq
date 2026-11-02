@@ -452,9 +452,7 @@ async def decide_residual_risk(report_id, risk_id, payload, user):
     risk = next((item for item in risks if item.get("risk_id") == risk_id), None)
     if not risk:
         raise HTTPException(status_code=404, detail={"code": "RESIDUAL_RISK_NOT_FOUND"})
-    if risk.get("owner_id") != user.id and not roles_for_membership(membership).intersection(
-        {"QA", "BA"}
-    ):
+    if risk.get("owner_id") != user.id and "QA" not in roles_for_membership(membership):
         raise HTTPException(status_code=403, detail={"code": "RESIDUAL_RISK_DECISION_DENIED"})
     risk.update(
         {

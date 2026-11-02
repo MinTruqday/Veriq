@@ -1,12 +1,17 @@
 import hashlib
 import json
+from datetime import timedelta
 
 from fastapi import HTTPException
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.common import audit, get_project_entity, new_id, now, plain_text
 from src.core.database import database
+from src.core.sensitive_data import redact_sensitive_text
 from src.core.source_evidence import split_source_evidence
+from src.modules.execution.services.execution_state import assigned_execution_versions
 from src.repositories.test_run import test_run_repository
 
 
@@ -63,6 +68,40 @@ def _scope_fingerprint(run, result, version):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _normalize_source_phrase(value):
+    return " ".join(str(value or "").casefold().split()).rstrip(" .,!?:;")
+
+
+def _defect_values_are_grounded(defect_draft, result, version):
+    expected_values = [
+        redact_sensitive_text(plain_text(item.get("expected_doc") or {}))
+        for item in version.get("steps") or []
+    ]
+    actual_values = [
+        redact_sensitive_text(plain_text(result.get("actual_result_doc") or {})),
+        *[
+            redact_sensitive_text(plain_text(item.get("actual_doc") or {}))
+            for item in result.get("step_results") or []
+        ],
+    ]
+    expected_values = [value for value in expected_values if value]
+    actual_values = [value for value in actual_values if value]
+    if not expected_values or not actual_values:
+        return False
+    expected_sources = [*expected_values, "\n".join(expected_values)]
+    actual_sources = [*actual_values, "\n".join(actual_values)]
+
+    def matches_source(value, sources):
+        phrase = _normalize_source_phrase(value)
+        return bool(phrase) and any(
+            phrase == _normalize_source_phrase(source) for source in sources
+        )
+
+    return matches_source(
+        defect_draft.get("expected_result"), expected_sources
+    ) and matches_source(defect_draft.get("actual_result"), actual_sources)
+
+
 async def _execution_assistance_scope(project_id, run_id, result_id, user):
     result = await get_project_entity("test_results", result_id, user, "testrun.execute")
     if result.get("project_id") != project_id or result.get("test_run_id") != run_id:
@@ -78,26 +117,21 @@ async def _execution_assistance_scope(project_id, run_id, result_id, user):
     version = versions[0]
     if version.get("project_id") != project_id:
         raise HTTPException(status_code=409, detail={"code": "TEST_CASE_PROJECT_MISMATCH"})
+    version_id = str(version.get("_id") or "")
+    if version_id not in {str(item) for item in run.get("test_case_version_ids") or []}:
+        raise HTTPException(status_code=409, detail={"code": "TEST_CASE_OUTSIDE_RUN_SCOPE"})
+    assigned_version_ids = await assigned_execution_versions(run, user)
+    if version_id not in {str(item) for item in assigned_version_ids}:
+        raise HTTPException(status_code=403, detail={"code": "TEST_CASE_ASSIGNMENT_REQUIRED"})
     evidence = []
+    redactions_applied = False
     for artifact_type, artifact_id, text in (
         ("test_case_version", str(version["_id"]), _case_source_text(version)),
         ("test_result", str(result["_id"]), _result_source_text(result)),
-        (
-            "test_run_context",
-            str(run["_id"]),
-            json.dumps(
-                {
-                    "run_name": run.get("name"),
-                    "environment": run.get("environment"),
-                    "build": run.get("build"),
-                    "release": run.get("release"),
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            ),
-        ),
     ):
-        for chunk in split_source_evidence(artifact_type, artifact_id, text):
+        safe_text = redact_sensitive_text(text)
+        redactions_applied = redactions_applied or safe_text != text
+        for chunk in split_source_evidence(artifact_type, artifact_id, safe_text):
             evidence.append(
                 {
                     "artifact_type": artifact_type,
@@ -110,29 +144,79 @@ async def _execution_assistance_scope(project_id, run_id, result_id, user):
         raise HTTPException(status_code=422, detail={"code": "EXECUTION_ASSISTANCE_EVIDENCE_REQUIRED"})
     if len(evidence) > 100:
         raise HTTPException(status_code=422, detail={"code": "EXECUTION_ASSISTANCE_SCOPE_TOO_LARGE"})
-    return run, result, version, evidence, _scope_fingerprint(run, result, version)
+    fingerprint = _scope_fingerprint(run, result, version)
+    return run, result, version, evidence, fingerprint, redactions_applied
 
 
-async def generate_execution_assistance(project_id, run_id, result_id, user):
-    run, result, version, evidence, fingerprint = await _execution_assistance_scope(
-        project_id, run_id, result_id, user
-    )
-    existing = await database.value.ai_results.find_one(
-        {
-            "project_id": project_id,
-            "result_type": "EXECUTION_ASSISTANCE",
-            "subject_id": result_id,
-            "source_fingerprint": fingerprint,
-        },
-        sort=[("created_at", -1)],
-    )
-    if existing:
-        return {**existing, "stale": False, "saved": True}
+async def _claim_execution_assistance(project_id, result_id, fingerprint, user_id):
+    collection = database.value.ai_results
+    timestamp = now()
+    claim_token = new_id("AIC")
+    idempotency_key = f"execution-assistance:{fingerprint}"
+    reservation = {
+        "_id": new_id("AIR"),
+        "project_id": project_id,
+        "result_type": "EXECUTION_ASSISTANCE_PENDING",
+        "subject_id": result_id,
+        "source_fingerprint": fingerprint,
+        "idempotency_key": idempotency_key,
+        "claim_token": claim_token,
+        "lease_expires_at": timestamp + timedelta(minutes=35),
+        "created_by": user_id,
+        "created_at": timestamp,
+    }
+    try:
+        await collection.insert_one(reservation)
+        return reservation
+    except DuplicateKeyError:
+        existing = await collection.find_one(
+            {"project_id": project_id, "idempotency_key": idempotency_key}
+        )
+        if not existing or existing.get("source_fingerprint") != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "EXECUTION_ASSISTANCE_IDEMPOTENCY_CONFLICT"},
+            )
+        if existing.get("result_type") == "EXECUTION_ASSISTANCE":
+            return existing
+        if existing.get("result_type") != "EXECUTION_ASSISTANCE_PENDING":
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "EXECUTION_ASSISTANCE_RESERVATION_INVALID"},
+            )
+        reclaimed = await collection.find_one_and_update(
+            {
+                "_id": existing["_id"],
+                "result_type": "EXECUTION_ASSISTANCE_PENDING",
+                "lease_expires_at": {"$lte": timestamp},
+            },
+            {
+                "$set": {
+                    "claim_token": claim_token,
+                    "lease_expires_at": timestamp + timedelta(minutes=35),
+                    "updated_at": timestamp,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if not reclaimed:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "EXECUTION_ASSISTANCE_ALREADY_RUNNING", "retryable": True},
+            )
+        return reclaimed
+
+
+async def _build_execution_assistance_record(
+    project_id, run_id, result_id, user, scope, reservation
+):
+    run, result, version, evidence, fingerprint, redactions_applied = scope
     context = {
         "saved_result_status": result.get("status"),
         "defect_draft_allowed": result.get("status") in {"FAIL", "BLOCKED"},
         "case_version_id": version["_id"],
         "result_revision": result.get("revision"),
+        "sensitive_values_redacted": redactions_applied,
     }
     ai_result = await request_ai_automation(
         "execution_assistance",
@@ -152,6 +236,11 @@ async def generate_execution_assistance(project_id, run_id, result_id, user):
     defect_draft = suggestion.get("defect_draft")
     if defect_draft and result.get("status") not in {"FAIL", "BLOCKED"}:
         raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_DEFECT_STATUS_INVALID"})
+    if defect_draft and not _defect_values_are_grounded(defect_draft, result, version):
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "EXECUTION_ASSISTANCE_DEFECT_VALUE_UNGROUNDED"},
+        )
     source_by_ref = {item["artifact_version_id"]: item for item in evidence}
     if set(ai_result.get("evidence_refs") or []) - set(source_by_ref):
         raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_REFERENCE_INVALID"})
@@ -177,32 +266,73 @@ async def generate_execution_assistance(project_id, run_id, result_id, user):
             cited_refs.append(quote["evidence_ref"])
     if not cited_refs:
         raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_GROUNDING_REQUIRED"})
-    if set(ai_result.get("evidence_refs") or []) - set(cited_refs):
-        raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_REFERENCE_INVALID"})
     latest_scope = await _execution_assistance_scope(project_id, run_id, result_id, user)
     if latest_scope[4] != fingerprint:
         raise HTTPException(
             status_code=409,
             detail={"code": "EXECUTION_ASSISTANCE_SOURCE_CHANGED", "retryable": True},
         )
+    contract_metadata = ai_contract_metadata(ai_result)
+    # Keep only references attached to verified quotations. The model may identify
+    # additional source chunks as relevant without quoting them in its explanation.
+    contract_metadata.pop("evidence_refs", None)
     record = {
-        "_id": new_id("AIR"),
-        "project_id": project_id,
+        **reservation,
         "result_type": "EXECUTION_ASSISTANCE",
-        "subject_id": result_id,
         "source_run_id": run_id,
         "source_result_id": result_id,
         "source_case_version_id": str(version["_id"]),
-        "source_fingerprint": fingerprint,
         "candidate_only": True,
         "human_confirmation_required": True,
+        "sensitive_values_redacted": redactions_applied,
         "suggestions": suggestions,
         "evidence_refs": list(dict.fromkeys(cited_refs)),
-        "created_by": user.id,
-        "created_at": now(),
-        **ai_contract_metadata(ai_result),
+        **contract_metadata,
     }
-    await database.value.ai_results.insert_one(record)
+    record.pop("claim_token", None)
+    record.pop("lease_expires_at", None)
+    return record
+
+
+async def generate_execution_assistance(project_id, run_id, result_id, user):
+    scope = await _execution_assistance_scope(project_id, run_id, result_id, user)
+    fingerprint = scope[4]
+    result = scope[1]
+    existing = await database.value.ai_results.find_one(
+        {
+            "project_id": project_id,
+            "result_type": "EXECUTION_ASSISTANCE",
+            "subject_id": result_id,
+            "source_fingerprint": fingerprint,
+        },
+        sort=[("created_at", -1)],
+    )
+    if existing:
+        return {**existing, "stale": False, "saved": True}
+    reservation = await _claim_execution_assistance(
+        project_id, result_id, fingerprint, user.id
+    )
+    if reservation.get("result_type") == "EXECUTION_ASSISTANCE":
+        return {**reservation, "stale": False, "saved": True}
+    try:
+        record = await _build_execution_assistance_record(
+            project_id, run_id, result_id, user, scope, reservation
+        )
+        record["created_at"] = now()
+        persisted = await database.value.ai_results.replace_one(
+            {"_id": reservation["_id"], "claim_token": reservation["claim_token"]},
+            record,
+        )
+        if persisted.matched_count != 1:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "EXECUTION_ASSISTANCE_RESERVATION_EXPIRED", "retryable": True},
+            )
+    except Exception:
+        await database.value.ai_results.delete_one(
+            {"_id": reservation["_id"], "claim_token": reservation["claim_token"]}
+        )
+        raise
     await audit(
         user.id,
         "execution_assistance_generated",

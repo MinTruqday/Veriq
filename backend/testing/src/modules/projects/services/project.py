@@ -40,6 +40,16 @@ def project_access(project, membership, grant):
     role_permissions = permissions_for_membership(membership, project.get("settings"))
     grant_permissions = set(grant.get("permissions", [])) & project_permissions() if grant else set()
     active_roles = roles_for_membership(membership) if membership and membership.get("status") == "ACTIVE" else set()
+    effective_roles = roles_for_membership(membership)
+    public_membership = (
+        {
+            **membership,
+            "project_role": next(iter(effective_roles)) if len(effective_roles) == 1 else None,
+            "project_roles": sorted(effective_roles),
+        }
+        if membership
+        else None
+    )
     grant_permissions = {item for item in grant_permissions if business_role_allows(item, active_roles)}
     if project.get("status", "active").lower() == "archived":
         allowed = archive_read_permissions() | {"project.restore"}
@@ -49,7 +59,7 @@ def project_access(project, membership, grant):
         grant_permissions &= allowed
     return {
         **project,
-        "current_membership": membership,
+        "current_membership": public_membership,
         "current_permissions": sorted(role_permissions | grant_permissions),
         "access_context": (
             {
@@ -83,7 +93,14 @@ class ProjectService:
     @staticmethod
     async def can_create_project(user):
         policy = await get_project_creation_policy()
-        return policy != 'ADMIN_ONLY' or user.is_system_admin
+        if user.is_system_admin:
+            return True
+        if policy == 'ADMIN_ONLY':
+            return False
+        memberships = await project_repository.list_active_memberships(user.id, 'ACTIVE', limit=1)
+        if not memberships:
+            return True
+        return await project_repository.has_active_membership_with_role(user.id, 'ACTIVE', 'BA')
 
     @staticmethod
     async def create(payload, user):
@@ -95,6 +112,11 @@ class ProjectService:
         timestamp = now()
         _validate_project_dates(payload.planned_start_at, payload.planned_end_at)
         initial_qa_user_id = await resolve_user_reference(payload.initial_qa_user_id)
+        if initial_qa_user_id == user.id:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "PROJECT_INITIAL_QA_MUST_DIFFER_FROM_BA"},
+            )
         project = {
             "_id": new_id('PRJ'),
             **payload.model_dump(exclude={"initial_qa_user_id"}),
@@ -111,7 +133,7 @@ class ProjectService:
             "project_id": project["_id"],
             "user_id": user.id,
             "project_role": 'BA',
-            "project_roles": ['BA', 'QA'] if initial_qa_user_id == user.id else ['BA'],
+            "project_roles": ['BA'],
             "status": 'ACTIVE',
             "membership_revision": 1,
             "created_by": user.id,
@@ -131,7 +153,7 @@ class ProjectService:
             "updated_at": timestamp,
         }
         try:
-            memberships = [ba_membership] if initial_qa_user_id == user.id else [ba_membership, qa_membership]
+            memberships = [ba_membership, qa_membership]
             project_created_event = build_audit_event(
                 user.id,
                 'project_created',
@@ -140,8 +162,8 @@ class ProjectService:
                 project["_id"],
                 {
                     "ba_membership_id": ba_membership["_id"],
-                    "initial_qa_membership_id": ba_membership["_id"] if initial_qa_user_id == user.id else qa_membership["_id"],
-                    "initial_qa_same_as_ba": initial_qa_user_id == user.id,
+                    "initial_qa_membership_id": qa_membership["_id"],
+                    "initial_qa_same_as_ba": False,
                 },
             )
             await project_repository.create_with_memberships(
@@ -338,6 +360,10 @@ class ProjectService:
         return [
             {
                 **member,
+                "project_role": next(iter(roles_for_membership(member)))
+                if len(roles_for_membership(member)) == 1
+                else None,
+                "project_roles": sorted(roles_for_membership(member)),
                 "user": identities.get(member.get("user_id")),
                 "user_label": (identities.get(member.get("user_id")) or {}).get("label") or member.get("user_id"),
             }

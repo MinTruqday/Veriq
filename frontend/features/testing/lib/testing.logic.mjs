@@ -543,7 +543,16 @@ export function messageOf(reason) {
       "Không tìm thấy nội dung văn bản trong CV. Hãy dùng bản PDF có thể chọn văn bản hoặc tệp DOCX/TXT.",
   };
   if (profileMessages[reason?.code]) return profileMessages[reason.code];
+  if (reason?.code === "PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE") {
+    const chunks = Number(reason.details?.evidence_chunks);
+    const maximum = Number(reason.details?.maximum);
+    if (Number.isFinite(chunks) && Number.isFinite(maximum)) {
+      return `Phạm vi đã chọn có ${chunks} khối bằng chứng, vượt giới hạn ${maximum} khối cho một lượt. Bỏ chọn bớt nguồn rồi thử lại; hệ thống chưa đánh giá một phần.`;
+    }
+  }
   const automationMessages = {
+    PROJECT_INITIAL_QA_MUST_DIFFER_FROM_BA:
+      "Người tạo dự án có vai trò BA. Hãy chọn một thành viên khác làm QA đầu tiên.",
     AUTOMATION_PUBLICATION_NOT_AUTHORIZED:
       "Lượt AI chưa được cấp quyền tự động công bố kết quả này.",
     AUTOMATION_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện hợp lệ cho lượt tự động hóa này.",
@@ -565,6 +574,16 @@ export function messageOf(reason) {
       "Hàng đợi AI tạm thời chưa sẵn sàng. Hãy thử tiếp tục lại sau khi hàng đợi hoạt động.",
     REVISION_CONFLICT:
       "Dữ liệu đã được thay đổi ở phiên khác. Hãy tải lại và đối chiếu trước khi lưu.",
+    IDEMPOTENCY_KEY_REUSED:
+      "Nội dung yêu cầu đã thay đổi nhưng đang dùng lại mã của lần trước. Hãy chạy lại thao tác.",
+    REQUIREMENT_QUALITY_ANALYSIS_IN_PROGRESS:
+      "Lần rà soát Requirement này đang chạy. Hãy đợi một chút rồi tải lại kết quả.",
+    REQUIREMENT_QUALITY_ANALYSIS_SOURCE_CHANGED:
+      "Requirement đã thay đổi trong lúc AI rà soát. Hãy chạy lại để phân tích đúng phiên bản mới nhất.",
+    REQUIREMENT_QUALITY_ANALYSIS_CLAIM_LOST:
+      "Không thể lưu kết quả rà soát vì lượt xử lý đã thay đổi. Hãy tải lại và chạy lại.",
+    IMPACT_SOURCE_CHANGED:
+      "Nguồn hoặc liên kết truy vết đã thay đổi sau lần phân tích. Hãy chạy lại phân tích trước khi tiếp tục.",
     SCENARIO_INCOMPLETE: "Bổ sung mục tiêu và yêu cầu nguồn trước khi duyệt kịch bản.",
     SCENARIO_DRAFT_REQUIRED: "Kịch bản mới phải được lưu nháp trước khi gửi rà soát.",
     IMMUTABLE_SCENARIO:
@@ -594,8 +613,18 @@ export function messageOf(reason) {
       "Cần điền các trường mở rộng bắt buộc trước khi gửi duyệt hoặc duyệt ca.",
     TEST_CASE_CUSTOM_FIELD_UNKNOWN:
       "Có trường mở rộng không còn cấu hình trong dự án. Hãy bỏ trường cũ hoặc tải lại dữ liệu.",
+    TEST_CASE_OWNER_ROLE_INVALID:
+      "Người phụ trách ca kiểm thử phải là thành viên QA đang hoạt động trong dự án.",
+    MAX_CONCURRENT_PROJECTS_REACHED:
+      "Người được chọn đã đạt giới hạn số dự án đang thực hiện. Thay đổi chưa được lưu; hãy chọn người khác hoặc nhờ Admin cập nhật giới hạn.",
+    RESOURCE_CAPACITY_CHANGED_RETRY_ASSIGNMENT:
+      "Giới hạn công suất vừa thay đổi. Hãy tải lại dữ liệu rồi thử phân công lại.",
     PROJECT_COMPLEXITY_EVIDENCE_REQUIRED:
       "Chưa có tài liệu được phép dùng AI hoặc yêu cầu đã duyệt để đánh giá dự án.",
+    PROJECT_COMPLEXITY_SOURCE_SCOPE_UNAVAILABLE:
+      "Nguồn đã chọn không còn hợp lệ hoặc không còn trong phạm vi được phép. Hãy tải lại danh sách nguồn.",
+    PROJECT_COMPLEXITY_SOURCE_SCOPE_REQUIRED:
+      "Hãy chọn ít nhất một tài liệu hoặc yêu cầu đã duyệt để đánh giá.",
     PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE:
       "Phạm vi tài liệu vượt giới hạn cho một lượt đánh giá. Hãy thu hẹp nguồn hoặc chia phạm vi trước khi chạy; hệ thống chưa đánh giá một phần.",
     PROJECT_COMPLEXITY_RESPONSE_INVALID:
@@ -610,6 +639,14 @@ export function messageOf(reason) {
       "Một trích dẫn không khớp nguyên văn với nguồn. Không có kết quả nào được lưu.",
     PROJECT_COMPLEXITY_SOURCES_CHANGED:
       "Nguồn đã thay đổi trong lúc đánh giá. Hãy chạy lại để dùng phiên bản mới nhất.",
+    PROJECT_COMPLEXITY_IDEMPOTENCY_KEY_REUSED:
+      "Yêu cầu đánh giá đã đổi nhưng đang dùng lại mã của lần trước. Hãy bấm đánh giá lại.",
+    PROJECT_COMPLEXITY_ASSESSMENT_IN_PROGRESS:
+      "Lần đánh giá này vẫn đang chạy. Hãy đợi hoàn tất rồi tải lại kết quả.",
+    PROJECT_COMPLEXITY_RESERVATION_INVALID:
+      "Không thể khôi phục lần đánh giá trước. Hãy tạo một lượt đánh giá mới.",
+    PROJECT_COMPLEXITY_RESERVATION_EXPIRED:
+      "Lượt đánh giá đã hết thời gian giữ. Hãy thử lại để tạo lượt mới.",
     EXECUTION_RESULT_NOT_RECORDED: "Cần lưu kết quả kiểm thử trước khi yêu cầu AI phân tích.",
     EXECUTION_ASSISTANCE_UNAVAILABLE:
       "Chưa thể phân tích kết quả lúc này. Kết quả kiểm thử vẫn được giữ nguyên; bạn có thể thử lại.",

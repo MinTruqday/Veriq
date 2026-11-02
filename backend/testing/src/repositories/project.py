@@ -34,6 +34,25 @@ class ProjectRepository:
             {"user_id": user_id, "status": active_status}
         ).to_list(limit)
 
+    async def has_active_membership_with_role(self, user_id, active_status, role):
+        return await self.members.find_one(
+            {
+                "user_id": user_id,
+                "status": active_status,
+                "$or": [
+                    {"project_role": role},
+                    {
+                        "$and": [
+                            {"project_role": {"$exists": False}},
+                            {"project_roles": role},
+                            {"project_roles": {"$size": 1}},
+                        ]
+                    },
+                ],
+            },
+            {"_id": 1},
+        ) is not None
+
     async def list_active_grants(self, user_id, active_status, active_after, limit=5000):
         return await self.grants.find(
             {
@@ -115,7 +134,16 @@ class ProjectRepository:
             {
                 "project_id": project_id,
                 "status": status,
-                "$or": [{"project_role": role}, {"project_roles": role}],
+                "$or": [
+                    {"project_role": role},
+                    {
+                        "$and": [
+                            {"project_role": {"$exists": False}},
+                            {"project_roles": role},
+                            {"project_roles": {"$size": 1}},
+                        ]
+                    },
+                ],
             }
         )
 
@@ -129,7 +157,13 @@ class ProjectRepository:
                     "status": "ACTIVE",
                     "$or": [
                         {"project_role": {"$in": eligible_roles}},
-                        {"project_roles": {"$in": eligible_roles}},
+                        {
+                            "$and": [
+                                {"project_role": {"$exists": False}},
+                                {"project_roles": {"$in": eligible_roles}},
+                                {"project_roles": {"$size": 1}},
+                            ]
+                        },
                     ],
                 },
                 {"$inc": {"assignment_fence_revision": 1}},
@@ -160,7 +194,7 @@ class ProjectRepository:
             {
                 "$set": {
                     "project_role": previous["project_role"],
-                    "project_roles": previous.get("project_roles", [previous["project_role"]]),
+                    "project_roles": [previous["project_role"]],
                     "status": previous["status"],
                     "updated_at": updated_at,
                 },

@@ -19,7 +19,7 @@ async def list_test_case_custom_fields(project_id, user):
 
 
 async def list_all_test_case_custom_fields(project_id, user):
-    await get_project(project_id, user, "project.update")
+    await get_project(project_id, user, "testcase.template.manage")
     roles = await get_project_roles(project_id, user.id)
     if "QA" not in roles:
         raise HTTPException(403, detail={"code": "CUSTOM_FIELD_MANAGER_REQUIRED"})
@@ -30,7 +30,7 @@ async def list_all_test_case_custom_fields(project_id, user):
 
 
 async def create_test_case_custom_field(project_id, payload, user):
-    await get_project(project_id, user, "project.update")
+    await get_project(project_id, user, "testcase.template.manage")
     roles = await get_project_roles(project_id, user.id)
     if "QA" not in roles:
         raise HTTPException(403, detail={"code": "CUSTOM_FIELD_MANAGER_REQUIRED"})
@@ -59,7 +59,7 @@ async def create_test_case_custom_field(project_id, payload, user):
 
 
 async def update_test_case_custom_field(project_id, field_id, payload, user):
-    await get_project(project_id, user, "project.update")
+    await get_project(project_id, user, "testcase.template.manage")
     roles = await get_project_roles(project_id, user.id)
     if "QA" not in roles:
         raise HTTPException(403, detail={"code": "CUSTOM_FIELD_MANAGER_REQUIRED"})

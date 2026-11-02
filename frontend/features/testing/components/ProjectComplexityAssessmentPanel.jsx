@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorState, Panel } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
@@ -248,6 +248,17 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [scopeError, setScopeError] = useState("");
+  const [scopeLoading, setScopeLoading] = useState(true);
+  const [scopeOptions, setScopeOptions] = useState({
+    documents: [],
+    requirements: [],
+    excluded: {},
+  });
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState([]);
+  const [selectedRequirementVersionIds, setSelectedRequirementVersionIds] = useState([]);
+  const [instruction, setInstruction] = useState("");
+  const pendingRequest = useRef(null);
   const canAssess = (project.current_permissions || []).includes("ai.ask_project");
 
   useEffect(() => {
@@ -256,16 +267,30 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
       setLoading(false);
       return undefined;
     }
-    testingApi
-      .getProjectComplexityAssessment(project._id)
-      .then((value) => {
-        if (active) setResult(value);
-      })
-      .catch((reason) => {
-        if (active && reason?.status !== 404) setError(messageOf(reason));
+    Promise.allSettled([
+      testingApi.getProjectComplexityAssessment(project._id),
+      testingApi.getProjectComplexityScope(project._id),
+    ])
+      .then(([assessment, scope]) => {
+        if (!active) return;
+        if (assessment.status === "fulfilled") setResult(assessment.value);
+        else if (assessment.reason?.status !== 404) setError(messageOf(assessment.reason));
+        if (scope.status === "fulfilled") {
+          const value = scope.value || {};
+          const documents = value.documents || [];
+          const requirements = value.requirements || [];
+          setScopeOptions({ ...value, documents, requirements });
+          setSelectedDocumentIds(documents.map((item) => item.id));
+          setSelectedRequirementVersionIds(requirements.map((item) => item.version_id));
+        } else {
+          setScopeError(messageOf(scope.reason));
+        }
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setScopeLoading(false);
+        }
       });
     return () => {
       active = false;
@@ -278,7 +303,28 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
     setRunning(true);
     setError("");
     try {
-      setResult(await testingApi.assessProjectComplexity(project._id));
+      const documentIds = [...selectedDocumentIds].sort();
+      const requirementVersionIds = [...selectedRequirementVersionIds].sort();
+      const fingerprint = JSON.stringify({
+        instruction,
+        document_ids: documentIds,
+        requirement_version_ids: requirementVersionIds,
+      });
+      if (!pendingRequest.current || pendingRequest.current.fingerprint !== fingerprint) {
+        pendingRequest.current = {
+          fingerprint,
+          payload: {
+            instruction,
+            document_ids: documentIds,
+            requirement_version_ids: requirementVersionIds,
+            idempotency_key: crypto.randomUUID(),
+          },
+        };
+      }
+      setResult(
+        await testingApi.assessProjectComplexity(project._id, pendingRequest.current.payload),
+      );
+      pendingRequest.current = null;
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
@@ -293,7 +339,12 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
       actions={
         <button
           className="primary-button"
-          disabled={running || loading}
+          disabled={
+            running ||
+            loading ||
+            scopeLoading ||
+            (!selectedDocumentIds.length && !selectedRequirementVersionIds.length)
+          }
           onClick={assess}
           type="button"
         >
@@ -301,6 +352,135 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
         </button>
       }
     >
+      <div className="space-y-3 border-b border-border p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-[13px] font-semibold">Nguồn dùng để đánh giá</h3>
+            <p className="mt-1 text-[12px] text-ink-muted">
+              Chỉ chọn tài liệu đã cho phép AI đọc và yêu cầu đang được duyệt làm mốc.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="secondary-button"
+              disabled={running || scopeLoading}
+              onClick={() => {
+                setSelectedDocumentIds(scopeOptions.documents.map((item) => item.id));
+                setSelectedRequirementVersionIds(
+                  scopeOptions.requirements.map((item) => item.version_id),
+                );
+              }}
+              type="button"
+            >
+              Chọn tất cả
+            </button>
+            <button
+              className="secondary-button"
+              disabled={running || scopeLoading}
+              onClick={() => {
+                setSelectedDocumentIds([]);
+                setSelectedRequirementVersionIds([]);
+              }}
+              type="button"
+            >
+              Bỏ chọn
+            </button>
+          </div>
+        </div>
+        {scopeLoading ? (
+          <p className="text-[12px] text-ink-muted">Đang tải nguồn có thể dùng…</p>
+        ) : scopeError ? (
+          <ErrorState message={scopeError} />
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="mb-2 text-[12px] font-medium">
+                Tài liệu ({selectedDocumentIds.length}/{scopeOptions.documents.length})
+              </legend>
+              {scopeOptions.documents.length ? (
+                scopeOptions.documents.map((item) => (
+                  <label className="flex min-w-0 items-start gap-2 text-[12px]" key={item.id}>
+                    <input
+                      checked={selectedDocumentIds.includes(item.id)}
+                      disabled={running}
+                      onChange={(event) =>
+                        setSelectedDocumentIds((current) =>
+                          event.target.checked
+                            ? [...current, item.id]
+                            : current.filter((id) => id !== item.id),
+                        )
+                      }
+                      type="checkbox"
+                    />
+                    <span className="min-w-0 break-words">
+                      {item.filename}{" "}
+                      <span className="text-ink-muted">· phiên bản {item.source_version}</span>
+                    </span>
+                  </label>
+                ))
+              ) : (
+                <p className="text-[12px] text-ink-muted">Không có tài liệu đủ điều kiện.</p>
+              )}
+            </fieldset>
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="mb-2 text-[12px] font-medium">
+                Yêu cầu đã duyệt ({selectedRequirementVersionIds.length}/
+                {scopeOptions.requirements.length})
+              </legend>
+              {scopeOptions.requirements.length ? (
+                scopeOptions.requirements.map((item) => (
+                  <label
+                    className="flex min-w-0 items-start gap-2 text-[12px]"
+                    key={item.version_id}
+                  >
+                    <input
+                      checked={selectedRequirementVersionIds.includes(item.version_id)}
+                      disabled={running}
+                      onChange={(event) =>
+                        setSelectedRequirementVersionIds((current) =>
+                          event.target.checked
+                            ? [...current, item.version_id]
+                            : current.filter((id) => id !== item.version_id),
+                        )
+                      }
+                      type="checkbox"
+                    />
+                    <span className="min-w-0 break-words">
+                      {[item.requirement_key, item.title].filter(Boolean).join(" · ") ||
+                        item.requirement_id}
+                      {item.revision ? (
+                        <span className="text-ink-muted"> · phiên bản {item.revision}</span>
+                      ) : null}
+                    </span>
+                  </label>
+                ))
+              ) : (
+                <p className="text-[12px] text-ink-muted">Không có yêu cầu đã duyệt.</p>
+              )}
+            </fieldset>
+          </div>
+        )}
+        {Object.values(scopeOptions.excluded || {}).some(Boolean) && (
+          <p className="text-[12px] text-ink-muted">
+            Có nguồn chưa đủ điều kiện, chưa cho phép AI đọc hoặc chưa trích xuất xong; các nguồn đó
+            không được đưa vào lượt đánh giá.
+          </p>
+        )}
+      </div>
+      <div className="space-y-2 border-b border-border p-5">
+        <label className="field-label block" htmlFor={`complexity-instruction-${project._id}`}>
+          Phạm vi cần lưu ý
+        </label>
+        <textarea
+          className="apple-input min-h-20 w-full"
+          id={`complexity-instruction-${project._id}`}
+          maxLength={5000}
+          value={instruction}
+          onChange={(event) => setInstruction(event.target.value)}
+          placeholder="Nêu module, giai đoạn hoặc bối cảnh cần ưu tiên khi đánh giá"
+          disabled={running}
+        />
+      </div>
       {loading ? (
         <p className="p-5 text-[13px] text-ink-muted">Đang tải đánh giá gần nhất…</p>
       ) : null}

@@ -46,10 +46,33 @@ export default function TestCaseOwnerRecommendation({
       {result && (
         <div className="space-y-2 rounded-control border border-border p-3">
           <p className="text-sm text-ink-muted">
-            Đề xuất dựa trên kỹ năng và kinh nghiệm đã xác nhận, mức sẵn sàng và tải kiểm thử. Bảng
-            lương chỉ dùng để dự báo chi phí của kế hoạch, không dùng để xếp hạng nhân sự. Đề xuất
-            không tự gán người.
+            Đề xuất dựa trên kỹ năng, kinh nghiệm đã xác nhận, mức sẵn sàng và tải kiểm thử. Số dự
+            án chỉ tính nơi đang có lượt kiểm thử mở; giới hạn theo nhân viên chỉ áp dụng khi Admin
+            đã khai báo. Bảng lương chỉ dùng dự báo chi phí kế hoạch. Đề xuất không tự gán người.
           </p>
+          {result.project_capacity_status === "CAPACITY_PERIOD_NOT_COVERING_SCHEDULE" && (
+            <p role="status" className="text-sm text-amber-800">
+              Kỳ công suất đã khai báo không bao phủ ngày hiện tại; chưa áp dụng mức trần dự án cho
+              đề xuất này.
+            </p>
+          )}
+          {result.project_capacity_status === "AMBIGUOUS_CAPACITY_PERIOD" && (
+            <p role="status" className="text-sm text-amber-800">
+              Có nhiều kỳ công suất cùng áp dụng; chưa dùng mức trần cho đến khi Admin xử lý kỳ bị
+              trùng.
+            </p>
+          )}
+          {result.project_capacity_status === "PROJECT_LIMITS_PARTIALLY_DECLARED" && (
+            <p role="status" className="text-sm text-ink-muted">
+              Chỉ áp dụng mức trần đã khai báo đầy đủ cho toàn bộ kỳ; ứng viên thiếu mức ở một kỳ
+              không bị giới hạn tự suy đoán.
+            </p>
+          )}
+          {result.project_capacity_status === "PROJECT_LIMIT_NOT_DECLARED" && (
+            <p role="status" className="text-sm text-ink-muted">
+              Chưa khai báo mức trần dự án cho ứng viên trong kỳ này.
+            </p>
+          )}
           {result.candidates?.length ? (
             result.candidates.slice(0, 3).map((candidate) => (
               <div
@@ -62,7 +85,9 @@ export default function TestCaseOwnerRecommendation({
                     {candidate.matched_skills.length
                       ? `Kỹ năng phù hợp: ${candidate.matched_skills.join(", ")}`
                       : "Chưa khai báo kỹ năng cần thiết"}
-                    {` · ${candidate.active_case_count} ca đang được giao`}
+                    {` · ${candidate.active_case_count} ca đang được giao · ${candidate.active_project_count} dự án có lượt mở`}
+                    {candidate.max_concurrent_projects != null &&
+                      ` · giới hạn ${candidate.max_concurrent_projects} dự án`}
                   </p>
                 </div>
                 <button
@@ -76,9 +101,11 @@ export default function TestCaseOwnerRecommendation({
             ))
           ) : (
             <p role="status" className="text-sm text-ink-muted">
-              {result.status === "NO_ELIGIBLE_TESTER"
-                ? "Dự án chưa có Tester đang hoạt động để đề xuất."
-                : "Chưa có Tester phù hợp với kỹ năng đã xác nhận và mức sẵn sàng. Có thể chọn thủ công ở danh sách người phụ trách."}
+              {result.status === "PROJECT_LIMIT_REACHED"
+                ? "Các ứng viên đạt kỹ năng đã chạm giới hạn dự án được Admin khai báo cho kỳ này. Hãy điều chỉnh giới hạn hoặc chọn người có quyền và xem lại tải trước khi phân công."
+                : result.status === "NO_ELIGIBLE_TESTER"
+                  ? "Dự án chưa có QA đang hoạt động để đề xuất."
+                  : "Chưa có QA phù hợp với kỹ năng đã xác nhận và mức sẵn sàng. Có thể chọn thủ công ở danh sách người phụ trách."}
             </p>
           )}
         </div>

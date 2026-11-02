@@ -1,5 +1,6 @@
 import DataTable from "../../../components/DataTable";
 import { Panel } from "../../../components/WorkspacePrimitives";
+import { valueLabel } from "../../../lib/testing";
 import { requirementFieldLabel, requirementSuggestionPreview } from "./requirements.model";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
@@ -50,6 +51,27 @@ export default function RequirementQualityPanel({ lint, loading = false }) {
             { key: "severity", label: "Mức độ", render: (item) => valueLabel(item.severity) },
             { key: "message", label: "Nội dung" },
             { key: "suggestion", label: "Đề xuất" },
+            {
+              key: "evidence_quotes",
+              label: "Dẫn chứng",
+              render: (item) =>
+                item.evidence_quotes?.length ? (
+                  <ul className="space-y-2">
+                    {item.evidence_quotes.map((quote, index) => (
+                      <li key={`${quote.evidence_ref}-${index}`}>
+                        <blockquote className="whitespace-pre-wrap border-l-2 border-line pl-2 text-sm text-ink">
+                          {quote.quote}
+                        </blockquote>
+                        <span className="mt-1 block text-xs text-ink-muted">
+                          Phiên bản nguồn: {quote.evidence_ref}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  (item.evidence_refs || []).join(", ") || "Không có dẫn chứng nguồn"
+                ),
+            },
           ]}
         />
       ) : (

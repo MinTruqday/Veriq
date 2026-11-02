@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { platformApi } from "@/features/authentication/services/platform.service";
 import { projectTestingApi } from "../services/testing.projects";
 import FilePicker from "./FilePicker";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
@@ -31,7 +32,11 @@ const overviewLabels = {
   MISSING_LABOR_RATES: "Thiếu đơn giá còn hiệu lực",
   SCHEDULE_REQUIRED: "Chưa có lịch kế hoạch",
   CAPACITY_NOT_DECLARED: "Chưa khai báo công suất cho kỳ này",
+  CAPACITY_PERIOD_NOT_COVERING_SCHEDULE:
+    "Kỳ công suất không bao phủ toàn bộ lịch Test Plan; chưa áp dụng mức trần",
   AMBIGUOUS_CAPACITY_PERIOD: "Có nhiều kỳ công suất cùng áp dụng",
+  PROJECT_LIMITS_PARTIALLY_DECLARED: "Đã khai báo mức trần cho một phần nhân sự",
+  PROJECT_LIMIT_NOT_DECLARED: "Chưa khai báo mức trần dự án cho nhân sự",
   CAPACITY_DECLARED: "Đã khai báo công suất",
   AVAILABLE: "Có thể nhận việc",
   LIMITED: "Khả dụng có giới hạn",
@@ -71,6 +76,7 @@ const overviewLabels = {
   NOT_ACTIVE_PROJECT_MEMBER: "Không còn là thành viên đang hoạt động của dự án",
   CAPACITY_NOT_DECLARED_FOR_MEMBER: "Chưa khai báo công suất cho người này",
   PLANNED_HOURS_EXCEED_AVAILABLE_CAPACITY: "Giờ của vị trí vượt công suất đã khai báo",
+  MAX_CONCURRENT_PROJECTS_REACHED: "Đã chạm mức dự án tối đa trong kỳ công suất",
   NO_CONFIRMED_SKILL_OR_EXPERIENCE: "Chưa có kỹ năng hoặc kinh nghiệm được xác nhận",
 };
 
@@ -92,6 +98,15 @@ function displayCalendarDate(value) {
   if (match) return `${match[3]}/${match[2]}/${match[1]}`;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("vi-VN");
+}
+
+function defaultCapacityPeriod() {
+  const current = new Date();
+  const start = new Date(current.getFullYear(), current.getMonth(), 1);
+  const end = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+  const format = (date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return { period_start: format(start), period_end: format(end) };
 }
 
 export default function PayrollImportPanel() {
@@ -119,6 +134,15 @@ export default function PayrollImportPanel() {
     scope_note: "",
   });
   const [forecast, setForecast] = useState(null);
+  const [capacityPeriods, setCapacityPeriods] = useState([]);
+  const [capacityUsers, setCapacityUsers] = useState([]);
+  const [selectedCapacityPeriod, setSelectedCapacityPeriod] = useState("new");
+  const [capacityRange, setCapacityRange] = useState(defaultCapacityPeriod);
+  const [capacityRevision, setCapacityRevision] = useState(0);
+  const [capacityRows, setCapacityRows] = useState([]);
+  const [capacityLoading, setCapacityLoading] = useState(false);
+  const [capacityError, setCapacityError] = useState("");
+  const [capacitySaved, setCapacitySaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -137,6 +161,123 @@ export default function PayrollImportPanel() {
   useEffect(() => {
     void loadRates();
   }, [loadRates]);
+
+  const loadCapacity = useCallback(
+    async (selection = selectedCapacityPeriod) => {
+      setCapacityLoading(true);
+      setCapacityError("");
+      try {
+        const [periods, users] = await Promise.all([
+          projectTestingApi.listCapacityPeriods(),
+          platformApi.listUsers(),
+        ]);
+        const safePeriods = Array.isArray(periods) ? periods : [];
+        const safeUsers = Array.isArray(users) ? users.filter((item) => item.is_active) : [];
+        setCapacityPeriods(safePeriods);
+        setCapacityUsers(safeUsers);
+        const existing = safePeriods.find((item) => item._id === selection);
+        if (existing) {
+          setCapacityRange({
+            period_start: existing.period_start,
+            period_end: existing.period_end,
+          });
+          setCapacityRevision(existing.revision || 0);
+          setCapacityRows(
+            (existing.entries || []).map((entry) => ({
+              user_id: entry.user_id,
+              available_hours: String(entry.available_hours ?? ""),
+              max_concurrent_projects:
+                entry.max_concurrent_projects == null ? "" : String(entry.max_concurrent_projects),
+            })),
+          );
+        } else if (selection === "new") {
+          setCapacityRange(defaultCapacityPeriod());
+          setCapacityRevision(0);
+          setCapacityRows([]);
+        } else if (safePeriods.length) {
+          const first = safePeriods[0];
+          setSelectedCapacityPeriod(first._id);
+          setCapacityRange({ period_start: first.period_start, period_end: first.period_end });
+          setCapacityRevision(first.revision || 0);
+          setCapacityRows(
+            (first.entries || []).map((entry) => ({
+              user_id: entry.user_id,
+              available_hours: String(entry.available_hours ?? ""),
+              max_concurrent_projects:
+                entry.max_concurrent_projects == null ? "" : String(entry.max_concurrent_projects),
+            })),
+          );
+        }
+      } catch (reason) {
+        setCapacityError(reason.message || "Không thể tải công suất nhân sự");
+      } finally {
+        setCapacityLoading(false);
+      }
+    },
+    [selectedCapacityPeriod],
+  );
+
+  useEffect(() => {
+    void loadCapacity();
+  }, [loadCapacity]);
+
+  const selectCapacityPeriod = (value) => {
+    setSelectedCapacityPeriod(value);
+    setCapacitySaved(false);
+    const period = capacityPeriods.find((item) => item._id === value);
+    if (!period) {
+      setCapacityRange(defaultCapacityPeriod());
+      setCapacityRevision(0);
+      setCapacityRows([]);
+      return;
+    }
+    setCapacityRange({ period_start: period.period_start, period_end: period.period_end });
+    setCapacityRevision(period.revision || 0);
+    setCapacityRows(
+      (period.entries || []).map((entry) => ({
+        user_id: entry.user_id,
+        available_hours: String(entry.available_hours ?? ""),
+        max_concurrent_projects:
+          entry.max_concurrent_projects == null ? "" : String(entry.max_concurrent_projects),
+      })),
+    );
+  };
+
+  const updateCapacityRow = (index, key, value) => {
+    setCapacitySaved(false);
+    setCapacityRows((current) =>
+      current.map((row, rowIndex) => (rowIndex === index ? { ...row, [key]: value } : row)),
+    );
+  };
+
+  const saveCapacity = async (event) => {
+    event.preventDefault();
+    setCapacityLoading(true);
+    setCapacityError("");
+    setCapacitySaved(false);
+    try {
+      const entries = capacityRows.map((row) => ({
+        user_id: row.user_id,
+        available_hours: Number(row.available_hours),
+        max_concurrent_projects: row.max_concurrent_projects
+          ? Number(row.max_concurrent_projects)
+          : null,
+      }));
+      const saved = await projectTestingApi.updateCapacityPeriod({
+        expected_revision: capacityRevision,
+        ...capacityRange,
+        entries,
+      });
+      setCapacityRevision(saved.revision || capacityRevision + 1);
+      setSelectedCapacityPeriod(saved._id || selectedCapacityPeriod);
+      setCapacitySaved(true);
+      await loadCapacity(saved._id || selectedCapacityPeriod);
+    } catch (reason) {
+      setCapacityError(reason.message || "Không thể lưu công suất nhân sự");
+    } finally {
+      setCapacityLoading(false);
+    }
+  };
 
   useEffect(() => {
     projectTestingApi
@@ -796,6 +937,11 @@ export default function PayrollImportPanel() {
                           đội hiện tại. Đơn giá cho biết tác động ngân sách; kỹ năng, kinh nghiệm,
                           khả dụng và tải việc được trình bày riêng để người phụ trách cân nhắc.
                         </p>
+                        <p className="mt-1 text-sm text-ink-muted">
+                          {forecast.resource_overview.staffing_options.project_limit_configured
+                            ? "Mức trần được hiển thị trong từng phương án và kiểm tra khi lưu phân bổ Test Plan."
+                            : `${valueLabel(forecast.resource_overview.staffing_options.project_limit_status)}; hệ thống không tự đặt giới hạn.`}
+                        </p>
                         {forecast.resource_overview.staffing_options.slots.length ? (
                           <div className="mt-3 space-y-3">
                             {forecast.resource_overview.staffing_options.slots.map((slot) => (
@@ -854,7 +1000,16 @@ export default function PayrollImportPanel() {
                                             {valueLabel(candidate.availability)} ·{" "}
                                             {candidate.active_test_case_count} ca ·{" "}
                                             {candidate.active_test_run_count} lượt ·{" "}
-                                            {candidate.active_project_count} dự án
+                                            {candidate.active_project_count} dự án có lượt chạy mở
+                                            {candidate.max_concurrent_projects != null && (
+                                              <span className="block text-ink-muted">
+                                                Mức tối đa: {candidate.max_concurrent_projects} dự
+                                                án
+                                                {candidate.project_limit_reached
+                                                  ? " · Đã chạm mức"
+                                                  : " · Còn trong mức"}
+                                              </span>
+                                            )}
                                             {candidate.declared_available_hours != null && (
                                               <span className="block text-ink-muted">
                                                 Công suất:{" "}
@@ -917,6 +1072,172 @@ export default function PayrollImportPanel() {
             )}
           </div>
         )}
+      </Panel>
+      <Panel title="Công suất và giới hạn phân công">
+        <form className="space-y-4 p-4" onSubmit={saveCapacity}>
+          <p className="text-sm text-ink-muted">
+            Chỉ Admin được quản lý. Mức tối đa để trống nghĩa là chưa cấu hình giới hạn cho nhân
+            viên. AI chỉ áp dụng giới hạn khi các kỳ công suất liền nhau bao phủ toàn bộ lịch Test
+            Plan; kỳ giao nhau bị từ chối để tránh dùng hai mức trần cùng lúc.
+          </p>
+          {capacityError && <ErrorState message={capacityError} />}
+          {capacitySaved && (
+            <p className="text-sm text-success" role="status">
+              Đã lưu công suất và giới hạn phân công.
+            </p>
+          )}
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="field-label block">
+              Kỳ công suất
+              <select
+                className="apple-input mt-2 w-full"
+                value={selectedCapacityPeriod}
+                onChange={(event) => selectCapacityPeriod(event.target.value)}
+              >
+                <option value="new">Tạo kỳ mới</option>
+                {capacityPeriods.map((period) => (
+                  <option key={period._id} value={period._id}>
+                    {displayCalendarDate(period.period_start)} –{" "}
+                    {displayCalendarDate(period.period_end)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-label block">
+              Bắt đầu
+              <input
+                className="apple-input mt-2 w-full"
+                type="date"
+                required
+                disabled={selectedCapacityPeriod !== "new"}
+                value={capacityRange.period_start}
+                onChange={(event) =>
+                  setCapacityRange((current) => ({ ...current, period_start: event.target.value }))
+                }
+              />
+            </label>
+            <label className="field-label block">
+              Kết thúc
+              <input
+                className="apple-input mt-2 w-full"
+                type="date"
+                required
+                disabled={selectedCapacityPeriod !== "new"}
+                value={capacityRange.period_end}
+                onChange={(event) =>
+                  setCapacityRange((current) => ({ ...current, period_end: event.target.value }))
+                }
+              />
+            </label>
+          </div>
+          <div className="max-w-full overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead>
+                <tr>
+                  <th className="p-2">Nhân viên</th>
+                  <th className="p-2">Giờ khả dụng</th>
+                  <th className="p-2">Số dự án tối đa đồng thời</th>
+                  <th className="p-2">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {capacityRows.map((row, index) => (
+                  <tr className="border-t border-border align-top" key={`${row.user_id}-${index}`}>
+                    <td className="min-w-64 p-2">
+                      <select
+                        className="apple-input w-full"
+                        required
+                        value={row.user_id}
+                        onChange={(event) =>
+                          updateCapacityRow(index, "user_id", event.target.value)
+                        }
+                      >
+                        <option value="">Chọn nhân viên</option>
+                        {capacityUsers.map((person) => (
+                          <option key={person._id} value={person._id}>
+                            {person.full_name || person.email} · {person.email}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="min-w-40 p-2">
+                      <input
+                        className="apple-input w-full"
+                        type="number"
+                        min="0"
+                        step="0.25"
+                        required
+                        value={row.available_hours}
+                        onChange={(event) =>
+                          updateCapacityRow(index, "available_hours", event.target.value)
+                        }
+                      />
+                    </td>
+                    <td className="min-w-48 p-2">
+                      <input
+                        className="apple-input w-full"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={row.max_concurrent_projects}
+                        onChange={(event) =>
+                          updateCapacityRow(index, "max_concurrent_projects", event.target.value)
+                        }
+                      />
+                      <span className="mt-1 block text-xs text-ink-muted">
+                        Để trống nếu chưa có giới hạn đã duyệt.
+                      </span>
+                    </td>
+                    <td className="p-2">
+                      <button
+                        className="apple-button-secondary"
+                        type="button"
+                        onClick={() =>
+                          setCapacityRows((current) =>
+                            current.filter((_, rowIndex) => rowIndex !== index),
+                          )
+                        }
+                      >
+                        Gỡ
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!capacityRows.length && (
+              <p className="py-4 text-sm text-ink-muted">
+                Chưa có nhân viên trong kỳ công suất này.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="apple-button-secondary"
+              type="button"
+              disabled={capacityLoading}
+              onClick={() =>
+                setCapacityRows((current) => [
+                  ...current,
+                  {
+                    user_id: "",
+                    available_hours: "",
+                    max_concurrent_projects: "",
+                  },
+                ])
+              }
+            >
+              Thêm nhân viên
+            </button>
+            <button
+              className="apple-button"
+              type="submit"
+              disabled={capacityLoading || !capacityRows.length}
+            >
+              {capacityLoading ? "Đang lưu" : "Lưu công suất"}
+            </button>
+          </div>
+        </form>
       </Panel>
       <Panel title="Bảng đơn giá nhân công">
         <div className="min-w-0 space-y-4 p-4">
