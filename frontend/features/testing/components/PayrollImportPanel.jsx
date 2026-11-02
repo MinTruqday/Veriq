@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { platformApi } from "@/features/authentication/services/platform.service";
 import { projectTestingApi } from "../services/testing.projects";
 import FilePicker from "./FilePicker";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
+import { messageOf } from "../lib/testing";
 
 const columns = [
   ["employee", "Mã nhân viên hoặc email"],
@@ -21,6 +22,15 @@ const statusLabels = {
   CONFLICT_IN_FILE: "Trùng mã và thời hạn nhưng dữ liệu khác",
   CONFLICT_EXISTING: "Trùng thời hạn với đơn giá hiện có",
   INVALID: "Dữ liệu lỗi",
+};
+
+const payrollErrorLabels = {
+  PAYROLL_EMPLOYEE_REQUIRED: "Thiếu mã nhân viên hoặc email",
+  PAYROLL_EMPLOYEE_NOT_FOUND: "Không tìm thấy tài khoản",
+  HOURLY_COST_INVALID: "Đơn giá không hợp lệ",
+  PAYROLL_CURRENCY_INVALID: "Mã tiền tệ không hợp lệ",
+  PAYROLL_DATE_INVALID: "Ngày hiệu lực không hợp lệ",
+  PAYROLL_PERIOD_INVALID: "Thời hạn không hợp lệ",
 };
 
 const overviewLabels = {
@@ -133,7 +143,11 @@ export default function PayrollImportPanel() {
     tax_included: true,
     scope_note: "",
   });
+  const [commercialTermsDirty, setCommercialTermsDirty] = useState(false);
+  const [financialProjectLoading, setFinancialProjectLoading] = useState(true);
   const [forecast, setForecast] = useState(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const forecastRequestId = useRef(0);
   const [capacityPeriods, setCapacityPeriods] = useState([]);
   const [capacityUsers, setCapacityUsers] = useState([]);
   const [selectedCapacityPeriod, setSelectedCapacityPeriod] = useState("new");
@@ -143,6 +157,8 @@ export default function PayrollImportPanel() {
   const [capacityLoading, setCapacityLoading] = useState(false);
   const [capacityError, setCapacityError] = useState("");
   const [capacitySaved, setCapacitySaved] = useState(false);
+  const capacityRequestId = useRef(0);
+  const payrollHeadersRequestId = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -152,7 +168,7 @@ export default function PayrollImportPanel() {
     try {
       setRates(await projectTestingApi.listPayrollRates());
     } catch (reason) {
-      setError(reason.message || "Không thể tải bảng đơn giá");
+      setError(messageOf(reason) || "Không thể tải bảng đơn giá");
     } finally {
       setLoading(false);
     }
@@ -162,66 +178,68 @@ export default function PayrollImportPanel() {
     void loadRates();
   }, [loadRates]);
 
-  const loadCapacity = useCallback(
-    async (selection = selectedCapacityPeriod) => {
-      setCapacityLoading(true);
-      setCapacityError("");
-      try {
-        const [periods, users] = await Promise.all([
-          projectTestingApi.listCapacityPeriods(),
-          platformApi.listUsers(),
-        ]);
-        const safePeriods = Array.isArray(periods) ? periods : [];
-        const safeUsers = Array.isArray(users) ? users.filter((item) => item.is_active) : [];
-        setCapacityPeriods(safePeriods);
-        setCapacityUsers(safeUsers);
-        const existing = safePeriods.find((item) => item._id === selection);
-        if (existing) {
-          setCapacityRange({
-            period_start: existing.period_start,
-            period_end: existing.period_end,
-          });
-          setCapacityRevision(existing.revision || 0);
-          setCapacityRows(
-            (existing.entries || []).map((entry) => ({
-              user_id: entry.user_id,
-              available_hours: String(entry.available_hours ?? ""),
-              max_concurrent_projects:
-                entry.max_concurrent_projects == null ? "" : String(entry.max_concurrent_projects),
-            })),
-          );
-        } else if (selection === "new") {
-          setCapacityRange(defaultCapacityPeriod());
-          setCapacityRevision(0);
-          setCapacityRows([]);
-        } else if (safePeriods.length) {
-          const first = safePeriods[0];
-          setSelectedCapacityPeriod(first._id);
-          setCapacityRange({ period_start: first.period_start, period_end: first.period_end });
-          setCapacityRevision(first.revision || 0);
-          setCapacityRows(
-            (first.entries || []).map((entry) => ({
-              user_id: entry.user_id,
-              available_hours: String(entry.available_hours ?? ""),
-              max_concurrent_projects:
-                entry.max_concurrent_projects == null ? "" : String(entry.max_concurrent_projects),
-            })),
-          );
-        }
-      } catch (reason) {
-        setCapacityError(reason.message || "Không thể tải công suất nhân sự");
-      } finally {
-        setCapacityLoading(false);
+  const loadCapacity = useCallback(async (selection = "new") => {
+    const requestId = ++capacityRequestId.current;
+    setCapacityLoading(true);
+    setCapacityError("");
+    try {
+      const [periods, users] = await Promise.all([
+        projectTestingApi.listCapacityPeriods(),
+        platformApi.listUsers(),
+      ]);
+      if (requestId !== capacityRequestId.current) return;
+      const safePeriods = Array.isArray(periods) ? periods : [];
+      const safeUsers = Array.isArray(users) ? users.filter((item) => item.is_active) : [];
+      setCapacityPeriods(safePeriods);
+      setCapacityUsers(safeUsers);
+      const existing = safePeriods.find((item) => item._id === selection);
+      if (existing) {
+        setCapacityRange({
+          period_start: existing.period_start,
+          period_end: existing.period_end,
+        });
+        setCapacityRevision(existing.revision || 0);
+        setCapacityRows(
+          (existing.entries || []).map((entry) => ({
+            user_id: entry.user_id,
+            available_hours: String(entry.available_hours ?? ""),
+            max_concurrent_projects:
+              entry.max_concurrent_projects == null ? "" : String(entry.max_concurrent_projects),
+          })),
+        );
+      } else if (selection === "new") {
+        setCapacityRange(defaultCapacityPeriod());
+        setCapacityRevision(0);
+        setCapacityRows([]);
+      } else if (safePeriods.length) {
+        const first = safePeriods[0];
+        setSelectedCapacityPeriod(first._id);
+        setCapacityRange({ period_start: first.period_start, period_end: first.period_end });
+        setCapacityRevision(first.revision || 0);
+        setCapacityRows(
+          (first.entries || []).map((entry) => ({
+            user_id: entry.user_id,
+            available_hours: String(entry.available_hours ?? ""),
+            max_concurrent_projects:
+              entry.max_concurrent_projects == null ? "" : String(entry.max_concurrent_projects),
+          })),
+        );
       }
-    },
-    [selectedCapacityPeriod],
-  );
+    } catch (reason) {
+      if (requestId === capacityRequestId.current) {
+        setCapacityError(messageOf(reason) || "Không thể tải công suất nhân sự");
+      }
+    } finally {
+      if (requestId === capacityRequestId.current) setCapacityLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    void loadCapacity();
-  }, [loadCapacity]);
+    void loadCapacity(selectedCapacityPeriod);
+  }, [loadCapacity, selectedCapacityPeriod]);
 
   const selectCapacityPeriod = (value) => {
+    capacityRequestId.current += 1;
     setSelectedCapacityPeriod(value);
     setCapacitySaved(false);
     const period = capacityPeriods.find((item) => item._id === value);
@@ -250,6 +268,14 @@ export default function PayrollImportPanel() {
     );
   };
 
+  const updateCommercialTerms = (changes) => {
+    forecastRequestId.current += 1;
+    setForecastLoading(false);
+    setForecast(null);
+    setCommercialTermsDirty(true);
+    setCommercialTerms((current) => ({ ...current, ...changes }));
+  };
+
   const saveCapacity = async (event) => {
     event.preventDefault();
     setCapacityLoading(true);
@@ -273,7 +299,7 @@ export default function PayrollImportPanel() {
       setCapacitySaved(true);
       await loadCapacity(saved._id || selectedCapacityPeriod);
     } catch (reason) {
-      setCapacityError(reason.message || "Không thể lưu công suất nhân sự");
+      setCapacityError(messageOf(reason) || "Không thể lưu công suất nhân sự");
     } finally {
       setCapacityLoading(false);
     }
@@ -286,12 +312,18 @@ export default function PayrollImportPanel() {
         setProjects(items);
         setFinanceProjectId((current) => current || items[0]?._id || "");
       })
-      .catch((reason) => setError(reason.message || "Không thể tải dự án"));
+      .catch((reason) => setError(messageOf(reason) || "Không thể tải dự án"));
   }, []);
 
   useEffect(() => {
-    if (!financeProjectId) return;
     let current = true;
+    if (!financeProjectId) {
+      setFinancialProjectLoading(false);
+      return () => {
+        current = false;
+      };
+    }
+    setFinancialProjectLoading(true);
     Promise.all([
       projectTestingApi.getProjectCommercialTerms(financeProjectId),
       projectTestingApi.listFinancialTestPlans(financeProjectId),
@@ -305,6 +337,7 @@ export default function PayrollImportPanel() {
           tax_included: terms.tax_included ?? true,
           scope_note: terms.scope_note || "",
         });
+        setCommercialTermsDirty(false);
         setFinancePlans(plans);
         setSelectedFinancialPlanId((selected) =>
           plans.some((item) => item._id === selected) ? selected : "",
@@ -312,7 +345,10 @@ export default function PayrollImportPanel() {
         setForecast(null);
       })
       .catch((reason) => {
-        if (current) setError(reason.message || "Không thể tải dữ liệu dự toán");
+        if (current) setError(messageOf(reason) || "Không thể tải dữ liệu dự toán");
+      })
+      .finally(() => {
+        if (current) setFinancialProjectLoading(false);
       });
     return () => {
       current = false;
@@ -320,23 +356,34 @@ export default function PayrollImportPanel() {
   }, [financeProjectId]);
 
   const selectFile = async (nextFile) => {
+    const requestId = ++payrollHeadersRequestId.current;
     setFile(nextFile);
     setPreview(null);
     setHeaders([]);
-    if (!nextFile) return;
+    if (!nextFile) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const values = await projectTestingApi.readPayrollHeaders(nextFile);
+      if (requestId !== payrollHeadersRequestId.current) return;
+      if (!Array.isArray(values) || !values.length) {
+        throw new Error(
+          "Không tìm thấy hàng tiêu đề trong tệp. Hãy kiểm tra nội dung hoặc định dạng tệp.",
+        );
+      }
       setHeaders(values);
       setMapping(
         Object.fromEntries(columns.map(([key]) => [key, values.includes(key) ? key : ""])),
       );
     } catch (reason) {
-      setError(reason.message || "Không thể đọc tiêu đề bảng lương");
-      setFile(null);
+      if (requestId === payrollHeadersRequestId.current) {
+        setError(messageOf(reason) || "Không thể đọc tiêu đề bảng lương");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === payrollHeadersRequestId.current) setLoading(false);
     }
   };
 
@@ -367,7 +414,7 @@ export default function PayrollImportPanel() {
         ),
       );
     } catch (reason) {
-      setError(reason.message || "Không thể tạo bản xem trước");
+      setError(messageOf(reason) || "Không thể tạo bản xem trước");
     } finally {
       setLoading(false);
     }
@@ -386,10 +433,11 @@ export default function PayrollImportPanel() {
         resolutions,
       });
       setPreview(null);
+      payrollHeadersRequestId.current += 1;
       setFile(null);
       await loadRates();
     } catch (reason) {
-      setError(reason.message || "Không thể áp dụng bảng đơn giá");
+      setError(messageOf(reason) || "Không thể áp dụng bảng đơn giá");
     } finally {
       setLoading(false);
     }
@@ -412,25 +460,40 @@ export default function PayrollImportPanel() {
         contract_price: String(commercialTerms.contract_price),
       });
       setCommercialTerms((current) => ({ ...current, expected_revision: saved.revision }));
+      setCommercialTermsDirty(false);
     } catch (reason) {
-      setError(reason.message || "Không thể lưu giá hợp đồng");
+      setError(messageOf(reason) || "Không thể lưu giá hợp đồng");
     } finally {
       setLoading(false);
     }
   };
 
   const loadForecast = async () => {
-    if (!financeProjectId || !selectedFinancialPlanId) return;
-    setLoading(true);
+    if (
+      !financeProjectId ||
+      !selectedFinancialPlanId ||
+      !commercialTerms.expected_revision ||
+      commercialTermsDirty
+    ) {
+      return;
+    }
+    const requestId = ++forecastRequestId.current;
+    const requestedProjectId = financeProjectId;
+    const requestedPlanId = selectedFinancialPlanId;
+    setForecastLoading(true);
     setError("");
     try {
-      setForecast(
-        await projectTestingApi.forecastPlanLaborCost(financeProjectId, selectedFinancialPlanId),
+      const result = await projectTestingApi.forecastPlanLaborCost(
+        requestedProjectId,
+        requestedPlanId,
       );
+      if (requestId === forecastRequestId.current) setForecast(result);
     } catch (reason) {
-      setError(reason.message || "Không thể tính dự toán nhân công");
+      if (requestId === forecastRequestId.current) {
+        setError(messageOf(reason) || "Không thể tính dự toán nhân công");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === forecastRequestId.current) setForecastLoading(false);
     }
   };
 
@@ -447,7 +510,25 @@ export default function PayrollImportPanel() {
               <select
                 className="apple-input mt-2 w-full"
                 value={financeProjectId}
-                onChange={(event) => setFinanceProjectId(event.target.value)}
+                disabled={financialProjectLoading || loading || forecastLoading}
+                onChange={(event) => {
+                  forecastRequestId.current += 1;
+                  setForecastLoading(false);
+                  setForecast(null);
+                  setError("");
+                  setCommercialTermsDirty(false);
+                  setCommercialTerms({
+                    expected_revision: 0,
+                    contract_price: "",
+                    currency: "VND",
+                    tax_included: true,
+                    scope_note: "",
+                  });
+                  setFinancePlans([]);
+                  setSelectedFinancialPlanId("");
+                  setFinancialProjectLoading(true);
+                  setFinanceProjectId(event.target.value);
+                }}
               >
                 {projects.map((item) => (
                   <option key={item._id} value={item._id}>
@@ -465,12 +546,10 @@ export default function PayrollImportPanel() {
                   min="0.0001"
                   step="0.0001"
                   required
+                  disabled={financialProjectLoading || loading || forecastLoading}
                   value={commercialTerms.contract_price}
                   onChange={(event) =>
-                    setCommercialTerms((current) => ({
-                      ...current,
-                      contract_price: event.target.value,
-                    }))
+                    updateCommercialTerms({ contract_price: event.target.value })
                   }
                 />
                 {commercialTerms.contract_price !== "" && (
@@ -486,12 +565,10 @@ export default function PayrollImportPanel() {
                   minLength={3}
                   maxLength={3}
                   required
+                  disabled={financialProjectLoading || loading || forecastLoading}
                   value={commercialTerms.currency}
                   onChange={(event) =>
-                    setCommercialTerms((current) => ({
-                      ...current,
-                      currency: event.target.value.toUpperCase(),
-                    }))
+                    updateCommercialTerms({ currency: event.target.value.toUpperCase() })
                   }
                 />
               </label>
@@ -499,11 +576,9 @@ export default function PayrollImportPanel() {
                 <input
                   type="checkbox"
                   checked={commercialTerms.tax_included}
+                  disabled={financialProjectLoading || loading || forecastLoading}
                   onChange={(event) =>
-                    setCommercialTerms((current) => ({
-                      ...current,
-                      tax_included: event.target.checked,
-                    }))
+                    updateCommercialTerms({ tax_included: event.target.checked })
                   }
                 />{" "}
                 Giá đã bao gồm thuế
@@ -513,18 +588,16 @@ export default function PayrollImportPanel() {
                 <textarea
                   className="apple-input mt-2 min-h-20 w-full"
                   value={commercialTerms.scope_note}
-                  onChange={(event) =>
-                    setCommercialTerms((current) => ({
-                      ...current,
-                      scope_note: event.target.value,
-                    }))
-                  }
+                  disabled={financialProjectLoading || loading || forecastLoading}
+                  onChange={(event) => updateCommercialTerms({ scope_note: event.target.value })}
                 />
               </label>
               <button
                 className="apple-button sm:col-span-2"
                 type="submit"
-                disabled={loading || !financeProjectId}
+                disabled={
+                  financialProjectLoading || loading || forecastLoading || !financeProjectId
+                }
               >
                 {loading ? "Đang lưu" : "Lưu giá khách hàng"}
               </button>
@@ -535,7 +608,13 @@ export default function PayrollImportPanel() {
                 <select
                   className="apple-input mt-2 w-full"
                   value={selectedFinancialPlanId}
-                  onChange={(event) => setSelectedFinancialPlanId(event.target.value)}
+                  disabled={financialProjectLoading || loading || forecastLoading}
+                  onChange={(event) => {
+                    forecastRequestId.current += 1;
+                    setForecastLoading(false);
+                    setForecast(null);
+                    setSelectedFinancialPlanId(event.target.value);
+                  }}
                 >
                   <option value="">Chọn Test Plan</option>
                   {financePlans.map((item) => (
@@ -548,12 +627,24 @@ export default function PayrollImportPanel() {
               <button
                 className="secondary-button self-end"
                 type="button"
-                disabled={loading || !selectedFinancialPlanId || !commercialTerms.contract_price}
+                disabled={
+                  financialProjectLoading ||
+                  loading ||
+                  forecastLoading ||
+                  !selectedFinancialPlanId ||
+                  !commercialTerms.expected_revision ||
+                  commercialTermsDirty
+                }
                 onClick={() => void loadForecast()}
               >
-                Tính dự toán
+                {forecastLoading ? "Đang tính…" : "Tính dự toán"}
               </button>
             </div>
+            {commercialTermsDirty || !commercialTerms.expected_revision ? (
+              <p className="text-sm text-ink-muted">
+                Lưu giá khách hàng của dự án trước khi tính dự toán.
+              </p>
+            ) : null}
             {forecast && (
               <div className="rounded-control border border-border p-4 text-sm">
                 <p className="font-medium">
@@ -1092,6 +1183,7 @@ export default function PayrollImportPanel() {
               <select
                 className="apple-input mt-2 w-full"
                 value={selectedCapacityPeriod}
+                disabled={capacityLoading}
                 onChange={(event) => selectCapacityPeriod(event.target.value)}
               >
                 <option value="new">Tạo kỳ mới</option>
@@ -1109,7 +1201,7 @@ export default function PayrollImportPanel() {
                 className="apple-input mt-2 w-full"
                 type="date"
                 required
-                disabled={selectedCapacityPeriod !== "new"}
+                disabled={capacityLoading || selectedCapacityPeriod !== "new"}
                 value={capacityRange.period_start}
                 onChange={(event) =>
                   setCapacityRange((current) => ({ ...current, period_start: event.target.value }))
@@ -1122,7 +1214,7 @@ export default function PayrollImportPanel() {
                 className="apple-input mt-2 w-full"
                 type="date"
                 required
-                disabled={selectedCapacityPeriod !== "new"}
+                disabled={capacityLoading || selectedCapacityPeriod !== "new"}
                 value={capacityRange.period_end}
                 onChange={(event) =>
                   setCapacityRange((current) => ({ ...current, period_end: event.target.value }))
@@ -1147,6 +1239,7 @@ export default function PayrollImportPanel() {
                       <select
                         className="apple-input w-full"
                         required
+                        disabled={capacityLoading}
                         value={row.user_id}
                         onChange={(event) =>
                           updateCapacityRow(index, "user_id", event.target.value)
@@ -1167,6 +1260,7 @@ export default function PayrollImportPanel() {
                         min="0"
                         step="0.25"
                         required
+                        disabled={capacityLoading}
                         value={row.available_hours}
                         onChange={(event) =>
                           updateCapacityRow(index, "available_hours", event.target.value)
@@ -1179,6 +1273,7 @@ export default function PayrollImportPanel() {
                         type="number"
                         min="1"
                         step="1"
+                        disabled={capacityLoading}
                         value={row.max_concurrent_projects}
                         onChange={(event) =>
                           updateCapacityRow(index, "max_concurrent_projects", event.target.value)
@@ -1192,6 +1287,7 @@ export default function PayrollImportPanel() {
                       <button
                         className="apple-button-secondary"
                         type="button"
+                        disabled={capacityLoading}
                         onClick={() =>
                           setCapacityRows((current) =>
                             current.filter((_, rowIndex) => rowIndex !== index),
@@ -1259,6 +1355,7 @@ export default function PayrollImportPanel() {
               accept=".csv,.xlsx"
               ariaLabel="Chọn bảng CSV hoặc XLSX"
               className="w-full min-w-0 max-w-full"
+              disabled={loading}
               fileName={file?.name || ""}
               label="Chọn bảng CSV hoặc XLSX"
               stacked
@@ -1288,8 +1385,13 @@ export default function PayrollImportPanel() {
                 ))}
               </div>
             )}
-            <button className="apple-button" type="submit" disabled={!file || loading}>
-              {loading ? "Đang xử lý" : "Xem trước dữ liệu"}
+            <button
+              className="apple-button"
+              type={headers.length ? "submit" : "button"}
+              onClick={headers.length ? undefined : () => void selectFile(file)}
+              disabled={!file || loading}
+            >
+              {loading ? "Đang xử lý" : headers.length ? "Xem trước dữ liệu" : "Đọc lại tiêu đề"}
             </button>
           </form>
         </div>
@@ -1321,7 +1423,10 @@ export default function PayrollImportPanel() {
                       {row.valid_until ? displayCalendarDate(row.valid_until) : "Không thời hạn"}
                     </td>
                     <td className="p-2">
-                      {row.error_code || statusLabels[row.status] || row.status}
+                      {payrollErrorLabels[row.error_code] ||
+                        (row.error_code ? "Cần kiểm tra dữ liệu dòng này" : null) ||
+                        statusLabels[row.status] ||
+                        "Cần kiểm tra dữ liệu dòng này"}
                     </td>
                     <td className="p-2">
                       <input

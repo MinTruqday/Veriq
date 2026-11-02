@@ -55,6 +55,9 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const [pdfPreviewError, setPdfPreviewError] = useState("");
   const [sourceImageUrls, setSourceImageUrls] = useState({});
   const sourceImageUrlsRef = useRef({});
+  const documentGenerationRef = useRef(0);
+  const pageRequestSequenceRef = useRef(0);
+  const summaryRequestSequenceRef = useRef(0);
   const [sourceImageLoading, setSourceImageLoading] = useState({});
   const [sourceImageErrors, setSourceImageErrors] = useState({});
   const [loading, setLoading] = useState(true);
@@ -62,6 +65,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summary, setSummary] = useState(null);
   const [summaryJob, setSummaryJob] = useState(null);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState(null);
@@ -73,9 +77,11 @@ export default function DocumentReaderPage({ project, section = [] }) {
 
   const loadPage = useCallback(
     async (offset = 0, append = false, sheet = "", pageNo = null) => {
+      const requestSequence = ++pageRequestSequenceRef.current;
       if (!documentId) {
         setError("Hãy chọn một tài liệu trong danh sách để mở nội dung.");
         setLoading(false);
+        setLoadingMore(false);
         return;
       }
       try {
@@ -87,6 +93,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
           sheet,
           pageNo,
         );
+        if (requestSequence !== pageRequestSequenceRef.current) return;
         setDocument(result);
         setSourceBlocks(result.blocks || []);
         setSheets(result.sheets || []);
@@ -96,25 +103,57 @@ export default function DocumentReaderPage({ project, section = [] }) {
         setNextOffset(result.next_offset);
         setError("");
       } catch (reason) {
-        setError(
-          reason?.status === 404
-            ? "Không tìm thấy tài liệu hoặc bạn không còn quyền xem tài liệu này."
-            : reason?.status === 403
-              ? "Bạn không có quyền xem tài liệu này."
-              : messageOf(reason),
-        );
+        if (requestSequence === pageRequestSequenceRef.current) {
+          setError(
+            reason?.status === 404
+              ? "Không tìm thấy tài liệu hoặc bạn không còn quyền xem tài liệu này."
+              : reason?.status === 403
+                ? "Bạn không có quyền xem tài liệu này."
+                : messageOf(reason),
+          );
+        }
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (requestSequence === pageRequestSequenceRef.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
     [documentId],
   );
 
   useEffect(() => {
+    const generation = ++documentGenerationRef.current;
+    pageRequestSequenceRef.current += 1;
+    summaryRequestSequenceRef.current += 1;
+    Object.values(sourceImageUrlsRef.current).forEach((url) => URL.revokeObjectURL(url));
+    sourceImageUrlsRef.current = {};
+    setDocument(null);
     setContent("");
+    setNextOffset(null);
+    setSheets([]);
+    setSelectedSheet("");
+    setSelectedPage("");
+    setSourceBlocks([]);
+    setPdfPreviewUrl("");
+    setPdfPreviewError("");
+    setSourceImageUrls({});
+    setSourceImageLoading({});
+    setSourceImageErrors({});
+    setSummaryJob(null);
     setSummary(null);
+    setSummaryLoading(false);
+    setDownloadLoading(false);
+    setError("");
+    setQuery("");
+    setSearchResults(null);
+    setSearchError("");
     loadPage(0);
+    return () => {
+      if (documentGenerationRef.current === generation) documentGenerationRef.current += 1;
+      pageRequestSequenceRef.current += 1;
+      summaryRequestSequenceRef.current += 1;
+    };
   }, [loadPage]);
 
   useEffect(() => {
@@ -150,20 +189,29 @@ export default function DocumentReaderPage({ project, section = [] }) {
 
   const loadSourceImage = async (block) => {
     const key = String(block.block_index);
+    const generation = documentGenerationRef.current;
     setSourceImageLoading((current) => ({ ...current, [key]: true }));
     setSourceImageErrors((current) => ({ ...current, [key]: "" }));
     try {
       const blob = await testingApi.getRequirementDocumentImage(documentId, block.block_index);
       const url = URL.createObjectURL(blob);
+      if (generation !== documentGenerationRef.current) {
+        URL.revokeObjectURL(url);
+        return;
+      }
       if (sourceImageUrlsRef.current[key]) URL.revokeObjectURL(sourceImageUrlsRef.current[key]);
       sourceImageUrlsRef.current[key] = url;
       setSourceImageUrls((current) => {
         return { ...current, [key]: url };
       });
     } catch (reason) {
-      setSourceImageErrors((current) => ({ ...current, [key]: messageOf(reason) }));
+      if (generation === documentGenerationRef.current) {
+        setSourceImageErrors((current) => ({ ...current, [key]: messageOf(reason) }));
+      }
     } finally {
-      setSourceImageLoading((current) => ({ ...current, [key]: false }));
+      if (generation === documentGenerationRef.current) {
+        setSourceImageLoading((current) => ({ ...current, [key]: false }));
+      }
     }
   };
 
@@ -209,6 +257,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
   };
 
   const summarize = async () => {
+    const requestSequence = ++summaryRequestSequenceRef.current;
     setSummaryLoading(true);
     setSummary(null);
     setError("");
@@ -219,39 +268,43 @@ export default function DocumentReaderPage({ project, section = [] }) {
         output_language: language,
         idempotency_key: `summary-${crypto.randomUUID()}`,
       });
+      if (requestSequence !== summaryRequestSequenceRef.current) return;
       setSummaryJob({ _id: started._id, status: started.status, progress: started.progress });
       let current = started;
       while (["QUEUED", "RUNNING"].includes(current.status)) {
         await new Promise((resolve) => window.setTimeout(resolve, 1200));
         current = await testingApi.getRequirementDocumentSummaryJob(project._id, started._id);
+        if (requestSequence !== summaryRequestSequenceRef.current) return;
         setSummaryJob(current);
       }
       setSummary(current.result || null);
       if (current.status === "FAILED") {
         setError(
           current.error_code
-            ? `Không thể tóm tắt tài liệu (${current.error_code}).`
+            ? messageOf({ code: current.error_code })
             : "Không có tài liệu đủ điều kiện để tóm tắt.",
         );
       }
     } catch (reason) {
-      setError(messageOf(reason));
+      if (requestSequence === summaryRequestSequenceRef.current) setError(messageOf(reason));
     } finally {
-      setSummaryLoading(false);
+      if (requestSequence === summaryRequestSequenceRef.current) setSummaryLoading(false);
     }
   };
 
   const cancelSummary = async () => {
     if (!summaryJob?._id) return;
+    const requestSequence = summaryRequestSequenceRef.current;
     try {
       await testingApi.cancelRequirementDocumentSummaryJob(project._id, summaryJob._id);
     } catch (reason) {
-      setError(messageOf(reason));
+      if (requestSequence === summaryRequestSequenceRef.current) setError(messageOf(reason));
     }
   };
 
   const retrySummary = async () => {
     if (!summaryJob?._id) return;
+    const requestSequence = ++summaryRequestSequenceRef.current;
     setSummaryLoading(true);
     setError("");
     try {
@@ -259,18 +312,39 @@ export default function DocumentReaderPage({ project, section = [] }) {
         project._id,
         summaryJob._id,
       );
+      if (requestSequence !== summaryRequestSequenceRef.current) return;
       setSummaryJob({ ...current, _id: summaryJob._id });
       while (["QUEUED", "RUNNING"].includes(current.status)) {
         await new Promise((resolve) => window.setTimeout(resolve, 1200));
         current = await testingApi.getRequirementDocumentSummaryJob(project._id, summaryJob._id);
+        if (requestSequence !== summaryRequestSequenceRef.current) return;
         setSummaryJob(current);
       }
       setSummary(current.result || null);
-      if (current.status === "FAILED") setError("Không thể hoàn tất tóm tắt. Bạn có thể thử lại.");
+      if (current.status === "FAILED") {
+        setError(
+          current.error_code
+            ? messageOf({ code: current.error_code })
+            : "Không thể hoàn tất tóm tắt. Bạn có thể thử lại.",
+        );
+      }
     } catch (reason) {
-      setError(messageOf(reason));
+      if (requestSequence === summaryRequestSequenceRef.current) setError(messageOf(reason));
     } finally {
-      setSummaryLoading(false);
+      if (requestSequence === summaryRequestSequenceRef.current) setSummaryLoading(false);
+    }
+  };
+
+  const downloadOriginal = async () => {
+    const generation = documentGenerationRef.current;
+    setDownloadLoading(true);
+    setError("");
+    try {
+      await testingApi.downloadRequirementDocument(documentId, document?.filename || "tai-lieu");
+    } catch (reason) {
+      if (generation === documentGenerationRef.current) setError(messageOf(reason));
+    } finally {
+      if (generation === documentGenerationRef.current) setDownloadLoading(false);
     }
   };
 
@@ -357,11 +431,10 @@ export default function DocumentReaderPage({ project, section = [] }) {
           <button
             className="secondary-button"
             type="button"
-            onClick={() =>
-              testingApi.downloadRequirementDocument(documentId, document?.filename || "tai-lieu")
-            }
+            disabled={downloadLoading}
+            onClick={downloadOriginal}
           >
-            Tải tệp gốc
+            {downloadLoading ? "Đang tải…" : "Tải tệp gốc"}
           </button>
         </div>
       </div>

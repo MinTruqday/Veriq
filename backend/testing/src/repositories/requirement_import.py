@@ -168,19 +168,6 @@ class RequirementImportRepository:
         )
         return result.matched_count == 1
 
-    async def delete_created_requirements(self, requirement_ids, version_ids):
-        if not requirement_ids:
-            return
-        await database.value.acceptance_criteria.delete_many(
-            {"requirement_version_id": {"$in": version_ids}}
-        )
-        await database.value.requirement_versions.delete_many(
-            {"_id": {"$in": version_ids}}
-        )
-        await database.value.requirements.delete_many(
-            {"_id": {"$in": requirement_ids}}
-        )
-
     async def reset_confirmation(
         self, job_id, project_id, source_status, target_status, updated_at
     ):

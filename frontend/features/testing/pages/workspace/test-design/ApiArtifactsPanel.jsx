@@ -3,6 +3,7 @@ import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { messageOf } from "../../../lib/testing";
+import { automationRunErrorMessage } from "../../../lib/automationRun.logic";
 import { testingApi } from "../../../services/testing.service";
 
 export default function ApiArtifactsPanel({
@@ -555,7 +556,9 @@ export default function ApiArtifactsPanel({
                             <div className="grid justify-items-start gap-1">
                               {run.result?.summary && <ContentOriginBadge origin="ai_generated" />}
                               <span className="break-words text-xs">
-                                {run.error_code || run.result.summary}
+                                {run.error_code
+                                  ? automationRunErrorMessage(run.error_code)
+                                  : run.result.summary}
                               </span>
                             </div>
                           )}

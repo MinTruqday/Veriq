@@ -1484,7 +1484,13 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             {can("requirement_document.read") && (
               <RequirementTracePanel current={current} sourceDocuments={visibleSourceDocuments} />
             )}
-            <RequirementQualityPanel lint={lint} loading={lintLoading} />
+            <RequirementQualityPanel
+              lint={lint}
+              loading={lintLoading}
+              onOpenClarifications={
+                can("requirement.read") ? () => setDetailTab("clarifications") : null
+              }
+            />
           </div>
           {can("testcase.read") && (
             <div className="space-y-6" hidden={activeDetailTab !== "assurance"}>

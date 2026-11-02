@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import RiskModelEditor from "./RiskModelEditor";
 import StructuredValueEditor from "./StructuredValueEditor";
+import { messageOf } from "../lib/testing";
 
 const emptyRisk = {
   probability_scale: [
@@ -124,7 +125,7 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
           }
           await onSave(payload);
         } catch (reason) {
-          setError(reason.message || "Không thể lưu chiến lược kiểm thử");
+          setError(messageOf(reason) || "Không thể lưu chiến lược kiểm thử");
         }
       }}
     >

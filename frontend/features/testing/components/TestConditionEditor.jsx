@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import TestBasisPanel from "./TestBasisPanel";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
-import { textDoc, valueLabel } from "../lib/testing";
+import { messageOf, textDoc, valueLabel } from "../lib/testing";
 
 const defaults = {
   title: "",
@@ -61,7 +61,7 @@ export default function TestConditionEditor({ initialValue, requirements, onSave
           };
           await onSave(payload);
         } catch (reason) {
-          setError(reason.message || "Không thể lưu điều kiện kiểm thử");
+          setError(messageOf(reason) || "Không thể lưu điều kiện kiểm thử");
         }
       }}
     >

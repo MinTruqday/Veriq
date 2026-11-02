@@ -844,23 +844,6 @@ export default function TestDesignPage({ project, workspaceView }) {
         .join("\n"),
       confirmLabel: "Đối chiếu và duyệt nhóm",
       fields: [
-        ...(action === "changes"
-          ? [
-              {
-                name: "reasonCode",
-                label: "Lý do cần chỉnh sửa",
-                options: [
-                  { value: "INCOMPLETE", label: "Thiếu nội dung" },
-                  { value: "INCORRECT", label: "Thông tin chưa đúng" },
-                  { value: "DUPLICATE", label: "Trùng lặp" },
-                  { value: "UNSUPPORTED_BY_SOURCE", label: "Nguồn chưa đủ căn cứ" },
-                  { value: "OUT_OF_SCOPE", label: "Ngoài phạm vi" },
-                  { value: "OTHER", label: "Lý do khác" },
-                ],
-                required: true,
-              },
-            ]
-          : []),
         {
           name: "note",
           label: "Ghi chú duyệt",
@@ -969,7 +952,12 @@ export default function TestDesignPage({ project, workspaceView }) {
           if (reason?.status >= 400 && reason.status < 500) pendingGroupRequest.current = null;
           const blockedDraftId = reason?.details?.draft_id || reason?.draft_id;
           const blockedDraft = selected.find((draft) => draft._id === blockedDraftId);
-          const details = messageOf(reason);
+          const findings = (reason?.details?.findings || [])
+            .filter((finding) => finding.severity === "error")
+            .slice(0, 3)
+            .map((finding) => finding.message || finding.suggestion)
+            .filter(Boolean);
+          const details = [messageOf(reason), ...findings].filter(Boolean).join(" ");
           throw new Error(
             blockedDraft
               ? `${blockedDraft.test_case_key || blockedDraft.title}: ${details}`
@@ -987,6 +975,23 @@ export default function TestDesignPage({ project, workspaceView }) {
       description: draft.test_case_key,
       confirmLabel: action === "changes" ? "Yêu cầu chỉnh sửa" : "Gửi rà soát",
       fields: [
+        ...(action === "changes"
+          ? [
+              {
+                name: "reasonCode",
+                label: "Lý do cần chỉnh sửa",
+                options: [
+                  { value: "INCOMPLETE", label: "Thiếu nội dung" },
+                  { value: "INCORRECT", label: "Thông tin chưa đúng" },
+                  { value: "DUPLICATE", label: "Trùng lặp" },
+                  { value: "UNSUPPORTED_BY_SOURCE", label: "Nguồn chưa đủ căn cứ" },
+                  { value: "OUT_OF_SCOPE", label: "Ngoài phạm vi" },
+                  { value: "OTHER", label: "Lý do khác" },
+                ],
+                required: true,
+              },
+            ]
+          : []),
         {
           name: "note",
           label: action === "changes" ? "Nội dung cần chỉnh sửa" : "Ghi chú rà soát",

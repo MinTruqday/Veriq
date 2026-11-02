@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from src.core.auth import CurrentUser
 from src.core.common import audit, envelope, get_project, get_project_entity, new_id, now, plain_text
+from src.core.database import database
 from src.repositories.test_design import test_design_repository
 from src.repositories.analysis import analysis_repository
 from src.core.rich_text import text_document
@@ -459,7 +460,9 @@ async def confirm_test_import(
     if not claimed:
         raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_CONFIRM_IN_PROGRESS"})
     created = []
-    try:
+
+    async def persist_import(session):
+        created.clear()
         for index, draft_data in zip(selected, drafts):
             draft_data = TestCaseDraftCreate.model_validate({
                 **draft_data.model_dump(),
@@ -481,6 +484,7 @@ async def confirm_test_import(
                 user,
                 parent_version_id=version_resolutions[index].target_version_id if index in targets else None,
                 change_reason=version_resolutions[index].reason.strip() if index in targets else None,
+                session=session,
             )
             created.append(draft)
         confirmed = await test_design_repository.confirm_import(
@@ -514,11 +518,16 @@ async def confirm_test_import(
                 },
                 "confirmed_at": now(),
             },
+            session=session,
         )
         if confirmed.matched_count != 1:
             raise HTTPException(status_code=409, detail={"code": "TEST_IMPORT_CONFIRM_IN_PROGRESS"})
+        return list(created)
+
+    try:
+        async with await database.client.start_session() as session:
+            created = await session.with_transaction(persist_import)
     except Exception:
-        await test_design_repository.delete_created_drafts(job["project_id"], [item["_id"] for item in created])
         await test_design_repository.reset_import(job_id, job["project_id"])
         if created:
             await audit(

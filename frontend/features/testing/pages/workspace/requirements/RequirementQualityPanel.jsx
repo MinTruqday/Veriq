@@ -4,7 +4,7 @@ import { valueLabel } from "../../../lib/testing";
 import { requirementFieldLabel, requirementSuggestionPreview } from "./requirements.model";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
-export default function RequirementQualityPanel({ lint, loading = false }) {
+export default function RequirementQualityPanel({ lint, loading = false, onOpenClarifications }) {
   if (!lint) {
     return (
       <Panel title="Kết quả kiểm tra AI">
@@ -32,11 +32,22 @@ export default function RequirementQualityPanel({ lint, loading = false }) {
           thay đổi.
         </p>
       )}
-      <p className="mx-5 mt-4 rounded-control border border-border bg-surface-quiet px-3 py-2 text-sm text-ink-muted">
-        Kết quả này là gợi ý để BA chỉnh bản nháp trong biểu mẫu yêu cầu; AI không tự sửa hoặc gửi
-        duyệt. Nếu cần người khác xác nhận nghiệp vụ còn thiếu, mở tab “Phiếu làm rõ” để tạo câu
-        hỏi. Sau khi nội dung đã cập nhật, lưu bản nháp rồi gửi QA rà soát.
-      </p>
+      <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-quiet px-3 py-2">
+        <p className="text-sm text-ink-muted">
+          Đây là gợi ý. BA chỉnh bản nháp trong biểu mẫu yêu cầu; AI không tự sửa hoặc gửi duyệt.
+          Nếu cần xác nhận nghiệp vụ, tạo Phiếu làm rõ. Sau khi cập nhật, lưu bản nháp rồi gửi QA rà
+          soát.
+        </p>
+        {onOpenClarifications && (
+          <button
+            className="secondary-button shrink-0"
+            type="button"
+            onClick={onOpenClarifications}
+          >
+            Mở Phiếu làm rõ
+          </button>
+        )}
+      </div>
       {lint.artifact_revision && (
         <p className="px-5 pt-3 text-sm text-ink-muted">
           Kết quả kiểm tra cho lần cập nhật {lint.artifact_revision}

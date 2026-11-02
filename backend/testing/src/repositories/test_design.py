@@ -584,16 +584,11 @@ class TestDesignRepository:
             {"$set": {"status": "PREVIEW_READY"}},
         )
 
-    async def delete_created_drafts(self, project_id, draft_ids):
-        if draft_ids:
-            await database.value.test_case_drafts.delete_many(
-                {"_id": {"$in": draft_ids}, "project_id": project_id}
-            )
-
-    async def confirm_import(self, import_id, project_id, changes):
+    async def confirm_import(self, import_id, project_id, changes, session=None):
         return await database.value.test_imports.update_one(
             {"_id": import_id, "project_id": project_id, "status": "CONFIRMING"},
             {"$set": changes},
+            session=session,
         )
 
     async def list_requirement_evidence(self, query, limit):

@@ -3,6 +3,7 @@ import MultiSelect from "@/shared/components/ui/MultiSelect";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import StructuredValueEditor from "./StructuredValueEditor";
 import { testingApi } from "../services/testing.service";
+import { messageOf } from "../lib/testing";
 
 const aiPlanFields = [
   ["objective", "Mục tiêu", true],
@@ -208,7 +209,7 @@ export default function TestPlanEditor({
       );
       setAppliedAiFields(new Set());
     } catch (reason) {
-      setAiError(reason.message || "Không thể tạo gợi ý kế hoạch");
+      setAiError(messageOf(reason) || "Không thể tạo gợi ý kế hoạch");
     } finally {
       setAiBusy(false);
     }
@@ -314,7 +315,7 @@ export default function TestPlanEditor({
           setSaving(true);
           await onSave(payload);
         } catch (reason) {
-          setError(reason.message || "Không thể lưu kế hoạch kiểm thử");
+          setError(messageOf(reason) || "Không thể lưu kế hoạch kiểm thử");
         } finally {
           savingRef.current = false;
           setSaving(false);

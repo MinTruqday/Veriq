@@ -67,6 +67,18 @@ function TestDataEntries({ label, entries, onChange }) {
   );
 }
 
+function matchesConditionScope(condition, requirementIds, criterionIds, scenarioConditionIds) {
+  if (scenarioConditionIds.has(condition._id)) return true;
+  if (!requirementIds.size && !criterionIds.size) return true;
+  return (condition.basis_refs || []).some((reference) => {
+    const sourceId = reference.artifact_version_id || reference.artifact_id;
+    return (
+      (reference.artifact_type === "REQUIREMENT_VERSION" && requirementIds.has(sourceId)) ||
+      (reference.artifact_type === "ACCEPTANCE_CRITERION" && criterionIds.has(sourceId))
+    );
+  });
+}
+
 export default function TestCaseCreateModal({
   projectId,
   isOpen,
@@ -102,6 +114,27 @@ export default function TestCaseCreateModal({
         requirement_key: item.requirement_key,
       })),
     );
+  const requirementIds = new Set(form.requirementVersionIds || []);
+  const selectedCriterionIds = new Set(form.acceptanceCriterionIds || []);
+  const scenarioConditionIds = new Set(
+    scenarios.find((item) => item._id === form.scenarioId)?.test_condition_ids || [],
+  );
+  const scopedCriterionIds = new Set(
+    selectedCriterionIds.size
+      ? selectedCriterionIds
+      : selectedCriteria.map((criterion) => criterion._id),
+  );
+  const scopedTestConditions = testConditions.filter((condition) =>
+    matchesConditionScope(condition, requirementIds, scopedCriterionIds, scenarioConditionIds),
+  );
+  const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
+    conditionIds.filter((conditionId) => {
+      const condition = testConditions.find((item) => item._id === conditionId);
+      return (
+        condition &&
+        matchesConditionScope(condition, scopedRequirements, scopedCriteria, scenarioConditionIds)
+      );
+    });
 
   return (
     <Modal
@@ -123,15 +156,28 @@ export default function TestCaseCreateModal({
             value={form.scenarioId || ""}
             onChange={(event) => {
               const scenario = scenarios.find((item) => item._id === event.target.value);
+              const requirementVersionIds = scenario?.requirement_version_ids || [];
+              const acceptanceCriterionIds = scenario?.acceptance_criterion_ids || [];
+              const linkedConditionIds = new Set(scenario?.test_condition_ids || []);
+              const scopedConditionIds = testConditions
+                .filter((condition) =>
+                  matchesConditionScope(
+                    condition,
+                    new Set(requirementVersionIds),
+                    new Set(acceptanceCriterionIds),
+                    linkedConditionIds,
+                  ),
+                )
+                .map((condition) => condition._id);
               update({
                 scenarioId: event.target.value,
-                ...(scenario
-                  ? {
-                      requirementVersionIds: scenario.requirement_version_ids || [],
-                      acceptanceCriterionIds: scenario.acceptance_criterion_ids || [],
-                      testConditionIds: scenario.test_condition_ids || [],
-                    }
-                  : {}),
+                ...(scenario && {
+                  requirementVersionIds,
+                  acceptanceCriterionIds,
+                  testConditionIds: (scenario.test_condition_ids || []).filter((id) =>
+                    scopedConditionIds.includes(id),
+                  ),
+                }),
               });
             }}
           >
@@ -401,10 +447,20 @@ export default function TestCaseCreateModal({
                   ),
                 ),
             );
+            const nextAcceptanceCriterionIds = form.acceptanceCriterionIds.filter((id) =>
+              allowedCriteria.has(id),
+            );
+            const nextRequirementIds = new Set(requirementVersionIds);
+            const nextCriterionIds = new Set(
+              nextAcceptanceCriterionIds.length ? nextAcceptanceCriterionIds : [...allowedCriteria],
+            );
             update({
               requirementVersionIds,
-              acceptanceCriterionIds: form.acceptanceCriterionIds.filter((id) =>
-                allowedCriteria.has(id),
+              acceptanceCriterionIds: nextAcceptanceCriterionIds,
+              testConditionIds: retainScopedConditionIds(
+                form.testConditionIds,
+                nextRequirementIds,
+                nextCriterionIds,
               ),
             });
           }}
@@ -420,7 +476,20 @@ export default function TestCaseCreateModal({
               description: criterion.plain_text || docText(criterion.content_doc),
             }))}
             value={form.acceptanceCriterionIds}
-            onChange={(acceptanceCriterionIds) => update({ acceptanceCriterionIds })}
+            onChange={(acceptanceCriterionIds) =>
+              update({
+                acceptanceCriterionIds,
+                testConditionIds: retainScopedConditionIds(
+                  form.testConditionIds,
+                  requirementIds,
+                  new Set(
+                    acceptanceCriterionIds.length
+                      ? acceptanceCriterionIds
+                      : selectedCriteria.map((criterion) => criterion._id),
+                  ),
+                ),
+              })
+            }
           />
         )}
         <section
@@ -563,7 +632,12 @@ export default function TestCaseCreateModal({
         />
         <MultiSelect
           label="Điều kiện kiểm thử đã phê duyệt"
-          options={testConditions.map((item) => ({
+          emptyMessage={
+            form.requirementVersionIds.length
+              ? "Chưa có điều kiện đã duyệt gắn với yêu cầu hoặc tiêu chí đang chọn"
+              : "Chưa có điều kiện kiểm thử đã phê duyệt"
+          }
+          options={scopedTestConditions.map((item) => ({
             value: item._id,
             label: `${item.condition_key} ${item.title}`,
           }))}

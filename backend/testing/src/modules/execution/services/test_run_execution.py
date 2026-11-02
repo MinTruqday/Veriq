@@ -2,7 +2,7 @@ import hashlib
 import json
 
 from fastapi import HTTPException
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from src.core.common import (
     audit,
@@ -59,6 +59,17 @@ def _verify_idempotency_replay(existing, payload, *, entity):
         )
 
 
+def _verify_resume_replay(existing, payload):
+    recorded_revision = existing.get("expected_revision")
+    if recorded_revision is None and existing.get("run_revision") is not None:
+        recorded_revision = existing["run_revision"] - 1
+    if recorded_revision is not None and recorded_revision != payload.expected_revision:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_KEY_REUSED", "entity": "TEST_RUN_RESUME"},
+        )
+
+
 
 
 
@@ -83,20 +94,33 @@ async def start_test_run_record(run_id, user):
     scope = frozen_run_scope(run)
     scope_fingerprint = frozen_run_scope_hash(scope)
     timestamp = now()
-    updated = await test_run_repository.transition_run(
-        {"_id": run_id, "status": run["status"], "revision": run.get("revision", 1)},
-        {
-            "status": 'IN_PROGRESS',
-            "frozen_scope": scope,
-            "frozen_scope_hash": scope_fingerprint,
-            "started_at": timestamp,
-            "started_by": user.id,
-            "updated_at": timestamp,
-        },
-    )
-    if not updated:
-        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
-    await audit(user.id, 'test_run_started', 'TestRun', run_id, run["project_id"])
+    async def persist_start(session):
+        updated = await test_run_repository.transition_run(
+            {"_id": run_id, "status": run["status"], "revision": run.get("revision", 1)},
+            {
+                "status": 'IN_PROGRESS',
+                "frozen_scope": scope,
+                "frozen_scope_hash": scope_fingerprint,
+                "started_at": timestamp,
+                "started_by": user.id,
+                "updated_at": timestamp,
+            },
+            session=session,
+        )
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
+        await audit(
+            user.id,
+            'test_run_started',
+            'TestRun',
+            run_id,
+            run["project_id"],
+            session=session,
+        )
+        return updated
+
+    async with await database.client.start_session() as session:
+        updated = await session.with_transaction(persist_start)
     return updated
 
 
@@ -109,7 +133,11 @@ async def resume_test_run_record(project_id, run_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     existing = await test_run_repository.find_resume_event(run_id, payload.idempotency_key)
     if existing:
-        return await replay_resume_event(run, existing), run.get("revision", 1)
+        _verify_resume_replay(existing, payload)
+        current_run = await test_run_repository.find_run(run_id, project_id)
+        if not current_run:
+            raise HTTPException(status_code=404, detail={"code": 'ENTITY_NOT_FOUND'})
+        return await replay_resume_event(current_run, existing), current_run.get("revision", 1)
     if run.get("status") != 'IN_PROGRESS':
         raise HTTPException(status_code=409, detail={"code": 'TEST_RUN_NOT_IN_PROGRESS'})
     if run.get("revision", 1) != payload.expected_revision:
@@ -131,6 +159,7 @@ async def resume_test_run_record(project_id, run_id, payload, user):
         "project_id": project_id,
         "test_run_id": run_id,
         "idempotency_key": payload.idempotency_key,
+        "expected_revision": payload.expected_revision,
         "scope_fingerprint": scope_fingerprint,
         "current_execution_id": (
             selected["current_execution"]["_id"] if selected["current_execution"] else None
@@ -147,44 +176,56 @@ async def resume_test_run_record(project_id, run_id, payload, user):
         "resumed_by": user.id,
         "created_at": timestamp,
     }
+
+    async def persist_resume(session):
+        event["run_revision"] = payload.expected_revision + 1
+        await test_run_repository.insert_resume_event(event, session=session)
+        updated = await test_run_repository.transition_run(
+            {
+                "_id": run_id,
+                "project_id": project_id,
+                "status": 'IN_PROGRESS',
+                "revision": payload.expected_revision,
+            },
+            {
+                "frozen_scope": run.get("frozen_scope") or scope,
+                "frozen_scope_hash": scope_fingerprint,
+                "last_resumed_at": timestamp,
+                "last_resumed_by": user.id,
+                "last_resume_event_id": event["_id"],
+                "updated_at": timestamp,
+            },
+            session=session,
+        )
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
+        await audit(
+            user.id,
+            'test_run_resumed',
+            'TestRun',
+            run_id,
+            project_id,
+            {
+                "resume_event_id": event["_id"],
+                "current_test_case_version_id": event["current_test_case_version_id"],
+                "scope_fingerprint": scope_fingerprint,
+            },
+            session=session,
+        )
+        return updated
+
     try:
-        await test_run_repository.insert_resume_event(event)
+        async with await database.client.start_session() as session:
+            updated = await session.with_transaction(persist_resume)
     except DuplicateKeyError:
         existing = await test_run_repository.find_resume_event(run_id, payload.idempotency_key)
-        return await replay_resume_event(run, existing), run.get("revision", 1)
-    updated = await test_run_repository.transition_run(
-        {
-            "_id": run_id,
-            "project_id": project_id,
-            "status": 'IN_PROGRESS',
-            "revision": payload.expected_revision,
-        },
-        {
-            "frozen_scope": run.get("frozen_scope") or scope,
-            "frozen_scope_hash": scope_fingerprint,
-            "last_resumed_at": timestamp,
-            "last_resumed_by": user.id,
-            "last_resume_event_id": event["_id"],
-            "updated_at": timestamp,
-        },
-    )
-    if not updated:
-        await test_run_repository.delete_resume_event(event["_id"])
-        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
-    await test_run_repository.set_resume_event_revision(event["_id"], updated["revision"])
-    event["run_revision"] = updated["revision"]
-    await audit(
-        user.id,
-        'test_run_resumed',
-        'TestRun',
-        run_id,
-        project_id,
-        {
-            "resume_event_id": event["_id"],
-            "current_test_case_version_id": event["current_test_case_version_id"],
-            "scope_fingerprint": scope_fingerprint,
-        },
-    )
+        if not existing:
+            raise
+        _verify_resume_replay(existing, payload)
+        current_run = await test_run_repository.find_run(run_id, project_id)
+        if not current_run:
+            raise HTTPException(status_code=404, detail={"code": 'ENTITY_NOT_FOUND'})
+        return await replay_resume_event(current_run, existing), current_run.get("revision", 1)
     return (
         {"run": updated, "resume_event": event, **selected, "scope_fingerprint": scope_fingerprint},
         updated["revision"],
@@ -252,45 +293,70 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
         emit_test_execution_recorded,
     )
 
-    async with await database.client.start_session() as session:
-        async with session.start_transaction():
-            if existing:
-                result = await test_run_repository.update_result(
-                    {
-                        "_id": existing["_id"],
-                        "project_id": run["project_id"],
-                        "status": 'NOT_RUN',
-                        "revision": existing.get("revision", 1),
-                    },
-                    {
-                        **payload.model_dump(),
-                        "idempotency_request_hash": _idempotency_fingerprint(payload),
-                        "executor_id": user.id,
-                        "executed_by": user.id,
-                        "started_at": existing.get("started_at") or timestamp,
-                        "completed_at": timestamp,
-                        "executed_at": timestamp,
-                        "updated_at": timestamp,
-                    },
-                    session=session,
-                )
-                if not result:
-                    raise HTTPException(status_code=409, detail={"code": 'EXECUTION_CONFLICT'})
-            else:
-                await test_run_repository.insert_result(result, session=session)
-            await test_run_repository.touch_run(run_id, None, now(), session=session)
-            await audit(
-                user.id,
-                'test_result_recorded',
-                'TestResult',
-                result["_id"],
-                run["project_id"],
-                {"status": payload.status},
+    async def persist_result(session):
+        nonlocal result
+        if existing:
+            result = await test_run_repository.update_result(
+                {
+                    "_id": existing["_id"],
+                    "project_id": run["project_id"],
+                    "status": 'NOT_RUN',
+                    "revision": existing.get("revision", 1),
+                },
+                {
+                    **payload.model_dump(),
+                    "idempotency_request_hash": _idempotency_fingerprint(payload),
+                    "executor_id": user.id,
+                    "executed_by": user.id,
+                    "started_at": existing.get("started_at") or timestamp,
+                    "completed_at": timestamp,
+                    "executed_at": timestamp,
+                    "updated_at": timestamp,
+                },
                 session=session,
             )
-            await emit_test_execution_recorded(result, user, session=session)
-            if release and release.get("status") == "ACTIVE":
-                await emit_release_gate_recheck(release, result, user, session=session)
+            if not result:
+                raise HTTPException(status_code=409, detail={"code": 'EXECUTION_CONFLICT'})
+        else:
+            await test_run_repository.insert_result(result, session=session)
+        await test_run_repository.touch_run(run_id, None, now(), session=session)
+        await audit(
+            user.id,
+            'test_result_recorded',
+            'TestResult',
+            result["_id"],
+            run["project_id"],
+            {"status": payload.status},
+            session=session,
+        )
+        await emit_test_execution_recorded(result, user, session=session)
+        if release and release.get("status") == "ACTIVE":
+            await emit_release_gate_recheck(release, result, user, session=session)
+        return result
+
+    try:
+        async with await database.client.start_session() as session:
+            result = await session.with_transaction(persist_result)
+    except PyMongoError as error:
+        if not isinstance(error, DuplicateKeyError) and not error.has_error_label(
+            "TransientTransactionError"
+        ):
+            raise
+        concurrent_result = await test_run_repository.find_result_for_case(
+            run_id, test_case_version_id
+        )
+        if not concurrent_result:
+            raise
+        if concurrent_result.get("idempotency_key") == payload.idempotency_key:
+            if not _stored_result_matches_request(concurrent_result, payload):
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "IDEMPOTENCY_KEY_REUSED", "entity": "TEST_RESULT"},
+                )
+            return concurrent_result
+        if concurrent_result.get("status") != "NOT_RUN":
+            raise HTTPException(status_code=409, detail={"code": 'RESULT_ALREADY_RECORDED'})
+        raise HTTPException(status_code=409, detail={"code": 'EXECUTION_CONFLICT'})
     await index_artifact(
         run["project_id"],
         'test_result',

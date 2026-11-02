@@ -160,10 +160,24 @@ export default function RequirementSourceDocumentsPanel({
     projectLocale?.toLowerCase().startsWith("en") ? "en" : "vi",
   );
   const summaryIdempotencyRef = useRef({ scope: "", key: "" });
+  const summaryRequestSequenceRef = useRef(0);
 
   useEffect(() => {
     setSummaryLanguage(projectLocale?.toLowerCase().startsWith("en") ? "en" : "vi");
   }, [projectLocale]);
+
+  useEffect(() => {
+    summaryRequestSequenceRef.current += 1;
+    summaryIdempotencyRef.current = { scope: "", key: "" };
+    setSummaryBusy(false);
+    setSummaryResult(null);
+    setSummaryJob(null);
+    setSelectedIds([]);
+    setAiActivationNotice("");
+    return () => {
+      summaryRequestSequenceRef.current += 1;
+    };
+  }, [projectId]);
 
   const extractionIssueLabel = (reasonCode) => {
     const labels = {
@@ -384,12 +398,13 @@ export default function RequirementSourceDocumentsPanel({
   };
 
   const summarizeDocuments = async (documentIds, allReadable = false) => {
+    const requestSequence = ++summaryRequestSequenceRef.current;
     setSummaryBusy(true);
     setSummaryJob(null);
     setSummaryResult(null);
     setAiActivationNotice("");
     try {
-      const scope = allReadable ? "all" : [...documentIds].sort().join(",");
+      const scope = `${projectId}:${summaryLanguage}:${allReadable ? "all" : [...documentIds].sort().join(",")}`;
       if (summaryIdempotencyRef.current.scope !== scope) {
         summaryIdempotencyRef.current = {
           scope,
@@ -402,13 +417,18 @@ export default function RequirementSourceDocumentsPanel({
         output_language: summaryLanguage,
         idempotency_key: summaryIdempotencyRef.current.key,
       });
+      if (requestSequence !== summaryRequestSequenceRef.current) return;
       const jobId = started._id;
       setSummaryJob({ _id: jobId, status: started.status, progress: started.progress });
       let current = started;
       while (["QUEUED", "RUNNING"].includes(current.status)) {
         await new Promise((resolve) => window.setTimeout(resolve, 1200));
         current = await testingApi.getRequirementDocumentSummaryJob(projectId, jobId);
+        if (requestSequence !== summaryRequestSequenceRef.current) return;
         setSummaryJob(current);
+      }
+      if (requestSequence === summaryRequestSequenceRef.current) {
+        summaryIdempotencyRef.current = { scope: "", key: "" };
       }
       const result = current.result || {
         status: current.status,
@@ -424,7 +444,7 @@ export default function RequirementSourceDocumentsPanel({
       if (current.status === "FAILED") {
         onError(
           current.error_code
-            ? `Không thể hoàn tất tóm tắt (${current.error_code}). Bạn có thể thử lại.`
+            ? messageOf({ code: current.error_code })
             : "Không có tài liệu nào đủ điều kiện để tóm tắt. Kiểm tra quyền AI và trạng thái xử lý tài liệu.",
         );
         return;
@@ -434,44 +454,55 @@ export default function RequirementSourceDocumentsPanel({
         `${result.status === "COMPLETED" ? "Đã tóm tắt" : "Tóm tắt chưa đầy đủ"} ${result.results.length} tài liệu${skipped ? `; ${skipped} tài liệu bị bỏ qua` : ""}.`,
       );
     } catch (reason) {
-      onError(messageOf(reason));
+      if (requestSequence === summaryRequestSequenceRef.current) onError(messageOf(reason));
     } finally {
-      setSummaryBusy(false);
+      if (requestSequence === summaryRequestSequenceRef.current) setSummaryBusy(false);
     }
   };
 
   const cancelSummary = async () => {
     if (!summaryJob?._id) return;
+    const requestSequence = summaryRequestSequenceRef.current;
     try {
       await testingApi.cancelRequirementDocumentSummaryJob(projectId, summaryJob._id);
     } catch (reason) {
-      onError(messageOf(reason));
+      if (requestSequence === summaryRequestSequenceRef.current) onError(messageOf(reason));
     }
   };
 
   const retrySummary = async () => {
     if (!summaryJob?._id) return;
+    const requestSequence = ++summaryRequestSequenceRef.current;
     setSummaryBusy(true);
     try {
       const started = await testingApi.retryRequirementDocumentSummaryJob(
         projectId,
         summaryJob._id,
       );
+      if (requestSequence !== summaryRequestSequenceRef.current) return;
       let current = started;
       setSummaryJob({ ...started, _id: summaryJob._id });
       while (["QUEUED", "RUNNING"].includes(current.status)) {
         await new Promise((resolve) => window.setTimeout(resolve, 1200));
         current = await testingApi.getRequirementDocumentSummaryJob(projectId, summaryJob._id);
+        if (requestSequence !== summaryRequestSequenceRef.current) return;
         setSummaryJob(current);
+      }
+      if (requestSequence === summaryRequestSequenceRef.current) {
+        summaryIdempotencyRef.current = { scope: "", key: "" };
       }
       setSummaryResult(current.result || null);
       if (current.status === "FAILED") {
-        onError("Không thể hoàn tất tóm tắt. Bạn có thể thử lại khi dịch vụ xử lý sẵn sàng.");
+        onError(
+          current.error_code
+            ? messageOf({ code: current.error_code })
+            : "Không thể hoàn tất tóm tắt. Bạn có thể thử lại khi dịch vụ xử lý sẵn sàng.",
+        );
       }
     } catch (reason) {
-      onError(messageOf(reason));
+      if (requestSequence === summaryRequestSequenceRef.current) onError(messageOf(reason));
     } finally {
-      setSummaryBusy(false);
+      if (requestSequence === summaryRequestSequenceRef.current) setSummaryBusy(false);
     }
   };
 

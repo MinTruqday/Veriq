@@ -133,29 +133,23 @@ class TestRunRepository:
             {"_id": environment_id, "project_id": project_id}
         )
 
-    async def transition_run(self, query, changes):
+    async def transition_run(self, query, changes, session=None):
         return await database.value.test_runs.find_one_and_update(
             query,
             {"$set": changes, "$inc": {"revision": 1}},
             return_document=ReturnDocument.AFTER,
+            **({"session": session} if session is not None else {}),
         )
 
-    async def find_resume_event(self, run_id, idempotency_key):
+    async def find_resume_event(self, run_id, idempotency_key, session=None):
         return await database.value.test_run_resume_events.find_one(
-            {"test_run_id": run_id, "idempotency_key": idempotency_key}
+            {"test_run_id": run_id, "idempotency_key": idempotency_key},
+            **({"session": session} if session is not None else {}),
         )
 
-    async def insert_resume_event(self, value):
-        await database.value.test_run_resume_events.insert_one(value)
+    async def insert_resume_event(self, value, session=None):
+        await database.value.test_run_resume_events.insert_one(value, session=session)
         return value
-
-    async def delete_resume_event(self, event_id):
-        await database.value.test_run_resume_events.delete_one({"_id": event_id})
-
-    async def set_resume_event_revision(self, event_id, revision):
-        await database.value.test_run_resume_events.update_one(
-            {"_id": event_id}, {"$set": {"run_revision": revision}}
-        )
 
     async def find_result_for_case(self, run_id, version_id):
         return await database.value.test_results.find_one(

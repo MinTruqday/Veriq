@@ -18,6 +18,32 @@ ACCEPTANCE_CRITERION_LINE = re.compile(
     r"^\s*(?:[-*•]\s*)?((?:AC|ACCEPTANCE[-_ ]?CRITERION)[-_ ]?\d+)\s*[:.)\-–—]\s*(.+?)\s*$",
     re.IGNORECASE,
 )
+TABLE_ACCEPTANCE_CRITERION_LINE = re.compile(
+    r"^\s*\|?\s*((?:AC|ACCEPTANCE[-_ ]?CRITERION)[-_ ]?\d+)\s*[:.)\-–—]?\s*\|\s*(.+?)\s*\|?\s*$",
+    re.IGNORECASE,
+)
+MARKDOWN_TABLE_SEPARATOR = re.compile(
+    r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$"
+)
+
+
+def is_labeled_acceptance_criterion_line(line):
+    return bool(
+        ACCEPTANCE_CRITERION_LINE.match(line)
+        or TABLE_ACCEPTANCE_CRITERION_LINE.match(line)
+    )
+
+
+def is_acceptance_criteria_table_header(line):
+    cells = [cell.strip().casefold() for cell in line.strip().strip("|").split("|")]
+    return len(cells) >= 2 and any(
+        "acceptance" in cell
+        or "criteria" in cell
+        or "criterion" in cell
+        or "tiêu chí" in cell
+        or cell == "ac"
+        for cell in cells
+    )
 
 
 def extract_labeled_acceptance_criteria(text):
@@ -25,7 +51,10 @@ def extract_labeled_acceptance_criteria(text):
     position = 0
     pending = None
     for line in str(text or "").splitlines(keepends=True):
-        match = ACCEPTANCE_CRITERION_LINE.match(line.rstrip("\r\n"))
+        content_line = line.rstrip("\r\n")
+        match = ACCEPTANCE_CRITERION_LINE.match(content_line)
+        table_match = None if match else TABLE_ACCEPTANCE_CRITERION_LINE.match(content_line)
+        match = match or table_match
         if match:
             if pending:
                 criteria.append(pending)
@@ -204,10 +233,26 @@ def atomic_requirement_candidates(document):
 
     def add_paragraph(start, end):
         raw = text[start:end].strip()
-        if raw and all(
-            ACCEPTANCE_CRITERION_LINE.match(line.strip())
-            for line in raw.splitlines()
-            if line.strip()
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        if lines and all(is_labeled_acceptance_criterion_line(line) for line in lines):
+            return
+        if len(lines) == 1 and (
+            MARKDOWN_TABLE_SEPARATOR.match(lines[0])
+            or ("|" in lines[0] and is_acceptance_criteria_table_header(lines[0]))
+        ):
+            return
+        if (
+            len(lines) > 1
+            and "|" in lines[0]
+            and (
+                is_acceptance_criteria_table_header(lines[0])
+                or any(is_labeled_acceptance_criterion_line(line) for line in lines[1:])
+            )
+            and all(
+                is_labeled_acceptance_criterion_line(line)
+                or MARKDOWN_TABLE_SEPARATOR.match(line)
+                for line in lines[1:]
+            )
         ):
             return
         value = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s*", "", raw).strip()

@@ -1,7 +1,14 @@
 import { API_URL, authenticatedFetch } from "@/shared/services/api-client";
 
+function userFacingError(message, fallback) {
+  const value = typeof message === "string" ? message.trim() : "";
+  if (value && !/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(value)) return value;
+  return fallback;
+}
+
 function responseErrorMessage(response, body, fallback) {
-  if (body?.error?.message) return body.error.message;
+  const message = userFacingError(body?.error?.message, "");
+  if (message) return message;
   if (response.status >= 500)
     return `Máy chủ gặp lỗi khi xử lý yêu cầu (HTTP ${response.status}). Vui lòng thử lại.`;
   return fallback;
@@ -91,7 +98,7 @@ export async function automationRequest(path, options = {}) {
   if (!response.ok) {
     refreshProjectAccessAfterDenial(path, response.status, body?.detail, body?.detail?.code);
     const detail = body?.detail;
-    const error = new Error(detail?.message || detail?.code || "Không thể hoàn tất tự động hóa AI");
+    const error = new Error(userFacingError(detail?.message, "Không thể hoàn tất tự động hóa AI"));
     error.status = response.status;
     error.code = detail?.code;
     error.details = detail?.latest;
@@ -112,9 +119,10 @@ export async function inferenceRequest(path, options = {}) {
   if (!response.ok) {
     const detail = body?.detail;
     const error = new Error(
-      typeof detail === "string"
-        ? detail
-        : detail?.message || detail?.code || "Không thể hoàn tất yêu cầu đánh giá AI",
+      userFacingError(
+        typeof detail === "string" ? detail : detail?.message,
+        "Không thể hoàn tất yêu cầu đánh giá AI",
+      ),
     );
     error.status = response.status;
     error.code = detail?.code;
@@ -143,12 +151,10 @@ export async function testingStreamRequest(path, options = {}) {
     },
   });
   const messageOf = (body, fallback) =>
-    body?.error?.message ||
-    body?.detail?.message ||
-    body?.detail?.code ||
-    body?.error?.code ||
-    body?.detail ||
-    fallback;
+    userFacingError(
+      body?.error?.message || body?.detail?.message || body?.detail,
+      userFacingError(fallback, "Không thể hoàn tất yêu cầu AI"),
+    );
   if (!response.ok || !response.body) {
     const body = await response.json().catch(() => null);
     refreshProjectAccessAfterDenial(
@@ -237,7 +243,7 @@ export async function downloadTestingFile(path, filename) {
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
-    throw new Error(body?.error?.message || "Không thể tải tệp");
+    throw new Error(userFacingError(body?.error?.message, "Không thể tải tệp"));
   }
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement("a");
@@ -252,7 +258,7 @@ export async function readTestingFile(path) {
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
-    throw new Error(body?.error?.message || "Không thể mở tệp");
+    throw new Error(userFacingError(body?.error?.message, "Không thể mở tệp"));
   }
   return URL.createObjectURL(await response.blob());
 }
