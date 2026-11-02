@@ -14,6 +14,91 @@ import yaml
 from src.modules.requirements.services.requirement_workflow import text_doc
 
 
+ACCEPTANCE_CRITERION_LINE = re.compile(
+    r"^\s*(?:[-*•]\s*)?((?:AC|ACCEPTANCE[-_ ]?CRITERION)[-_ ]?\d+)\s*[:.)\-–—]\s*(.+?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def extract_labeled_acceptance_criteria(text):
+    criteria = []
+    position = 0
+    pending = None
+    for line in str(text or "").splitlines(keepends=True):
+        match = ACCEPTANCE_CRITERION_LINE.match(line.rstrip("\r\n"))
+        if match:
+            if pending:
+                criteria.append(pending)
+            pending = {
+                "key": match.group(1).strip(),
+                "content": match.group(2).strip(),
+                "source_start": position,
+                "source_end": position + len(line.rstrip("\r\n")),
+            }
+        elif pending and line[:1].isspace() and line.strip():
+            pending["content"] = f"{pending['content']} {line.strip()}"
+            pending["source_end"] = position + len(line.rstrip("\r\n"))
+        elif pending:
+            criteria.append(pending)
+            pending = None
+        position += len(line)
+    if pending:
+        criteria.append(pending)
+    return criteria
+
+
+def attach_labeled_acceptance_criteria(candidates, document):
+    text = source_document_text(document["normalized_content"])
+    criteria = extract_labeled_acceptance_criteria(text)
+    if not candidates or not criteria:
+        return candidates
+
+    anchors = []
+    for index, candidate in enumerate(candidates):
+        positions = [
+            reference.get("source_start")
+            for reference in candidate.get("source_refs", [])
+            if isinstance(reference.get("source_start"), int)
+        ]
+        if positions:
+            anchors.append((index, positions))
+    if not anchors:
+        if len(candidates) != 1:
+            return candidates
+        anchors = [(0, [0])]
+
+    for criterion in criteria:
+        candidate_index = min(
+            anchors,
+            key=lambda item: min(
+                abs(position - criterion["source_start"]) for position in item[1]
+            ),
+        )[0]
+        source_text = text[criterion["source_start"] : criterion["source_end"]]
+        criterion_value = {
+            "key": criterion["key"],
+            "content_doc": text_doc(criterion["content"]),
+            "source_span": {
+                "requirement_document_id": document["_id"],
+                "content_hash": document["content_hash"],
+                "source_version": document.get("source_version"),
+                "source_start": criterion["source_start"],
+                "source_end": criterion["source_end"],
+                "source_text_hash": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+                "source_quote": source_text,
+                "section": "acceptance_criteria",
+                "format": document["format"],
+            },
+        }
+        values = candidates[candidate_index].setdefault("acceptance_criteria", [])
+        existing_keys = {str(item.get("key", "")).casefold() for item in values}
+        if criterion_value["key"].casefold() not in existing_keys:
+            values.append(criterion_value)
+        states = candidates[candidate_index].setdefault("section_states", {})
+        states["acceptance_criteria"] = "provided"
+    return candidates
+
+
 
 def supported_requirement_formats():
     return set(['pdf', 'docx', 'md', 'txt', 'csv', 'xlsx', 'openapi', 'postman'])
@@ -119,6 +204,12 @@ def atomic_requirement_candidates(document):
 
     def add_paragraph(start, end):
         raw = text[start:end].strip()
+        if raw and all(
+            ACCEPTANCE_CRITERION_LINE.match(line.strip())
+            for line in raw.splitlines()
+            if line.strip()
+        ):
+            return
         value = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s*", "", raw).strip()
         if len(value) < 2:
             return

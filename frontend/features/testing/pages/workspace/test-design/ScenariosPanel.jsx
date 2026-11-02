@@ -30,6 +30,7 @@ export default function ScenariosPanel({
   requirements = [],
   members = [],
   canReview = false,
+  canReadTestConditions = false,
 }) {
   const [selected, setSelected] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -74,6 +75,7 @@ export default function ScenariosPanel({
           testConditions={testConditions}
           requirements={requirements}
           members={members}
+          canReadTestConditions={canReadTestConditions}
           onSubmit={onSubmit}
         />
       )}
@@ -91,6 +93,7 @@ export default function ScenariosPanel({
           testConditions={testConditions}
           requirements={requirements}
           members={members}
+          canReadTestConditions={canReadTestConditions}
           onSubmit={async (event) => {
             event.preventDefault();
             if (editInFlight.current) return;

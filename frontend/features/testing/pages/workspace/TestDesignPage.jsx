@@ -967,7 +967,14 @@ export default function TestDesignPage({ project, workspaceView }) {
           }
         } catch (reason) {
           if (reason?.status >= 400 && reason.status < 500) pendingGroupRequest.current = null;
-          throw new Error(messageOf(reason));
+          const blockedDraftId = reason?.details?.draft_id || reason?.draft_id;
+          const blockedDraft = selected.find((draft) => draft._id === blockedDraftId);
+          const details = messageOf(reason);
+          throw new Error(
+            blockedDraft
+              ? `${blockedDraft.test_case_key || blockedDraft.title}: ${details}`
+              : details,
+          );
         } finally {
           setApprovingDraftGroup(false);
         }
@@ -2768,6 +2775,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           requirements={requirements}
           members={projectMembers}
           canReview={memberRoles.includes("QA")}
+          canReadTestConditions={permissions.includes("testcondition.read")}
           ask={ask}
           reload={load}
           onError={setError}

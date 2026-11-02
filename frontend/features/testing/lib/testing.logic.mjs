@@ -613,8 +613,19 @@ export function messageOf(reason) {
       "Cần điền các trường mở rộng bắt buộc trước khi gửi duyệt hoặc duyệt ca.",
     TEST_CASE_CUSTOM_FIELD_UNKNOWN:
       "Có trường mở rộng không còn cấu hình trong dự án. Hãy bỏ trường cũ hoặc tải lại dữ liệu.",
-    TEST_CASE_OWNER_ROLE_INVALID:
-      "Người phụ trách ca kiểm thử phải là thành viên QA đang hoạt động trong dự án.",
+    TEST_CASE_OWNER_ROLE_INVALID: "Người phụ trách phải là thành viên đang hoạt động của dự án.",
+    TEST_CASE_COMPARISON_STALE:
+      "Bản so sánh hoặc nguồn đã thay đổi. Mở lại ca để đối chiếu trước khi duyệt.",
+    TEST_CASE_STEPS_REQUIRED:
+      "Ca kiểm thử cần có ít nhất một bước với kết quả mong đợi trước khi duyệt.",
+    TEST_CASE_SOURCE_REVIEW_REQUIRED:
+      "Ca do AI đề xuất chưa có dẫn chứng nguồn. Đối chiếu nguồn và lưu lại trước khi duyệt.",
+    TEST_CASE_DUPLICATE_REVIEW_REQUIRED:
+      "Ca gần trùng với ca đang hiệu lực. QA cần loại ca trùng hoặc ghi lý do giữ riêng.",
+    TEST_CASE_BATCH_DUPLICATE_REVIEW_REQUIRED:
+      "Các ca được chọn có nội dung gần trùng. Bỏ ca trùng hoặc ghi lý do giữ riêng trước khi duyệt.",
+    TEST_CASE_LINT_BLOCKED:
+      "Ca kiểm thử còn lỗi nội dung bắt buộc. Mở ca, xử lý các mục được đánh dấu rồi gửi duyệt lại.",
     MAX_CONCURRENT_PROJECTS_REACHED:
       "Người được chọn đã đạt giới hạn số dự án đang thực hiện. Thay đổi chưa được lưu; hãy chọn người khác hoặc nhờ Admin cập nhật giới hạn.",
     RESOURCE_CAPACITY_CHANGED_RETRY_ASSIGNMENT:

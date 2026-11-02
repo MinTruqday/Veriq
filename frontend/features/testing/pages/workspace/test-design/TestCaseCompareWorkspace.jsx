@@ -628,22 +628,10 @@ function FieldEditor({
         <option value="">Chưa phân công</option>
         {value &&
           !members.some((member) => {
-            const roles = member.project_role
-              ? [member.project_role]
-              : Array.isArray(member.project_roles) && member.project_roles.length === 1
-                ? member.project_roles
-                : [];
-            return member.user_id === value && member.status === "ACTIVE" && roles.includes("QA");
-          }) && <option value={value}>Người phụ trách hiện tại không còn đủ điều kiện QA</option>}
+            return member.user_id === value && member.status === "ACTIVE";
+          }) && <option value={value}>Người phụ trách hiện tại không còn trong dự án</option>}
         {members
-          .filter((member) => {
-            const roles = member.project_role
-              ? [member.project_role]
-              : Array.isArray(member.project_roles) && member.project_roles.length === 1
-                ? member.project_roles
-                : [];
-            return member.status === "ACTIVE" && roles.includes("QA");
-          })
+          .filter((member) => member.status === "ACTIVE")
           .map((member) => (
             <option key={member.user_id} value={member.user_id}>
               {[member.user?.full_name, member.user?.email, member.user_label].find(

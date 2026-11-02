@@ -42,17 +42,17 @@ async def accept_test_case_group(project_id, payload, user):
         if draft["revision"] != item.expected_revision:
             raise HTTPException(409, detail={"code": "REVISION_CONFLICT", "draft_id": item.draft_id})
         if context["comparison_token"] != item.comparison_token or context["stale_reasons"]:
-            raise HTTPException(409, detail={"code": "TEST_CASE_COMPARISON_STALE", "draft_id": item.draft_id})
+            raise HTTPException(409, detail={"code": "TEST_CASE_COMPARISON_STALE", "draft_id": item.draft_id, "message": "Bản so sánh hoặc nguồn đã thay đổi. Mở lại ca để đối chiếu trước khi duyệt."})
         if draft.get("status") != "IN_REVIEW":
-            raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION", "draft_id": item.draft_id})
+            raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION", "draft_id": item.draft_id, "message": "Ca không còn ở trạng thái chờ duyệt. Danh sách chưa được thay đổi; hãy tải lại."})
         await validate_review_sources_before_approval(draft)
         await validate_test_case_custom_values(
             project_id, draft.get("custom_values", {}), enforce_required=True
         )
         if not has_verifiable_steps(draft):
-            raise HTTPException(409, detail={"code": "TEST_CASE_STEPS_REQUIRED", "draft_id": item.draft_id})
+            raise HTTPException(409, detail={"code": "TEST_CASE_STEPS_REQUIRED", "draft_id": item.draft_id, "message": "Ca kiểm thử cần có ít nhất một bước với kết quả mong đợi trước khi duyệt."})
         if draft.get("origin") == "ai_generated" and not draft.get("evidence_refs"):
-            raise HTTPException(409, detail={"code": "TEST_CASE_SOURCE_REVIEW_REQUIRED", "draft_id": item.draft_id})
+            raise HTTPException(409, detail={"code": "TEST_CASE_SOURCE_REVIEW_REQUIRED", "draft_id": item.draft_id, "message": "Ca do AI đề xuất chưa có dẫn chứng nguồn. Đối chiếu nguồn và lưu lại trước khi duyệt."})
         matching_versions = {
             str(match.get("version_id"))
             for match in context.get("duplicates", [])
@@ -73,10 +73,10 @@ async def accept_test_case_group(project_id, payload, user):
             )
         findings = lint_test_case(draft)
         if settings.get("testcase_lint_blocking", True) and any(item["severity"] == "error" for item in findings):
-            raise HTTPException(409, detail={"code": "TEST_CASE_LINT_BLOCKED", "draft_id": item.draft_id, "findings": findings})
+            raise HTTPException(409, detail={"code": "TEST_CASE_LINT_BLOCKED", "draft_id": item.draft_id, "findings": findings, "message": "Ca kiểm thử còn lỗi nội dung bắt buộc. Mở ca, xử lý các mục được đánh dấu rồi gửi duyệt lại."})
         drafts.append(draft)
     if len({draft["test_case_key"] for draft in drafts}) != len(drafts):
-        raise HTTPException(409, detail={"code": "MULTIPLE_DRAFTS_FOR_SAME_TEST_CASE"})
+        raise HTTPException(409, detail={"code": "MULTIPLE_DRAFTS_FOR_SAME_TEST_CASE", "message": "Nhóm có nhiều bản nháp cho cùng một mã ca. Chỉ chọn một bản cho mỗi mã."})
     for index, draft in enumerate(drafts):
         duplicate_matches = [
             previous
@@ -149,11 +149,11 @@ async def accept_test_case_group(project_id, payload, user):
             if case:
                 parent = await database.value.test_case_versions.find_one({"_id": case.get("current_version_id"), "project_id": project_id}, session=session)
                 if not parent or draft.get("parent_version_id") != parent["_id"]:
-                    raise HTTPException(409, detail={"code": "TEST_CASE_BASE_VERSION_CHANGED"})
+                    raise HTTPException(409, detail={"code": "TEST_CASE_BASE_VERSION_CHANGED", "draft_id": draft["_id"], "message": "Ca gốc đã được cập nhật trong lúc rà soát. Tải lại, đối chiếu phiên bản mới rồi duyệt lại."})
                 number, parent_id = parent["version"] + 1, parent["_id"]
             else:
                 if draft.get("parent_version_id"):
-                    raise HTTPException(409, detail={"code": "TEST_CASE_PARENT_VERSION_CHANGED"})
+                    raise HTTPException(409, detail={"code": "TEST_CASE_PARENT_VERSION_CHANGED", "draft_id": draft["_id"], "message": "Ca đã có phiên bản gốc mới. Tải lại và đối chiếu trước khi duyệt."})
                 case = {"_id": new_id("TC"), "project_id": project_id, "test_case_key": draft["test_case_key"], "current_version_id": None, "status": "ACTIVE", "owner_id": draft.get("owner_id") or draft.get("created_by"), "tags": draft.get("tags", []), "created_at": timestamp, "updated_at": timestamp}
                 await database.value.test_cases.insert_one(case, session=session)
                 number, parent_id = 1, None
@@ -162,7 +162,7 @@ async def accept_test_case_group(project_id, payload, user):
             await database.value.test_case_versions.insert_one(version, session=session)
             changed = await database.value.test_cases.update_one({"_id": case["_id"], "project_id": project_id, "current_version_id": parent_id}, {"$set": {"current_version_id": version["_id"], "status": "ACTIVE", "updated_at": timestamp}}, session=session)
             if changed.matched_count != 1:
-                raise HTTPException(409, detail={"code": "TEST_CASE_VERSION_CONFLICT"})
+                raise HTTPException(409, detail={"code": "TEST_CASE_VERSION_CONFLICT", "draft_id": draft["_id"], "message": "Phiên bản ca vừa thay đổi. Toàn nhóm chưa được duyệt; tải lại rồi đối chiếu lại."})
             transitioned = await database.value.test_case_drafts.update_one({"_id": draft["_id"], "project_id": project_id, "revision": draft["revision"], "status": "IN_REVIEW"}, {"$set": {"status": "APPROVED", "frozen_version_id": version["_id"], "approved_by": user.id, "approved_at": timestamp, "approval_batch_id": batch_id}, "$inc": {"revision": 1}}, session=session)
             if transitioned.matched_count != 1:
                 raise HTTPException(409, detail={"code": "REVISION_CONFLICT", "draft_id": draft["_id"]})

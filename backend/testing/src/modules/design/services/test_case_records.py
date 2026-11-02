@@ -3,7 +3,6 @@ import json
 
 from fastapi import HTTPException
 
-from src.core.auth import roles_for_membership
 from src.core.common import (
     audit,
     get_project,
@@ -275,14 +274,6 @@ async def validate_test_case_owner(project_id, owner_id):
             detail={
                 "code": "TEST_CASE_OWNER_NOT_ACTIVE_PROJECT_MEMBER",
                 "message": "Người phụ trách phải là thành viên đang hoạt động của dự án.",
-            },
-        )
-    if "QA" not in roles_for_membership(membership):
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "TEST_CASE_OWNER_ROLE_INVALID",
-                "message": "Người phụ trách ca kiểm thử phải có vai trò QA trong dự án.",
             },
         )
     return owner

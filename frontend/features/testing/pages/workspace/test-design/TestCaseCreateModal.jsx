@@ -285,14 +285,7 @@ export default function TestCaseCreateModal({
               >
                 <option value="">Chưa phân công</option>
                 {members
-                  .filter((member) => {
-                    const roles = member.project_role
-                      ? [member.project_role]
-                      : Array.isArray(member.project_roles) && member.project_roles.length === 1
-                        ? member.project_roles
-                        : [];
-                    return member.status === "ACTIVE" && roles.includes("QA");
-                  })
+                  .filter((member) => member.status === "ACTIVE")
                   .map((member) => (
                     <option key={member.user_id} value={member.user_id}>
                       {member.user_label ||

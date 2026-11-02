@@ -32,6 +32,11 @@ export default function RequirementQualityPanel({ lint, loading = false }) {
           thay đổi.
         </p>
       )}
+      <p className="mx-5 mt-4 rounded-control border border-border bg-surface-quiet px-3 py-2 text-sm text-ink-muted">
+        Kết quả này là gợi ý để BA chỉnh bản nháp trong biểu mẫu yêu cầu; AI không tự sửa hoặc gửi
+        duyệt. Nếu cần người khác xác nhận nghiệp vụ còn thiếu, mở tab “Phiếu làm rõ” để tạo câu
+        hỏi. Sau khi nội dung đã cập nhật, lưu bản nháp rồi gửi QA rà soát.
+      </p>
       {lint.artifact_revision && (
         <p className="px-5 pt-3 text-sm text-ink-muted">
           Kết quả kiểm tra cho lần cập nhật {lint.artifact_revision}

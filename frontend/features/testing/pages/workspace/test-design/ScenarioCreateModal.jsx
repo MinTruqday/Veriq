@@ -20,9 +20,34 @@ export default function ScenarioCreateModal({
   readOnly = false,
   requirements = [],
   members = [],
+  canReadTestConditions = false,
   children,
 }) {
   const update = (patch) => setForm((value) => ({ ...value, ...patch }));
+  const requirementVersionIds = form.requirementVersionIds || [];
+  const acceptanceCriterionIds = form.acceptanceCriterionIds || [];
+  const testConditionIds = form.testConditionIds || [];
+  const selectedRequirements = requirements.filter((item) =>
+    requirementVersionIds.includes(item.current_version_id),
+  );
+  const criterionOptions = selectedRequirements.flatMap((item) =>
+    (item.current_version?.acceptance_criteria || []).map((criterion) => ({
+      value: criterion._id,
+      label: `${item.requirement_key} · ${criterion.key || criterion._id}`,
+    })),
+  );
+  const selectedCriterionIds = new Set(acceptanceCriterionIds);
+  const selectedRequirementIds = new Set(requirementVersionIds);
+  const relevantConditions = testConditions.filter((condition) => {
+    const references = condition.basis_refs || [];
+    return references.some((reference) => {
+      const id = reference.artifact_version_id || reference.artifact_id;
+      return (
+        (reference.artifact_type === "ACCEPTANCE_CRITERION" && selectedCriterionIds.has(id)) ||
+        (reference.artifact_type === "REQUIREMENT_VERSION" && selectedRequirementIds.has(id))
+      );
+    });
+  });
 
   return (
     <Modal
@@ -70,38 +95,52 @@ export default function ScenarioCreateModal({
             </select>
           </label>
           <MultiSelect
-            label="Phiên bản yêu cầu"
+            label="Phạm vi yêu cầu"
             options={requirements.map((item) => ({
               value: item.current_version_id,
               label: `${item.requirement_key} ${item.current_version?.title || item.title || ""}`,
             }))}
-            value={form.requirementVersionIds}
+            value={requirementVersionIds}
             onChange={(requirementVersionIds) =>
-              update({ requirementVersionIds, acceptanceCriterionIds: [] })
+              update({ requirementVersionIds, acceptanceCriterionIds: [], testConditionIds: [] })
             }
           />
-          <MultiSelect
-            label="Tiêu chí chấp nhận"
-            options={requirements
-              .filter((item) => form.requirementVersionIds.includes(item.current_version_id))
-              .flatMap((item) =>
-                (item.current_version?.acceptance_criteria || []).map((criterion) => ({
-                  value: criterion._id,
-                  label: `${item.requirement_key} · ${criterion.key || criterion._id}`,
-                })),
+          {requirementVersionIds.length > 0 && (
+            <>
+              <MultiSelect
+                label="Tiêu chí cần bao phủ"
+                options={criterionOptions}
+                value={acceptanceCriterionIds}
+                onChange={(acceptanceCriterionIds) =>
+                  update({ acceptanceCriterionIds, testConditionIds: [] })
+                }
+              />
+              {canReadTestConditions ? (
+                <>
+                  <MultiSelect
+                    label="Điều kiện kiểm thử liên quan"
+                    options={relevantConditions.map((item) => ({
+                      value: item._id,
+                      label: `${item.condition_key || "Điều kiện kiểm thử"}${item.title ? ` · ${item.title}` : ""}`,
+                    }))}
+                    value={testConditionIds.filter((id) =>
+                      relevantConditions.some((item) => item._id === id),
+                    )}
+                    onChange={(testConditionIds) => update({ testConditionIds })}
+                  />
+                  {!relevantConditions.length && (
+                    <p className="text-sm text-ink-muted">
+                      Chưa có điều kiện kiểm thử đã duyệt gắn với phạm vi yêu cầu đang chọn.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  Tài khoản hiện không có quyền xem điều kiện kiểm thử của dự án.
+                </p>
               )}
-            value={form.acceptanceCriterionIds}
-            onChange={(acceptanceCriterionIds) => update({ acceptanceCriterionIds })}
-          />
-          <MultiSelect
-            label="Điều kiện kiểm thử đã phê duyệt"
-            options={testConditions.map((item) => ({
-              value: item._id,
-              label: `${item.condition_key || "Điều kiện kiểm thử"}${item.title ? ` · ${item.title}` : ""}`,
-            }))}
-            value={form.testConditionIds}
-            onChange={(testConditionIds) => update({ testConditionIds })}
-          />
+            </>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             {[
               ["description", "Mô tả tình huống"],
@@ -151,14 +190,7 @@ export default function ScenarioCreateModal({
               >
                 <option value="">Chưa phân công</option>
                 {members
-                  .filter((item) => {
-                    const roles = item.project_role
-                      ? [item.project_role]
-                      : Array.isArray(item.project_roles) && item.project_roles.length === 1
-                        ? item.project_roles
-                        : [];
-                    return item.status === "ACTIVE" && roles.includes("QA");
-                  })
+                  .filter((item) => item.status === "ACTIVE")
                   .map((item) => (
                     <option key={item.user_id} value={item.user_id}>
                       {item.user_label ||

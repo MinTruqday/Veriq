@@ -10,7 +10,11 @@ from src.core.database import database
 from src.schemas.contracts.requirements import RequirementCreate, RequirementExtractionInput, RequirementVersionCreate
 from src.repositories.requirement_import import requirement_import_repository
 from src.repositories.requirement import requirement_repository
-from src.modules.requirements.services.requirement_import import atomic_requirement_candidates, source_document_text
+from src.modules.requirements.services.requirement_import import (
+    attach_labeled_acceptance_criteria,
+    atomic_requirement_candidates,
+    source_document_text,
+)
 from src.modules.requirements.services.requirement_documents import create_requirement_document_record, require_document_access
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
@@ -917,6 +921,7 @@ async def extract_requirement_candidates(document_id, payload, user):
         extraction_mode = "AI_GROUNDED"
     else:
         extracted = atomic_requirement_candidates(document)
+    extracted = attach_labeled_acceptance_criteria(extracted, document)
     if len(extracted) > 500:
         raise HTTPException(status_code=413, detail={"code": "IMPORT_CANDIDATE_LIMIT_EXCEEDED"})
     candidates = prepare_requirement_candidates(job_id, extracted)
