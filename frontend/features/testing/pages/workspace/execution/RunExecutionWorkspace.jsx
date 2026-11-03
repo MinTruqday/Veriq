@@ -52,7 +52,9 @@ export default function RunExecutionWorkspace({
     () => new Set(),
   );
   const [creatingRerun, setCreatingRerun] = useState(false);
+  const [resumingRun, setResumingRun] = useState(false);
   const rerunKey = useRef(null);
+  const resumeOperation = useRef(null);
   const beginAssignmentEdit = () => {
     setAssignmentProposal(null);
     const assignments = { ...(run.test_case_assignments || {}) };
@@ -260,21 +262,42 @@ export default function RunExecutionWorkspace({
                   <button
                     className="apple-button"
                     type="button"
-                    disabled={savingExecution}
+                    disabled={savingExecution || resumingRun}
                     onClick={async () => {
+                      if (resumingRun) return;
+                      if (!resumeOperation.current || resumeOperation.current.runId !== run._id) {
+                        resumeOperation.current = {
+                          runId: run._id,
+                          expectedRevision: run.revision,
+                          idempotencyKey: crypto.randomUUID(),
+                        };
+                      }
+                      const operation = resumeOperation.current;
+                      setResumingRun(true);
                       try {
                         const value = await testingApi.resumeRun(projectId, run._id, {
-                          expected_revision: run.revision,
-                          idempotency_key: crypto.randomUUID(),
+                          expected_revision: operation.expectedRevision,
+                          idempotency_key: operation.idempotencyKey,
                         });
+                        resumeOperation.current = null;
                         onResumeChange(value);
-                        onRunChange(await testingApi.getRun(run._id));
+                        onRunChange(value.run);
                       } catch (reason) {
+                        if (reason?.status === 409) {
+                          resumeOperation.current = null;
+                          try {
+                            onRunChange(await testingApi.getRun(run._id));
+                          } catch (reloadError) {
+                            onError(messageOf(reloadError));
+                          }
+                        }
                         onError(messageOf(reason));
+                      } finally {
+                        setResumingRun(false);
                       }
                     }}
                   >
-                    Tiếp tục thực thi
+                    {resumingRun ? "Đang tiếp tục…" : "Tiếp tục thực thi"}
                   </button>
                 )}
                 {can("testrun.abort") && (

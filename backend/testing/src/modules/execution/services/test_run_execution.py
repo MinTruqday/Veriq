@@ -51,7 +51,12 @@ def _stored_result_matches_request(result, payload):
     return persisted == requested
 
 
-def _verify_idempotency_replay(existing, payload, *, entity):
+def _verify_idempotency_replay(existing, payload, *, entity, actor_id, actor_field):
+    if existing.get(actor_field) != actor_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH", "entity": entity},
+        )
     if existing.get("request_hash") != _idempotency_fingerprint(payload):
         raise HTTPException(
             status_code=409,
@@ -59,7 +64,21 @@ def _verify_idempotency_replay(existing, payload, *, entity):
         )
 
 
-def _verify_resume_replay(existing, payload):
+def _verify_result_replay_actor(result, actor_id):
+    executor_id = result.get("executed_by") or result.get("executor_id")
+    if executor_id != actor_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH", "entity": "TEST_RESULT"},
+        )
+
+
+def _verify_resume_replay(existing, payload, actor_id):
+    if existing.get("resumed_by") != actor_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH", "entity": "TEST_RUN_RESUME"},
+        )
     recorded_revision = existing.get("expected_revision")
     if recorded_revision is None and existing.get("run_revision") is not None:
         recorded_revision = existing["run_revision"] - 1
@@ -133,7 +152,7 @@ async def resume_test_run_record(project_id, run_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     existing = await test_run_repository.find_resume_event(run_id, payload.idempotency_key)
     if existing:
-        _verify_resume_replay(existing, payload)
+        _verify_resume_replay(existing, payload, user.id)
         current_run = await test_run_repository.find_run(run_id, project_id)
         if not current_run:
             raise HTTPException(status_code=404, detail={"code": 'ENTITY_NOT_FOUND'})
@@ -221,7 +240,7 @@ async def resume_test_run_record(project_id, run_id, payload, user):
         existing = await test_run_repository.find_resume_event(run_id, payload.idempotency_key)
         if not existing:
             raise
-        _verify_resume_replay(existing, payload)
+        _verify_resume_replay(existing, payload, user.id)
         current_run = await test_run_repository.find_run(run_id, project_id)
         if not current_run:
             raise HTTPException(status_code=404, detail={"code": 'ENTITY_NOT_FOUND'})
@@ -252,6 +271,7 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
     await require_case_execution_assignment(run, test_case_version_id, user)
     existing = await test_run_repository.find_result_for_case(run_id, test_case_version_id)
     if existing and existing.get("idempotency_key") == payload.idempotency_key:
+        _verify_result_replay_actor(existing, user.id)
         if not _stored_result_matches_request(existing, payload):
             raise HTTPException(
                 status_code=409,
@@ -348,6 +368,7 @@ async def record_test_result_entry(run_id, test_case_version_id, payload, user):
         if not concurrent_result:
             raise
         if concurrent_result.get("idempotency_key") == payload.idempotency_key:
+            _verify_result_replay_actor(concurrent_result, user.id)
             if not _stored_result_matches_request(concurrent_result, payload):
                 raise HTTPException(
                     status_code=409,
@@ -390,7 +411,13 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
         execution_id, payload.idempotency_key
     )
     if existing_event:
-        _verify_idempotency_replay(existing_event, payload, entity="TEST_EXECUTION_UPDATE")
+        _verify_idempotency_replay(
+            existing_event,
+            payload,
+            entity="TEST_EXECUTION_UPDATE",
+            actor_id=user.id,
+            actor_field="updated_by",
+        )
         return {
             "execution": await test_run_repository.find_result(execution_id),
             "update": existing_event,
@@ -486,7 +513,13 @@ async def update_test_execution_record(project_id, execution_id, payload, user):
         )
         if not event:
             raise HTTPException(status_code=409, detail={"code": "EXECUTION_CONFLICT"})
-        _verify_idempotency_replay(event, payload, entity="TEST_EXECUTION_UPDATE")
+        _verify_idempotency_replay(
+            event,
+            payload,
+            entity="TEST_EXECUTION_UPDATE",
+            actor_id=user.id,
+            actor_field="updated_by",
+        )
         return {
             "execution": await test_run_repository.find_result(execution_id),
             "update": event,
@@ -508,7 +541,13 @@ async def correct_test_result_record(result_id, payload, user):
     await require_case_execution_assignment(run, result.get("test_case_version_id"), user)
     existing = await test_run_repository.find_correction(result_id, payload.idempotency_key)
     if existing:
-        _verify_idempotency_replay(existing, payload, entity="TEST_RESULT_CORRECTION")
+        _verify_idempotency_replay(
+            existing,
+            payload,
+            entity="TEST_RESULT_CORRECTION",
+            actor_id=user.id,
+            actor_field="corrected_by",
+        )
         return {
             "result": await test_run_repository.find_result(result_id),
             "correction": existing,
@@ -568,7 +607,13 @@ async def correct_test_result_record(result_id, payload, user):
         event = await test_run_repository.find_correction(result_id, payload.idempotency_key)
         if not event:
             raise HTTPException(status_code=409, detail={"code": "EXECUTION_CONFLICT"})
-        _verify_idempotency_replay(event, payload, entity="TEST_RESULT_CORRECTION")
+        _verify_idempotency_replay(
+            event,
+            payload,
+            entity="TEST_RESULT_CORRECTION",
+            actor_id=user.id,
+            actor_field="corrected_by",
+        )
         return {
             "result": await test_run_repository.find_result(result_id),
             "correction": event,

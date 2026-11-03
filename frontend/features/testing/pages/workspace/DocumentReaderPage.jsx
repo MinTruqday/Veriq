@@ -44,6 +44,7 @@ const markdownComponents = { table: ReadableMarkdownTable };
 
 export default function DocumentReaderPage({ project, section = [] }) {
   const documentId = section[0] || "";
+  const canSummarize = project?.current_permissions?.includes("requirement_document.extract");
   const [document, setDocument] = useState(null);
   const [content, setContent] = useState("");
   const [nextOffset, setNextOffset] = useState(null);
@@ -161,6 +162,14 @@ export default function DocumentReaderPage({ project, section = [] }) {
   }, [project?.locale]);
 
   useEffect(() => {
+    if (canSummarize) return;
+    summaryRequestSequenceRef.current += 1;
+    setSummary(null);
+    setSummaryJob(null);
+    setSummaryLoading(false);
+  }, [canSummarize]);
+
+  useEffect(() => {
     if (document?.format !== "pdf") return undefined;
     let active = true;
     let objectUrl = "";
@@ -257,6 +266,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
   };
 
   const summarize = async () => {
+    if (!canSummarize) return;
     const requestSequence = ++summaryRequestSequenceRef.current;
     setSummaryLoading(true);
     setSummary(null);
@@ -406,27 +416,31 @@ export default function DocumentReaderPage({ project, section = [] }) {
           </p>
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
-          <select
-            className="form-input w-auto"
-            aria-label="Ngôn ngữ tóm tắt"
-            value={language}
-            onChange={(event) => setLanguage(event.target.value)}
-          >
-            <option value="vi">Tiếng Việt</option>
-            <option value="en">English</option>
-          </select>
-          <button
-            className="apple-button"
-            type="button"
-            onClick={summarize}
-            disabled={summaryLoading}
-          >
-            {summaryLoading ? "Đang tóm tắt…" : "Tóm tắt tài liệu"}
-          </button>
-          {summaryLoading && summaryJob?._id && (
-            <button className="secondary-button" type="button" onClick={cancelSummary}>
-              Hủy tóm tắt
-            </button>
+          {canSummarize && (
+            <>
+              <select
+                className="form-input w-auto"
+                aria-label="Ngôn ngữ tóm tắt"
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+              >
+                <option value="vi">Tiếng Việt</option>
+                <option value="en">English</option>
+              </select>
+              <button
+                className="apple-button"
+                type="button"
+                onClick={summarize}
+                disabled={summaryLoading}
+              >
+                {summaryLoading ? "Đang tóm tắt…" : "Tóm tắt tài liệu"}
+              </button>
+              {summaryLoading && summaryJob?._id && (
+                <button className="secondary-button" type="button" onClick={cancelSummary}>
+                  Hủy tóm tắt
+                </button>
+              )}
+            </>
           )}
           <button
             className="secondary-button"
