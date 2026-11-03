@@ -27,21 +27,30 @@ STALE = Gauge("tests_stale", "Test cases needing maintenance")
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        path = request.url.path
         started_at = time.perf_counter()
-        with LATENCY.labels(path).time():
-            try:
-                response = await call_next(request)
-            except Exception:
-                if path.endswith("/phan-tich-anh-huong"):
+        status_code = 500
+        response = None
+        failed = False
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        except Exception:
+            failed = True
+            raise
+        finally:
+            route = request.scope.get("route")
+            path = getattr(route, "path", None) or "unmatched"
+            is_impact_analysis = path.endswith("/phan-tich-anh-huong") or (
+                route is None and request.url.path.endswith("/phan-tich-anh-huong")
+            )
+            elapsed = time.perf_counter() - started_at
+            LATENCY.labels(path).observe(elapsed)
+            if is_impact_analysis:
+                IMPACT_LATENCY.observe(elapsed)
+                if failed or status_code >= 400:
                     IMPACT_FAILED.inc()
-                raise
-        if path.endswith("/phan-tich-anh-huong"):
-            IMPACT_LATENCY.observe(time.perf_counter() - started_at)
-            if response.status_code >= 400:
-                IMPACT_FAILED.inc()
-        REQUESTS.labels(request.method, request.url.path, response.status_code).inc()
-        return response
+            REQUESTS.labels(request.method, path, status_code).inc()
 
 
 async def metrics_endpoint(request=None):

@@ -1,5 +1,7 @@
 import hashlib
 import json
+import logging
+import unicodedata
 from datetime import timedelta
 
 from fastapi import HTTPException
@@ -13,6 +15,25 @@ from src.core.sensitive_data import redact_sensitive_text
 from src.core.source_evidence import split_source_evidence
 from src.modules.execution.services.execution_state import assigned_execution_versions
 from src.repositories.test_run import test_run_repository
+
+logger = logging.getLogger(__name__)
+
+
+def _invalid_execution_assistance_response(project_id, result_id, request_id, code):
+    logger.warning(
+        "Execution assistance response rejected project_id=%s result_id=%s request_id=%s code=%s",
+        project_id,
+        result_id,
+        request_id,
+        code,
+    )
+    return HTTPException(status_code=502, detail={"code": code})
+
+
+def _quote_is_exact_source_excerpt(source_text, quote):
+    normalized_source = unicodedata.normalize("NFC", str(source_text or ""))
+    normalized_quote = unicodedata.normalize("NFC", str(quote or "").strip())
+    return bool(normalized_quote) and normalized_quote in normalized_source
 
 
 def _result_source_text(result):
@@ -69,7 +90,8 @@ def _scope_fingerprint(run, result, version):
 
 
 def _normalize_source_phrase(value):
-    return " ".join(str(value or "").casefold().split()).rstrip(" .,!?:;")
+    normalized = unicodedata.normalize("NFC", str(value or "")).casefold()
+    return " ".join(normalized.split()).rstrip(" .,!?:;")
 
 
 def _defect_values_are_grounded(defect_draft, result, version):
@@ -218,11 +240,13 @@ async def _build_execution_assistance_record(
         "result_revision": result.get("revision"),
         "sensitive_values_redacted": redactions_applied,
     }
+    request_id = new_id("TRC")
     ai_result = await request_ai_automation(
         "execution_assistance",
         project_id,
         json.dumps(context, ensure_ascii=False),
         evidence,
+        request_id=request_id,
     )
     if ai_result.get("status") != "SUCCESS" or ai_result.get("degraded_mode"):
         raise HTTPException(
@@ -231,41 +255,54 @@ async def _build_execution_assistance_record(
         )
     suggestions = ai_result.get("suggestions") or []
     if len(suggestions) != 1:
-        raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_RESPONSE_INVALID"})
+        raise _invalid_execution_assistance_response(
+            project_id, result_id, request_id, "EXECUTION_ASSISTANCE_RESPONSE_INVALID"
+        )
     suggestion = suggestions[0]
     defect_draft = suggestion.get("defect_draft")
     if defect_draft and result.get("status") not in {"FAIL", "BLOCKED"}:
-        raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_DEFECT_STATUS_INVALID"})
+        raise _invalid_execution_assistance_response(
+            project_id, result_id, request_id, "EXECUTION_ASSISTANCE_DEFECT_STATUS_INVALID"
+        )
     if defect_draft and not _defect_values_are_grounded(defect_draft, result, version):
-        raise HTTPException(
-            status_code=502,
-            detail={"code": "EXECUTION_ASSISTANCE_DEFECT_VALUE_UNGROUNDED"},
+        raise _invalid_execution_assistance_response(
+            project_id, result_id, request_id, "EXECUTION_ASSISTANCE_DEFECT_VALUE_UNGROUNDED"
         )
     source_by_ref = {item["artifact_version_id"]: item for item in evidence}
     if set(ai_result.get("evidence_refs") or []) - set(source_by_ref):
-        raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_REFERENCE_INVALID"})
+        raise _invalid_execution_assistance_response(
+            project_id, result_id, request_id, "EXECUTION_ASSISTANCE_REFERENCE_INVALID"
+        )
     cited_refs = []
     valid_step_ids = {str(item.get("id")) for item in version.get("steps") or []}
     for observation in suggestion.get("observations") or []:
         if observation.get("step_id") and observation["step_id"] not in valid_step_ids:
-            raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_STEP_INVALID"})
+            raise _invalid_execution_assistance_response(
+                project_id, result_id, request_id, "EXECUTION_ASSISTANCE_STEP_INVALID"
+            )
         for quote in observation.get("evidence_quotes") or []:
             source = source_by_ref.get(quote.get("evidence_ref"))
-            if not source or quote.get("quote", "").strip() not in source["text"]:
-                raise HTTPException(
-                    status_code=502, detail={"code": "EXECUTION_ASSISTANCE_GROUNDING_INVALID"}
+            if not source or not _quote_is_exact_source_excerpt(
+                source["text"], quote.get("quote")
+            ):
+                raise _invalid_execution_assistance_response(
+                    project_id, result_id, request_id, "EXECUTION_ASSISTANCE_GROUNDING_INVALID"
                 )
             cited_refs.append(quote["evidence_ref"])
     if defect_draft:
         for quote in defect_draft.get("evidence_quotes") or []:
             source = source_by_ref.get(quote.get("evidence_ref"))
-            if not source or quote.get("quote", "").strip() not in source["text"]:
-                raise HTTPException(
-                    status_code=502, detail={"code": "EXECUTION_ASSISTANCE_GROUNDING_INVALID"}
+            if not source or not _quote_is_exact_source_excerpt(
+                source["text"], quote.get("quote")
+            ):
+                raise _invalid_execution_assistance_response(
+                    project_id, result_id, request_id, "EXECUTION_ASSISTANCE_GROUNDING_INVALID"
                 )
             cited_refs.append(quote["evidence_ref"])
     if not cited_refs:
-        raise HTTPException(status_code=502, detail={"code": "EXECUTION_ASSISTANCE_GROUNDING_REQUIRED"})
+        raise _invalid_execution_assistance_response(
+            project_id, result_id, request_id, "EXECUTION_ASSISTANCE_GROUNDING_REQUIRED"
+        )
     latest_scope = await _execution_assistance_scope(project_id, run_id, result_id, user)
     if latest_scope[4] != fingerprint:
         raise HTTPException(

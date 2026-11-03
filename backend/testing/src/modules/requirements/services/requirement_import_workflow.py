@@ -151,8 +151,50 @@ def grounded_requirement_candidates(document, result_batches):
                         source_refs.append(reference)
                 return accepted
 
+            criterion_values = list(suggestion.get("acceptance_criteria", []))
+            seen_criteria = {
+                re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+                for value in criterion_values
+            }
+            content_blocks = re.split(
+                r"\n\s*\n", str(suggestion.get("content") or "").replace("\r\n", "\n")
+            )
+            paragraphs = []
+            for block in content_blocks:
+                current = []
+                for line in block.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or line.startswith("|"):
+                        if current:
+                            paragraphs.append(" ".join(current))
+                            current = []
+                        continue
+                    list_item = re.match(r"^(?:[-*•]|\d+[.)])\s+(.+)$", line)
+                    if list_item:
+                        if current:
+                            paragraphs.append(" ".join(current))
+                            current = []
+                        paragraphs.append(list_item.group(1).strip())
+                    else:
+                        current.append(line)
+                if current:
+                    paragraphs.append(" ".join(current))
+
+            for paragraph in paragraphs:
+                for value in re.split(r"(?<=[.!?])\s+", paragraph):
+                    value = value.strip()
+                    normalized_value = re.sub(r"\s+", " ", value).strip().casefold()
+                    if (
+                        not normalized_value
+                        or normalized_value in seen_criteria
+                        or not source_reference_for(value, "acceptance_criteria")
+                    ):
+                        continue
+                    criterion_values.append(value)
+                    seen_criteria.add(normalized_value)
+
             acceptance_criteria = grounded_values(
-                suggestion.get("acceptance_criteria", []), "acceptance_criteria"
+                criterion_values, "acceptance_criteria"
             )
             actors = grounded_values(suggestion.get("actors", []), "actors")
             business_rules = grounded_values(
@@ -183,6 +225,8 @@ def grounded_requirement_candidates(document, result_batches):
                 )
                 if suggestion.get(field) and not values
             )
+            if not acceptance_criteria:
+                missing.add("acceptance_criteria")
             section_states = {field: "missing" for field in missing}
             section_states.update(
                 {

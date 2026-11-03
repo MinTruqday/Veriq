@@ -25,7 +25,17 @@ x-object-storage-environment: &object-storage-environment
   OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:?OBJECT_STORAGE_REGION is required}
 
 x-app-healthcheck: &app-healthcheck
-  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/san-sang', timeout=15)"]
+  test:
+    - CMD
+    - python
+    - -c
+    - |-
+      import sys, urllib.error, urllib.request
+      try:
+          urllib.request.urlopen('http://127.0.0.1:8000/san-sang', timeout=15)
+      except urllib.error.HTTPError as error:
+          print(error.read().decode('utf-8', 'replace'))
+          sys.exit(1)
   interval: 30s
   timeout: 60s
   start_period: 60s
@@ -44,6 +54,8 @@ services:
     init: true
     restart: always
     logging: *container-logging
+    environment:
+      MONGODB_MIN_FREE_DISK_KB: ${MONGODB_MIN_FREE_DISK_KB:-5242880}
     command:
       - --replSet
       - rs0
@@ -53,7 +65,16 @@ services:
     volumes:
       - mongodb_data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "if [ -f /data/db/.replica-set-ready ]; then timeout 5s bash -c 'exec 3<>/dev/tcp/127.0.0.1/27017'; else timeout 60s mongosh --quiet --eval 'try { const state = rs.status(); quit(state.ok == 1 ? 0 : 1) } catch (error) { try { quit(rs.initiate({_id:\"rs0\",members:[{_id:0,host:\"mongodb:27017\"}]}).ok == 1 ? 0 : 1) } catch (retryError) { quit(retryError.codeName == \"AlreadyInitialized\" ? 0 : 1) } }' && touch /data/db/.replica-set-ready; fi"]
+      test:
+        - CMD-SHELL
+        - >-
+          if [ ! -f /data/db/.replica-set-ready ]; then
+            timeout 60s mongosh --quiet --eval 'try { const state = rs.status(); quit(state.ok == 1 ? 0 : 1) } catch (error) { try { quit(rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]}).ok == 1 ? 0 : 1) } catch (retryError) { quit(retryError.codeName == "AlreadyInitialized" ? 0 : 1) } }' && touch /data/db/.replica-set-ready || exit 1;
+          fi;
+          case "$$MONGODB_MIN_FREE_DISK_KB" in ''|*[!0-9]*) echo 'MONGODB_MIN_FREE_DISK_KB must be a positive integer'; exit 1;; esac;
+          available_kb=$$(df -Pk /data/db | awk 'NR==2 {print $$4}');
+          if [ "$$available_kb" -lt "$$MONGODB_MIN_FREE_DISK_KB" ]; then echo "Docker storage filesystem has $$available_kb KB free; MongoDB requires at least $$MONGODB_MIN_FREE_DISK_KB KB for safe operation"; exit 1; fi;
+          timeout 5s mongosh --quiet --eval 'try { const ping = db.adminCommand({ping:1}); const state = rs.status(); quit(ping.ok == 1 && state.ok == 1 && state.members.some(member => member.stateStr == "PRIMARY") ? 0 : 1); } catch (error) { quit(1); }'
       interval: 30s
       timeout: 70s
       start_period: 60s
@@ -192,9 +213,12 @@ services:
       NOTIFICATION_DB_NAME: ${NOTIFICATION_DB_NAME:?NOTIFICATION_DB_NAME is required}
       AUTHENTICATION_URL: ${AUTHENTICATION_URL:?AUTHENTICATION_URL is required}
     depends_on:
-      - authentication
-      - mongodb
-      - redis
+      authentication:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - veriq_network
 
@@ -224,7 +248,7 @@ services:
 
   ai:
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/suc-khoe', timeout=15)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/san-sang', timeout=15)"]
       interval: 30s
       timeout: 20s
       start_period: 180s
@@ -297,7 +321,7 @@ services:
       DOCUMENT_INDEX_CONTRACT_VERSION: ${DOCUMENT_INDEX_CONTRACT_VERSION:-2}
     depends_on:
       mongodb:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_started
       rabbitmq:
@@ -340,11 +364,16 @@ services:
       DOCUMENT_PARSE_TIMEOUT_SECONDS: ${DOCUMENT_PARSE_TIMEOUT_SECONDS:-1800}
       MAINTENANCE_PROPOSAL_APPLY_LEASE_SECONDS: ${MAINTENANCE_PROPOSAL_APPLY_LEASE_SECONDS:-900}
     depends_on:
-      - mongodb
-      - ai
-      - content
-      - cloud
-      - worker
+      mongodb:
+        condition: service_healthy
+      ai:
+        condition: service_started
+      content:
+        condition: service_started
+      cloud:
+        condition: service_started
+      worker:
+        condition: service_started
     networks:
       - veriq_network
 
@@ -476,8 +505,10 @@ services:
       SMTP_PORT: ${SMTP_PORT:?SMTP_PORT is required}
       SMTP_USER: ${SMTP_USER:?SMTP_USER is required}
     depends_on:
-      - mongodb
-      - redis
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - veriq_network
   content:
@@ -510,10 +541,14 @@ services:
       DOCUMENT_INGESTION_POLL_INTERVAL_SECONDS: ${DOCUMENT_INGESTION_POLL_INTERVAL_SECONDS:-1}
       DOCUMENT_INDEX_CONTRACT_VERSION: ${DOCUMENT_INDEX_CONTRACT_VERSION:-2}
     depends_on:
-      - authentication
-      - mongodb
-      - redis
-      - rabbitmq
+      authentication:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
     networks:
       - veriq_network
 
@@ -538,9 +573,12 @@ services:
       AUTHENTICATION_URL: ${AUTHENTICATION_URL:?AUTHENTICATION_URL is required}
       OBJECT_STORAGE_LEGACY_BUCKET: ${OBJECT_STORAGE_LEGACY_BUCKET:?OBJECT_STORAGE_LEGACY_BUCKET is required}
     depends_on:
-      - authentication
-      - mongodb
-      - redis
+      authentication:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - veriq_network
 
@@ -569,7 +607,7 @@ services:
       TESTING_URL: ${TESTING_URL:?TESTING_URL is required}
     depends_on:
       mongodb:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     networks:

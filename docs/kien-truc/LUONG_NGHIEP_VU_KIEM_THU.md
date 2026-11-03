@@ -29,6 +29,31 @@ Phân loại nguồn tái sử dụng danh mục có sẵn: SRS, BRD, User Story
 
 QA xác định những nguồn áp dụng với dự án. Đánh giá dựa vào thông tin: mục tiêu, hành vi, tác nhân, điều kiện, quy tắc, dữ liệu/quyền, tiêu chí đo được, ngoại lệ và phụ thuộc. Thiếu thông tin tạo mục cần bổ sung hoặc làm rõ; không suy ra từ số lượng tệp và không yêu cầu mọi dự án có đủ mọi loại tài liệu.
 
+### Hợp đồng nhập Requirement và tiêu chí chấp nhận
+
+1. Tệp gốc và phiên bản được giữ nguyên; Docling/OCR tạo nội dung chuẩn hóa cùng cảnh báo phần không đọc được. Trích xuất không được coi là đầy đủ nếu còn trang/khối lỗi.
+2. AI lập Requirement nháp theo cấu trúc nguồn. Mỗi hành vi hoặc ràng buộc kiểm chứng độc lập phải có tiêu chí chấp nhận riêng, kể cả khi tài liệu không ghi nhãn `AC`. AI phải dùng câu trích nguyên văn liên tục, gắn nguồn và không thêm điều kiện suy diễn.
+3. Backend kiểm tra từng đề xuất với văn bản nguồn đã chuẩn hóa, lưu ID/phiên bản/hash tài liệu, vị trí bắt đầu-kết thúc, trích đoạn và hash trích đoạn. Nếu AI bỏ trường tiêu chí nhưng phần nội dung Requirement chứa câu nguồn nguyên văn, backend tách các câu trong phần nội dung đó và đưa câu nào khớp chính xác nguồn thành tiêu chí nháp. Phần khôi phục này không dùng embedding, không gọi thêm model và không hợp thức hóa nội dung không có trong nguồn.
+4. Nếu nội dung AI diễn đạt lại, nguồn không khớp, tài liệu bị cắt/mất trang hoặc câu không thể gắn vị trí chính xác, không lưu câu đó như tiêu chí đã xác minh. Hiển thị trạng thái cần rà soát/thiếu bằng chứng; người dùng phải sửa hoặc bổ sung nguồn. Tách câu chỉ tạo đề xuất, không tự quyết định phạm vi nghiệp vụ.
+5. Người dùng xem/sửa/loại từng Requirement và tiêu chí trong preview. Chấp nhận nhập chỉ tạo bản nháp có nguồn dẫn; không tự duyệt Requirement. BA chịu trách nhiệm nội dung nghiệp vụ, QA rà soát và duyệt theo quyền. Sửa nguồn, đổi phiên bản hoặc xung đột revision làm kết quả cũ cần đối chiếu lại.
+6. Tiêu chí đã duyệt là đầu vào phân tích bao phủ và sinh Scenario/Test Case. Giữ nguyên liên kết đến Requirement version, tiêu chí, tài liệu và vị trí nguồn; không tạo tiêu chí mới chỉ để làm đầy số lượng.
+
+#### Ma trận nghiệm thu nhập tiêu chí
+
+| Tình huống | Kết quả bắt buộc |
+| --- | --- |
+| Hành vi nằm trong văn xuôi, không có nhãn AC; AI trả tiêu chí rỗng | Tách câu nguyên văn trong nội dung Requirement, gắn đúng phiên bản/vị trí/hash; hiện ở preview để người dùng quyết định. |
+| AI trả tiêu chí nguyên văn có nhãn AC hoặc trong bảng/danh sách | Giữ từng tiêu chí riêng, nguồn dẫn chính xác; không gộp các hàng hay điều kiện khác nhau. |
+| AI trả câu diễn đạt lại hoặc câu không nằm trong nguồn | Không nhận như tiêu chí có căn cứ; đánh dấu cần rà soát và không tạo nội dung thay thế. |
+| Văn bản có nhiều hành vi trong các câu riêng | Đề xuất từng câu kiểm chứng được; giữ nguyên từ ngữ, thứ tự nguồn và nghĩa vụ; không tách tùy tiện mệnh đề làm đổi nghĩa. |
+| DOCX/PDF scan, OCR lỗi, bảng nhiều trang hoặc tài liệu bị cắt | Giữ cảnh báo và vị trí có thật; không tuyên bố đủ tiêu chí, không bịa trang/vùng hoặc nguồn. |
+| Requirement trùng, mâu thuẫn, thiếu điều kiện hoặc có nguồn phiên bản mới | Đưa vào rà soát hợp nhất/làm rõ; không âm thầm ghi đè bản cũ hoặc tự chọn một nguồn. |
+| Người dùng chỉnh tiêu chí, quyền bị thu hồi, revision đổi, nhấp gửi lặp hoặc một phần ghi lỗi | Lưu nháp theo quyền/revision; nguồn bị thu hồi thì chặn đọc/ghi; idempotency ngăn trùng; lỗi nhóm không báo thành công một phần. |
+| Tester, Viewer, QA-only hoặc người ngoài dự án gọi API ghi/import | Backend từ chối nếu vai trò/quyền không cho phép; ẩn nút trên giao diện không được coi là lớp bảo vệ. |
+| Đề xuất được chấp nhận và Requirement được duyệt | Giữ phiên bản và audit; chỉ sau duyệt mới cho các bước tiếp theo tiêu thụ baseline. Không tự sinh/duyệt Test Plan hay Test Case nếu không có thao tác riêng được người dùng kích hoạt. |
+
+Nghiệm thu đầu-cuối bao gồm nhập DOCX/PDF/TXT/MD/XLSX/CSV và đặc tả API được hỗ trợ; kiểm tra nội dung trích xuất, nguồn dẫn, phiên bản, quyền, xử lý lỗi/khôi phục, preview và lưu nháp; sau đó xác nhận tiêu chí đã duyệt truy vết tới Scenario, Test Case, Test Plan, Test Run và báo cáo. Dữ liệu thử phải gồm tiêu chí có nhãn và không nhãn, bảng, bản scan/OCR, nguồn trùng/mâu thuẫn, nội dung thiếu, file hỏng, provider timeout, quyền bị thu hồi và revision cạnh tranh. Mọi ví dụ dùng dữ liệu tổng hợp; không dùng thông tin lương/CV thật để kiểm thử.
+
 ## Quyền, AI và phiên bản
 
 - BA quản lý thông tin dự án, thành viên theo phạm vi được giao, tài liệu nghiệp vụ và nội dung Requirement; BA không duyệt Requirement hoặc Test Case.
@@ -579,3 +604,10 @@ Các mục trên là khoảng trống có bằng chứng hoặc phần chưa đ�
 - Chạy `pnpm quality` với `NEXT_PUBLIC_API_URL=/api` và `INTERNAL_API_URL=http://traefik:8000`: Prettier, ESLint và Next production build đều đạt. Chạy `compileall` trên source trong container Testing và AI, cùng `git diff --check`: đạt.
 - Với phiên QA đăng nhập thật, API đọc trên dự án tổng hợp trả HTTP 200 cho tài liệu nguồn, Requirement, Test Plan, truy vết điều kiện, phân tích AI, độ khó dự án, báo cáo trạng thái, Test Run và phân tích nghĩa vụ kiểm thử. Không ghi dữ liệu trong lượt đọc này.
 - Đây là kiểm tra bản dựng và smoke API đọc tích hợp sau khi dựng; không thay thế các khoảng trống nghiệm thu AI-05 qua route, nhánh không có Defect/retest của AI-08, hoặc ma trận API toàn hệ thống đã nêu ở trên.
+
+### Khắc phục trích xuất tiêu chí không gắn nhãn ngày 03/11/2026
+
+- Tái hiện từ `Errorr.docx`: Requirement về đăng ký chờ có hai hành vi trong văn xuôi và một ràng buộc trạng thái ở nguồn khác; giao diện nhập báo chưa trích xuất được tiêu chí chấp nhận. Nguyên nhân là model có thể bỏ trường `acceptance_criteria` hoặc diễn đạt lại; backend chỉ giữ giá trị khớp nguyên văn nhưng không khôi phục các câu đã có trong nội dung Requirement.
+- Prompt tiếng Anh hiện yêu cầu đưa từng hành vi/ràng buộc kiểm chứng được vào tiêu chí riêng, trích nguyên văn, không gộp và không suy diễn. Backend bổ sung phục hồi xác định từ các câu của nội dung Requirement; mỗi tiêu chí vẫn phải khớp văn bản nguồn và lưu span/hash/phiên bản. Không thêm lượt model/embedding; nội dung vẫn là bản nháp người dùng xem và quyết định, không tự duyệt.
+- Kiểm tra trực tiếp hàm backend trong Docker Testing với nội dung tái hiện từ ảnh: hai câu hành vi không nhãn sinh đúng hai tiêu chí; câu giới hạn hai trạng thái sinh đúng một; tiêu chí AI paraphrase được thay bằng câu nguyên văn khớp nguồn; nội dung/tiêu chí không có trong nguồn bị loại. Kiểm tra thêm xuống dòng mềm trong câu và hai mục bullet độc lập. Offset trích đoạn, phiên bản nguồn và SHA-256 khớp; khi không còn tiêu chí có căn cứ, trạng thái Requirement là `missing` thay vì để trống mà trông như đã đủ.
+- Image AI và Testing đã được dựng, hai container được khởi động lại và báo healthy. `compileall` cho hai backend, `docker compose config --quiet` và `git diff --check` đạt. Lượt này kiểm chứng hàm backend bằng dữ liệu tổng hợp phản ánh lỗi; chưa chạy provider thật hay thao tác trình duyệt với một dự án sống. Không tính đây là nghiệm thu toàn bộ các luồng/nghiệp vụ Veriq.

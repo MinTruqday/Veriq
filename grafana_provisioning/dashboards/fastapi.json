@@ -18,6 +18,18 @@
       "type": "timeseries",
       "gridPos": {"h": 9, "w": 24, "x": 0, "y": 8},
       "targets": [{"expr": "sum by (service) (rate(http_requests_total[5m]))", "legendFormat": "{{service}}"}]
+    },
+    {
+      "title": "HTTP 5xx by Service and Route",
+      "type": "timeseries",
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 17},
+      "targets": [{"expr": "sum by (service, path) (rate(http_errors_total{path!=\"/san-sang\"}[5m])) or label_replace(sum by (path) (rate(qa_http_requests_total{status=~\"5..\",path!=\"/san-sang\"}[5m])), \"service\", \"testing\", \"path\", \".*\")", "legendFormat": "{{service}} {{path}}"}]
+    },
+    {
+      "title": "Readiness Failures by Service",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 26},
+      "targets": [{"expr": "sum by (service) (rate(http_errors_total{path=\"/san-sang\"}[5m])) or label_replace(sum(rate(qa_http_requests_total{status=~\"5..\",path=\"/san-sang\"}[5m])), \"service\", \"testing\", \"path\", \".*\")", "legendFormat": "{{service}}"}]
     }
   ]
 }
