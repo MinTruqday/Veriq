@@ -60,13 +60,19 @@ class RequirementImportRepository:
         await database.value.import_jobs.insert_one(job, session=session)
 
     async def mark_document_extracted(
-        self, document_id, project_id, status, job_id, updated_at, content_hash, session=None
+        self, document_id, project_id, job_id, updated_at, content_hash, session=None
     ):
         result = await database.value.requirement_documents.update_one(
-            {"_id": document_id, "project_id": project_id, "content_hash": content_hash},
+            {
+                "_id": document_id,
+                "project_id": project_id,
+                "content_hash": content_hash,
+                "status": {"$in": ["READY", "EXTRACTED", "CONFIRMED"]},
+            },
             {
                 "$set": {
-                    "status": status,
+                    "status": "READY",
+                    "requirement_import_status": "PREVIEW_READY",
                     "last_import_job_id": job_id,
                     "updated_at": updated_at,
                 },
@@ -217,14 +223,23 @@ class RequirementImportRepository:
         return result.matched_count == 1
 
     async def confirm_document(self, document_id, project_id, status, updated_at, session=None):
-        await database.value.requirement_documents.update_one(
-            {"_id": document_id, "project_id": project_id},
+        result = await database.value.requirement_documents.update_one(
             {
-                "$set": {"status": status, "updated_at": updated_at},
+                "_id": document_id,
+                "project_id": project_id,
+                "status": {"$in": ["READY", "EXTRACTED", "CONFIRMED"]},
+            },
+            {
+                "$set": {
+                    "status": "READY",
+                    "requirement_import_status": status,
+                    "updated_at": updated_at,
+                },
                 "$inc": {"revision": 1},
             },
             **({"session": session} if session is not None else {}),
         )
+        return result.matched_count == 1
 
 
 requirement_import_repository = RequirementImportRepository()

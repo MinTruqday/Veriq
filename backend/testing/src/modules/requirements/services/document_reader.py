@@ -24,7 +24,7 @@ from src.repositories.requirement_source_block import requirement_source_block_r
 
 
 SUMMARY_INPUT_LIMIT = 12000
-SUMMARY_PROMPT_VERSION = "1"
+SUMMARY_PROMPT_VERSION = "2"
 
 
 class SummaryJobCancelled(Exception):
@@ -1125,8 +1125,7 @@ async def summarize_project_documents(project_id, request, user, job_id=None, ge
             "excluded": excluded,
             "summary": "",
         }
-    summaries = [f"{item['filename']} (v{item['source_version']}): {item['summary']}" for item in results]
-    combined = "\n\n".join(summaries)
+    combined = "\n\n".join(item["summary"] for item in results)
     while len(combined) > SUMMARY_INPUT_LIMIT:
         await _check_summary_job(job_id, generation)
         combined = "\n\n".join(
@@ -1147,10 +1146,8 @@ async def summarize_project_documents(project_id, request, user, job_id=None, ge
             or source.get("ai_enabled") is not True
         ):
             raise HTTPException(status_code=409, detail={"code": "SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED"})
-    overall = (
-        combined
-        if len(results) == 1
-        else await ai_automation_client.summarize_knowledge_text(combined, request.output_language)
+    overall = combined if len(results) == 1 else await ai_automation_client.summarize_knowledge_text(
+        combined, request.output_language
     )
     return {
         "status": "COMPLETED" if not excluded and all(item["complete"] for item in results) else "INCOMPLETE",

@@ -39,7 +39,9 @@ Do not reveal private chain of thought
 <summary_rules>
 1 Do not invent metadata conclusions or authority
 2 Preserve important technical identifiers
-3 Use at most 250 words
+3 Write every user-facing sentence in the supplied output language; do not mix languages
+4 Preserve proper nouns and technical identifiers only when they have no localized equivalent
+5 Use at most 250 words
 </summary_rules>
-<output_contract>Return only a concise plain-text summary of at most 250 words. Omit unsupported claims rather than guessing.</output_contract>
+<output_contract>Return only a concise plain-text summary in the supplied output language, at most 250 words. Do not prepend a filename, version, or source label; those are supplied separately by the application. Omit unsupported claims rather than guessing.</output_contract>
 <untrusted_document_json>{prompt_json(text)}</untrusted_document_json>"""

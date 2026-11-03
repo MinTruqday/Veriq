@@ -847,6 +847,20 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (activeProjectId.current === requestedProjectId) setRetryingSource(false);
     }
   };
+  const runSourceExtraction = async (document, requestedProjectId) => {
+    const result = await testingApi.extractRequirementDocument(
+      document._id,
+      `source-${document.content_hash}`,
+    );
+    if (activeProjectId.current !== requestedProjectId) return;
+    if (!Array.isArray(result?.preview)) {
+      throw new Error("Không nhận được bản xem trước yêu cầu từ tài liệu.");
+    }
+    setPreview(result);
+    setSelectedIndexes(result.preview.map((_, index) => index));
+    const refreshedDocument = await testingApi.getRequirementDocument(document._id);
+    if (activeProjectId.current === requestedProjectId) rememberSourceDocument(refreshedDocument);
+  };
   const extractSourceRequirements = async () => {
     if (
       !sourceDocument ||
@@ -861,15 +875,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setError("");
     const requestedProjectId = project._id;
     try {
-      const result = await testingApi.extractRequirementDocument(
-        sourceDocument._id,
-        `source-${sourceDocument.content_hash}`,
-      );
-      if (activeProjectId.current !== requestedProjectId) return;
-      setPreview(result);
-      setSelectedIndexes(result.preview.map((_, index) => index));
-      const refreshedDocument = await testingApi.getRequirementDocument(sourceDocument._id);
-      if (activeProjectId.current === requestedProjectId) rememberSourceDocument(refreshedDocument);
+      await runSourceExtraction(sourceDocument, requestedProjectId);
     } catch (reason) {
       if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
     } finally {
@@ -886,11 +892,17 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         expected_revision: sourceDocument.revision,
         ai_enabled: true,
       });
-      if (activeProjectId.current === requestedProjectId) rememberSourceDocument(updated);
+      if (activeProjectId.current !== requestedProjectId) return;
+      rememberSourceDocument(updated);
+      setExtractingSource(true);
+      await runSourceExtraction(updated, requestedProjectId);
     } catch (reason) {
       if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
     } finally {
-      if (activeProjectId.current === requestedProjectId) setRetryingSource(false);
+      if (activeProjectId.current === requestedProjectId) {
+        setRetryingSource(false);
+        setExtractingSource(false);
+      }
     }
   };
   const continueRequirementImport = async (document) => {
@@ -1596,6 +1608,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             <RequirementSourceDocumentsPanel
               projectId={project._id}
               projectLocale={project.locale}
+              userLocale={user?.locale}
               items={visibleSourceDocuments}
               members={visibleMembers}
               can={can}

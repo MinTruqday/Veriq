@@ -136,6 +136,7 @@ function documentFormatLabel(format) {
 export default function RequirementSourceDocumentsPanel({
   projectId,
   projectLocale,
+  userLocale,
   items,
   members,
   can,
@@ -157,14 +158,15 @@ export default function RequirementSourceDocumentsPanel({
   const [summaryResult, setSummaryResult] = useState(null);
   const [summaryJob, setSummaryJob] = useState(null);
   const [summaryLanguage, setSummaryLanguage] = useState(
-    projectLocale?.toLowerCase().startsWith("en") ? "en" : "vi",
+    (userLocale || projectLocale)?.toLowerCase().startsWith("en") ? "en" : "vi",
   );
   const summaryIdempotencyRef = useRef({ scope: "", key: "" });
   const summaryRequestSequenceRef = useRef(0);
 
   useEffect(() => {
-    setSummaryLanguage(projectLocale?.toLowerCase().startsWith("en") ? "en" : "vi");
-  }, [projectLocale]);
+    const locale = userLocale || projectLocale;
+    setSummaryLanguage(locale?.toLowerCase().startsWith("en") ? "en" : "vi");
+  }, [projectLocale, userLocale]);
 
   useEffect(() => {
     summaryRequestSequenceRef.current += 1;
@@ -759,7 +761,8 @@ export default function RequirementSourceDocumentsPanel({
                   </button>
                 )}
                 {can("requirement_document.review_extraction") &&
-                  item.status === "EXTRACTED" &&
+                  (item.requirement_import_status === "PREVIEW_READY" ||
+                    item.status === "EXTRACTED") &&
                   item.last_import_job_id && (
                     <button
                       aria-label="Tiếp tục nhập yêu cầu"

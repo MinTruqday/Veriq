@@ -240,6 +240,15 @@ async def reuse_ready_requirement_document(document, user):
 
 async def reuse_uploaded_requirement_document(document, user):
     status = document.get("status")
+    if status in {"EXTRACTED", "CONFIRMED"}:
+        await require_document_access(document, user, "requirement_document.read")
+        await requirement_document_repository.normalize_requirement_import_status(
+            document["project_id"], document["_id"]
+        )
+        document = await requirement_document_repository.find(
+            document["_id"], document["project_id"]
+        )
+        status = document.get("status") if document else status
     if status == "READY":
         return await reuse_ready_requirement_document(document, user)
     if status == "ARCHIVED":
@@ -1095,6 +1104,7 @@ async def upload_requirement_document_record(
 
 async def list_requirement_document_records(project_id, status, query_text, limit, user):
     await get_project(project_id, user, 'requirement_document.read')
+    await requirement_document_repository.normalize_requirement_import_status(project_id)
     query = {"project_id": project_id}
     if status:
         query["status"] = status.upper()
@@ -1255,6 +1265,10 @@ async def get_requirement_document_record(document_id, user, permission=None):
         user,
         permission or 'requirement_document.read',
     )
+    await requirement_document_repository.normalize_requirement_import_status(
+        document["project_id"], document_id
+    )
+    document = await requirement_document_repository.find(document_id, document["project_id"])
     return await require_document_access(
         document, user, permission or 'requirement_document.read'
     )

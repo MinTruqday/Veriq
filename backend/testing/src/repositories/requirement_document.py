@@ -67,6 +67,30 @@ class RequirementDocumentRepository:
             {"_id": document_id, "project_id": project_id}
         )
 
+    async def normalize_requirement_import_status(self, project_id, document_id=None):
+        base_query = {
+            "project_id": project_id,
+            "status": {"$in": ["EXTRACTED", "CONFIRMED"]},
+            "normalized_content": {"$exists": True, "$ne": None},
+        }
+        if document_id:
+            base_query["_id"] = document_id
+        for legacy_status, import_status in (
+            ("EXTRACTED", "PREVIEW_READY"),
+            ("CONFIRMED", "CONFIRMED"),
+        ):
+            query = {**base_query, "status": legacy_status}
+            await self.documents.update_many(
+                query,
+                {
+                    "$set": {
+                        "status": "READY",
+                        "requirement_import_status": import_status,
+                    },
+                    "$inc": {"revision": 1},
+                },
+            )
+
     async def list_by_ids(self, project_id, identifiers):
         return await self.documents.find(
             {"project_id": project_id, "_id": {"$in": identifiers}}

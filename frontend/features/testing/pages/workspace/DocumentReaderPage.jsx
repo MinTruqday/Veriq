@@ -5,6 +5,7 @@ import { Children, isValidElement } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { ErrorState, LoadingState, Panel } from "../../components/WorkspacePrimitives";
 import { messageOf } from "../../lib/testing";
 import { projectRoute } from "../../routes";
@@ -43,6 +44,7 @@ function ReadableMarkdownTable({ children }) {
 const markdownComponents = { table: ReadableMarkdownTable };
 
 export default function DocumentReaderPage({ project, section = [] }) {
+  const { user } = useAuth();
   const documentId = section[0] || "";
   const canSummarize = project?.current_permissions?.includes("requirement_document.extract");
   const [document, setDocument] = useState(null);
@@ -73,8 +75,13 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [language, setLanguage] = useState(
-    project?.locale?.toLowerCase().startsWith("en") ? "en" : "vi",
+    (user?.locale || project?.locale)?.toLowerCase().startsWith("en") ? "en" : "vi",
   );
+
+  useEffect(() => {
+    const locale = user?.locale || project?.locale;
+    setLanguage(locale?.toLowerCase().startsWith("en") ? "en" : "vi");
+  }, [project?.locale, user?.locale]);
 
   const loadPage = useCallback(
     async (offset = 0, append = false, sheet = "", pageNo = null) => {

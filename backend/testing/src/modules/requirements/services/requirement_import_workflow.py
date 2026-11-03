@@ -10,6 +10,7 @@ from src.core.database import database
 from src.schemas.contracts.requirements import RequirementCreate, RequirementExtractionInput, RequirementVersionCreate
 from src.repositories.requirement_import import requirement_import_repository
 from src.repositories.requirement import requirement_repository
+from src.repositories.requirement_document import requirement_document_repository
 from src.modules.requirements.services.requirement_import import (
     attach_labeled_acceptance_criteria,
     atomic_requirement_candidates,
@@ -933,6 +934,13 @@ async def extract_requirement_candidates(document_id, payload, user):
         'requirement_document.extract',
     )
     await require_document_access(document, user, 'requirement_document.read')
+    if document.get("status") in {"EXTRACTED", "CONFIRMED"}:
+        await requirement_document_repository.normalize_requirement_import_status(
+            document["project_id"], document_id
+        )
+        document = await requirement_document_repository.find(
+            document_id, document["project_id"]
+        )
     if document.get("status") == 'ARCHIVED':
         raise HTTPException(
             status_code=409, detail={"code": 'DOCUMENT_ARCHIVED'}
@@ -1006,7 +1014,6 @@ async def extract_requirement_candidates(document_id, payload, user):
                 marked = await requirement_import_repository.mark_document_extracted(
                     document_id,
                     document["project_id"],
-                    'EXTRACTED',
                     job["_id"],
                     now(),
                     document.get("content_hash"),

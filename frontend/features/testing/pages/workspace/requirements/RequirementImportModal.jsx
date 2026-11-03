@@ -977,7 +977,7 @@ export default function RequirementImportModal({
               ) : canExtractSource ? (
                 <>
                   <p className="text-sm text-ink-muted">
-                    Tệp đã được phân tích. Cho phép AI đọc rồi bấm trích xuất khi bạn sẵn sàng.
+                    Sau khi cho phép, Veriq sẽ trích xuất ứng viên và đưa bạn tới bước rà soát.
                   </p>
                   <button
                     className="secondary-button"
@@ -985,7 +985,11 @@ export default function RequirementImportModal({
                     disabled={sourceProcessing || extractingSource}
                     onClick={onEnableSourceAiRead}
                   >
-                    {sourceProcessing ? "Đang cập nhật quyền…" : "Cho phép AI đọc tài liệu"}
+                    {extractingSource
+                      ? "Đang trích xuất yêu cầu và quy tắc nghiệp vụ…"
+                      : sourceProcessing
+                        ? "Đang chuẩn bị trích xuất…"
+                        : "Cho phép AI đọc và trích xuất"}
                   </button>
                 </>
               ) : (
