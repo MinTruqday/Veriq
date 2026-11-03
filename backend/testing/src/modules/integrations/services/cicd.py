@@ -1,13 +1,42 @@
 import hashlib
 import hmac
+import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.core.configuration import settings
+from src.core.database import database
 from src.repositories.cicd import cicd_repository
 from src.core.sensitive_data import redact_sensitive_data
+
+
+def _request_fingerprint(payload, excluded):
+    request = payload.model_dump(mode="json", exclude=set(excluded))
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_trigger_replay(existing, payload):
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _request_fingerprint(payload, {"idempotency_key", "context_signature"}):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+
+
+def _verify_retry_replay(existing, run_id, payload, user):
+    requested_by = existing.get("requested_by")
+    if not requested_by:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if requested_by != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _request_fingerprint(payload, {"idempotency_key"}) or existing.get("pipeline_run_id") != run_id:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 def verify_signature(value, signature):
@@ -143,6 +172,7 @@ class CiCdService:
             payload.project_id, payload.idempotency_key
         )
         if existing:
+            _verify_trigger_replay(existing, payload)
             return existing
         binding = await cicd_repository.find_active_binding(
             payload.binding_id, payload.project_id
@@ -184,32 +214,36 @@ class CiCdService:
             "status": 'RUNNING',
             "attempt": 1,
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _request_fingerprint(
+                payload, {"idempotency_key", "context_signature"}
+            ),
+            "requested_by": "service:cicd",
             "revision": 1,
             "created_at": timestamp,
             "updated_at": timestamp,
         }
         try:
-            await cicd_repository.insert_execution(automation)
-            await cicd_repository.insert_run(run)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await cicd_repository.insert_execution(automation, session=session)
+                    await cicd_repository.insert_run(run, session=session)
+                    await audit(
+                        'service:cicd',
+                        'cicd_run_triggered',
+                        'PipelineRun',
+                        run["_id"],
+                        payload.project_id,
+                        {"external_run_id": payload.external_run_id},
+                        session=session,
+                    )
         except DuplicateKeyError:
-            await cicd_repository.delete_execution(automation["_id"], payload.project_id)
             existing = await cicd_repository.find_run_by_idempotency(
                 payload.project_id, payload.idempotency_key
             )
             if existing:
+                _verify_trigger_replay(existing, payload)
                 return existing
             raise
-        except Exception:
-            await cicd_repository.delete_execution(automation["_id"], payload.project_id)
-            raise
-        await audit(
-            'service:cicd',
-            'cicd_run_triggered',
-            'PipelineRun',
-            run["_id"],
-            payload.project_id,
-            {"external_run_id": payload.external_run_id},
-        )
         return run
 
     @staticmethod
@@ -285,6 +319,7 @@ class CiCdService:
             project_id, payload.idempotency_key
         )
         if existing:
+            _verify_retry_replay(existing, run_id, payload, user)
             return existing
         if (
             run.get("status") != 'FAILED'
@@ -302,25 +337,30 @@ class CiCdService:
             "status": 'QUEUED',
             "reason": payload.reason,
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _request_fingerprint(payload, {"idempotency_key"}),
             "requested_by": user.id,
             "created_at": timestamp,
             "updated_at": timestamp,
         }
         try:
-            await cicd_repository.insert_reconciliation(value)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await cicd_repository.insert_reconciliation(value, session=session)
+                    await audit(
+                        user.id,
+                        'cicd_reconciliation_queued',
+                        'PipelineRun',
+                        run_id,
+                        project_id,
+                        {"operation_id": value["_id"], "reason": payload.reason},
+                        session=session,
+                    )
         except DuplicateKeyError:
             existing = await cicd_repository.find_reconciliation(
                 project_id, payload.idempotency_key
             )
             if existing:
+                _verify_retry_replay(existing, run_id, payload, user)
                 return existing
             raise
-        await audit(
-            user.id,
-            'cicd_reconciliation_queued',
-            'PipelineRun',
-            run_id,
-            project_id,
-            {"operation_id": value["_id"], "reason": payload.reason},
-        )
         return value

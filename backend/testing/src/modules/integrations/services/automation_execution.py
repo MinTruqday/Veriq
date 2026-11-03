@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
@@ -7,8 +8,27 @@ from pymongo.errors import DuplicateKeyError
 from src.clients.worker import WorkerClientError, worker_client
 from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.core.configuration import settings
+from src.core.database import database
 from src.repositories.execution_asset import execution_asset_repository
 from src.core.sensitive_data import redact_sensitive_data
+
+
+def _create_request_hash(payload):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_create_replay(existing, payload, user):
+    if not existing.get("created_by"):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _create_request_hash(payload):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 
@@ -45,6 +65,7 @@ class AutomationExecutionService:
             project_id, payload.idempotency_key
         )
         if existing:
+            _verify_create_replay(existing, payload, user)
             return public_execution(existing)
         artifact = None
         script = None
@@ -120,32 +141,37 @@ class AutomationExecutionService:
             "logs": [],
             "artifact_refs": [],
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _create_request_hash(payload),
             "revision": 1,
             "created_by": user.id,
             "created_at": timestamp,
             "updated_at": timestamp,
         }
         try:
-            await execution_asset_repository.insert_execution(value)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await execution_asset_repository.insert_execution(value, session=session)
+                    await audit(
+                        user.id,
+                        'automation_execution_created',
+                        'AutomationExecution',
+                        value["_id"],
+                        project_id,
+                        {
+                            "postman_artifact_id": artifact["_id"] if artifact else None,
+                            "automation_script_id": script["_id"] if script else None,
+                            "runner": payload.runner,
+                        },
+                        session=session,
+                    )
         except DuplicateKeyError:
             existing = await execution_asset_repository.find_execution_by_idempotency_key(
                 project_id, payload.idempotency_key
             )
             if existing:
+                _verify_create_replay(existing, payload, user)
                 return public_execution(existing)
             raise
-        await audit(
-            user.id,
-            'automation_execution_created',
-            'AutomationExecution',
-            value["_id"],
-            project_id,
-            {
-                "postman_artifact_id": artifact["_id"] if artifact else None,
-                "automation_script_id": script["_id"] if script else None,
-                "runner": payload.runner,
-            },
-        )
         return public_execution(value)
 
     @staticmethod

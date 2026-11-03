@@ -1,11 +1,35 @@
+import hashlib
+import json
+from functools import wraps
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.database import database
 from src.schemas.contracts.design import ProposalAction
 from src.repositories.bulk_operation import bulk_operation_repository
 from src.modules.quality.services.maintenance_proposal import create_maintenance_proposal_records
 from src.modules.quality.services.proposal_application import apply_maintenance_proposal
+
+
+def _request_hash(operation_type, project_id, payload):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request.update({"operation_type": operation_type, "project_id": project_id})
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_replay(existing, operation_type, project_id, payload, user):
+    if not existing.get("created_by"):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _request_hash(operation_type, project_id, payload):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 def operation_key(payload):
@@ -20,6 +44,35 @@ def item_result(item_id, status, code=None, **details):
     return result
 
 
+def _transactional_bulk(operation_type):
+    def decorate(method):
+        @wraps(method)
+        async def run(cls, project_id, payload, user, *args, **kwargs):
+            try:
+                async with await database.client.start_session() as session:
+                    async with session.start_transaction():
+                        return await method(
+                            cls,
+                            project_id,
+                            payload,
+                            user,
+                            *args,
+                            session=session,
+                            **kwargs,
+                        )
+            except DuplicateKeyError:
+                replay = await cls.replay(
+                    project_id, operation_key(payload), operation_type, payload, user
+                )
+                if replay is not None:
+                    return replay
+                raise
+
+        return run
+
+    return decorate
+
+
 class BulkOperationService:
     @staticmethod
     async def finish(
@@ -29,15 +82,20 @@ class BulkOperationService:
         failed,
         user,
         idempotency_key=None,
+        request_payload=None,
         preview=False,
         results=None,
         details=None,
+        session=None,
     ):
         if idempotency_key:
             existing = await bulk_operation_repository.find_operation(
                 project_id, idempotency_key
             )
             if existing:
+                if request_payload is None:
+                    raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+                _verify_replay(existing, operation_type, project_id, request_payload, user)
                 return existing["response"]
         operation = {
             "_id": new_id('OP'),
@@ -49,6 +107,11 @@ class BulkOperationService:
             "created_by": user.id,
             "created_at": now(),
             "idempotency_key": idempotency_key,
+            "idempotency_request_hash": (
+                _request_hash(operation_type, project_id, request_payload)
+                if request_payload is not None
+                else None
+            ),
             "preview": preview,
         }
         response = {
@@ -63,30 +126,53 @@ class BulkOperationService:
         }
         operation["response"] = response
         try:
-            await bulk_operation_repository.insert_operation(operation)
+            async def persist(active_session):
+                await bulk_operation_repository.insert_operation(
+                    operation, session=active_session
+                )
+                await audit(
+                    user.id,
+                    "bulk_operation_completed",
+                    "BulkOperation",
+                    operation["_id"],
+                    project_id,
+                    {
+                        "operation_type": operation_type,
+                        "succeeded": len(succeeded),
+                        "failed": len(failed),
+                        "preview": preview,
+                    },
+                    session=active_session,
+                )
+
+            if session is not None:
+                await persist(session)
+            else:
+                async with await database.client.start_session() as active_session:
+                    async with active_session.start_transaction():
+                        await persist(active_session)
         except DuplicateKeyError:
+            if session is not None:
+                raise
             if idempotency_key:
                 existing = await bulk_operation_repository.find_operation(
                     project_id, idempotency_key
                 )
                 if existing:
+                    if request_payload is None:
+                        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+                    _verify_replay(existing, operation_type, project_id, request_payload, user)
                     return existing["response"]
             raise
-        await audit(
-            user.id,
-            "bulk_operation_completed",
-            "BulkOperation",
-            operation["_id"],
-            project_id,
-            {"operation_type": operation_type, "succeeded": len(succeeded), "failed": len(failed), "preview": preview},
-        )
         return response
 
     @staticmethod
-    async def replay(project_id, idempotency_key):
+    async def replay(project_id, idempotency_key, operation_type, payload, user):
         if not idempotency_key:
             return None
         existing = await bulk_operation_repository.find_operation(project_id, idempotency_key)
+        if existing:
+            _verify_replay(existing, operation_type, project_id, payload, user)
         return existing["response"] if existing else None
 
     @staticmethod
@@ -99,11 +185,12 @@ class BulkOperationService:
         return bool(target and target.get("current_version_id") == proposal.get("base_version_id"))
 
     @classmethod
-    async def tags(cls, project_id, payload, user):
+    @_transactional_bulk('BULK_TAGS')
+    async def tags(cls, project_id, payload, user, session=None):
         permission = {'requirement': 'requirement.update', 'test_case': 'testcase.bulk.update'}[payload.artifact_type]
         await get_project(project_id, user, permission)
         idempotency_key = operation_key(payload)
-        replay = await cls.replay(project_id, idempotency_key)
+        replay = await cls.replay(project_id, idempotency_key, 'BULK_TAGS', payload, user)
         if replay:
             return replay
         add_tags = {value.strip() for value in payload.add_tags if value.strip()}
@@ -135,7 +222,7 @@ class BulkOperationService:
                 results.append(item_result(artifact_id, 'PREVIEW', before_tags=sorted(artifact.get("tags", [])), after_tags=sorted(tags)))
                 continue
             result = await bulk_operation_repository.update_artifact_tags(
-                payload.artifact_type, artifact_id, project_id, sorted(tags), now()
+                payload.artifact_type, artifact_id, project_id, sorted(tags), now(), session
             )
             if result.matched_count:
                 succeeded.append(artifact_id)
@@ -150,16 +237,19 @@ class BulkOperationService:
             failed,
             user,
             idempotency_key=idempotency_key,
+            request_payload=payload,
             preview=payload.preview,
             results=results,
             details={"artifact_type": payload.artifact_type, "add_tags": sorted(add_tags), "remove_tags": sorted(remove_tags)},
+            session=session,
         )
 
     @classmethod
-    async def add_to_suite(cls, project_id, payload, user):
+    @_transactional_bulk('BULK_ADD_TO_SUITE')
+    async def add_to_suite(cls, project_id, payload, user, session=None):
         await get_project(project_id, user, 'testcase.bulk.update')
         idempotency_key = operation_key(payload)
-        replay = await cls.replay(project_id, idempotency_key)
+        replay = await cls.replay(project_id, idempotency_key, 'BULK_ADD_TO_SUITE', payload, user)
         if replay:
             return replay
         suite = await bulk_operation_repository.find_suite(payload.suite_id, project_id)
@@ -193,6 +283,7 @@ class BulkOperationService:
                 payload.expected_revision,
                 sorted(version_ids),
                 now(),
+                session,
             )
             if not updated:
                 raise HTTPException(
@@ -205,16 +296,19 @@ class BulkOperationService:
             failed,
             user,
             idempotency_key=idempotency_key,
+            request_payload=payload,
             preview=payload.preview,
             results=results,
             details={"suite_id": payload.suite_id, "resulting_version_ids": sorted(version_ids)},
+            session=session,
         )
 
     @classmethod
-    async def mark_review_required(cls, project_id, payload, user):
+    @_transactional_bulk('BULK_MARK_REVIEW_REQUIRED')
+    async def mark_review_required(cls, project_id, payload, user, session=None):
         await get_project(project_id, user, 'testcase.bulk.update')
         idempotency_key = operation_key(payload)
-        replay = await cls.replay(project_id, idempotency_key)
+        replay = await cls.replay(project_id, idempotency_key, 'BULK_MARK_REVIEW_REQUIRED', payload, user)
         if replay:
             return replay
         succeeded = []
@@ -235,6 +329,7 @@ class BulkOperationService:
                     payload.reason,
                     user.id,
                     now(),
+                    session,
                 )
             )
             if (payload.preview and test_case) or (result and result.matched_count):
@@ -250,17 +345,20 @@ class BulkOperationService:
             failed,
             user,
             idempotency_key=idempotency_key,
+            request_payload=payload,
             preview=payload.preview,
             results=results,
             details={"reason": payload.reason},
+            session=session,
         )
 
     @classmethod
-    async def archive(cls, project_id, payload, user):
+    @_transactional_bulk('BULK_ARCHIVE')
+    async def archive(cls, project_id, payload, user, session=None):
         permission = {'requirement': 'requirement.archive', 'test_case': 'testcase.bulk.archive'}[payload.artifact_type]
         await get_project(project_id, user, permission)
         idempotency_key = operation_key(payload)
-        replay = await cls.replay(project_id, idempotency_key)
+        replay = await cls.replay(project_id, idempotency_key, 'BULK_ARCHIVE', payload, user)
         if replay:
             return replay
         succeeded = []
@@ -301,6 +399,7 @@ class BulkOperationService:
                 payload.reason,
                 user.id,
                 now(),
+                session,
             )
             if result.matched_count:
                 succeeded.append(artifact_id)
@@ -315,16 +414,18 @@ class BulkOperationService:
             failed,
             user,
             idempotency_key=idempotency_key,
+            request_payload=payload,
             preview=payload.preview,
             results=results,
             details={"artifact_type": payload.artifact_type, "reason": payload.reason},
+            session=session,
         )
 
     @classmethod
     async def generate_proposals(cls, project_id, payload, user):
         await get_project(project_id, user, 'proposal.bulk.generate')
         idempotency_key = operation_key(payload)
-        replay = await cls.replay(project_id, idempotency_key)
+        replay = await cls.replay(project_id, idempotency_key, 'BULK_GENERATE_PROPOSALS', payload, user)
         if replay:
             return replay
         succeeded = []
@@ -363,6 +464,7 @@ class BulkOperationService:
             failed,
             user,
             idempotency_key=idempotency_key,
+            request_payload=payload,
             preview=payload.preview,
             results=results,
         )
@@ -371,7 +473,7 @@ class BulkOperationService:
     async def approve_proposals(cls, project_id, payload, user):
         project = await get_project(project_id, user, 'proposal.bulk.approve')
         idempotency_key = operation_key(payload)
-        replay = await cls.replay(project_id, idempotency_key)
+        replay = await cls.replay(project_id, idempotency_key, 'BULK_APPROVE_PROPOSALS', payload, user)
         if replay:
             return replay
         threshold = float(
@@ -387,6 +489,18 @@ class BulkOperationService:
             code = None
             if not proposal:
                 code = 'ENTITY_NOT_FOUND'
+            elif proposal.get("status") in {"ACCEPTED", "EDITED_ACCEPTED"} and proposal.get(
+                "applied_artifact_id"
+            ):
+                succeeded.append(proposal_id)
+                results.append(
+                    item_result(
+                        proposal_id,
+                        'SUCCEEDED',
+                        target_artifact_id=proposal.get("target_artifact_id"),
+                    )
+                )
+                continue
             elif proposal.get("status") != 'PENDING':
                 code = 'INVALID_STATE_TRANSITION'
             elif not proposal.get("last_reviewed_by"):
@@ -429,6 +543,7 @@ class BulkOperationService:
             failed,
             user,
             idempotency_key=idempotency_key,
+            request_payload=payload,
             preview=payload.preview,
             results=results,
             details={"review_note": payload.review_note, "confidence_threshold": threshold},

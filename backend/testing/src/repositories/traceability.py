@@ -41,8 +41,8 @@ class TraceabilityRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_snapshot(self, snapshot):
-        await database.value.coverage_snapshots.insert_one(snapshot)
+    async def insert_snapshot(self, snapshot, session=None):
+        await database.value.coverage_snapshots.insert_one(snapshot, session=session)
 
 
 traceability_repository = TraceabilityRepository()

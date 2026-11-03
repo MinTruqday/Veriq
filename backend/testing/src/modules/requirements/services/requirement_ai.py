@@ -85,7 +85,11 @@ async def analyze_requirement_quality(version_id, payload, user):
         idempotency_query
     )
     if existing:
-        if existing.get("request_fingerprint") and existing["request_fingerprint"] != request_fingerprint:
+        if not existing.get("request_fingerprint"):
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+        if existing.get("created_by") != user.id:
+            raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+        if existing["request_fingerprint"] != request_fingerprint:
             raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
         if existing.get("result_type") == "REQUIREMENT_QUALITY_ANALYSIS":
             return existing
@@ -125,8 +129,13 @@ async def analyze_requirement_quality(version_id, payload, user):
             existing = await requirement_ai_repository.find_quality_analysis_request(
                 idempotency_query
             )
-            if existing and existing.get("request_fingerprint") and existing["request_fingerprint"] != request_fingerprint:
-                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            if existing:
+                if not existing.get("request_fingerprint"):
+                    raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+                if existing.get("created_by") != user.id:
+                    raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+                if existing["request_fingerprint"] != request_fingerprint:
+                    raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
             if existing and existing.get("result_type") == "REQUIREMENT_QUALITY_ANALYSIS":
                 return existing
             if existing:

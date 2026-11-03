@@ -65,16 +65,16 @@ class CiCdRepository:
             {"_id": binding_id, "project_id": project_id, "enabled": True}
         )
 
-    async def insert_execution(self, value):
-        await database.value.automation_executions.insert_one(value)
+    async def insert_execution(self, value, session=None):
+        await database.value.automation_executions.insert_one(value, session=session)
 
     async def delete_execution(self, execution_id, project_id):
         await database.value.automation_executions.delete_one(
             {"_id": execution_id, "project_id": project_id}
         )
 
-    async def insert_run(self, value):
-        await database.value.pipeline_runs.insert_one(value)
+    async def insert_run(self, value, session=None):
+        await database.value.pipeline_runs.insert_one(value, session=session)
 
     async def find_run(self, run_id, project_id):
         return await database.value.pipeline_runs.find_one(
@@ -105,8 +105,8 @@ class CiCdRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_reconciliation(self, value):
-        await database.value.cicd_reconciliation_jobs.insert_one(value)
+    async def insert_reconciliation(self, value, session=None):
+        await database.value.cicd_reconciliation_jobs.insert_one(value, session=session)
 
 
 cicd_repository = CiCdRepository()

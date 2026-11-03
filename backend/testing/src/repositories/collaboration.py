@@ -43,8 +43,8 @@ class CollaborationRepository:
         await database.value.draft_conflicts.insert_one(value)
         return value
 
-    async def insert_operation(self, value):
-        await database.value.collaboration_operations.insert_one(value)
+    async def insert_operation(self, value, session=None):
+        await database.value.collaboration_operations.insert_one(value, session=session)
         return value
 
     async def list_conflicts(self, project_id, limit):

@@ -35,6 +35,32 @@ __all__ = [
 ]
 
 
+def _verify_snapshot_replay(existing, payload, user):
+    created_by = existing.get("created_by")
+    if not created_by:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "MONITORING_IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    if created_by != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"},
+        )
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "MONITORING_IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    if request_hash != source_fingerprint(request):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_KEY_REUSED"},
+        )
+
+
 async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCreate, user):
     await get_project(project_id, user, 'testmonitor.snapshot.create')
     plan = await test_monitoring_repository.find_test_plan(payload.test_plan_id, project_id)
@@ -61,11 +87,7 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
             project_id, payload.idempotency_key
         )
         if existing:
-            if (
-                existing.get("test_plan_id") != payload.test_plan_id
-                or existing.get("release_id") != release_id
-            ):
-                raise HTTPException(status_code=409, detail={"code": 'IDEMPOTENCY_CONFLICT'})
+            _verify_snapshot_replay(existing, payload, user)
             return existing
     timestamp = now()
     sources = await monitoring_sources(project_id, plan, release_id, payload)
@@ -200,6 +222,11 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
         "_id": new_id('MONS'),
         "project_id": project_id,
         "idempotency_key": payload.idempotency_key,
+        "idempotency_request_hash": (
+            source_fingerprint(payload.model_dump(mode="json", exclude={"idempotency_key"}))
+            if payload.idempotency_key
+            else None
+        ),
         "test_plan_id": plan["_id"],
         "release_id": release_id,
         "build_id": plan.get("build_id"),
@@ -274,50 +301,57 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
     }
     snapshot["gate_evaluation_id"] = gate_evaluation["_id"]
     try:
-        await test_monitoring_repository.insert_snapshot(snapshot)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await test_monitoring_repository.insert_snapshot(snapshot, session=session)
+                await test_monitoring_repository.insert_gate_evaluation(
+                    gate_evaluation, session=session
+                )
+                await audit(
+                    user.id,
+                    'monitoring_snapshot_created',
+                    'TestMonitoringSnapshot',
+                    snapshot["_id"],
+                    project_id,
+                    {
+                        "source_fingerprint": snapshot["source_fingerprint"],
+                        "quality_gate_status": snapshot["quality_gate_status"],
+                    },
+                    session=session,
+                )
+                await audit(
+                    user.id,
+                    'exit_criteria_evaluated',
+                    'TestMonitoringSnapshot',
+                    snapshot["_id"],
+                    project_id,
+                    {
+                        "criterion_count": len(evaluations),
+                        "quality_gate_status": snapshot["quality_gate_status"],
+                    },
+                    session=session,
+                )
+                await audit(
+                    user.id,
+                    'quality_gate_evaluated',
+                    'QualityGateEvaluation',
+                    gate_evaluation["_id"],
+                    project_id,
+                    {
+                        "snapshot_id": snapshot["_id"],
+                        "overall_status": gate_evaluation["overall_status"],
+                    },
+                    session=session,
+                )
     except DuplicateKeyError:
         if payload.idempotency_key:
             existing = await test_monitoring_repository.find_snapshot_by_idempotency(
                 project_id, payload.idempotency_key
             )
-            if (
-                existing
-                and existing.get("test_plan_id") == payload.test_plan_id
-                and existing.get("release_id") == release_id
-            ):
+            if existing:
+                _verify_snapshot_replay(existing, payload, user)
                 return existing
         raise
-    await test_monitoring_repository.insert_gate_evaluation(gate_evaluation)
-    await audit(
-        user.id,
-        'monitoring_snapshot_created',
-        'TestMonitoringSnapshot',
-        snapshot["_id"],
-        project_id,
-        {
-            "source_fingerprint": snapshot["source_fingerprint"],
-            "quality_gate_status": snapshot["quality_gate_status"],
-        },
-    )
-    await audit(
-        user.id,
-        'exit_criteria_evaluated',
-        'TestMonitoringSnapshot',
-        snapshot["_id"],
-        project_id,
-        {
-            "criterion_count": len(evaluations),
-            "quality_gate_status": snapshot["quality_gate_status"],
-        },
-    )
-    await audit(
-        user.id,
-        'quality_gate_evaluated',
-        'QualityGateEvaluation',
-        gate_evaluation["_id"],
-        project_id,
-        {"snapshot_id": snapshot["_id"], "overall_status": gate_evaluation["overall_status"]},
-    )
     return snapshot
 
 

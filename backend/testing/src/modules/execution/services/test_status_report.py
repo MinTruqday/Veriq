@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from fastapi import HTTPException
@@ -61,6 +62,66 @@ def normalized_forecast(value):
     return value or {"expected_completion_at": None, "confidence": None, "assumptions": []}
 
 
+def _create_request_hash(payload):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(
+        request,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_create_replay(existing, payload, user):
+    created_by = existing.get("created_by")
+    if not created_by:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    if created_by != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    if request_hash != _create_request_hash(payload):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+
+
+def _narrative_request_hash(payload, report_id, automation_run_id, user):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request.update(
+        {
+            "report_id": report_id,
+            "automation_run_id": automation_run_id,
+            "actor_id": user.id,
+        }
+    )
+    canonical = json.dumps(
+        request,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_narrative_replay(existing, payload, report_id, automation_run_id, user):
+    if not existing.get("created_by"):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _narrative_request_hash(payload, report_id, automation_run_id, user):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+
+
 def generated_summaries(snapshot):
     metrics = snapshot.get("metrics") or {}
     progress = "Đã thực thi {executed}/{planned} ca kiểm thử đạt {percent}%".format(
@@ -103,12 +164,7 @@ async def generate_status_report(project_id, payload, user):
     if payload.idempotency_key:
         existing = await find_report_by_idempotency(project_id, payload.idempotency_key)
         if existing:
-            if (
-                existing.get("snapshot_id") != payload.snapshot_id
-                or existing.get("build_id") != payload.build_id
-            ):
-                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_CONFLICT"})
-            await emit_status_report_created(existing, user)
+            _verify_create_replay(existing, payload, user)
             return existing
     snapshot = await find_monitoring_snapshot(payload.snapshot_id, project_id)
     if not snapshot:
@@ -136,6 +192,9 @@ async def generate_status_report(project_id, payload, user):
         "_id": new_id("TSR"),
         "project_id": project_id,
         "idempotency_key": payload.idempotency_key,
+        "idempotency_request_hash": (
+            _create_request_hash(payload) if payload.idempotency_key else None
+        ),
         "test_plan_id": snapshot["test_plan_id"],
         "strategy_version_id": plan.get("strategy_version_id"),
         "release_id": release_id,
@@ -218,11 +277,8 @@ async def generate_status_report(project_id, payload, user):
     except DuplicateKeyError:
         if payload.idempotency_key:
             existing = await find_report_by_idempotency(project_id, payload.idempotency_key)
-            if (
-                existing
-                and existing.get("snapshot_id") == payload.snapshot_id
-                and existing.get("build_id") == payload.build_id
-            ):
+            if existing:
+                _verify_create_replay(existing, payload, user)
                 return existing
         raise
     return report
@@ -286,6 +342,7 @@ async def generate_status_report_narrative(report_id, payload, user):
             or existing.get("source_automation_run_id") != automation_run_id
         ):
             raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+        _verify_narrative_replay(existing, payload, report_id, automation_run_id, user)
         return existing
     narrative_basis = {
         key: report.get(key)
@@ -339,21 +396,33 @@ async def generate_status_report_narrative(report_id, payload, user):
         "suggestions": ai.get("suggestions", []),
         **ai_contract_metadata(ai),
         "idempotency_key": payload.idempotency_key,
+        "idempotency_request_hash": _narrative_request_hash(
+            payload, report_id, automation_run_id, user
+        ),
         "created_by": user.id,
         "created_at": now(),
     }
     try:
-        await insert_ai_result(result)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await insert_ai_result(result, session=session)
+                await audit(
+                    user.id,
+                    "test_status_report_ai_narrative_generated",
+                    "AIResult",
+                    result["_id"],
+                    report["project_id"],
+                    {"report_id": report_id},
+                    session=session,
+                )
     except DuplicateKeyError:
-        return await find_ai_result(report["project_id"], payload.idempotency_key)
-    await audit(
-        user.id,
-        "test_status_report_ai_narrative_generated",
-        "AIResult",
-        result["_id"],
-        report["project_id"],
-        {"report_id": report_id},
-    )
+        existing = await find_ai_result(report["project_id"], payload.idempotency_key)
+        if not existing:
+            raise
+        _verify_narrative_replay(existing, payload, report_id, automation_run_id, user)
+        if existing.get("result_type") != "STATUS_REPORT_NARRATIVE" or existing.get("subject_id") != report_id:
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+        return existing
     return result
 
 

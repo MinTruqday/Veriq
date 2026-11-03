@@ -70,8 +70,8 @@ class QualityRepository:
             sort=[("decided_at", -1)],
         )
 
-    async def insert_evaluation(self, value):
-        await database.value.product_quality_evaluations.insert_one(value)
+    async def insert_evaluation(self, value, session=None):
+        await database.value.product_quality_evaluations.insert_one(value, session=session)
         return value
 
     async def update_evaluation(self, query, update):
@@ -104,8 +104,8 @@ class QualityRepository:
             {"_id": decision_id, "project_id": project_id}
         )
 
-    async def insert_decision(self, value):
-        await database.value.quality_decisions.insert_one(value)
+    async def insert_decision(self, value, session=None):
+        await database.value.quality_decisions.insert_one(value, session=session)
         return value
 
 

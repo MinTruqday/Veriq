@@ -28,8 +28,8 @@ class MeasurementRepository:
             {"_id": definition_id, **(query or {})}
         )
 
-    async def insert_definition(self, value):
-        await database.value.measurement_definitions.insert_one(value)
+    async def insert_definition(self, value, session=None):
+        await database.value.measurement_definitions.insert_one(value, session=session)
 
     async def update_definition(
         self, definition_id, revision, source_status, changes
@@ -71,8 +71,8 @@ class MeasurementRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_snapshot(self, value):
-        await database.value.measurement_snapshots.insert_one(value)
+    async def insert_snapshot(self, value, session=None):
+        await database.value.measurement_snapshots.insert_one(value, session=session)
 
     async def find_snapshot(self, snapshot_id):
         return await database.value.measurement_snapshots.find_one({"_id": snapshot_id})

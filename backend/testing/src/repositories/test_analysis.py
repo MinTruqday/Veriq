@@ -15,8 +15,8 @@ class TestAnalysisRepository:
             {"basis_snapshots": 0, "created_by": 0},
         ).sort("created_at", -1).limit(limit).to_list(limit)
 
-    async def insert_ai_result(self, value):
-        await database.value.ai_results.insert_one(value)
+    async def insert_ai_result(self, value, session=None):
+        await database.value.ai_results.insert_one(value, session=session)
         return value
 
     async def list_conditions(self, project_id, archived_status, limit):

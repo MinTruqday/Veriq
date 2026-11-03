@@ -94,10 +94,15 @@ async def _board(project_id, planning_method):
     }
     try:
         return await work_item_repository.create_board(board)
-    except Exception:
+    except DuplicateKeyError:
         existing = await work_item_repository.find_board(project_id)
-        if existing:
+        if existing and existing.get("planning_method") == planning_method:
             return existing
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "BOARD_PLANNING_METHOD_CONFLICT"},
+            )
         raise
 
 
@@ -151,7 +156,7 @@ async def _workflow(project_id):
     }
     try:
         return await work_item_repository.create_workflow(value)
-    except Exception:
+    except DuplicateKeyError:
         existing = await work_item_repository.find_workflow(project_id)
         if existing:
             return existing

@@ -307,7 +307,7 @@ async def get_requirement_record(requirement_id, user):
     return {**requirement, "current_version": {**version, "acceptance_criteria": criteria}}
 
 
-async def update_requirement_draft_record(project_id, requirement_id, payload, user):
+async def update_requirement_draft_record(project_id, requirement_id, payload, user, session=None):
     requirement = await get_project_entity(
         "requirements", requirement_id, user, "requirement.update"
     )
@@ -387,66 +387,62 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
             raise HTTPException(status_code=409, detail={"code": "REQUIREMENT_KEY_EXISTS"})
     identity_changes = {key: changes[key] for key in ("owner_id", "tags") if key in changes}
     parent_changes = {key: changes[key] for key in ("requirement_key",) if key in changes}
-    try:
-        async with await database.client.start_session() as session:
-            async with session.start_transaction():
-                updated_version = await requirement_repository.update_draft(
-                    version["_id"],
-                    project_id,
-                    payload.expected_revision,
-                    "DRAFT",
-                    {**changes, "updated_at": now()},
-                    session=session,
-                )
-                if not updated_version:
-                    raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-                if identity_changes:
-                    identity_updated = await requirement_repository.update_requirement_identity(
-                        requirement_id,
-                        project_id,
-                        {**identity_changes, "updated_at": now()},
-                        version["_id"],
-                        session=session,
-                    )
-                    if not identity_updated:
-                        raise HTTPException(
-                            status_code=409,
-                            detail={"code": "REVISION_CONFLICT"},
-                        )
-                if criteria is not None:
-                    await requirement_repository.replace_acceptance_criteria(
-                        version["_id"],
-                        [],
-                        [],
-                        session=session,
-                    )
-                    updated_version = await persist_acceptance_criteria(
-                        updated_version, criteria, session
-                    )
-                if parent_changes:
-                    identity_updated = await requirement_repository.update_requirement_identity(
-                        requirement_id,
-                        project_id,
-                        {**parent_changes, "updated_at": now()},
-                        version["_id"],
-                        session=session,
-                    )
-                    if not identity_updated:
-                        raise HTTPException(
-                            status_code=409,
-                            detail={"code": "REVISION_CONFLICT"},
-                        )
-                await queue_requirement_changed(updated_version, user, session)
-                await audit(
-                    user.id,
-                    "requirement_draft_updated",
-                    "Requirement",
-                    requirement_id,
-                    project_id,
-                    session=session,
-                )
-    except HTTPException:
-        raise
+    updated_version = None
+    async def persist(active_session):
+        nonlocal updated_version
+        updated_version = await requirement_repository.update_draft(
+            version["_id"],
+            project_id,
+            payload.expected_revision,
+            "DRAFT",
+            {**changes, "updated_at": now()},
+            session=active_session,
+        )
+        if not updated_version:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        if identity_changes:
+            identity_updated = await requirement_repository.update_requirement_identity(
+                requirement_id,
+                project_id,
+                {**identity_changes, "updated_at": now()},
+                version["_id"],
+                session=active_session,
+            )
+            if not identity_updated:
+                raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        if criteria is not None:
+            await requirement_repository.replace_acceptance_criteria(
+                version["_id"], [], [], session=active_session
+            )
+            updated_version = await persist_acceptance_criteria(
+                updated_version, criteria, active_session
+            )
+        if parent_changes:
+            identity_updated = await requirement_repository.update_requirement_identity(
+                requirement_id,
+                project_id,
+                {**parent_changes, "updated_at": now()},
+                version["_id"],
+                session=active_session,
+            )
+            if not identity_updated:
+                raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        await queue_requirement_changed(updated_version, user, active_session)
+        await audit(
+            user.id,
+            "requirement_draft_updated",
+            "Requirement",
+            requirement_id,
+            project_id,
+            session=active_session,
+        )
+
+    if session is not None:
+        await persist(session)
+    else:
+        async with await database.client.start_session() as active_session:
+            async with active_session.start_transaction():
+                await persist(active_session)
     return {**requirement, **parent_changes, "current_version": updated_version}
 
 

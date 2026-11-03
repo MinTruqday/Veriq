@@ -1,15 +1,39 @@
 from datetime import timedelta
+import hashlib
+import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, envelope, get_project, get_project_entity, new_id, now
+from src.core.database import database
 from src.schemas.contracts.automation import CollaborationOperationInput
 from src.schemas.contracts.design import TestCaseDraftPatch
 from src.schemas.contracts.requirements import RequirementDraftPatch
 from src.repositories.collaboration import collaboration_repository
 from src.modules.requirements.services.requirement_records import update_requirement_draft_record
 from src.modules.design.services.test_case_records import update_test_case_draft_record
+
+
+def _operation_request_hash(project_id, artifact_type, artifact_id, payload):
+    request = payload.model_dump(mode="json")
+    request.update(
+        {"project_id": project_id, "artifact_type": artifact_type, "artifact_id": artifact_id}
+    )
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_operation_replay(existing, project_id, artifact_type, artifact_id, payload, user):
+    if not existing.get("created_by"):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _operation_request_hash(project_id, artifact_type, artifact_id, payload):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 async def artifact_context(project_id, artifact_type, artifact_id, user, edit=False):
@@ -88,6 +112,14 @@ class CollaborationService:
             project_id, payload.operation_id
         )
         if existing:
+            if (
+                existing.get("artifact_type") != artifact_type
+                or existing.get("artifact_id") != artifact_id
+            ):
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            _verify_operation_replay(
+                existing, project_id, artifact_type, artifact_id, payload, user
+            )
             return existing["result"]
         current_revision = current["revision"]
         changes = payload.changes
@@ -130,23 +162,71 @@ class CollaborationService:
                         "conflict_id": conflict["_id"],
                     },
                 )
+        record = {
+            "_id": new_id('COLOP'),
+            "project_id": project_id,
+            "artifact_type": artifact_type,
+            "artifact_id": artifact_id,
+            "operation_id": payload.operation_id,
+            "idempotency_request_hash": _operation_request_hash(
+                project_id, artifact_type, artifact_id, payload
+            ),
+            "base_revision": payload.base_revision,
+            "changed_keys": sorted(changes),
+            "rebased": rebased,
+            "created_by": user.id,
+            "created_at": now(),
+        }
         try:
-            if artifact_type == 'requirement':
-                updated = await update_requirement_draft_record(
-                    project_id,
-                    artifact_id,
-                    RequirementDraftPatch(expected_revision=current_revision, **changes),
-                    user,
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    if artifact_type == 'requirement':
+                        updated = await update_requirement_draft_record(
+                            project_id,
+                            artifact_id,
+                            RequirementDraftPatch(expected_revision=current_revision, **changes),
+                            user,
+                            session=session,
+                        )
+                        result = envelope(
+                            updated, revision=updated["current_version"]["revision"]
+                        )
+                    else:
+                        updated = await update_test_case_draft_record(
+                            artifact_id,
+                            TestCaseDraftPatch(expected_revision=current_revision, **changes),
+                            user,
+                            project_id,
+                            session=session,
+                        )
+                        result = envelope(updated, revision=updated["revision"])
+                    record["result"] = result
+                    record["result_revision"] = result["meta"]["revision"]
+                    await collaboration_repository.insert_operation(record, session=session)
+                    await audit(
+                        user.id,
+                        "collaboration_operation_applied",
+                        "CollaborationSession",
+                        record["_id"],
+                        project_id,
+                        {"artifact_type": artifact_type, "artifact_id": artifact_id, "rebased": rebased},
+                        session=session,
+                    )
+        except DuplicateKeyError:
+            existing = await collaboration_repository.find_operation(
+                project_id, payload.operation_id
+            )
+            if existing:
+                if (
+                    existing.get("artifact_type") != artifact_type
+                    or existing.get("artifact_id") != artifact_id
+                ):
+                    raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+                _verify_operation_replay(
+                    existing, project_id, artifact_type, artifact_id, payload, user
                 )
-                result = envelope(updated, revision=updated["current_version"]["revision"])
-            else:
-                updated = await update_test_case_draft_record(
-                    artifact_id,
-                    TestCaseDraftPatch(expected_revision=current_revision, **changes),
-                    user,
-                    project_id,
-                )
-                result = envelope(updated, revision=updated["revision"])
+                return existing["result"]
+            raise
         except HTTPException as error:
             if error.status_code != 409:
                 raise
@@ -154,37 +234,6 @@ class CollaborationService:
                 status_code=409,
                 detail={"code": 'COLLABORATION_RETRY_REQUIRED'},
             ) from error
-        record = {
-            "_id": new_id('COLOP'),
-            "project_id": project_id,
-            "artifact_type": artifact_type,
-            "artifact_id": artifact_id,
-            "operation_id": payload.operation_id,
-            "base_revision": payload.base_revision,
-            "result_revision": result["meta"]["revision"],
-            "changed_keys": sorted(changes),
-            "rebased": rebased,
-            "result": result,
-            "created_by": user.id,
-            "created_at": now(),
-        }
-        try:
-            await collaboration_repository.insert_operation(record)
-        except DuplicateKeyError:
-            existing = await collaboration_repository.find_operation(
-                project_id, payload.operation_id
-            )
-            if existing:
-                return existing["result"]
-            raise
-        await audit(
-            user.id,
-            "collaboration_operation_applied",
-            "CollaborationSession",
-            record["_id"],
-            project_id,
-            {"artifact_type": artifact_type, "artifact_id": artifact_id, "rebased": rebased},
-        )
         return result
 
     @staticmethod

@@ -1,8 +1,31 @@
+import hashlib
+import json
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.database import database
 from src.repositories.environment_incident import environment_incident_repository
+
+
+def _create_request_hash(payload):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_create_replay(existing, payload, user):
+    created_by = existing.get("created_by")
+    if not created_by:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if created_by != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _create_request_hash(payload):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 
@@ -63,11 +86,7 @@ async def create_incident(project_id, payload, user):
             project_id, payload.idempotency_key
         )
         if existing:
-            if (
-                existing.get("environment_id") != payload.environment_id
-                or existing.get("type") != payload.type
-            ):
-                raise HTTPException(status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'})
+            _verify_create_replay(existing, payload, user)
             return existing
     timestamp = now()
     sequence = await environment_incident_repository.next_sequence(
@@ -87,6 +106,9 @@ async def create_incident(project_id, payload, user):
         "incident_key": f"{'ENVINC'}-{int(sequence['value']):0{4}d}",
         "project_id": project_id,
         **payload.model_dump(),
+        "idempotency_request_hash": (
+            _create_request_hash(payload) if payload.idempotency_key else None
+        ),
         "affected_run_ids": run_ids,
         "previous_environment_availability": previous_availability,
         "status": 'OPEN',
@@ -100,37 +122,54 @@ async def create_incident(project_id, payload, user):
         "updated_at": timestamp,
     }
     try:
-        await environment_incident_repository.insert_incident(value)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await environment_incident_repository.insert_incident(value, session=session)
+                if payload.severity in ['BLOCKER', 'CRITICAL']:
+                    environment_update = await environment_incident_repository.mark_environment_unavailable(
+                        environment["_id"],
+                        environment.get("revision"),
+                        value["_id"],
+                        'UNAVAILABLE',
+                        timestamp,
+                        session=session,
+                    )
+                    if environment_update.matched_count != 1:
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "ENVIRONMENT_CHANGED_RETRY_INCIDENT"},
+                        )
+                    if run_ids:
+                        await environment_incident_repository.pause_runs(
+                            run_ids,
+                            project_id,
+                            value["_id"],
+                            'IN_PROGRESS',
+                            timestamp,
+                            session=session,
+                        )
+                await audit(
+                    user.id,
+                    'environment_incident_created',
+                    'EnvironmentIncident',
+                    value["_id"],
+                    project_id,
+                    {
+                        "environment_id": payload.environment_id,
+                        "severity": payload.severity,
+                        "affected_run_ids": run_ids,
+                    },
+                    session=session,
+                )
     except DuplicateKeyError:
         if payload.idempotency_key:
-            return await environment_incident_repository.find_by_idempotency_key(
+            existing = await environment_incident_repository.find_by_idempotency_key(
                 project_id, payload.idempotency_key
             )
+            if existing:
+                _verify_create_replay(existing, payload, user)
+                return existing
         raise
-    if payload.severity in ['BLOCKER', 'CRITICAL']:
-        await environment_incident_repository.mark_environment_unavailable(
-            environment["_id"], value["_id"], 'UNAVAILABLE', timestamp
-        )
-        if run_ids:
-            await environment_incident_repository.pause_runs(
-                run_ids,
-                project_id,
-                value["_id"],
-                'IN_PROGRESS',
-                timestamp,
-            )
-    await audit(
-        user.id,
-        'environment_incident_created',
-        'EnvironmentIncident',
-        value["_id"],
-        project_id,
-        {
-            "environment_id": payload.environment_id,
-            "severity": payload.severity,
-            "affected_run_ids": run_ids,
-        },
-    )
     return value
 
 

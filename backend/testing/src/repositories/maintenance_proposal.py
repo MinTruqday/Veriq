@@ -4,6 +4,11 @@ from src.core.database import database
 
 
 class MaintenanceProposalRepository:
+    async def list_by_impact(self, analysis_id, limit):
+        return await database.value.maintenance_proposals.find(
+            {"impact_analysis_id": analysis_id}
+        ).sort([("created_at", 1), ("_id", 1)]).to_list(limit)
+
     async def list_by_impact_and_status(self, analysis_id, status, limit):
         return await database.value.maintenance_proposals.find(
             {"impact_analysis_id": analysis_id, "status": status}
@@ -14,9 +19,11 @@ class MaintenanceProposalRepository:
             {"_id": change_set_id}
         )
 
-    async def insert_many(self, values):
+    async def insert_many(self, values, session=None):
         if values:
-            await database.value.maintenance_proposals.insert_many(values)
+            await database.value.maintenance_proposals.insert_many(
+                values, **({"session": session} if session is not None else {})
+            )
         return values
 
     async def insert(self, value):

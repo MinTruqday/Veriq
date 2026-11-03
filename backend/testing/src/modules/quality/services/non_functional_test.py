@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
@@ -5,6 +8,25 @@ from src.clients.ai_automation import emit_performance_configuration_approved
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
 from src.repositories.non_functional_test import non_functional_test_repository
+
+
+def _create_request_hash(payload):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_create_replay(existing, payload, user, actor_field):
+    actor_id = existing.get(actor_field)
+    if not actor_id:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if actor_id != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _create_request_hash(payload):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 
@@ -72,19 +94,16 @@ async def create_plan(project_id, payload, user):
             project_id, payload.idempotency_key
         )
         if existing:
-            if (
-                existing.get("plan_type") != payload.plan_type
-                or existing.get("name") != payload.name
-            ):
-                raise HTTPException(
-                    status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'}
-                )
+            _verify_create_replay(existing, payload, user, "created_by")
             return existing
     timestamp = now()
     value = {
         "_id": new_id('NFR'),
         "project_id": project_id,
         **payload.model_dump(),
+        "idempotency_request_hash": (
+            _create_request_hash(payload) if payload.idempotency_key else None
+        ),
         "external_evidence_ids": [],
         "status": 'DRAFT',
         "revision": 1,
@@ -93,21 +112,27 @@ async def create_plan(project_id, payload, user):
         "updated_at": timestamp,
     }
     try:
-        await non_functional_test_repository.insert_plan(value)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await non_functional_test_repository.insert_plan(value, session=session)
+                await audit(
+                    user.id,
+                    "nfr_test_plan_created",
+                    "NonFunctionalTestPlan",
+                    value["_id"],
+                    project_id,
+                    {"plan_type": value["plan_type"]},
+                    session=session,
+                )
     except DuplicateKeyError:
         if payload.idempotency_key:
-            return await non_functional_test_repository.find_plan_by_idempotency_key(
+            existing = await non_functional_test_repository.find_plan_by_idempotency_key(
                 project_id, payload.idempotency_key
             )
+            if existing:
+                _verify_create_replay(existing, payload, user, "created_by")
+                return existing
         raise
-    await audit(
-        user.id,
-        "nfr_test_plan_created",
-        "NonFunctionalTestPlan",
-        value["_id"],
-        project_id,
-        {"plan_type": value["plan_type"]},
-    )
     return value
 
 
@@ -182,10 +207,11 @@ async def import_evidence(plan_id, payload, user):
         value["project_id"], payload.idempotency_key
     )
     if existing:
-        if existing["plan_id"] != plan_id or existing["raw_result_hash"] != payload.raw_result_hash:
+        if existing["plan_id"] != plan_id:
             raise HTTPException(
                 status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'}
             )
+        _verify_create_replay(existing, payload, user, "imported_by")
         return existing
     timestamp = now()
     evidence = {
@@ -194,29 +220,47 @@ async def import_evidence(plan_id, payload, user):
         "plan_id": plan_id,
         **payload.model_dump(),
         "imported_by": user.id,
+        "idempotency_request_hash": _create_request_hash(payload),
         "created_at": timestamp,
     }
     try:
-        await non_functional_test_repository.insert_evidence(evidence)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await non_functional_test_repository.insert_evidence(evidence, session=session)
+                attached = await non_functional_test_repository.attach_evidence(
+                    plan_id,
+                    evidence["_id"],
+                    payload.result_summary,
+                    timestamp,
+                    session=session,
+                )
+                if attached.matched_count != 1:
+                    raise HTTPException(
+                        status_code=409, detail={"code": "NFR_PLAN_CHANGED_RETRY_EVIDENCE"}
+                    )
+                await audit(
+                    user.id,
+                    "nfr_external_evidence_imported",
+                    "NonFunctionalTestEvidence",
+                    evidence["_id"],
+                    value["project_id"],
+                    {
+                        "plan_id": plan_id,
+                        "provider": payload.provider,
+                        "raw_result_hash": payload.raw_result_hash,
+                    },
+                    session=session,
+                )
     except DuplicateKeyError:
-        return await non_functional_test_repository.find_evidence_by_idempotency_key(
+        existing = await non_functional_test_repository.find_evidence_by_idempotency_key(
             value["project_id"], payload.idempotency_key
         )
-    await non_functional_test_repository.attach_evidence(
-        plan_id, evidence["_id"], payload.result_summary, timestamp
-    )
-    await audit(
-        user.id,
-        "nfr_external_evidence_imported",
-        "NonFunctionalTestEvidence",
-        evidence["_id"],
-        value["project_id"],
-        {
-            "plan_id": plan_id,
-            "provider": payload.provider,
-            "raw_result_hash": payload.raw_result_hash,
-        },
-    )
+        if existing:
+            if existing["plan_id"] != plan_id:
+                raise HTTPException(status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'})
+            _verify_create_replay(existing, payload, user, "imported_by")
+            return existing
+        raise
     return evidence
 
 

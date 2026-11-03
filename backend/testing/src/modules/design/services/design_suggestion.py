@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.database import database
 from src.repositories.test_design import test_design_repository
 from src.core.ai_automation import (
     ai_contract_metadata,
@@ -15,6 +16,25 @@ from src.modules.quality.services.non_functional_test import get_plan as get_non
 from src.modules.design.services.generation import validated_suggestions
 from src.schemas.contracts.environment import PerformancePlanDraftInput
 from src.schemas.test_analysis import PerformanceScenario, SecurityCandidate
+
+
+def _generation_request_hash(payload, source_context):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["source_context"] = source_context
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_generation_replay(existing, payload, source_context, user):
+    if not existing.get("created_by"):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _generation_request_hash(payload, source_context):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 async def requirement_evidence(project_id, requirement_version_ids):
@@ -139,6 +159,9 @@ class DesignSuggestionService:
         existing = await test_design_repository.find_security_suggestion(
             project_id, payload.idempotency_key
         )
+        source_context = {
+            "requirement_version_id": version["_id"],
+        }
         if existing:
             if (
                 existing.get("source_event_id") != payload.source_event_id
@@ -146,6 +169,7 @@ class DesignSuggestionService:
                 or existing.get("requirement_version_ids") != [versions[0]["_id"]]
             ):
                 raise HTTPException(409, detail={"code": "SECURITY_SUGGESTION_EVENT_KEY_CONFLICT"})
+            _verify_generation_replay(existing, payload, source_context, user)
             return existing, {}
         ai_result = await request_ai_automation(
             "security_test_generation",
@@ -230,28 +254,35 @@ class DesignSuggestionService:
             "vulnerability_scan_performed": False,
             "human_confirmation_required": True,
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _generation_request_hash(
+                payload, source_context
+            ),
             "revision": 1,
             "created_by": user.id,
             "created_at": timestamp,
             "updated_at": timestamp,
         }
         try:
-            await test_design_repository.insert_security_suggestion(result)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await test_design_repository.insert_security_suggestion(result, session=session)
+                    await audit(
+                        user.id,
+                        "security_test_suggestions_generated",
+                        "SecurityTestSuggestion",
+                        result["_id"],
+                        project_id,
+                        {"candidate_count": len(result["candidates"])},
+                        session=session,
+                    )
         except DuplicateKeyError:
             existing = await test_design_repository.find_security_suggestion(
                 project_id, payload.idempotency_key
             )
             if existing:
+                _verify_generation_replay(existing, payload, source_context, user)
                 return existing, {}
             raise
-        await audit(
-            user.id,
-            "security_test_suggestions_generated",
-            "SecurityTestSuggestion",
-            result["_id"],
-            project_id,
-            {"candidate_count": len(result["candidates"])},
-        )
         return result, {
             "status": ai_result.get("status", 'SUCCESS'),
             "degraded_mode": ai_result.get("degraded_mode"),
@@ -273,6 +304,9 @@ class DesignSuggestionService:
         ):
             raise HTTPException(status_code=403, detail={"code": "VERIFIED_PERFORMANCE_CONFIGURATION_EVENT_REQUIRED"})
         await get_project(project_id, user, "ai.generate_performance_plan")
+        source_context = {
+            "configuration": source_configuration,
+        }
         existing = await test_design_repository.find_performance_draft(
             project_id, payload.idempotency_key
         )
@@ -283,6 +317,7 @@ class DesignSuggestionService:
                 or existing.get("source_event_revision") != source_configuration["revision"]
             ):
                 raise HTTPException(409, detail={"code": "PERFORMANCE_EVENT_IDEMPOTENCY_CONFLICT"})
+            _verify_generation_replay(existing, payload, source_context, user)
             return existing, {}
         versions, evidence = await requirement_evidence(project_id, payload.requirement_version_ids)
         ai_result = await request_ai_automation(
@@ -389,28 +424,35 @@ class DesignSuggestionService:
                 else {}
             ),
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _generation_request_hash(
+                payload, source_context
+            ),
             "revision": 1,
             "created_by": user.id,
             "created_at": timestamp,
             "updated_at": timestamp,
         }
         try:
-            await test_design_repository.insert_performance_draft(result)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await test_design_repository.insert_performance_draft(result, session=session)
+                    await audit(
+                        user.id,
+                        "performance_plan_draft_generated",
+                        "PerformanceTestPlanDraft",
+                        result["_id"],
+                        project_id,
+                        {"scenario_count": len(result["scenarios"])},
+                        session=session,
+                    )
         except DuplicateKeyError:
             existing = await test_design_repository.find_performance_draft(
                 project_id, payload.idempotency_key
             )
             if existing:
+                _verify_generation_replay(existing, payload, source_context, user)
                 return existing, {}
             raise
-        await audit(
-            user.id,
-            "performance_plan_draft_generated",
-            "PerformanceTestPlanDraft",
-            result["_id"],
-            project_id,
-            {"scenario_count": len(result["scenarios"])},
-        )
         return result, {
             "status": ai_result.get("status", 'SUCCESS'),
             "degraded_mode": ai_result.get("degraded_mode"),

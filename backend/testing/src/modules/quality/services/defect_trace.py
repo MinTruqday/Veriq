@@ -1,9 +1,31 @@
+import hashlib
+import json
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
+from src.core.database import database
 from src.modules.quality.services.defect_analysis import build_defect_trace_candidates
 from src.repositories.defect import defect_repository
+
+
+def _create_request_hash(payload, defect_id, automation_run_id):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["defect_id"] = defect_id
+    request["automation_run_id"] = automation_run_id
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_suggestion_replay(existing, payload, defect_id, user, automation_run_id):
+    if existing.get("created_by") != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _create_request_hash(payload, defect_id, automation_run_id):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 async def suggest_defect_trace_record(project_id, defect_id, payload, user):
@@ -25,6 +47,13 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
         project_id, payload.idempotency_key
     )
     if existing:
+        _verify_suggestion_replay(
+            existing,
+            payload,
+            defect_id,
+            user,
+            str(getattr(user, "_ai_automation_run_id", "")),
+        )
         if (
             existing.get("subject_id") != defect_id
             or existing.get("result_type") != "BUG_TRACE_SUGGESTION"
@@ -44,6 +73,10 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
         "source_event_id": payload.source_event_id,
         "source_event_revision": payload.source_event_revision,
         "source_event_trigger": payload.source_event_trigger,
+        "automation_run_id": str(getattr(user, "_ai_automation_run_id", "")),
+        "idempotency_request_hash": _create_request_hash(
+            payload, defect_id, str(getattr(user, "_ai_automation_run_id", ""))
+        ),
         "status": "SUCCESS",
         "candidate_only": True,
         "human_confirmation_required": True,
@@ -64,13 +97,35 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
         "updated_at": now(),
     }
     try:
-        await defect_repository.insert_ai_result(result)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await defect_repository.insert_ai_result(result, session=session)
+                await audit(
+                    user.id,
+                    "bug_trace_suggestion_generated",
+                    "AIResult",
+                    result["_id"],
+                    project_id,
+                    {
+                        "defect_id": defect_id,
+                        "requirement_candidate_count": len(requirement_candidates),
+                        "test_case_candidate_count": len(test_case_candidates),
+                    },
+                    session=session,
+                )
     except DuplicateKeyError:
         existing = await defect_repository.find_ai_result_by_idempotency(
             project_id, payload.idempotency_key
         )
         if not existing:
             raise
+        _verify_suggestion_replay(
+            existing,
+            payload,
+            defect_id,
+            user,
+            str(getattr(user, "_ai_automation_run_id", "")),
+        )
         if (
             existing.get("subject_id") != defect_id
             or existing.get("result_type") != "BUG_TRACE_SUGGESTION"
@@ -80,18 +135,6 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
         ):
             raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
         return existing
-    await audit(
-        user.id,
-        "bug_trace_suggestion_generated",
-        "AIResult",
-        result["_id"],
-        project_id,
-        {
-            "defect_id": defect_id,
-            "requirement_candidate_count": len(requirement_candidates),
-            "test_case_candidate_count": len(test_case_candidates),
-        },
-    )
     return result
 
 

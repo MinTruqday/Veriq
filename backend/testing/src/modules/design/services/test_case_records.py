@@ -717,7 +717,7 @@ async def create_generated_test_case_draft_batch(
     return created
 
 
-async def update_test_case_draft_record(draft_id, payload, user, project_id=None):
+async def update_test_case_draft_record(draft_id, payload, user, project_id=None, session=None):
     
     draft = await get_project_entity("test_case_drafts", draft_id, user, "testcase.update")
     if project_id is not None and draft["project_id"] != project_id:
@@ -808,25 +808,44 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         })
     from src.clients.ai_automation import emit_test_case_changed
 
-    async with await database.client.start_session() as session:
-        async with session.start_transaction():
-            updated = await optimistic_patch(
-                "test_case_drafts",
-                draft_id,
-                draft["project_id"],
-                payload.expected_revision,
-                changes,
-                session=session,
-            )
-            await audit(
-                user.id,
-                "test_case_draft_updated",
-                "TestCaseDraft",
-                draft_id,
-                draft["project_id"],
-                session=session,
-            )
-            await emit_test_case_changed(
-                updated, user, previous_case=draft, session=session
-            )
+    async def persist(active_session):
+        return await optimistic_patch(
+            "test_case_drafts",
+            draft_id,
+            draft["project_id"],
+            payload.expected_revision,
+            changes,
+            session=active_session,
+        )
+
+    if session is not None:
+        updated = await persist(session)
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        await audit(
+            user.id,
+            "test_case_draft_updated",
+            "TestCaseDraft",
+            draft_id,
+            draft["project_id"],
+            session=session,
+        )
+        await emit_test_case_changed(updated, user, previous_case=draft, session=session)
+    else:
+        async with await database.client.start_session() as active_session:
+            async with active_session.start_transaction():
+                updated = await persist(active_session)
+                if not updated:
+                    raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+                await audit(
+                    user.id,
+                    "test_case_draft_updated",
+                    "TestCaseDraft",
+                    draft_id,
+                    draft["project_id"],
+                    session=active_session,
+                )
+                await emit_test_case_changed(
+                    updated, user, previous_case=draft, session=active_session
+                )
     return updated

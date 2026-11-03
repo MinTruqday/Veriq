@@ -101,6 +101,6 @@ async def find_latest_status_report_narrative(project_id, report_id):
     )
 
 
-async def insert_ai_result(value):
-    await database.value.ai_results.insert_one(value)
+async def insert_ai_result(value, session=None):
+    await database.value.ai_results.insert_one(value, session=session)
     return value

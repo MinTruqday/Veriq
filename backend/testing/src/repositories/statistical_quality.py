@@ -33,8 +33,8 @@ class StatisticalQualityRepository:
             }
         ).sort("measured_at", 1).to_list(limit)
 
-    async def insert_analysis(self, value):
-        await database.value.process_control_baselines.insert_one(value)
+    async def insert_analysis(self, value, session=None):
+        await database.value.process_control_baselines.insert_one(value, session=session)
         return value
 
     async def annotate(self, analysis_id, revision, cause, updated_at):

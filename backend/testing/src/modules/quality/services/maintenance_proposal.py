@@ -4,6 +4,7 @@ import json
 from fastapi import HTTPException
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, page_payload, sort_spec
+from src.core.database import database
 from src.core.metrics import PROPOSAL_ACCEPTANCE_RATE
 from src.repositories.maintenance_proposal import maintenance_proposal_repository
 from src.modules.quality.services.impact_analysis import require_current_impact_source
@@ -15,9 +16,7 @@ async def create_maintenance_proposal_records(analysis_id, user):
     if analysis.get("status") != 'REVIEWED':
         raise HTTPException(status_code=409, detail={"code": 'IMPACT_REVIEW_REQUIRED'})
     await require_current_impact_source(analysis, user, "ai.create_proposal")
-    existing = await maintenance_proposal_repository.list_by_impact_and_status(
-        analysis_id, 'PENDING', 10000
-    )
+    existing = await maintenance_proposal_repository.list_by_impact(analysis_id, 10000)
     if existing:
         return existing
     proposals = []
@@ -75,16 +74,19 @@ async def create_maintenance_proposal_records(analysis_id, user):
                 "updated_at": now(),
             }
         )
-    if proposals:
-        await maintenance_proposal_repository.insert_many(proposals)
-    await audit(
-        user.id,
-        "maintenance_proposals_created",
-        "ImpactAnalysis",
-        analysis_id,
-        analysis["project_id"],
-        {"count": len(proposals)},
-    )
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            if proposals:
+                await maintenance_proposal_repository.insert_many(proposals, session=session)
+            await audit(
+                user.id,
+                "maintenance_proposals_created",
+                "ImpactAnalysis",
+                analysis_id,
+                analysis["project_id"],
+                {"count": len(proposals)},
+                session=session,
+            )
     return proposals
 
 

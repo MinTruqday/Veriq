@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, next_key, now, page_payload
+from src.core.database import database
 from src.schemas.test_analysis import TestConditionCreate, condition_hash, condition_snapshot
 from src.repositories.test_condition import test_condition_repository
 from src.repositories.test_analysis import test_analysis_repository
@@ -21,6 +22,29 @@ from src.modules.design.services.test_analysis_basis import (
 
 
 __all__ = ["list_test_basis"]
+
+
+def _analysis_request_hash(payload, user, basis_snapshots):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["actor_id"] = user.id
+    request["basis_sources"] = [
+        {"resolved_id": item.get("resolved_id"), "source_hash": item.get("source_hash")}
+        for item in basis_snapshots
+    ]
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_analysis_replay(existing, payload, user, basis_snapshots):
+    if not existing.get("created_by"):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _analysis_request_hash(payload, user, basis_snapshots):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 async def list_ai_analysis_results(project_id, user, limit=100, idempotency_key=None):
@@ -342,22 +366,6 @@ async def run_ai_analysis(project_id, payload, user):
         ).hexdigest()
         if payload.idempotency_key != expected_key:
             raise HTTPException(422, detail={"code": "TEST_CONDITION_EVENT_KEY_INVALID"})
-    existing = await test_analysis_repository.find_ai_result(
-        project_id, payload.idempotency_key
-    )
-    if existing:
-        if existing.get("result_type") != 'TEST_CONDITION_CANDIDATES':
-            raise HTTPException(
-                status_code=409,
-                detail={"code": 'IDEMPOTENCY_KEY_REUSED'},
-            )
-        if event_scoped and (
-            existing.get("source_event_id") != payload.source_event_id
-            or existing.get("source_event_revision") != payload.source_event_revision
-            or existing.get("requirement_version_id") != source_version_id
-        ):
-            raise HTTPException(409, detail={"code": "TEST_CONDITION_EVENT_KEY_CONFLICT"})
-        return existing
     basis_snapshots = await resolve_basis(project_id, payload.basis_refs, user)
     if not event_scoped and any(
         item.get("artifact_type") == "REQUIREMENT_VERSION"
@@ -385,6 +393,20 @@ async def run_ai_analysis(project_id, payload, user):
         ):
             raise HTTPException(409, detail={"code": "REQUIREMENT_EVENT_SOURCE_CHANGED"})
         initial_source_hash = basis_snapshots[0].get("source_hash")
+    existing = await test_analysis_repository.find_ai_result(
+        project_id, payload.idempotency_key
+    )
+    if existing:
+        if existing.get("result_type") != 'TEST_CONDITION_CANDIDATES':
+            raise HTTPException(status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'})
+        if event_scoped and (
+            existing.get("source_event_id") != payload.source_event_id
+            or existing.get("source_event_revision") != payload.source_event_revision
+            or existing.get("requirement_version_id") != source_version_id
+        ):
+            raise HTTPException(409, detail={"code": "TEST_CONDITION_EVENT_KEY_CONFLICT"})
+        _verify_analysis_replay(existing, payload, user, basis_snapshots)
+        return existing
     evidence = [
         {
             "artifact_type": item["artifact_type"],
@@ -505,23 +527,35 @@ async def run_ai_analysis(project_id, payload, user):
         "human_confirmation_required": True,
         **ai_contract_metadata(ai_result),
         "idempotency_key": payload.idempotency_key,
+        "idempotency_request_hash": _analysis_request_hash(
+            payload, user, basis_snapshots
+        ),
         "created_by": user.id,
         "created_at": now(),
     }
     try:
-        await test_analysis_repository.insert_ai_result(value)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await test_analysis_repository.insert_ai_result(value, session=session)
+                await audit(
+                    user.id,
+                    'test_analysis_ai_candidates_generated',
+                    'AIResult',
+                    value["_id"],
+                    project_id,
+                    {"candidate_count": len(candidates), "status": value["status"]},
+                    session=session,
+                )
     except DuplicateKeyError:
-        return await test_analysis_repository.find_ai_result(
+        existing = await test_analysis_repository.find_ai_result(
             project_id, payload.idempotency_key
         )
-    await audit(
-        user.id,
-        'test_analysis_ai_candidates_generated',
-        'AIResult',
-        value["_id"],
-        project_id,
-        {"candidate_count": len(candidates), "status": value["status"]},
-    )
+        if not existing:
+            raise
+        if existing.get("result_type") != 'TEST_CONDITION_CANDIDATES':
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+        _verify_analysis_replay(existing, payload, user, basis_snapshots)
+        return existing
     return value
 
 

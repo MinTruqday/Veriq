@@ -14,18 +14,21 @@ class BulkOperationRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_operation(self, operation):
-        await database.value.bulk_operations.insert_one(operation)
+    async def insert_operation(self, operation, session=None):
+        await database.value.bulk_operations.insert_one(operation, session=session)
 
     async def find_artifact(self, artifact_type, artifact_id, project_id):
         return await database.value[self.collections[artifact_type]].find_one(
             {"_id": artifact_id, "project_id": project_id}
         )
 
-    async def update_artifact_tags(self, artifact_type, artifact_id, project_id, tags, updated_at):
+    async def update_artifact_tags(
+        self, artifact_type, artifact_id, project_id, tags, updated_at, session=None
+    ):
         return await database.value[self.collections[artifact_type]].update_one(
             {"_id": artifact_id, "project_id": project_id},
             {"$set": {"tags": tags, "updated_at": updated_at}},
+            session=session,
         )
 
     async def find_suite(self, suite_id, project_id):
@@ -43,7 +46,7 @@ class BulkOperationRepository:
         )
 
     async def update_suite_versions(
-        self, suite_id, project_id, expected_revision, version_ids, updated_at
+        self, suite_id, project_id, expected_revision, version_ids, updated_at, session=None
     ):
         return await database.value.test_suites.find_one_and_update(
             {
@@ -59,6 +62,7 @@ class BulkOperationRepository:
                 "$inc": {"revision": 1},
             },
             return_document=ReturnDocument.AFTER,
+            session=session,
         )
 
     async def mark_case_review_required(
@@ -70,6 +74,7 @@ class BulkOperationRepository:
         reason,
         user_id,
         updated_at,
+        session=None,
     ):
         return await database.value.test_cases.update_one(
             {
@@ -85,6 +90,7 @@ class BulkOperationRepository:
                     "updated_at": updated_at,
                 }
             },
+            session=session,
         )
 
     async def find_active_run(self, project_id, statuses, test_case_version_id):
@@ -107,6 +113,7 @@ class BulkOperationRepository:
         reason,
         user_id,
         archived_at,
+        session=None,
     ):
         return await database.value[self.collections[artifact_type]].update_one(
             {
@@ -123,6 +130,7 @@ class BulkOperationRepository:
                     "updated_at": archived_at,
                 }
             },
+            session=session,
         )
 
     async def find_impact_analysis(self, analysis_id, project_id):

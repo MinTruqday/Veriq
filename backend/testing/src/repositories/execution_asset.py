@@ -19,8 +19,8 @@ class ExecutionAssetRepository:
             {"_id": version_id, "project_id": project_id}
         )
 
-    async def insert_script_draft(self, value):
-        await database.value.automation_script_drafts.insert_one(value)
+    async def insert_script_draft(self, value, session=None):
+        await database.value.automation_script_drafts.insert_one(value, session=session)
         return value
 
     async def list_executions(self, project_id, limit=1000):
@@ -62,8 +62,8 @@ class ExecutionAssetRepository:
             }
         )
 
-    async def insert_execution(self, value):
-        await database.value.automation_executions.insert_one(value)
+    async def insert_execution(self, value, session=None):
+        await database.value.automation_executions.insert_one(value, session=session)
         return value
 
     async def transition_execution(self, execution_id, revision, source_status, changes):

@@ -606,8 +606,8 @@ class TestDesignRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_security_suggestion(self, value):
-        await database.value.security_test_suggestions.insert_one(value)
+    async def insert_security_suggestion(self, value, session=None):
+        await database.value.security_test_suggestions.insert_one(value, session=session)
         return value
 
     async def list_performance_drafts(self, project_id, limit):
@@ -620,8 +620,8 @@ class TestDesignRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_performance_draft(self, value):
-        await database.value.performance_plan_drafts.insert_one(value)
+    async def insert_performance_draft(self, value, session=None):
+        await database.value.performance_plan_drafts.insert_one(value, session=session)
         return value
 
     async def insert_scenario(self, value, session=None):

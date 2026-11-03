@@ -1,9 +1,11 @@
+import hashlib
 import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, new_id, now
+from src.core.database import database
 from src.repositories.causal_analysis import causal_analysis_repository
 from src.modules.quality.services.causal_analysis_query import get_analysis
 from src.core.ai_automation import (
@@ -11,6 +13,34 @@ from src.core.ai_automation import (
     request_ai_automation,
     require_ai_automation_event,
 )
+
+
+def _hypothesis_request_hash(payload, analysis, automation):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request.update(
+        {
+            "analysis_id": analysis["_id"],
+            "analysis_revision": analysis.get("revision"),
+            "problem_statement": analysis.get("problem_statement"),
+            "source_event_id": analysis["source_event_id"],
+            "source_event_revision": analysis["source_event_revision"],
+            "automation_run_id": automation["run_id"],
+        }
+    )
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_hypothesis_replay(existing, payload, analysis, automation, user):
+    if not existing.get("created_by"):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _hypothesis_request_hash(payload, analysis, automation):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 async def generate_hypotheses(analysis_id, payload, user):
@@ -64,6 +94,7 @@ async def generate_hypotheses(analysis_id, payload, user):
                 status_code=409,
                 detail={"code": 'IDEMPOTENCY_KEY_REUSED'},
             )
+        _verify_hypothesis_replay(existing, payload, value, automation, user)
         return existing
     defects = await causal_analysis_repository.list_defects(
         {"_id": {"$in": value["defect_ids"]}, "project_id": value["project_id"]},
@@ -123,21 +154,34 @@ async def generate_hypotheses(analysis_id, payload, user):
         "suggestions": ai.get("suggestions", []),
         **ai_contract_metadata(ai),
         "idempotency_key": payload.idempotency_key,
+        "idempotency_request_hash": _hypothesis_request_hash(payload, value, automation),
         "created_by": user.id,
         "created_at": now(),
     }
     try:
-        await causal_analysis_repository.insert_ai_result(result)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await causal_analysis_repository.insert_ai_result(result, session=session)
+                await audit(
+                    user.id,
+                    "causal_analysis_ai_hypotheses_generated",
+                    "AIResult",
+                    result["_id"],
+                    value["project_id"],
+                    {"analysis_id": analysis_id, "candidate_count": len(result["suggestions"])},
+                    session=session,
+                )
     except DuplicateKeyError:
-        return await causal_analysis_repository.find_ai_result_by_idempotency(
+        existing = await causal_analysis_repository.find_ai_result_by_idempotency(
             value["project_id"], payload.idempotency_key
         )
-    await audit(
-        user.id,
-        "causal_analysis_ai_hypotheses_generated",
-        "AIResult",
-        result["_id"],
-        value["project_id"],
-        {"analysis_id": analysis_id, "candidate_count": len(result["suggestions"])},
-    )
+        if not existing:
+            raise
+        if (
+            existing.get("result_type") != 'CAUSAL_ANALYSIS_HYPOTHESES'
+            or existing.get("subject_id") != analysis_id
+        ):
+            raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+        _verify_hypothesis_replay(existing, payload, value, automation, user)
+        return existing
     return result

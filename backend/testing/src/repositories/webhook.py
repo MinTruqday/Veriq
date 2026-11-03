@@ -32,12 +32,12 @@ class WebhookRepository:
             query["enabled"] = enabled
         return await database.value.webhook_subscriptions.find_one(query)
 
-    async def insert_replay_job(self, value):
-        await database.value.webhook_replay_jobs.insert_one(value)
+    async def insert_replay_job(self, value, session=None):
+        await database.value.webhook_replay_jobs.insert_one(value, session=session)
         return value
 
     async def queue_replay(
-        self, delivery_id, project_id, failed_status, queued_status, operation_id, updated_at
+        self, delivery_id, project_id, failed_status, queued_status, operation_id, updated_at, session=None
     ):
         return await database.value.webhook_deliveries.update_one(
             {"_id": delivery_id, "project_id": project_id, "status": failed_status},
@@ -49,6 +49,7 @@ class WebhookRepository:
                 },
                 "$inc": {"attempt": 1},
             },
+            session=session,
         )
 
     async def upsert_delivery(self, delivery_id, project_id, value):

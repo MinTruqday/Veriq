@@ -46,13 +46,18 @@ class EnvironmentIncidentRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def insert_incident(self, value):
-        await database.value.environment_incidents.insert_one(value)
+    async def insert_incident(self, value, session=None):
+        await database.value.environment_incidents.insert_one(value, session=session)
         return value
 
-    async def mark_environment_unavailable(self, environment_id, incident_id, availability, updated_at):
-        await database.value.test_environments.update_one(
-            {"_id": environment_id},
+    async def mark_environment_unavailable(
+        self, environment_id, expected_revision, incident_id, availability, updated_at, session=None
+    ):
+        query = {"_id": environment_id}
+        if expected_revision is not None:
+            query["revision"] = expected_revision
+        return await database.value.test_environments.update_one(
+            query,
             {
                 "$set": {
                     "availability": availability,
@@ -61,10 +66,11 @@ class EnvironmentIncidentRepository:
                 },
                 "$inc": {"revision": 1},
             },
+            session=session,
         )
 
     async def pause_runs(
-        self, run_ids, project_id, incident_id, in_progress_status, updated_at
+        self, run_ids, project_id, incident_id, in_progress_status, updated_at, session=None
     ):
         await database.value.test_runs.update_many(
             {"_id": {"$in": run_ids}, "project_id": project_id, "status": in_progress_status},
@@ -76,6 +82,7 @@ class EnvironmentIncidentRepository:
                 },
                 "$inc": {"revision": 1},
             },
+            session=session,
         )
 
     async def update_incident(self, incident_id, revision, statuses, changes):

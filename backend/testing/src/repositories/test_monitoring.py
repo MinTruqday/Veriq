@@ -47,12 +47,12 @@ class TestMonitoringRepository:
             "snapshot_at", -1
         ).limit(limit).to_list(limit)
 
-    async def insert_snapshot(self, snapshot):
-        await database.value.test_monitoring_snapshots.insert_one(snapshot)
+    async def insert_snapshot(self, snapshot, session=None):
+        await database.value.test_monitoring_snapshots.insert_one(snapshot, session=session)
         return snapshot
 
-    async def insert_gate_evaluation(self, evaluation):
-        await database.value.quality_gate_evaluations.insert_one(evaluation)
+    async def insert_gate_evaluation(self, evaluation, session=None):
+        await database.value.quality_gate_evaluations.insert_one(evaluation, session=session)
         return evaluation
 
     async def list_overrides(self, snapshot_id, limit):

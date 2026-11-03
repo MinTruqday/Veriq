@@ -1,14 +1,35 @@
 import csv
+import hashlib
 import io
+import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now, visible_defect
+from src.core.database import database
 from src.core.metrics import STALE, TRACE_ACCEPTANCE_RATE, UNCOVERED
 from src.repositories.traceability import traceability_repository
 
 
+
+
+def _snapshot_request_hash(payload):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_snapshot_replay(existing, payload, user):
+    if not existing.get("created_by"):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _snapshot_request_hash(payload):
+        raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 def percent(value, total):
@@ -553,6 +574,7 @@ class TraceabilityService:
         if idempotency_key:
             existing = await traceability_repository.find_snapshot(project_id, idempotency_key)
             if existing:
+                _verify_snapshot_replay(existing, payload, user)
                 return existing
         metrics = await cls.coverage(
             project_id,
@@ -569,21 +591,32 @@ class TraceabilityService:
             "release_id": payload.release_id,
             "build_id": payload.build_id,
             "idempotency_key": idempotency_key,
+            "idempotency_request_hash": _snapshot_request_hash(payload),
             "metrics": metrics,
             "created_by": user.id,
             "created_at": now(),
         }
         try:
-            await traceability_repository.insert_snapshot(snapshot)
-        except Exception:
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await traceability_repository.insert_snapshot(snapshot, session=session)
+                    await audit(
+                        user.id,
+                        "coverage_snapshot_created",
+                        "CoverageSnapshot",
+                        snapshot["_id"],
+                        project_id,
+                        session=session,
+                    )
+        except DuplicateKeyError:
             if idempotency_key:
                 existing = await traceability_repository.find_snapshot(
                     project_id, idempotency_key
                 )
                 if existing:
+                    _verify_snapshot_replay(existing, payload, user)
                     return existing
             raise
-        await audit(user.id, "coverage_snapshot_created", "CoverageSnapshot", snapshot["_id"], project_id)
         return snapshot
 
     @staticmethod

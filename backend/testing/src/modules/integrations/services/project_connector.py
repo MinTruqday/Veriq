@@ -1,7 +1,11 @@
+import hashlib
+import json
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now
+from src.core.database import database
 from src.repositories.project_connector import project_connector_repository
 
 
@@ -12,6 +16,26 @@ def public_connector(value):
     result = dict(value)
     result["connector_reference"] = 'Đã cấu hình'
     return result
+
+
+def _sync_request_hash(payload, connector_id):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["connector_id"] = connector_id
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_sync_replay(existing, payload, connector_id, user):
+    requested_by = existing.get("requested_by")
+    if not requested_by:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if requested_by != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _sync_request_hash(payload, connector_id):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 class ProjectConnectorService:
@@ -190,11 +214,7 @@ class ProjectConnectorService:
             project_id, payload.idempotency_key
         )
         if existing:
-            if existing.get("connector_id") != connector_id:
-                raise HTTPException(
-                    status_code=409,
-                    detail={"code": 'IDEMPOTENCY_KEY_REUSED'},
-                )
+            _verify_sync_replay(existing, payload, connector_id, user)
             return existing
         timestamp = now()
         value = {
@@ -207,27 +227,32 @@ class ProjectConnectorService:
             "status": 'QUEUED',
             "conflict_aware": True,
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _sync_request_hash(payload, connector_id),
             "requested_by": user.id,
             "created_at": timestamp,
             "updated_at": timestamp,
         }
         try:
-            await project_connector_repository.insert_job(value)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await project_connector_repository.insert_job(value, session=session)
+                    await audit(
+                        user.id,
+                        'connector_sync_queued',
+                        'SyncCursor',
+                        value["_id"],
+                        project_id,
+                        {"direction": payload.direction, "scopes": payload.scopes},
+                        session=session,
+                    )
         except DuplicateKeyError:
             existing = await project_connector_repository.find_job_by_idempotency_key(
                 project_id, payload.idempotency_key
             )
             if existing:
+                _verify_sync_replay(existing, payload, connector_id, user)
                 return existing
             raise
-        await audit(
-            user.id,
-            'connector_sync_queued',
-            'SyncCursor',
-            value["_id"],
-            project_id,
-            {"direction": payload.direction, "scopes": payload.scopes},
-        )
         return value
 
     @staticmethod

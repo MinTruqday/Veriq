@@ -1,7 +1,11 @@
+import hashlib
+import json
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.database import database
 from src.repositories.process_improvement import process_improvement_repository
 from src.modules.quality.services.statistical_quality import (
     annotate_special_cause,
@@ -11,6 +15,25 @@ from src.modules.quality.services.statistical_quality import (
     list_statistical_analyses,
     round_measurement,
 )
+
+
+def _create_request_hash(payload):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_create_replay(existing, payload, user):
+    created_by = existing.get("created_by")
+    if not created_by:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if created_by != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _create_request_hash(payload):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 async def require_member(project_id, user_id, code):
@@ -56,16 +79,16 @@ async def create_proposal(project_id, payload, user):
             project_id, payload.idempotency_key
         )
         if existing:
-            if existing.get("observed_problem") != payload.observed_problem:
-                raise HTTPException(
-                    status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'}
-                )
+            _verify_create_replay(existing, payload, user)
             return existing
     timestamp = now()
     value = {
         "_id": new_id('PIM'),
         "project_id": project_id,
         **payload.model_dump(),
+        "idempotency_request_hash": (
+            _create_request_hash(payload) if payload.idempotency_key else None
+        ),
         "lesson_refs": [],
         "causal_analysis_refs": [],
         "baseline_metrics": [],
@@ -79,21 +102,27 @@ async def create_proposal(project_id, payload, user):
         "updated_at": timestamp,
     }
     try:
-        await process_improvement_repository.insert_proposal(value)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await process_improvement_repository.insert_proposal(value, session=session)
+                await audit(
+                    user.id,
+                    'process_improvement_created',
+                    'ProcessImprovementProposal',
+                    value["_id"],
+                    project_id,
+                    {"source": value["source"], "owner_id": value["owner_id"]},
+                    session=session,
+                )
     except DuplicateKeyError:
         if payload.idempotency_key:
-            return await process_improvement_repository.find_by_idempotency(
+            existing = await process_improvement_repository.find_by_idempotency(
                 project_id, payload.idempotency_key
             )
+            if existing:
+                _verify_create_replay(existing, payload, user)
+                return existing
         raise
-    await audit(
-        user.id,
-        'process_improvement_created',
-        'ProcessImprovementProposal',
-        value["_id"],
-        project_id,
-        {"source": value["source"], "owner_id": value["owner_id"]},
-    )
     return value
 
 

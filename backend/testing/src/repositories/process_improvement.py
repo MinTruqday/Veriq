@@ -28,8 +28,8 @@ class ProcessImprovementRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_proposal(self, value):
-        await database.value.process_improvement_proposals.insert_one(value)
+    async def insert_proposal(self, value, session=None):
+        await database.value.process_improvement_proposals.insert_one(value, session=session)
 
     async def update_proposal(
         self,

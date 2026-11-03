@@ -51,8 +51,8 @@ class ProjectConnectorRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_job(self, value):
-        await self.jobs.insert_one(value)
+    async def insert_job(self, value, session=None):
+        await self.jobs.insert_one(value, session=session)
         return value
 
     async def list_jobs(self, project_id, limit=1000):

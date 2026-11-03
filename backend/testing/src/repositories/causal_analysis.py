@@ -22,8 +22,8 @@ class CausalAnalysisRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_analysis(self, value):
-        await database.value.causal_analyses.insert_one(value)
+    async def insert_analysis(self, value, session=None):
+        await database.value.causal_analyses.insert_one(value, session=session)
         return value
 
     async def update_analysis(self, query, changes, add_to_set=None):
@@ -77,8 +77,8 @@ class CausalAnalysisRepository:
             sort=[("created_at", -1), ("_id", -1)],
         )
 
-    async def insert_ai_result(self, value):
-        await database.value.ai_results.insert_one(value)
+    async def insert_ai_result(self, value, session=None):
+        await database.value.ai_results.insert_one(value, session=session)
         return value
 
 

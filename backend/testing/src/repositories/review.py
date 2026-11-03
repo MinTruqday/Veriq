@@ -86,8 +86,8 @@ class ReviewRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def insert_review(self, value):
-        await database.value.review_sessions.insert_one(value)
+    async def insert_review(self, value, session=None):
+        await database.value.review_sessions.insert_one(value, session=session)
         return value
 
     async def update_review(self, query, changes):

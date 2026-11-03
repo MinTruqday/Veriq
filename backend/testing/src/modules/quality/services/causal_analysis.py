@@ -1,7 +1,11 @@
+import hashlib
+import json
+
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.database import database
 from src.modules.quality.services.causal_analysis_automation import generate_hypotheses
 from src.modules.quality.services.causal_analysis_query import (
     get_analysis,
@@ -11,6 +15,26 @@ from src.modules.quality.services.causal_analysis_query import (
     validate_member,
 )
 from src.repositories.causal_analysis import causal_analysis_repository
+
+
+def _create_request_hash(payload, source_automation_run_id):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["source_automation_run_id"] = source_automation_run_id
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_create_replay(existing, payload, user, source_automation_run_id):
+    created_by = existing.get("created_by")
+    if not created_by:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if created_by != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _create_request_hash(payload, source_automation_run_id):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 async def create_analysis(project_id, payload, user):
@@ -47,6 +71,7 @@ async def create_analysis(project_id, payload, user):
             project_id, payload.idempotency_key
         )
         if existing:
+            _verify_create_replay(existing, payload, user, source_automation_run_id)
             if (
                 set(existing.get("defect_ids", [])) != set(defect_ids)
                 or existing.get("source_event_id") != payload.source_event_id
@@ -65,6 +90,11 @@ async def create_analysis(project_id, payload, user):
         "project_id": project_id,
         **data,
         "source_automation_run_id": source_automation_run_id,
+        "idempotency_request_hash": (
+            _create_request_hash(payload, source_automation_run_id)
+            if payload.idempotency_key
+            else None
+        ),
         "defect_ids": defect_ids,
         "root_causes": [],
         "contributing_factors": [],
@@ -80,21 +110,35 @@ async def create_analysis(project_id, payload, user):
         "updated_at": timestamp,
     }
     try:
-        await causal_analysis_repository.insert_analysis(value)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await causal_analysis_repository.insert_analysis(value, session=session)
+                await audit(
+                    user.id,
+                    "causal_analysis_created",
+                    "CausalAnalysis",
+                    value["_id"],
+                    project_id,
+                    {"defect_ids": defect_ids},
+                    session=session,
+                )
     except DuplicateKeyError:
         if payload.idempotency_key:
-            return await causal_analysis_repository.find_analysis_by_idempotency(
+            existing = await causal_analysis_repository.find_analysis_by_idempotency(
                 project_id, payload.idempotency_key
             )
+            if existing:
+                _verify_create_replay(existing, payload, user, source_automation_run_id)
+                if (
+                    set(existing.get("defect_ids", [])) != set(defect_ids)
+                    or existing.get("source_event_id") != payload.source_event_id
+                    or existing.get("source_event_revision") != payload.source_event_revision
+                    or existing.get("source_event_trigger") != payload.source_event_trigger
+                    or existing.get("source_automation_run_id") != source_automation_run_id
+                ):
+                    raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+                return existing
         raise
-    await audit(
-        user.id,
-        "causal_analysis_created",
-        "CausalAnalysis",
-        value["_id"],
-        project_id,
-        {"defect_ids": defect_ids},
-    )
     return value
 
 

@@ -58,7 +58,18 @@ __all__ = [
 ]
 
 
-def _idempotent_run_matches(existing, payload, version_ids, context):
+def _idempotent_run_matches(existing, payload, version_ids, context, actor_id):
+    created_by = existing.get("created_by")
+    if not created_by:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    if created_by != actor_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"},
+        )
     existing_suite_ids = list(dict.fromkeys(existing.get("test_suite_ids", [])))
     expected = {
         "name": payload.name,
@@ -66,6 +77,9 @@ def _idempotent_run_matches(existing, payload, version_ids, context):
         "test_suite_ids": list(dict.fromkeys(payload.test_suite_ids)),
         "test_case_version_ids": version_ids,
         "assignment_strategy": payload.assignment_strategy,
+        "release": context.get("release"),
+        "build": context.get("build"),
+        "environment": context.get("environment"),
         "release_id": context.get("release_id"),
         "build_id": context.get("build_id"),
         "environment_id": context.get("environment_id"),
@@ -83,6 +97,20 @@ def _idempotent_run_matches(existing, payload, version_ids, context):
             for key, value in expected.items()
         )
     )
+
+
+def _verify_rerun_replay(existing, user):
+    created_by = existing.get("created_by")
+    if not created_by:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    if created_by != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"},
+        )
 
 
 def _pin_run_to_plan(run, snapshot, snapshot_hash):
@@ -234,7 +262,7 @@ async def create_test_run_record(payload, project_id, user):
             payload.project_id, payload.idempotency_key
         )
         if existing:
-            if not _idempotent_run_matches(existing, payload, version_ids, context):
+            if not _idempotent_run_matches(existing, payload, version_ids, context, user.id):
                 raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
             return existing
     timestamp = now()
@@ -403,7 +431,7 @@ async def create_test_run_record(payload, project_id, user):
                 payload.project_id, payload.idempotency_key
             )
             if existing:
-                if not _idempotent_run_matches(existing, payload, version_ids, context):
+                if not _idempotent_run_matches(existing, payload, version_ids, context, user.id):
                     raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
                 return existing
         raise
@@ -447,6 +475,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
         project_id, run_id, payload.idempotency_key
     )
     if existing:
+        _verify_rerun_replay(existing, user)
         return existing
     key_owner = await test_run_repository.find_run_by_idempotency_key(
         project_id, payload.idempotency_key
@@ -507,6 +536,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
                     project_id, run_id, payload.idempotency_key, session=session
                 )
                 if existing:
+                    _verify_rerun_replay(existing, user)
                     return existing
                 if plan:
                     current_plan = await test_run_repository.find_plan(
@@ -565,6 +595,7 @@ async def rerun_test_run_record(project_id, run_id, payload, user):
             project_id, run_id, payload.idempotency_key
         )
         if existing:
+            _verify_rerun_replay(existing, user)
             return existing
         key_owner = await test_run_repository.find_run_by_idempotency_key(
             project_id, payload.idempotency_key

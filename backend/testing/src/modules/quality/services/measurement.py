@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.database import database
 from src.schemas.measurement import validate_threshold_order
 from src.repositories.measurement import measurement_repository
 from src.modules.quality.services.measurement_engine import (
@@ -13,6 +14,45 @@ from src.modules.quality.services.measurement_engine import (
     validate_formula_source,
 )
 from src.modules.quality.services.measurement_export import export_metric_csv
+
+
+def _create_request_hash(payload):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_create_replay(existing, payload, user):
+    created_by = existing.get("created_by")
+    if not created_by:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if created_by != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _create_request_hash(payload):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+
+
+def _version_request_hash(payload, source_definition_id):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["source_definition_id"] = source_definition_id
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_version_replay(existing, payload, source_definition_id, user):
+    if not existing.get("created_by"):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _version_request_hash(payload, source_definition_id):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+
 
 async def list_definitions(project_id, user):
     
@@ -31,10 +71,7 @@ async def create_definition(project_id, payload, user):
             project_id, payload.idempotency_key
         )
         if existing:
-            if existing.get("key") != payload.key:
-                raise HTTPException(
-                    status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'}
-                )
+            _verify_create_replay(existing, payload, user)
             return existing
     validation = validate_formula_source(
         payload.formula_type, payload.formula, payload.data_sources
@@ -50,6 +87,9 @@ async def create_definition(project_id, payload, user):
         "_id": new_id('METDEF'),
         "project_id": project_id,
         **payload.model_dump(),
+        "idempotency_request_hash": (
+            _create_request_hash(payload) if payload.idempotency_key else None
+        ),
         "version": int(latest.get("version", 0)) + 1 if latest else 1,
         "status": 'DRAFT',
         "revision": 1,
@@ -58,21 +98,27 @@ async def create_definition(project_id, payload, user):
         "updated_at": timestamp,
     }
     try:
-        await measurement_repository.insert_definition(value)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await measurement_repository.insert_definition(value, session=session)
+                await audit(
+                    user.id,
+                    'measurement_definition_created',
+                    'MeasurementDefinition',
+                    value["_id"],
+                    project_id,
+                    {"key": value["key"], "version": value["version"]},
+                    session=session,
+                )
     except DuplicateKeyError:
         if payload.idempotency_key:
-            return await measurement_repository.find_definition_idempotency(
+            existing = await measurement_repository.find_definition_idempotency(
                 project_id, payload.idempotency_key
             )
+            if existing:
+                _verify_create_replay(existing, payload, user)
+                return existing
         raise
-    await audit(
-        user.id,
-        'measurement_definition_created',
-        'MeasurementDefinition',
-        value["_id"],
-        project_id,
-        {"key": value["key"], "version": value["version"]},
-    )
     return value
 
 
@@ -199,11 +245,7 @@ async def create_snapshot(project_id, payload, user):
             project_id, payload.idempotency_key
         )
         if existing:
-            if (
-                existing.get("measurement_definition_id") != payload.definition_id
-                or existing.get("release_id") != payload.release_id
-            ):
-                raise HTTPException(status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'})
+            _verify_create_replay(existing, payload, user)
             return existing
     if definition.get("formula_type") == 'CUSTOM_SAFE_EXPRESSION':
         value, source = await compute_custom_metric(project_id, payload.release_id, definition)
@@ -236,25 +278,34 @@ async def create_snapshot(project_id, payload, user):
         "source_fingerprint": fingerprint,
         "measured_at": timestamp,
         "idempotency_key": payload.idempotency_key,
+        "idempotency_request_hash": (
+            _create_request_hash(payload) if payload.idempotency_key else None
+        ),
         "created_by": user.id,
         "created_at": timestamp,
     }
     try:
-        await measurement_repository.insert_snapshot(snapshot)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await measurement_repository.insert_snapshot(snapshot, session=session)
+                await audit(
+                    user.id,
+                    'measurement_snapshot_created',
+                    'MeasurementSnapshot',
+                    snapshot["_id"],
+                    project_id,
+                    {"key": definition["key"], "value": value, "source_fingerprint": fingerprint},
+                    session=session,
+                )
     except DuplicateKeyError:
         if payload.idempotency_key:
-            return await measurement_repository.find_snapshot_idempotency(
+            existing = await measurement_repository.find_snapshot_idempotency(
                 project_id, payload.idempotency_key
             )
+            if existing:
+                _verify_create_replay(existing, payload, user)
+                return existing
         raise
-    await audit(
-        user.id,
-        'measurement_snapshot_created',
-        'MeasurementSnapshot',
-        snapshot["_id"],
-        project_id,
-        {"key": definition["key"], "value": value, "source_fingerprint": fingerprint},
-    )
     return snapshot
 
 
@@ -278,15 +329,14 @@ async def version_definition(definition_id, payload, user):
     if not source:
         raise HTTPException(status_code=404, detail={"code": 'ENTITY_NOT_FOUND'})
     await get_project(source["project_id"], user, 'measurement.manage')
-    if source["revision"] != payload.expected_revision:
-        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
     existing = await measurement_repository.find_definition_idempotency(
         source["project_id"], payload.idempotency_key
     )
     if existing:
-        if existing.get("supersedes_definition_id") != definition_id:
-            raise HTTPException(status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'})
+        _verify_version_replay(existing, payload, definition_id, user)
         return existing
+    if source["revision"] != payload.expected_revision:
+        raise HTTPException(status_code=409, detail={"code": 'REVISION_CONFLICT'})
     latest = await measurement_repository.find_latest_definition(
         source["project_id"], source["key"]
     )
@@ -309,6 +359,7 @@ async def version_definition(definition_id, payload, user):
             "status": 'DRAFT',
             "revision": 1,
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _version_request_hash(payload, definition_id),
             "supersedes_definition_id": definition_id,
             "version_note": payload.note,
             "created_by": user.id,
@@ -317,22 +368,26 @@ async def version_definition(definition_id, payload, user):
         }
     )
     try:
-        await measurement_repository.insert_definition(value)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await measurement_repository.insert_definition(value, session=session)
+                await audit(
+                    user.id,
+                    'measurement_definition_versioned',
+                    'MeasurementDefinition',
+                    value["_id"],
+                    source["project_id"],
+                    {"supersedes_definition_id": definition_id, "version": value["version"]},
+                    session=session,
+                )
     except DuplicateKeyError:
         duplicate = await measurement_repository.find_definition_idempotency(
             source["project_id"], payload.idempotency_key
         )
         if duplicate:
+            _verify_version_replay(duplicate, payload, definition_id, user)
             return duplicate
         raise
-    await audit(
-        user.id,
-        'measurement_definition_versioned',
-        'MeasurementDefinition',
-        value["_id"],
-        source["project_id"],
-        {"supersedes_definition_id": definition_id, "version": value["version"]},
-    )
     return value
 
 

@@ -6,8 +6,28 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
+from src.core.database import database
 from src.repositories.execution_asset import execution_asset_repository
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+
+
+def _create_request_hash(payload, version_id):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["test_case_version_id"] = version_id
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_generate_replay(existing, payload, version_id, user):
+    if not existing.get("created_by"):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if existing["created_by"] != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _create_request_hash(payload, version_id):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 
@@ -153,6 +173,12 @@ class AutomationScriptService:
             project_id, payload.idempotency_key
         )
         if existing:
+            _verify_generate_replay(
+                existing,
+                payload,
+                version["_id"],
+                user,
+            )
             return existing, {}
         evidence = [
             {
@@ -212,28 +238,38 @@ class AutomationScriptService:
             "repository_write_performed": False,
             "human_confirmation_required": True,
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _create_request_hash(payload, version["_id"]),
             "revision": 1,
             "created_by": user.id,
             "created_at": timestamp,
             "updated_at": timestamp,
         }
         try:
-            await execution_asset_repository.insert_script_draft(value)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await execution_asset_repository.insert_script_draft(value, session=session)
+                    await audit(
+                        user.id,
+                        'automation_script_draft_generated',
+                        'AutomationScriptDraft',
+                        value["_id"],
+                        project_id,
+                        {"framework": payload.framework, "test_case_version_id": version["_id"]},
+                        session=session,
+                    )
         except DuplicateKeyError:
             existing = await execution_asset_repository.find_script_by_idempotency_key(
                 project_id, payload.idempotency_key
             )
             if existing:
+                _verify_generate_replay(
+                    existing,
+                    payload,
+                    version["_id"],
+                    user,
+                )
                 return existing, {}
             raise
-        await audit(
-            user.id,
-            'automation_script_draft_generated',
-            'AutomationScriptDraft',
-            value["_id"],
-            project_id,
-            {"framework": payload.framework, "test_case_version_id": version["_id"]},
-        )
         return value, {
             "status": ai_result.get("status", 'SUCCESS'),
             "degraded_mode": ai_result.get("degraded_mode"),

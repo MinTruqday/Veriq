@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import io
+import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -409,10 +410,27 @@ async def _assert_summary_source_current(document, user):
         raise RuntimeError("SOURCE_CHANGED_OR_ACCESS_REVOKED")
 
 
-async def _update_summary_job(job_id, changes):
+async def _update_summary_job(
+    job_id, changes, generation=None, allow_cancelled=False, expected_status=None
+):
     if job_id:
-        await database.value.document_summary_jobs.update_one(
-            {"_id": job_id}, {"$set": {**changes, "updated_at": datetime.now(timezone.utc)}}
+        query = {"_id": job_id}
+        if generation is not None:
+            if generation == 0:
+                query["$or"] = [
+                    {"dispatch_generation": 0},
+                    {"dispatch_generation": {"$exists": False}},
+                ]
+            else:
+                query["dispatch_generation"] = generation
+        if not allow_cancelled and changes.get("status") != "CANCELLED":
+            query["cancel_requested"] = {"$ne": True}
+        if expected_status is not None:
+            query["status"] = expected_status
+        elif "status" not in changes:
+            query["status"] = "RUNNING"
+        return await database.value.document_summary_jobs.update_one(
+            query, {"$set": {**changes, "updated_at": datetime.now(timezone.utc)}}
         )
 
 
@@ -461,8 +479,20 @@ async def _enqueue_summary_job(job, user, generation=0):
         },
     }
     worker_job = await worker_client.enqueue(worker_request)
+    queue_filter = {
+        "_id": job["_id"],
+        "project_id": job["project_id"],
+        "status": "QUEUED",
+    }
+    if generation == 0:
+        queue_filter["$or"] = [
+            {"dispatch_generation": 0},
+            {"dispatch_generation": {"$exists": False}},
+        ]
+    else:
+        queue_filter["dispatch_generation"] = generation
     await database.value.document_summary_jobs.update_one(
-        {"_id": job["_id"], "project_id": job["project_id"]},
+        queue_filter,
         {
             "$set": {
                 "worker_job_id": worker_job.get("job_id"),
@@ -474,12 +504,14 @@ async def _enqueue_summary_job(job, user, generation=0):
     return worker_job
 
 
-async def _check_summary_job(job_id):
+async def _check_summary_job(job_id, generation=None):
     if job_id:
         job = await database.value.document_summary_jobs.find_one(
-            {"_id": job_id}, {"cancel_requested": 1}
+            {"_id": job_id}, {"cancel_requested": 1, "dispatch_generation": 1}
         )
         if not job or job.get("cancel_requested"):
+            raise SummaryJobCancelled()
+        if generation is not None and int(job.get("dispatch_generation", 0)) != generation:
             raise SummaryJobCancelled()
 
 
@@ -489,22 +521,42 @@ async def process_document_summary_job(body, payload, user):
     worker_job_id = str(body.get("job_id") or "")
     if not project_id or not job_id or not worker_job_id:
         raise HTTPException(status_code=422, detail={"code": "DOCUMENT_SUMMARY_JOB_CONTEXT_INVALID"})
+    try:
+        generation = int(payload.get("dispatch_generation", 0))
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail={"code": "DOCUMENT_SUMMARY_JOB_CONTEXT_INVALID"}) from error
     job = await database.value.document_summary_jobs.find_one(
         {"_id": job_id, "project_id": project_id, "requester_id": user.id}
     )
     if not job:
         raise HTTPException(status_code=404, detail={"code": "DOCUMENT_SUMMARY_JOB_NOT_FOUND"})
+    if int(job.get("dispatch_generation", 0)) != generation:
+        return {"status": "COMPLETED", "summary_job_id": job_id, "summary_status": "SUPERSEDED"}
     if job.get("cancel_requested"):
-        await _update_summary_job(job_id, {"status": "CANCELLED", "completed_at": datetime.now(timezone.utc)})
+        await _update_summary_job(
+            job_id,
+            {"status": "CANCELLED", "completed_at": datetime.now(timezone.utc)},
+            generation=generation,
+            allow_cancelled=True,
+            expected_status={"$in": ["QUEUED", "RUNNING"]},
+        )
         return {"status": "COMPLETED", "summary_job_id": job_id, "summary_status": "CANCELLED"}
+    claim_filter = {
+        "_id": job_id,
+        "project_id": project_id,
+        "requester_id": user.id,
+        "status": "QUEUED",
+        "cancel_requested": {"$ne": True},
+    }
+    if generation == 0:
+        claim_filter["$or"] = [
+            {"dispatch_generation": 0},
+            {"dispatch_generation": {"$exists": False}},
+        ]
+    else:
+        claim_filter["dispatch_generation"] = generation
     claimed = await database.value.document_summary_jobs.update_one(
-        {
-            "_id": job_id,
-            "project_id": project_id,
-            "requester_id": user.id,
-            "status": {"$in": ["QUEUED", "RUNNING"]},
-            "cancel_requested": {"$ne": True},
-        },
+        claim_filter,
         {
             "$set": {
                 "status": "RUNNING",
@@ -523,9 +575,9 @@ async def process_document_summary_job(body, payload, user):
 
     request = RequirementDocumentSummaryRequest.model_validate(job["request"])
     try:
-        result = await summarize_project_documents(project_id, request, user, job_id)
+        result = await summarize_project_documents(project_id, request, user, job_id, generation)
         status = result["status"]
-        await _update_summary_job(
+        update = await _update_summary_job(
             job_id,
             {
                 "status": status,
@@ -536,20 +588,66 @@ async def process_document_summary_job(body, payload, user):
                     "total": len(result.get("results", [])) + len(result.get("excluded", [])),
                 },
             },
+            generation=generation,
+            expected_status="RUNNING",
         )
+        if not update or not update.matched_count:
+            latest = await database.value.document_summary_jobs.find_one({"_id": job_id})
+            if latest and int(latest.get("dispatch_generation", 0)) == generation:
+                if latest.get("cancel_requested"):
+                    await _update_summary_job(
+                        job_id,
+                        {"status": "CANCELLED", "completed_at": datetime.now(timezone.utc)},
+                        generation=generation,
+                        allow_cancelled=True,
+                        expected_status="RUNNING",
+                    )
+                    status = "CANCELLED"
+                else:
+                    status = latest.get("status", "FAILED")
+            else:
+                status = "SUPERSEDED"
     except SummaryJobCancelled:
-        status = "CANCELLED"
-        await _update_summary_job(job_id, {"status": status, "completed_at": datetime.now(timezone.utc)})
+        latest = await database.value.document_summary_jobs.find_one({"_id": job_id})
+        if not latest or int(latest.get("dispatch_generation", 0)) != generation:
+            status = "SUPERSEDED"
+        else:
+            status = "CANCELLED"
+            await _update_summary_job(
+                job_id,
+                {"status": status, "completed_at": datetime.now(timezone.utc)},
+                generation=generation,
+                allow_cancelled=True,
+                expected_status="RUNNING",
+            )
     except Exception as error:
         status = "FAILED"
-        await _update_summary_job(
+        update = await _update_summary_job(
             job_id,
             {
                 "status": status,
                 "error_code": type(error).__name__,
                 "completed_at": datetime.now(timezone.utc),
             },
+            generation=generation,
+            expected_status="RUNNING",
         )
+        if not update or not update.matched_count:
+            latest = await database.value.document_summary_jobs.find_one({"_id": job_id})
+            if latest and int(latest.get("dispatch_generation", 0)) == generation:
+                if latest.get("cancel_requested"):
+                    await _update_summary_job(
+                        job_id,
+                        {"status": "CANCELLED", "completed_at": datetime.now(timezone.utc)},
+                        generation=generation,
+                        allow_cancelled=True,
+                        expected_status="RUNNING",
+                    )
+                    status = "CANCELLED"
+                else:
+                    status = latest.get("status", "FAILED")
+            else:
+                status = "SUPERSEDED"
     return {"status": "COMPLETED", "summary_job_id": job_id, "summary_status": status}
 
 
@@ -564,6 +662,7 @@ async def start_document_summary_job(project_id, request, user):
         }
     )
     if existing:
+        _verify_summary_job_replay(existing, request)
         return existing
     job_id = str(uuid4())
     now = datetime.now(timezone.utc)
@@ -577,6 +676,7 @@ async def start_document_summary_job(project_id, request, user):
         "status": "QUEUED",
         "progress": {"processed": 0, "total": 0},
         "cancel_requested": False,
+        "dispatch_generation": 0,
         "created_at": now,
         "updated_at": now,
     }
@@ -591,13 +691,14 @@ async def start_document_summary_job(project_id, request, user):
             }
         )
         if existing:
+            _verify_summary_job_replay(existing, request)
             return existing
         raise
     try:
         await _enqueue_summary_job(job, user)
     except WorkerClientError:
         await collection.update_one(
-            {"_id": job_id},
+            {"_id": job_id, "dispatch_generation": 0, "status": "QUEUED"},
             {
                 "$set": {
                     "status": "FAILED",
@@ -609,6 +710,41 @@ async def start_document_summary_job(project_id, request, user):
         )
         return await collection.find_one({"_id": job_id})
     return await collection.find_one({"_id": job_id})
+
+
+def _verify_summary_job_replay(existing, request):
+    stored_request = existing.get("request")
+    if not isinstance(stored_request, dict):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DOCUMENT_SUMMARY_IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    stored_request = dict(stored_request)
+    stored_request.pop("idempotency_key", None)
+    requested = request.model_dump(mode="json", exclude={"idempotency_key"})
+    stored_fingerprint = hashlib.sha256(
+        json.dumps(
+            stored_request,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    requested_fingerprint = hashlib.sha256(
+        json.dumps(
+            requested,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    if stored_fingerprint != requested_fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DOCUMENT_SUMMARY_IDEMPOTENCY_KEY_REUSED"},
+        )
 
 
 async def get_document_summary_job(project_id, job_id, user):
@@ -623,22 +759,29 @@ async def get_document_summary_job(project_id, job_id, user):
             worker_job = await worker_client.get(job["worker_job_id"])
             worker_status = str(worker_job.get("status") or "").lower()
             if worker_status == "failed":
-                await _update_summary_job(
+                updated = await _update_summary_job(
                     job_id,
                     {
                         "status": "FAILED",
                         "error_code": worker_job.get("error_code") or "SUMMARY_WORKER_FAILED",
                         "completed_at": datetime.now(timezone.utc),
                     },
+                    generation=int(job.get("dispatch_generation", 0)),
+                    expected_status={"$in": ["QUEUED", "RUNNING"]},
                 )
-                job["status"] = "FAILED"
-                job["error_code"] = worker_job.get("error_code") or "SUMMARY_WORKER_FAILED"
+                if updated and updated.modified_count:
+                    job["status"] = "FAILED"
+                    job["error_code"] = worker_job.get("error_code") or "SUMMARY_WORKER_FAILED"
             elif worker_status == "canceled":
-                await _update_summary_job(
+                updated = await _update_summary_job(
                     job_id,
                     {"status": "CANCELLED", "completed_at": datetime.now(timezone.utc)},
+                    generation=int(job.get("dispatch_generation", 0)),
+                    allow_cancelled=True,
+                    expected_status={"$in": ["QUEUED", "RUNNING"]},
                 )
-                job["status"] = "CANCELLED"
+                if updated and updated.modified_count:
+                    job["status"] = "CANCELLED"
         except WorkerClientError:
             pass
     result = job.get("result") or {}
@@ -718,8 +861,18 @@ async def retry_document_summary_job(project_id, job_id, user):
         ):
             raise HTTPException(status_code=409, detail={"code": "SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED"})
     generation = int(job.get("dispatch_generation", 0)) + 1
+    previous_generation = int(job.get("dispatch_generation", 0))
+    retry_filter = {
+        "_id": job_id,
+        "project_id": project_id,
+        "requester_id": user.id,
+        "status": job["status"],
+        "dispatch_generation": previous_generation,
+    }
+    if previous_generation == 0 and "dispatch_generation" not in job:
+        retry_filter.pop("dispatch_generation")
     updated = await collection.update_one(
-        {"_id": job_id, "status": job["status"]},
+        retry_filter,
         {
             "$set": {
                 "status": "QUEUED",
@@ -738,14 +891,20 @@ async def retry_document_summary_job(project_id, job_id, user):
         await _enqueue_summary_job(job, user, generation)
     except WorkerClientError:
         await collection.update_one(
-            {"_id": job_id, "status": "QUEUED"},
+            {
+                "_id": job_id,
+                "project_id": project_id,
+                "requester_id": user.id,
+                "status": "QUEUED",
+                "dispatch_generation": generation,
+            },
             {"$set": {"status": "FAILED", "error_code": "SUMMARY_WORKER_UNAVAILABLE", "updated_at": datetime.now(timezone.utc)}},
         )
         return {"job_id": job_id, "status": "FAILED", "error_code": "SUMMARY_WORKER_UNAVAILABLE"}
     return {"job_id": job_id, "status": "QUEUED"}
 
 
-async def summarize_project_documents(project_id, request, user, job_id=None):
+async def summarize_project_documents(project_id, request, user, job_id=None, generation=None):
     await get_project(project_id, user, "requirement_document.extract")
     results = []
     excluded = []
@@ -784,16 +943,18 @@ async def summarize_project_documents(project_id, request, user, job_id=None):
                 raise HTTPException(status_code=404, detail={"code": "DOCUMENT_NOT_FOUND"})
             selected.append(document)
     total = len(selected)
-    await _update_summary_job(job_id, {"progress": {"processed": 0, "total": total}})
+    await _update_summary_job(
+        job_id, {"progress": {"processed": 0, "total": total}}, generation=generation
+    )
     for document in selected:
-        await _check_summary_job(job_id)
+        await _check_summary_job(job_id, generation)
         if document.get("status") != "READY":
             excluded.append({"document_id": str(document["_id"]), "reason": "NOT_READY"})
-            await _update_summary_job(job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}})
+            await _update_summary_job(job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}}, generation=generation)
             continue
         if document.get("ai_enabled") is not True:
             excluded.append({"document_id": str(document["_id"]), "reason": "AI_READ_NOT_ALLOWED"})
-            await _update_summary_job(job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}})
+            await _update_summary_job(job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}}, generation=generation)
             continue
         try:
             content = await _document_text(document)
@@ -810,12 +971,12 @@ async def summarize_project_documents(project_id, request, user, job_id=None):
             continue
         if not content:
             excluded.append({"document_id": str(document["_id"]), "reason": "CONTENT_UNAVAILABLE"})
-            await _update_summary_job(job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}})
+            await _update_summary_job(job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}}, generation=generation)
             continue
         chunks = split_source_text(content)
         if not chunks:
             excluded.append({"document_id": str(document["_id"]), "reason": "CONTENT_UNAVAILABLE"})
-            await _update_summary_job(job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}})
+            await _update_summary_job(job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}}, generation=generation)
             continue
         cache_key = hashlib.sha256(
             "|".join(
@@ -836,8 +997,8 @@ async def summarize_project_documents(project_id, request, user, job_id=None):
             if not summary:
                 summaries = []
                 for chunk_index, chunk in enumerate(chunks):
-                    await _check_summary_job(job_id)
-                    await _update_summary_job(job_id, {"phase": "SUMMARIZING_DOCUMENT"})
+                    await _check_summary_job(job_id, generation)
+                    await _update_summary_job(job_id, {"phase": "SUMMARIZING_DOCUMENT"}, generation=generation)
                     await _assert_summary_source_current(document, user)
                     chunk_key = hashlib.sha256(
                         "|".join(
@@ -864,6 +1025,7 @@ async def summarize_project_documents(project_id, request, user, job_id=None):
                                     "chunks_total": len(chunks),
                                 }
                             },
+                            generation=generation,
                         )
                         continue
                     chunk_summary = await ai_automation_client.summarize_knowledge_text(
@@ -896,6 +1058,7 @@ async def summarize_project_documents(project_id, request, user, job_id=None):
                                 "chunks_total": len(chunks),
                             }
                         },
+                        generation=generation,
                     )
                 while len("\n\n".join(summaries)) > SUMMARY_INPUT_LIMIT:
                     combined = "\n\n".join(summaries)
@@ -944,14 +1107,16 @@ async def summarize_project_documents(project_id, request, user, job_id=None):
                 }
             )
             await _update_summary_job(
-                job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}}
+                job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}}, generation=generation
             )
+        except SummaryJobCancelled:
+            raise
         except Exception as error:
             excluded.append(
                 {"document_id": str(document["_id"]), "reason": "SUMMARY_FAILED", "error": type(error).__name__}
             )
             await _update_summary_job(
-                job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}}
+                job_id, {"progress": {"processed": len(results) + len(excluded), "total": total}}, generation=generation
             )
     if not results:
         return {
@@ -963,7 +1128,7 @@ async def summarize_project_documents(project_id, request, user, job_id=None):
     summaries = [f"{item['filename']} (v{item['source_version']}): {item['summary']}" for item in results]
     combined = "\n\n".join(summaries)
     while len(combined) > SUMMARY_INPUT_LIMIT:
-        await _check_summary_job(job_id)
+        await _check_summary_job(job_id, generation)
         combined = "\n\n".join(
             [
                 await ai_automation_client.summarize_knowledge_text(
@@ -973,7 +1138,7 @@ async def summarize_project_documents(project_id, request, user, job_id=None):
             ]
         )
     for item in results:
-        await _check_summary_job(job_id)
+        await _check_summary_job(job_id, generation)
         source = await get_requirement_document_record(item["document_id"], user)
         if (
             source.get("content_hash") != item.get("content_hash")

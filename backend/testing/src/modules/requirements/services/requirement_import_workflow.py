@@ -903,6 +903,17 @@ async def extract_requirement_candidates(document_id, payload, user):
         )
     existing = await requirement_import_repository.find_by_source_document(document_id)
     if existing:
+        source_hash = existing.get("source_content_hash")
+        if not source_hash:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "IMPORT_SOURCE_REPLAY_UNVERIFIABLE"},
+            )
+        if source_hash != document.get("content_hash"):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "IMPORT_SOURCE_CHANGED"},
+            )
         return existing
     await audit(
         user.id,
@@ -945,24 +956,48 @@ async def extract_requirement_candidates(document_id, payload, user):
         "created_at": now(),
     }
     try:
-        await requirement_import_repository.insert(job)
+        async with await database.client.start_session() as session:
+            async with session.start_transaction():
+                await requirement_import_repository.insert(job, session=session)
+                marked = await requirement_import_repository.mark_document_extracted(
+                    document_id,
+                    document["project_id"],
+                    'EXTRACTED',
+                    job["_id"],
+                    now(),
+                    document.get("content_hash"),
+                    session=session,
+                )
+                if not marked:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={"code": "IMPORT_SOURCE_CHANGED"},
+                    )
+                await audit(
+                    user.id,
+                    'requirement_extraction_completed',
+                    'RequirementDocument',
+                    document_id,
+                    document["project_id"],
+                    {"job_id": job["_id"], "candidate_count": len(candidates)},
+                    session=session,
+                )
     except DuplicateKeyError:
-        return await requirement_import_repository.find_by_source_document(document_id)
-    await requirement_import_repository.mark_document_extracted(
-        document_id,
-        document["project_id"],
-        'EXTRACTED',
-        job["_id"],
-        now(),
-    )
-    await audit(
-        user.id,
-        'requirement_extraction_completed',
-        'RequirementDocument',
-        document_id,
-        document["project_id"],
-        {"job_id": job["_id"], "candidate_count": len(candidates)},
-    )
+        existing = await requirement_import_repository.find_by_source_document(document_id)
+        if not existing:
+            raise
+        source_hash = existing.get("source_content_hash")
+        if not source_hash:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "IMPORT_SOURCE_REPLAY_UNVERIFIABLE"},
+            )
+        if source_hash != document.get("content_hash"):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "IMPORT_SOURCE_CHANGED"},
+            )
+        return existing
     return job
 
 

@@ -1,11 +1,31 @@
 import hmac
+import hashlib
+import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.core.configuration import settings
+from src.core.database import database
 from src.repositories.webhook import webhook_repository
+
+
+def _replay_request_hash(payload, delivery_id):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request["delivery_id"] = delivery_id
+    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _verify_replay(existing, delivery_id, payload, user):
+    if existing.get("requested_by") != user.id:
+        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
+    if request_hash != _replay_request_hash(payload, delivery_id):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 def public_subscription(value):
@@ -139,6 +159,7 @@ class WebhookService:
                 raise HTTPException(
                     status_code=409, detail={"code": 'IDEMPOTENCY_KEY_REUSED'}
                 )
+            _verify_replay(existing_job, delivery_id, payload, user)
             return public_replay_job(existing_job)
         delivery = await webhook_repository.find_delivery(delivery_id, project_id)
         if not delivery:
@@ -169,35 +190,50 @@ class WebhookService:
             "status": 'QUEUED',
             "reason": payload.reason,
             "idempotency_key": payload.idempotency_key,
+            "idempotency_request_hash": _replay_request_hash(payload, delivery_id),
             "requested_by": user.id,
             "created_at": timestamp,
             "updated_at": timestamp,
         }
         try:
-            await webhook_repository.insert_replay_job(job)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    await webhook_repository.insert_replay_job(job, session=session)
+                    queued = await webhook_repository.queue_replay(
+                        delivery_id,
+                        project_id,
+                        'FAILED',
+                        'QUEUED',
+                        job["_id"],
+                        timestamp,
+                        session=session,
+                    )
+                    if queued.matched_count != 1:
+                        raise HTTPException(
+                            status_code=409,
+                            detail={"code": "WEBHOOK_DELIVERY_REPLAY_CONFLICT"},
+                        )
+                    await audit(
+                        user.id,
+                        "webhook_delivery_replay_queued",
+                        "WebhookDelivery",
+                        delivery_id,
+                        project_id,
+                        {"operation_id": job["_id"], "reason": payload.reason},
+                        session=session,
+                    )
         except DuplicateKeyError:
             existing_job = await webhook_repository.find_replay_job(
                 project_id, payload.idempotency_key
             )
             if existing_job:
+                if existing_job.get("delivery_id") != delivery_id:
+                    raise HTTPException(
+                        status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"}
+                    )
+                _verify_replay(existing_job, delivery_id, payload, user)
                 return public_replay_job(existing_job)
             raise
-        await webhook_repository.queue_replay(
-            delivery_id,
-            project_id,
-            'FAILED',
-            'QUEUED',
-            job["_id"],
-            timestamp,
-        )
-        await audit(
-            user.id,
-            "webhook_delivery_replay_queued",
-            "WebhookDelivery",
-            delivery_id,
-            project_id,
-            {"operation_id": job["_id"], "reason": payload.reason},
-        )
         return public_replay_job(job)
 
     @staticmethod

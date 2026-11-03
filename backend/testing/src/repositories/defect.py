@@ -207,8 +207,10 @@ class DefectRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_ai_result(self, value):
-        await database.value.ai_results.insert_one(value)
+    async def insert_ai_result(self, value, session=None):
+        await database.value.ai_results.insert_one(
+            value, **({"session": session} if session is not None else {})
+        )
         return value
 
     async def find_ai_result(self, result_id, project_id, result_type, subject_id):

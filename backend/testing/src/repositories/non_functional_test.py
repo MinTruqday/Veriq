@@ -22,8 +22,8 @@ class NonFunctionalTestRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_plan(self, value):
-        await database.value.non_functional_test_plans.insert_one(value)
+    async def insert_plan(self, value, session=None):
+        await database.value.non_functional_test_plans.insert_one(value, session=session)
         return value
 
     async def update_plan(self, plan_id, revision, statuses, changes):
@@ -46,18 +46,19 @@ class NonFunctionalTestRepository:
             {"project_id": project_id, "idempotency_key": idempotency_key}
         )
 
-    async def insert_evidence(self, value):
-        await database.value.non_functional_test_evidence.insert_one(value)
+    async def insert_evidence(self, value, session=None):
+        await database.value.non_functional_test_evidence.insert_one(value, session=session)
         return value
 
-    async def attach_evidence(self, plan_id, evidence_id, result_summary, updated_at):
-        await database.value.non_functional_test_plans.update_one(
+    async def attach_evidence(self, plan_id, evidence_id, result_summary, updated_at, session=None):
+        return await database.value.non_functional_test_plans.update_one(
             {"_id": plan_id},
             {
                 "$addToSet": {"external_evidence_ids": evidence_id},
                 "$set": {"result_summary": result_summary, "updated_at": updated_at},
                 "$inc": {"revision": 1},
             },
+            session=session,
         )
 
     async def list_evidence(self, plan_id, limit):
