@@ -227,6 +227,10 @@ export default function RequirementImportModal({
   onResolveMatch,
   sourceDocument,
   onRetrySource,
+  onExtractSource,
+  onEnableSourceAiRead,
+  extractingSource = false,
+  canExtractSource = false,
   project,
   sourceDocuments,
   onTemplatePreview,
@@ -517,7 +521,7 @@ export default function RequirementImportModal({
               (importValue.visibility === "shared" && !importValue.shared_with.length)
             }
           >
-            Tạo bản xem trước
+            Trích xuất yêu cầu và quy tắc nghiệp vụ
           </button>
         </div>
       </form>
@@ -936,8 +940,7 @@ export default function RequirementImportModal({
             <summary className="cursor-pointer">Thông tin kiểm tra tệp</summary>
             <p className="mt-1 break-all">Mã đối chiếu nội dung: {sourceDocument.content_hash}</p>
           </details>
-          {(["UPLOADED", "PARSE_FAILED"].includes(sourceDocument.status) ||
-            (sourceDocument.status === "READY" && !preview)) && (
+          {["UPLOADED", "PARSE_FAILED"].includes(sourceDocument.status) && (
             <button
               className="secondary-button mt-3"
               type="button"
@@ -946,12 +949,52 @@ export default function RequirementImportModal({
             >
               {sourceProcessing
                 ? "Đang phân tích tài liệu…"
-                : sourceDocument.status === "READY"
-                  ? "Tạo bản xem trước lại"
-                  : sourceDocument.status === "UPLOADED"
-                    ? "Tiếp tục xử lý tệp đã tải lên"
-                    : "Thử phân tích lại từ tệp gốc"}
+                : sourceDocument.status === "UPLOADED"
+                  ? "Tiếp tục xử lý tệp đã tải lên"
+                  : "Thử phân tích lại từ tệp gốc"}
             </button>
+          )}
+          {sourceDocument.status === "READY" && !preview && (
+            <div className="mt-3 space-y-2">
+              {sourceDocument.ai_enabled ? (
+                canExtractSource ? (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={sourceProcessing || extractingSource}
+                    aria-busy={extractingSource}
+                    onClick={onExtractSource}
+                  >
+                    {extractingSource
+                      ? "Đang trích xuất yêu cầu và quy tắc nghiệp vụ…"
+                      : "Trích xuất yêu cầu và quy tắc nghiệp vụ"}
+                  </button>
+                ) : (
+                  <p className="text-sm text-ink-muted">
+                    Bạn không có quyền trích xuất yêu cầu từ tài liệu này.
+                  </p>
+                )
+              ) : canExtractSource ? (
+                <>
+                  <p className="text-sm text-ink-muted">
+                    Tệp đã được phân tích. Cho phép AI đọc rồi bấm trích xuất khi bạn sẵn sàng.
+                  </p>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={sourceProcessing || extractingSource}
+                    onClick={onEnableSourceAiRead}
+                  >
+                    {sourceProcessing ? "Đang cập nhật quyền…" : "Cho phép AI đọc tài liệu"}
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  Tệp đã được phân tích, nhưng chưa được phép cho AI đọc. Hãy nhờ người có quyền cấp
+                  phép.
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -98,6 +98,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const [pendingExtractionProjectId, setPendingExtractionProjectId] = useState(project._id);
   const [uploadingSource, setUploadingSource] = useState(false);
   const [retryingSource, setRetryingSource] = useState(false);
+  const [extractingSource, setExtractingSource] = useState(false);
   const loadSequence = useRef(0);
   const activeProjectId = useRef(project._id);
   activeProjectId.current = project._id;
@@ -174,29 +175,10 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       try {
         const document = await testingApi.getRequirementDocument(pendingExtractionDocumentId);
         if (!active) return;
-        setSourceDocument(document);
-        setSourceDocuments((items) => [
-          document,
-          ...items.filter((item) => item._id !== document._id),
-        ]);
+        rememberSourceDocument(document);
         if (document.status === "READY") {
-          try {
-            const result = await testingApi.extractRequirementDocument(
-              document._id,
-              `source-${document.content_hash}`,
-            );
-            if (active) {
-              setPreview(result);
-              setSelectedIndexes(result.preview.map((_, index) => index));
-              setError("");
-              rememberPendingExtraction("");
-            }
-          } catch (reason) {
-            if (active) {
-              setError(messageOf(reason));
-              rememberPendingExtraction("");
-            }
-          }
+          setError("");
+          rememberPendingExtraction("");
           return;
         }
         if (document.status === "PARSE_FAILED") {
@@ -833,15 +815,8 @@ export default function RequirementsPage({ project, section, workspaceView }) {
         rememberPendingExtraction(document._id);
         return;
       }
-      const result = await testingApi.extractRequirementDocument(
-        document._id,
-        `source-${document.content_hash}`,
-      );
-      if (activeProjectId.current !== requestedProjectId) return;
-      setPreview(result);
-      setSelectedIndexes(result.preview.map((_, index) => index));
-      const refreshedDocument = await testingApi.getRequirementDocument(document._id);
-      if (activeProjectId.current === requestedProjectId) rememberSourceDocument(refreshedDocument);
+      rememberPendingExtraction("");
+      setError("");
     } catch (reason) {
       if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
     } finally {
@@ -861,21 +836,57 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (activeProjectId.current !== requestedProjectId) return;
       rememberSourceDocument(document);
       if (document.status !== "READY") {
-        setError(
-          document.parse_error_type === "TimeoutError"
-            ? "Đã hết thời gian phân tích tài liệu; bạn có thể thử lại."
-            : "Bộ phân tích vẫn chưa đọc được tệp gốc",
-        );
+        setError("");
+        rememberPendingExtraction(document._id);
         return;
       }
+      setError("");
+    } catch (reason) {
+      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
+    } finally {
+      if (activeProjectId.current === requestedProjectId) setRetryingSource(false);
+    }
+  };
+  const extractSourceRequirements = async () => {
+    if (
+      !sourceDocument ||
+      sourceDocument.status !== "READY" ||
+      extractingSource ||
+      uploadingSource ||
+      retryingSource
+    ) {
+      return;
+    }
+    setExtractingSource(true);
+    setError("");
+    const requestedProjectId = project._id;
+    try {
       const result = await testingApi.extractRequirementDocument(
-        document._id,
-        `source-${document.content_hash}`,
+        sourceDocument._id,
+        `source-${sourceDocument.content_hash}`,
       );
       if (activeProjectId.current !== requestedProjectId) return;
       setPreview(result);
       setSelectedIndexes(result.preview.map((_, index) => index));
-      setError("");
+      const refreshedDocument = await testingApi.getRequirementDocument(sourceDocument._id);
+      if (activeProjectId.current === requestedProjectId) rememberSourceDocument(refreshedDocument);
+    } catch (reason) {
+      if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
+    } finally {
+      if (activeProjectId.current === requestedProjectId) setExtractingSource(false);
+    }
+  };
+  const enableSourceAiRead = async () => {
+    if (!sourceDocument || sourceDocument.status !== "READY" || sourceDocument.ai_enabled) return;
+    setRetryingSource(true);
+    setError("");
+    const requestedProjectId = project._id;
+    try {
+      const updated = await testingApi.updateRequirementDocumentAiRead(sourceDocument._id, {
+        expected_revision: sourceDocument.revision,
+        ai_enabled: true,
+      });
+      if (activeProjectId.current === requestedProjectId) rememberSourceDocument(updated);
     } catch (reason) {
       if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
     } finally {
@@ -1624,6 +1635,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 sourceProcessing={
                   uploadingSource || retryingSource || Boolean(pendingExtractionDocumentId)
                 }
+                extractingSource={extractingSource}
                 importValue={importValue}
                 setImportValue={setImportValue}
                 onImportPreview={importPreview}
@@ -1646,6 +1658,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 onResolveMatch={resolveImportMatch}
                 sourceDocument={sourceDocument}
                 onRetrySource={retrySourceDocument}
+                onExtractSource={extractSourceRequirements}
+                onEnableSourceAiRead={enableSourceAiRead}
+                canExtractSource={can("requirement_document.extract")}
                 project={project}
                 sourceDocuments={visibleSourceDocuments}
                 onTemplatePreview={(job) => {
