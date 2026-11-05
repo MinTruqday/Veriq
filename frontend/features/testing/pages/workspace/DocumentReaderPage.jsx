@@ -497,9 +497,6 @@ export default function DocumentReaderPage({ project, section = [] }) {
       {summaryLoading && summaryJob && (
         <div className="rounded-xl border border-border bg-surface p-3 text-sm" role="status">
           {summaryJob.status === "QUEUED" ? "Đang chờ xử lý" : "Đang tóm tắt tài liệu"}
-          {summaryJob.progress?.chunks_total
-            ? ` · ${summaryJob.progress.chunks_processed}/${summaryJob.progress.chunks_total} phần`
-            : ""}
         </div>
       )}
       {!summaryLoading && summaryJob?.status === "CANCELLED" && (

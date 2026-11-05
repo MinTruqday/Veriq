@@ -45,6 +45,7 @@ import DataSetsPanel from "./test-design/DataSetsPanel";
 import ScenariosPanel from "./test-design/ScenariosPanel";
 import ManualTestGenerationPanel from "../../components/ManualTestGenerationPanel";
 import TestCaseCreateModal from "./test-design/TestCaseCreateModal";
+import RequirementCoverageSelector from "./test-design/RequirementCoverageSelector";
 import TestCaseOwnerRecommendation from "./test-design/TestCaseOwnerRecommendation";
 import TestSetEditorModal from "./test-design/TestSetEditorModal";
 import TestCaseCustomValues from "./test-design/TestCaseCustomValues";
@@ -526,6 +527,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       assessment_reason: selectedDraft.assessment_reason || "",
       requirementVersionIds: selectedDraft.requirement_version_ids || [],
       acceptanceCriterionIds: selectedDraft.acceptance_criterion_ids || [],
+      coverageItemIds: selectedDraft.coverage_item_ids || [],
       repositoryNodeId: selectedDraft.repository_node_id || "",
       bdd: selectedDraft.bdd
         ? {
@@ -663,6 +665,7 @@ export default function TestDesignPage({ project, workspaceView }) {
         repository_node_id: form.repositoryNodeId || null,
         requirement_version_ids: form.requirementVersionIds,
         acceptance_criterion_ids: form.acceptanceCriterionIds,
+        coverage_item_ids: form.coverageItemIds,
         origin: "manual",
         source_evidence: [],
         bdd:
@@ -1126,7 +1129,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       : workspaceView === "" || workspaceView === "cases"
         ? {
             cases: "Ca kiểm thử",
-            adequacy: "Hồ sơ đảm bảo",
+            adequacy: "Nghĩa vụ kiểm thử",
             "agent-runs": "Hoạt động AI",
             scenarios: "Kịch bản kiểm thử",
             templates: "Mẫu ca kiểm thử",
@@ -1209,12 +1212,14 @@ export default function TestDesignPage({ project, workspaceView }) {
         />
       </div>
       {isCaseWorkspace && (
-        <WorkspaceSectionNav
-          current={caseTab === "agent-runs" ? "ai" : caseTab}
-          compact
-          permissions={permissions}
-          items={testCaseSubsectionItems(project._id).filter((item) => item.id !== "cases")}
-        />
+        <div className="lg:hidden">
+          <WorkspaceSectionNav
+            current={caseTab === "agent-runs" ? "ai" : caseTab}
+            compact
+            permissions={permissions}
+            items={testCaseSubsectionItems(project._id).filter((item) => item.id !== "cases")}
+          />
+        </div>
       )}
       {showCases && canManageTestCaseFields && customFieldManagerOpen && (
         <TestCaseCustomFieldManager
@@ -1820,7 +1825,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                             const answer = await ask({
                               title: `Tạo phiên bản mới cho ${item.test_case_key}`,
                               description:
-                                "Phiên bản hiện tại được giữ nguyên. Phiên bản mới sẽ chờ QA rà soát và phê duyệt.",
+                                "Phiên bản hiện tại được giữ nguyên. Bản mới sẽ được gửi rà soát và phê duyệt.",
                               confirmLabel: "Tạo bản nháp",
                               fields: [
                                 {
@@ -2280,6 +2285,12 @@ export default function TestDesignPage({ project, workspaceView }) {
                     onChange={(acceptanceCriterionIds) =>
                       changeDraftEdit({ acceptanceCriterionIds })
                     }
+                  />
+                  <RequirementCoverageSelector
+                    requirements={requirements}
+                    requirementVersionIds={draftEdit.requirementVersionIds}
+                    value={draftEdit.coverageItemIds || []}
+                    onChange={(coverageItemIds) => changeDraftEdit({ coverageItemIds })}
                   />
                 </div>
                 {draftEdit.bdd && (

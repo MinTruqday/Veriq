@@ -751,6 +751,15 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         if payload.test_condition_ids is not None
         else draft.get("test_condition_ids", []),
     )
+    await validate_coverage_items(
+        draft["project_id"],
+        payload.requirement_version_ids
+        if payload.requirement_version_ids is not None
+        else draft.get("requirement_version_ids", []),
+        payload.coverage_item_ids
+        if payload.coverage_item_ids is not None
+        else draft.get("coverage_item_ids", []),
+    )
     await validate_data_set_versions(
         draft["project_id"],
         payload.data_set_version_ids
@@ -777,7 +786,7 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
             "title", "type", "objective_doc", "preconditions_doc", "steps", "test_data",
             "expected_result_doc", "postconditions_doc", "techniques",
             "requirement_version_ids", "acceptance_criterion_ids",
-            "data_set_version_ids", "test_condition_ids", "scenario_id",
+            "coverage_item_ids", "data_set_version_ids", "test_condition_ids", "scenario_id",
         )
     ):
         changes["coverage_obligations"] = []

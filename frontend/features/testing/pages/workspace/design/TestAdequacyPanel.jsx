@@ -6,7 +6,7 @@ import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
 
 const labels = {
   UNASSESSED: "Chưa đánh giá",
-  COVERED_PENDING_REVIEW: "Đã bao phủ, chờ QA rà soát",
+  COVERED_PENDING_REVIEW: "Đã bao phủ, chờ rà soát",
   VERIFIED_COVERED: "Đã xác minh bao phủ",
   MISSING_INFORMATION: "Thiếu thông tin",
   NOT_APPLICABLE: "Không áp dụng",
@@ -15,7 +15,7 @@ const labels = {
 
 const assessmentLabels = {
   DRAFT: "Chưa đủ đảm bảo",
-  IN_REVIEW: "Đang QA rà soát",
+  IN_REVIEW: "Đang rà soát",
   ASSURED: "Đủ đảm bảo",
   CONDITIONAL: "Đảm bảo có điều kiện",
   SUPERSEDED: "Đã thay thế",
@@ -137,7 +137,7 @@ export default function TestAdequacyPanel({
       title: waiver ? "Chấp nhận có điều kiện" : "Xác nhận không áp dụng",
       description: waiver
         ? "Quyết định chấp nhận rủi ro chỉ còn hiệu lực đến ngày đã chọn; hồ sơ sẽ cần rà soát lại khi hết hạn"
-        : "QA xác nhận Nghĩa vụ này không áp dụng cho yêu cầu hiện tại",
+        : "Xác nhận nghĩa vụ này không áp dụng cho yêu cầu hiện tại",
       confirmLabel: "Xác nhận quyết định",
       fields: [
         { name: "reason", label: "Lý do", required: true, multiline: true, autoFocus: true },
@@ -179,7 +179,7 @@ export default function TestAdequacyPanel({
     const requestedAssessmentId = assessment?._id;
     const value = await ask({
       title: "Tạo Phiếu làm rõ",
-      description: "Phiếu gắn với đúng Nghĩa vụ này và chỉ BA mới có thể trả lời",
+      description: "Phiếu được gắn với đúng nghĩa vụ này và chuyển đến người phụ trách cập nhật",
       confirmLabel: "Tạo phiếu",
       fields: [
         {
@@ -310,7 +310,7 @@ export default function TestAdequacyPanel({
       </div>
       {item.decision?.decided_at && (
         <div className="mt-1 text-xs text-ink-muted">
-          QA ghi nhận bởi {decisionActorLabel(item.decision.decided_by, members)} ·{" "}
+          Ghi nhận bởi {decisionActorLabel(item.decision.decided_by, members)} ·{" "}
           {new Date(item.decision.decided_at).toLocaleString("vi-VN")}
         </div>
       )}
@@ -420,7 +420,7 @@ export default function TestAdequacyPanel({
                   update(() => testingApi.approveTestAdequacy(assessment._id, assessment.revision))
                 }
               >
-                QA xác nhận Hồ sơ
+                Xác nhận hồ sơ
               </button>
             )}
           </div>
@@ -529,7 +529,7 @@ export default function TestAdequacyPanel({
                   <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-                        Đánh giá của QA
+                        Đánh giá hồ sơ
                       </p>
                       <div className="mt-1 text-ink-muted">{decision(item)}</div>
                     </div>

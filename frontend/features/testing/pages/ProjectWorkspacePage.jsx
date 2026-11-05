@@ -92,7 +92,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.knowledge]: "knowledge",
     "tim-kiem": "knowledge",
     [PROJECT_SECTION_SLUGS.settings]: "settings",
-    "tai-lieu": "document-reader",
+    [PROJECT_SECTION_SLUGS.documentReader]: "document-reader",
   };
   const legacyRedirectTarget =
     section[0] === PROJECT_SECTION_SLUGS.projectTasks
@@ -155,6 +155,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     [PROJECT_SECTION_SLUGS.testRuns]: "testrun.read",
   }[section[0]];
   const sectionAnyPermissions = {
+    [PROJECT_SECTION_SLUGS.testAnalysis]: ["testcondition.read", "testanalysis.read"],
     [PROJECT_SECTION_SLUGS.automation]: ["automation.read", "proposal.read"],
   }[section[0]];
   const permissions = state.project?.current_permissions || [];

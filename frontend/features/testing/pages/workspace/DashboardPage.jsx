@@ -54,6 +54,7 @@ export default function DashboardPage({ project }) {
   const [error, setError] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
   const [taskSummary, setTaskSummary] = useState(project.task_summary);
+  const [showAiReview, setShowAiReview] = useState(false);
   const permissions = project.current_permissions || [];
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
@@ -178,13 +179,10 @@ export default function DashboardPage({ project }) {
               </div>
             </div>
           </Panel>
-          {canReadAutomationRuns && <AgentRunPanel project={project} compact />}
-          <ProjectComplexityAssessmentPanel project={project} />
-          <ProjectCompletenessReviewPanel project={project} user={user} />
           {(dashboard || coverage) && hasOverviewMetrics && (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
               {can("requirement.read") && dashboard && (
-                <Metric label="Yêu cầu" value={dashboard.requirements} />
+                <Metric label="Yêu cầu đã duyệt" value={dashboard.requirements} />
               )}
               {can("testcase.read") && dashboard && (
                 <Metric label="Ca kiểm thử đang hoạt động" value={dashboard.active_tests} />
@@ -199,6 +197,20 @@ export default function DashboardPage({ project }) {
                 />
               )}
             </div>
+          )}
+          {canReadAutomationRuns && <AgentRunPanel project={project} compact />}
+          {project.current_permissions?.includes("ai.ask_project") && (
+            <details onToggle={(event) => setShowAiReview(event.currentTarget.open)}>
+              <summary className="cursor-pointer rounded-control border border-border bg-surface px-4 py-3 text-sm font-medium">
+                Đánh giá và rà soát bằng AI
+              </summary>
+              {showAiReview && (
+                <div className="mt-3 grid gap-3">
+                  <ProjectComplexityAssessmentPanel project={project} />
+                  <ProjectCompletenessReviewPanel project={project} user={user} />
+                </div>
+              )}
+            </details>
           )}
           {(dashboard || coverage) && hasQualityMetrics && (
             <details className="rounded-panel border border-border bg-surface p-4 shadow-sm">
@@ -232,7 +244,7 @@ export default function DashboardPage({ project }) {
                   </>
                 )}
                 {can("testrun.read") && dashboard && (
-                  <Metric label="Tác vụ AI đang xử lý" value={dashboard.current_runs} />
+                  <Metric label="Lượt chạy kiểm thử chưa kết thúc" value={dashboard.current_runs} />
                 )}
                 {can("impact.read") && dashboard && (
                   <Metric label="Thay đổi chờ rà soát" value={dashboard.changes_waiting_impact} />
@@ -241,29 +253,32 @@ export default function DashboardPage({ project }) {
             </details>
           )}
           {(navigationCards.length > 0 || canReadKnowledge) && (
-            <Panel title="Khu vực dự án">
-              <div className="grid gap-3 p-5 sm:grid-cols-2">
+            <section aria-labelledby="project-areas-heading" className="space-y-3">
+              <h2 className="text-base font-semibold text-ink" id="project-areas-heading">
+                Mở nhanh
+              </h2>
+              <nav aria-label="Khu vực dự án" className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
                 {navigationCards.map(([href, label]) => (
                   <Link
-                    className="group rounded-control border border-border p-4 transition hover:border-brand hover:bg-brand-soft"
+                    className="flex min-h-11 items-center justify-between gap-3 border-b border-border/70 py-2 text-sm font-medium text-ink transition-colors hover:text-brand"
                     href={`${base}/${href}`}
                     key={href}
                   >
-                    <p className="text-[13px] font-semibold group-hover:text-brand">{label}</p>
+                    <span>{label}</span>
+                    <span aria-hidden="true" className="text-ink-muted">›</span>
                   </Link>
                 ))}
                 {canReadKnowledge && (
                   <Link
-                    className="group rounded-control border border-border p-4 transition hover:border-brand hover:bg-brand-soft"
+                    className="flex min-h-11 items-center justify-between gap-3 border-b border-border/70 py-2 text-sm font-medium text-ink transition-colors hover:text-brand"
                     href={`${base}/tri-thuc`}
                   >
-                    <p className="text-[13px] font-semibold group-hover:text-brand">
-                      Tài liệu và nguồn
-                    </p>
+                    <span>Tài liệu và nguồn</span>
+                    <span aria-hidden="true" className="text-ink-muted">›</span>
                   </Link>
                 )}
-              </div>
-            </Panel>
+              </nav>
+            </section>
           )}
           {dashboard && can("defect.read") && can("testrun.read") && (
             <div className="grid items-start gap-4 lg:grid-cols-2">

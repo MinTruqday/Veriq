@@ -274,7 +274,7 @@ def grounded_requirement_candidates(document, result_batches):
     return candidates, conflicts
 
 
-async def extract_grounded_requirement_candidates(document, project_id):
+async def extract_grounded_requirement_candidates(document, project_id, include_business_rules=True):
     text = source_document_text(document["normalized_content"])
     evidence = [
         {
@@ -295,7 +295,12 @@ async def extract_grounded_requirement_candidates(document, project_id):
         result = await request_ai_automation(
             "requirement_template_synthesis",
             project_id,
-            "Extract complete source-grounded Requirement records. Preserve source identifiers exactly.",
+            "Extract complete source-grounded Requirement records. Preserve source identifiers exactly. "
+            + (
+                "Extract grounded business rules into business_rules when present."
+                if include_business_rules
+                else "Do not extract business rules; leave business_rules empty."
+            ),
             evidence[start : start + 8],
         )
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
@@ -979,12 +984,23 @@ async def extract_requirement_candidates(document_id, payload, user):
     conflicts = []
     if document.get("ai_enabled") and document.get("format") not in {"openapi", "postman"}:
         extracted, conflicts = await extract_grounded_requirement_candidates(
-            document, document["project_id"]
+            document, document["project_id"], payload.include_business_rules
         )
         extraction_mode = "AI_GROUNDED"
     else:
         extracted = atomic_requirement_candidates(document)
     extracted = attach_labeled_acceptance_criteria(extracted, document)
+    if not payload.include_business_rules:
+        for candidate in extracted:
+            candidate["business_rules"] = []
+            candidate["source_refs"] = [
+                reference
+                for reference in candidate.get("source_refs", [])
+                if reference.get("section") != "business_rules"
+            ]
+            section_states = dict(candidate.get("section_states") or {})
+            section_states.pop("business_rules", None)
+            candidate["section_states"] = section_states
     if len(extracted) > 500:
         raise HTTPException(status_code=413, detail={"code": "IMPORT_CANDIDATE_LIMIT_EXCEEDED"})
     candidates = prepare_requirement_candidates(job_id, extracted)
@@ -1002,6 +1018,7 @@ async def extract_requirement_candidates(document_id, payload, user):
         + (["SOURCE_CONFLICTS_FOUND"] if conflicts else []),
         "source_conflicts": conflicts,
         "extraction_mode": extraction_mode,
+        "include_business_rules": payload.include_business_rules,
         "idempotency_key": payload.idempotency_key,
         "revision": 1,
         "created_by": user.id,

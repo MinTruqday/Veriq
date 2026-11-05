@@ -62,7 +62,7 @@ export function testCaseSubsectionItems(projectId) {
     { id: "cases", label: "Ca kiểm thử", href: root, permission: "testcase.read" },
     {
       id: "adequacy",
-      label: "Hồ sơ đảm bảo",
+      label: "Nghĩa vụ kiểm thử",
       href: `${root}/do-day-du`,
       permissions: ["requirement.read", "testcase.read"],
     },
@@ -239,7 +239,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             label: "Phân tích kiểm thử",
             href: `${root}/${PROJECT_SECTION_SLUGS.testAnalysis}`,
             icon: TestTube2,
-            permission: "testcondition.read",
+            anyPermission: ["testcondition.read", "testanalysis.read"],
           },
           {
             id: "test-repository",

@@ -12,6 +12,7 @@ import {
 } from "./testDesign.model";
 import TestCaseCustomValues from "./TestCaseCustomValues";
 import TestCaseOwnerRecommendation from "./TestCaseOwnerRecommendation";
+import RequirementCoverageSelector from "./RequirementCoverageSelector";
 import { emptyDoc } from "../../../lib/testing.logic.mjs";
 
 function TestDataEntries({ label, entries, onChange }) {
@@ -492,6 +493,14 @@ export default function TestCaseCreateModal({
                 ),
               })
             }
+          />
+        )}
+        {form.requirementVersionIds.length > 0 && (
+          <RequirementCoverageSelector
+            requirements={requirements}
+            requirementVersionIds={form.requirementVersionIds}
+            value={form.coverageItemIds || []}
+            onChange={(coverageItemIds) => update({ coverageItemIds })}
           />
         )}
         <section

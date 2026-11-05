@@ -1857,7 +1857,7 @@ export default function TestCaseCompareWorkspace({
                   ))}
                 </ul>
                 <label className="field-label mt-3">
-                  Lý do giữ ca này riêng sau khi QA rà soát trùng lặp
+                  Lý do giữ ca này riêng sau khi rà soát trùng lặp
                   <textarea
                     className="apple-input min-h-24"
                     value={result.duplicate_reason || ""}
@@ -1868,7 +1868,7 @@ export default function TestCaseCompareWorkspace({
                   />
                 </label>
                 <p className="text-xs text-ink-muted">
-                  Cần ghi lý do trước khi QA có thể duyệt một ca đang gần giống ca đã có.
+                  Cần ghi lý do trước khi người có quyền duyệt xem xét ca gần giống ca đã có.
                 </p>
               </section>
             )}

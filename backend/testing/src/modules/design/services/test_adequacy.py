@@ -394,6 +394,13 @@ async def get_adequacy_assessment(requirement_version_id, user):
     return await refresh_adequacy_assessment(requirement_version_id, user, None)
 
 
+async def list_coverage_source_items(requirement_version_id, user):
+    version = await get_project_entity(
+        "requirement_versions", requirement_version_id, user, "testcase.read"
+    )
+    return await _sources(version)
+
+
 async def refresh_adequacy_assessment(requirement_version_id, user, expected_revision):
     version = await get_project_entity("requirement_versions", requirement_version_id, user, "testcase.read")
     await get_project(version["project_id"], user, "testcase.read")

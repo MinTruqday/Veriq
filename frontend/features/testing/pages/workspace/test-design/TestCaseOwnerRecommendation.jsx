@@ -104,8 +104,8 @@ export default function TestCaseOwnerRecommendation({
               {result.status === "PROJECT_LIMIT_REACHED"
                 ? "Các ứng viên đạt kỹ năng đã chạm giới hạn dự án được Admin khai báo cho kỳ này. Hãy điều chỉnh giới hạn hoặc chọn người có quyền và xem lại tải trước khi phân công."
                 : result.status === "NO_ELIGIBLE_TESTER"
-                  ? "Dự án chưa có QA đang hoạt động để đề xuất."
-                  : "Chưa có QA phù hợp với kỹ năng đã xác nhận và mức sẵn sàng. Có thể chọn thủ công ở danh sách người phụ trách."}
+                  ? "Dự án chưa có người phụ trách kiểm thử đang hoạt động để đề xuất."
+                  : "Chưa có người phù hợp với kỹ năng đã xác nhận và mức sẵn sàng. Có thể chọn thủ công ở danh sách người phụ trách."}
             </p>
           )}
         </div>

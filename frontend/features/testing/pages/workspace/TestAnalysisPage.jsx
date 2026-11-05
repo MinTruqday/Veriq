@@ -95,7 +95,9 @@ export default function TestAnalysisPage({ project }) {
         aiResultValues,
         memberValues,
       ] = await Promise.all([
-        testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 }),
+        can("testcondition.read")
+          ? testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 })
+          : Promise.resolve({ items: [] }),
         can("requirement.read")
           ? testingApi.listRequirements(project._id, { status: "BASELINED", page_size: 500 })
           : Promise.resolve([]),

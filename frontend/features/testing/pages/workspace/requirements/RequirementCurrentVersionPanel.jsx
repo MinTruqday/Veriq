@@ -87,6 +87,43 @@ export default function RequirementCurrentVersionPanel({
               {checkingWithAi ? "Đang kiểm tra…" : "Kiểm tra AI"}
             </button>
           )}
+          {current.status === "IN_REVIEW" && can("requirement.review") && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                ask({
+                  title: "Yêu cầu chỉnh sửa",
+                  description:
+                    "Phiên bản sẽ trở về bản nháp để người phụ trách cập nhật nội dung. Ghi rõ điểm cần sửa; có thể kèm Phiếu làm rõ riêng.",
+                  confirmLabel: "Trả về bản nháp",
+                  fields: [
+                    {
+                      name: "review_note",
+                      label: "Nội dung cần chỉnh sửa",
+                      required: true,
+                      minLength: 2,
+                      multiline: true,
+                      autoFocus: true,
+                    },
+                  ],
+                  onConfirm: async (answer) => {
+                    try {
+                      await testingApi.requestRequirementChanges(projectId, selected._id, {
+                        expected_revision: current.revision,
+                        review_note: answer.review_note.trim(),
+                      });
+                      await reload();
+                    } catch (value) {
+                      throw new Error(messageOf(value));
+                    }
+                  },
+                })
+              }
+            >
+              Yêu cầu chỉnh sửa
+            </button>
+          )}
           {current.status === "IN_REVIEW" &&
             can("requirement.review") &&
             current.technical_review_revision !== current.revision && (
@@ -122,7 +159,7 @@ export default function RequirementCurrentVersionPanel({
               disabled={current.technical_review_revision !== current.revision}
               title={
                 current.technical_review_revision !== current.revision
-                  ? "Cần QA xác nhận rà soát kỹ thuật trước"
+                  ? "Cần xác nhận rà soát kỹ thuật trước"
                   : undefined
               }
               onClick={async () => {
@@ -341,6 +378,7 @@ export default function RequirementCurrentVersionPanel({
               <DocumentEditor
                 value={draft.content_doc}
                 onChange={(content_doc) => onDraftChange({ content_doc })}
+                ignoreUnfocusedUpdates
                 label="Nội dung yêu cầu"
               />
             </div>

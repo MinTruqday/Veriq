@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import NotificationPreferencesPanel from "@/features/notification/components/NotificationPreferencesPanel";
+import PasswordField from "../components/PasswordField";
+import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
 import {
   changeMyPassword,
   listMySessions,
@@ -30,6 +32,7 @@ export default function AccountPage() {
   const sessionPageSize = 10;
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [timezoneError, setTimezoneError] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [sessionAction, setSessionAction] = useState("");
@@ -40,6 +43,7 @@ export default function AccountPage() {
       locale: user?.locale || "vi-VN",
       timezone: user?.timezone || "Asia/Ho_Chi_Minh",
     });
+    setTimezoneError("");
   }, [user]);
   const loadSessions = useCallback(async () => {
     const currentRequest = ++sessionsRequestId.current;
@@ -74,9 +78,15 @@ export default function AccountPage() {
   }, [loadSessions, userId]);
   const submitProfile = async (event) => {
     event.preventDefault();
+    if (!isSupportedTimeZone(profile.timezone)) {
+      setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu.");
+      setStatus("");
+      return;
+    }
     setSavingProfile(true);
     setStatus("");
     setError("");
+    setTimezoneError("");
     try {
       await updateMyProfile(profile);
       await refreshUser();
@@ -143,6 +153,13 @@ export default function AccountPage() {
     }
   };
   const visibleSessions = sessionsOwnerId === userId ? sessions : [];
+  const userTimeZoneOptions = useMemo(() => timeZoneOptions(profile.timezone), [profile.timezone]);
+  const timezoneIsValid = isSupportedTimeZone(profile.timezone);
+  const timezoneMessage =
+    timezoneError ||
+    (!timezoneIsValid
+      ? "Múi giờ đã lưu không hợp lệ. Thời gian phiên đăng nhập tạm hiển thị theo thiết bị; hãy chọn múi giờ trong danh sách."
+      : "");
   return (
     <div className="mx-auto w-full max-w-[980px] min-w-0 space-y-6 py-5 sm:py-6 xl:py-8">
       <header className="border-b border-border pb-6">
@@ -192,11 +209,31 @@ export default function AccountPage() {
           </label>
           <label className="field-label">
             Múi giờ
-            <input
+            <select
               className="apple-input mt-2 w-full"
+              aria-invalid={!timezoneIsValid || Boolean(timezoneError)}
+              aria-describedby={timezoneMessage ? "account-timezone-error" : undefined}
               value={profile.timezone}
-              onChange={(event) => setProfile({ ...profile, timezone: event.target.value })}
-            />
+              onChange={(event) => {
+                setProfile({ ...profile, timezone: event.target.value });
+                setTimezoneError("");
+              }}
+            >
+              {userTimeZoneOptions.map((option) => (
+                <option key={option.value} value={option.value} disabled={!option.valid}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {timezoneMessage && (
+              <span
+                id="account-timezone-error"
+                className={`mt-2 block text-sm ${timezoneError ? "text-danger" : "text-warning"}`}
+                role={timezoneError ? "alert" : "status"}
+              >
+                {timezoneMessage}
+              </span>
+            )}
           </label>
           <div className="sm:col-span-2">
             <button className="apple-button" type="submit" disabled={savingProfile}>
@@ -209,29 +246,25 @@ export default function AccountPage() {
         <h2 className="font-semibold">Đổi mật khẩu</h2>
         <p className="mt-1 text-sm text-ink-muted">Mật khẩu mới cần có ít nhất 12 ký tự.</p>
         <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={submitPassword}>
-          <label className="field-label">
-            Mật khẩu hiện tại
-            <input
-              className="apple-input mt-2 w-full"
-              type="password"
-              value={password.current_password}
-              onChange={(event) =>
-                setPassword({ ...password, current_password: event.target.value })
-              }
-              required
-            />
-          </label>
-          <label className="field-label">
-            Mật khẩu mới
-            <input
-              className="apple-input mt-2 w-full"
-              type="password"
-              minLength={12}
-              value={password.new_password}
-              onChange={(event) => setPassword({ ...password, new_password: event.target.value })}
-              required
-            />
-          </label>
+          <PasswordField
+            id="account-current-password"
+            name="current_password"
+            label="Mật khẩu hiện tại"
+            autoComplete="current-password"
+            value={password.current_password}
+            onChange={(event) => setPassword({ ...password, current_password: event.target.value })}
+            required
+          />
+          <PasswordField
+            id="account-new-password"
+            name="new_password"
+            label="Mật khẩu mới"
+            autoComplete="new-password"
+            value={password.new_password}
+            onChange={(event) => setPassword({ ...password, new_password: event.target.value })}
+            minLength={12}
+            required
+          />
           <div className="sm:col-span-2">
             <button className="secondary-button" type="submit" disabled={savingPassword}>
               {savingPassword ? "Đang cập nhật" : "Đổi mật khẩu"}
@@ -300,7 +333,7 @@ export default function AccountPage() {
                             year: "numeric",
                             hour: "2-digit",
                             minute: "2-digit",
-                            timeZone: profile.timezone || undefined,
+                            timeZone: timezoneIsValid ? profile.timezone : undefined,
                           })
                         : "Không rõ thời điểm"}
                     </p>

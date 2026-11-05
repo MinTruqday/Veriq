@@ -61,7 +61,7 @@ const aiCapabilityLabels = {
   scenario_generation: "Tạo kịch bản kiểm thử",
   test_generation: "Tạo ca kiểm thử",
   test_condition_generation: "Đề xuất điều kiện kiểm thử",
-  test_plan_draft_generation: "Đề xuất Test Plan",
+  test_plan_draft_generation: "Đề xuất kế hoạch kiểm thử",
   test_data_generation: "Tạo dữ liệu kiểm thử",
   execution_assistance: "Hỗ trợ thực thi kiểm thử",
   impact_analysis: "Phân tích ảnh hưởng",
@@ -77,6 +77,12 @@ const aiCapabilityLabels = {
 
 function aiCapabilityLabel(value) {
   return aiCapabilityLabels[value] || valueLabel(value);
+}
+
+function reportActivityActionLabel(value) {
+  const rawValue = String(value || "");
+  const label = valueLabel(value);
+  return label === rawValue && /^[a-z0-9]+(?:[._][a-z0-9]+)+$/i.test(rawValue) ? "Cập nhật" : label;
 }
 
 function countRows(values, key) {
@@ -654,7 +660,7 @@ export default function ReportsPage({ project }) {
                           {metricCount(value.ai.ai_request_metrics?.by_status?.SUCCESS || 0)} · Cần
                           xem lại: {metricCount(value.ai.ai_request_metrics?.degraded_count || 0)}
                           {value.ai.ai_request_metrics?.sample_truncated
-                            ? " · Danh sách đang hiển thị tối đa 10.000 lượt gần nhất"
+                            ? " · Số liệu không bao gồm toàn bộ lịch sử"
                             : ""}
                         </p>
                       </section>
@@ -674,7 +680,7 @@ export default function ReportsPage({ project }) {
                           Chưa có tham chiếu nguồn:{" "}
                           {metricCount(value.ai.ai_result_metrics?.without_evidence_ref_count || 0)}
                           {value.ai.ai_result_metrics?.sample_truncated
-                            ? " · Danh sách đang hiển thị tối đa 10.000 kết quả gần nhất"
+                            ? " · Số liệu không bao gồm toàn bộ lịch sử"
                             : ""}
                         </p>
                       </section>
@@ -760,16 +766,16 @@ export default function ReportsPage({ project }) {
                             value.ai.decision_feedback?.decisions_without_reason_code || 0,
                           )}
                           {value.ai.decision_feedback?.sample_truncated
-                            ? " · Số liệu dựa trên tối đa 10.000 quyết định gần nhất"
+                            ? " · Số liệu không bao gồm toàn bộ lịch sử"
                             : ""}
                         </p>
                       </section>
                       <section>
                         <h3 className="mb-2 text-sm font-medium">
-                          Phản hồi với Test Case do AI đề xuất
+                          Phản hồi về ca kiểm thử do AI đề xuất
                         </h3>
                         <p className="mb-3 text-xs text-ink-muted">
-                          Chỉ tính ca có nguồn gốc AI. Bản duyệt được so với đề xuất ban đầu; nội
+                          Chỉ tính ca có nguồn gốc AI. Bản đã duyệt được so với đề xuất ban đầu; nội
                           dung ghi chú và người duyệt không xuất hiện trong báo cáo này.
                         </p>
                         <div className="grid gap-4 xl:grid-cols-3">
@@ -784,7 +790,7 @@ export default function ReportsPage({ project }) {
                                 count,
                                 label: valueLabel(decision),
                               }))}
-                              empty="Chưa có Test Case AI được duyệt"
+                              empty="Chưa có ca kiểm thử do AI đề xuất được duyệt"
                               columns={[
                                 { key: "label", label: "Kết quả" },
                                 { key: "count", label: "Số lượng" },
@@ -836,7 +842,7 @@ export default function ReportsPage({ project }) {
                           {metricCount(
                             value.ai.ai_test_case_feedback?.changes_requested_count || 0,
                           )}{" "}
-                          · Phiên bản AI đã duyệt trong báo cáo:{" "}
+                          · Ca kiểm thử AI đã duyệt trong báo cáo:{" "}
                           {metricCount(
                             Object.values(
                               value.ai.ai_test_case_feedback?.approved_decision_counts || {},
@@ -845,7 +851,7 @@ export default function ReportsPage({ project }) {
                           {value.ai.ai_test_case_feedback?.generated_draft_sample_truncated ||
                           value.ai.ai_test_case_feedback?.changes_requested_sample_truncated ||
                           value.ai.ai_test_case_feedback?.approved_version_sample_truncated
-                            ? " · Một hoặc nhiều danh sách được giới hạn ở 10.000 bản ghi gần nhất"
+                            ? " · Số liệu không bao gồm toàn bộ lịch sử"
                             : ""}
                         </p>
                       </section>
@@ -901,7 +907,7 @@ export default function ReportsPage({ project }) {
                         {
                           key: "action",
                           label: "Hành động",
-                          render: (item) => valueLabel(item.action),
+                          render: (item) => reportActivityActionLabel(item.action),
                         },
                         {
                           key: "entity_type",

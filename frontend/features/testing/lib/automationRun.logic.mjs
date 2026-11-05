@@ -23,8 +23,8 @@ const checkpointReasonLabels = {
   AUTOMATION_WORKER_CLAIMED: "Hệ thống đã tiếp nhận lượt chạy",
   AUTOMATION_WORKER_FAILED: "Hệ thống gặp lỗi khi xử lý lượt chạy",
   AUTOMATION_ACTION_OUTCOME_UNCERTAIN: "Chưa xác định được kết quả thao tác",
-  PROJECT_QA_EXECUTOR_UNAVAILABLE: "Chưa có QA phù hợp để thực hiện lượt chạy",
-  PROJECT_BA_EXECUTOR_UNAVAILABLE: "Chưa có BA phù hợp để thực hiện lượt chạy",
+  PROJECT_QA_EXECUTOR_UNAVAILABLE: "Chưa có người phụ trách kiểm thử phù hợp để thực hiện lượt chạy",
+  PROJECT_BA_EXECUTOR_UNAVAILABLE: "Chưa có người phụ trách nghiệp vụ phù hợp để thực hiện lượt chạy",
   AI_READ_PERMISSION_REVOKED: "Quyền đọc nguồn AI đã bị thu hồi",
   AUTOMATION_CANCELLED: "Lượt chạy đã được dừng",
   QA_TEST_DESIGN_SOURCE_EVIDENCE_MISSING: "Không đủ bằng chứng nguồn để bàn giao thiết kế kiểm thử",
@@ -45,9 +45,9 @@ const automationRunErrorMessages = {
   AUTOMATION_WORKER_FAILED:
     "Hệ thống gặp lỗi khi xử lý lượt AI. Hãy xem bước gần nhất và trạng thái tiếp tục trước khi thử lại.",
   PROJECT_BA_EXECUTOR_UNAVAILABLE:
-    "Dự án chưa có thành viên BA đang hoạt động để tiếp tục lượt chạy này.",
+    "Dự án chưa có người phụ trách nghiệp vụ đang hoạt động để tiếp tục lượt chạy này.",
   PROJECT_QA_EXECUTOR_UNAVAILABLE:
-    "Dự án chưa có thành viên QA đang hoạt động để tiếp tục lượt chạy này.",
+    "Dự án chưa có người phụ trách kiểm thử đang hoạt động để tiếp tục lượt chạy này.",
   PROJECT_AUTHORIZATION_CHECK_FAILED:
     "Chưa xác minh được quyền dự án. Lượt chạy đang chờ kiểm tra quyền.",
   AUTHORIZATION_EXPIRED: "Phiên quyền của lượt chạy đã hết hạn; cần xác minh lại quyền hiện tại.",
@@ -117,14 +117,14 @@ export function automationAuthorizationGuidance(run) {
     case "PROJECT_QA_EXECUTOR_UNAVAILABLE":
       return {
         message:
-          "Dự án chưa có thành viên QA đang hoạt động. Hãy thêm hoặc kích hoạt QA rồi thử lại.",
-        action: "Thử lại sau khi bổ sung QA",
+          "Dự án chưa có người phụ trách kiểm thử đang hoạt động. Hãy phân công thành viên phù hợp rồi thử lại.",
+        action: "Thử lại sau khi phân công",
       };
     case "PROJECT_BA_EXECUTOR_UNAVAILABLE":
       return {
         message:
-          "Dự án chưa có thành viên BA đang hoạt động. Hãy thêm hoặc kích hoạt BA rồi thử lại.",
-        action: "Thử lại sau khi bổ sung BA",
+          "Dự án chưa có người phụ trách nghiệp vụ đang hoạt động. Hãy phân công thành viên phù hợp rồi thử lại.",
+        action: "Thử lại sau khi phân công",
       };
     case "AUTOMATION_PRINCIPAL_ROLE_CHANGED":
       return {

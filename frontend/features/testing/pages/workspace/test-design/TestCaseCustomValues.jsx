@@ -5,7 +5,7 @@ export default function TestCaseCustomValues({ fields = [], values = {}, onChang
       <div>
         <h3 className="font-medium">Thông tin mở rộng</h3>
         <p className="text-sm text-ink-muted">
-          Trường do QA cấu hình cho dự án; trường bắt buộc cần hoàn tất trước khi duyệt.
+          Trường do người quản lý dự án cấu hình; hãy điền các trường bắt buộc trước khi duyệt.
         </p>
       </div>
       <div className="grid min-w-0 gap-3 sm:grid-cols-2">

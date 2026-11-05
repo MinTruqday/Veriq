@@ -13,6 +13,7 @@ import { reportDateInput, reportDateTime } from "../lib/reportTime.mjs";
 import { summaryLanguageOptions } from "../lib/summaryLanguage";
 import { ErrorState, LoadingState, Panel, useActionDialog } from "./WorkspacePrimitives";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
+import { valueLabel } from "../lib/testing";
 
 const labels = {
   DRAFT: "Bản nháp",
@@ -41,7 +42,7 @@ const errors = {
     "Hãy xuất thành công ít nhất một bản DOCX hoặc PDF của phiên bản đã duyệt trước khi phát hành.",
   REPORT_TIMES_NEW_ROMAN_MISSING: "Máy chủ chưa được cấu hình font Times New Roman để tạo PDF.",
   REPORT_PDF_CONVERTER_UNAVAILABLE: "Máy chủ chưa sẵn sàng chuyển đổi PDF.",
-  REPORT_EDITOR_ROLE_INVALID: "Người soạn phải có vai trò BA, QA, Tester hoặc Developer.",
+  REPORT_EDITOR_ROLE_INVALID: "Người soạn phải là thành viên dự án có quyền tham gia viết báo cáo.",
   REPORT_MEMBER_NOT_ACTIVE: "Có người được chọn không còn là thành viên đang hoạt động.",
   PROJECT_REPORTING_DISABLED: "Dự án chưa bật báo cáo công việc.",
   REPORT_TRANSITION_INVALID: "Báo cáo đã đổi trạng thái. Hãy tải lại để tiếp tục.",
@@ -1728,7 +1729,7 @@ export default function WorkReportsPanel({ project }) {
                   <ul className="mt-3 divide-y divide-border">
                     {selected.snapshot.work_items.map((item) => (
                       <li key={item._id} className="py-2 text-sm">
-                        {item.title} · {item.status}
+                        {item.title} · {valueLabel(item.status)}
                       </li>
                     ))}
                   </ul>
@@ -1754,7 +1755,8 @@ export default function WorkReportsPanel({ project }) {
                         className="flex items-center justify-between gap-3 text-sm"
                       >
                         <span>
-                          {item.format.toUpperCase()} · {labels[item.status] || item.status}
+                          {item.format.toUpperCase()} ·{" "}
+                          {labels[item.status] || valueLabel(item.status)}
                           {item.error_code &&
                             ` · ${errors[item.error_code] || "Xuất tệp thất bại"}`}
                         </span>
@@ -1812,7 +1814,7 @@ export default function WorkReportsPanel({ project }) {
                           className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
                         >
                           <span>{item.user_label || memberName(item.user_id)}</span>
-                          <span>{labels[item.status] || item.status}</span>
+                          <span>{labels[item.status] || valueLabel(item.status)}</span>
                           <span>{date(item.first_viewed_at || item.received_at)}</span>
                           {(selected.owner_id === userId || can("workreport.manage")) && (
                             <div className="flex flex-wrap items-center gap-3">

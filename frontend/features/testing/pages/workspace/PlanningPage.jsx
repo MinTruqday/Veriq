@@ -9,10 +9,12 @@ import {
   ArchiveRestore,
   ChevronLeft,
   ChevronRight,
+  ChevronsUp,
   Columns3,
   GitBranch,
   GripVertical,
   History,
+  Minus,
   Pencil,
   Plus,
   RefreshCw,
@@ -129,7 +131,7 @@ function planningErrorMessage(reason) {
       "Không thể chuyển một số công việc cũ vì thiếu ánh xạ hợp lệ.",
     PROJECT_TASK_MIGRATION_SOURCE_CHANGED:
       "Nguồn công việc cũ đã thay đổi; chưa có dữ liệu nào được chuyển.",
-    BA_PLANNING_REQUIRED: "Chỉ BA của dự án được thay đổi cấu hình lập kế hoạch.",
+    BA_PLANNING_REQUIRED: "Bạn không có quyền thay đổi cấu hình lập kế hoạch.",
   };
   return messages[reason?.code] || messageOf(reason);
 }
@@ -152,8 +154,36 @@ function emptyPlanningFilters() {
   return { query: "", status: "", type: "" };
 }
 
-function priorityClass() {
+function priorityClass(priority) {
+  const normalized = String(priority || "MEDIUM").toUpperCase();
+  if (normalized === "HIGHEST") return "border-2 border-ink bg-surface-quiet text-ink";
+  if (normalized === "HIGH") return "border-border-strong bg-surface text-ink";
+  if (normalized === "LOW") return "border-border bg-surface text-ink-muted";
   return "border-border bg-surface-quiet text-ink";
+}
+
+function PriorityMark({ value, prefix = "" }) {
+  const normalized = String(value || "MEDIUM").toUpperCase();
+  const Icon =
+    normalized === "HIGHEST"
+      ? ChevronsUp
+      : normalized === "HIGH"
+        ? ArrowUp
+        : normalized === "LOW"
+          ? ArrowDown
+          : Minus;
+  const label = valueLabel(normalized);
+  return (
+    <span
+      aria-label={`Mức ưu tiên: ${label}`}
+      className="inline-flex items-center gap-1"
+      title={`Mức ưu tiên: ${label}`}
+    >
+      {prefix}
+      <Icon aria-hidden="true" size={13} />
+      {label}
+    </span>
+  );
 }
 
 function PlanningBadge({ children, className = "" }) {
@@ -1509,13 +1539,12 @@ function Backlog({
               <PlanningBadge>{valueLabel(item.item_type)}</PlanningBadge>
               <span
                 className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${priorityClass(item.priority)}`}
-                aria-label={`Mức ưu tiên: ${valueLabel(item.priority)}`}
               >
-                Ưu tiên {valueLabel(item.priority)}
+                <PriorityMark value={item.priority} prefix="Ưu tiên" />
               </span>
               {item.due_at && (
                 <span className="inline-flex min-h-7 items-center text-xs font-medium text-ink-muted">
-                  Hạn {formatCalendarDate(item.due_at)}
+                  Hạn: {formatCalendarDate(item.due_at)}
                 </span>
               )}
             </div>
@@ -1548,7 +1577,7 @@ function Backlog({
                   <>
                     {item.planned_start_at && (
                       <>
-                        Bắt đầu dự kiến{" "}
+                        Bắt đầu dự kiến:{" "}
                         <strong className="font-medium text-ink">
                           {formatCalendarDate(item.planned_start_at)}
                         </strong>
@@ -1557,7 +1586,7 @@ function Backlog({
                     {item.planned_start_at && item.planned_end_at && " · "}
                     {item.planned_end_at && (
                       <>
-                        Kết thúc dự kiến{" "}
+                        Kết thúc dự kiến:{" "}
                         <strong className="font-medium text-ink">
                           {formatCalendarDate(item.planned_end_at)}
                         </strong>
@@ -1721,7 +1750,7 @@ function WorkItemList({
                 <span
                   className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${priorityClass(item.priority)}`}
                 >
-                  Ưu tiên: {valueLabel(item.priority)}
+                  <PriorityMark value={item.priority} prefix="Ưu tiên:" />
                 </span>
               </div>
 
@@ -1950,7 +1979,7 @@ function WorkItemList({
               <span
                 className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${priorityClass(item.priority)}`}
               >
-                {valueLabel(item.priority)}
+                <PriorityMark value={item.priority} />
               </span>
             ),
           },
@@ -2400,9 +2429,8 @@ function Board({
                                 <div className="flex items-center gap-2">
                                   <span
                                     className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${priorityClass(item.priority)}`}
-                                    aria-label={`Mức ưu tiên: ${valueLabel(item.priority)}`}
                                   >
-                                    {valueLabel(item.priority)}
+                                    <PriorityMark value={item.priority} />
                                   </span>
                                   {canReadAudit && (
                                     <button

@@ -33,14 +33,14 @@ function templateError(reason) {
     TEMPLATE_USER_STORY_SOURCE_REQUIRED:
       "Không tìm thấy nguồn chứng minh nội dung câu chuyện người dùng",
     TEMPLATE_TOO_MANY_REQUIREMENTS: "Mẫu có quá nhiều yêu cầu",
-    CUSTOM_FIELD_MANAGER_REQUIRED: "Chỉ QA quản trị dự án được định nghĩa trường mở rộng",
+    CUSTOM_FIELD_MANAGER_REQUIRED: "Bạn không có quyền quản lý trường mở rộng của dự án",
     CUSTOM_FIELD_EXISTS: "Mã trường mở rộng đã tồn tại",
     TEMPLATE_NOT_PUBLISHABLE: "Mẫu này chưa đủ điều kiện đề nghị phát hành",
     PUBLIC_TEMPLATE_INCOMPLETE: "Bản công khai còn thiếu nội dung yêu cầu",
     PUBLIC_TEMPLATE_PRIVATE_METADATA: "Bản công khai còn chứa thông tin riêng của dự án",
     DOCUMENT_OWNER_CONSENT_REQUIRED: "Cần chủ tài liệu đồng ý trước khi phát hành",
-    DOCUMENT_OWNER_REQUIRED: "Chỉ chủ tài liệu được quyết định quyền sử dụng nguồn",
-    TEMPLATE_APPROVER_REQUIRED: "Chỉ QA được duyệt mẫu dùng chung",
+    DOCUMENT_OWNER_REQUIRED: "Chỉ chủ sở hữu tài liệu được quyết định quyền sử dụng nguồn",
+    TEMPLATE_APPROVER_REQUIRED: "Bạn không có quyền duyệt mẫu dùng chung",
     TEMPLATE_APPROVAL_INVALID: "Không thể duyệt đề nghị phát hành này",
   };
   return messages[reason?.code] || messageOf(reason);
@@ -1098,8 +1098,8 @@ export default function RequirementTemplatePanel({
             Đề nghị phát hành mẫu dùng chung
           </summary>
           <p className="mt-2 text-sm text-ink-muted">
-            Viết lại bản công khai không chứa nội dung hay định danh riêng của dự án Chủ tài liệu
-            nguồn phải đồng ý trước khi QA khác duyệt
+            Bản công khai không được chứa nội dung hoặc định danh riêng của dự án. Cần có sự đồng ý
+            của chủ sở hữu tài liệu nguồn trước khi mẫu được duyệt.
           </p>
           <div className="mt-3 space-y-3">
             <label className="field-label block">

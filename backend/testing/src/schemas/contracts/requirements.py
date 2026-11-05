@@ -262,6 +262,7 @@ class ImportCreate(BaseModel):
 
 class RequirementExtractionInput(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=200)
+    include_business_rules: bool = True
 
 
 class RequirementParseRetry(BaseModel):

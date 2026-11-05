@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Archive, ClipboardCheck, Copy, Eye, Pencil, Send, Check } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import DeviceMatricesPanel from "../../components/DeviceMatricesPanel";
@@ -31,6 +31,7 @@ import {
   operationForRetry,
   shouldReloadAfterAmbiguousMutation,
 } from "../../lib/executionRecovery.logic.mjs";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 
 const testPlanFindingLabels = {
   TEST_PLAN_STRATEGY_REQUIRED:
@@ -49,6 +50,7 @@ const testPlanFindingLabels = {
 
 export default function ExecutionPage({ project, section, workspaceView }) {
   const { ask, dialog } = useActionDialog();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const sourceRequirementId = searchParams.get("requirementVersionId") || "";
   const openedRequirement = useRef("");
@@ -1013,7 +1015,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                       });
                     }}
                   >
-                    <option value="">Mặc định staging</option>
+                    <option value="">Mặc định: {valueLabel("staging")}</option>
                     {environments.map((item) => (
                       <option key={item._id} value={item._id}>
                         {item.name} · {valueLabel(item.environment_type)}
@@ -1568,7 +1570,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               </details>
               <DataTable
                 onSelect={(item) =>
-                  window.location.assign(`/du-an/${project._id}/thuc-thi/${item._id}`)
+                  router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns, item._id))
                 }
                 items={runs}
                 empty="Chưa có lần chạy"

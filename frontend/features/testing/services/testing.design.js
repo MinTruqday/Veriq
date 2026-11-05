@@ -72,6 +72,8 @@ export const designTestingApi = {
     }),
   getTestAdequacy: (requirementVersionId) =>
     testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/do-day-du-kiem-thu`),
+  listRequirementCoverageItems: (requirementVersionId) =>
+    testingRequest(`/phien-ban-yeu-cau/${requirementVersionId}/hang-muc-do-phu`),
   getTestAdequacyImpact: (requirementId) =>
     testingRequest(`/yeu-cau/${requirementId}/do-day-du-kiem-thu/tac-dong`),
   refreshTestAdequacy: (requirementVersionId, expectedRevision) =>
@@ -375,10 +377,17 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify({ expected_revision: revision }),
     }),
-  extractRequirementDocument: (id, idempotencyKey = crypto.randomUUID()) =>
+  extractRequirementDocument: (
+    id,
+    idempotencyKey = crypto.randomUUID(),
+    includeBusinessRules = true,
+  ) =>
     testingRequest(`/tai-lieu-yeu-cau/${id}/trich-xuat`, {
       method: "POST",
-      body: JSON.stringify({ idempotency_key: idempotencyKey }),
+      body: JSON.stringify({
+        idempotency_key: idempotencyKey,
+        include_business_rules: includeBusinessRules,
+      }),
     }),
   submitRequirementReview: (projectId, requirementId, payload) =>
     testingRequest(`/du-an/${projectId}/yeu-cau/${requirementId}/gui-ra-soat`, {

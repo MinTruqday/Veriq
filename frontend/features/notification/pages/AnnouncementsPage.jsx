@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Check, Trash2 } from "lucide-react";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
+import { isSupportedTimeZone } from "@/shared/lib/timeZone.mjs";
 import EmptyState from "@/shared/components/common/EmptyState";
 import PageLoader from "@/shared/components/common/PageLoader";
 import { Button } from "@/shared/components/ui/Button";
@@ -9,17 +11,19 @@ import InlineState from "@/shared/components/common/InlineState";
 import PageHeader from "@/shared/components/layout/PageHeader";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { useAnnouncementsPage } from "../hooks/useAnnouncements";
-function formatDate(value) {
+function formatDate(value, locale, configuredTimeZone) {
   if (!value) return "Chưa ghi nhận";
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "Chưa ghi nhận"
-    : new Intl.DateTimeFormat("vi-VN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
+  if (Number.isNaN(date.getTime())) return "Chưa ghi nhận";
+  const timeZone = isSupportedTimeZone(configuredTimeZone) ? configuredTimeZone : undefined;
+  return new Intl.DateTimeFormat(locale || "vi-VN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(date);
 }
 export default function AnnouncementsPage() {
+  const { user } = useAuth();
   const [filter, setFilter] = useState("all");
   const {
     items,
@@ -139,7 +143,7 @@ export default function AnnouncementsPage() {
                     </div>
                   </div>
                   <time className="shrink-0 text-[12px] text-ink-faint sm:pt-1">
-                    {formatDate(item.created_at)}
+                    {formatDate(item.created_at, user?.locale, user?.timezone)}
                   </time>
                 </div>
               </article>

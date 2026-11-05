@@ -651,72 +651,20 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
           clearSourceInspection();
           setMetadataSource(null);
         }}
-        ariaLabel="Chi tiết các đoạn tài liệu đã lập chỉ mục"
+        ariaLabel="Thông tin xử lý tài liệu"
         className="max-h-[94dvh] max-w-6xl"
       >
         <ModalHeader>
-          <ModalTitle>Chi tiết chỉ mục tài liệu</ModalTitle>
+          <ModalTitle>Thông tin xử lý tài liệu</ModalTitle>
         </ModalHeader>
-        <details className="mb-4 rounded-lg border border-border bg-surface-quiet p-4 text-sm">
-          <summary className="cursor-pointer font-medium">
-            Cách hệ thống tìm nội dung trong tài liệu
-          </summary>
-          <div className="pt-1">
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <div className="min-w-0 rounded-md bg-surface p-3">
-                <p className="font-semibold">Mã bản ghi</p>
-                <p className="mt-1 text-ink-muted">
-                  Mỗi đoạn được gán một mã để hệ thống tìm và cập nhật đúng bản ghi. Mã này không
-                  phải mã tài liệu hay mã yêu cầu.
-                </p>
-              </div>
-              <div className="min-w-0 rounded-md bg-surface p-3">
-                <p className="font-semibold">Dữ liệu tìm theo ý nghĩa</p>
-                <p className="mt-1 text-ink-muted">
-                  Hệ thống chuyển nội dung đoạn thành dãy số để tìm các nội dung gần nghĩa. Dãy số
-                  này không cần hiển thị khi đọc tài liệu.
-                </p>
-              </div>
-              <div className="min-w-0 rounded-md bg-surface p-3">
-                <p className="font-semibold">Nội dung và thông tin nguồn</p>
-                <p className="mt-1 text-ink-muted">
-                  Nội dung đoạn đi kèm thông tin để lọc kết quả và mở lại đúng tài liệu, phiên bản,
-                  trang hoặc vị trí nguồn khi có.
-                </p>
-              </div>
-            </div>
-            <p className="mt-3 text-ink-muted">
-              Tài liệu dài được chia thành nhiều đoạn để tìm kiếm. Bảng có thể được tách theo hàng
-              và lặp tiêu đề cột; ảnh gốc được lưu riêng, còn bản ghi tìm kiếm giữ nội dung trích
-              xuất hoặc liên kết ảnh khi có.
-            </p>
-            <p className="mt-2 text-ink-muted">
-              Quyền truy cập tài liệu vẫn được kiểm tra trước khi hệ thống trả kết quả tìm kiếm.
-            </p>
-          </div>
-        </details>
         {metadataSource && (
           <div className="space-y-4 p-5">
-            <div className="rounded-lg bg-surface-quiet p-4 text-sm">
+            <div className="rounded-lg border border-border p-4 text-sm">
               <p className="font-semibold">{metadataSource.title || metadataSource.filename}</p>
               <p className="mt-1 text-ink-muted">
-                Trạng thái chỉ mục:{" "}
+                Tình trạng tìm kiếm nội dung:{" "}
                 {valueLabel(String(metadataSource.index_status || "unknown").toUpperCase())}
               </p>
-              <div className="mt-3 grid gap-2 text-xs text-ink-muted sm:grid-cols-3">
-                <p>
-                  <strong>Nguồn:</strong> tệp gốc và nội dung đã phân tích được quản lý riêng; khối
-                  có mã cha khi bộ phân tích cung cấp.
-                </p>
-                <p>
-                  <strong>Kho tìm kiếm:</strong> lưu mã bản ghi, dữ liệu tìm theo ý nghĩa và nội
-                  dung đoạn kèm thông tin nguồn.
-                </p>
-                <p>
-                  <strong>Cấu trúc nguồn:</strong> đoạn có thể trỏ về khối cha và đường dẫn trong
-                  tài liệu; kho tìm kiếm không tự tổ chức tài liệu thành cây.
-                </p>
-              </div>
             </div>
             {metadataError && <ErrorState message={metadataError} />}
             <details className="rounded-lg border border-border p-4">
@@ -743,16 +691,16 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                   <>
                     <p className="text-xs text-ink-muted">
                       {sourceStructurePage.source_structure_available
-                        ? `${sourceStructurePage.source_structure_count ?? sourceStructurePage.items.length} khối nguồn`
-                        : "Bộ phân tích không lưu cấu trúc khối cho tài liệu này"}
+                        ? `${sourceStructurePage.source_structure_count ?? sourceStructurePage.items.length} phần nội dung`
+                        : "Chưa có thông tin cấu trúc chi tiết cho tài liệu này"}
                       {sourceStructurePage.parse_report?.page_count
                         ? ` · ${sourceStructurePage.parse_report.page_count} trang`
                         : ""}
                       {sourceStructurePage.parse_report?.ocr_enabled === true
-                        ? ` · OCR đã bật${sourceStructurePage.parse_report.ocr_language ? ` (${sourceStructurePage.parse_report.ocr_language})` : ""}`
+                        ? " · đã nhận dạng chữ trong hình"
                         : sourceStructurePage.parse_report?.ocr_enabled === false
-                          ? " · OCR không được dùng"
-                          : " · trạng thái OCR không được ghi nhận"}
+                          ? " · không nhận dạng chữ trong hình"
+                          : ""}
                     </p>
                     {sourceStructurePage.items.length > 0 && (
                       <ol className="max-h-[45dvh] space-y-2 overflow-auto">
@@ -788,12 +736,12 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                                 )}
                                 {block.parent_block_id && !hierarchy?.parentLoaded && (
                                   <span className="text-xs text-ink-muted">
-                                    Khối cha chưa nằm trong phần đã tải
+                                    Nội dung cấp trên chưa nằm trong phần đang xem
                                   </span>
                                 )}
                               </div>
                               <p className="mt-1 break-words">
-                                {firstLine || "Khối không có văn bản trích xuất"}
+                                {firstLine || "Không có nội dung trích xuất"}
                                 {block.text_truncated && (
                                   <span className="text-ink-muted">
                                     {" "}
@@ -848,9 +796,12 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                                 </div>
                               )}
                               {(block.block_id || block.parent_block_id || block.level != null) && (
-                                <details className="mt-2 text-xs text-ink-muted">
+                                <details
+                                  hidden={!canManage}
+                                  className="mt-2 text-xs text-ink-muted"
+                                >
                                   <summary className="cursor-pointer">
-                                    Thông tin cấu trúc nguồn
+                                    Thông tin kỹ thuật về cấu trúc
                                   </summary>
                                   <div className="mt-1 space-y-1">
                                     {block.block_id && (
@@ -879,36 +830,36 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                           void loadSourceStructure(metadataSource, sourceStructurePage.next_offset)
                         }
                       >
-                        Tải thêm khối nguồn
+                        Xem thêm phần tài liệu
                       </button>
                     )}
-                    {sourceStructurePage.parse_report?.unprocessed_block_count > 0 && (
+                    {canManage && sourceStructurePage.parse_report?.unprocessed_block_count > 0 && (
                       <p className="rounded-md border border-border p-3 text-sm text-ink-muted">
-                        Có {sourceStructurePage.parse_report.unprocessed_block_count} khối chưa được
-                        trích xuất đầy đủ; trạng thái này không có nghĩa OCR đã chính xác.
+                        Có {sourceStructurePage.parse_report.unprocessed_block_count} phần chưa được
+                        trích xuất đầy đủ. Hãy đối chiếu với tệp gốc.
                       </p>
                     )}
-                    {sourceStructurePage.parse_report?.unprocessed_blocks?.some(
-                      (block) => typeof block.ocr_page_confidence === "number",
-                    ) && (
-                      <div className="rounded-md border border-border p-3 text-sm">
-                        <p className="font-medium">Điểm OCR do bộ phân tích cung cấp theo trang</p>
-                        <p className="mt-1 text-ink-muted">
-                          Đây là chẩn đoán của bộ phân tích, không phải cam kết độ chính xác nội
-                          dung.
-                        </p>
-                        <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                          {sourceStructurePage.parse_report.unprocessed_blocks
-                            .filter((block) => typeof block.ocr_page_confidence === "number")
-                            .map((block, index) => (
-                              <li key={`${block.page_no ?? "page"}-${index}`}>
-                                Trang {block.page_no ?? "không rõ"}:{" "}
-                                {block.ocr_page_confidence.toFixed(3)}
-                              </li>
-                            ))}
-                        </ul>
-                      </div>
-                    )}
+                    {canManage &&
+                      sourceStructurePage.parse_report?.unprocessed_blocks?.some(
+                        (block) => typeof block.ocr_page_confidence === "number",
+                      ) && (
+                        <div className="rounded-md border border-border p-3 text-sm">
+                          <p className="font-medium">Chi tiết nhận dạng chữ trong hình</p>
+                          <p className="mt-1 text-ink-muted">
+                            Thông tin hỗ trợ người quản lý kiểm tra quá trình đọc tài liệu.
+                          </p>
+                          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                            {sourceStructurePage.parse_report.unprocessed_blocks
+                              .filter((block) => typeof block.ocr_page_confidence === "number")
+                              .map((block, index) => (
+                                <li key={`${block.page_no ?? "page"}-${index}`}>
+                                  Trang {block.page_no ?? "không rõ"}:{" "}
+                                  {block.ocr_page_confidence.toFixed(3)}
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
+                      )}
                   </>
                 )}
               </div>
@@ -918,8 +869,11 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
             ) : metadataPage?.items?.length ? (
               <div className="space-y-3">
                 <p className="text-xs text-ink-muted">
-                  Đã tải {metadataPage.items.length} đoạn
-                  {metadataPage.next_cursor ? "; còn trang tiếp theo" : "; hết kết quả"}.
+                  Đang hiển thị {metadataPage.items.length} phần nội dung
+                  {metadataPage.next_cursor
+                    ? "; còn nội dung phù hợp"
+                    : "; đã hiển thị hết kết quả"}
+                  .
                 </p>
                 {metadataPage.items.map((chunk) => {
                   const metadata = chunk.metadata || {};
@@ -930,7 +884,7 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h3 className="text-sm font-semibold">
-                          Đoạn {Number(metadata.chunk_index ?? 0) + 1}
+                          Phần nội dung {Number(metadata.chunk_index ?? 0) + 1}
                         </h3>
                       </div>
                       <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -951,9 +905,9 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             </div>
                           ))}
                       </dl>
-                      <details className="mt-3 rounded-md bg-surface-quiet p-3">
+                      <details hidden={!canManage} className="mt-3 rounded-md bg-surface-quiet p-3">
                         <summary className="cursor-pointer text-sm font-medium">
-                          Xem toàn bộ thông tin nguồn và chỉ mục
+                          Thông tin kỹ thuật về nguồn và tìm kiếm
                         </summary>
                         <span className="mt-2 block break-all text-xs text-ink-muted">
                           Mã bản ghi tìm kiếm: {chunk.point_id}
@@ -1123,15 +1077,15 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                       </details>
                       <details className="mt-3 rounded-md bg-surface-quiet p-3">
                         <summary className="cursor-pointer text-sm font-medium">
-                          Văn bản đoạn
+                          Nội dung trích xuất
                         </summary>
                         <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink">
                           {chunk.text}
                         </p>
                       </details>
-                      <details className="mt-2 rounded-md bg-surface-quiet p-3">
+                      <details hidden={!canManage} className="mt-2 rounded-md bg-surface-quiet p-3">
                         <summary className="cursor-pointer text-sm font-medium">
-                          Vị trí và liên kết khối nguồn
+                          Vị trí trong tài liệu
                         </summary>
                         {metadata.source_spans?.length ? (
                           <ol className="mt-3 space-y-3">
@@ -1282,14 +1236,14 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                     disabled={metadataLoading}
                     onClick={() => void loadChunkMetadata(metadataSource, metadataPage.next_cursor)}
                   >
-                    Tải thêm đoạn
+                    Xem thêm nội dung
                   </button>
                 )}
               </div>
             ) : !metadataError ? (
               <p className="rounded-lg border border-border p-5 text-sm text-ink-muted">
-                Chưa tìm thấy đoạn tìm kiếm cho phiên bản này. Nguồn có thể chưa được lập chỉ mục,
-                dùng kiểu chỉ mục khác hoặc chưa có thông tin chi tiết cho từng đoạn.
+                Chưa tìm thấy nội dung phù hợp cho phiên bản này. Tài liệu có thể chưa sẵn sàng để
+                tìm kiếm hoặc chưa có thông tin chi tiết.
               </p>
             ) : null}
           </div>

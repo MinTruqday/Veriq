@@ -703,9 +703,8 @@ export default function CompletionPage({ project }) {
                     <p>
                       <span className="field-label">Chiến lược hoặc cách tiếp cận</span>
                       <br />
-                      {selected.strategy_version_id
-                        ? `Phiên bản ${selected.strategy_version_id}`
-                        : selected.strategy_approach_snapshot || "Chưa ghi nhận"}
+                      {selected.strategy_approach_snapshot ||
+                        (selected.strategy_version_id ? "Chiến lược đã lưu" : "Chưa ghi nhận")}
                     </p>
                     <p>
                       <span className="field-label">Bản phát hành</span>
@@ -871,12 +870,6 @@ export default function CompletionPage({ project }) {
                     ]}
                   />
                 </div>
-                {selected.approved_snapshot_hash && (
-                  <details className="text-xs text-ink-muted">
-                    <summary className="cursor-pointer">Mã kiểm tra bản đã duyệt</summary>
-                    <p className="mt-1 break-all">{selected.approved_snapshot_hash}</p>
-                  </details>
-                )}
                 {can("reviewsession.read") && (
                   <FormalReviewPanel
                     project={project}

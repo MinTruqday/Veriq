@@ -576,19 +576,35 @@ export default function TestStatusReportPanel({ project }) {
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <Metric
                   label="Thực thi"
-                  value={`${selected.snapshot_basis?.metrics?.execution_percent ?? 0}%`}
+                  value={
+                    selected.snapshot_basis?.metrics?.execution_percent == null
+                      ? "Chưa có dữ liệu"
+                      : `${selected.snapshot_basis.metrics.execution_percent}%`
+                  }
                 />
                 <Metric
                   label="Tỷ lệ đạt"
-                  value={`${selected.snapshot_basis?.metrics?.pass_rate ?? 0}%`}
+                  value={
+                    selected.snapshot_basis?.metrics?.pass_rate == null
+                      ? "Chưa có dữ liệu"
+                      : `${selected.snapshot_basis.metrics.pass_rate}%`
+                  }
                 />
                 <Metric
                   label="Độ phủ yêu cầu"
-                  value={`${selected.snapshot_basis?.metrics?.requirement_coverage ?? 0}%`}
+                  value={
+                    selected.snapshot_basis?.metrics?.requirement_coverage == null
+                      ? "Chưa có dữ liệu"
+                      : `${selected.snapshot_basis.metrics.requirement_coverage}%`
+                  }
                 />
                 <Metric
                   label="Độ phủ điều kiện kiểm thử"
-                  value={`${selected.snapshot_basis?.metrics?.test_condition_coverage ?? 0}%`}
+                  value={
+                    selected.snapshot_basis?.metrics?.test_condition_coverage == null
+                      ? "Chưa có dữ liệu"
+                      : `${selected.snapshot_basis.metrics.test_condition_coverage}%`
+                  }
                 />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -647,13 +663,6 @@ export default function TestStatusReportPanel({ project }) {
                   />
                 </Panel>
               )}
-              <details className="text-xs text-ink-muted">
-                <summary className="cursor-pointer">Chi tiết kỹ thuật</summary>
-                <p className="mt-1 break-all">Mốc giám sát: {selected.snapshot_id}</p>
-                <p className="break-all">
-                  Mã đối chiếu dữ liệu: {selected.snapshot_source_fingerprint}
-                </p>
-              </details>
               {can("reviewsession.read") && (
                 <FormalReviewPanel
                   project={project}

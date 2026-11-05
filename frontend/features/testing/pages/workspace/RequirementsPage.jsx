@@ -851,10 +851,11 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (activeProjectId.current === requestedProjectId) setRetryingSource(false);
     }
   };
-  const runSourceExtraction = async (document, requestedProjectId) => {
+  const runSourceExtraction = async (document, requestedProjectId, includeBusinessRules = true) => {
     const result = await testingApi.extractRequirementDocument(
       document._id,
       `source-${document.content_hash}`,
+      includeBusinessRules,
     );
     if (activeProjectId.current !== requestedProjectId) return;
     if (
@@ -875,7 +876,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     const refreshedDocument = await testingApi.getRequirementDocument(document._id);
     if (activeProjectId.current === requestedProjectId) rememberSourceDocument(refreshedDocument);
   };
-  const extractSourceRequirements = async () => {
+  const extractSourceRequirements = async (includeBusinessRules = true) => {
     if (
       !sourceDocument ||
       sourceDocument.status !== "READY" ||
@@ -889,14 +890,14 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     setError("");
     const requestedProjectId = project._id;
     try {
-      await runSourceExtraction(sourceDocument, requestedProjectId);
+      await runSourceExtraction(sourceDocument, requestedProjectId, includeBusinessRules);
     } catch (reason) {
       if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
     } finally {
       if (activeProjectId.current === requestedProjectId) setExtractingSource(false);
     }
   };
-  const enableSourceAiRead = async () => {
+  const enableSourceAiRead = async (includeBusinessRules = true) => {
     if (!sourceDocument || sourceDocument.status !== "READY" || sourceDocument.ai_enabled) return;
     setRetryingSource(true);
     setError("");
@@ -909,7 +910,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (activeProjectId.current !== requestedProjectId) return;
       rememberSourceDocument(updated);
       setExtractingSource(true);
-      await runSourceExtraction(updated, requestedProjectId);
+      await runSourceExtraction(updated, requestedProjectId, includeBusinessRules);
     } catch (reason) {
       if (activeProjectId.current === requestedProjectId) setError(messageOf(reason));
     } finally {
@@ -967,6 +968,11 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           } else if (sectionStates.acceptance_criteria === "provided") {
             sectionStates.acceptance_criteria = "missing";
           }
+          updated.section_states = sectionStates;
+        }
+        if (Object.hasOwn(patch, "business_rules")) {
+          const sectionStates = { ...(updated.section_states || {}) };
+          sectionStates.business_rules = patch.business_rules.length ? "provided" : "missing";
           updated.section_states = sectionStates;
         }
         return updated;
@@ -1543,7 +1549,12 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           )}
           <div className="space-y-6" hidden={activeDetailTab !== "clarifications"}>
             <RequirementClarificationPanel
+              projectId={project._id}
+              requirementId={routeSelected._id}
               requirementVersionId={current._id}
+              requirementStatus={current.status}
+              requirementRevision={current.revision}
+              onRequirementChanged={load}
               roles={memberRoles}
               permissions={project.current_permissions || []}
             />

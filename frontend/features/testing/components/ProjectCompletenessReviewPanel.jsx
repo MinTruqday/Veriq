@@ -165,8 +165,8 @@ export default function ProjectCompletenessReviewPanel({ project, user }) {
         {result && (
           <div className="space-y-3 border-t border-border pt-4">
             <p className="text-sm">
-              Đã đọc {result.scope_summary?.processed_chunk_count || 0} khối thuộc phạm vi chọn. Đề
-              xuất cần người dùng xác nhận.
+              Đã rà soát nội dung trong phạm vi bạn chọn. Các đề xuất cần được xác nhận trước khi áp
+              dụng.
             </p>
             {(result.suggestions || [])
               .flatMap((batch) => [
@@ -197,7 +197,7 @@ export default function ProjectCompletenessReviewPanel({ project, user }) {
                 </article>
               ))}
             <p className="text-xs text-ink-muted">
-              Chưa rà soát toàn bộ dự án hoặc đối chiếu các lô nguồn với nhau.
+              Kết quả chỉ dựa trên những tài liệu và yêu cầu bạn đã chọn.
             </p>
           </div>
         )}

@@ -5,7 +5,7 @@ import { platformApi } from "@/features/authentication/services/platform.service
 import { projectTestingApi } from "../services/testing.projects";
 import FilePicker from "./FilePicker";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
-import { messageOf } from "../lib/testing";
+import { messageOf, statusLabel } from "../lib/testing";
 
 const columns = [
   ["employee", "Mã nhân viên hoặc email"],
@@ -80,7 +80,7 @@ const overviewLabels = {
   PLAN_ENTRY_OR_EXIT_CRITERIA_INCOMPLETE: "Chưa khai báo đủ điều kiện bắt đầu và kết thúc.",
   PLAN_TEST_DATA_SOURCE_NOT_DECLARED: "Chưa nêu nguồn dữ liệu kiểm thử.",
   PLAN_DEFECT_PROCESS_INCOMPLETE: "Quy trình xử lý lỗi chưa được khai báo đầy đủ.",
-  NO_ACTIVE_QA_IN_PLAN_ALLOCATIONS: "Chưa có QA đang hoạt động trong phân bổ nguồn lực.",
+  NO_ACTIVE_QA_IN_PLAN_ALLOCATIONS: "Chưa có người phụ trách kiểm thử đang hoạt động trong phân bổ nguồn lực.",
   NO_ACTIVE_TESTER_IN_PLAN_ALLOCATIONS: "Chưa có Tester đang hoạt động trong phân bổ nguồn lực.",
   AVAILABILITY_NOT_CONFIRMED: "Chưa xác nhận khả dụng",
   NOT_ACTIVE_PROJECT_MEMBER: "Không còn là thành viên đang hoạt động của dự án",
@@ -619,7 +619,7 @@ export default function PayrollImportPanel() {
                   <option value="">Chọn Test Plan</option>
                   {financePlans.map((item) => (
                     <option key={item._id} value={item._id}>
-                      {item.name} · {item.status}
+                      {item.name} · {statusLabel(item.status)}
                     </option>
                   ))}
                 </select>
@@ -810,7 +810,7 @@ export default function PayrollImportPanel() {
                       <h4 className="font-medium">Độ phủ đội ngũ và trách nhiệm</h4>
                       <div className="mt-2 grid gap-2 text-sm text-ink-muted sm:grid-cols-2 lg:grid-cols-4">
                         <p>
-                          QA được phân bổ:{" "}
+                          Người phụ trách kiểm thử được phân bổ:{" "}
                           {forecast.resource_overview.team_coverage.role_member_counts.QA}
                         </p>
                         <p>

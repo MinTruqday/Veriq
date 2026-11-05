@@ -28,6 +28,7 @@ export const PROJECT_SECTION_SLUGS = Object.freeze({
   reports: "bao-cao",
   audit: "nhat-ky-kiem-toan",
   knowledge: "tri-thuc",
+  documentReader: "tai-lieu",
   settings: "cai-dat",
 });
 

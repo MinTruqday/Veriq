@@ -14,7 +14,7 @@ import {
 import DataTable from "../../../components/DataTable";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
-import { projectRoute } from "../../../routes";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
 import { testingApi } from "../../../services/testing.service";
 import { preferredSummaryLocale, summaryLanguageOptions } from "../../../lib/summaryLanguage";
 import {
@@ -528,8 +528,8 @@ export default function RequirementSourceDocumentsPanel({
             {summaryJob.progress?.total
               ? ` · ${summaryJob.progress.processed}/${summaryJob.progress.total} tệp`
               : ""}
-            {summaryJob.progress?.chunks_total
-              ? ` · ${summaryJob.progress.chunks_processed}/${summaryJob.progress.chunks_total} phần của ${summaryJob.progress.current_document || "tài liệu hiện tại"}`
+            {summaryJob.progress?.current_document
+              ? ` · ${summaryJob.progress.current_document}`
               : ""}
           </span>
           <button
@@ -553,7 +553,11 @@ export default function RequirementSourceDocumentsPanel({
                 <li key={source.document_id}>
                   <a
                     className="secondary-button !min-h-8 !px-3 !py-1 text-xs"
-                    href={projectRoute(projectId, "tai-lieu", source.document_id)}
+                    href={projectRoute(
+                      projectId,
+                      PROJECT_SECTION_SLUGS.documentReader,
+                      source.document_id,
+                    )}
                   >
                     Nguồn: {source.filename} · v{source.source_version}
                   </a>
@@ -774,7 +778,9 @@ export default function RequirementSourceDocumentsPanel({
                     type="button"
                     title="Mở đọc tài liệu"
                     onClick={() =>
-                      window.location.assign(projectRoute(projectId, "tai-lieu", item._id))
+                      window.location.assign(
+                        projectRoute(projectId, PROJECT_SECTION_SLUGS.documentReader, item._id),
+                      )
                     }
                   >
                     <BookOpen size={16} aria-hidden="true" />

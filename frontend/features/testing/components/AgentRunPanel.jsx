@@ -729,16 +729,11 @@ export default function AgentRunPanel({ project, compact = false }) {
             </p>
           </div>
         )}
-        {!loading &&
-          !error &&
-          !run &&
-          !compact &&
-          visibleRuns.length === 0 &&
-          visibleDefinitions.length === 0 && (
-            <p className="py-2 text-sm text-ink-muted" role="status">
-              Chưa có hoạt động gần đây.
-            </p>
-          )}
+        {!loading && !error && !run && !compact && visibleRuns.length === 0 && (
+          <p className="py-2 text-sm text-ink-muted" role="status">
+            Chưa có hoạt động gần đây.
+          </p>
+        )}
         {run && (
           <div className="grid gap-4 pt-2 text-sm">
             {detailRefreshError && (
@@ -955,7 +950,7 @@ export default function AgentRunPanel({ project, compact = false }) {
                             >
                               {submittingClarification === item.code
                                 ? "Đang gửi và tiếp tục…"
-                                : "Trả lời và tiếp tục tự động"}
+                                : "Gửi thông tin và tiếp tục xử lý"}
                             </button>
                           </form>
                         )}

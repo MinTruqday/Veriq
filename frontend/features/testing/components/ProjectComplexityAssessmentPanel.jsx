@@ -5,6 +5,7 @@ import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { ErrorState, Panel } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 
 const dimensions = {
   SCOPE: "Phạm vi và phân rã",
@@ -131,7 +132,11 @@ function AssessmentResult({ projectId, result }) {
                       {citation.artifact_type === "requirement_document" ? (
                         <Link
                           className="mt-1 inline-block text-brand underline"
-                          href={`/du-an/${projectId}/tai-lieu/${encodeURIComponent(citation.artifact_id)}`}
+                          href={projectRoute(
+                            projectId,
+                            PROJECT_SECTION_SLUGS.documentReader,
+                            citation.artifact_id,
+                          )}
                         >
                           Mở tài liệu nguồn
                         </Link>

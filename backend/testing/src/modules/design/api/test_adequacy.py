@@ -9,6 +9,7 @@ from src.modules.design.services.test_adequacy import (
     adequacy_change_impact,
     decide_coverage_item,
     get_adequacy_assessment,
+    list_coverage_source_items,
     refresh_adequacy_assessment,
     request_adequacy_changes,
     submit_adequacy_assessment,
@@ -21,6 +22,13 @@ router = APIRouter(prefix="/kiem-thu", tags=["Độ đầy đủ kiểm thử"])
 @router.get("/phien-ban-yeu-cau/{requirement_version_id}/do-day-du-kiem-thu")
 async def get_assessment(requirement_version_id: str, user: CurrentUser = Depends(get_current_user)):
     return envelope(await get_adequacy_assessment(requirement_version_id, user))
+
+
+@router.get("/phien-ban-yeu-cau/{requirement_version_id}/hang-muc-do-phu")
+async def get_coverage_source_items(
+    requirement_version_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await list_coverage_source_items(requirement_version_id, user))
 
 
 @router.get("/yeu-cau/{requirement_id}/do-day-du-kiem-thu/tac-dong")

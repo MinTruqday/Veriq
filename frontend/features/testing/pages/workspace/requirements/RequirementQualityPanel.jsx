@@ -34,9 +34,9 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
       )}
       <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-quiet px-3 py-2">
         <p className="text-sm text-ink-muted">
-          Đây là gợi ý. BA chỉnh bản nháp trong biểu mẫu yêu cầu; AI không tự sửa hoặc gửi duyệt.
-          Nếu cần xác nhận nghiệp vụ, tạo Phiếu làm rõ. Sau khi cập nhật, lưu bản nháp rồi gửi QA rà
-          soát.
+          Đây là gợi ý. Hãy cập nhật bản nháp trong biểu mẫu yêu cầu; AI không tự sửa hoặc gửi rà
+          soát. Nếu cần xác nhận nghiệp vụ, tạo Phiếu làm rõ. Sau khi cập nhật, lưu bản nháp rồi gửi
+          rà soát.
         </p>
         {onOpenClarifications && (
           <button

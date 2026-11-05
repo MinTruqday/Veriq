@@ -65,6 +65,7 @@ const labels = {
   GO_WITH_RISK: "Phát hành kèm rủi ro",
   HISTORICAL: "Lịch sử",
   IN_REVIEW: "Đang chờ duyệt",
+  AWAITING_REVIEW: "Chờ rà soát",
   IN_PROGRESS: "Đang thực hiện",
   INACTIVE: "Đã vô hiệu hóa",
   SCRUM: "Scrum",
@@ -76,7 +77,7 @@ const labels = {
   HIGH: "Cao",
   HIGHEST: "Rất cao",
   MUST_RUN: "Bắt buộc chạy",
-  NEEDS_REVIEW: "Cần QA rà soát",
+  NEEDS_REVIEW: "Cần rà soát",
   NEEDS_TEST_COVERAGE: "Cần bổ sung kiểm thử",
   NEEDS_UPDATE: "Cần cập nhật",
   MORE_TESTING_REQUIRED: "Cần kiểm thử thêm",
@@ -84,6 +85,7 @@ const labels = {
   NORMAL: "Bình thường",
   NO_GO: "Không phát hành",
   NOT_APPLICABLE: "Không áp dụng",
+  NOT_REQUESTED: "Chưa dùng trong tìm kiếm AI",
   NOT_RUN: "Chưa chạy",
   OBSOLETE: "Không còn phù hợp",
   OPEN: "Đang mở",
@@ -145,6 +147,7 @@ const labels = {
   NEEDS_MAPPING: "Cần liên kết thủ công",
   NOT_STARTED: "Chưa bắt đầu",
   PENDING_REVIEW: "Chờ rà soát",
+  REVOKE_PENDING: "Đang gỡ khỏi tìm kiếm AI",
   PLANNED: "Đã lập kế hoạch",
   PUBLISHED: "Đã phát hành",
   REVOKED: "Đã thu hồi",
@@ -259,7 +262,7 @@ const valueLabels = {
   defect_created: "Đã ghi nhận lỗi",
   defect_retested: "Đã kiểm thử lại lỗi",
   defect_transitioned: "Đã cập nhật trạng thái lỗi",
-  test_completion_signed_off: "QA đã ký xác nhận báo cáo hoàn tất",
+  test_completion_signed_off: "Đã ký xác nhận báo cáo hoàn tất kiểm thử",
   test_completion_submitted: "Đã gửi báo cáo hoàn tất để rà soát",
   status_report_created: "Đã tạo báo cáo trạng thái kiểm thử",
   test_plan_created: "Đã tạo kế hoạch kiểm thử",
@@ -274,9 +277,20 @@ const valueLabels = {
   test_case_version_approved: "Đã duyệt phiên bản ca kiểm thử",
   requirement_document_uploaded: "Đã tải tài liệu yêu cầu lên",
   requirement_document_parse_succeeded: "Đã xử lý xong tài liệu yêu cầu",
+  requirement_document_archived: "Đã lưu trữ tài liệu yêu cầu",
+  requirement_document_restored: "Đã khôi phục tài liệu yêu cầu",
+  "requirement_document.ai_read_updated": "Đã cập nhật quyền AI đọc tài liệu",
+  "requirement_document.access_updated": "Đã cập nhật quyền truy cập tài liệu",
+  "requirement_document.access_update_pending": "Đang cập nhật quyền truy cập tài liệu",
+  "requirement_document.ai_read_revocation_pending": "Đang thu hồi quyền AI đọc tài liệu",
+  "requirement_document.ai_read_event_cancellation_pending": "Đang hủy tác vụ AI đọc tài liệu",
   requirement_created: "Đã tạo yêu cầu từ tài liệu",
+  requirement_clarification_created: "Đã tạo phiếu làm rõ yêu cầu",
+  requirement_quality_analyzed: "Đã đánh giá chất lượng yêu cầu",
   requirement_review_submitted: "Đã gửi yêu cầu để rà soát",
   requirement_version_baselined: "Đã chốt phiên bản yêu cầu",
+  impact_analysis_created: "Đã phân tích ảnh hưởng",
+  impact_analysis_rerun: "Đã phân tích lại ảnh hưởng",
   release_created: "Đã tạo bản phát hành",
   build_created: "Đã tạo bản dựng",
   test_run_created: "Đã tạo lượt chạy kiểm thử",
@@ -334,6 +348,8 @@ const valueLabels = {
   RequirementVersion: "Phiên bản yêu cầu",
   RequirementTemplate: "Mẫu yêu cầu",
   RequirementDocument: "Tài liệu yêu cầu",
+  RequirementClarification: "Phiếu làm rõ yêu cầu",
+  AIResult: "Kết quả AI",
   Requirement: "Yêu cầu",
   APIImport: "Đặc tả API",
   JUnitResultImport: "Kết quả kiểm thử",
@@ -562,15 +578,11 @@ export function messageOf(reason) {
   };
   if (profileMessages[reason?.code]) return profileMessages[reason.code];
   if (reason?.code === "PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE") {
-    const chunks = Number(reason.details?.evidence_chunks);
-    const maximum = Number(reason.details?.maximum);
-    if (Number.isFinite(chunks) && Number.isFinite(maximum)) {
-      return `Phạm vi đã chọn có ${chunks} khối bằng chứng, vượt giới hạn ${maximum} khối cho một lượt. Bỏ chọn bớt nguồn rồi thử lại; hệ thống chưa đánh giá một phần.`;
-    }
+    return "Tài liệu và yêu cầu đã chọn có quá nhiều nội dung để đánh giá trong một lượt. Hãy chọn phạm vi nhỏ hơn rồi thử lại; kết quả chưa được tạo.";
   }
   const automationMessages = {
     PROJECT_INITIAL_QA_MUST_DIFFER_FROM_BA:
-      "Người tạo dự án có vai trò BA. Hãy chọn một thành viên khác làm QA đầu tiên.",
+      "Người tạo dự án không thể đồng thời là người phụ trách kiểm thử đầu tiên. Hãy chọn thành viên khác.",
     AUTOMATION_PUBLICATION_NOT_AUTHORIZED:
       "Lượt AI chưa được cấp quyền tự động công bố kết quả này.",
     AUTOMATION_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện hợp lệ cho lượt tự động hóa này.",
@@ -581,8 +593,8 @@ export function messageOf(reason) {
       "Phiên ủy quyền của lượt chạy đã hết hạn; hãy kiểm tra quyền hiện tại rồi tiếp tục.",
     PROJECT_AUTHORIZATION_CHECK_FAILED:
       "Chưa xác minh được quyền truy cập dự án. Hãy thử lại khi dịch vụ phân quyền sẵn sàng.",
-    PROJECT_BA_EXECUTOR_UNAVAILABLE: "Dự án chưa có thành viên BA đang hoạt động.",
-    PROJECT_QA_EXECUTOR_UNAVAILABLE: "Dự án chưa có thành viên QA đang hoạt động.",
+    PROJECT_BA_EXECUTOR_UNAVAILABLE: "Dự án chưa có người phụ trách nghiệp vụ đang hoạt động.",
+    PROJECT_QA_EXECUTOR_UNAVAILABLE: "Dự án chưa có người phụ trách kiểm thử đang hoạt động.",
     AUTOMATION_RETRY_REQUIRES_RECONCILIATION:
       "Chưa thể tiếp tục an toàn. Hãy đối soát kết quả thao tác trước.",
     AUTOMATION_RETRY_NOT_ALLOWED: "Lượt chạy hiện không ở trạng thái có thể tiếp tục.",
@@ -766,16 +778,16 @@ export function messageOf(reason) {
     REVIEW_AUTHORSHIP_UNVERIFIED:
       "Lịch sử người sửa bản này chưa đầy đủ để xác minh duyệt độc lập. Cần đối chiếu lịch sử trước khi duyệt.",
     REQUIREMENT_TECHNICAL_REVIEW_REQUIRED:
-      "Cần QA xác nhận rà soát kỹ thuật cho phiên bản hiện tại trước khi xác nhận nghiệp vụ.",
+      "Cần hoàn tất rà soát kỹ thuật cho phiên bản hiện tại trước khi xác nhận nghiệp vụ.",
     DESIGN_ASSIGNMENT_REQUIRED: "Bạn chỉ được soạn nội dung kiểm thử đã được giao cho mình.",
     DESIGN_REASSIGNMENT_DENIED: "Chỉ người có quyền phân công mới được thay đổi người phụ trách.",
     DEFECT_TRIAGE_AUTHORITY_REQUIRED:
       "Việc đổi mức độ, ưu tiên hoặc người phụ trách lỗi cần quyền phân loại lỗi.",
     DEFECT_ASSIGNMENT_REQUIRED: "Bạn chỉ được sửa lỗi đang được giao cho mình.",
     TEST_CASE_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa ca này để rà soát không thể tự duyệt. Một QA khác cần xem và quyết định.",
+      "Người tạo hoặc sửa ca này không thể tự duyệt. Một người có quyền khác cần xem và quyết định.",
     TEST_PLAN_SELF_REVIEW_FORBIDDEN:
-      "Người tạo hoặc sửa kế hoạch này để rà soát không thể tự duyệt. Một QA khác cần xem và quyết định.",
+      "Người tạo hoặc sửa kế hoạch này không thể tự duyệt. Một người có quyền khác cần xem và quyết định.",
     REQUIREMENT_SELF_REVIEW_FORBIDDEN:
       "Người tạo hoặc sửa yêu cầu không thể tự xác nhận cùng phiên bản.",
     TEST_SCENARIO_SELF_REVIEW_FORBIDDEN:
@@ -927,7 +939,7 @@ export function messageOf(reason) {
     TEST_CASE_SOURCE_REVIEW_REQUIRED:
       "Ca do AI đề xuất chưa có dẫn chứng nguồn. Đối chiếu nguồn và lưu lại trước khi duyệt.",
     TEST_CASE_DUPLICATE_REVIEW_REQUIRED:
-      "Ca gần trùng với ca đang hiệu lực. QA cần loại ca trùng hoặc ghi lý do giữ riêng.",
+      "Ca gần trùng với ca đang hiệu lực. Hãy loại ca trùng hoặc ghi lý do giữ riêng trước khi duyệt.",
     TEST_CASE_BATCH_DUPLICATE_REVIEW_REQUIRED:
       "Các ca được chọn có nội dung gần trùng. Bỏ ca trùng hoặc ghi lý do giữ riêng trước khi duyệt.",
     TEST_CASE_BATCH_SIZE_INVALID:

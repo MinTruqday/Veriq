@@ -16,7 +16,8 @@ import {
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { testingApi } from "@/features/testing/services/testing.service";
 import { useAnnouncements } from "@/shared/contexts/AnnouncementContext";
-import { PROJECTS_ROUTE, PROJECT_SECTION_SLUGS } from "@/features/testing/routes";
+import ProjectNavigation from "./ProjectNavigation";
+import { PROJECTS_ROUTE, PROJECT_SECTION_SLUGS, projectRoute } from "@/features/testing/routes";
 import {
   canOpenRoleRestrictedPath,
   canRenderProtectedRoute,
@@ -54,14 +55,25 @@ function initialNavigationGroups(groups, pathname) {
   );
 }
 
-function NavigationList({ onNavigate, projectPermissions, planningMethod, collapsed = false }) {
+function NavigationList({
+  onNavigate,
+  projectPermissions,
+  planningMethod,
+  collapsed = false,
+  globalOnly = false,
+}) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const groups = useMemo(
-    () =>
-      availableNavigation(navigationGroupsFor(pathname, planningMethod), user, projectPermissions),
-    [pathname, planningMethod, projectPermissions, user],
-  );
+  const groups = useMemo(() => {
+    const available = availableNavigation(
+      navigationGroupsFor(pathname, planningMethod),
+      user,
+      projectPermissions,
+    );
+    return globalOnly
+      ? available.filter((group) => ["Không gian làm việc", "Tài khoản"].includes(group.label))
+      : available;
+  }, [globalOnly, pathname, planningMethod, projectPermissions, user]);
   const [collapsedGroups, setCollapsedGroups] = useState(() =>
     initialNavigationGroups(groups, pathname),
   );
@@ -354,11 +366,98 @@ export default function AppShell({ children, requireAuth }) {
           testDesignSlug: PROJECT_SECTION_SLUGS.testDesign,
         }),
         projectSearchRouteItem(projectId),
+        {
+          id: "project-document-reader",
+          href: projectRoute(projectId, PROJECT_SECTION_SLUGS.documentReader),
+          permission: "requirement_document.read",
+        },
+        {
+          id: "test-run-execution-detail",
+          href: projectRoute(projectId, PROJECT_SECTION_SLUGS.execution),
+          permission: "testrun.read",
+        },
       ])
     : null;
   const projectRouteDenied =
     projectAccessReady &&
     (!projectRouteItem || !hasNavigationPermission(projectRouteItem, currentProjectPermissions));
+  const projectNavigationGroups = useMemo(() => {
+    if (!projectId || !Array.isArray(currentProjectPermissions)) return [];
+    const groups = availableNavigation(
+      navigationGroupsFor(pathname, currentPlanningMethod),
+      user,
+      currentProjectPermissions,
+    ).filter((group) => !["Không gian làm việc", "Tài khoản"].includes(group.label));
+    const designGroup = groups.find((group) => group.label === "Thiết kế kiểm thử");
+    let nextGroups = groups;
+    if (designGroup) {
+      const testCaseItems =
+        availableNavigation(
+          [{ label: "", items: testCaseSubsectionItems(projectId) }],
+          user,
+          currentProjectPermissions,
+        )[0]?.items || [];
+      const uniqueItems = [...designGroup.items, ...testCaseItems].filter(
+        (item, index, items) =>
+          items.findIndex((candidate) => candidate.href === item.href) === index,
+      );
+      nextGroups = nextGroups.map((group) =>
+        group === designGroup ? { ...group, items: uniqueItems } : group,
+      );
+    }
+    const searchItem = projectSearchRouteItem(projectId);
+    const resourcesGroup = nextGroups.find((group) => group.label === "Tài liệu và cài đặt");
+    if (resourcesGroup && hasNavigationPermission(searchItem, currentProjectPermissions)) {
+      nextGroups = nextGroups.map((group) =>
+        group === resourcesGroup
+          ? {
+              ...group,
+              items: [
+                ...group.items.slice(0, 1),
+                { ...searchItem, label: "Tìm kiếm" },
+                ...group.items.slice(1),
+              ],
+            }
+          : group,
+      );
+    }
+    return nextGroups;
+  }, [currentPlanningMethod, currentProjectPermissions, pathname, projectId, user]);
+  const selectedProjectNavigationGroup = useMemo(() => {
+    const isDocumentReader = pathname.startsWith(
+      `${projectRoute(projectId, PROJECT_SECTION_SLUGS.documentReader)}/`,
+    );
+    const isTestRunExecution = pathname.startsWith(
+      `${projectRoute(projectId, PROJECT_SECTION_SLUGS.execution)}/`,
+    );
+    const group =
+      activeNavigationGroup(projectNavigationGroups, pathname) ||
+      (isTestRunExecution &&
+        projectNavigationGroups.find((item) => item.label === "Thực thi kiểm thử")) ||
+      (isDocumentReader &&
+        projectNavigationGroups.find((item) => item.label === "Tài liệu và cài đặt")) ||
+      (isDocumentReader &&
+        projectNavigationGroups.find((item) => item.label === "Bảo đảm yêu cầu")) ||
+      projectNavigationGroups[0];
+    if (!group) return null;
+    const activeItem =
+      group.items.find((item) => pathname === item.href) ||
+      group.items.find(
+        (item) =>
+          !["dashboard", "projects"].includes(item.id) && pathname.startsWith(`${item.href}/`),
+      ) ||
+      (pathname === group.href
+        ? group.items.find((item) => item.id === group.defaultActiveItemId)
+        : null) ||
+      (isDocumentReader
+        ? group.items.find((item) => item.id === "knowledge" || item.id === "requirements")
+        : isTestRunExecution
+          ? group.items.find((item) => item.id === "test-runs")
+          : null);
+    return { ...group, activeItemId: activeItem?.id || group.items[0]?.id };
+  }, [pathname, projectId, projectNavigationGroups]);
+  const hasProjectSubnavigation = (selectedProjectNavigationGroup?.items.length || 0) > 1;
+  const projectNavigationVisible = projectNavigationGroups.length > 0;
   const globalRoleAccess = projectId
     ? null
     : canOpenRoleRestrictedPath(navigationGroupsFor(pathname), pathname, user);
@@ -643,6 +742,14 @@ export default function AppShell({ children, requireAuth }) {
         </div>
       </header>
 
+      {projectNavigationVisible && (
+        <ProjectNavigation
+          groups={projectNavigationGroups}
+          selectedGroup={selectedProjectNavigationGroup}
+          sidebarCollapsed={sidebarCollapsed}
+        />
+      )}
+
       <aside
         className={`fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-surface transition-[width] duration-200 lg:block ${sidebarCollapsed ? "w-[76px]" : "w-[260px]"}`}
       >
@@ -693,6 +800,7 @@ export default function AppShell({ children, requireAuth }) {
             projectPermissions={currentProjectPermissions}
             planningMethod={currentPlanningMethod}
             collapsed={sidebarCollapsed}
+            globalOnly={Boolean(projectId)}
           />
         </nav>
       </aside>
@@ -752,7 +860,7 @@ export default function AppShell({ children, requireAuth }) {
       <main
         id="main-content"
         tabIndex={-1}
-        className={`min-h-[100dvh] min-w-0 pt-[68px] transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
+        className={`min-h-[100dvh] min-w-0 pt-[68px] ${projectNavigationVisible ? (hasProjectSubnavigation ? "lg:pt-[158px]" : "lg:pt-[112px]") : ""} transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
       >
         <div className="page-shell">
           {projectContextError ? (

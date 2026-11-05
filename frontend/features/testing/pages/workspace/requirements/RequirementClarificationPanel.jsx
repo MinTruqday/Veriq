@@ -4,8 +4,8 @@ import { messageOf, valueLabel } from "../../../lib/testing";
 import { LoadingState } from "../../../components/WorkspacePrimitives";
 
 const statusLabel = {
-  OPEN: "Đang chờ BA làm rõ",
-  ANSWERED: "Đã có trả lời, chờ QA xác nhận",
+  OPEN: "Đang chờ cập nhật",
+  ANSWERED: "Đã có phản hồi, chờ xác nhận",
   RESOLVED: "Đã giải quyết",
   NOT_APPLICABLE: "Không áp dụng",
   WAIVED: "Đã chấp nhận ngoại lệ",
@@ -28,7 +28,12 @@ function sourceReferenceLabel(sourceRef) {
 }
 
 export default function RequirementClarificationPanel({
+  projectId,
+  requirementId,
   requirementVersionId,
+  requirementStatus,
+  requirementRevision,
+  onRequirementChanged,
   role,
   roles,
   permissions = [],
@@ -97,7 +102,7 @@ export default function RequirementClarificationPanel({
         <div>
           <h2 className="text-base font-semibold text-ink">Phiếu làm rõ yêu cầu</h2>
           <p className="mt-1 text-sm text-ink-muted">
-            BA cập nhật yêu cầu; QA xác nhận khi phiên bản mới có dẫn chứng.
+            Người phụ trách cập nhật yêu cầu; người rà soát xác nhận khi phiên bản mới có dẫn chứng.
           </p>
         </div>
         {canReview && (
@@ -106,10 +111,26 @@ export default function RequirementClarificationPanel({
             className="secondary-button"
             disabled={busy}
             onClick={() =>
-              perform(() => testingApi.createClarificationsFromReview(requirementVersionId))
+              perform(async () => {
+                const created =
+                  await testingApi.createClarificationsFromReview(requirementVersionId);
+                const needsChanges =
+                  (created || []).length > 0 ||
+                  items.some((item) => ["OPEN", "ANSWERED"].includes(item.status));
+                if (requirementStatus === "IN_REVIEW" && needsChanges) {
+                  await testingApi.requestRequirementChanges(projectId, requirementId, {
+                    expected_revision: requirementRevision,
+                    review_note:
+                      "Đã tạo Phiếu làm rõ. Vui lòng cập nhật bản nháp theo các phiếu đang mở.",
+                  });
+                  await onRequirementChanged?.();
+                }
+              })
             }
           >
-            Rà soát và tạo phiếu
+            {requirementStatus === "IN_REVIEW"
+              ? "Tạo phiếu và yêu cầu chỉnh sửa"
+              : "Rà soát và tạo phiếu"}
           </button>
         )}
       </div>
@@ -150,12 +171,12 @@ export default function RequirementClarificationPanel({
               <p className="mt-3 text-sm font-medium text-ink">{item.question}</p>
               <p className="mt-1 text-sm text-ink-muted">Lý do: {item.reason}</p>
               {item.answer && (
-                <p className="mt-3 text-sm text-ink-muted">Trả lời BA: {item.answer}</p>
+                <p className="mt-3 text-sm text-ink-muted">Phản hồi: {item.answer}</p>
               )}
               {canAnswer && item.status === "OPEN" && (
                 <div className="mt-3 flex flex-col gap-2">
                   <textarea
-                    aria-label="Câu trả lời của BA cho phiếu làm rõ"
+                    aria-label="Câu trả lời cho phiếu làm rõ"
                     className="apple-input min-h-20 w-full"
                     value={answers[item._id] || ""}
                     onChange={(event) => setAnswers({ ...answers, [item._id]: event.target.value })}
@@ -181,7 +202,7 @@ export default function RequirementClarificationPanel({
               {canReview && item.status === "ANSWERED" && (
                 <div className="mt-3 flex flex-col gap-2">
                   <textarea
-                    aria-label="Trích dẫn yêu cầu để QA xác nhận giải quyết"
+                    aria-label="Trích dẫn yêu cầu để xác nhận giải quyết"
                     className="apple-input min-h-16 w-full"
                     value={evidence[item._id] || ""}
                     onChange={(event) =>
@@ -203,7 +224,7 @@ export default function RequirementClarificationPanel({
                       )
                     }
                   >
-                    QA xác nhận giải quyết
+                    Xác nhận giải quyết
                   </button>
                 </div>
               )}

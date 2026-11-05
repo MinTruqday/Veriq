@@ -222,7 +222,7 @@ export default function ProjectAccessPanel({ project }) {
       actions={
         <button
           type="button"
-          className="btn-secondary h-9 w-9 shrink-0 p-0"
+          className="icon-button h-9 w-9"
           aria-label="Cập nhật quyền truy cập"
           title="Cập nhật quyền truy cập"
           disabled={loading}

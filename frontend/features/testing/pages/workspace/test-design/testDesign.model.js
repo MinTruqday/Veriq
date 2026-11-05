@@ -52,6 +52,7 @@ export function createTestCaseForm() {
     scenarioId: "",
     requirementVersionIds: [],
     acceptanceCriterionIds: [],
+    coverageItemIds: [],
     objective: emptyDoc(),
     preconditions: emptyDoc(),
     steps: [
@@ -257,6 +258,7 @@ export function buildTestCaseDraftChanges(snapshot, draft) {
     test_condition_ids: snapshot.testConditionIds,
     requirement_version_ids: snapshot.requirementVersionIds,
     acceptance_criterion_ids: snapshot.acceptanceCriterionIds,
+    coverage_item_ids: snapshot.coverageItemIds,
     repository_node_id: snapshot.repositoryNodeId,
     bdd: snapshot.bdd,
     custom_values: snapshot.customValues,

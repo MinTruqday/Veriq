@@ -4,6 +4,7 @@ import { ErrorState, Panel } from "./WorkspacePrimitives";
 import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { toggleNotificationSelection } from "./notificationSelection.mjs";
+import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
 
 const DEFAULT_PREFERENCES = {
   revision: 0,
@@ -73,6 +74,10 @@ export default function ProjectNotificationsPanel({ project }) {
   };
   const savePreferences = async (event) => {
     event.preventDefault();
+    if (!isSupportedTimeZone(preferences.timezone)) {
+      setError("Hãy chọn một múi giờ IANA hợp lệ trước khi lưu giờ yên lặng.");
+      return;
+    }
     try {
       const value = await testingApi.updateProjectNotificationPreferences(project._id, {
         expected_revision: preferences.revision,
@@ -220,6 +225,29 @@ export default function ProjectNotificationsPanel({ project }) {
                 }
               />
             </div>
+            <label className="grid gap-1 text-sm">
+              <span className="field-label">Múi giờ áp dụng</span>
+              <select
+                className="apple-input"
+                aria-invalid={!isSupportedTimeZone(preferences.timezone)}
+                value={preferences.timezone || ""}
+                onChange={(event) => {
+                  setPreferences({ ...preferences, timezone: event.target.value });
+                  setError("");
+                }}
+              >
+                {timeZoneOptions(preferences.timezone).map((option) => (
+                  <option key={option.value} value={option.value} disabled={!option.valid}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {!isSupportedTimeZone(preferences.timezone) && (
+                <span className="text-xs text-danger">
+                  Múi giờ đã lưu không hợp lệ. Chọn múi giờ IANA để tiếp tục.
+                </span>
+              )}
+            </label>
             <button className="apple-button" type="submit">
               Lưu tùy chọn
             </button>

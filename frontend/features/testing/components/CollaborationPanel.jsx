@@ -46,7 +46,7 @@ export default function CollaborationPanel({ project, artifactType, artifactId, 
   const resolve = async (conflict) => {
     const answer = await ask({
       title: "Giải quyết xung đột chỉnh sửa",
-      description: `Bản nháp đã thay đổi từ revision ${conflict.base_revision} sang ${conflict.current_revision}`,
+      description: "Bản nháp đã được cập nhật ở nơi khác. Chọn nội dung cần được giữ lại.",
       confirmLabel: "Xác nhận phương án",
       fields: [
         {
@@ -98,7 +98,7 @@ export default function CollaborationPanel({ project, artifactType, artifactId, 
                 className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3"
                 key={item._id}
               >
-                <p className="text-sm">Các trường {item.changed_keys_since_base.join(", ")}</p>
+                <p className="text-sm">Nội dung đã thay đổi kể từ lần mở bản nháp này.</p>
                 <button className="secondary-button" type="button" onClick={() => resolve(item)}>
                   Giải quyết xung đột
                 </button>

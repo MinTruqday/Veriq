@@ -237,6 +237,7 @@ export default function RequirementImportModal({
   onError,
 }) {
   const [confirmingImport, setConfirmingImport] = useState(false);
+  const [includeBusinessRules, setIncludeBusinessRules] = useState(true);
   const [inputMethod, setInputMethod] = useState("file");
   const confirmingImportRef = useRef(false);
   const previewRef = useRef(null);
@@ -708,6 +709,29 @@ export default function RequirementImportModal({
                       Tiêu chí phải bám theo nội dung tài liệu nguồn. Nội dung đã sửa cần được lưu
                       và đối chiếu lại trước khi nhập.
                     </span>
+                    <label className="field-label mt-4 block">
+                      Quy tắc nghiệp vụ (BR)
+                      <textarea
+                        aria-label={`Quy tắc nghiệp vụ ứng viên ${item.candidateIndex + 1}`}
+                        className="apple-input mt-2 min-h-24 w-full resize-y"
+                        disabled={preview.status !== "PREVIEW_READY" || confirmingImport}
+                        value={(item.business_rules || []).join("\n")}
+                        onChange={(event) =>
+                          onEditCandidate(item.candidateIndex, {
+                            business_rules: event.target.value
+                              .split("\n")
+                              .map((value) => value.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                        placeholder="Mỗi dòng là một quy tắc. Để trống nếu yêu cầu không có BR."
+                      />
+                    </label>
+                    {!(item.business_rules || []).length && (
+                      <p className="mt-1 text-xs text-ink-muted">
+                        Không có quy tắc nghiệp vụ trong ứng viên này.
+                      </p>
+                    )}
                   </div>
                 ),
               },
@@ -956,6 +980,23 @@ export default function RequirementImportModal({
           )}
           {sourceDocument.status === "READY" && !preview && (
             <div className="mt-3 space-y-2">
+              {canExtractSource && (
+                <label className="flex items-start gap-2 rounded-control border border-border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={includeBusinessRules}
+                    disabled={sourceProcessing || extractingSource}
+                    onChange={(event) => setIncludeBusinessRules(event.target.checked)}
+                  />
+                  <span>
+                    Trích xuất quy tắc nghiệp vụ (BR) cùng với yêu cầu
+                    <span className="mt-1 block text-xs text-ink-muted">
+                      Bỏ chọn nếu tài liệu không cần BR. Bản xem trước vẫn cho biết khi không tìm
+                      thấy quy tắc.
+                    </span>
+                  </span>
+                </label>
+              )}
               {sourceDocument.ai_enabled ? (
                 canExtractSource ? (
                   <button
@@ -963,11 +1004,13 @@ export default function RequirementImportModal({
                     type="button"
                     disabled={sourceProcessing || extractingSource}
                     aria-busy={extractingSource}
-                    onClick={onExtractSource}
+                    onClick={() => onExtractSource(includeBusinessRules)}
                   >
                     {extractingSource
                       ? "Đang trích xuất yêu cầu và quy tắc nghiệp vụ…"
-                      : "Trích xuất yêu cầu và quy tắc nghiệp vụ"}
+                      : includeBusinessRules
+                        ? "Trích xuất yêu cầu và quy tắc nghiệp vụ"
+                        : "Trích xuất yêu cầu"}
                   </button>
                 ) : (
                   <p className="text-sm text-ink-muted">
@@ -983,13 +1026,15 @@ export default function RequirementImportModal({
                     className="secondary-button"
                     type="button"
                     disabled={sourceProcessing || extractingSource}
-                    onClick={onEnableSourceAiRead}
+                    onClick={() => onEnableSourceAiRead(includeBusinessRules)}
                   >
                     {extractingSource
                       ? "Đang trích xuất yêu cầu và quy tắc nghiệp vụ…"
                       : sourceProcessing
                         ? "Đang chuẩn bị trích xuất…"
-                        : "Cho phép AI đọc và trích xuất"}
+                        : includeBusinessRules
+                          ? "Cho phép AI đọc và trích xuất yêu cầu và quy tắc nghiệp vụ"
+                          : "Cho phép AI đọc và trích xuất yêu cầu"}
                   </button>
                 </>
               ) : (

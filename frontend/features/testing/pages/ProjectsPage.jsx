@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CalendarDays, Plus, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { Pagination } from "@/shared/components/ui/Pagination";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
+import { isSupportedTimeZone } from "@/shared/lib/timeZone.mjs";
 import {
   EmptyState,
   ErrorState,
@@ -51,27 +53,29 @@ function projectIncludesDate(project, day) {
   return (start == null || start <= selectedDayEnd) && (end == null || end >= selectedDayStart);
 }
 
-function formatProjectUpdatedAt(value) {
+function formatProjectUpdatedAt(value, configuredTimeZone) {
   if (!value) return "Chưa có thông tin";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Chưa có thông tin";
+  const timeZone = isSupportedTimeZone(configuredTimeZone) ? configuredTimeZone : undefined;
   const dateLabel = date.toLocaleDateString("vi-VN", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    timeZone: "Asia/Ho_Chi_Minh",
+    ...(timeZone ? { timeZone } : {}),
   });
   const timeLabel = date.toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-    timeZone: "Asia/Ho_Chi_Minh",
+    ...(timeZone ? { timeZone } : {}),
   });
   return `${dateLabel}, ${timeLabel}`;
 }
 
 export default function ProjectsPage() {
   const { ask, dialog } = useActionDialog();
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [invitationActionId, setInvitationActionId] = useState("");
@@ -290,7 +294,7 @@ export default function ProjectsPage() {
             />
           </label>
           <label className="field-label block min-w-0">
-            Tài khoản QA đầu tiên
+            Người phụ trách kiểm thử đầu tiên
             <input
               className="apple-input mt-2 w-full"
               type="text"
@@ -299,11 +303,10 @@ export default function ProjectsPage() {
               value={form.initial_qa_user_id}
               onChange={(event) => setForm({ ...form, initial_qa_user_id: event.target.value })}
               aria-describedby="initial-qa-help"
-              placeholder="qa@congty.vn hoặc mã tài khoản QA"
+              placeholder="Email hoặc mã thành viên dự án"
             />
             <span className="mt-1 block text-xs leading-5 text-ink-muted" id="initial-qa-help">
-              Có thể nhập email hoặc mã tài khoản. Chọn một tài khoản khác người tạo dự án để quyền
-              BA và QA được tách riêng.
+              Chọn thành viên khác với người tạo để tách việc thiết lập dự án và rà soát kiểm thử.
             </span>
           </label>
           <label className="field-label block min-w-0">
@@ -539,6 +542,16 @@ export default function ProjectsPage() {
           </EmptyState>
         ) : (
           <div className="divide-y divide-border">
+            <div
+              aria-hidden="true"
+              className="hidden gap-x-5 bg-surface-quiet/60 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted xl:grid xl:grid-cols-[100px_minmax(180px,1.3fr)_minmax(125px,0.9fr)_minmax(140px,1fr)_minmax(120px,0.9fr)]"
+            >
+              <span>Mã dự án</span>
+              <span>Dự án</span>
+              <span>Thời gian</span>
+              <span>Tiến độ</span>
+              <span>Trạng thái, cập nhật</span>
+            </div>
             {visibleProjects.map((item) => {
               const taskProgress = taskProgressPresentation(item.task_summary);
               const schedule = projectSchedule(item);
@@ -551,7 +564,7 @@ export default function ProjectsPage() {
               return (
                 <article
                   key={item._id}
-                  className="grid min-w-0 gap-x-5 gap-y-3 p-5 transition hover:bg-surface-quiet lg:grid-cols-2 lg:items-center xl:grid-cols-[minmax(110px,0.68fr)_minmax(190px,1.35fr)_minmax(145px,0.92fr)_minmax(170px,1fr)_minmax(165px,0.95fr)]"
+                  className="grid min-w-0 gap-x-5 gap-y-3 p-5 transition hover:bg-surface-quiet lg:grid-cols-2 lg:items-center xl:grid-cols-[100px_minmax(180px,1.3fr)_minmax(125px,0.9fr)_minmax(140px,1fr)_minmax(120px,0.9fr)]"
                 >
                   <div className="min-w-0">
                     <span
@@ -627,14 +640,14 @@ export default function ProjectsPage() {
                   </div>
                   <div className="flex min-w-0 flex-col items-start gap-1.5">
                     <StatusPill
-                      value={item.status ? String(item.status).toUpperCase() : "Chưa có thông tin"}
+                      value={item.status ? valueLabel(item.status) : "Chưa có thông tin"}
                     />
                     <p
                       className="text-[11px] text-ink-muted 2xl:text-right"
-                      title={`${activityLabel}${activityDate ? ` ${formatProjectUpdatedAt(activityDate)}` : ""}`}
+                      title={`${activityLabel}${activityDate ? ` ${formatProjectUpdatedAt(activityDate, user?.timezone)}` : ""}`}
                     >
                       {activityDate
-                        ? `${activityLabel} ${formatProjectUpdatedAt(activityDate)}`
+                        ? `${activityLabel} ${formatProjectUpdatedAt(activityDate, user?.timezone)}`
                         : activityLabel}
                     </p>
                     {item.status === "archived" &&

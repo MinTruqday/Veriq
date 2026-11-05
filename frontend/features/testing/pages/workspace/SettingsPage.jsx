@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import ProjectNotificationsPanel from "../../components/ProjectNotificationsPanel";
 import WebhookPanel from "../../components/WebhookPanel";
@@ -23,6 +23,7 @@ import {
 } from "../../lib/projectSchedule.logic.mjs";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { Pagination } from "@/shared/components/ui/Pagination";
+import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
 
 const AUDIT_PAGE_SIZE = 25;
 
@@ -128,6 +129,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const [analytics, setAnalytics] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [loadErrors, setLoadErrors] = useState({});
+  const [timezoneError, setTimezoneError] = useState("");
   const [activeSettingsSection, setActiveSettingsSection] = useState("project");
   const loadedProjectId = useRef(project._id);
   const settingsLoadRevision = useRef(0);
@@ -136,6 +138,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const [projectType, setProjectType] = useState(project.project_type || "web");
   const [locale, setLocale] = useState(project.locale || "vi-VN");
   const [timezone, setTimezone] = useState(project.timezone || "Asia/Ho_Chi_Minh");
+  const projectTimeZoneOptions = useMemo(() => timeZoneOptions(timezone), [timezone]);
+  const timezoneIsValid = isSupportedTimeZone(timezone);
   const [automationFramework, setAutomationFramework] = useState(
     project.automation_framework || "",
   );
@@ -370,48 +374,52 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
               className="space-y-4 p-5"
               onSubmit={async (event) => {
                 event.preventDefault();
+                if (can("project.update") && !timezoneIsValid) {
+                  setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu.");
+                  return;
+                }
+                setTimezoneError("");
+                setError("");
                 try {
-                  const payload = can("project.settings.manage")
-                    ? {
-                        expected_revision: project.revision,
-                        settings: {
-                          ...(project.settings || {}),
-                          ...settings,
-                          responsibilities,
-                          action_policies: {
-                            ...(project.settings?.action_policies || {}),
-                            "defect.rejected": settings.tester_can_reject_defect
-                              ? ["QA", "TESTER"]
-                              : ["QA"],
-                            "defect.duplicate": settings.tester_can_mark_duplicate_defect
-                              ? ["QA", "TESTER"]
-                              : ["QA"],
-                            "testplan.assignments": settings.tester_can_assign_testplans
-                              ? ["QA", "TESTER"]
-                              : ["QA"],
-                            "testresult.correct": settings.tester_can_correct_results
-                              ? ["TESTER"]
-                              : [],
-                            "testcase.template.archive":
-                              settings.tester_can_archive_testcase_templates
+                  const canManageSettings = can("project.settings.manage");
+                  const canUpdateProject = can("project.update");
+                  const payload = {
+                    expected_revision: project.revision,
+                    ...(canUpdateProject
+                      ? { name, description, project_type: projectType, locale, timezone }
+                      : {}),
+                    ...(canManageSettings
+                      ? {
+                          settings: {
+                            ...(project.settings || {}),
+                            ...settings,
+                            responsibilities,
+                            action_policies: {
+                              ...(project.settings?.action_policies || {}),
+                              "defect.rejected": settings.tester_can_reject_defect
                                 ? ["QA", "TESTER"]
                                 : ["QA"],
+                              "defect.duplicate": settings.tester_can_mark_duplicate_defect
+                                ? ["QA", "TESTER"]
+                                : ["QA"],
+                              "testplan.assignments": settings.tester_can_assign_testplans
+                                ? ["QA", "TESTER"]
+                                : ["QA"],
+                              "testresult.correct": settings.tester_can_correct_results
+                                ? ["TESTER"]
+                                : [],
+                              "testcase.template.archive":
+                                settings.tester_can_archive_testcase_templates
+                                  ? ["QA", "TESTER"]
+                                  : ["QA"],
+                            },
                           },
-                        },
-                        automation_framework: automationFramework || null,
-                        automation_language: automationLanguage || null,
-                      }
-                    : {
-                        expected_revision: project.revision,
-                        name,
-                        description,
-                        project_type: projectType,
-                        locale,
-                        timezone,
-                        automation_framework: automationFramework || null,
-                        automation_language: automationLanguage || null,
-                      };
-                  if (can("project.settings.manage")) {
+                        }
+                      : {}),
+                    automation_framework: automationFramework || null,
+                    automation_language: automationLanguage || null,
+                  };
+                  if (canManageSettings && !canUpdateProject) {
                     await testingApi.updateProjectSettings(project._id, payload);
                   } else {
                     await testingApi.updateProject(project._id, payload);
@@ -458,12 +466,35 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 </label>
                 <label className="field-label sm:col-span-2">
                   Múi giờ
-                  <input
+                  <select
                     className="apple-input mt-2"
-                    readOnly={!can("project.update")}
+                    aria-invalid={!timezoneIsValid || Boolean(timezoneError)}
+                    aria-describedby={
+                      !timezoneIsValid || timezoneError ? "project-timezone-error" : undefined
+                    }
+                    disabled={!can("project.update")}
                     value={timezone}
-                    onChange={(event) => setTimezone(event.target.value)}
-                  />
+                    onChange={(event) => {
+                      setTimezone(event.target.value);
+                      setTimezoneError("");
+                    }}
+                  >
+                    {projectTimeZoneOptions.map((option) => (
+                      <option key={option.value} value={option.value} disabled={!option.valid}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {(timezoneError || !timezoneIsValid) && (
+                    <span
+                      id="project-timezone-error"
+                      className={`mt-2 block text-sm ${timezoneError ? "text-danger" : "text-warning"}`}
+                      role={timezoneError ? "alert" : "status"}
+                    >
+                      {timezoneError ||
+                        "Múi giờ đã lưu không hợp lệ. Chọn múi giờ trong danh sách trước khi lưu."}
+                    </span>
+                  )}
                 </label>
               </div>
               {can("project.settings.manage") && (
