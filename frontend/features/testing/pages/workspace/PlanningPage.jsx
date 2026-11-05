@@ -151,7 +151,33 @@ function matchesPlanningFilters(item, filters = { query: "", status: "", type: "
 }
 
 function emptyPlanningFilters() {
-  return { query: "", status: "", type: "" };
+  return { query: "", status: "", type: "", sort: "rank" };
+}
+
+function sortWorkItems(items, sort) {
+  if (sort === "title") {
+    return [...items].sort((left, right) =>
+      String(left.title || "").localeCompare(String(right.title || ""), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
+  }
+  if (sort === "due") {
+    return [...items].sort((left, right) => {
+      if (!left.due_at) return right.due_at ? 1 : 0;
+      if (!right.due_at) return -1;
+      return String(left.due_at).localeCompare(String(right.due_at));
+    });
+  }
+  if (sort === "updated") {
+    return [...items].sort((left, right) => {
+      if (!left.updated_at) return right.updated_at ? 1 : 0;
+      if (!right.updated_at) return -1;
+      return String(right.updated_at).localeCompare(String(left.updated_at));
+    });
+  }
+  return items;
 }
 
 function priorityClass(priority) {
@@ -242,6 +268,7 @@ function readPlanningFilters(projectId) {
       query: typeof value?.query === "string" ? value.query : "",
       status: typeof value?.status === "string" ? value.status : "",
       type: typeof value?.type === "string" ? value.type : "",
+      sort: typeof value?.sort === "string" ? value.sort : "rank",
     };
   } catch {
     return emptyPlanningFilters();
@@ -334,6 +361,7 @@ export default function PlanningPage({ project, section }) {
   const filteredItems = filterScopeItems.filter((item) =>
     matchesPlanningFilters(item, planningFilters),
   );
+  const listItems = sortWorkItems(filteredItems, planningFilters.sort);
   const filterableTabs = ["backlog", "list", "board", "roadmap"].includes(tab);
   const typeOptions = [
     ...new Set(
@@ -806,10 +834,10 @@ export default function PlanningPage({ project, section }) {
       {(tab === "list" || tab === "board" || filterableTabs) && (
         <section
           aria-label="Lọc và xem công việc"
-          className="min-w-0 rounded-xl border border-border bg-surface p-4"
+          className="min-w-0 space-y-4"
         >
           {(tab === "list" || tab === "board") && (
-            <div className={filterableTabs ? "mb-4 border-b border-border pb-4" : ""}>
+            <div>
               <div
                 className="inline-flex max-w-full flex-wrap gap-2"
                 role="group"
@@ -841,7 +869,7 @@ export default function PlanningPage({ project, section }) {
           {filterableTabs && (
             <div
               aria-label="Bộ lọc lập kế hoạch"
-              className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.45fr)_minmax(12rem,0.45fr)_auto]"
+              className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1.25fr)_repeat(3,minmax(10rem,0.75fr))]"
             >
               <label className="field-label">
                 Tìm công việc
@@ -894,19 +922,41 @@ export default function PlanningPage({ project, section }) {
                   ))}
                 </select>
               </label>
-              <div className="flex min-w-0 items-end gap-3">
+              {tab === "list" && (
+                <label className="field-label">
+                  Sắp xếp
+                  <select
+                    aria-label="Sắp xếp công việc"
+                    className="apple-input mt-2"
+                    disabled={loading}
+                    value={planningFilters.sort}
+                    onChange={(event) =>
+                      updatePlanningFilters((current) => ({ ...current, sort: event.target.value }))
+                    }
+                  >
+                    <option value="rank">Thứ tự hiện tại</option>
+                    <option value="due">Hạn gần nhất</option>
+                    <option value="updated">Cập nhật gần nhất</option>
+                    <option value="title">Tên A–Z</option>
+                  </select>
+                </label>
+              )}
+              <div className="flex min-w-0 flex-wrap items-center gap-3 sm:col-span-2 xl:col-span-4">
                 <button
                   className="secondary-button whitespace-nowrap"
                   type="button"
                   onClick={() => updatePlanningFilters(emptyPlanningFilters())}
                   disabled={
                     loading ||
-                    (!planningFilters.query && !planningFilters.status && !planningFilters.type)
+                    (!planningFilters.query &&
+                      !planningFilters.status &&
+                      !planningFilters.type &&
+                      planningFilters.sort === "rank")
                   }
                 >
                   Xóa lọc
                 </button>
-                <span className="pb-3 text-xs text-ink-muted" aria-live="polite">
+                <span className="text-xs text-ink-muted" aria-live="polite">
                   Hiển thị {filteredItems.length}/{filterScopeItems.length} công việc
                 </span>
               </div>
@@ -928,9 +978,9 @@ export default function PlanningPage({ project, section }) {
         />
       )}
       {tab === "list" && (
-        <Panel>
+        <div className="min-w-0">
           <WorkItemList
-            items={filteredItems}
+            items={listItems}
             memberLabels={memberLabels}
             canReadProjectMembers={canReadProjectMembers}
             totalCount={items.length}
@@ -941,7 +991,7 @@ export default function PlanningPage({ project, section }) {
             onEdit={editItem}
             onTransition={transition}
           />
-        </Panel>
+        </div>
       )}
       {tab === "board" && (
         <Board
@@ -1725,9 +1775,9 @@ function WorkItemList({
   const itemTitles = new Map(items.map((item) => [item._id, item.title]));
   const showActionColumn = canEdit || items.some((item) => canTransitionItem(item));
   const titleColumnWidth =
-    100 - (13 + 11 + (canReadProjectMembers ? 16 : 0) + 11 + (showActionColumn ? 16 : 0));
+    100 - (12 + 10 + (canReadProjectMembers ? 15 : 0) + 10 + (showActionColumn ? 16 : 0));
   return (
-    <div className="p-4">
+    <div className="min-w-0">
       <DataTable
         items={items}
         empty={totalCount ? "Không có công việc khớp bộ lọc" : "Chưa có công việc trong dự án"}
@@ -1961,8 +2011,8 @@ function WorkItemList({
           {
             key: "status",
             label: "Trạng thái",
-            width: "13%",
-            minWidth: 136,
+            width: "12%",
+            minWidth: 104,
             render: (item) => (
               <PlanningBadge className="whitespace-nowrap">
                 {statuses.find((value) => value.key === item.status)?.name ||
@@ -1973,8 +2023,8 @@ function WorkItemList({
           {
             key: "priority",
             label: "Ưu tiên",
-            width: "11%",
-            minWidth: 112,
+            width: "10%",
+            minWidth: 88,
             render: (item) => (
               <span
                 className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${priorityClass(item.priority)}`}
@@ -1988,8 +2038,8 @@ function WorkItemList({
                 {
                   key: "assignee_id",
                   label: "Người phụ trách",
-                  width: "16%",
-                  minWidth: 132,
+                  width: "15%",
+                  minWidth: 112,
                   render: (item) => {
                     const name =
                       (item.assignee_id && memberLabels[item.assignee_id]) || "Chưa phân công";
@@ -2009,9 +2059,13 @@ function WorkItemList({
           {
             key: "due_at",
             label: "Hạn",
-            width: "11%",
-            minWidth: 112,
-            render: (item) => (item.due_at ? formatCalendarDate(item.due_at) : "Chưa đặt"),
+            width: "10%",
+            minWidth: 96,
+            render: (item) => (
+              <span className="whitespace-nowrap">
+                {item.due_at ? formatCalendarDate(item.due_at) : "Chưa đặt"}
+              </span>
+            ),
           },
           ...(showActionColumn
             ? [
@@ -2019,7 +2073,7 @@ function WorkItemList({
                   key: "actions",
                   label: "Thao tác",
                   width: "16%",
-                  minWidth: 184,
+                  minWidth: 142,
                   render: (item) => {
                     const availableTransitions = transitions
                       .filter((transitionValue) => transitionValue.from_status === item.status)
@@ -2049,7 +2103,7 @@ function WorkItemList({
                               if (nextStatus) onTransition(item, nextStatus);
                             }}
                           >
-                            <option value="">Chuyển trạng thái</option>
+                            <option value="">Chuyển</option>
                             {availableTransitions.map((transitionValue) => (
                               <option
                                 key={`${item._id}-${transitionValue.to_status}`}

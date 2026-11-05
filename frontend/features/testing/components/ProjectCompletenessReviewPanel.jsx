@@ -135,7 +135,7 @@ export default function ProjectCompletenessReviewPanel({ project, user }) {
           </fieldset>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">
-              Requirement đã đặt chuẩn ({sources.requirements.length})
+              Yêu cầu đã duyệt ({sources.requirements.length})
             </legend>
             {sources.requirements.map((item) => (
               <label className="flex gap-2 text-sm" key={item.version_id}>
