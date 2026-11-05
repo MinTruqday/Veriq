@@ -1,8 +1,10 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import AgentRunPanel from "../../components/AgentRunPanel";
 import ProjectComplexityAssessmentPanel from "../../components/ProjectComplexityAssessmentPanel";
+import ProjectCompletenessReviewPanel from "../../components/ProjectCompletenessReviewPanel";
 import DataTable from "../../components/DataTable";
 import {
   ErrorState,
@@ -46,6 +48,7 @@ function formatCoveragePercent(value) {
 }
 
 export default function DashboardPage({ project }) {
+  const { user } = useAuth();
   const [value, setValue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -175,10 +178,9 @@ export default function DashboardPage({ project }) {
               </div>
             </div>
           </Panel>
-          {canReadAutomationRuns && (
-            <AgentRunPanel project={project} showDefinitions={false} compact />
-          )}
+          {canReadAutomationRuns && <AgentRunPanel project={project} compact />}
           <ProjectComplexityAssessmentPanel project={project} />
+          <ProjectCompletenessReviewPanel project={project} user={user} />
           {(dashboard || coverage) && hasOverviewMetrics && (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
               {can("requirement.read") && dashboard && (

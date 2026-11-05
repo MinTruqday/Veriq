@@ -49,7 +49,7 @@ function insertImageFiles(editor, files, position) {
   }
 }
 
-export function createQaExtensions(editable, placeholder, onTableOfContentsUpdate) {
+export function createQaExtensions(editable, placeholder, onTableOfContentsUpdate, onImageFiles) {
   return [
     StarterKit.configure({ codeBlock: false }),
     CodeBlockLowlight.configure({ lowlight }),
@@ -104,11 +104,27 @@ export function createQaExtensions(editable, placeholder, onTableOfContentsUpdat
     InvisibleCharacters.configure({ visible: false, injectCSS: true }),
     FileHandler.configure({
       allowedMimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"],
-      onPaste: (editor, files) => insertImageFiles(editor, files),
-      onDrop: (editor, files, position) => insertImageFiles(editor, files, position),
+      onPaste: (editor, files) => {
+        if (!onImageFiles) return insertImageFiles(editor, files);
+        void onImageFiles(files).then((nodes) => {
+          if (!editor.isDestroyed && nodes.length)
+            editor.chain().focus().insertContent(nodes).run();
+        });
+      },
+      onDrop: (editor, files, position) => {
+        if (!onImageFiles) return insertImageFiles(editor, files, position);
+        void onImageFiles(files).then((nodes) => {
+          if (!editor.isDestroyed && nodes.length)
+            editor.chain().focus().setTextSelection(position).insertContent(nodes).run();
+        });
+      },
     }),
     Mathematics,
-    Image.configure({ allowBase64: false, HTMLAttributes: { loading: "lazy" } }),
+    Image.extend({
+      addAttributes() {
+        return { ...this.parent?.(), asset_id: { default: null }, width_cm: { default: 14 } };
+      },
+    }).configure({ allowBase64: false, HTMLAttributes: { loading: "lazy" } }),
     Youtube.configure({
       controls: true,
       nocookie: true,

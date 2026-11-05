@@ -71,3 +71,30 @@ async def delete_qa_requirement_source(project_id: str, document_id: str, object
 @router.post("/luu-tru", dependencies=[Depends(verify_internal_token)], include_in_schema=False)
 async def internal_storage_data(req: dict):
     return {"data": await InternalStorageService.execute(req)}
+
+
+def report_object_prefix(project_id, artifact_id):
+    if not all(re.fullmatch(r"[A-Za-z0-9._:-]{1,200}", value) and value not in {".", ".."} for value in (project_id, artifact_id)):
+        raise HTTPException(status_code=422, detail={"code": "REPORT_STORAGE_IDENTIFIER_INVALID"})
+    return f"system/qa/{project_id}/reports/{artifact_id}/"
+
+
+@router.post("/kiem-thu/bao-cao/tep", dependencies=[Depends(verify_internal_token)], include_in_schema=False)
+async def store_report_asset(project_id: str = Form(), artifact_id: str = Form(), file: UploadFile = File()):
+    prefix = report_object_prefix(project_id, artifact_id)
+    data = await file.read(25 * 1024 * 1024 + 1)
+    if not data or len(data) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail={"code": "REPORT_FILE_SIZE_INVALID"})
+    filename = re.sub(r"[^A-Za-z0-9._-]+", "-", file.filename or "report.bin").strip(".-") or "report.bin"
+    digest = hashlib.sha256(data).hexdigest()
+    object_key = f"{prefix}{digest}/{filename}"
+    await upload_file(data, object_key, file.content_type or "application/octet-stream")
+    return {"data": {"object_key": object_key, "sha256": digest, "size": len(data), "content_type": file.content_type}}
+
+
+@router.get("/kiem-thu/bao-cao/tep", dependencies=[Depends(verify_internal_token)], include_in_schema=False)
+async def read_report_asset(project_id: str, artifact_id: str, object_key: str):
+    if not object_key.startswith(report_object_prefix(project_id, artifact_id)) or "/../" in object_key:
+        raise HTTPException(status_code=403, detail={"code": "REPORT_STORAGE_PATH_FORBIDDEN"})
+    data, content_type = await download_file(object_key)
+    return Response(content=data, media_type=content_type or "application/octet-stream")

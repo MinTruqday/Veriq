@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 from loguru import logger
 
 from src.clients.content import ContentClient
+from src.clients.requirement_source_access import requirement_source_access_client
 from src.core.infrastructure.configuration import settings
 from src.knowledge.metadata import public_retrieval_metadata
 from src.repositories.project_artifact_generation import project_artifact_generation_repository
@@ -24,6 +25,12 @@ from src.utils.model_provider import auxiliary_client
 
 class RetrievalUnavailableError(RuntimeError):
     pass
+
+
+def _requirement_document_index_allowed(metadata: Dict) -> bool:
+    return metadata.get("artifact_type") != "requirement_document" or (
+        metadata.get("ai_enabled") is True and metadata.get("status") == "READY"
+    )
 
 
 async def initialize_retrieval():
@@ -54,7 +61,10 @@ async def initialize_retrieval():
             stale_documents = [
                 document
                 for document in documents
-                if document.get("metadata", {}).get("embedding_model")
+                if _requirement_document_index_allowed(
+                    document.get("metadata") or {}
+                )
+                and (document.get("metadata") or {}).get("embedding_model")
                 != settings.EMBEDDING_MODEL
             ]
             if stale_documents:
@@ -110,6 +120,8 @@ async def initialize_retrieval():
 
             for document in documents:
                 metadata = document.get("metadata") or {}
+                if not _requirement_document_index_allowed(metadata):
+                    continue
                 if (
                     is_document_indexed_payload(metadata)
                     and (
@@ -155,6 +167,8 @@ class RetrievalService:
         current_documents = []
         for document in documents:
             metadata = document.get("metadata") or document
+            if not _requirement_document_index_allowed(metadata):
+                continue
             if is_document_indexed_payload(metadata) and (
                 metadata.get("artifact_type") not in DOCUMENT_INDEXED_ARTIFACT_TYPES
                 or metadata.get("document_index_contract_version")
@@ -168,7 +182,10 @@ class RetrievalService:
     def _requirement_document_accessible(
         metadata: Dict, requester_id: Optional[str], is_admin: bool
     ) -> bool:
-        if metadata.get("ai_enabled") is False:
+        if (
+            metadata.get("ai_enabled") is not True
+            or metadata.get("status") != "READY"
+        ):
             return False
         if is_admin:
             return True
@@ -209,6 +226,7 @@ class RetrievalService:
         invalid_source_metadata_by_result = []
         all_source_ids = []
         inaccessible_source_by_result = []
+        requirement_source_by_result = []
         for document in documents:
             metadata = document.get("metadata") or document
             is_requirement_document = metadata.get("artifact_type") == "requirement_document"
@@ -217,6 +235,15 @@ class RetrievalService:
                 and not RetrievalService._requirement_document_accessible(
                     metadata, requester_id, is_admin
                 )
+            )
+            requirement_source_by_result.append(
+                (
+                    str(metadata.get("project_id") or "").strip(),
+                    str(metadata.get("document_id") or metadata.get("artifact_id") or "").strip(),
+                    str(metadata.get("source_hash") or "").strip(),
+                )
+                if is_requirement_document
+                else None
             )
             source_ids = []
             invalid_source_metadata = False
@@ -248,15 +275,56 @@ class RetrievalService:
                 else []
             )
 
+        live_requirement_sources = {}
+        grouped_requirement_sources = {}
+        for requirement_source in requirement_source_by_result:
+            if requirement_source is None:
+                continue
+            project_id, document_id, _ = requirement_source
+            if project_id and document_id:
+                grouped_requirement_sources.setdefault(project_id, set()).add(document_id)
+        if any(item is not None for item in requirement_source_by_result):
+            if not requester_id and not is_admin:
+                live_requirement_sources = {}
+            else:
+                try:
+                    for project_id, document_ids in grouped_requirement_sources.items():
+                        live_requirement_sources[project_id] = (
+                            await requirement_source_access_client.accessible_many(
+                                project_id,
+                                sorted(document_ids),
+                                str(requester_id or ""),
+                                is_admin,
+                            )
+                        )
+                except Exception as error:
+                    logger.warning(
+                        "Live requirement document access check failed error_type={}",
+                        type(error).__name__,
+                    )
+                    raise RetrievalUnavailableError(
+                        "requirement_document_access_verification_unavailable"
+                    ) from error
+
+        live_requirement_access = []
+        for item in requirement_source_by_result:
+            if item is None:
+                live_requirement_access.append(True)
+                continue
+            project_id, document_id, indexed_hash = item
+            current_hash = live_requirement_sources.get(project_id, {}).get(document_id)
+            live_requirement_access.append(bool(indexed_hash and current_hash == indexed_hash))
+
         if not all_source_ids:
             return [
                 document
-                for document, invalid, inaccessible in zip(
+                for document, invalid, inaccessible, live_access in zip(
                     documents,
                     invalid_source_metadata_by_result,
                     inaccessible_source_by_result,
+                    live_requirement_access,
                 )
-                if not invalid and not inaccessible
+                if not invalid and not inaccessible and live_access
             ]
         all_source_ids = sorted(set(all_source_ids))
 
@@ -273,14 +341,15 @@ class RetrievalService:
             ) from error
 
         current_documents = []
-        for document, source_ids, indexed_document_ids, invalid_source_metadata, inaccessible_source in zip(
+        for document, source_ids, indexed_document_ids, invalid_source_metadata, inaccessible_source, live_access in zip(
             documents,
             source_ids_by_result,
             index_document_ids_by_result,
             invalid_source_metadata_by_result,
             inaccessible_source_by_result,
+            live_requirement_access,
         ):
-            if invalid_source_metadata or inaccessible_source:
+            if invalid_source_metadata or inaccessible_source or not live_access:
                 continue
             if not all(source_id in active_generations for source_id in source_ids):
                 continue
@@ -464,17 +533,19 @@ class RetrievalService:
             ),
             return_exceptions=True,
         )
-        if isinstance(dense_result, Exception):
+        if isinstance(dense_result, (Exception, asyncio.CancelledError)):
             logger.error("Dense retrieval failed: {}", type(dense_result).__name__)
             dense_documents = []
         else:
             dense_documents = dense_result
-        if isinstance(sparse_result, Exception):
+        if isinstance(sparse_result, (Exception, asyncio.CancelledError)):
             logger.error("BM25 retrieval failed: {}", type(sparse_result).__name__)
             sparse_documents = []
         else:
             sparse_documents = sparse_result
-        if isinstance(dense_result, Exception) and isinstance(sparse_result, Exception):
+        if isinstance(dense_result, (Exception, asyncio.CancelledError)) and isinstance(
+            sparse_result, (Exception, asyncio.CancelledError)
+        ):
             raise RetrievalUnavailableError("dense_and_sparse_retrieval_unavailable")
         candidates = [*dense_documents, *sparse_documents]
         if not candidates:
@@ -581,7 +652,10 @@ class RetrievalService:
             for index, doc_id in enumerate(document_ids)
         ]
         results_per_doc = await asyncio.gather(*tasks, return_exceptions=True)
-        failed_queries = sum(isinstance(result, Exception) for result in results_per_doc)
+        failed_queries = sum(
+            isinstance(result, (Exception, asyncio.CancelledError))
+            for result in results_per_doc
+        )
         if failed_queries:
             error_code = (
                 "cross_document_retrieval_unavailable"

@@ -368,7 +368,7 @@ async def plan(state):
         result = AgentResult(
             task_id=f"AUTOMATION-CONDITION-{run.run_id}",
             status=AgentTaskStatus.INSUFFICIENT_EVIDENCE,
-            summary="Sự kiện chưa đáp ứng điều kiện của quy tắc tự động hóa; hệ thống không thực hiện hành động",
+            summary="Yêu cầu chưa được người dùng khởi chạy; Agent không thực hiện hành động",
             evidence_refs=[value for value in evidence_refs if value],
             reason_codes=condition_failures,
         )
@@ -639,7 +639,7 @@ async def plan(state):
             AgentResult(
                 task_id=f"AUTOMATION-ACTION-{run.run_id}",
                 status=AgentTaskStatus.FAILED,
-                summary="Kế hoạch có hành động ngoài phạm vi quy tắc tự động hóa; hệ thống không thực hiện một phần kế hoạch",
+                summary="Kế hoạch có hành động ngoài phạm vi yêu cầu của người dùng; Agent không thực hiện phần đó",
                 evidence_refs=evidence_refs,
                 reason_codes=["AUTOMATION_ACTION_OUTSIDE_DEFINITION"],
             ).model_dump(mode="python")
@@ -798,6 +798,7 @@ async def execute_agent(state):
         automation_run_id=run.run_id,
         automatic=bool(state.get("automatic")),
         checkpoint_action=checkpoint_action if state.get("automatic") else None,
+        request_constraints=state.get("constraints"),
     )
     for tool_call_index, (call, observation) in enumerate(
         zip(task.tool_calls, observations)

@@ -123,9 +123,18 @@ class DefectRetestInput(BaseModel):
 
 class BugTraceSuggestionInput(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=200)
-    source_event_id: str = Field(min_length=1, max_length=200)
-    source_event_revision: int = Field(ge=1)
-    source_event_trigger: Literal["DEFECT_RECORDED", "DEFECT_CHANGED"]
+    expected_revision: int | None = Field(default=None, ge=1)
+    source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_event_revision: int | None = Field(default=None, ge=1)
+    source_event_trigger: Literal["MANUAL", "DEFECT_RECORDED", "DEFECT_CHANGED"] = "MANUAL"
+
+    @model_validator(mode="after")
+    def require_source_revision(self):
+        if self.expected_revision is None and self.source_event_revision is None:
+            raise ValueError("Cần phiên bản lỗi được chọn để đề xuất truy vết")
+        if self.expected_revision is not None and self.source_event_revision is not None and self.expected_revision != self.source_event_revision:
+            raise ValueError("Phiên bản lỗi không thống nhất")
+        return self
 
 
 class DefectTraceUpdateInput(BaseModel):

@@ -8,7 +8,7 @@ from src.clients.ai_automation import emit_test_completion_report_created
 from src.core.auth import roles_for_membership
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import content_authorship_changes, require_automation_publication_authority, require_independent_review
 from src.modules.execution.services.exit_criteria import quality_gate_status
 from src.modules.execution.services.test_completion_automation import completion_ai_result
 from src.modules.execution.services.test_completion_query import (
@@ -303,6 +303,8 @@ async def create_completion_report(project_id, payload, user):
         "review_history": [],
         "approval_history": [],
         "created_by": user.id,
+        "content_author_ids": [user.id],
+        "content_authorship_status": "VERIFIED",
         "created_at": timestamp,
         "updated_at": timestamp,
     }
@@ -435,6 +437,7 @@ async def update_completion_report(report_id, payload, user):
         await get_project(report["project_id"], user, "testcompletion.lesson.create")
     if "testware_handover" in changes:
         await get_project(report["project_id"], user, "testcompletion.handover.manage")
+    changes = content_authorship_changes(report, user, changes)
     changes["updated_at"] = now()
     updated = await update_completion(
         report_id, report["project_id"], payload.expected_revision, {"DRAFT"}, changes
@@ -588,6 +591,8 @@ async def transition_completion(report_id, payload, user, transition_action):
     if target in {'APPROVED', 'CLOSED'}:
         require_automation_publication_authority(user, transition['permission'])
     report = await get_completion_for_user(report_id, user, transition["permission"])
+    if transition_action in {"approve", "request_changes"}:
+        require_independent_review(report, user, "TEST_COMPLETION_SELF_REVIEW_FORBIDDEN")
     if target == "APPROVED":
         await validate_completion_readiness(report)
         qa_approved = any(

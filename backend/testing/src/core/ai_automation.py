@@ -67,7 +67,7 @@ def require_document_ingestion_event(user, source_document_ids):
     automation = require_ai_automation_event(user, {"DOCUMENT_INGESTED"})
     event_parts = automation["source_event_id"].split(":")
     if (
-        len(event_parts) != 3
+        len(event_parts) < 3
         or event_parts[0] != "requirement-document"
         or not event_parts[1]
         or not event_parts[2].isdigit()
@@ -102,13 +102,21 @@ def ai_contract_metadata(result):
     }
 
 
-async def request_ai_automation(capability, project_id, instruction, evidence, *, request_id=None):
+async def request_ai_automation(
+    capability,
+    project_id,
+    instruction,
+    evidence,
+    *,
+    request_id=None,
+    output_language=None,
+):
     started_at = time.perf_counter()
     try:
-        output_language = None
-        if database.client is not None:
+        resolved_output_language = output_language
+        if resolved_output_language is None and database.client is not None:
             project = await database.value.projects.find_one({"_id": project_id}, {"locale": 1})
-            output_language = (project or {}).get("locale")
+            resolved_output_language = (project or {}).get("locale")
         sink = stream_sink.get()
         safe_instruction = redact_sensitive_data(instruction)
         safe_evidence = redact_sensitive_data(evidence)
@@ -125,7 +133,7 @@ async def request_ai_automation(capability, project_id, instruction, evidence, *
                 "capability": capability,
                 "project_id": project_id,
                 "instruction": safe_instruction,
-                "output_language": output_language,
+                "output_language": resolved_output_language,
                 "evidence": safe_evidence,
             },
             sink,

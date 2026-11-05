@@ -382,14 +382,15 @@ async def queue_api_operation_confirmed(operation: dict, user, session) -> str |
 
 
 async def emit_document_ingested(
-    document: dict, user, session=None, idempotency_key: str | None = None
+    document: dict, user, session=None, idempotency_key: str | None = None,
+    output_language: str = "auto",
 ) -> bool:
     if user._ai_automation_run_id:
         return True
     event = (
         "DOCUMENT_INGESTED",
         (
-            f"requirement-document:{document['_id']}:{document.get('revision', 1)}:{idempotency_key}"
+            f"requirement-document:{document['_id']}:{document.get('revision', 1)}:{hashlib.sha256(idempotency_key.encode('utf-8')).hexdigest()}"
             if idempotency_key
             else f"requirement-document:{document['_id']}:{document.get('revision', 1)}"
         ),
@@ -418,11 +419,15 @@ async def emit_document_ingested(
             session=session,
             relationship_path=relationship_path,
             artifact_status=str(document.get("status") or "INGESTED"),
+            user_requested=True,
+            output_language=output_language,
         )
     return await emit_event(
         *event,
         relationship_path=relationship_path,
         artifact_status=str(document.get("status") or "INGESTED"),
+        user_requested=True,
+        output_language=output_language,
     )
 
 
@@ -483,6 +488,26 @@ async def automation_run_is_active(
         raise RuntimeError("AI_AUTOMATION_STATUS_RESPONSE_INVALID")
     return payload["active"] and (
         worker_revision is None or payload["revision"] == worker_revision
+    )
+
+
+async def agent_run_allows_bug_trace(run_id: str, project_id: str, user_id: str) -> bool:
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(
+            f"{settings.AI_URL.rstrip('/')}/tu-dong-hoa-ai/noi-bo/"
+            f"luot-chay/{run_id}/trang-thai-thuc-thi",
+            headers={"X-Internal-Token": settings.SECRET_KEY},
+        )
+        response.raise_for_status()
+    payload = response.json()
+    return bool(
+        isinstance(payload, dict)
+        and payload.get("active") is True
+        and payload.get("user_requested") is True
+        and payload.get("project_id") == project_id
+        and payload.get("requester_user_id") == user_id
+        and payload.get("execution_user_id") == user_id
+        and (payload.get("trigger") == "MANUAL" or payload.get("intent") == "link_bug_candidates")
     )
 
 
@@ -942,7 +967,11 @@ async def emit_event(
     relationship: dict | None = None,
     artifact_revision: int | None = None,
     artifact_status: str | None = None,
+    user_requested: bool = False,
+    output_language: str | None = None,
 ) -> bool:
+    if not user_requested:
+        return True
     await queue_event(
         trigger,
         event_id,
@@ -957,6 +986,8 @@ async def emit_event(
         relationship=relationship,
         artifact_revision=artifact_revision,
         artifact_status=artifact_status,
+        user_requested=user_requested,
+        output_language=output_language,
     )
     existing = await database.value.ai_automation_outbox.find_one({"_id": event_id})
     if existing and existing.get("status") in {"DELIVERED", "SUPPRESSED"}:
@@ -981,13 +1012,19 @@ async def queue_event(
     artifact_status: str | None = None,
     prior_baseline_version_id: str | None = None,
     change_simulation_blocked_reason: str | None = None,
+    user_requested: bool = False,
+    output_language: str | None = None,
 ) -> str:
     """Idempotently persist an event; pass a session to make it atomic with domain writes."""
+    if not user_requested:
+        return event_id
     payload = {
         "event_id": event_id,
         "project_id": project_id,
         "requester_user_id": requester_user_id,
         "trigger": trigger,
+        "user_requested": user_requested,
+        **({"output_language": output_language} if output_language else {}),
         "target_artifact_ids": [artifact_version_id],
         "evidence": [
             {
@@ -1264,6 +1301,13 @@ async def _dispatch_pending_events() -> None:
 async def start_event_dispatcher() -> None:
     global _event_dispatcher_task
     if not _event_dispatcher_task or _event_dispatcher_task.done():
+        await database.value.ai_automation_outbox.update_many(
+            {
+                "status": {"$in": ["PENDING", "DISPATCHING"]},
+                "payload.user_requested": {"$ne": True},
+            },
+            {"$set": {"status": "CANCELLED", "cancel_reason": "USER_INITIATION_REQUIRED", "updated_at": datetime.now(timezone.utc)}},
+        )
         _event_dispatcher_task = asyncio.create_task(_dispatch_pending_events())
 
 

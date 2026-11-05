@@ -173,6 +173,7 @@ async def generate_security_suggestions_for_requirement(
         "identifier": "$result._id",
         "expected": {"_id": "$result._id", "project_id": "$project.id", "status": "DRAFT", "revision": "$result.revision"},
     },
+    draft_only=True,
 )
 
 async def create_test_case_draft(

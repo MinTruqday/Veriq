@@ -171,12 +171,14 @@ class VeriqRunState(BaseModel):
 
 
 class AgentRunRequest(BaseModel):
-    project_id: str
+    project_id: str = Field(min_length=1, max_length=200)
     objective: str = Field(min_length=3, max_length=4000)
     intent: str = Field(default="", max_length=100)
+    intent_arguments: dict[str, Any] = Field(default_factory=dict, max_length=100)
     target_artifact_ids: list[str] = Field(default_factory=list, max_length=100)
     evidence: list[EvidenceItem] = Field(default_factory=list, max_length=100)
-    constraints: dict[str, Any] = Field(default_factory=dict)
+    output_language: str = Field(default="auto", min_length=2, max_length=80)
+    idempotency_key: str = Field(min_length=8, max_length=200)
 
 
 class TestingSkillInput(BaseModel):
@@ -196,6 +198,7 @@ class ToolAccess(BaseModel):
     owner_domain: CapabilityDomain | None = None
     action: Literal["READ", "PROPOSE", "MUTATE"]
     permission: str
+    draft_only: bool = False
     verification: ToolVerification | None = None
 
 

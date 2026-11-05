@@ -18,7 +18,7 @@ from src.core.common import (
 )
 from src.core.database import database
 from src.core.source_evidence import split_source_evidence
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import content_authorship_changes, require_automation_publication_authority, require_independent_review
 from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
 from src.repositories.test_plan import test_plan_repository
 from src.repositories.project import project_repository
@@ -336,6 +336,8 @@ async def create_test_plan_record(payload, project_id, user):
         "approval_history": [],
         "revision": 1,
         "created_by": user.id,
+        "content_author_ids": [user.id],
+        "content_authorship_status": "VERIFIED",
         "created_at": timestamp,
         "updated_at": timestamp,
     }
@@ -475,6 +477,7 @@ async def update_test_plan_record(plan_id, payload, user):
         elif field in plan:
             validation_data[field] = plan[field]
     TestPlanCreate.model_validate(validation_data)
+    changes = content_authorship_changes(plan, user, changes)
     from src.clients.ai_automation import emit_test_plan_changed
 
     async with await database.client.start_session() as session:
@@ -544,7 +547,12 @@ async def submit_test_plan_record(plan_id, payload, user):
                 plan_id,
                 plan["project_id"],
                 payload.expected_revision,
-                {"status": 'IN_REVIEW', "review_note": payload.review_note},
+                {
+                    "status": 'IN_REVIEW',
+                    "review_note": payload.review_note,
+                    "submitted_by": user.id,
+                    "submitted_at": now(),
+                },
                 session=session,
             )
             await audit(
@@ -563,8 +571,9 @@ async def approve_test_plan_record(plan_id, payload, user):
     require_automation_publication_authority(user, 'testplan.approve')
     
     plan = await get_test_plan_record(plan_id, user, "testplan.approve")
-    if plan.get("status") not in ['DRAFT', 'IN_REVIEW']:
+    if plan.get("status") != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
+    require_independent_review(plan, user, "TEST_PLAN_SELF_REVIEW_FORBIDDEN")
     scope = await validate_plan_scope(
         plan['project_id'],
         plan.get('requirement_version_ids', []),
@@ -654,6 +663,7 @@ async def request_test_plan_revision(plan_id, payload, user):
     plan = await get_test_plan_record(plan_id, user, 'testplan.review')
     if plan.get('status') != 'IN_REVIEW':
         raise HTTPException(409, detail={'code': 'INVALID_STATE_TRANSITION'})
+    require_independent_review(plan, user, 'TEST_PLAN_SELF_REVIEW_FORBIDDEN')
     if not payload.review_note.strip():
         raise HTTPException(422, detail={'code': 'TEST_PLAN_REVISION_REASON_REQUIRED'})
     async with await database.client.start_session() as session:
@@ -712,6 +722,8 @@ async def clone_test_plan_record(plan_id, user):
         "status": 'DRAFT',
         "revision": 1,
         "created_by": user.id,
+        "content_author_ids": [user.id],
+        "content_authorship_status": "VERIFIED",
         "created_at": timestamp,
         "updated_at": timestamp,
     }

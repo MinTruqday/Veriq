@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from src.clients.ai_automation import start_event_dispatcher, stop_event_dispatcher
 from src.core.ai_streaming import AIStreamingMiddleware
 from src.core.common import failure_metadata, new_id
+from src.core.auth import refresh_access_policy
 from src.core.configuration import settings
 from src.core.database import close_database, connect_database, database
 from src.core.metrics import PrometheusMiddleware, metrics_endpoint
@@ -39,10 +40,20 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await connect_database()
     await project_access_repository.migrate_legacy()
+    await project_access_repository.correct_member_management_role()
+    await project_access_repository.ensure_reporting_capabilities()
+    await project_access_repository.ensure_viewer_comment_capability()
+    await project_access_repository.ensure_business_policy()
+    from src.repositories.reporting import reporting_repository
+    await reporting_repository.initialize()
+    from src.modules.execution.services.report_jobs import start_reporting_background
+    await start_reporting_background()
     await start_event_dispatcher()
     await start_requirement_document_parse_worker()
     await start_defect_search_index_worker()
     yield
+    from src.modules.execution.services.report_jobs import stop_reporting_background
+    await stop_reporting_background()
     await stop_defect_search_index_worker()
     await stop_requirement_document_parse_worker()
     await stop_event_dispatcher()
@@ -61,6 +72,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def refresh_project_policy(request: Request, call_next):
+    refresh_access_policy()
+    try:
+        return await call_next(request)
+    finally:
+        refresh_access_policy()
 
 
 @app.middleware("http")

@@ -935,7 +935,7 @@ class IngestionPipelineService:
         cleanup_pending = [
             store_name
             for store_name, result in zip(("qdrant", "bm25"), cleanup_results)
-            if isinstance(result, BaseException)
+            if isinstance(result, (Exception, asyncio.CancelledError))
         ]
         if cleanup_pending:
             logger.warning(

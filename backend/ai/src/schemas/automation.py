@@ -293,6 +293,8 @@ class AutomationEventRequest(BaseModel):
     project_id: str = Field(min_length=1, max_length=200)
     requester_user_id: str = Field(min_length=1, max_length=200)
     trigger: AutomationTrigger
+    user_requested: bool = False
+    output_language: str | None = Field(default=None, min_length=2, max_length=80)
     parent_automation_run_id: str | None = Field(default=None, max_length=200)
     prior_baseline_version_id: str | None = Field(default=None, max_length=200)
     change_simulation_blocked_reason: Literal[
@@ -522,7 +524,7 @@ class AutomationEventAcceptedResponse(BaseModel):
 
 class AutomationEventSuppressedResponse(BaseModel):
     status: Literal["suppressed"] = "suppressed"
-    reason_code: Literal["AUTOMATION_TRIGGER_DISABLED"]
+    reason_code: Literal["AGENT_REQUEST_REQUIRED"]
     runs: list[AutomationRun] = Field(default_factory=list, max_length=0)
 
 

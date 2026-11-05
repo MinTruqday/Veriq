@@ -45,6 +45,55 @@ def _invalidate_project_search_cache(project_id: str) -> None:
             SEARCH_CACHE.pop(key, None)
 
 
+async def _cleanup_stale_project_artifact_generations(
+    project_id: str,
+    artifact_type: str,
+    artifact_id: str,
+    artifact_version_id: str,
+    active_generation: str,
+) -> list[str]:
+    cleanup_operations = {
+        "qdrant": lambda: vector_store.delete_stale_artifact_generations(
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            active_generation,
+        ),
+        "bm25": lambda: bm25_store.delete_stale_artifact_generations(
+            project_id,
+            artifact_type,
+            artifact_id,
+            artifact_version_id,
+            active_generation,
+        ),
+    }
+    cleanup_results = await asyncio.gather(
+        *(operation() for operation in cleanup_operations.values()),
+        return_exceptions=True,
+    )
+    cleanup_pending = []
+    for store_name, result in zip(cleanup_operations, cleanup_results):
+        if isinstance(result, (Exception, asyncio.CancelledError)):
+            cleanup_pending.append(store_name)
+        elif isinstance(result, BaseException):
+            raise result
+    if cleanup_pending:
+        await asyncio.sleep(0)
+        retry_results = await asyncio.gather(
+            *(cleanup_operations[store_name]() for store_name in cleanup_pending),
+            return_exceptions=True,
+        )
+        remaining = []
+        for store_name, result in zip(cleanup_pending, retry_results):
+            if isinstance(result, (Exception, asyncio.CancelledError)):
+                remaining.append(store_name)
+            elif isinstance(result, BaseException):
+                raise result
+        cleanup_pending = remaining
+    return cleanup_pending
+
+
 async def _rollback_project_artifact_generation(
     project_id: str,
     artifact_type: str,
@@ -95,6 +144,24 @@ def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest)
     extraction = source_metadata.pop("extraction", {})
     if not isinstance(extraction, dict):
         extraction = {}
+    is_indexed_document = req.artifact_type in DOCUMENT_INDEXED_ARTIFACT_TYPES
+    extraction_method = extraction.get("extraction_method") or extraction.get("parser")
+    legacy_extraction_metadata_missing = bool(
+        is_indexed_document and req.text.strip() and not extraction_method
+    )
+    parser_name = extraction.get("parser") or (
+        "legacy_normalized_text" if legacy_extraction_metadata_missing else None
+    )
+    parser_version = extraction.get("parser_version") or (
+        "unknown" if legacy_extraction_metadata_missing else None
+    )
+    extraction_warning_codes = {
+        str(item.get("reason_code"))
+        for item in extraction.get("extraction_warnings") or []
+        if isinstance(item, dict) and item.get("reason_code")
+    }
+    if legacy_extraction_metadata_missing:
+        extraction_warning_codes.add("EXTRACTION_PROVENANCE_UNAVAILABLE")
     metadata = {
         **source_metadata,
         "project_id": project_id,
@@ -122,15 +189,15 @@ def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest)
         "normalized_content_hash": hashlib.sha256(
             req.text.encode("utf-8")
         ).hexdigest(),
-        "parser_name": extraction.get("parser"),
-        "parser_version": extraction.get("parser_version"),
+        "parser_name": parser_name,
+        "parser_version": parser_version,
         "ocr_enabled": extraction.get("ocr_enabled"),
         "ocr_language": extraction.get("ocr_language"),
         "page_count": extraction.get("page_count"),
         "source_block_count": len(req.source_structure),
         "extraction_status": (
             "DEGRADED"
-            if extraction.get("unprocessed_blocks")
+            if extraction.get("unprocessed_blocks") or legacy_extraction_metadata_missing
             else "COMPLETE"
             if (
                 extraction.get("parser")
@@ -138,20 +205,19 @@ def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest)
             ) and req.text.strip()
             else None
         ),
-        "extraction_method": extraction.get("extraction_method") or extraction.get("parser"),
-        "unprocessed_block_count": len(extraction.get("unprocessed_blocks") or []),
-        "extraction_warning_count": len(extraction.get("extraction_warnings") or []),
-        "extraction_warning_codes": sorted(
-            {
-                str(item.get("reason_code"))
-                for item in extraction.get("extraction_warnings") or []
-                if isinstance(item, dict) and item.get("reason_code")
-            }
+        "extraction_method": extraction_method or (
+            "LEGACY_NORMALIZED_TEXT" if legacy_extraction_metadata_missing else None
         ),
+        "unprocessed_block_count": len(extraction.get("unprocessed_blocks") or []),
+        "extraction_warning_count": max(
+            len(extraction.get("extraction_warnings") or []),
+            len(extraction_warning_codes),
+        ),
+        "extraction_warning_codes": sorted(extraction_warning_codes),
         "embedding_model": settings.EMBEDDING_MODEL,
         "indexed_at": datetime.now(timezone.utc).isoformat(),
     }
-    if req.artifact_type in DOCUMENT_INDEXED_ARTIFACT_TYPES:
+    if is_indexed_document:
         metadata["document_index_contract_version"] = (
             settings.DOCUMENT_INDEX_CONTRACT_VERSION
         )
@@ -407,27 +473,13 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
         )
         raise conflict
 
-    cleanup_pending = []
-    cleanup_results = await asyncio.gather(
-        vector_store.delete_stale_artifact_generations(
-            project_id,
-            req.artifact_type,
-            req.artifact_id,
-            req.artifact_version_id,
-            index_generation,
-        ),
-        bm25_store.delete_stale_artifact_generations(
-            project_id,
-            req.artifact_type,
-            req.artifact_id,
-            req.artifact_version_id,
-            index_generation,
-        ),
-        return_exceptions=True,
+    cleanup_pending = await _cleanup_stale_project_artifact_generations(
+        project_id,
+        req.artifact_type,
+        req.artifact_id,
+        req.artifact_version_id,
+        index_generation,
     )
-    for store_name, result in zip(("qdrant", "bm25"), cleanup_results):
-        if isinstance(result, BaseException):
-            cleanup_pending.append(store_name)
     if cleanup_pending:
         logger.warning(
             "Project artifact stale index cleanup pending project={} artifact_version={} stores={}",
@@ -491,7 +543,7 @@ async def remove_project_artifact(project_id: str, artifact_version_id: str):
         failed_stores = [
             store_name
             for store_name, result in zip(("qdrant", "bm25"), delete_results)
-            if isinstance(result, BaseException)
+            if isinstance(result, (Exception, asyncio.CancelledError))
         ]
         if failed_stores:
             logger.error(

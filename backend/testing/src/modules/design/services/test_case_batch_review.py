@@ -4,6 +4,7 @@ from pymongo.errors import DuplicateKeyError
 from src.core.common import get_project, new_id, now
 from src.core.database import database
 from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_independent_review
 from src.clients.ai_automation import queue_test_case_approved
 from src.modules.design.services.linters import duplicate_score, has_verifiable_steps, lint_test_case
 from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
@@ -45,6 +46,11 @@ async def accept_test_case_group(project_id, payload, user):
             raise HTTPException(409, detail={"code": "TEST_CASE_COMPARISON_STALE", "draft_id": item.draft_id, "message": "Bản so sánh hoặc nguồn đã thay đổi. Mở lại ca để đối chiếu trước khi duyệt."})
         if draft.get("status") != "IN_REVIEW":
             raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION", "draft_id": item.draft_id, "message": "Ca không còn ở trạng thái chờ duyệt. Danh sách chưa được thay đổi; hãy tải lại."})
+        try:
+            require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
+        except HTTPException as error:
+            detail = error.detail if isinstance(error.detail, dict) else {}
+            raise HTTPException(403, detail={**detail, "draft_id": item.draft_id}) from error
         await validate_review_sources_before_approval(draft)
         await validate_test_case_custom_values(
             project_id, draft.get("custom_values", {}), enforce_required=True

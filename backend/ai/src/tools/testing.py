@@ -310,7 +310,7 @@ async def resolve_answered_clarifications(version, config):
     )
     items = response_items(clarifications)
     permissions = set((config or {}).get("configurable", {}).get("permissions", []))
-    if "requirement.approve" not in permissions:
+    if (config or {}).get("configurable", {}).get("automation_run_id") or "requirement.approve" not in permissions:
         return [item for item in items if item.get("status") in {"OPEN", "ANSWERED"}]
 
     source_parts = [str(version.get("plain_text_projection") or "")]

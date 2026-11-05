@@ -800,6 +800,10 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       );
       if (activeProjectId.current !== requestedProjectId) return;
       rememberSourceDocument(document);
+      if (document.last_import_job_id) {
+        await continueRequirementImport(document);
+        return;
+      }
       if (document.status === "PARSE_FAILED") {
         setPreview(null);
         setError(
@@ -853,11 +857,21 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       `source-${document.content_hash}`,
     );
     if (activeProjectId.current !== requestedProjectId) return;
-    if (!Array.isArray(result?.preview)) {
-      throw new Error("Không nhận được bản xem trước yêu cầu từ tài liệu.");
+    if (
+      !Array.isArray(result?.preview) ||
+      !["PREVIEW_READY", "CONFIRMED"].includes(result.status)
+    ) {
+      throw new Error(
+        "Chưa thể mở bản xem trước yêu cầu. Tài liệu vẫn được lưu; hãy thử lại hoặc mở lượt nhập trong danh sách tài liệu nguồn.",
+      );
     }
     setPreview(result);
     setSelectedIndexes(result.preview.map((_, index) => index));
+    if (result.status === "PREVIEW_READY" && result.preview.length === 0) {
+      setError(
+        "Không tìm thấy yêu cầu có thể trích xuất từ nội dung đã đọc. Tài liệu vẫn được lưu; hãy kiểm tra nội dung hoặc tạo yêu cầu thủ công.",
+      );
+    }
     const refreshedDocument = await testingApi.getRequirementDocument(document._id);
     if (activeProjectId.current === requestedProjectId) rememberSourceDocument(refreshedDocument);
   };
@@ -914,7 +928,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
       if (job.project_id !== requestedProjectId || job.source_document_id !== document._id) {
         throw new Error("Lượt nhập không khớp với tài liệu nguồn của dự án này.");
       }
-      if (job.status !== "PREVIEW_READY" || !Array.isArray(job.preview)) {
+      if (!["PREVIEW_READY", "CONFIRMED"].includes(job.status) || !Array.isArray(job.preview)) {
         throw new Error(
           "Bản xem trước này không còn chờ nhập. Hãy kiểm tra trạng thái yêu cầu trong dự án.",
         );

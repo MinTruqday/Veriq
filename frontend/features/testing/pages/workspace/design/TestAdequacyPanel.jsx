@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { LoadingState, useActionDialog } from "../../../components/WorkspacePrimitives";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
 
 const labels = {
   UNASSESSED: "Chưa đánh giá",
@@ -24,7 +25,9 @@ function sourceReferenceLabel(item) {
   const reference = String(item.source_ref || "");
   if (item.source_type === "business_rule") {
     const businessRule = /^(?:business_rule:)?(\d+)$/i.exec(reference);
-    return businessRule ? `Quy tắc nghiệp vụ ${businessRule[1]}` : "Quy tắc nghiệp vụ";
+    return businessRule
+      ? `Quy tắc nghiệp vụ BR-${businessRule[1].padStart(2, "0")}`
+      : "Quy tắc nghiệp vụ";
   }
   if (item.source_type === "acceptance_criterion") {
     return /^AC[-_ ]?\d+$/i.test(reference) ? reference : "Tiêu chí chấp nhận";
@@ -40,7 +43,13 @@ function waiverOwnerLabel(ownerId, members) {
   if (!ownerId) return "Chưa xác định";
   const member = members.find((item) => item.user_id === ownerId);
   if (!member) return "Thành viên dự án";
-  const candidates = [member.user?.full_name, member.user?.email, member.user_label];
+  const candidates = [
+    member.user?.display_name,
+    member.user?.full_name,
+    member.user?.label,
+    member.user?.email,
+    member.user_label,
+  ];
   return (
     candidates.find((value) => value && value !== ownerId && value !== member.user_id) ||
     "Thành viên dự án"
@@ -51,7 +60,13 @@ function decisionActorLabel(actorId, members) {
   if (!actorId) return "Thành viên dự án";
   const member = members.find((item) => item.user_id === actorId);
   if (!member) return "Thành viên dự án";
-  const candidates = [member.user?.full_name, member.user?.email, member.user_label];
+  const candidates = [
+    member.user?.display_name,
+    member.user?.full_name,
+    member.user?.label,
+    member.user?.email,
+    member.user_label,
+  ];
   return (
     candidates.find((value) => value && value !== actorId && value !== member.user_id) ||
     "Thành viên dự án"
@@ -59,6 +74,7 @@ function decisionActorLabel(actorId, members) {
 }
 
 export default function TestAdequacyPanel({
+  projectId,
   requirementVersionId,
   members = [],
   canDecide = false,
@@ -219,7 +235,17 @@ export default function TestAdequacyPanel({
       ? item.test_case_versions.map((test) => (
           <div key={test.id} className="mb-2 last:mb-0">
             <div className="font-medium text-ink">
-              {test.key} {test.title}
+              {test.test_case_id ? (
+                <a
+                  className="text-brand underline-offset-2 hover:underline"
+                  href={`${projectRoute(projectId, PROJECT_SECTION_SLUGS.testCases)}?case=${encodeURIComponent(test.test_case_id)}`}
+                >
+                  {test.key} · {test.title}
+                </a>
+              ) : (
+                `${test.key} · ${test.title}`
+              )}
+              {test.version ? ` · v${test.version}` : ""}
             </div>
             <div className="text-ink-muted">
               {test.techniques?.join(", ") || "Chưa chọn kỹ thuật"}
@@ -233,7 +259,7 @@ export default function TestAdequacyPanel({
             )}
           </div>
         ))
-      : "Chưa có ca kiểm thử hiệu lực";
+      : "Chưa liên kết ca kiểm thử đã duyệt";
   const challenges = (item) => {
     const values =
       item.test_case_versions?.flatMap((test) => test.challenge_hypotheses || []) || [];
@@ -284,7 +310,7 @@ export default function TestAdequacyPanel({
       </div>
       {item.decision?.decided_at && (
         <div className="mt-1 text-xs text-ink-muted">
-          Quyết định bởi {decisionActorLabel(item.decision.decided_by, members)} ·{" "}
+          QA ghi nhận bởi {decisionActorLabel(item.decision.decided_by, members)} ·{" "}
           {new Date(item.decision.decided_at).toLocaleString("vi-VN")}
         </div>
       )}
@@ -478,7 +504,7 @@ export default function TestAdequacyPanel({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-                        Nguồn và trích dẫn
+                        Quy tắc và căn cứ
                       </p>
                       <div className="mt-1">{source(item)}</div>
                     </div>
@@ -489,13 +515,13 @@ export default function TestAdequacyPanel({
                   <div className="mt-5 grid gap-5 border-y border-border py-5 lg:grid-cols-2">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-                        Kỹ thuật và ca kiểm thử
+                        Ca kiểm thử liên quan
                       </p>
                       <div className="mt-1 text-ink-muted">{linkedTests(item)}</div>
                     </div>
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-                        Bằng chứng và giả thuyết
+                        Bằng chứng kiểm thử
                       </p>
                       <div className="mt-1 text-ink-muted">{challenges(item)}</div>
                     </div>
@@ -503,7 +529,7 @@ export default function TestAdequacyPanel({
                   <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
-                        Quyết định QA
+                        Đánh giá của QA
                       </p>
                       <div className="mt-1 text-ink-muted">{decision(item)}</div>
                     </div>

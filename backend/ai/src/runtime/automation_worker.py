@@ -99,6 +99,17 @@ class AutomationWorker:
     async def start(self) -> None:
         if self._task and not self._task.done():
             return
+        legacy = automation_repository._database.automation_runs.find(
+            {
+                "constraints.user_requested": {"$ne": True},
+                "status": {"$in": ["QUEUED", "RUNNING", "AWAITING_AUTHORIZATION", "AWAITING_INPUT"]},
+            },
+            {"_id": 1},
+        )
+        async for entry in legacy:
+            run = await automation_repository.get_run(str(entry["_id"]))
+            if run and run.status in {AutomationStatus.QUEUED, AutomationStatus.RUNNING, AutomationStatus.AWAITING_AUTHORIZATION, AutomationStatus.AWAITING_INPUT}:
+                await automation_service.cancel(run, run.revision)
         self._stopping = False
         startup_cutoff = datetime.now(timezone.utc)
         self._task = create_background_task(
@@ -491,6 +502,9 @@ class AutomationWorker:
             return
         run = await automation_repository.get_run(automation_run_id)
         if not run or run.status != AutomationStatus.QUEUED:
+            return
+        if not (run.constraints or {}).get("user_requested"):
+            await automation_service.cancel(run, run.revision)
             return
         token = await automation_service.token_for(automation_run_id)
         if not token:

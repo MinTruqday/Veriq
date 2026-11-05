@@ -1,8 +1,6 @@
 import csv
 import io
 import json
-from xml.sax.saxutils import escape
-from zipfile import ZIP_DEFLATED, ZipFile
 
 
 
@@ -66,56 +64,13 @@ def export_csv(report):
 
 
 def export_docx(report):
-    paragraphs = "".join(
-        f'<w:p><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">{escape(label)}: </w:t></w:r><w:r><w:t xml:space="preserve">{escape(value)}</w:t></w:r></w:p>'
-        for label, value in report_rows(report)
-    )
-    document = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>{paragraphs}<w:sectPr/></w:body></w:document>'
-    content_types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
-    relationships = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'
-    stream = io.BytesIO()
-    with ZipFile(stream, "w", ZIP_DEFLATED) as archive:
-        archive.writestr("[Content_Types].xml", content_types)
-        archive.writestr("_rels/.rels", relationships)
-        archive.writestr("word/document.xml", document)
-    return stream.getvalue()
+    from src.modules.execution.services.report_document import export_report_docx, legacy_report_document
+    return export_report_docx(legacy_report_document(report, report_rows(report), "Báo cáo trạng thái kiểm thử"))
 
 
 def export_pdf(report):
-    from reportlab.lib.pagesizes import A4
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.pdfgen import canvas
-
-    font_name = 'Helvetica'
-    font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
-    try:
-        pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
-        font_name = 'DejaVuSans'
-    except (OSError, ValueError):
-        font_name = 'Helvetica'
-    stream = io.BytesIO()
-    page = canvas.Canvas(stream, pagesize=A4)
-    width, height = A4
-    margin = 42
-    y = height - margin
-    page.setFont(font_name, 13)
-    page.drawString(margin, y, "Báo cáo trạng thái kiểm thử")
-    y -= 28
-    page.setFont(font_name, 8)
-    for label, value in report_rows(report):
-        text = f"{label}: {value}"
-        while text:
-            line = text[: 120]
-            text = text[120 :]
-            if y < margin:
-                page.showPage()
-                page.setFont(font_name, 8)
-                y = height - margin
-            page.drawString(margin, y, line)
-            y -= 12
-    page.save()
-    return stream.getvalue()
+    from src.modules.execution.services.report_document import convert_report_pdf
+    return convert_report_pdf(export_docx(report))
 
 
 def export_status_report(report, format_name):

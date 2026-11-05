@@ -10,7 +10,7 @@ def _event_objective(event_type, objective):
             f"<event_type>{prompt_json(event_type)}</event_type>",
             f"<objective>{objective}</objective>",
             "<execution_rules>",
-            "Use only authorized project evidence and permissions scoped to the verified event. Automatically perform permitted follow-up steps that pass deterministic checks; do not ask the user to reconfirm an already authorized automated step.",
+            "Use only authorized project evidence and current permissions. Prepare authorized drafts within the requested scope; approval, publication and release decisions require an authorized human.",
             "Do not invent missing business facts or resolve conflicting sources. Record a clarification and pause only the dependent work when a required decision or evidence is missing.",
             "Preserve historical versions. Update only through existing versioned business APIs; read back results and links to verify every reported change.",
             "If permissions, versions, evidence, quality, or Release conditions fail, preserve prior data and state the blocker. Do not claim work ran unless its result was observed.",
@@ -30,14 +30,14 @@ def generic_event_objective(trigger):
 def document_ingested_objective():
     return _event_objective(
         "DOCUMENT_INGESTED",
-        "Process the newly authorized document in this sequence: verify its source and version, extract evidence-backed facts, compile a testability blueprint, synthesize Requirements, resolve duplicate content, run deterministic quality checks, generate grounded Test Cases, and publish them automatically within the event's granted permissions. Record unresolved source conflicts or facts requiring a decision as clarifications; pause only artifacts that depend on the missing information. Read back every published artifact and its trace links.",
+        "Verify the authorized source and version, extract evidence-backed facts, identify missing information and prepare requested Requirement drafts. Resolve duplicates conservatively and verify source links and quality. Leave approval and publication to an authorized human; record unresolved conflicts as clarifications.",
     )
 
 
 def api_operation_confirmed_objective():
     return _event_objective(
         "API_OPERATION_CONFIRMED",
-        "Read the confirmed API operation and the source document used to import it. Generate Test Cases only from documented parameters, request data, responses, and status codes; preserve operation/version citations and mark unsupported behavior as insufficient. Recheck the operation revision before every write. Automatically discard incomplete or duplicate candidates, import only unique grounded cases, run deterministic quality checks, publish immutable versions within the event's permissions, and read back each version and source link. If the source changes, a quality gate fails, or duplicate status changes concurrently, preserve existing artifacts and report unresolved cases; do not create duplicates or wait for user approval of an authorized step.",
+        "Read the confirmed API operation and its source. Prepare requested Test Case drafts only from documented behavior, retaining citations and checking revision, duplicates and quality. Leave approval and publication to an authorized human; preserve existing artifacts if evidence or checks fail.",
     )
 
 

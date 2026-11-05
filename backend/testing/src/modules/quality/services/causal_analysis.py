@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.human_decisions import require_independent_review
 from src.core.database import database
 from src.modules.quality.services.causal_analysis_automation import generate_hypotheses
 from src.modules.quality.services.causal_analysis_query import (
@@ -402,6 +403,7 @@ async def submit_review(analysis_id, payload, user):
 
 async def approve_analysis(analysis_id, payload, user):
     value = await get_analysis(analysis_id, user, "causalanalysis.approve")
+    require_independent_review(value, user, "CAUSAL_ANALYSIS_SELF_REVIEW_FORBIDDEN")
     target = "APPROVED" if payload.decision == "APPROVE" else "DRAFT"
     timestamp = now()
     changes = {

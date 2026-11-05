@@ -33,6 +33,7 @@ from src.modules.requirements.services.requirement_lifecycle import (
     restore_obsolete_requirement,
     return_requirement_for_changes,
     submit_requirement_for_review,
+    technical_review_requirement,
 )
 from src.modules.requirements.services.requirement_records import (
     create_requirement_record,
@@ -45,6 +46,18 @@ from src.modules.requirements.services.requirement_records import (
 )
 
 router = APIRouter(prefix="/kiem-thu", tags=["Yêu cầu kiểm thử"])
+
+
+@router.post("/phien-ban-yeu-cau/{requirement_version_id}/ra-soat-ky-thuat")
+async def accept_requirement_technical_review(
+    requirement_version_id: str,
+    payload: ReviewTransitionInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    version = await technical_review_requirement(
+        requirement_version_id, payload.expected_revision, payload.review_note, user
+    )
+    return envelope(version, revision=version["revision"])
 
 
 @router.get("/phien-ban-yeu-cau/{requirement_version_id}/phieu-lam-ro")

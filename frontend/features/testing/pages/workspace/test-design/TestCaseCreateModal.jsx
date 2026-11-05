@@ -92,6 +92,7 @@ export default function TestCaseCreateModal({
   customFields,
   requirements = [],
   scenarios = [],
+  scenarioRequired = false,
   members = [],
   canReadMembers = false,
   membersUnavailable = false,
@@ -154,6 +155,7 @@ export default function TestCaseCreateModal({
           <select
             className="apple-input mt-2"
             value={form.scenarioId || ""}
+            required={scenarioRequired}
             onChange={(event) => {
               const scenario = scenarios.find((item) => item._id === event.target.value);
               const requirementVersionIds = scenario?.requirement_version_ids || [];

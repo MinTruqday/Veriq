@@ -400,3 +400,29 @@ class ExecutionAssistanceOutput(BaseModel):
     suggestions: List[ExecutionAssistanceSuggestionOutput] = Field(min_length=1, max_length=1)
     evidence_refs: List[str] = Field(min_length=1, max_length=100)
     warnings: List[str] = Field(default_factory=list, max_length=30)
+
+
+class WorkReportSectionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=300)
+    text: str = Field(min_length=1, max_length=12000)
+    evidence_refs: List[str] = Field(default_factory=list, max_length=100)
+
+
+class WorkReportSuggestionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sections: List[WorkReportSectionOutput] = Field(default_factory=list, max_length=40)
+    missing_information: List[str] = Field(default_factory=list, max_length=100)
+    inconsistencies: List[str] = Field(default_factory=list, max_length=100)
+
+
+class WorkReportNarrativeOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capability: Literal["work_report_narrative"]
+    suggestions: List[WorkReportSuggestionOutput] = Field(min_length=1, max_length=1)
+    evidence_refs: List[str] = Field(min_length=1, max_length=100)
+    confidence: float = Field(ge=0, le=1)
+    warnings: List[str] = Field(default_factory=list, max_length=100)

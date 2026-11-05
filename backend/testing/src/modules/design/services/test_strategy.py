@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now, page_payload
+from src.core.human_decisions import require_independent_review
 from src.schemas.test_strategy import (
     TestStrategyFields,
     compare_strategy_snapshots,
@@ -176,6 +177,7 @@ async def request_strategy_changes(strategy_id, payload, user):
     strategy = await get_strategy_for_user(
         strategy_id, user, 'teststrategy.review'
     )
+    require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
     if user.id not in strategy.get("reviewer_ids", []):
         raise HTTPException(
             status_code=403, detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'}
@@ -216,6 +218,9 @@ async def approve_strategy(strategy_id, payload, user):
     strategy = await get_strategy_for_user(
         strategy_id, user, 'teststrategy.approve'
     )
+    require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
+    if user.id not in strategy.get("reviewer_ids", []):
+        raise HTTPException(status_code=403, detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'})
     if strategy["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'STRATEGY_NOT_IN_REVIEW'})
     if payload.expected_revision != strategy["revision"]:

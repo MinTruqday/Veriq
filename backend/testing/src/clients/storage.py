@@ -69,5 +69,26 @@ class StorageClient:
             )
         response.raise_for_status()
 
+    async def store_report_asset(self, project_id, artifact_id, filename, content_type, data):
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"{settings.CLOUD_URL.rstrip('/')}/noi-bo/kiem-thu/bao-cao/tep",
+                headers={"X-Internal-Token": settings.SECRET_KEY},
+                data={"project_id": project_id, "artifact_id": artifact_id},
+                files={"file": (filename, data, content_type)},
+            )
+        response.raise_for_status()
+        return response.json()["data"]
+
+    async def read_report_asset(self, project_id, artifact_id, object_key):
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.get(
+                f"{settings.CLOUD_URL.rstrip('/')}/noi-bo/kiem-thu/bao-cao/tep",
+                headers={"X-Internal-Token": settings.SECRET_KEY},
+                params={"project_id": project_id, "artifact_id": artifact_id, "object_key": object_key},
+            )
+        response.raise_for_status()
+        return response.content
+
 
 storage_client = StorageClient()

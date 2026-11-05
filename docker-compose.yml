@@ -174,6 +174,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
         INTERNAL_API_URL: ${INTERNAL_API_URL:?INTERNAL_API_URL is required}
+        NEXT_PROXY_TIMEOUT_MS: ${NEXT_PROXY_TIMEOUT_MS:-180000}
     container_name: veriq_frontend
     restart: always
     logging: *container-logging
@@ -292,7 +293,6 @@ services:
       NEO4J_USER: ${NEO4J_USER:?NEO4J_USER is required}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
       AI_TRACE_ENABLED: ${AI_TRACE_ENABLED:-true}
-      AI_DOMAIN_AUTOMATION_ENABLED: ${AI_DOMAIN_AUTOMATION_ENABLED:-false}
       AI_TRACE_ENDPOINT: ${AI_TRACE_ENDPOINT:-http://phoenix:6006/v1/traces}
       AI_TRACE_PROJECT: ${AI_TRACE_PROJECT:-veriq-ai}
       MCP_GITHUB_TOKEN: ${MCP_GITHUB_TOKEN:-}
@@ -360,8 +360,11 @@ services:
       AI_URL: ${AI_URL:?AI_URL is required}
       CONTENT_URL: ${CONTENT_URL:?CONTENT_URL is required}
       CLOUD_URL: ${CLOUD_URL:?CLOUD_URL is required}
+      NOTIFICATION_URL: ${NOTIFICATION_URL:?NOTIFICATION_URL is required}
       DOCUMENT_PARSE_LEASE_SECONDS: ${DOCUMENT_PARSE_LEASE_SECONDS:-900}
       DOCUMENT_PARSE_TIMEOUT_SECONDS: ${DOCUMENT_PARSE_TIMEOUT_SECONDS:-1800}
+      DOCUMENT_ARCHIVE_CLEANUP_LEASE_SECONDS: ${DOCUMENT_ARCHIVE_CLEANUP_LEASE_SECONDS:-300}
+      DOCUMENT_ACCESS_UPDATE_LEASE_SECONDS: ${DOCUMENT_ACCESS_UPDATE_LEASE_SECONDS:-900}
       MAINTENANCE_PROPOSAL_APPLY_LEASE_SECONDS: ${MAINTENANCE_PROPOSAL_APPLY_LEASE_SECONDS:-900}
     depends_on:
       mongodb:
@@ -374,6 +377,8 @@ services:
         condition: service_started
       worker:
         condition: service_started
+    volumes:
+      - ${REPORT_FONT_DIRECTORY:-./.runtime/report-fonts}:/usr/local/share/fonts/veriq-reports:ro
     networks:
       - veriq_network
 

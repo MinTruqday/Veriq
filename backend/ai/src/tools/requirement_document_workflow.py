@@ -27,8 +27,6 @@ from src.services.testability_blueprint import (
 )
 from src.services.automation_provenance import source_quote_spans
 from src.tools.automation_publication import (
-    publish_grounded_requirement,
-    publish_grounded_test_case,
     verified_test_case_publication_readback,
 )
 from src.tools.registry import with_tool_access
@@ -1156,6 +1154,10 @@ def blocking_blueprint_clarifications(open_clarifications, blueprint_clarificati
 
 
 def classify_requirement_ingestion_outcome(unresolved):
+    unresolved = [
+        item for item in unresolved
+        if item.get("reason") not in {"HUMAN_REQUIREMENT_REVIEW_REQUIRED", "HUMAN_TEST_CASE_REVIEW_REQUIRED"}
+    ]
     if not unresolved:
         return "COMPLETED", "COMPLETED", None
     input_reasons = {
@@ -1714,6 +1716,7 @@ def validate_blueprint_clarification_obligation_links(blueprint):
     ("requirement",),
     "MUTATE",
     "requirement.create",
+    draft_only=True,
 )
 
 async def process_ingested_requirement_document(
@@ -1758,9 +1761,8 @@ async def process_ingested_requirement_document(
         for item in visible_document_items
         if item.get("_id")
     }
-    source_document_ids = compilable_document_ids(
-        visible_document_items, document_id
-    )
+    available_document_ids = compilable_document_ids(visible_document_items, document_id)
+    source_document_ids = [document_id] if document_id in available_document_ids else []
     if not source_document_ids:
         raise AutomationOperationError("AI_ENABLED_SOURCE_NOT_ACCESSIBLE")
 
@@ -1897,11 +1899,15 @@ async def process_ingested_requirement_document(
             "POST",
             f"{project_path}/mau-yeu-cau/tong-hop",
             {
-                "name": "Mẫu yêu cầu từ tài liệu nguồn",
+                "name": str(source_documents[document_id].get("title") or source_documents[document_id].get("filename") or document_id),
                 "product_types": [project["project_type"]],
                 "source_document_ids": source_document_ids,
                 "source_template_ids": [],
                 "instruction": requirement_document_synthesis_instruction(blueprint),
+                "output_language": str(
+                    ((config or {}).get("configurable") or {}).get("output_language")
+                    or "auto"
+                ),
             },
             timeout=settings.MODEL_TIMEOUT_SECONDS,
         )
@@ -2369,28 +2375,11 @@ async def process_ingested_requirement_document(
                 requirements.append({"requirement": requirement, "version": current})
                 continue
         if current.get("status") != "BASELINED":
-            try:
-                current = await publish_grounded_requirement(
-                    project_id,
-                    requirement,
-                    current,
-                    config,
-                    before_write=validate_source_access,
-                )
-                requirement["current_version"] = current
-                requirement["current_version_id"] = current["_id"]
-            except AutomationOperationError as error:
-                unresolved.append({
-                    "requirement_id": requirement["_id"],
-                    "requirement_version_id": current["_id"],
-                    "reason": error.reason_code,
-                })
-            except (KeyError, RuntimeError) as error:
-                unresolved.append({
-                    "requirement_id": requirement["_id"],
-                    "requirement_version_id": current["_id"],
-                    "reason": str(error) or "REQUIREMENT_PUBLICATION_FAILED",
-                })
+            unresolved.append({
+                "requirement_id": requirement["_id"],
+                "requirement_version_id": current["_id"],
+                "reason": "HUMAN_REQUIREMENT_REVIEW_REQUIRED",
+            })
         requirements.append({"requirement": requirement, "version": current})
 
     unresolved.extend(
@@ -2410,7 +2399,8 @@ async def process_ingested_requirement_document(
     changed_versions = [
         item["version"]
         for item in requirements
-        if item["version"].get("_id") in updated_requirement_versions
+        if configurable.get("allow_test_case_generation") is True
+        and item["version"].get("_id") in updated_requirement_versions
         and item["version"].get("status") == "BASELINED"
     ]
     maintenance_results = []
@@ -2476,11 +2466,14 @@ async def process_ingested_requirement_document(
             entry = blueprint_artifact_coverage.get(key)
             if entry and requirement_version_id:
                 entry["requirement_version_ids"].append(str(requirement_version_id))
-    qa_test_design_handoff_version_ids = qa_test_design_handoff_versions(
-        requirements,
-        permissions,
-        clarification_blocked_version_ids,
-        obligations_by_version,
+    qa_test_design_handoff_version_ids = (
+        qa_test_design_handoff_versions(
+            requirements,
+            permissions,
+            clarification_blocked_version_ids,
+            obligations_by_version,
+        )
+        if configurable.get("allow_test_design_handoff") is True else []
     )
     versions_by_id = {
         str(item["version"].get("_id")): item["version"]
@@ -2517,6 +2510,8 @@ async def process_ingested_requirement_document(
     existing_test_case_version_cache = {}
     for item in requirements:
         version = item["version"]
+        if configurable.get("allow_test_case_generation") is not True:
+            continue
         if version.get("_id") in clarification_blocked_version_ids:
             continue
         if version.get("status") != "BASELINED" or "ai.generate_testcase" not in permissions:
@@ -2866,38 +2861,7 @@ async def process_ingested_requirement_document(
         if not set(draft.get("requirement_version_ids", [])) <= baselined_version_ids:
             unresolved.append({"test_case_draft_id": draft["_id"], "reason": "REQUIREMENT_NOT_BASELINED"})
             continue
-        try:
-            case, version, publication_status = await publish_grounded_test_case(
-                project_id,
-                draft,
-                config,
-                before_write=validate_source_access,
-            )
-            approved_cases.append(case)
-            approved_case_versions.append(version)
-            for obligation_key in (
-                draft.get("coverage_obligations")
-                or version.get("coverage_obligations")
-                or []
-            ):
-                entry = blueprint_artifact_coverage.get(str(obligation_key))
-                if entry:
-                    entry["test_case_ids"].append(str(case["_id"]))
-                    entry["test_case_version_ids"].append(str(version["_id"]))
-            if publication_status != "SUCCESS":
-                generation_warnings.append(
-                    f"TEST_CASE_PUBLICATION_DEGRADED:{case['_id']}"
-                )
-        except AutomationOperationError as error:
-            unresolved.append({
-                "test_case_draft_id": draft["_id"],
-                "reason": error.reason_code,
-            })
-        except (KeyError, RuntimeError) as error:
-            unresolved.append({
-                "test_case_draft_id": draft["_id"],
-                "reason": str(error) or "TEST_CASE_PUBLICATION_FAILED",
-            })
+        unresolved.append({"test_case_draft_id": draft["_id"], "reason": "HUMAN_TEST_CASE_REVIEW_REQUIRED"})
 
     for obligation_key, matches in reused_test_case_coverage.items():
         entry = blueprint_artifact_coverage.get(str(obligation_key))

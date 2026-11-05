@@ -1,4 +1,5 @@
 import hmac
+import json
 from contextvars import ContextVar
 from enum import Enum
 from functools import lru_cache
@@ -14,6 +15,7 @@ from src.schemas.contracts.common import CurrentUser, SystemRole
 from src.schemas.project_access import ProjectAccessControl
 
 ai_automation_context = ContextVar("ai_automation_context", default=None)
+_access_policy_context = ContextVar("project_access_policy", default=None)
 
 
 class ProjectRole(str, Enum):
@@ -42,17 +44,38 @@ ROLE_NEUTRAL_PERMISSIONS = {
 
 
 @lru_cache(maxsize=1)
+def _access_client():
+    return MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
+
+
+@lru_cache(maxsize=8)
+def _validated_access_policy(serialized):
+    return ProjectAccessControl.model_validate_json(serialized).permission_values()
+
+
 def access_policy():
-    client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=5000)
-    try:
-        document = client[settings.TESTING_DB_NAME].project_access_control.find_one(
-            {"_id": "active"}
-        )
-    finally:
-        client.close()
+    cached = _access_policy_context.get()
+    if cached is not None:
+        return cached
+    document = _access_client()[settings.TESTING_DB_NAME].project_access_control.find_one({"_id": "active"})
     if not isinstance(document, dict):
         raise RuntimeError("Thiếu dữ liệu phân quyền dự án đã chuyển đổi")
-    return ProjectAccessControl.model_validate(document).permission_values()
+    fields = {key: document[key] for key in ProjectAccessControl.model_fields if key in document}
+    values = _validated_access_policy(json.dumps(fields, sort_keys=True))
+    _access_policy_context.set(values)
+    return values
+
+
+def refresh_access_policy():
+    _access_policy_context.set(None)
+
+
+def clear_access_policy():
+    refresh_access_policy()
+    _validated_access_policy.cache_clear()
+
+
+access_policy.cache_clear = clear_access_policy
 
 
 def project_permissions():
@@ -63,158 +86,22 @@ def archive_read_permissions():
     return set(access_policy().get("read_only_permissions", [])) | {"testdata.read"}
 
 
-def required_business_role(permission: str) -> ProjectRole | set[ProjectRole] | None:
-    domain, _, action = permission.partition(".")
-    if domain in {
-        "apiartifact",
-        "automation",
-        "coverage",
-        "device_matrix",
-        "environment",
-        "measurement",
-        "nfrtest",
-        "qualityevaluation",
-        "qualitygate",
-        "regression",
-        "reviewsession",
-        "risk",
-        "statisticalquality",
-        "trace",
-        "testplan",
-        "testcase",
-        "testscenario",
-        "testcondition",
-        "testdata",
-        "testsuite",
-        "teststrategy",
-        "teststatusreport",
-        "testcompletion",
-        "testmonitor",
-        "testanalysis",
-        "release",
-        "testresult",
-        "testrun",
-    } and permission not in {"testrun.execute", "testresult.correct"} and not permission.endswith(".read") and action not in {"version.read", "template.read"}:
-        return ProjectRole.QA
-    if permission in {"testrun.execute", "testresult.correct"}:
-        return ProjectRole.TESTER
-    if domain == "build" and not permission.endswith(".read"):
-        return ProjectRole.DEVELOPER
-    if permission in {
-        "requirement.create",
-        "requirement.update",
-        "requirement.version.create",
-        "requirement.merge",
-        "requirement.split",
-        "requirement.submit_review",
-        "requirement.archive",
-        "requirement.restore",
-        "acceptance_criteria.manage",
-        "business_rule.manage",
-        "requirement_dependency.manage",
-        "requirement_document.upload",
-        "requirement_document.extract",
-        "requirement_document.review_extraction",
-        "requirement_document.confirm_extraction",
-        "requirement_document.archive",
-        "requirement_document.restore",
-        "project.update",
-        "project.create",
-        "project.settings.manage",
-        "project.members.manage",
-        "project.archive",
-        "project.restore",
-        "project.connector.manage",
-        "project.connector.sync",
-        "knowledge.manage",
-        "notification.project_rule.manage",
-    }:
-        return ProjectRole.BA
-    if permission == "requirement.duplicate_check":
-        return {ProjectRole.BA, ProjectRole.QA}
-    if permission in {
-        "requirement.review",
-        "requirement.approve",
-        "proposal.approve",
-        "proposal.bulk.approve",
-        "attachment.moderate",
-        "comment.moderate",
-        "release.close",
-        "defect.assign",
-        "defect.close",
-        "defect.triage",
-        "defect.trace.manage",
-        "project.connector.review",
-    }:
-        return ProjectRole.QA
-    if permission == "collaboration.conflict.resolve":
-        return {ProjectRole.BA, ProjectRole.QA}
-    if permission in {"changeset.create", "changeset.review", "trace.create"}:
-        return {ProjectRole.BA, ProjectRole.QA}
-    if permission in {"causalanalysis.create", "causalanalysis.update", "preventionaction.manage"}:
-        return {ProjectRole.QA, ProjectRole.DEVELOPER}
-    if permission == "causalanalysis.approve":
-        return ProjectRole.QA
-    if permission in {"environmentincident.create"}:
-        return {ProjectRole.QA, ProjectRole.TESTER, ProjectRole.DEVELOPER}
-    if permission in {"environmentincident.update"}:
-        return {ProjectRole.QA, ProjectRole.DEVELOPER}
-    if permission == "environmentincident.close":
-        return ProjectRole.QA
-    if permission in {"impact.execute", "impact.close", "impact.override", "impact.review"}:
-        return ProjectRole.QA
-    if permission in {"processimprovement.approve", "processimprovement.decide"}:
-        return ProjectRole.QA
-    if permission in {
-        "processimprovement.create",
-        "processimprovement.evaluate",
-        "processimprovement.measure",
-        "processimprovement.update",
-    }:
-        return {ProjectRole.QA, ProjectRole.DEVELOPER}
-    if domain == "cicd":
-        return ProjectRole.DEVELOPER
-    if permission in {
-        "ai.generate_testcase",
-        "ai.generate_api_testcase",
-        "ai.generate_scenario",
-        "ai.generate_automation_script",
-        "ai.generate_performance_plan",
-        "ai.generate_security_tests",
-        "ai.generate_regression",
-        "ai.create_proposal",
-        "ai.suggest_bug_trace",
-        "proposal.bulk.generate",
-        "proposal.review",
-        "proposal.reject",
-        "defect.duplicate_check",
-    }:
-        return ProjectRole.QA
-    if permission == "ai.ask_project":
-        return {ProjectRole.BA, ProjectRole.QA}
-    if permission in {"ai.run_lint", "ai.run_impact"}:
-        return {ProjectRole.BA, ProjectRole.QA}
-    if permission == "ai.run_duplicate_check":
-        return {ProjectRole.BA, ProjectRole.QA}
-    if permission == "defect.create":
-        return {ProjectRole.QA, ProjectRole.TESTER}
-    if permission == "defect.retest":
-        return ProjectRole.TESTER
-    if permission == "defect.update":
-        return {ProjectRole.QA, ProjectRole.DEVELOPER}
-    if permission == "defect.transition.developer":
-        return ProjectRole.DEVELOPER
-    if domain == "webhook" and not permission.endswith(".read"):
-        return ProjectRole.DEVELOPER
-    return None
+ASSIGNED_DRAFT_PERMISSIONS = frozenset({
+    "testcase.create", "testcase.update", "testcase.submit_review",
+    "testcase.lint", "testscenario.update",
+})
+
+
+def required_business_role(permission: str) -> set[ProjectRole]:
+    roles = access_policy().get("business_role_permissions", {}).get(permission, [])
+    return {ProjectRole(role) for role in roles}
 
 
 def business_role_allows(permission: str, roles: set[str]) -> bool:
+    if not roles:
+        return False
     required = required_business_role(permission)
-    if required is None:
-        return permission.endswith(".read") or permission in ROLE_NEUTRAL_PERMISSIONS
-    required_roles = required if isinstance(required, set) else {required}
-    return bool({role.value for role in required_roles}.intersection(roles))
+    return bool({role.value for role in required}.intersection(roles))
 
 
 def permissions_for_role(role: ProjectRole | str, settings_value: dict | None = None):
@@ -239,17 +126,18 @@ def permissions_for_role(role: ProjectRole | str, settings_value: dict | None = 
             and project_settings.get(rule.get("setting")) is rule.get("enabled")
         ):
             permissions.update(rule.get("permissions", []))
+    denied = set()
     for rule in values.get("conditional_denials", []):
         if (
             isinstance(rule, dict)
             and rule.get("role") == normalized.value
             and project_settings.get(rule.get("setting")) is rule.get("enabled")
         ):
-            permissions.difference_update(rule.get("permissions", []))
+            denied.update(rule.get("permissions", []))
     overrides = project_settings.get("permission_overrides", {}).get(normalized.value, {})
     known_permissions = project_permissions()
     permissions.update(item for item in overrides.get("allow", []) if item in known_permissions)
-    permissions.difference_update(overrides.get("deny", []))
+    permissions.difference_update(denied | set(overrides.get("deny", [])))
     return {item for item in permissions if business_role_allows(item, {normalized.value})}
 
 
@@ -266,12 +154,37 @@ def roles_for_membership(membership: dict | None) -> set[str]:
     return legacy_roles if len(legacy_roles) == 1 else set()
 
 
+def permission_explicitly_denied(permission, roles, settings_value=None):
+    project_settings = settings_value or {}
+    for role in roles:
+        if permission in project_settings.get("permission_overrides", {}).get(role, {}).get("deny", []):
+            return True
+        for rule in access_policy().get("conditional_denials", []):
+            if rule.get("role") == role and project_settings.get(rule.get("setting")) is rule.get("enabled") and permission in rule.get("permissions", []):
+                return True
+    return False
+
+
+def responsibility_allows(permission, user_id, settings_value=None):
+    responsibility = access_policy().get("responsibility_permissions", {}).get(permission)
+    if not responsibility:
+        return True
+    return ((settings_value or {}).get("responsibilities") or {}).get(responsibility) == user_id
+
+
 def permissions_for_membership(membership: dict | None, settings_value: dict | None = None):
     if not membership:
         return set()
-    return set().union(
+    if membership.get("status") != "ACTIVE":
+        return set()
+    permissions = set().union(
         *(permissions_for_role(role, settings_value) for role in roles_for_membership(membership))
     )
+    responsibilities = (settings_value or {}).get("responsibilities") or {}
+    for permission, responsibility in access_policy().get("responsibility_permissions", {}).items():
+        if responsibilities.get(responsibility) != membership.get("user_id"):
+            permissions.discard(permission)
+    return permissions
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/xac-thuc/dang-nhap", auto_error=False)

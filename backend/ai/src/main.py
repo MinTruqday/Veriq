@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from src.api.automation import router as automation_router
+from src.api.agents import router as agents_router
 from src.api.cache import router as cache_router
 from src.api.embedding import router as embedding_router
 from src.api.events import router as events
@@ -80,6 +81,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(inference)
+app.include_router(agents_router)
 app.include_router(automation_router)
 app.include_router(mcp_router)
 app.include_router(ingest)

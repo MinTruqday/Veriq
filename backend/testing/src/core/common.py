@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from src.clients.authentication import load_accounts, resolve_account
 from src.core.auth import CurrentUser, ai_automation_context, archive_read_permissions, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership
-from src.core.auth import business_role_allows
+from src.core.auth import ASSIGNED_DRAFT_PERMISSIONS, access_policy, business_role_allows, permission_explicitly_denied, refresh_access_policy
 from src.core.human_decisions import require_automation_publication_authority
 from src.repositories.common import common_repository
 
@@ -238,6 +238,7 @@ async def get_project(
 ):
     
     
+    refresh_access_policy()
     project = await common_repository.find_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail={"code": 'ENTITY_NOT_FOUND'})
@@ -246,7 +247,7 @@ async def get_project(
         project_id, user.id, 'ACTIVE', now()
     )
     grant_permissions = set(grant.get("permissions", [])) & project_permissions() if grant else set()
-    if not membership and permission not in grant_permissions:
+    if not membership:
         await audit(
             user.id,
             'project_membership_required',
@@ -256,18 +257,12 @@ async def get_project(
             {"permission": permission, "system_role": user.system_role.value},
         )
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_MEMBERSHIP_REQUIRED'})
-    if membership and membership.get("status") != 'ACTIVE' and permission not in grant_permissions:
+    if membership and membership.get("status") != 'ACTIVE':
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_MEMBERSHIP_INACTIVE'})
     if project.get("administrative_status", 'ACTIVE') != 'ACTIVE':
         raise HTTPException(status_code=423, detail={"code": 'PROJECT_ADMINISTRATIVELY_SUSPENDED'})
-    automation = ai_automation_context.get()
-    automation_publication_allowed = bool(
-        automation
-        and automation.get("principal_id") == user.id
-        and automation.get("publication_project_id") == project_id
-        and permission in set(automation.get("publication_permissions") or [])
-    )
-    if permission.endswith(".approve") or permission in {
+    automation_publication_allowed = False
+    if permission.endswith((".approve", ".submit_review", ".publish", ".confirm", ".decide")) or permission in {
         "proposal.bulk.approve", "release.close", "qualitygate.decide",
         "qualitygate.accept_risk", "qualitygate.override",
     }:
@@ -275,7 +270,24 @@ async def get_project(
             require_automation_publication_authority(user, permission)
     memberships_roles = roles_for_membership(membership)
     active_roles = memberships_roles if membership and membership.get("status") == 'ACTIVE' else set()
-    if not automation_publication_allowed and not business_role_allows(permission, active_roles):
+    if permission_explicitly_denied(permission, active_roles, project.get("settings")):
+        raise HTTPException(status_code=403, detail={"code": "PROJECT_PERMISSION_DENIED", "permission": permission})
+    assigned_draft_access = (
+        assigned_role == "TESTER"
+        and active_roles == {"TESTER"}
+        and assigned_user_id == user.id
+        and permission in ASSIGNED_DRAFT_PERMISSIONS
+    )
+    assigned_developer_access = (
+        assigned_role == "DEVELOPER" and active_roles == {"DEVELOPER"}
+        and assigned_user_id == user.id and permission == "defect.trace.manage"
+    )
+    responsibility = access_policy().get("responsibility_permissions", {}).get(permission)
+    if responsibility:
+        designated = (project.get("settings") or {}).get("responsibilities") or {}
+        if designated.get(responsibility) != user.id:
+            raise HTTPException(status_code=403, detail={"code": "PROJECT_RESPONSIBILITY_REQUIRED", "responsibility": responsibility})
+    if not automation_publication_allowed and not assigned_draft_access and not assigned_developer_access and not business_role_allows(permission, active_roles):
         await audit(user.id, 'project_business_role_denied', 'Project', project_id, project_id, {"permission": permission})
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_PERMISSION_DENIED', "permission": permission})
     permissions = permissions_for_membership(membership, project.get("settings")) if (
@@ -286,6 +298,7 @@ async def get_project(
         and membership is not None
         and assigned_role in memberships_roles
         and assigned_user_id == user.id
+        and (assigned_role != "TESTER" or assigned_draft_access or permission == "testrun.execute")
     )
     if (
         permission not in permissions

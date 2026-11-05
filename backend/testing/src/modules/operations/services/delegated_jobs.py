@@ -20,6 +20,8 @@ class DelegatedJobService:
             await get_project(project_id, user, "changeset.create")
         elif event == "knowledge.index.requested":
             await get_project(project_id, user, "knowledge.manage")
+        elif event == "document.summary.requested":
+            await get_project(project_id, user, "ai.ask_project")
         else:
             await get_project(project_id, user, "requirement_document.extract")
         job = {

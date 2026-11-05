@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BadgeCheck, Check, FilePlus2, Pencil, UserRoundPlus } from "lucide-react";
 import DataTable from "../../components/DataTable";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
@@ -18,6 +19,7 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { docText, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 
 const findingTypeLabels = {
   AMBIGUITY: "Nội dung chưa rõ",
@@ -50,6 +52,7 @@ const techniqueLabel = (value) => techniqueLabels[value] || valueLabel(value);
 const severityLabel = (value) => (value === "CRITICAL" ? "Nghiêm trọng" : valueLabel(value));
 
 export default function TestAnalysisPage({ project }) {
+  const router = useRouter();
   const { ask, dialog } = useActionDialog();
   const [conditions, setConditions] = useState([]);
   const [requirements, setRequirements] = useState([]);
@@ -937,7 +940,30 @@ export default function TestAnalysisPage({ project }) {
                 {
                   key: "test_case_version_ids",
                   label: "Ca kiểm thử",
-                  render: (item) => item.test_case_version_ids.length,
+                  render: (item) => {
+                    const linkedCases = item.test_cases || [];
+                    if (!linkedCases.length) return item.test_case_version_ids.length;
+                    return (
+                      <div className="space-y-1">
+                        {linkedCases.map((testCase) => (
+                          <a
+                            className="block break-words font-medium text-brand underline-offset-2 hover:underline"
+                            href={`${projectRoute(project._id, PROJECT_SECTION_SLUGS.testCases)}?case=${encodeURIComponent(testCase.id)}`}
+                            key={testCase.version_id}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              router.push(
+                                `${projectRoute(project._id, PROJECT_SECTION_SLUGS.testCases)}?case=${encodeURIComponent(testCase.id)}`,
+                              );
+                            }}
+                          >
+                            {testCase.key} · {testCase.title}
+                            {testCase.version ? ` · v${testCase.version}` : ""}
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  },
                 },
                 {
                   key: "uncovered",

@@ -62,9 +62,17 @@ async def project_complexity_scope(project_id: str, user: CurrentUser = Depends(
 async def run_project_complexity_assessment(
     project_id: str,
     payload: ProjectComplexityAssessmentInput,
+    request: Request,
     user: CurrentUser = Depends(get_current_user),
 ):
-    return envelope(await assess_project_complexity(project_id, user, payload))
+    return envelope(
+        await assess_project_complexity(
+            project_id,
+            user,
+            payload,
+            output_language=payload.output_language or _accept_language(request),
+        )
+    )
 
 
 @router.get("/du-an/{project_id}/ho-so-nang-luc/cua-toi")

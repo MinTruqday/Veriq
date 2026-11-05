@@ -118,6 +118,11 @@ export const designTestingApi = {
   listRequirementVersions: (id) => testingRequest(`/yeu-cau/${id}/phien-ban`),
   createRequirementVersion: (id, payload) =>
     testingRequest(`/yeu-cau/${id}/phien-ban`, { method: "POST", body: JSON.stringify(payload) }),
+  reviewRequirementTechnically: (id, payload) =>
+    testingRequest(`/phien-ban-yeu-cau/${id}/ra-soat-ky-thuat`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   baselineRequirement: (id, revision) =>
     testingRequest(`/phien-ban-yeu-cau/${id}/chot-chuan`, {
       method: "POST",

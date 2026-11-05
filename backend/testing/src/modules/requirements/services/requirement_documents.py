@@ -7,6 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
@@ -20,7 +21,10 @@ from src.clients.document_conversion import (
     clear_requirement_conversion_checkpoints,
     convert_requirement_source,
 )
-from src.clients.project_knowledge import index_artifact, remove_artifact
+from src.clients.project_knowledge import (
+    index_artifact_result,
+    remove_artifact,
+)
 from src.clients.storage import storage_client
 from src.core.auth import ai_automation_context
 from src.core.common import audit, get_project, get_project_entity, new_id, now
@@ -49,13 +53,31 @@ class RequirementDocumentResult:
     status: str = 'SUCCESS'
     degraded_mode: str | None = None
 
+    def __post_init__(self):
+        if self.status != 'SUCCESS' or self.data.get("index_status") != "DEGRADED":
+            return
+        parse_report = self.data.get("parse_report")
+        if not isinstance(parse_report, dict):
+            parse_report = {}
+        unprocessed_blocks = parse_report.get("unprocessed_blocks")
+        object.__setattr__(self, "status", "DEGRADED")
+        object.__setattr__(
+            self,
+            "degraded_mode",
+            "KNOWLEDGE_CLEANUP_PENDING"
+            if self.data.get("index_cleanup_pending")
+            else "PARTIAL_SOURCE_EXTRACTION"
+            if not isinstance(unprocessed_blocks, list) or unprocessed_blocks
+            else "KNOWLEDGE_INDEX_DEGRADED",
+        )
+
 
 @dataclass(frozen=True)
 class ParseRequirementDocumentCommand:
     expected_revision: int
 
 
-async def queue_document_ingestion(document, user, idempotency_key):
+async def queue_document_ingestion(document, user, idempotency_key, output_language):
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             await audit(
@@ -72,50 +94,305 @@ async def queue_document_ingestion(document, user, idempotency_key):
                 user,
                 session=session,
                 idempotency_key=idempotency_key,
+                output_language=output_language,
             )
     return event_id
 
 
-async def recover_document_ingestion(document, user):
-    if document.get("index_status") == "REVOKE_PENDING":
+async def open_requirement_document_source_if_current(document_id, project_id):
+    source_key = f"source:{document_id}"
+    current = await requirement_document_repository.find(document_id, project_id)
+    if not current or not _requirement_document_source_is_eligible(current):
+        return False, current
+    if not await ai_automation_access_repository.allow_source(source_key):
+        return False, current
+    latest = await requirement_document_repository.find(document_id, project_id)
+    if not latest or not _requirement_document_source_is_eligible(latest):
+        await ai_automation_access_repository.revoke_and_wait(source_key)
+        return False, latest
+    return True, latest
+
+
+def _requirement_document_source_is_eligible(document):
+    return bool(
+        document
+        and document.get("ai_enabled") is True
+        and document.get("status") == "READY"
+        and document.get("index_status") in {"INDEXED", "DEGRADED"}
+        and not document.get("access_update_pending")
+    )
+
+
+async def open_requirement_document_indexing_source_if_current(document_id, project_id):
+    source_key = f"source:{document_id}"
+    current = await requirement_document_repository.find(document_id, project_id)
+    if (
+        not current
+        or current.get("ai_enabled") is not True
+        or current.get("status") != "READY"
+        or current.get("index_status") == "REVOKE_PENDING"
+        or current.get("access_update_pending")
+    ):
+        return False, current
+    if not await ai_automation_access_repository.allow_source(source_key):
+        return False, current
+    latest = await requirement_document_repository.find(document_id, project_id)
+    if (
+        not latest
+        or latest.get("ai_enabled") is not True
+        or latest.get("status") != "READY"
+        or latest.get("index_status") == "REVOKE_PENDING"
+        or latest.get("access_update_pending")
+    ):
+        await ai_automation_access_repository.revoke_and_wait(source_key)
+        return False, latest
+    return True, latest
+
+
+async def finish_requirement_document_ai_revocation(document):
+    document_id = document["_id"]
+    project_id = document["project_id"]
+    source_key = f"source:{document_id}"
+    if not await ai_automation_access_repository.revoke_and_wait(source_key):
+        return False
+    try:
+        await cancel_pending_document_ingestion(
+            document_id, "AI_READ_PERMISSION_REVOKED"
+        )
+        await cancel_document_ingestion_runs(document_id)
+    except Exception:
+        logger.exception(
+            "Failed to complete document AI revocation document=%s", document_id
+        )
+        return False
+    if not await remove_artifact(project_id, document_id):
+        return False
+
+    for _ in range(2):
+        latest = await requirement_document_repository.find(document_id, project_id)
+        if not latest:
+            return False
+        if (
+            latest.get("ai_enabled") is True
+            and latest.get("index_status") != "REVOKE_PENDING"
+        ):
+            return False
+        if (
+            latest.get("ai_enabled") is not True
+            and latest.get("index_status") == "NOT_REQUESTED"
+            and latest.get("indexed_at") is None
+            and not latest.get("index_cleanup_pending")
+            and not latest.get("index_contract_version")
+        ):
+            return True
+        updated = await requirement_document_repository.update_with_revision(
+            document_id,
+            project_id,
+            latest.get("revision"),
+            {
+                "ai_enabled": False,
+                "index_status": "NOT_REQUESTED",
+                "indexed_at": None,
+                "index_cleanup_pending": [],
+                "updated_at": now(),
+            },
+            unset_fields=["index_contract_version"],
+        )
+        if updated:
+            return True
+    latest = await requirement_document_repository.find(document_id, project_id)
+    return bool(
+        latest
+        and latest.get("ai_enabled") is not True
+        and latest.get("index_status") == "NOT_REQUESTED"
+    )
+
+
+async def begin_requirement_document_archive_cleanup(
+    document,
+    *,
+    expected_revision=None,
+    archive_changes=None,
+    unset_fields=None,
+):
+    document_id = document["_id"]
+    project_id = document["project_id"]
+    if document.get("access_update_pending"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DOCUMENT_ACCESS_UPDATE_IN_PROGRESS"},
+        )
+    if document.get("status") != "ARCHIVED":
+        changes = dict(archive_changes or {})
+        changes.update(
+            {
+                "status": "ARCHIVED",
+                "archive_cleanup_status": "PENDING",
+                "index_status": "REVOKE_PENDING",
+                "updated_at": now(),
+            }
+        )
+        archived = await requirement_document_repository.update_with_revision(
+            document_id,
+            project_id,
+            expected_revision,
+            changes,
+            unset_fields=unset_fields,
+        )
+        if not archived:
+            raise HTTPException(
+                status_code=409, detail={"code": "REVISION_CONFLICT"}
+            )
+        return archived, True
+
+    for _ in range(2):
+        latest = await requirement_document_repository.find(document_id, project_id)
+        if not latest or latest.get("status") != "ARCHIVED":
+            raise HTTPException(
+                status_code=409, detail={"code": "REVISION_CONFLICT"}
+            )
+        if (
+            latest.get("archive_cleanup_status") == "COMPLETE"
+            and latest.get("index_status") == "NOT_REQUESTED"
+            and not latest.get("index_cleanup_pending")
+            and not latest.get("index_contract_version")
+        ):
+            return latest, False
+        if (
+            latest.get("archive_cleanup_status") == "PENDING"
+            and latest.get("index_status") == "REVOKE_PENDING"
+        ):
+            return latest, False
+        updated = await requirement_document_repository.update_with_revision(
+            document_id,
+            project_id,
+            latest.get("revision"),
+            {
+                "archive_cleanup_status": "PENDING",
+                "index_status": "REVOKE_PENDING",
+                "updated_at": now(),
+            },
+            status="ARCHIVED",
+        )
+        if updated:
+            return updated, False
+    raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+
+
+async def finish_requirement_document_archive_cleanup(document):
+    document_id = document["_id"]
+    project_id = document["project_id"]
+    latest = await requirement_document_repository.find(document_id, project_id)
+    if not latest or latest.get("status") != "ARCHIVED":
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+    if latest.get("archive_cleanup_status") == "COMPLETE":
+        return latest
+    if latest.get("archive_cleanup_status") != "PENDING":
+        raise HTTPException(
+            status_code=409, detail={"code": "DOCUMENT_ARCHIVE_CLEANUP_REQUIRED"}
+        )
+
+    token = uuid4().hex
+    started_at = now()
+    lease = await requirement_document_repository.acquire_archive_cleanup_lease(
+        document_id,
+        project_id,
+        token,
+        started_at,
+        started_at
+        + timedelta(seconds=settings.DOCUMENT_ARCHIVE_CLEANUP_LEASE_SECONDS),
+    )
+    if not lease:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "DOCUMENT_ARCHIVE_CLEANUP_IN_PROGRESS"},
+        )
+
+    try:
+        if not await ai_automation_access_repository.revoke_and_wait(
+            f"source:{document_id}"
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "AI_AUTOMATION_REQUESTS_STILL_ACTIVE"},
+            )
         try:
-            source_drained = await ai_automation_access_repository.revoke_and_wait(
-                f"source:{document['_id']}"
-            )
-            if not source_drained:
-                return False
             await cancel_pending_document_ingestion(
-                document["_id"], "AI_READ_PERMISSION_REVOKED"
+                document_id, "REQUIREMENT_DOCUMENT_ARCHIVED"
             )
-            await cancel_document_ingestion_runs(document["_id"])
+            await cancel_document_ingestion_runs(document_id)
+        except Exception as error:
+            logger.exception(
+                "Failed to cancel archived document ingestion document=%s",
+                document_id,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "DOCUMENT_AUTOMATION_CANCELLATION_PENDING"},
+            ) from error
+        if not await remove_artifact(project_id, document_id):
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "KNOWLEDGE_REVOCATION_PENDING"},
+            )
+
+        for _ in range(2):
+            latest = await requirement_document_repository.find(
+                document_id, project_id
+            )
+            if not latest or latest.get("status") != "ARCHIVED":
+                raise HTTPException(
+                    status_code=409, detail={"code": "REVISION_CONFLICT"}
+                )
+            if latest.get("archive_cleanup_status") == "COMPLETE":
+                return latest
+            if (
+                latest.get("archive_cleanup_status") != "PENDING"
+                or latest.get("archive_cleanup_token") != token
+            ):
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "DOCUMENT_ARCHIVE_CLEANUP_IN_PROGRESS"},
+                )
+            completed = await requirement_document_repository.complete_archive_cleanup(
+                document_id,
+                project_id,
+                latest.get("revision"),
+                token,
+                {
+                    "archive_cleanup_status": "COMPLETE",
+                    "archive_cleanup_completed_at": now(),
+                    "index_status": "NOT_REQUESTED",
+                    "indexed_at": None,
+                    "index_cleanup_pending": [],
+                    "updated_at": now(),
+                },
+                unset_fields=["index_contract_version"],
+            )
+            if completed:
+                return completed
+        raise HTTPException(
+            status_code=503, detail={"code": "KNOWLEDGE_REVOCATION_PENDING"}
+        )
+    finally:
+        try:
+            await requirement_document_repository.release_archive_cleanup_lease(
+                document_id, project_id, token
+            )
         except Exception:
             logger.exception(
-                "Failed to retry document automation cancellation document=%s",
-                document["_id"],
+                "Failed to release archived document cleanup lease document=%s",
+                document_id,
             )
-            return False
-        removed = await remove_artifact(document["project_id"], document["_id"])
-        if not removed:
-            return False
-        result = await requirement_document_repository.set_index_result(
-            document["_id"],
-            document["project_id"],
-            "NOT_REQUESTED",
-            now(),
-            expected_revision=document.get("revision"),
-        )
-        if result.matched_count:
-            return True
-        latest = await requirement_document_repository.find(
-            document["_id"], document["project_id"]
-        )
-        if (
-            latest
-            and latest.get("ai_enabled")
-            and latest.get("status") != "ARCHIVED"
-        ):
-            return await index_requirement_document(latest)
+
+
+async def recover_document_ingestion(document, user):
+    if document.get("access_update_pending"):
         return False
+    if document.get("index_status") == "REVOKE_PENDING":
+        if document.get("ai_enabled") is True:
+            return False
+        return await finish_requirement_document_ai_revocation(document)
     if document.get("status") != "READY" or document.get("ai_enabled") is not True:
         return True
     if (
@@ -130,12 +407,10 @@ async def recover_document_ingestion(document, user):
         if not indexed or not document or not document.get("ai_enabled"):
             return False
     if document.get("index_status") in {"INDEXED", "DEGRADED"}:
-        source_opened = await ai_automation_access_repository.allow_source(
-            f"source:{document['_id']}"
+        source_opened, _ = await open_requirement_document_source_if_current(
+            document["_id"], document["project_id"]
         )
-        if not source_opened:
-            return False
-        return True
+        return source_opened
     return False
 
 
@@ -174,6 +449,29 @@ def can_read_requirement_document(document, user):
     ):
         return True
     return False
+
+
+def requirement_document_read_query(user):
+    if user.is_system_admin:
+        return {}
+    readable_scopes = [
+        {"created_by": user.id},
+        {"visibility": "project"},
+        {"visibility": "shared", "shared_with": user.id},
+    ]
+    automation = ai_automation_context.get()
+    if (
+        automation
+        and automation.get("principal_id") == user.id
+        and automation.get("initiator_id")
+    ):
+        readable_scopes.append(
+            {
+                "created_by": automation["initiator_id"],
+                "ai_enabled": True,
+            }
+        )
+    return {"$or": readable_scopes}
 
 
 async def require_document_owner(document, user):
@@ -549,6 +847,9 @@ async def create_requirement_document_record(project_id, payload, user):
             existing = await require_document_access(existing, user, 'requirement_document.read')
             if not await recover_document_ingestion(existing, user):
                 raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
+            existing = await requirement_document_repository.find(
+                existing["_id"], project_id
+            ) or existing
             return existing
         raise
     await audit(
@@ -719,6 +1020,54 @@ async def read_and_parse_requirement_source(document, attempt_id):
 
 
 async def index_requirement_document(document, _stale_retries=0):
+    source_opened, current = await open_requirement_document_indexing_source_if_current(
+        document["_id"], document["project_id"]
+    )
+    if not source_opened:
+        return False
+    source_key = f"source:{document['_id']}"
+    lease_id = str(uuid4())
+    try:
+        admitted = await ai_automation_access_repository.acquire(source_key, lease_id)
+    except Exception:
+        logger.exception(
+            "Failed to acquire requirement document indexing lease document=%s",
+            document["_id"],
+        )
+        return False
+    if not admitted:
+        return False
+    try:
+        current = await requirement_document_repository.find(
+            document["_id"], document["project_id"]
+        )
+        if (
+            not current
+            or current.get("ai_enabled") is not True
+            or current.get("status") != "READY"
+            or current.get("index_status") == "REVOKE_PENDING"
+            or current.get("access_update_pending")
+        ):
+            return False
+        return await _index_requirement_document_locked(current, _stale_retries)
+    finally:
+        try:
+            await ai_automation_access_repository.release(source_key, lease_id)
+        except Exception:
+            logger.exception(
+                "Failed to release requirement document indexing lease document=%s",
+                document["_id"],
+            )
+
+
+async def _index_requirement_document_locked(document, _stale_retries=0):
+    if (
+        document.get("ai_enabled") is not True
+        or document.get("status") != "READY"
+        or document.get("index_status") == "REVOKE_PENDING"
+        or document.get("access_update_pending")
+    ):
+        return False
     source_structure = document.get("source_structure") or []
     extraction = dict(document.get("parse_report") or {})
     if (document.get("raw_source") or {}).get("storage") == "embedded":
@@ -731,7 +1080,7 @@ async def index_requirement_document(document, _stale_retries=0):
         source_structure = await requirement_source_block_repository.list_version(
             document["project_id"], document["_id"], source_structure_hash
         )
-    indexed = await index_artifact(
+    index_result = await index_artifact_result(
         document["project_id"],
         'requirement_document',
         document["_id"],
@@ -764,8 +1113,14 @@ async def index_requirement_document(document, _stale_retries=0):
         source_hash=document.get("content_hash"),
         extraction=extraction,
     )
+    indexed = index_result["status"] in {"indexed", "degraded"}
     index_status = requirement_document_index_status(
-        indexed, extraction
+        indexed,
+        extraction,
+        cleanup_pending=(
+            index_result["status"] == "degraded"
+            or bool(index_result["index_cleanup_pending"])
+        ),
     )
     result = await requirement_document_repository.set_index_result(
         document["_id"],
@@ -776,6 +1131,7 @@ async def index_requirement_document(document, _stale_retries=0):
         index_contract_version=(
             REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION if indexed else None
         ),
+        index_cleanup_pending=index_result["index_cleanup_pending"],
     )
     if result.matched_count:
         return indexed
@@ -786,28 +1142,43 @@ async def index_requirement_document(document, _stale_retries=0):
     if (
         _stale_retries < 1
         and latest
-        and latest.get("ai_enabled")
-        and latest.get("status") != "ARCHIVED"
+        and latest.get("ai_enabled") is True
+        and latest.get("status") == "READY"
+        and latest.get("index_status") != "REVOKE_PENDING"
+        and not latest.get("access_update_pending")
     ):
         return await index_requirement_document(latest, _stale_retries + 1)
-    if not latest or not latest.get("ai_enabled") or latest.get("status") == "ARCHIVED":
+    if (
+        not latest
+        or latest.get("ai_enabled") is not True
+        or latest.get("status") != "READY"
+        or latest.get("index_status") == "REVOKE_PENDING"
+        or latest.get("access_update_pending")
+    ):
         removed = await remove_artifact(document["project_id"], document["_id"])
-        if removed and latest:
+        if (
+            removed
+            and latest
+            and latest.get("index_status") != "REVOKE_PENDING"
+        ):
             await requirement_document_repository.set_index_result(
                 latest["_id"],
                 latest["project_id"],
                 "NOT_REQUESTED",
                 now(),
                 expected_revision=latest.get("revision"),
+                index_cleanup_pending=[],
             )
     return False
 
 
-def requirement_document_index_status(indexed: bool, parse_report: dict) -> str:
+def requirement_document_index_status(
+    indexed: bool, parse_report: dict, cleanup_pending: bool = False
+) -> str:
     if not indexed:
         return 'FAILED'
     unprocessed_blocks = parse_report.get("unprocessed_blocks")
-    if not isinstance(unprocessed_blocks, list) or unprocessed_blocks:
+    if cleanup_pending or not isinstance(unprocessed_blocks, list) or unprocessed_blocks:
         return 'DEGRADED'
     return 'INDEXED'
 
@@ -1104,17 +1475,36 @@ async def upload_requirement_document_record(
 
 async def list_requirement_document_records(project_id, status, query_text, limit, user):
     await get_project(project_id, user, 'requirement_document.read')
-    await requirement_document_repository.normalize_requirement_import_status(project_id)
     query = {"project_id": project_id}
     if status:
-        query["status"] = status.upper()
+        normalized_status = status.upper()
+        if normalized_status == "READY":
+            query["status"] = {"$in": ["READY", "EXTRACTED", "CONFIRMED"]}
+        else:
+            query["status"] = normalized_status
     if query_text:
         query["filename"] = {"$regex": re.escape(query_text), "$options": "i"}
+    query.update(requirement_document_read_query(user))
     documents = await requirement_document_repository.list(query, limit)
-    return [
-        {**document, "can_retry_parse": can_retry_requirement_document_parse(document)}
+    visible_documents = [
+        document
         for document in documents
         if can_read_requirement_document(document, user)
+    ]
+    normalized_documents = []
+    for document in visible_documents:
+        if document.get("status") in {"EXTRACTED", "CONFIRMED"}:
+            await requirement_document_repository.normalize_requirement_import_status(
+                project_id, document["_id"]
+            )
+            document = await requirement_document_repository.find(
+                document["_id"], project_id
+            )
+        if document and (not status or document.get("status") == status.upper()):
+            normalized_documents.append(document)
+    return [
+        {**document, "can_retry_parse": can_retry_requirement_document_parse(document)}
+        for document in normalized_documents
     ]
 
 
@@ -1259,19 +1649,19 @@ async def list_requirement_source_structure_page(
 
 
 async def get_requirement_document_record(document_id, user, permission=None):
+    required_permission = permission or 'requirement_document.read'
     document = await get_project_entity(
         'requirement_documents',
         document_id,
         user,
-        permission or 'requirement_document.read',
+        required_permission,
     )
+    await require_document_access(document, user, required_permission)
     await requirement_document_repository.normalize_requirement_import_status(
         document["project_id"], document_id
     )
     document = await requirement_document_repository.find(document_id, document["project_id"])
-    return await require_document_access(
-        document, user, permission or 'requirement_document.read'
-    )
+    return await require_document_access(document, user, required_permission)
 
 
 async def get_requirement_source_impact(document_id, user):
@@ -1417,6 +1807,16 @@ async def update_requirement_document_record(document_id, payload, user):
     document = await get_requirement_document_record(
         document_id, user, 'knowledge.manage'
     )
+    if document.get("access_update_pending"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DOCUMENT_ACCESS_UPDATE_IN_PROGRESS"},
+        )
+    if document.get("index_status") == "REVOKE_PENDING":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "AI_READ_REVOCATION_IN_PROGRESS"},
+        )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
     if (
@@ -1481,32 +1881,195 @@ async def update_requirement_document_access(document_id, payload, user):
         'requirement_document.read',
     )
     await require_document_owner(document, user)
+    if document.get("status") == "ARCHIVED":
+        raise HTTPException(
+            status_code=409, detail={"code": "DOCUMENT_ARCHIVED"}
+        )
     shared_with = await validate_document_recipients(
         document["project_id"], payload.shared_with
     )
-    updated = await requirement_document_repository.update_with_revision(
+    if not document.get("access_update_pending"):
+        if payload.expected_revision != document.get("revision"):
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        if (
+            document.get("visibility") == payload.visibility
+            and sorted(document.get("shared_with") or []) == shared_with
+            and document.get("index_status") != "REVOKE_PENDING"
+        ):
+            return RequirementDocumentResult(document)
+    if document.get("ai_enabled") is not True:
+        updated = await requirement_document_repository.update_with_revision(
+            document_id,
+            document["project_id"],
+            payload.expected_revision,
+            {
+                "visibility": payload.visibility,
+                "shared_with": shared_with,
+                "updated_at": now(),
+            },
+        )
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        await audit(
+            user.id,
+            "requirement_document.access_updated",
+            "RequirementDocument",
+            document_id,
+            document["project_id"],
+            {"visibility": payload.visibility, "shared_with": shared_with},
+        )
+        return RequirementDocumentResult(updated)
+
+    pending = document.get("access_update_pending")
+    requested_access = {"visibility": payload.visibility, "shared_with": shared_with}
+    if pending:
+        if pending.get("requested_access") != requested_access:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "DOCUMENT_ACCESS_UPDATE_IN_PROGRESS"},
+            )
+        if payload.expected_revision not in {
+            pending.get("expected_revision"),
+            document.get("revision"),
+        }:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        operation_id = document.get("access_update_id")
+    else:
+        operation_id = uuid4().hex
+        pending = {
+            "expected_revision": payload.expected_revision,
+            "requested_access": requested_access,
+            "requested_by": user.id,
+        }
+        document = await requirement_document_repository.update_with_revision(
+            document_id,
+            document["project_id"],
+            payload.expected_revision,
+            {
+                "access_update_pending": pending,
+                "access_update_id": operation_id,
+                "index_status": "PENDING",
+                "indexed_at": None,
+                "updated_at": now(),
+            },
+        )
+        if not document:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+
+    lease_token = uuid4().hex
+    started_at = now()
+    leased = await requirement_document_repository.acquire_access_update_lease(
         document_id,
         document["project_id"],
-        payload.expected_revision,
-        {
-            "visibility": payload.visibility,
-            "shared_with": shared_with,
-            "updated_at": now(),
-        },
+        operation_id,
+        lease_token,
+        started_at,
+        started_at + timedelta(seconds=settings.DOCUMENT_ACCESS_UPDATE_LEASE_SECONDS),
     )
-    if not updated:
-        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-    if updated.get("ai_enabled"):
-        await index_requirement_document(updated)
-    await audit(
-        user.id,
-        "requirement_document.access_updated",
-        'RequirementDocument',
-        document_id,
-        document["project_id"],
-        {"visibility": payload.visibility, "shared_with": shared_with},
-    )
-    return RequirementDocumentResult(updated)
+    if not leased:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "DOCUMENT_ACCESS_UPDATE_IN_PROGRESS"},
+        )
+
+    try:
+        source_drained = await ai_automation_access_repository.revoke_and_wait(
+            f"source:{document_id}"
+        )
+        if not source_drained:
+            await audit(
+                user.id,
+                "requirement_document.access_update_pending",
+                "RequirementDocument",
+                document_id,
+                document["project_id"],
+                {"revision": document["revision"], "source_drained": False},
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "AI_AUTOMATION_REQUESTS_STILL_ACTIVE"},
+            )
+        removed = await remove_artifact(document["project_id"], document_id)
+        if not removed:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "KNOWLEDGE_REVOCATION_PENDING"},
+            )
+        latest = await requirement_document_repository.find(
+            document_id, document["project_id"]
+        )
+        if (
+            not latest
+            or latest.get("access_update_id") != operation_id
+            or latest.get("access_update_pending", {}).get("requested_access")
+            != requested_access
+        ):
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        updated = await requirement_document_repository.complete_access_update(
+            document_id,
+            document["project_id"],
+            latest.get("revision"),
+            operation_id,
+            lease_token,
+            {
+                **requested_access,
+                "index_status": "PENDING",
+                "indexed_at": None,
+                "index_cleanup_pending": [],
+                "updated_at": now(),
+            },
+        )
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        indexed = await index_requirement_document(updated)
+        source_opened, latest = (False, None)
+        if indexed:
+            source_opened, latest = await open_requirement_document_source_if_current(
+                document_id, updated["project_id"]
+            )
+        if not indexed or not source_opened:
+            await audit(
+                user.id,
+                "requirement_document.access_updated",
+                "RequirementDocument",
+                document_id,
+                document["project_id"],
+                {
+                    "visibility": payload.visibility,
+                    "shared_with": shared_with,
+                    "indexed": False,
+                },
+            )
+            return RequirementDocumentResult(
+                latest or updated,
+                "DEGRADED",
+                "KNOWLEDGE_INDEX_FAILED"
+                if not indexed
+                else "AI_READ_ACCESS_DRAIN_PENDING",
+            )
+        await audit(
+            user.id,
+            "requirement_document.access_updated",
+            "RequirementDocument",
+            document_id,
+            document["project_id"],
+            {
+                "visibility": payload.visibility,
+                "shared_with": shared_with,
+                "indexed": latest.get("index_status") in {"INDEXED", "DEGRADED"},
+            },
+        )
+        return RequirementDocumentResult(latest)
+    finally:
+        try:
+            await requirement_document_repository.release_access_update_lease(
+                document_id, document["project_id"], operation_id, lease_token
+            )
+        except Exception:
+            logger.exception(
+                "Failed to release requirement document access update lease document=%s",
+                document_id,
+            )
 
 
 async def update_requirement_document_ai_read(document_id, payload, user):
@@ -1517,6 +2080,13 @@ async def update_requirement_document_ai_read(document_id, payload, user):
         'requirement_document.read',
     )
     await require_document_owner(document, user)
+    if payload.expected_revision != document.get("revision"):
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+    if document.get("access_update_pending"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DOCUMENT_ACCESS_UPDATE_IN_PROGRESS"},
+        )
     if payload.ai_enabled and document.get("index_status") == "REVOKE_PENDING":
         raise HTTPException(
             status_code=409,
@@ -1524,78 +2094,139 @@ async def update_requirement_document_ai_read(document_id, payload, user):
         )
     if payload.ai_enabled and not document.get("normalized_content"):
         raise HTTPException(status_code=409, detail={"code": "DOCUMENT_PARSE_REQUIRED"})
-    updated = await requirement_document_repository.update_with_revision(
-        document_id,
-        document["project_id"],
-        payload.expected_revision,
-        {
-            "ai_enabled": payload.ai_enabled,
-            "index_status": "PENDING" if payload.ai_enabled else "REVOKE_PENDING",
-            "updated_at": now(),
-        },
-    )
-    if not updated:
-        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+    if payload.ai_enabled and document.get("status") != "READY":
+        raise HTTPException(status_code=409, detail={"code": "DOCUMENT_NOT_READY"})
     if payload.ai_enabled:
+        if (
+            document.get("ai_enabled") is True
+            and document.get("index_status") in {"INDEXED", "DEGRADED"}
+            and document.get("index_contract_version")
+            == REQUIREMENT_DOCUMENT_INDEX_CONTRACT_VERSION
+            and not document.get("index_cleanup_pending")
+        ):
+            source_opened, latest = await open_requirement_document_source_if_current(
+                document_id, document["project_id"]
+            )
+            if not source_opened:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "AI_READ_ACCESS_DRAIN_PENDING"},
+                )
+            return RequirementDocumentResult(latest)
+        updated = await requirement_document_repository.update_with_revision(
+            document_id,
+            document["project_id"],
+            payload.expected_revision,
+            {
+                "ai_enabled": True,
+                "index_status": "PENDING",
+                "updated_at": now(),
+            },
+        )
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
         indexed = await index_requirement_document(updated)
         if not indexed:
             raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
-        source_opened = await ai_automation_access_repository.allow_source(
-            f"source:{updated['_id']}"
+        source_opened, latest = await open_requirement_document_source_if_current(
+            document_id, updated["project_id"]
         )
         if not source_opened:
             raise HTTPException(
-                status_code=503,
-                detail={"code": "AI_READ_ACCESS_DRAIN_PENDING"},
-            )
-        latest = await requirement_document_repository.find(
-            document_id, updated["project_id"]
-        )
-        if not latest or latest.get("index_status") not in {"INDEXED", "DEGRADED"}:
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "KNOWLEDGE_INDEX_FAILED"},
+                status_code=409 if latest else 503,
+                detail={
+                    "code": "AI_READ_PERMISSION_CHANGED_DURING_UPDATE"
+                    if not _requirement_document_source_is_eligible(latest)
+                    else "AI_READ_ACCESS_DRAIN_PENDING"
+                },
             )
         updated = latest
     else:
-        cancellation_failed = False
         run_access_fence_failed = False
         cancelled_runs = 0
-        source_drained = await ai_automation_access_repository.revoke_and_wait(
-            f"source:{updated['_id']}"
-        )
-        if not source_drained:
-            await audit(
-                user.id,
-                "requirement_document.ai_read_event_cancellation_pending",
-                "RequirementDocument",
+        revoking = None
+        if (
+            document.get("ai_enabled") is not True
+            and document.get("index_status") == "NOT_REQUESTED"
+        ):
+            updated = document
+        else:
+            revocation_changes = {"index_status": "REVOKE_PENDING", "updated_at": now()}
+            if document.get("ai_enabled") is True:
+                revocation_changes["ai_enabled"] = False
+            revoking = await requirement_document_repository.update_with_revision(
                 document_id,
                 document["project_id"],
-                {"revision": updated["revision"], "reason": "SOURCE_REQUESTS_STILL_ACTIVE"},
+                payload.expected_revision,
+                revocation_changes,
             )
+            if not revoking:
+                latest = await requirement_document_repository.find(
+                    document_id, document["project_id"]
+                )
+                if _requirement_document_source_is_eligible(latest):
+                    await open_requirement_document_source_if_current(
+                        document_id, document["project_id"]
+                    )
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "REVISION_CONFLICT"},
+                )
+        source_drained = await ai_automation_access_repository.revoke_and_wait(
+            f"source:{document_id}"
+        )
+        if not source_drained:
+            if revoking:
+                await audit(
+                    user.id,
+                    "requirement_document.ai_read_revocation_pending",
+                    "RequirementDocument",
+                    document_id,
+                    document["project_id"],
+                    {
+                        "revision": revoking["revision"],
+                        "source_drained": False,
+                    },
+                )
             raise HTTPException(
                 status_code=503,
                 detail={"code": "AI_AUTOMATION_REQUESTS_STILL_ACTIVE"},
             )
+        removed = await remove_artifact(document["project_id"], document_id)
+        if not removed:
+            await audit(
+                user.id,
+                "requirement_document.ai_read_revocation_pending",
+                "RequirementDocument",
+                document_id,
+                document["project_id"],
+                {
+                    "revision": (revoking or document)["revision"],
+                    "index_removed": False,
+                },
+            )
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "KNOWLEDGE_REVOCATION_PENDING"},
+            )
         try:
             cancelled_events = await cancel_pending_document_ingestion(
-                updated["_id"], "AI_READ_PERMISSION_REVOKED"
+                document_id, "AI_READ_PERMISSION_REVOKED"
             )
         except Exception:
             logger.exception(
                 "Failed to cancel queued document ingestion document=%s",
-                updated["_id"],
+                document_id,
             )
             cancelled_events = 0
-            cancellation_failed = True
+            run_access_fence_failed = True
         try:
-            cancelled_runs = await cancel_document_ingestion_runs(updated["_id"])
+            cancelled_runs = await cancel_document_ingestion_runs(document_id)
         except Exception:
             logger.exception(
                 "Failed to cancel dispatched AI document runs document=%s",
-                updated["_id"],
+                document_id,
             )
-            cancellation_failed = True
             run_access_fence_failed = True
         if run_access_fence_failed:
             await audit(
@@ -1605,7 +2236,7 @@ async def update_requirement_document_ai_read(document_id, payload, user):
                 document_id,
                 document["project_id"],
                 {
-                    "revision": updated["revision"],
+                    "revision": (revoking or document)["revision"],
                     "cancelled_pending_events": cancelled_events,
                     "cancelled_dispatched_runs": cancelled_runs,
                 },
@@ -1614,62 +2245,48 @@ async def update_requirement_document_ai_read(document_id, payload, user):
                 status_code=503,
                 detail={"code": "AI_INGESTION_CANCELLATION_PENDING"},
             )
-        removed = await remove_artifact(updated["project_id"], updated["_id"])
-        if not removed:
-            await audit(
-                user.id,
-                "requirement_document.ai_read_revocation_pending",
-                "RequirementDocument",
+        if revoking:
+            result = await requirement_document_repository.update_with_revision(
                 document_id,
                 document["project_id"],
+                revoking.get("revision"),
                 {
-                    "revision": updated["revision"],
-                    "cancelled_pending_events": cancelled_events,
-                    "cancelled_dispatched_runs": cancelled_runs,
+                    "ai_enabled": False,
+                    "index_status": "NOT_REQUESTED",
+                    "indexed_at": None,
+                    "index_cleanup_pending": [],
+                    "updated_at": now(),
                 },
+                unset_fields=["index_contract_version"],
             )
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "KNOWLEDGE_REVOCATION_PENDING"},
+            if not result:
+                latest = await requirement_document_repository.find(
+                    document_id, document["project_id"]
+                )
+                if (
+                    latest
+                    and latest.get("ai_enabled") is True
+                    and latest.get("status") == "READY"
+                ):
+                    try:
+                        indexed = await index_requirement_document(latest)
+                        if indexed:
+                            await open_requirement_document_source_if_current(
+                                document_id, document["project_id"]
+                            )
+                    except Exception:
+                        logger.exception(
+                            "Failed to restore AI source after disable revision conflict document=%s",
+                            document_id,
+                        )
+                raise HTTPException(
+                    status_code=409, detail={"code": "REVISION_CONFLICT"}
+                )
+            updated = result
+        else:
+            updated = await requirement_document_repository.find(
+                document_id, document["project_id"]
             )
-        if cancellation_failed:
-            await audit(
-                user.id,
-                "requirement_document.ai_read_event_cancellation_pending",
-                "RequirementDocument",
-                document_id,
-                document["project_id"],
-                {
-                    "revision": updated["revision"],
-                    "cancelled_pending_events": cancelled_events,
-                    "cancelled_dispatched_runs": cancelled_runs,
-                },
-            )
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "AI_INGESTION_CANCELLATION_PENDING"},
-            )
-        result = await requirement_document_repository.set_index_result(
-            updated["_id"],
-            updated["project_id"],
-            "NOT_REQUESTED",
-            now(),
-            expected_revision=updated.get("revision"),
-        )
-        if not result.matched_count:
-            latest = await requirement_document_repository.find(
-                updated["_id"], updated["project_id"]
-            )
-            if (
-                latest
-                and latest.get("ai_enabled")
-                and latest.get("status") != "ARCHIVED"
-            ):
-                await index_requirement_document(latest)
-            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
-        updated = await requirement_document_repository.find(
-            updated["_id"], updated["project_id"]
-        )
     await audit(
         user.id,
         "requirement_document.ai_read_updated",
@@ -1706,6 +2323,16 @@ async def start_requirement_document_ai_processing(document_id, payload, user):
             status_code=409,
             detail={"code": "AI_READ_PERMISSION_REQUIRED"},
         )
+    if document.get("access_update_pending"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DOCUMENT_ACCESS_UPDATE_IN_PROGRESS"},
+        )
+    if document.get("index_status") == "REVOKE_PENDING":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "AI_READ_REVOCATION_IN_PROGRESS"},
+        )
     if document.get("status") != "READY" or not document.get("normalized_content"):
         raise HTTPException(status_code=409, detail={"code": "DOCUMENT_PARSE_REQUIRED"})
 
@@ -1721,24 +2348,71 @@ async def start_requirement_document_ai_processing(document_id, payload, user):
         raise HTTPException(status_code=409, detail={"code": "AI_READ_PERMISSION_REQUIRED"})
     if document.get("index_status") not in {"INDEXED", "DEGRADED"}:
         raise HTTPException(status_code=503, detail={"code": "KNOWLEDGE_INDEX_FAILED"})
-    source_opened = await ai_automation_access_repository.allow_source(
-        f"source:{document_id}"
+    source_opened, latest = await open_requirement_document_source_if_current(
+        document_id, document["project_id"]
     )
     if not source_opened:
         raise HTTPException(
+            status_code=409 if latest else 503,
+            detail={
+                "code": "AI_READ_PERMISSION_REQUIRED"
+                if not _requirement_document_source_is_eligible(latest)
+                else "AI_READ_ACCESS_DRAIN_PENDING"
+            },
+        )
+    if latest.get("revision") != payload.expected_revision:
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+    source_key = f"source:{document_id}"
+    lease_id = str(uuid4())
+    try:
+        admitted = await ai_automation_access_repository.acquire(source_key, lease_id)
+    except Exception as error:
+        logger.exception(
+            "Failed to acquire document AI ingestion lease document=%s",
+            document_id,
+        )
+        raise HTTPException(
             status_code=503,
+            detail={"code": "AI_READ_ACCESS_UNAVAILABLE"},
+        ) from error
+    if not admitted:
+        raise HTTPException(
+            status_code=409,
             detail={"code": "AI_READ_ACCESS_DRAIN_PENDING"},
         )
-
-    event_id = await queue_document_ingestion(
-        document,
-        user,
-        payload.idempotency_key,
-    )
+    try:
+        current = await requirement_document_repository.find(
+            document_id,
+            latest["project_id"],
+        )
+        if not _requirement_document_source_is_eligible(current):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "AI_READ_PERMISSION_REQUIRED"},
+            )
+        if current.get("revision") != payload.expected_revision:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "REVISION_CONFLICT"},
+            )
+        event_id = await queue_document_ingestion(
+            current,
+            user,
+            payload.idempotency_key,
+            payload.output_language,
+        )
+    finally:
+        try:
+            await ai_automation_access_repository.release(source_key, lease_id)
+        except Exception:
+            logger.exception(
+                "Failed to release document AI ingestion lease document=%s",
+                document_id,
+            )
     return {
         "document_id": document_id,
-        "project_id": document["project_id"],
-        "revision": document["revision"],
+        "project_id": current["project_id"],
+        "revision": current["revision"],
         "event_id": event_id,
         "status": "QUEUED",
     }
@@ -1753,17 +2427,71 @@ async def reindex_requirement_document_record(document_id, user):
             status_code=409,
             detail={"code": 'DOCUMENT_ARCHIVED'},
         )
-    if not document.get("ai_enabled"):
-        return RequirementDocumentResult(document)
+    if document.get("access_update_pending") or (
+        document.get("index_status") == "REVOKE_PENDING"
+        and document.get("ai_enabled") is True
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DOCUMENT_ACCESS_UPDATE_IN_PROGRESS"},
+        )
+    if (
+        document.get("ai_enabled") is not True
+        or document.get("index_status") == "REVOKE_PENDING"
+    ):
+        if (
+            document.get("ai_enabled") is not True
+            and document.get("index_status") != "REVOKE_PENDING"
+        ):
+            revoking = await requirement_document_repository.update_with_revision(
+                document_id,
+                document["project_id"],
+                document.get("revision"),
+                {
+                    "index_status": "REVOKE_PENDING",
+                    "indexed_at": None,
+                    "index_cleanup_pending": [],
+                },
+                unset_fields=["index_contract_version"],
+            )
+            if not revoking:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"code": "REVISION_CONFLICT"},
+                )
+            document = revoking
+        if not await finish_requirement_document_ai_revocation(document):
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "KNOWLEDGE_REVOCATION_PENDING"},
+            )
+        latest = await requirement_document_repository.find(
+            document_id, document["project_id"]
+        )
+        await audit(
+            user.id,
+            'requirement_document_reindexed',
+            'RequirementDocument',
+            document_id,
+            document["project_id"],
+            {
+                "indexed": False,
+                "reason": "AI_READ_NOT_ENABLED",
+            },
+        )
+        return RequirementDocumentResult(
+            latest, "DEGRADED", "AI_READ_NOT_ENABLED"
+        )
     indexed = await index_requirement_document(document)
-    await requirement_document_repository.update(
-        document_id,
-        document["project_id"],
-        {"updated_at": now()},
-    )
     updated = await requirement_document_repository.find(
         document_id, document["project_id"]
     )
+    if indexed:
+        source_opened, updated = await open_requirement_document_source_if_current(
+            document_id, document["project_id"]
+        )
+        indexed = source_opened
+    updated = updated or document
     await audit(
         user.id,
         'requirement_document_reindexed',
@@ -1783,63 +2511,28 @@ async def archive_requirement_document_record(document_id, payload, user):
     document = await get_requirement_document_record(
         document_id, user, 'requirement_document.archive'
     )
-    if document.get("status") == 'ARCHIVED':
-        return document
-    if document.get("ai_enabled") is True:
-        source_drained = await ai_automation_access_repository.revoke_and_wait(
-            f"source:{document_id}"
-        )
-        if not source_drained:
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "AI_AUTOMATION_REQUESTS_STILL_ACTIVE"},
-            )
-        try:
-            await cancel_pending_document_ingestion(
-                document_id, "REQUIREMENT_DOCUMENT_ARCHIVED"
-            )
-            await cancel_document_ingestion_runs(document_id)
-        except Exception as error:
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "DOCUMENT_AUTOMATION_CANCELLATION_PENDING"},
-            ) from error
     timestamp = now()
-    updated = await requirement_document_repository.update_with_revision(
-        document_id,
-        document["project_id"],
-        payload.expected_revision,
-        {
+    updated, newly_archived = await begin_requirement_document_archive_cleanup(
+        document,
+        expected_revision=payload.expected_revision,
+        archive_changes={
             "status_before_archive": document.get("status", 'READY'),
-            "status": 'ARCHIVED',
             "archived_by": user.id,
             "archived_at": timestamp,
             "archive_reason": payload.reason,
-            "updated_at": timestamp,
         },
         unset_fields=["deduplication_key"],
     )
-    if not updated:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REVISION_CONFLICT'},
+    if newly_archived:
+        await audit(
+            user.id,
+            'requirement_document_archived',
+            'RequirementDocument',
+            document_id,
+            document["project_id"],
+            {"reason": payload.reason},
         )
-    if updated.get("ai_enabled"):
-        removed = await remove_artifact(updated["project_id"], updated["_id"])
-        if not removed:
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "KNOWLEDGE_REVOCATION_PENDING"},
-            )
-    await audit(
-        user.id,
-        'requirement_document_archived',
-        'RequirementDocument',
-        document_id,
-        document["project_id"],
-        {"reason": payload.reason},
-    )
-    return updated
+    return await finish_requirement_document_archive_cleanup(updated)
 
 
 async def restore_requirement_document_record(document_id, payload, user):
@@ -1863,11 +2556,20 @@ async def restore_requirement_document_record(document_id, payload, user):
                 )
             return latest
         return document
+    if payload.expected_revision != document.get("revision"):
+        raise HTTPException(
+            status_code=409, detail={"code": "REVISION_CONFLICT"}
+        )
+    if document.get("archive_cleanup_status") != "COMPLETE":
+        document, _ = await begin_requirement_document_archive_cleanup(
+            document
+        )
+        document = await finish_requirement_document_archive_cleanup(document)
     timestamp = now()
     updated = await requirement_document_repository.update_with_revision(
         document_id,
         document["project_id"],
-        payload.expected_revision,
+        document.get("revision"),
         {
             "status": document.get("status_before_archive", 'READY'),
             "restored_by": user.id,
@@ -1889,21 +2591,13 @@ async def restore_requirement_document_record(document_id, payload, user):
                 status_code=503,
                 detail={"code": "KNOWLEDGE_INDEX_FAILED"},
             )
-        source_opened = await ai_automation_access_repository.allow_source(
-            f"source:{document_id}"
+        source_opened, latest = await open_requirement_document_source_if_current(
+            document_id, updated["project_id"]
         )
         if not source_opened:
             raise HTTPException(
                 status_code=503,
                 detail={"code": "AI_READ_ACCESS_DRAIN_PENDING"},
-            )
-        latest = await requirement_document_repository.find(
-            document_id, updated["project_id"]
-        )
-        if not latest or latest.get("index_status") not in {"INDEXED", "DEGRADED"}:
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "DOCUMENT_RESTORE_RECOVERY_PENDING"},
             )
         updated = latest
     await audit(
@@ -2120,19 +2814,18 @@ async def retry_requirement_document_parse_record(
     )
     if updated.get("ai_enabled") is True:
         indexed = await index_requirement_document(updated)
-        latest = await requirement_document_repository.find(
-            document_id, updated["project_id"]
-        )
-        if not indexed or not latest or latest.get("index_status") not in {"INDEXED", "DEGRADED"}:
-            return RequirementDocumentResult(
-                latest or updated, 'DEGRADED', 'KNOWLEDGE_INDEX_FAILED'
+        source_opened, latest = (False, None)
+        if indexed:
+            source_opened, latest = await open_requirement_document_source_if_current(
+                document_id, updated["project_id"]
             )
-        source_opened = await ai_automation_access_repository.allow_source(
-            f"source:{document_id}"
-        )
-        if not source_opened:
+        if not indexed or not source_opened:
             return RequirementDocumentResult(
-                latest, 'DEGRADED', 'AI_READ_ACCESS_DRAIN_PENDING'
+                latest or updated,
+                'DEGRADED',
+                'KNOWLEDGE_INDEX_FAILED'
+                if not indexed
+                else 'AI_READ_ACCESS_DRAIN_PENDING',
             )
         updated = latest
     return RequirementDocumentResult(updated)

@@ -1,5 +1,6 @@
 import {
-  automationRequest,
+  agentWorkflowRequest,
+  agentRequest,
   downloadTestingFile,
   listQuery,
   testingRequest,
@@ -46,34 +47,28 @@ export const projectTestingApi = {
   forecastPlanLaborCost: (projectId, testPlanId) =>
     testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/ke-hoach/${testPlanId}/du-toan`),
   getProjectCapabilities: () => testingRequest("/du-an/kha-nang"),
-  runAutomation: (payload) =>
-    automationRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
-  getAutomationRun: (runId) => automationRequest(`/luot-chay/${runId}`),
-  getAutomationRunEvidence: (runId) => automationRequest(`/luot-chay/${runId}/bang-chung`),
-  listAutomationRuns: (projectId) => automationRequest(`/du-an/${projectId}/luot-chay`),
+  listEffectiveAccess: (projectId) =>
+    testingRequest(`/du-an/${encodeURIComponent(projectId)}/quyen-hieu-luc`),
+  listAgentCapabilities: (projectId) =>
+    agentRequest(`/du-an/${encodeURIComponent(projectId)}/nang-luc`),
+  createAgentRun: (payload) =>
+    agentRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
+  getAutomationRun: (runId) => agentWorkflowRequest(`/luot-chay/${runId}`),
+  getAutomationRunEvidence: (runId) => agentWorkflowRequest(`/luot-chay/${runId}/bang-chung`),
+  listAutomationRuns: (projectId) => agentWorkflowRequest(`/du-an/${projectId}/luot-chay`),
   retryAutomationRun: (runId, payload) =>
-    automationRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
+    agentWorkflowRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   answerAutomationClarification: (runId, payload) =>
-    automationRequest(`/luot-chay/${runId}/tra-loi-lam-ro`, {
+    agentWorkflowRequest(`/luot-chay/${runId}/tra-loi-lam-ro`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   cancelAutomationRun: (runId, payload) =>
-    automationRequest(`/luot-chay/${runId}/huy`, {
+    agentWorkflowRequest(`/luot-chay/${runId}/huy`, {
       method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  listAutomationTriggers: () => automationRequest("/triggers"),
-  listAutomationActions: () => automationRequest("/hanh-dong"),
-  listAutomationDefinitions: (projectId) => automationRequest(`/du-an/${projectId}/dinh-nghia`),
-  createAutomationDefinition: (payload) =>
-    automationRequest("/dinh-nghia", { method: "POST", body: JSON.stringify(payload) }),
-  updateAutomationDefinition: (definitionId, payload) =>
-    automationRequest(`/dinh-nghia/${definitionId}`, {
-      method: "PATCH",
       body: JSON.stringify(payload),
     }),
   listProjects: (query = "", status = "active", limit = 200) => {
@@ -88,6 +83,14 @@ export const projectTestingApi = {
   getProject: (id) => testingRequest(`/du-an/${id}`),
   getProjectComplexityAssessment: (id) => testingRequest(`/du-an/${id}/do-kho-ai`),
   getProjectComplexityScope: (id) => testingRequest(`/du-an/${id}/do-kho-ai/pham-vi`),
+  getProjectCompletenessScope: (id) =>
+    testingRequest(`/du-an/${encodeURIComponent(id)}/ho-so-ai/pham-vi`),
+  getProjectCompletenessReview: (id) => testingRequest(`/du-an/${encodeURIComponent(id)}/ho-so-ai`),
+  reviewProjectCompleteness: (id, payload) =>
+    testingRequest(`/du-an/${encodeURIComponent(id)}/ho-so-ai/ra-soat`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   assessProjectComplexity: (id, payload) =>
     testingRequest(`/du-an/${id}/do-kho-ai/danh-gia`, {
       method: "POST",

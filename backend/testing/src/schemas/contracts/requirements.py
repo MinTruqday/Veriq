@@ -145,6 +145,7 @@ class RequirementTemplateSynthesis(BaseModel):
     source_document_ids: list[str] = Field(default_factory=list, max_length=100)
     source_template_ids: list[str] = Field(default_factory=list, max_length=20)
     instruction: str = Field(default="", max_length=5000)
+    output_language: str = Field(default="auto", min_length=2, max_length=80)
 
     @model_validator(mode="after")
     def require_source(self):
@@ -307,6 +308,7 @@ class RequirementDocumentAIReadPatch(BaseModel):
 
 class RequirementDocumentAIStart(BaseModel):
     expected_revision: int = Field(ge=1)
+    output_language: str = Field(default="auto", min_length=2, max_length=80)
     idempotency_key: str = Field(
         min_length=8,
         max_length=200,

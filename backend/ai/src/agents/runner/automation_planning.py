@@ -24,7 +24,7 @@ from src.agents.runner.automation_validation import (
     validated_tasks,
     verified_tool_call_records,
 )
-from src.tools.registry import registered_tools, tool_access
+from src.tools.registry import registered_tools, requires_human_decision, tool_access
 
 __all__ = [
     "available_tools",
@@ -63,6 +63,8 @@ def available_tools(permissions, intent="", compact=False, actions=None, domains
         if (
             access
             and access.permission in permissions
+            and not requires_human_decision(access.permission)
+            and (access.action != "MUTATE" or access.draft_only)
             and (actions is None or access.action in actions)
             and (
                 allowed_domains is None

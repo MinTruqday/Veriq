@@ -1,3 +1,4 @@
+from src.prompts.work_reporting import WORK_REPORT_NARRATIVE_CONTRACT
 import hashlib
 import json
 from typing import get_args
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 from src.prompts.change_simulation import IMPACT_ANALYSIS_CONTRACT
 from src.prompts.model_output import schema_instruction
 from src.prompts.project_assistance import PROJECT_QUESTION_CONTRACT
+from src.prompts.project_completeness import PROJECT_COMPLETENESS_CONTRACT
 from src.prompts.prompt_data import prompt_json
 from src.prompts.quality_capabilities import QUALITY_CAPABILITY_CONTRACTS
 from src.prompts.requirement_analysis import requirement_quality_analysis_instruction
@@ -25,6 +27,8 @@ from src.schemas.inference_requirements import TestabilityBlueprintGroundingRevi
 
 def _capability_contracts():
     return {
+        "project_completeness_review": PROJECT_COMPLETENESS_CONTRACT,
+        "work_report_narrative": WORK_REPORT_NARRATIVE_CONTRACT,
         "requirement_quality_analysis": requirement_quality_analysis_instruction(),
         "requirement_template_synthesis": REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS,
         "requirement_template_review": REQUIREMENT_TEMPLATE_REVIEW_INSTRUCTIONS,

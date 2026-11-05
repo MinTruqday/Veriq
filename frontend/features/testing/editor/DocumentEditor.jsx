@@ -49,6 +49,8 @@ export default function DocumentEditor({
   minHeight = "min-h-40",
   readOnly = false,
   ignoreUnfocusedUpdates = false,
+  onImageFiles,
+  documentProfile,
 }) {
   const [tableOfContents, setTableOfContents] = useState([]);
   const { ask, dialog } = useActionDialog();
@@ -58,6 +60,7 @@ export default function DocumentEditor({
       !readOnly,
       label ? `Nhập ${label.toLocaleLowerCase("vi")}` : "Nhập nội dung",
       setTableOfContents,
+      onImageFiles,
     ),
     content: value,
     editable: !readOnly,
@@ -126,6 +129,18 @@ export default function DocumentEditor({
   };
 
   const addImage = async () => {
+    if (onImageFiles) {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/png,image/jpeg";
+      input.multiple = true;
+      input.onchange = async () => {
+        const nodes = await onImageFiles(Array.from(input.files || []));
+        if (!editor.isDestroyed && nodes.length) editor.chain().focus().insertContent(nodes).run();
+      };
+      input.click();
+      return;
+    }
     await ask({
       title: "Chèn hình ảnh",
       fields: [
@@ -219,22 +234,31 @@ export default function DocumentEditor({
     return (editor.isActive("bold") ? chain.unsetBold() : chain.setBold()).run();
   };
 
-  const tool = (name, active, action, icon, disabled = false) => (
-    <button
-      type="button"
-      className="editor-tool"
-      aria-label={name}
-      aria-pressed={active}
-      disabled={disabled}
-      onMouseDown={(event) => {
-        event.preventDefault();
-        action();
-      }}
-      onClick={(event) => event.preventDefault()}
-    >
-      {icon}
-    </button>
-  );
+  const tool = (name, active, action, icon, disabled = false) =>
+    documentProfile === "formal-report" &&
+    [
+      "Công thức",
+      "Emoji",
+      "Nhắc người dùng",
+      "Video YouTube",
+      "Khối thu gọn",
+      "Tháo khối thu gọn",
+    ].includes(name) ? null : (
+      <button
+        type="button"
+        className="editor-tool"
+        aria-label={name}
+        aria-pressed={active}
+        disabled={disabled}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          action();
+        }}
+        onClick={(event) => event.preventDefault()}
+      >
+        {icon}
+      </button>
+    );
 
   return (
     <div className="relative overflow-hidden rounded-panel border border-border bg-surface">
@@ -379,30 +403,36 @@ export default function DocumentEditor({
             <Unlink size={17} />,
             !editor.isActive("link"),
           )}
-          <label className="editor-tool" aria-label="Màu chữ">
-            <input
-              type="color"
-              className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0"
-              value={editor.getAttributes("textStyle").color || "#1d1d1f"}
-              onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
-            />
-          </label>
-          <select
-            className="editor-select"
-            aria-label="Phông chữ"
-            value={editor.getAttributes("textStyle").fontFamily || ""}
-            onChange={(event) =>
-              event.target.value
-                ? editor.chain().focus().setFontFamily(event.target.value).run()
-                : editor.chain().focus().unsetFontFamily().run()
-            }
-          >
-            <option value="">Mặc định</option>
-            <option value="Arial">Arial</option>
-            <option value="Georgia">Georgia</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Courier New">Courier New</option>
-          </select>
+          {documentProfile !== "formal-report" ? (
+            <>
+              <label className="editor-tool" aria-label="Màu chữ">
+                <input
+                  type="color"
+                  className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0"
+                  value={editor.getAttributes("textStyle").color || "#1d1d1f"}
+                  onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
+                />
+              </label>
+              <select
+                className="editor-select"
+                aria-label="Phông chữ"
+                value={editor.getAttributes("textStyle").fontFamily || ""}
+                onChange={(event) =>
+                  event.target.value
+                    ? editor.chain().focus().setFontFamily(event.target.value).run()
+                    : editor.chain().focus().unsetFontFamily().run()
+                }
+              >
+                <option value="">Mặc định</option>
+                <option value="Arial">Arial</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+              </select>
+            </>
+          ) : (
+            <span className="px-2 text-xs text-ink-muted">Times New Roman · 14 pt</span>
+          )}
         </div>
         <div className="editor-tool-group">
           {tool("Công thức", false, addMath, <Sigma size={17} />)}

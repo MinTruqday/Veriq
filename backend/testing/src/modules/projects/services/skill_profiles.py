@@ -1315,7 +1315,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     eligible = [
         item
         for item in memberships
-        if item.get("status") == "ACTIVE" and "QA" in roles_for_membership(item)
+        if item.get("status") == "ACTIVE" and roles_for_membership(item).intersection({"QA", "TESTER"})
     ]
     eligible_ids = [item["user_id"] for item in eligible]
     profiles = await skill_profile_repository.list_for_members(project_id, eligible_ids)

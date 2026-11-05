@@ -2,6 +2,7 @@ from typing import get_args
 
 from pydantic import BaseModel
 
+from src.schemas.inference_completeness import ProjectCompletenessOutput
 from src.schemas.inference_change_simulation import ChangeSimulationReportOutput
 from src.schemas.inference_impact import (
     ImpactClassificationOutput,
@@ -11,6 +12,7 @@ from src.schemas.inference_impact import (
     NewTestCandidateOutput,
 )
 from src.schemas.inference_quality import (
+    WorkReportNarrativeOutput,
     AutomationScriptOutput,
     AutomationScriptSuggestionOutput,
     CausalHypothesesOutput,
@@ -148,6 +150,7 @@ __all__ = [
     "TestingAutomationStatus",
     "TestingEvidence",
     "VerifiedSourceFactCitation",
+    "WorkReportNarrativeOutput",
     "output_schema",
 ]
 

@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.authentication import get_project_creation_policy
-from src.core.auth import archive_read_permissions, business_role_allows, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership
+from src.core.auth import archive_read_permissions, business_role_allows, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership, responsibility_allows
 from src.core.common import (
     audit,
     build_audit_event,
@@ -15,6 +15,7 @@ from src.core.common import (
 )
 from src.repositories.project import project_repository
 from src.modules.projects.services.project_progress import task_summaries
+from src.modules.projects.services.project_responsibilities import validate_project_responsibilities
 
 
 
@@ -50,7 +51,7 @@ def project_access(project, membership, grant):
         if membership
         else None
     )
-    grant_permissions = {item for item in grant_permissions if business_role_allows(item, active_roles)}
+    grant_permissions = {item for item in grant_permissions if business_role_allows(item, active_roles) and responsibility_allows(item, membership.get("user_id") if membership else None, project.get("settings"))}
     if project.get("status", "active").lower() == "archived":
         allowed = archive_read_permissions() | {"project.restore"}
         if (project.get("settings") or {}).get("read_after_archive_policy", "ALLOW_READ") == "DENY_READ":
@@ -117,6 +118,10 @@ class ProjectService:
                 status_code=422,
                 detail={"code": "PROJECT_INITIAL_QA_MUST_DIFFER_FROM_BA"},
             )
+        await validate_project_responsibilities(payload.settings, initial_members={
+            user.id: {"status": "ACTIVE", "project_role": "BA"},
+            initial_qa_user_id: {"status": "ACTIVE", "project_role": "QA"},
+        })
         project = {
             "_id": new_id('PRJ'),
             **payload.model_dump(exclude={"initial_qa_user_id"}),
@@ -192,7 +197,7 @@ class ProjectService:
             user.id, 'ACTIVE', now()
         )
         by_grant = {item["project_id"]: item for item in grants}
-        query = {"_id": {"$in": list(set(by_project) | set(by_grant))}}
+        query = {"_id": {"$in": list(by_project)}}
         if status and status != 'all':
             query["status"] = status
         if query_text:
@@ -247,6 +252,7 @@ class ProjectService:
         current = await get_project(project_id, user, 'project.update')
         if payload.settings is not None:
             await get_project(project_id, user, 'project.settings.manage')
+            await validate_project_responsibilities(payload.settings, project_id)
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("expected_revision", None)
         if {"planned_start_at", "planned_end_at"} & set(changes):
@@ -278,6 +284,8 @@ class ProjectService:
     async def update_settings(project_id, payload, user):
         
         await get_project(project_id, user, 'project.settings.manage')
+        if payload.settings is not None:
+            await validate_project_responsibilities(payload.settings, project_id)
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("expected_revision", None)
         if not changes:

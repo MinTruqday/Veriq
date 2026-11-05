@@ -18,6 +18,7 @@ export default function ScenarioCreateModal({
   onSubmit,
   title = "Tạo kịch bản",
   readOnly = false,
+  canAssignOwner = true,
   requirements = [],
   members = [],
   canReadTestConditions = false,
@@ -186,9 +187,13 @@ export default function ScenarioCreateModal({
               <select
                 className="apple-input mt-2"
                 value={form.owner_id}
+                disabled={!canAssignOwner}
                 onChange={(event) => update({ owner_id: event.target.value })}
               >
                 <option value="">Chưa phân công</option>
+                {form.owner_id && !members.some((member) => member.user_id === form.owner_id) && (
+                  <option value={form.owner_id}>Người phụ trách hiện tại</option>
+                )}
                 {members
                   .filter((item) => item.status === "ACTIVE")
                   .map((item) => (

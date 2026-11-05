@@ -8,6 +8,7 @@ from pymongo.errors import DuplicateKeyError
 from src.core.auth import ai_automation_context
 from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now, plain_text, resolve_user_reference
 from src.core.database import database
+from src.core.human_decisions import require_independent_review
 from src.repositories.project import project_repository
 from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_clarification import requirement_clarification_repository
@@ -189,8 +190,10 @@ async def _snapshot(requirement_version):
             "test_case_versions": [
                 {
                     "id": case["_id"],
+                    "test_case_id": case.get("test_case_id"),
                     "key": case.get("test_case_key"),
                     "title": case.get("title"),
+                    "version": case.get("version"),
                     "requirement_version_ids": case.get("requirement_version_ids", []),
                     "acceptance_criterion_ids": case.get("acceptance_criterion_ids", []),
                     "techniques": case.get("techniques", []),
@@ -485,6 +488,7 @@ async def approve_adequacy_assessment(assessment_id, payload, user):
     await _require_qa(assessment["project_id"], user)
     if assessment["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
+    require_independent_review(assessment, user, "TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN")
     timestamp = now()
     if not assessment.get("coverage_items"):
         raise HTTPException(status_code=409, detail={"code": "ADEQUACY_NO_COVERAGE_ITEMS"})
@@ -546,6 +550,7 @@ async def request_adequacy_changes(assessment_id, payload, user):
     await _require_qa(assessment["project_id"], user)
     if assessment["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
+    require_independent_review(assessment, user, "TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN")
     value = {"status": "DRAFT", "review_note": payload.note, "changes_requested_by": user.id, "changes_requested_at": now(), "updated_at": now()}
     return await _replace_assessment_with_audit(
         assessment_id, assessment["project_id"], payload.expected_revision, value,

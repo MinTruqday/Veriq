@@ -38,6 +38,7 @@ class VectorStore:
         "artifact_version_id": PayloadSchemaType.KEYWORD,
         "module": PayloadSchemaType.KEYWORD,
         "status": PayloadSchemaType.KEYWORD,
+        "ai_enabled": PayloadSchemaType.BOOL,
         "document_id": PayloadSchemaType.KEYWORD,
         "source_document_id": PayloadSchemaType.KEYWORD,
         "visibility": PayloadSchemaType.KEYWORD,
@@ -228,8 +229,28 @@ class VectorStore:
                         must=[
                             FieldCondition(
                                 key="artifact_type",
+                                match=MatchValue(value="requirement_document"),
+                            ),
+                            FieldCondition(key="ai_enabled", match=MatchValue(value=True)),
+                            FieldCondition(key="status", match=MatchValue(value="READY")),
+                            FieldCondition(
+                                key="document_index_contract_version",
+                                match=MatchValue(
+                                    value=settings.DOCUMENT_INDEX_CONTRACT_VERSION
+                                ),
+                            ),
+                        ]
+                    ),
+                    Filter(
+                        must=[
+                            FieldCondition(
+                                key="artifact_type",
                                 match=MatchAny(
-                                    any=list(DOCUMENT_INDEXED_ARTIFACT_TYPES)
+                                    any=[
+                                        artifact_type
+                                        for artifact_type in DOCUMENT_INDEXED_ARTIFACT_TYPES
+                                        if artifact_type != "requirement_document"
+                                    ]
                                 ),
                             ),
                             FieldCondition(
@@ -238,7 +259,12 @@ class VectorStore:
                                     value=settings.DOCUMENT_INDEX_CONTRACT_VERSION
                                 ),
                             ),
-                        ]
+                        ],
+                        must_not=[
+                            FieldCondition(
+                                key="ai_enabled", match=MatchValue(value=False)
+                            )
+                        ],
                     ),
                 ]
             )

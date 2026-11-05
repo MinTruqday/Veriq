@@ -494,7 +494,7 @@ async def generate_api_tests(operation_id: str, user: CurrentUser):
     ai_result = await request_ai_automation(
         "test_generation",
         operation["project_id"],
-        "Tạo các ca kiểm thử API có bước thực thi cụ thể, dữ liệu đầu vào và kết quả kiểm chứng được. Chỉ dùng hành vi, tham số, schema, bảo mật và mã phản hồi được mô tả trong thao tác API đã xác nhận. Không suy diễn hành vi lỗi hoặc giới hạn không có trong nguồn. Trả trích dẫn nguyên văn từ nguồn cho từng ca.",
+        "Generate API test cases with concrete steps, input data, and verifiable expected results. Use only behavior, parameters, schemas, security requirements, and response codes stated in the confirmed API operation. Do not infer undocumented error behavior or limits. Include an exact source quotation for each case.",
         evidence,
     )
     if ai_result.get("status") != "SUCCESS" or ai_result.get("degraded_mode"):

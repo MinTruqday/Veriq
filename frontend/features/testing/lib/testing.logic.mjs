@@ -210,6 +210,24 @@ const valueLabels = {
   RequirementVersion: "Phiên bản yêu cầu",
   Defect: "Lỗi",
   Build: "Bản dựng",
+  Report: "Báo cáo công việc",
+  ReportSettings: "Cấu hình báo cáo",
+  ReportSchedule: "Lịch báo cáo",
+  ReportTemplate: "Mẫu báo cáo",
+  report_created: "Tạo báo cáo công việc",
+  report_updated: "Cập nhật bản nháp báo cáo",
+  report_submit: "Gửi báo cáo rà soát",
+  report_request_changes: "Yêu cầu sửa báo cáo",
+  report_approve: "Duyệt báo cáo",
+  report_publish: "Phát hành báo cáo",
+  report_archive: "Lưu trữ báo cáo",
+  report_new_version_created: "Tạo phiên bản báo cáo",
+  report_delivery_access_changed: "Cập nhật quyền người nhận báo cáo",
+  report_settings_updated: "Cập nhật cấu hình báo cáo",
+  report_schedule_created: "Tạo lịch báo cáo",
+  report_ai_sections_applied: "Áp dụng nội dung AI đã chọn vào báo cáo",
+  work_item_created: "Tạo công việc",
+  project_business_role_denied: "Từ chối thao tác ngoài vai trò dự án",
   Project: "Dự án",
   RELEASE: "Bản phát hành",
   SPRINT: "Đợt lặp",
@@ -739,6 +757,43 @@ export function messageOf(reason) {
       "Không tìm thấy thư mục ca kiểm thử. Tải lại cấu trúc kho rồi chọn lại.",
     INVALID_STATE_TRANSITION:
       "Trạng thái đã thay đổi nên thao tác này không còn phù hợp. Tải lại dữ liệu rồi thử lại.",
+    PROJECT_RESPONSIBILITY_REQUIRED:
+      "Bạn chưa được phân công thực hiện quyết định này. Liên hệ người quản lý dự án để kiểm tra phân công.",
+    PROJECT_RESPONSIBILITIES_INVALID:
+      "Thông tin người chịu trách nhiệm không hợp lệ. Chọn lại thành viên dự án.",
+    PROJECT_RESPONSIBLE_MEMBER_INVALID:
+      "Người được chọn phải đang hoạt động trong dự án và có vai trò phù hợp.",
+    REVIEW_AUTHORSHIP_UNVERIFIED:
+      "Lịch sử người sửa bản này chưa đầy đủ để xác minh duyệt độc lập. Cần đối chiếu lịch sử trước khi duyệt.",
+    REQUIREMENT_TECHNICAL_REVIEW_REQUIRED:
+      "Cần QA xác nhận rà soát kỹ thuật cho phiên bản hiện tại trước khi xác nhận nghiệp vụ.",
+    DESIGN_ASSIGNMENT_REQUIRED: "Bạn chỉ được soạn nội dung kiểm thử đã được giao cho mình.",
+    DESIGN_REASSIGNMENT_DENIED: "Chỉ người có quyền phân công mới được thay đổi người phụ trách.",
+    DEFECT_TRIAGE_AUTHORITY_REQUIRED:
+      "Việc đổi mức độ, ưu tiên hoặc người phụ trách lỗi cần quyền phân loại lỗi.",
+    DEFECT_ASSIGNMENT_REQUIRED: "Bạn chỉ được sửa lỗi đang được giao cho mình.",
+    TEST_CASE_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa ca này để rà soát không thể tự duyệt. Một QA khác cần xem và quyết định.",
+    TEST_PLAN_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa kế hoạch này để rà soát không thể tự duyệt. Một QA khác cần xem và quyết định.",
+    REQUIREMENT_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa yêu cầu không thể tự xác nhận cùng phiên bản.",
+    TEST_SCENARIO_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa kịch bản rà soát không thể tự duyệt kịch bản đó.",
+    TEST_CONDITION_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa điều kiện rà soát không thể tự duyệt điều kiện đó.",
+    TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa hồ sơ bảo đảm rà soát không thể tự duyệt hồ sơ đó.",
+    TEST_STATUS_REPORT_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa báo cáo trạng thái rà soát không thể tự duyệt báo cáo đó.",
+    TEST_COMPLETION_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa báo cáo hoàn tất rà soát không thể tự duyệt báo cáo đó.",
+    TEST_STRATEGY_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa chiến lược rà soát không thể tự duyệt chiến lược đó.",
+    CAUSAL_ANALYSIS_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa phân tích nguyên nhân rà soát không thể tự duyệt phân tích đó.",
+    QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN:
+      "Người tạo hoặc sửa đánh giá chất lượng rà soát không thể tự duyệt đánh giá đó.",
     PROJECT_MISMATCH:
       "Mục đã chọn không thuộc dự án hiện tại. Tải lại dữ liệu và chọn mục trong đúng dự án.",
     VERIFIED_REQUIREMENT_EVENT_REQUIRED:

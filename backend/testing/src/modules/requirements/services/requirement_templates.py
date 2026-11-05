@@ -787,6 +787,7 @@ async def synthesize_template(project_id, payload, user):
             project_id,
             payload.instruction or "",
             evidence[start : start + 8],
+            output_language=payload.output_language,
         )
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
             raise HTTPException(status_code=503, detail={"code": "TEMPLATE_SYNTHESIS_UNAVAILABLE", "warnings": result.get("warnings", [])})

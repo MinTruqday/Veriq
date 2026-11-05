@@ -86,7 +86,7 @@ export async function testingImageRequest(path) {
   return response.blob();
 }
 
-export async function automationRequest(path, options = {}) {
+export async function agentWorkflowRequest(path, options = {}) {
   const response = await authenticatedFetch(`${API_URL}/tu-dong-hoa-ai${path}`, {
     ...options,
     headers: {
@@ -98,10 +98,32 @@ export async function automationRequest(path, options = {}) {
   if (!response.ok) {
     refreshProjectAccessAfterDenial(path, response.status, body?.detail, body?.detail?.code);
     const detail = body?.detail;
-    const error = new Error(userFacingError(detail?.message, "Không thể hoàn tất tự động hóa AI"));
+    const error = new Error(userFacingError(detail?.message, "Không thể hoàn tất lượt AI Agent"));
     error.status = response.status;
     error.code = detail?.code;
     error.details = detail?.latest;
+    throw error;
+  }
+  return body;
+}
+
+export async function agentRequest(path, options = {}) {
+  const response = await authenticatedFetch(`${API_URL}/tac-tu${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    refreshProjectAccessAfterDenial(path, response.status, body?.detail, body?.detail?.code);
+    const error = new Error(
+      userFacingError(body?.detail?.message, "Không thể bắt đầu lượt AI Agent"),
+    );
+    error.status = response.status;
+    error.code = body?.detail?.code;
+    error.details = body?.detail?.latest;
     throw error;
   }
   return body;

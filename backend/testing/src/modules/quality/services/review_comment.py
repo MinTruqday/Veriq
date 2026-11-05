@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
-from src.core.common import audit, get_project, get_project_entity, new_id, now
+from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now
 from src.repositories.review import review_repository
 from src.schemas.contracts.requirements import (
     ReviewCommentAction,
@@ -14,9 +14,27 @@ from src.schemas.contracts.requirements import (
 
 
 class ReviewCommentService:
+    ARTIFACT_ACCESS = {
+        "requirement_version": ("requirement_versions", "requirement.read"),
+        "test_case_draft": ("test_case_drafts", "testcase.read"),
+    }
+
+    @staticmethod
+    async def _require_artifact_read(project_id, artifact_type, artifact_id, user):
+        access = ReviewCommentService.ARTIFACT_ACCESS.get(artifact_type)
+        if not access:
+            raise HTTPException(status_code=422, detail={"code": "COMMENT_ARTIFACT_TYPE_INVALID"})
+        collection, permission = access
+        artifact = await get_project_entity(collection, artifact_id, user, permission)
+        if artifact.get("project_id") != project_id:
+            raise HTTPException(status_code=404, detail={"code": "COMMENT_ARTIFACT_NOT_FOUND"})
+
     @staticmethod
     async def create(project_id: str, payload: ReviewCommentCreate, user: CurrentUser):
         await get_project(project_id, user, 'comment.create')
+        await ReviewCommentService._require_artifact_read(
+            project_id, payload.artifact_type, payload.artifact_id, user
+        )
         if payload.parent_comment_id:
             parent = await review_repository.find_comment(
                 payload.parent_comment_id, project_id
@@ -55,6 +73,14 @@ class ReviewCommentService:
         user: CurrentUser,
     ):
         await get_project(project_id, user, 'comment.read')
+        if artifact_type or artifact_id:
+            if not artifact_type or not artifact_id:
+                raise HTTPException(status_code=422, detail={"code": "COMMENT_ARTIFACT_SCOPE_REQUIRED"})
+            await ReviewCommentService._require_artifact_read(
+                project_id, artifact_type, artifact_id, user
+            )
+        elif "VIEWER" in await get_project_roles(project_id, user.id):
+            raise HTTPException(status_code=403, detail={"code": "COMMENT_ARTIFACT_SCOPE_REQUIRED"})
         query = {"project_id": project_id}
         if artifact_type:
             query["artifact_type"] = artifact_type

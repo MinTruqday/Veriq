@@ -476,6 +476,11 @@ def direct_document_ingestion_task(run, state, evidence_refs):
                 constraints={
                     "workflow_terminal": not mcp_read_enabled,
                     "resume_after_clarification": bool(clarification_responses),
+                    **(
+                        {"output_language": constraints["output_language"]}
+                        if constraints.get("output_language")
+                        else {}
+                    ),
                 },
                 tool_calls=[
                     ToolCall(

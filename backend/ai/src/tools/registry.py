@@ -26,6 +26,7 @@ def with_tool_access(
     label: str | None = None,
     user_selectable: bool = False,
     description: str | None = None,
+    draft_only: bool = False,
 ) -> Callable:
     def decorate(function: Callable):
         value = tool(function, description=description) if description else tool(function)
@@ -37,6 +38,7 @@ def with_tool_access(
             "verification": verification,
             "label": label or function.__name__,
             "user_selectable": user_selectable,
+            "draft_only": draft_only,
         }
         return value
 
@@ -52,6 +54,13 @@ def tool_access(value) -> ToolAccess | None:
         return None
 
 
+def requires_human_decision(permission: str) -> bool:
+    return permission.endswith((".approve", ".submit_review", ".publish", ".confirm", ".decide")) or permission in {
+        "proposal.bulk.approve", "release.close", "qualitygate.decide",
+        "qualitygate.accept_risk", "qualitygate.override",
+    }
+
+
 @lru_cache(maxsize=1)
 def registered_tools():
     from src.tools import tools
@@ -63,6 +72,10 @@ def authorize_tool(task, tool_name, permissions):
     access = tool_access(registered_tools().get(tool_name))
     if not access:
         return ToolDecision(allowed=False, reason_code="TOOL_UNAVAILABLE")
+    if requires_human_decision(access.permission):
+        return ToolDecision(allowed=False, reason_code="HUMAN_DECISION_REQUIRED", access=access)
+    if access.action == "MUTATE" and not access.draft_only:
+        return ToolDecision(allowed=False, reason_code="AGENT_DRAFT_SCOPE_REQUIRED", access=access)
     if task.domain not in access.domains:
         return ToolDecision(allowed=False, reason_code="TOOL_DOMAIN_DENIED", access=access)
     if access.permission not in permissions:
@@ -250,6 +263,12 @@ async def invoke_tool(
             "user_id": task.user_id,
             "evidence": evidence or [],
             "permissions": permissions,
+            **(
+                {"output_language": task.constraints["output_language"]}
+                if isinstance(task.constraints, dict)
+                and task.constraints.get("output_language")
+                else {}
+            ),
         }
     if automation_run_id:
         configurable["automation_run_id"] = automation_run_id

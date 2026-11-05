@@ -27,6 +27,8 @@ from src.modules.design.services.test_case_custom_fields import (
     validate_test_case_custom_values,
 )
 from src.schemas.contracts.design import TestCaseDraftCreate
+from src.core.human_decisions import content_authorship_changes
+from src.modules.design.services.design_authorization import require_assigned_design_draft, require_test_case_creation_scope
 
 
 def project_test_text(value):
@@ -357,8 +359,8 @@ async def create_test_case_draft_record(
     draft_id=None,
 ):
     
-    await get_project(project_id, user, "testcase.create")
-    if payload.owner_id:
+    payload = await require_test_case_creation_scope(project_id, payload, user)
+    if payload.owner_id and payload.owner_id != user.id:
         await get_project(project_id, user, "project.members.read")
     owner_id = await validate_test_case_owner(project_id, payload.owner_id)
     if owner_id != payload.owner_id:
@@ -530,6 +532,8 @@ async def create_test_case_draft_record(
         "status": 'DRAFT',
         "revision": 1,
         "created_by": user.id,
+        "content_author_ids": [user.id],
+        "content_authorship_status": "VERIFIED",
         "created_at": now(),
         "updated_at": now(),
     }
@@ -541,6 +545,7 @@ async def create_test_case_draft_record(
     from src.clients.ai_automation import emit_test_case_changed
 
     async def persist(active_session):
+        await require_test_case_creation_scope(project_id, payload, user)
         await test_design_repository.insert_case_draft(draft, session=active_session)
         await audit(
             user.id,
@@ -719,7 +724,10 @@ async def create_generated_test_case_draft_batch(
 
 async def update_test_case_draft_record(draft_id, payload, user, project_id=None, session=None):
     
-    draft = await get_project_entity("test_case_drafts", draft_id, user, "testcase.update")
+    draft = await require_assigned_design_draft(
+        "test_case_drafts", draft_id, user, "testcase.update",
+        payload.model_dump(exclude_unset=True),
+    )
     if project_id is not None and draft["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     if draft["status"] != 'DRAFT':
@@ -807,6 +815,8 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
             "evidence_quotes": verified_citations["evidence_quotes"],
         })
     from src.clients.ai_automation import emit_test_case_changed
+
+    changes.update(content_authorship_changes(draft, user, changes))
 
     async def persist(active_session):
         return await optimistic_patch(

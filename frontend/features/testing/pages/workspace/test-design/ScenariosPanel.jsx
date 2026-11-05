@@ -30,6 +30,8 @@ export default function ScenariosPanel({
   requirements = [],
   members = [],
   canReview = false,
+  canEdit = () => can("testscenario.update"),
+  canAssignOwner = true,
   canReadTestConditions = false,
 }) {
   const [selected, setSelected] = useState(null);
@@ -89,7 +91,8 @@ export default function ScenariosPanel({
             if (!savingEdit) setSelected(null);
           }}
           saving={savingEdit}
-          readOnly={selected.status !== "draft" || !can("testscenario.update")}
+          readOnly={selected.status !== "draft" || !canEdit(selected)}
+          canAssignOwner={canAssignOwner}
           testConditions={testConditions}
           requirements={requirements}
           members={members}
@@ -225,31 +228,31 @@ export default function ScenariosPanel({
             hideWhenEmpty: true,
             render: (item) => (
               <span className="flex flex-wrap gap-2">
-                {canReview &&
-                  can("testscenario.update") &&
-                  [
-                    ...(item.status === "draft" ? [["gui-ra-soat", "Gửi rà soát", Send]] : []),
-                    ...(item.status === "in_review"
-                      ? [
-                          ["phe-duyet", "Duyệt kịch bản", Check],
-                          ["yeu-cau-chinh-sua", "Yêu cầu chỉnh sửa", RotateCcw],
-                        ]
-                      : []),
-                  ].map(([action, label, Icon]) => (
-                    <button
-                      key={action}
-                      type="button"
-                      className="icon-button h-9 w-9"
-                      title={label}
-                      aria-label={`${label} ${item.title}`}
-                      onClick={async (event) => {
-                        event.stopPropagation();
-                        await transition(item, action, label);
-                      }}
-                    >
-                      <Icon aria-hidden="true" size={16} />
-                    </button>
-                  ))}
+                {[
+                  ...(item.status === "draft" && canEdit(item)
+                    ? [["gui-ra-soat", "Gửi rà soát", Send]]
+                    : []),
+                  ...(item.status === "in_review" && canReview && can("testscenario.update")
+                    ? [
+                        ["phe-duyet", "Duyệt kịch bản", Check],
+                        ["yeu-cau-chinh-sua", "Yêu cầu chỉnh sửa", RotateCcw],
+                      ]
+                    : []),
+                ].map(([action, label, Icon]) => (
+                  <button
+                    key={action}
+                    type="button"
+                    className="icon-button h-9 w-9"
+                    title={label}
+                    aria-label={`${label} ${item.title}`}
+                    onClick={async (event) => {
+                      event.stopPropagation();
+                      await transition(item, action, label);
+                    }}
+                  >
+                    <Icon aria-hidden="true" size={16} />
+                  </button>
+                ))}
                 {can("testscenario.clone") && (
                   <button
                     className="icon-button h-9 w-9"

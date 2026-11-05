@@ -7,6 +7,13 @@ import {
 } from "./testing.transport";
 
 export const executionTestingApi = {
+  listReportAssignments: (projectId, offset = 0) =>
+    testingRequest(`/du-an/${projectId}/bao-cao-cong-viec/phan-cong?limit=50&offset=${offset}`),
+  updateReportAssignments: (reportId, payload) =>
+    testingRequest(`/bao-cao-cong-viec/${reportId}/phan-cong`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   listJUnitResultImports: (projectId) =>
     testingRequest(`/du-an/${projectId}/ket-qua-tu-dong/junit`),
   importJUnitResult: (projectId, testRunId, file) => {
@@ -338,6 +345,11 @@ export const executionTestingApi = {
       `/du-an/${projectId}/ai/goi-y-truy-vet${query.size ? `?${query.toString()}` : ""}`,
     );
   },
+  suggestDefectTrace: (projectId, defectId, payload) =>
+    testingRequest(`/du-an/${projectId}/ai/loi/${defectId}/goi-y-truy-vet`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   updateDefectTrace: (projectId, defectId, payload) =>
     testingRequest(`/du-an/${projectId}/loi/${defectId}/truy-vet`, {
       method: "PATCH",

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Archive,
   Copy,
@@ -58,7 +58,7 @@ import {
   unreviewedAiDrafts,
 } from "./test-design/testCaseApproval.logic.mjs";
 import TestCaseTransferPanel from "./test-design/TestCaseTransferPanel";
-import { testDesignAccess } from "./test-design/testDesignAccess.logic.mjs";
+import { canUseAssignedDraft, testDesignAccess } from "./test-design/testDesignAccess.logic.mjs";
 import TestAdequacyPanel from "./design/TestAdequacyPanel";
 import TestRepositoryPanel from "./test-design/TestRepositoryPanel";
 import {
@@ -92,8 +92,11 @@ function ChallengeProvenance({ challenges }) {
 }
 
 export default function TestDesignPage({ project, workspaceView }) {
+  const currentUserId = project.current_membership?.user_id;
   const { ask, dialog } = useActionDialog();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const linkedCaseId = searchParams.get("case") || "";
   const [requirements, setRequirements] = useState([]);
   const [testConditions, setTestConditions] = useState([]);
   const [scenarios, setScenarios] = useState([]);
@@ -175,6 +178,14 @@ export default function TestDesignPage({ project, workspaceView }) {
   const testImportPanelRef = useRef(null);
   const can = (permission) => project.current_permissions?.includes(permission);
   const memberRoles = [project.current_membership?.project_role].filter(Boolean);
+  const isTester = memberRoles.includes("TESTER");
+  const canDraft = (permission, draft) => canUseAssignedDraft(project, draft, permission);
+  const assignedScenarios = scenarios.filter(
+    (scenario) => scenario.owner_id === currentUserId && scenario.status !== "archived",
+  );
+  const canCreateCase = isTester
+    ? assignedScenarios.some((scenario) => canDraft("testscenario.update", scenario))
+    : can("testcase.create");
   const canManageTestCaseFields = can("testcase.template.manage") && memberRoles.includes("QA");
   const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
   const permissions = useMemo(
@@ -321,7 +332,7 @@ export default function TestDesignPage({ project, workspaceView }) {
         showApi && permissions.includes("apiartifact.read")
           ? testingApi.listApiOperations(project._id)
           : Promise.resolve([]),
-        (showCases || showScenarios) && permissions.includes("project.members.read")
+        (showCases || showScenarios || showAdequacy) && permissions.includes("project.members.read")
           ? testingApi
               .listMembers(project._id)
               .then((items) => ({ items: items || [], unavailable: false }))
@@ -414,6 +425,23 @@ export default function TestDesignPage({ project, workspaceView }) {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (!linkedCaseId || !showCases || !canReadTestCases) return;
+    let active = true;
+    setSelectedTestId(linkedCaseId);
+    setTestVersions([]);
+    testingApi
+      .listTestVersions(linkedCaseId)
+      .then((versions) => {
+        if (active) setTestVersions(versions);
+      })
+      .catch((reason) => {
+        if (active) setError(messageOf(reason));
+      });
+    return () => {
+      active = false;
+    };
+  }, [canReadTestCases, linkedCaseId, showCases]);
   const canReadAutomationRuns =
     permissions.includes("automation.read") || permissions.includes("proposal.read");
   useEffect(() => {
@@ -1083,7 +1111,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       comparisonDraftId ||
       selectedDraft?.status !== "DRAFT" ||
       !draftEdit ||
-      !project.current_permissions?.includes("testcase.update")
+      !canUseAssignedDraft(project, selectedDraft, "testcase.update")
     )
       return undefined;
     const sequence = draftSequence.current;
@@ -1091,14 +1119,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       void persistDraft(draftEdit, sequence);
     }, 1500);
     return () => window.clearTimeout(timer);
-  }, [
-    draftDirty,
-    draftEdit,
-    persistDraft,
-    project.current_permissions,
-    selectedDraft?.status,
-    comparisonDraftId,
-  ]);
+  }, [draftDirty, draftEdit, persistDraft, project, selectedDraft, comparisonDraftId]);
   const pageTitle =
     workspaceView === "repository"
       ? "Kho kiểm thử"
@@ -1148,7 +1169,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
-          {showCases && can("testcase.create") && (
+          {showCases && canCreateCase && (
             <button className="apple-button" type="button" onClick={() => setCreatingTest(true)}>
               Tạo ca kiểm thử
             </button>
@@ -1211,7 +1232,9 @@ export default function TestDesignPage({ project, workspaceView }) {
       )}
       {showAdequacy && selectedRequirement && (
         <TestAdequacyPanel
+          projectId={project._id}
           requirementVersionId={selectedRequirement}
+          members={projectMembers}
           canDecide={memberRoles.includes("QA") && can("testcase.read")}
           canCreateClarification={memberRoles.includes("QA") && can("requirement.review")}
           canApprove={memberRoles.includes("QA") && can("testcase.review")}
@@ -1267,7 +1290,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       )}
       {showAgentRuns && canReadAutomationRuns && (
         <div id="automation-run-details">
-          <AgentRunPanel project={project} showDefinitions={false} />
+          <AgentRunPanel project={project} />
         </div>
       )}
       {showTemplates && can("testcase.template.read") && (
@@ -1291,14 +1314,24 @@ export default function TestDesignPage({ project, workspaceView }) {
             <Panel title="Ca kiểm thử chưa phê duyệt">
               <div className="space-y-4 p-4 sm:p-5">
                 {can("testcase.approve") &&
-                  actionableDrafts.some((item) => item.status === "IN_REVIEW") && (
+                  actionableDrafts.some(
+                    (item) =>
+                      item.status === "IN_REVIEW" &&
+                      item.created_by !== currentUserId &&
+                      item.review_submitted_by !== currentUserId,
+                  ) && (
                     <div className="space-y-3">
                       <p className="text-sm text-ink-muted">
                         Chọn các ca cần duyệt. Chỉ ca hợp lệ mới được công bố.
                       </p>
                       <DataTable
                         onSelect={(item) => setSelectedDraftId(item._id)}
-                        items={actionableDrafts.filter((item) => item.status === "IN_REVIEW")}
+                        items={actionableDrafts.filter(
+                          (item) =>
+                            item.status === "IN_REVIEW" &&
+                            item.created_by !== currentUserId &&
+                            item.review_submitted_by !== currentUserId,
+                        )}
                         selectedIds={selectedApprovalDraftIds}
                         onSelectionChange={setSelectedApprovalDraftIds}
                         selectionLabel="Chọn ca chờ duyệt"
@@ -1416,18 +1449,19 @@ export default function TestDesignPage({ project, workspaceView }) {
                         hideWhenEmpty: true,
                         render: (item) => (
                           <span className="flex flex-wrap gap-2">
-                            {item.status === "DRAFT" && can("testcase.submit_review") && (
-                              <button
-                                className="secondary-button"
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void reviewDraft(item, "submit");
-                                }}
-                              >
-                                Gửi rà soát
-                              </button>
-                            )}
+                            {item.status === "DRAFT" &&
+                              canDraft("testcase.submit_review", item) && (
+                                <button
+                                  className="secondary-button"
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void reviewDraft(item, "submit");
+                                  }}
+                                >
+                                  Gửi rà soát
+                                </button>
+                              )}
                             {item.status === "IN_REVIEW" && can("testcase.review") && (
                               <button
                                 className="secondary-button"
@@ -1440,28 +1474,31 @@ export default function TestDesignPage({ project, workspaceView }) {
                                 Yêu cầu sửa
                               </button>
                             )}
-                            {item.status === "IN_REVIEW" && can("testcase.approve") && (
-                              <button
-                                className="apple-button"
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  if (
-                                    unreviewedAiDrafts([item], comparedApprovalDraftRevisions)
-                                      .length
-                                  ) {
-                                    setError("");
-                                    setComparisonDraftId(item._id);
-                                  } else {
-                                    void freeze(item);
-                                  }
-                                }}
-                              >
-                                {unreviewedAiDrafts([item], comparedApprovalDraftRevisions).length
-                                  ? "Đối chiếu trước khi duyệt"
-                                  : "Phê duyệt"}
-                              </button>
-                            )}
+                            {item.status === "IN_REVIEW" &&
+                              item.created_by !== currentUserId &&
+                              item.review_submitted_by !== currentUserId &&
+                              can("testcase.approve") && (
+                                <button
+                                  className="apple-button"
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    if (
+                                      unreviewedAiDrafts([item], comparedApprovalDraftRevisions)
+                                        .length
+                                    ) {
+                                      setError("");
+                                      setComparisonDraftId(item._id);
+                                    } else {
+                                      void freeze(item);
+                                    }
+                                  }}
+                                >
+                                  {unreviewedAiDrafts([item], comparedApprovalDraftRevisions).length
+                                    ? "Đối chiếu trước khi duyệt"
+                                    : "Phê duyệt"}
+                                </button>
+                              )}
                           </span>
                         ),
                       },
@@ -2018,7 +2055,7 @@ export default function TestDesignPage({ project, workspaceView }) {
             )}
           </div>
           <Panel
-            title={`${can("testcase.update") && selectedDraft.status === "DRAFT" ? "Biên tập" : "Chi tiết"} ${selectedDraft.test_case_key}`}
+            title={`${canDraft("testcase.update", selectedDraft) && selectedDraft.status === "DRAFT" ? "Biên tập" : "Chi tiết"} ${selectedDraft.test_case_key}`}
           >
             <div className="border-b border-border px-5 py-3">
               <ContentOriginBadge origin={selectedDraft.origin || "manual"} />
@@ -2047,7 +2084,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                   dung hiện tại; hãy rà soát lại căn cứ trước khi duyệt.
                 </p>
               )}
-            {can("testcase.update") && selectedDraft.status === "DRAFT" ? (
+            {canDraft("testcase.update", selectedDraft) && selectedDraft.status === "DRAFT" ? (
               <div className="grid gap-4 p-5 lg:grid-cols-2">
                 <label className="field-label lg:col-span-2">
                   Tên ca kiểm thử
@@ -2317,22 +2354,23 @@ export default function TestDesignPage({ project, workspaceView }) {
                 <div className="space-y-4 lg:col-span-2">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="field-label">Các bước kiểm thử</p>
-                    {selectedDraft.status === "DRAFT" && can("testcase.update") && (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() =>
-                          changeDraftEdit({
-                            steps: [
-                              ...draftEdit.steps,
-                              { id: crypto.randomUUID(), action: "", data: {}, expected: "" },
-                            ],
-                          })
-                        }
-                      >
-                        Thêm bước
-                      </button>
-                    )}
+                    {selectedDraft.status === "DRAFT" &&
+                      canDraft("testcase.update", selectedDraft) && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() =>
+                            changeDraftEdit({
+                              steps: [
+                                ...draftEdit.steps,
+                                { id: crypto.randomUUID(), action: "", data: {}, expected: "" },
+                              ],
+                            })
+                          }
+                        >
+                          Thêm bước
+                        </button>
+                      )}
                   </div>
                   {draftEdit.steps.map((step, index) => (
                     <fieldset
@@ -2378,7 +2416,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                         />
                       </div>
                       {selectedDraft.status === "DRAFT" &&
-                        can("testcase.update") &&
+                        canDraft("testcase.update", selectedDraft) &&
                         draftEdit.steps.length > 1 && (
                           <button
                             className="secondary-button w-fit"
@@ -2498,7 +2536,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                 <div>
                   <label className="field-label">
                     Người phụ trách ca kiểm thử
-                    {permissions.includes("project.members.read") ? (
+                    {!isTester && permissions.includes("project.members.read") ? (
                       <>
                         <select
                           aria-label="Người phụ trách ca kiểm thử"
@@ -2539,7 +2577,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       </p>
                     )}
                   </label>
-                  {permissions.includes("project.members.read") && (
+                  {!isTester && permissions.includes("project.members.read") && (
                     <TestCaseOwnerRecommendation
                       projectId={project._id}
                       draftId={selectedDraft._id}
@@ -2584,7 +2622,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                     </span>
                   ))}
                 </div>
-                {selectedDraft.status === "DRAFT" && can("testcase.update") && (
+                {selectedDraft.status === "DRAFT" && canDraft("testcase.update", selectedDraft) && (
                   <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
                     <button
                       className="secondary-button w-fit"
@@ -2715,7 +2753,10 @@ export default function TestDesignPage({ project, workspaceView }) {
           draftId={comparisonDraftId}
           recoveryIdentity={project.current_membership?.user_id}
           projectId={project._id}
-          canEdit={can("testcase.update")}
+          canEdit={canDraft(
+            "testcase.update",
+            actionableDrafts.find((item) => item._id === comparisonDraftId),
+          )}
           canReadMembers={can("project.members.read")}
           canManageAttachments={can("attachment.manage")}
           onClose={() => setComparisonDraftId("")}
@@ -2731,7 +2772,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           }}
         />
       )}
-      {showCases && can("testcase.create") && (
+      {showCases && canCreateCase && (
         <TestCaseCreateModal
           projectId={project._id}
           isOpen={creatingTest}
@@ -2747,9 +2788,10 @@ export default function TestDesignPage({ project, workspaceView }) {
           reusableSteps={reusableSteps}
           customFields={testCaseCustomFields}
           requirements={requirements}
-          scenarios={scenarios}
+          scenarios={isTester ? assignedScenarios : scenarios}
+          scenarioRequired={isTester}
           members={projectMembers}
-          canReadMembers={permissions.includes("project.members.read")}
+          canReadMembers={!isTester && permissions.includes("project.members.read")}
           membersUnavailable={projectMembersUnavailable}
           onSubmit={create}
         />
@@ -2780,6 +2822,8 @@ export default function TestDesignPage({ project, workspaceView }) {
           requirements={requirements}
           members={projectMembers}
           canReview={memberRoles.includes("QA")}
+          canEdit={(scenario) => canDraft("testscenario.update", scenario)}
+          canAssignOwner={!isTester}
           canReadTestConditions={permissions.includes("testcondition.read")}
           ask={ask}
           reload={load}

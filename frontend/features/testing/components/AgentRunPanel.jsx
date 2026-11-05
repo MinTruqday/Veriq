@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import {
   automationAuthorizationGuidance,
   canResumeAutomationRun,
@@ -13,6 +14,7 @@ import {
   workflowForSelectedRun,
 } from "../lib/automationRun.logic.mjs";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { preferredSummaryLocale } from "../lib/summaryLanguage";
 import { testingApi } from "../services/testing.service";
 import { ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
@@ -76,26 +78,16 @@ function isOlderRunSnapshot(incoming, current) {
   );
 }
 
-export default function AgentRunPanel({ project, showDefinitions = true, compact = false }) {
+export default function AgentRunPanel({ project, compact = false }) {
+  const { user } = useAuth();
   const currentUserId = project.current_membership?.user_id;
-  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const permissions = project.current_permissions || [];
-  const canManageDefinitions =
-    showDefinitions &&
-    memberRoles.some((role) => ["BA", "QA"].includes(role)) &&
-    permissions.includes("automation.create");
+  const permissionKey = permissions.join("|");
   const canReadProjectRuns = permissions.includes("proposal.read");
   const canReadOwnRuns = permissions.includes("automation.read");
-  const canReadDefinitions = showDefinitions && permissions.includes("automation.read");
   const canViewRun = (item) => canReadProjectRuns || item?.requester_user_id === currentUserId;
-  const [definitions, setDefinitions] = useState([]);
   const [recentRuns, setRecentRuns] = useState([]);
-  const [triggers, setTriggers] = useState([]);
-  const [automationActions, setAutomationActions] = useState([]);
-  const [definitionName, setDefinitionName] = useState("");
-  const [trigger, setTrigger] = useState("");
-  const [objective, setObjective] = useState("");
-  const [selectedActions, setSelectedActions] = useState([]);
+  const [agentCapabilities, setAgentCapabilities] = useState([]);
   const [run, setRun] = useState(null);
   const [workflow, setWorkflow] = useState(null);
   const [checkpoints, setCheckpoints] = useState([]);
@@ -109,6 +101,10 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
   const [runsRefreshError, setRunsRefreshError] = useState("");
   const [detailRefreshError, setDetailRefreshError] = useState("");
   const [initialLoadAttempt, setInitialLoadAttempt] = useState(0);
+  const [agentInstruction, setAgentInstruction] = useState("");
+  const [startingAgent, setStartingAgent] = useState(false);
+  const [agentStartError, setAgentStartError] = useState("");
+  const agentIdempotencyKey = useRef("");
   const detailRequestVersion = useRef(0);
   const runListRequestVersion = useRef(0);
   const selectedRunIdRef = useRef(null);
@@ -122,11 +118,8 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
     setError("");
     setRunsRefreshError("");
     setDetailRefreshError("");
-    setDefinitions([]);
     setRecentRuns([]);
-    setTriggers([]);
-    setAutomationActions([]);
-    setSelectedActions([]);
+    setAgentCapabilities([]);
     setRun(null);
     selectedRunIdRef.current = null;
     selectedRunSnapshotRef.current = null;
@@ -137,22 +130,18 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
     setClarificationAnswers({});
     setSubmittingClarification("");
     Promise.allSettled([
-      canReadDefinitions ? testingApi.listAutomationDefinitions(project._id) : Promise.resolve([]),
-      canManageDefinitions ? testingApi.listAutomationTriggers() : Promise.resolve([]),
-      canManageDefinitions ? testingApi.listAutomationActions() : Promise.resolve([]),
       canReadProjectRuns || canReadOwnRuns
         ? testingApi.listAutomationRuns(project._id)
         : Promise.resolve([]),
+      testingApi.listAgentCapabilities(project._id),
     ])
       .then((results) => {
         if (!active) return;
         const values = results.map((result) => (result.status === "fulfilled" ? result.value : []));
-        setDefinitions(values[0]);
-        setTriggers(values[1]);
-        setAutomationActions(values[2]);
         if (listRequestVersion === runListRequestVersion.current) {
-          setRecentRuns(values[3]);
+          setRecentRuns(values[0]);
         }
+        setAgentCapabilities(values[1]);
         setError(
           results
             .filter((result) => result.status === "rejected")
@@ -160,8 +149,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
             .filter(Boolean)
             .join(" · "),
         );
-        const availableTriggers = values[1];
-        setTrigger((current) => current || availableTriggers[0] || "");
       })
       .finally(() => active && setLoading(false));
     return () => {
@@ -171,20 +158,13 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
       }
     };
   }, [
-    canManageDefinitions,
     canReadOwnRuns,
     canReadProjectRuns,
-    canReadDefinitions,
     currentUserId,
     initialLoadAttempt,
     project._id,
+    permissionKey,
   ]);
-
-  const refreshDefinitions = async () => {
-    if (!canReadDefinitions) return;
-    const values = await testingApi.listAutomationDefinitions(project._id);
-    setDefinitions(values);
-  };
 
   const refreshRuns = useCallback(async () => {
     if (!canReadProjectRuns && !canReadOwnRuns) return;
@@ -408,45 +388,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
     };
   }, [run, workflow?.active_count, refreshRuns]);
 
-  const saveDefinition = async () => {
-    if (!definitionName.trim() || !objective.trim() || !trigger) return;
-    setBusy(true);
-    setError("");
-    try {
-      await testingApi.createAutomationDefinition({
-        project_id: project._id,
-        name: definitionName.trim(),
-        trigger,
-        objective: objective.trim(),
-        actions: selectedActions,
-      });
-      setDefinitionName("");
-      setObjective("");
-      setSelectedActions([]);
-      await refreshDefinitions();
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const toggleDefinition = async (definition) => {
-    setBusy(true);
-    setError("");
-    try {
-      await testingApi.updateAutomationDefinition(definition.definition_id, {
-        expected_revision: definition.revision,
-        enabled: !definition.enabled,
-      });
-      await refreshDefinitions();
-    } catch (reason) {
-      setError(messageOf(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const retry = async () => {
     if (!run) return;
     const runId = run.automation_run_id;
@@ -592,24 +533,55 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
   );
   const busyRun = run && activeStatuses.has(run.status);
   const visibleRuns = recentRuns.filter(canViewRun);
-  const visibleDefinitions = canReadDefinitions ? definitions : [];
   const canControlRun = run?.requester_user_id === currentUserId;
   const canAnswerClarification = permissions.includes("requirement.update");
   const canResumeRun = canControlRun && canResumeAutomationRun(run, checkpoints, currentUserId);
-  const canShowRunControls = canManageDefinitions || (busyRun && canControlRun) || canResumeRun;
+  const canShowRunControls = (busyRun && canControlRun) || canResumeRun;
   const uncertainties = latestAutomationUncertainties(checkpoints);
   const mcpDiscoveryIssues = automationMcpDiscoveryIssues(run);
   const sourceExtractionGaps = automationSourceExtractionGaps(run);
   const authorizationGuidance = automationAuthorizationGuidance(run);
-  const showCompactEmptyState =
-    compact && !loading && !error && visibleRuns.length === 0 && visibleDefinitions.length === 0;
+  const showCompactEmptyState = compact && !loading && !error && visibleRuns.length === 0;
+  const canStartAgent = agentCapabilities.length > 0;
+  const startAgentRun = async () => {
+    const instruction = agentInstruction.trim();
+    if (!instruction || startingAgent) return;
+    setStartingAgent(true);
+    setAgentStartError("");
+    try {
+      if (!agentIdempotencyKey.current) {
+        agentIdempotencyKey.current = `agent-${crypto.randomUUID()}`;
+      }
+      const started = await testingApi.createAgentRun({
+        project_id: project._id,
+        objective: instruction,
+        intent: "",
+        target_artifact_ids: [],
+        evidence: [],
+        output_language: preferredSummaryLocale(user?.locale, project.locale, navigator.language),
+        idempotency_key: agentIdempotencyKey.current,
+      });
+      agentIdempotencyKey.current = "";
+      setAgentInstruction("");
+      try {
+        await refreshRuns();
+      } catch (reason) {
+        setRunsRefreshError(messageOf(reason));
+      }
+      if (started?.automation_run_id) await loadRun(started.automation_run_id);
+    } catch (reason) {
+      setAgentStartError(messageOf(reason));
+    } finally {
+      setStartingAgent(false);
+    }
+  };
 
   return (
     <Panel
       title={
         compact ? (
           <span className="flex w-full flex-wrap items-center justify-between gap-3">
-            <span>Hoạt động AI</span>
+            <span>AI Agent</span>
             <Link
               className="text-sm font-medium text-brand hover:text-brand-hover"
               href={`/du-an/${encodeURIComponent(project._id)}/ra-soat-ai`}
@@ -617,14 +589,40 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
               Xem tất cả
             </Link>
           </span>
-        ) : showDefinitions ? (
-          "Hoạt động AI"
         ) : (
-          "Lịch sử hoạt động"
+          "AI Agent"
         )
       }
     >
       <div className={`grid gap-3 px-4 ${compact ? "py-3" : "pb-4 pt-3"}`}>
+        {!compact && canStartAgent && (
+          <form
+            className="grid gap-3 rounded-control border border-border p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void startAgentRun();
+            }}
+          >
+            <label className="grid gap-2 text-sm font-medium text-ink">
+              Bạn cần Agent hỗ trợ việc gì?
+              <textarea
+                className="apple-input min-h-24"
+                maxLength={4000}
+                value={agentInstruction}
+                onChange={(event) => setAgentInstruction(event.target.value)}
+                placeholder="Mô tả kết quả cần có. Agent sẽ kiểm tra căn cứ và quyền hiện tại trước khi làm."
+              />
+            </label>
+            {agentStartError && <ErrorState message={agentStartError} />}
+            <button
+              className="primary-button justify-self-start"
+              type="submit"
+              disabled={startingAgent || !agentInstruction.trim()}
+            >
+              {startingAgent ? "Đang bắt đầu…" : "Bắt đầu với AI Agent"}
+            </button>
+          </form>
+        )}
         {error && (
           <div className="grid gap-2">
             <ErrorState message={error} />
@@ -669,80 +667,8 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
           ) : (
             <LoadingState />
           ))}
-        {canManageDefinitions && (
-          <>
-            <label className="grid gap-2 text-sm font-medium text-ink">
-              Tên quy tắc tự động hóa
-              <input
-                className="apple-input"
-                value={definitionName}
-                onChange={(event) => setDefinitionName(event.target.value)}
-                placeholder="Rà soát yêu cầu khi có thay đổi"
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-medium text-ink">
-              Sự kiện kích hoạt
-              <select
-                className="apple-input"
-                value={trigger}
-                onChange={(event) => setTrigger(event.target.value)}
-              >
-                {triggers.map((item) => (
-                  <option value={item} key={item}>
-                    {valueLabel(item)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium text-ink">
-              Phạm vi AI xử lý
-              <textarea
-                className="apple-input min-h-24"
-                value={objective}
-                onChange={(event) => setObjective(event.target.value)}
-                placeholder="Mô tả kết quả quy tắc cần tạo từ sự kiện này"
-              />
-            </label>
-            {automationActions.length > 0 && (
-              <fieldset className="grid gap-2 rounded-control border border-border p-3">
-                <legend className="px-1 text-sm font-medium text-ink">Phạm vi thao tác</legend>
-                <p className="text-sm text-ink-muted">
-                  Luồng chính của sự kiện vẫn chạy. Các lựa chọn này chỉ cấp phép thao tác bổ sung;
-                  để trống nghĩa là AI không gọi thêm công cụ.
-                </p>
-                {automationActions.map((action) => (
-                  <label className="flex items-start gap-2 text-sm text-ink" key={action}>
-                    <input
-                      className="mt-1"
-                      type="checkbox"
-                      checked={selectedActions.includes(action)}
-                      onChange={(event) => {
-                        setSelectedActions((current) =>
-                          event.target.checked
-                            ? [...current, action]
-                            : current.filter((item) => item !== action),
-                        );
-                      }}
-                    />
-                    <span>{valueLabel(action)}</span>
-                  </label>
-                ))}
-              </fieldset>
-            )}
-          </>
-        )}
         {canShowRunControls && (
           <div className="flex flex-wrap gap-2">
-            {canManageDefinitions && (
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={busy || !definitionName.trim() || !objective.trim() || !trigger}
-                onClick={saveDefinition}
-              >
-                Lưu quy tắc tự động hóa
-              </button>
-            )}
             {busyRun && canControlRun && (
               <button className="secondary-button" type="button" disabled={busy} onClick={cancel}>
                 Dừng tác vụ AI
@@ -755,37 +681,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                   : "Tiếp tục từ điểm an toàn"}
               </button>
             )}
-          </div>
-        )}
-        {visibleDefinitions.length > 0 && (
-          <div className="grid gap-2 pt-2 text-sm">
-            <h3 className="font-semibold text-ink">Quy tắc đang có</h3>
-            {visibleDefinitions.map((definition) => (
-              <div
-                className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-border p-3"
-                key={definition.definition_id}
-              >
-                <div>
-                  <p className="font-medium text-ink">{definition.name}</p>
-                  <p className="text-ink-muted">{valueLabel(definition.trigger)}</p>
-                  {definition.actions?.length > 0 && (
-                    <p className="text-ink-muted">
-                      {definition.actions.map(valueLabel).join(" · ")}
-                    </p>
-                  )}
-                </div>
-                {definition.owner_user_id === currentUserId && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => toggleDefinition(definition)}
-                  >
-                    {definition.enabled ? "Tạm dừng" : "Kích hoạt"}
-                  </button>
-                )}
-              </div>
-            ))}
           </div>
         )}
         {visibleRuns.length > 0 && (
@@ -867,25 +762,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                 </button>
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-3">
-              <details className="text-xs text-ink-muted">
-                <summary className="cursor-pointer">Thông tin thêm</summary>
-                <dl className="mt-2 grid gap-1">
-                  <div>
-                    <dt className="inline">Nguồn khởi chạy: </dt>
-                    <dd className="inline">{automationTriggerLabel(run)}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline">Vai trò yêu cầu: </dt>
-                    <dd className="inline">{valueLabel(run.requester_role)}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline">Mã tham chiếu: </dt>
-                    <dd className="inline break-all">{run.automation_run_id}</dd>
-                  </div>
-                </dl>
-              </details>
-            </div>
             {workflow && (
               <section aria-label="Tiến độ xử lý AI" className="grid gap-3">
                 {workflow.truncated && (
@@ -936,9 +812,9 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                 <div>
                   <h3 className="font-semibold text-ink">Tài liệu chưa được đọc đầy đủ</h3>
                   <p className="mt-1 text-ink-muted">
-                    Lượt tự động hóa đã dừng trước khi tạo hoặc cập nhật dữ liệu vì còn phần nguồn
-                    chưa trích xuất được. Hãy xử lý tài liệu được nêu dưới đây rồi tải lại nguồn; hệ
-                    thống không xem phần chưa đọc là nội dung đã kiểm tra.
+                    Agent đã dừng trước khi tạo hoặc cập nhật dữ liệu vì còn phần nguồn chưa trích
+                    xuất được. Hãy xử lý tài liệu được nêu dưới đây rồi tải lại nguồn; hệ thống
+                    không xem phần chưa đọc là nội dung đã kiểm tra.
                   </p>
                 </div>
                 <ul className="grid gap-2">
@@ -948,10 +824,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                       key={gap.document_id}
                     >
                       <p className="font-medium text-ink">Tài liệu cần xử lý</p>
-                      <details className="text-xs text-ink-muted">
-                        <summary className="cursor-pointer">Thông tin thêm</summary>
-                        <p className="mt-1 break-all">Mã tài liệu: {gap.document_id}</p>
-                      </details>
                       <p className="text-xs text-ink-muted">
                         Trạng thái {valueLabel(gap.index_status)}
                         {gap.page_count !== null ? ` · ${gap.page_count} trang` : ""}
@@ -983,12 +855,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                           nguyên.
                         </p>
                       )}
-                      {gap.parser && (
-                        <details className="text-xs text-ink-muted">
-                          <summary className="cursor-pointer">Thông tin thêm</summary>
-                          <p className="mt-1 break-all">Bộ đọc: {gap.parser}</p>
-                        </details>
-                      )}
                     </li>
                   ))}
                 </ul>
@@ -1013,10 +879,9 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                     >
                       <p>{item.message}</p>
                       {item.tool_name && (
-                        <details className="mt-2 text-xs">
-                          <summary className="cursor-pointer">Thông tin thêm</summary>
-                          <p className="mt-1 break-all">Tên thao tác: {item.tool_name}</p>
-                        </details>
+                        <p className="mt-1 text-xs">
+                          Phần việc liên quan: {valueLabel(item.tool_name)}
+                        </p>
                       )}
                     </li>
                   ))}
@@ -1036,8 +901,7 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                   </p>
                   <p className="mt-1 text-ink-muted">
                     Hãy bổ sung thông tin vào yêu cầu hoặc tài liệu nguồn liên quan. Khi nguồn được
-                    cập nhật, hệ thống sẽ tự tiếp nhận sự kiện mới để xử lý tiếp; không cần khởi
-                    chạy lại từng bước.
+                    cập nhật, hãy bấm bắt đầu với AI Agent để tiếp tục xử lý.
                   </p>
                 </div>
                 {uncertainties.length > 0 ? (
@@ -1054,12 +918,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                             <p>
                               Nguồn liên quan: {item.evidence_refs.length} trích dẫn đã xác minh
                             </p>
-                            <details className="mt-1">
-                              <summary className="cursor-pointer">Thông tin thêm</summary>
-                              <p className="mt-1 break-all">
-                                Mã nguồn: {item.evidence_refs.join(", ")}
-                              </p>
-                            </details>
                           </div>
                         )}
                         {item.blocking && item.response_allowed && canAnswerClarification && (
@@ -1267,10 +1125,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                                     ? "Điểm cần kiểm thử"
                                     : "Điểm cần làm rõ"}
                                 </span>
-                                <details className="text-xs text-ink-muted">
-                                  <summary className="cursor-pointer">Thông tin thêm</summary>
-                                  <p className="mt-1 break-all">Mã liên kết: {claim.claim_key}</p>
-                                </details>
                               </div>
                               <div className="grid gap-2">
                                 <h4 className="text-sm font-semibold text-ink-muted">
@@ -1288,25 +1142,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                                       <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
                                         {fact.quote}
                                       </blockquote>
-                                      <details className="mt-2 text-xs text-ink-muted">
-                                        <summary className="cursor-pointer">
-                                          Thông tin nguồn
-                                        </summary>
-                                        <p className="mt-1 break-all">
-                                          {fact.source ? `Vị trí nguồn: ${fact.source} · ` : ""}
-                                          Mã đối tượng: {fact.artifact_id}
-                                          {fact.artifact_version_id
-                                            ? ` · Phiên bản: ${fact.artifact_version_id}`
-                                            : ""}
-                                        </p>
-                                        {fact.source_start !== null &&
-                                          fact.source_start !== undefined && (
-                                            <p className="mt-1 break-all">
-                                              Vị trí trong nội dung {fact.source_start}–
-                                              {fact.source_end}
-                                            </p>
-                                          )}
-                                      </details>
                                     </div>
                                   ))
                                 ) : (
@@ -1376,21 +1211,6 @@ export default function AgentRunPanel({ project, showDefinitions = true, compact
                             <blockquote className="mt-2 break-words border-l-2 border-accent/40 pl-3 text-ink">
                               {fact.quote}
                             </blockquote>
-                            <details className="mt-2 text-xs text-ink-muted">
-                              <summary className="cursor-pointer">Thông tin nguồn</summary>
-                              <p className="mt-1 break-all">
-                                {fact.source ? `Vị trí nguồn: ${fact.source} · ` : ""}
-                                Mã đối tượng: {fact.artifact_id}
-                                {fact.artifact_version_id
-                                  ? ` · Phiên bản: ${fact.artifact_version_id}`
-                                  : ""}
-                              </p>
-                              {fact.source_start !== null && fact.source_start !== undefined && (
-                                <p className="mt-1 break-all">
-                                  Vị trí trong nội dung {fact.source_start}–{fact.source_end}
-                                </p>
-                              )}
-                            </details>
                           </li>
                         ))}
                       </ul>

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { ErrorState, Panel } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
@@ -244,6 +245,7 @@ function AssessmentResult({ projectId, result }) {
 }
 
 export default function ProjectComplexityAssessmentPanel({ project }) {
+  const { user } = useAuth();
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -305,10 +307,12 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
     try {
       const documentIds = [...selectedDocumentIds].sort();
       const requirementVersionIds = [...selectedRequirementVersionIds].sort();
+      const outputLanguage = user?.locale || project.locale || "en";
       const fingerprint = JSON.stringify({
         instruction,
         document_ids: documentIds,
         requirement_version_ids: requirementVersionIds,
+        output_language: outputLanguage,
       });
       if (!pendingRequest.current || pendingRequest.current.fingerprint !== fingerprint) {
         pendingRequest.current = {
@@ -317,6 +321,7 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
             instruction,
             document_ids: documentIds,
             requirement_version_ids: requirementVersionIds,
+            output_language: outputLanguage,
             idempotency_key: crypto.randomUUID(),
           },
         };

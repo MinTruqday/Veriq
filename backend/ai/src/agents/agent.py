@@ -30,11 +30,21 @@ def execution_error_code(error):
 
 async def execute_task(
     task, evidence, permissions, token, automation_run_id=None, automatic=False,
-    checkpoint_action=None,
+    checkpoint_action=None, request_constraints=None,
 ):
     observations = []
     errors = 0
     bounded_calls = task.tool_calls[: min(limits.tool_calls_per_task, limits.agent_steps)]
+    request_task = task
+    if isinstance(request_constraints, dict) and request_constraints.get("output_language"):
+        request_task = task.model_copy(
+            update={
+                "constraints": {
+                    **task.constraints,
+                    "output_language": request_constraints["output_language"],
+                }
+            }
+        )
     for index, tool_call in enumerate(bounded_calls):
         decision = authorize_tool(task, tool_call.tool_name, permissions)
         try:
@@ -47,7 +57,7 @@ async def execute_task(
                 )
             observation = await asyncio.wait_for(
                 invoke_tool(
-                    task,
+                    request_task,
                     tool_call.tool_name,
                     tool_call.arguments,
                     permissions,

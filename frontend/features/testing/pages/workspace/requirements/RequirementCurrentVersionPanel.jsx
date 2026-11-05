@@ -87,13 +87,47 @@ export default function RequirementCurrentVersionPanel({
               {checkingWithAi ? "Đang kiểm tra…" : "Kiểm tra AI"}
             </button>
           )}
+          {current.status === "IN_REVIEW" &&
+            can("requirement.review") &&
+            current.technical_review_revision !== current.revision && (
+              <button
+                className="apple-button"
+                type="button"
+                onClick={async () =>
+                  ask({
+                    title: "Xác nhận rà soát kỹ thuật",
+                    description:
+                      "Xác nhận yêu cầu rõ ràng và có thể kiểm thử. Người phụ trách nghiệp vụ sẽ xác nhận trước khi chốt chuẩn.",
+                    confirmLabel: "Xác nhận rà soát",
+                    fields: [
+                      { name: "review_note", label: "Nhận xét", initialValue: "", multiline: true },
+                    ],
+                    onConfirm: async (answer) => {
+                      await testingApi.reviewRequirementTechnically(current._id, {
+                        expected_revision: current.revision,
+                        review_note: answer.review_note.trim(),
+                      });
+                      await reload();
+                    },
+                  })
+                }
+              >
+                Xác nhận rà soát kỹ thuật
+              </button>
+            )}
           {current.status === "IN_REVIEW" && can("requirement.approve") && (
             <button
               className="apple-button"
               type="button"
+              disabled={current.technical_review_revision !== current.revision}
+              title={
+                current.technical_review_revision !== current.revision
+                  ? "Cần QA xác nhận rà soát kỹ thuật trước"
+                  : undefined
+              }
               onClick={async () => {
                 await ask({
-                  title: "Chấp nhận yêu cầu",
+                  title: "Xác nhận nghiệp vụ",
                   description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng.`,
                   confirmLabel: "Chấp nhận",
                   fields: [
@@ -119,7 +153,7 @@ export default function RequirementCurrentVersionPanel({
                 });
               }}
             >
-              Chấp nhận yêu cầu
+              Xác nhận nghiệp vụ
             </button>
           )}
           {current.status === "BASELINED" && can("requirement.version.create") && (

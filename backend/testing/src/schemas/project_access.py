@@ -11,6 +11,8 @@ ProjectRoleValue = Literal["BA", "QA", "TESTER", "DEVELOPER", "VIEWER"]
 class ProjectCapability(BaseModel):
     name: str = Field(min_length=1)
     read_only: bool = False
+    business_roles: list[ProjectRoleValue] = Field(default_factory=list)
+    responsibility: Literal["business_confirmation", "release_decision"] | None = None
 
 
 class ProjectRoleGrant(BaseModel):
@@ -68,7 +70,10 @@ class ProjectAccessControl(BaseModel):
     def permission_values(self):
         """Compatibility interface for callers; database authority is the typed model."""
         return {
+            "revision": self.revision,
             "project_permissions": [item.name for item in self.capabilities],
+            "business_role_permissions": {item.name: item.business_roles for item in self.capabilities},
+            "responsibility_permissions": {item.name: item.responsibility for item in self.capabilities if item.responsibility},
             "read_only_permissions": [item.name for item in self.capabilities if item.read_only],
             "role_permissions": {grant.role: grant.permissions for grant in self.role_grants},
             "conditional_permissions": [grant.model_dump(exclude={"effect"}) for grant in self.setting_grants if grant.effect == "ALLOW"],

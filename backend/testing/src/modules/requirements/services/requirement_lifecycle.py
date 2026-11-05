@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
 from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_independent_review
 from src.core.common import audit, get_project_entity, now
 from src.core.database import database
 from src.clients.ai_automation import queue_requirement_changed
@@ -176,6 +177,7 @@ async def return_requirement_for_changes(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
         )
+    require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version["revision"] != expected_revision:
         raise HTTPException(
             status_code=409,
@@ -232,6 +234,54 @@ async def return_requirement_for_changes(
     return version
 
 
+async def technical_review_requirement(
+    version_id: str,
+    expected_revision: int,
+    review_note: str,
+    user: CurrentUser,
+):
+    require_automation_publication_authority(user, "requirement.review")
+    version = await get_project_entity(
+        "requirement_versions", version_id, user, "requirement.review"
+    )
+    if version.get("status") != "IN_REVIEW":
+        raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION"})
+    require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    if version.get("revision") != expected_revision:
+        if (
+            version.get("revision") == expected_revision + 1
+            and version.get("technical_review_revision") == version.get("revision")
+            and version.get("technical_reviewed_by") == user.id
+            and version.get("technical_review_note") == review_note
+        ):
+            return version
+        raise HTTPException(409, detail={"code": "REVISION_CONFLICT", "current_revision": version.get("revision")})
+    timestamp = now()
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            updated = await requirement_repository.transition_version(
+                version_id, version["project_id"], expected_revision,
+                "IN_REVIEW", "IN_REVIEW",
+                {
+                    "technical_review_revision": expected_revision + 1,
+                    "technical_reviewed_by": user.id,
+                    "technical_reviewed_at": timestamp,
+                    "technical_review_note": review_note,
+                    "updated_at": timestamp,
+                },
+                session=session,
+            )
+            if not updated:
+                raise HTTPException(409, detail={"code": "REVISION_CONFLICT"})
+            await audit(
+                user.id, "requirement_technical_review_accepted", "RequirementVersion",
+                version_id, version["project_id"],
+                {"review_note": review_note, "source_revision": expected_revision},
+                session=session,
+            )
+    return await requirement_repository.find_version(version_id, version["project_id"])
+
+
 async def baseline_requirement(
     version_id: str,
     expected_revision: int,
@@ -254,6 +304,7 @@ async def baseline_requirement(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
         )
+    require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version["revision"] != expected_revision:
         raise HTTPException(
             status_code=409,
@@ -262,6 +313,8 @@ async def baseline_requirement(
                 "current_revision": version["revision"],
             },
         )
+    if version.get("technical_review_revision") != version["revision"] or not version.get("technical_reviewed_by"):
+        raise HTTPException(409, detail={"code": "REQUIREMENT_TECHNICAL_REVIEW_REQUIRED"})
     acceptance_criteria = await requirement_repository.list_acceptance_criteria(
         version["_id"], None
     )

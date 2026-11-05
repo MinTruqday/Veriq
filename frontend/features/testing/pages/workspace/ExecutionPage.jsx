@@ -1116,7 +1116,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               ...(can("automation.read") || can("device_matrix.read")
                 ? [{ id: "integrations", label: "Kịch bản và thiết bị" }]
                 : []),
-              ...(canReadAiRuns ? [{ id: "ai", label: "AI tự động hóa" }] : []),
+              ...(canReadAiRuns ? [{ id: "ai", label: "AI Agent" }] : []),
             ]}
           />
           {automationSubsection === "results" && can("automation.read") && (
@@ -1326,17 +1326,20 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                           <Send size={16} aria-hidden="true" />
                         </button>
                       )}
-                      {["DRAFT", "IN_REVIEW"].includes(item.status) && can("testplan.approve") && (
-                        <button
-                          className="apple-button inline-flex size-10 items-center justify-center p-0"
-                          type="button"
-                          aria-label="Phê duyệt"
-                          title="Phê duyệt"
-                          onClick={() => transitionPlan(item, "approve")}
-                        >
-                          <Check size={17} aria-hidden="true" />
-                        </button>
-                      )}
+                      {item.status === "IN_REVIEW" &&
+                        item.created_by !== project.current_membership?.user_id &&
+                        item.submitted_by !== project.current_membership?.user_id &&
+                        can("testplan.approve") && (
+                          <button
+                            className="apple-button inline-flex size-10 items-center justify-center p-0"
+                            type="button"
+                            aria-label="Phê duyệt"
+                            title="Phê duyệt"
+                            onClick={() => transitionPlan(item, "approve")}
+                          >
+                            <Check size={17} aria-hidden="true" />
+                          </button>
+                        )}
                       {can("testplan.create") && (
                         <button
                           className="icon-button h-10 w-10"

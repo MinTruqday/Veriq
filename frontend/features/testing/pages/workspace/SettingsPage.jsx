@@ -5,6 +5,7 @@ import ProjectNotificationsPanel from "../../components/ProjectNotificationsPane
 import WebhookPanel from "../../components/WebhookPanel";
 import ProjectConnectorsPanel from "../../components/ProjectConnectorsPanel";
 import MemberSkillProfilePanel from "../../components/MemberSkillProfilePanel";
+import ProjectAccessPanel from "../../components/ProjectAccessPanel";
 import CicdPanel from "../../components/CicdPanel";
 import {
   ErrorState,
@@ -181,9 +182,16 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       selectSettings.map(([key, , values]) => [key, project.settings?.[key] ?? values[0]]),
     ),
   });
+  const [responsibilities, setResponsibilities] = useState(
+    project.settings?.responsibilities || {},
+  );
+  useEffect(() => {
+    setResponsibilities(project.settings?.responsibilities || {});
+  }, [project._id, project.revision, project.settings?.responsibilities]);
   const [error, setError] = useState("");
   const can = (permission) => project.current_permissions?.includes(permission);
   const settingsSections = [
+    { id: "access", label: "Quyền của tôi", permissions: ["project.read"] },
     {
       id: "project",
       label: "Dự án",
@@ -252,7 +260,8 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       visibleSettingsSection === "analytics" && permissions.has("analytics.ai.read")
         ? testingApi.aiAnalytics(project._id)
         : Promise.resolve({}),
-      visibleSettingsSection === "members" && permissions.has("project.members.read")
+      ["members", "project"].includes(visibleSettingsSection) &&
+      permissions.has("project.members.read")
         ? testingApi.listMembers(project._id)
         : Promise.resolve([]),
     ]);
@@ -351,6 +360,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
         label="Nhóm cài đặt dự án"
       />
       <div className="min-w-0" role="tabpanel" aria-label="Cài đặt dự án">
+        {visibleSettingsSection === "access" && <ProjectAccessPanel project={project} />}
         {visibleSettingsSection === "my-profile" && (
           <MemberSkillProfilePanel projectId={project._id} />
         )}
@@ -367,6 +377,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         settings: {
                           ...(project.settings || {}),
                           ...settings,
+                          responsibilities,
                           action_policies: {
                             ...(project.settings?.action_policies || {}),
                             "defect.rejected": settings.tester_can_reject_defect
@@ -455,6 +466,45 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   />
                 </label>
               </div>
+              {can("project.settings.manage") && (
+                <section className="space-y-3 border-t border-border pt-4">
+                  <h3 className="text-sm font-semibold text-ink">Trách nhiệm quyết định</h3>
+                  {loadErrors.members && <ErrorState message={loadErrors.members} />}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {[
+                      ["business_confirmation", "Người xác nhận nghiệp vụ", ["BA"]],
+                      ["release_decision", "Người quyết định phát hành", ["BA", "QA"]],
+                    ].map(([key, label, roles]) => (
+                      <label className="field-label" key={key}>
+                        {label}
+                        <select
+                          className="apple-input mt-2"
+                          value={responsibilities[key] || ""}
+                          disabled={dataLoading || Boolean(loadErrors.members)}
+                          onChange={(event) =>
+                            setResponsibilities((current) => ({
+                              ...current,
+                              [key]: event.target.value || null,
+                            }))
+                          }
+                        >
+                          <option value="">Chưa phân công</option>
+                          {members
+                            .filter(
+                              (member) =>
+                                member.status === "ACTIVE" && roles.includes(member.project_role),
+                            )
+                            .map((member) => (
+                              <option key={member.user_id} value={member.user_id}>
+                                {memberDisplayName(member)}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              )}
               <section className="space-y-3 border-t border-border pt-4">
                 <div>
                   <h3 className="text-sm font-semibold text-ink">Tự động hóa kiểm thử</h3>

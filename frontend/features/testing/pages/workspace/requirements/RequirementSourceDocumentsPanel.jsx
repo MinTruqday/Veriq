@@ -16,6 +16,7 @@ import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { projectRoute } from "../../../routes";
 import { testingApi } from "../../../services/testing.service";
+import { preferredSummaryLocale, summaryLanguageOptions } from "../../../lib/summaryLanguage";
 import {
   REQUIREMENT_SOURCE_APPROVAL_OPTIONS,
   REQUIREMENT_SOURCE_AUTHORITY_OPTIONS,
@@ -147,6 +148,7 @@ export default function RequirementSourceDocumentsPanel({
   onError,
   onContinueImport,
 }) {
+  const canSummarize = can("ai.ask_project");
   const [retryingDocumentId, setRetryingDocumentId] = useState("");
   const [continuingImportDocumentId, setContinuingImportDocumentId] = useState("");
   const [activatingAiDocumentId, setActivatingAiDocumentId] = useState("");
@@ -158,14 +160,14 @@ export default function RequirementSourceDocumentsPanel({
   const [summaryResult, setSummaryResult] = useState(null);
   const [summaryJob, setSummaryJob] = useState(null);
   const [summaryLanguage, setSummaryLanguage] = useState(
-    (userLocale || projectLocale)?.toLowerCase().startsWith("en") ? "en" : "vi",
+    preferredSummaryLocale(userLocale, projectLocale),
   );
   const summaryIdempotencyRef = useRef({ scope: "", key: "" });
   const summaryRequestSequenceRef = useRef(0);
 
   useEffect(() => {
     const locale = userLocale || projectLocale;
-    setSummaryLanguage(locale?.toLowerCase().startsWith("en") ? "en" : "vi");
+    setSummaryLanguage(preferredSummaryLocale(locale, navigator.language));
   }, [projectLocale, userLocale]);
 
   useEffect(() => {
@@ -302,7 +304,8 @@ export default function RequirementSourceDocumentsPanel({
     try {
       const result = await testingApi.startRequirementDocumentAI(item._id, {
         expected_revision: item.revision,
-        idempotency_key: `start-${item._id}-r${item.revision}`,
+        idempotency_key: `start-${item._id}-r${item.revision}-${summaryLanguage.replace(/[^A-Za-z0-9_-]/g, "-")}`,
+        output_language: summaryLanguage,
       });
       await reload();
       setAiActivationNotice(
@@ -518,7 +521,7 @@ export default function RequirementSourceDocumentsPanel({
           {aiActivationNotice}
         </p>
       )}
-      {summaryBusy && summaryJob && (
+      {canSummarize && summaryBusy && summaryJob && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 text-sm">
           <span>
             {summaryJob.status === "QUEUED" ? "Đang chờ xử lý" : "Đang tóm tắt tài liệu"}
@@ -538,7 +541,7 @@ export default function RequirementSourceDocumentsPanel({
           </button>
         </div>
       )}
-      {summaryResult && summaryResult.status !== "FAILED" && (
+      {canSummarize && summaryResult && summaryResult.status !== "FAILED" && (
         <div className="mb-4 rounded-xl border border-border bg-surface p-4">
           <h3 className="font-semibold">
             {summaryResult.status === "COMPLETED" ? "Tóm tắt tài liệu" : "Tóm tắt chưa đầy đủ"}
@@ -560,51 +563,61 @@ export default function RequirementSourceDocumentsPanel({
           )}
         </div>
       )}
-      <div className="mb-4 flex flex-wrap items-center gap-2 px-4 pt-4">
-        <select
-          className="form-input w-auto !min-h-9"
-          aria-label="Ngôn ngữ tóm tắt"
-          value={summaryLanguage}
-          onChange={(event) => setSummaryLanguage(event.target.value)}
-          disabled={summaryBusy}
-        >
-          <option value="vi">Tiếng Việt</option>
-          <option value="en">English</option>
-        </select>
-        <button
-          className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
-          type="button"
-          disabled={!selectedIds.length || summaryBusy}
-          onClick={() => summarizeDocuments(selectedIds)}
-        >
-          {summaryBusy
-            ? "Đang tóm tắt…"
-            : `Tóm tắt mục đã chọn${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
-        </button>
-        <button
-          className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
-          type="button"
-          disabled={summaryBusy || !items.some((item) => item.status !== "ARCHIVED")}
-          onClick={() => summarizeDocuments([], true)}
-        >
-          Tóm tắt toàn bộ tài liệu được phép đọc
-        </button>
-      </div>
-      {summaryJob && ["FAILED", "INCOMPLETE"].includes(summaryJob.status) && !summaryBusy && (
-        <button
-          className="secondary-button mb-4 !min-h-8 !px-3 !py-1 text-xs"
-          type="button"
-          onClick={retrySummary}
-        >
-          Thử lại phần chưa hoàn tất
-        </button>
+      {canSummarize && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 px-4 pt-4">
+          <select
+            className="form-input w-auto !min-h-9"
+            aria-label="Ngôn ngữ tóm tắt"
+            value={summaryLanguage}
+            onChange={(event) => setSummaryLanguage(event.target.value)}
+            disabled={summaryBusy}
+          >
+            {summaryLanguageOptions(userLocale || projectLocale || summaryLanguage).map(
+              (option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ),
+            )}
+          </select>
+          <button
+            className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+            type="button"
+            disabled={!selectedIds.length || summaryBusy}
+            onClick={() => summarizeDocuments(selectedIds)}
+          >
+            {summaryBusy
+              ? "Đang tóm tắt…"
+              : `Tóm tắt mục đã chọn${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
+          </button>
+          <button
+            className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
+            type="button"
+            disabled={summaryBusy || !items.some((item) => item.status !== "ARCHIVED")}
+            onClick={() => summarizeDocuments([], true)}
+          >
+            Tóm tắt toàn bộ tài liệu được phép đọc
+          </button>
+        </div>
       )}
+      {canSummarize &&
+        summaryJob &&
+        ["FAILED", "INCOMPLETE"].includes(summaryJob.status) &&
+        !summaryBusy && (
+          <button
+            className="secondary-button mb-4 !min-h-8 !px-3 !py-1 text-xs"
+            type="button"
+            onClick={retrySummary}
+          >
+            Thử lại phần chưa hoàn tất
+          </button>
+        )}
       <DataTable
         items={items}
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
         selectionLabel="Chọn tài liệu"
-        selectionDisabled={!can("requirement_document.extract")}
+        selectionDisabled={!canSummarize}
         empty="Chưa có tài liệu nguồn"
         columns={[
           {
@@ -651,14 +664,21 @@ export default function RequirementSourceDocumentsPanel({
             label: "Tình trạng xử lý",
             minWidth: 220,
             render: (item) => {
-              const issues = item.parse_report?.unprocessed_blocks || [];
+              const rawIssues = item.parse_report?.unprocessed_blocks;
+              const issues = Array.isArray(rawIssues) ? rawIssues : [];
               const parseReport = item.parse_report;
               const expanded = expandedReportId === item._id;
+              const cleanupPending =
+                Array.isArray(item.index_cleanup_pending) && item.index_cleanup_pending.length > 0;
               const status =
                 item.index_status === "INDEXED"
                   ? "Có thể tìm trong tài liệu"
                   : item.index_status === "DEGRADED"
-                    ? `Một phần tài liệu chưa đọc được${issues.length ? ` · ${issues.length} phần cần xem` : ""}`
+                    ? cleanupPending
+                      ? "Đang dọn dữ liệu tìm kiếm cũ"
+                      : issues.length
+                        ? `Một phần tài liệu chưa đọc được · ${issues.length} phần cần xem`
+                        : "Cần kiểm tra lại việc xử lý tài liệu"
                     : item.index_status === "FAILED"
                       ? "Chưa thể xử lý tài liệu"
                       : "Đang chờ xử lý tài liệu";

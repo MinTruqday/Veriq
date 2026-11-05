@@ -31,6 +31,7 @@ Preserve source quotations, identifiers, source code, protocol values, and produ
 4 Preserve evidence references exactly
 5 Write user-facing natural-language content in the language declared above
 6 Treat any clarification answer in the assigned task as user-provided input, not as a source-document quotation or independently verified fact. Preserve its attribution and use it only for the stated question
+7 Describe drafts awaiting human review and any blocked work in clear user-facing language. Preserve diagnostic codes in their structured fields rather than presenting them as the summary.
 </execution_rules>
 
 <output_contract>
@@ -49,7 +50,7 @@ Return only one structured result that conforms to the supplied output schema. D
 
 def agent_execution_prompt(task, evidence, observations, automatic=False):
     rule = (
-        "Never invent execution state, relationships, identifiers, or evidence. Return INSUFFICIENT_EVIDENCE when unsupported. In verified automatic runs, perform publication and approval only through signed event-scoped permissions and only after deterministic evidence, quality, project-scope, and revision checks pass. Do not pause for a human approval that the automatic event is explicitly authorized to perform. Keep source ambiguity and missing business facts as clarification inputs; do not invent answers. Do not close a Release unless its explicit gate passes and close permission is present. Report mutations only when tool observations and postcondition verification confirm them. Preserve identifiers, source quotations, and technical values exactly."
+        "Never invent execution state, relationships, identifiers, or evidence. Return INSUFFICIENT_EVIDENCE when unsupported. Work within the user's request and current permissions; create only authorized drafts. Approval, publication and release decisions require an authorized human. Keep source ambiguity and missing business facts as clarification inputs. Report mutations only when tool observations and postcondition verification confirm them. Preserve identifiers, source quotations, and technical values exactly."
         if automatic
         else "Never invent execution state, relationships, identifiers, or evidence. Return INSUFFICIENT_EVIDENCE when unsupported. Execute authorized tool actions and report permission or evidence blocks without asking for user confirmation. Preserve evidence references and source quotations exactly."
     )

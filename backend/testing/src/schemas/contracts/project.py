@@ -43,6 +43,12 @@ class ProjectComplexityAssessmentInput(BaseModel):
     model_config = {"extra": "forbid"}
 
     instruction: str = Field(default="", max_length=5000)
+    output_language: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=35,
+        pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
+    )
     idempotency_key: str = Field(min_length=8, max_length=200)
     document_ids: list[str] = Field(max_length=5000)
     requirement_version_ids: list[str] = Field(max_length=5000)

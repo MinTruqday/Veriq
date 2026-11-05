@@ -6,6 +6,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
+from src.core.human_decisions import require_independent_review
 from src.repositories.quality import quality_repository
 from src.modules.execution.services.test_monitoring import effective_snapshot
 
@@ -308,6 +309,7 @@ async def submit_evaluation(evaluation_id, payload, user):
 
 async def review_evaluation(evaluation_id, payload, user):
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.review')
+    require_independent_review(value, user, 'QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN')
     if value["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'QUALITY_EVALUATION_NOT_IN_REVIEW'})
     history = [
@@ -430,6 +432,7 @@ async def decide_waiver(evaluation_id, waiver_id, payload, user):
 
 async def approve_evaluation(evaluation_id, payload, user):
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.approve')
+    require_independent_review(value, user, 'QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN')
     if value["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'QUALITY_EVALUATION_NOT_IN_REVIEW'})
     if not any(
@@ -439,6 +442,8 @@ async def approve_evaluation(evaluation_id, payload, user):
         raise HTTPException(
             status_code=409, detail={"code": 'QUALITY_EVALUATION_ENDORSEMENT_REQUIRED'}
         )
+    if any(item.get("actor_id") == user.id for item in value.get("reviewed_by", [])):
+        raise HTTPException(status_code=403, detail={"code": 'QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN'})
     if any(
         item.get("status") == 'PENDING' for item in value.get("waivers", [])
     ):

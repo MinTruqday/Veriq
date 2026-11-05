@@ -13,3 +13,7 @@ router.include_router(execution_context_router)
 router.include_router(test_monitoring_router)
 router.include_router(test_status_reports_router)
 router.include_router(test_completion_router)
+
+from .api.reporting import router as reporting_router
+
+router.include_router(reporting_router)

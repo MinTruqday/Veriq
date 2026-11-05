@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_RETRIES=10 \
     PYTHONPATH=/app
 
-RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core fontconfig libreoffice-writer && rm -rf /var/lib/apt/lists/*
 
 COPY testing/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

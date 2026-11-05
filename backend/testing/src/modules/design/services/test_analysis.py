@@ -6,13 +6,22 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 
+from src.core.auth import (
+    permission_explicitly_denied,
+    permissions_for_membership,
+    project_permissions,
+    responsibility_allows,
+    roles_for_membership,
+)
 from src.core.common import audit, get_project, new_id, next_key, now, page_payload
 from src.core.database import database
 from src.schemas.test_analysis import TestConditionCreate, condition_hash, condition_snapshot
 from src.repositories.test_condition import test_condition_repository
 from src.repositories.test_analysis import test_analysis_repository
+from src.repositories.common import common_repository
 from src.repositories.requirement_analysis import requirement_analysis_repository
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
+from src.core.human_decisions import require_independent_review
 from src.modules.design.services.test_analysis_basis import (
     deterministic_testability_findings,
     list_test_basis,
@@ -207,6 +216,8 @@ async def transition_condition(condition_id, payload, user, action):
     )
     sources = set(transition["sources"])
     target = transition["target"]
+    if action == "approve":
+        require_independent_review(condition, user, "TEST_CONDITION_SELF_REVIEW_FORBIDDEN")
     if action in {"submit", "approve"}:
         try:
             TestConditionCreate.model_validate(condition)
@@ -560,7 +571,29 @@ async def run_ai_analysis(project_id, payload, user):
 
 
 async def condition_coverage(project_id, user):
-    await get_project(project_id, user, 'testcondition.read')
+    project = await get_project(project_id, user, 'testcondition.read')
+    membership = await common_repository.find_membership(
+        project_id, user.id, status="ACTIVE"
+    )
+    roles = roles_for_membership(membership)
+    settings_value = project.get("settings")
+    permission_available = "testcase.read" in permissions_for_membership(
+        membership, settings_value
+    )
+    if not permission_available:
+        grant = await common_repository.find_active_grant(
+            project_id, user.id, "ACTIVE", now()
+        )
+        permission_available = bool(
+            grant
+            and "testcase.read"
+            in (set(grant.get("permissions", [])) & project_permissions())
+        )
+    can_read_cases = (
+        permission_available
+        and not permission_explicitly_denied("testcase.read", roles, settings_value)
+        and responsibility_allows("testcase.read", user.id, settings_value)
+    )
     condition_limit = 5000
     scenario_limit = 5000
     case_limit = 10000
@@ -622,6 +655,19 @@ async def condition_coverage(project_id, user):
                 "basis_refs": condition["basis_refs"],
                 "scenario_ids": linked_scenarios,
                 "test_case_version_ids": linked_cases,
+                "test_cases": [
+                    {
+                        "id": item.get("test_case_id"),
+                        "version_id": item.get("_id"),
+                        "key": item.get("test_case_key"),
+                        "title": item.get("title"),
+                        "version": item.get("version"),
+                    }
+                    for item in case_versions
+                    if can_read_cases
+                    and item.get("_id") in linked_cases
+                    and item.get("test_case_id")
+                ],
                 "coverage_status": coverage_status,
                 "uncovered": coverage_status == "UNCOVERED",
             }

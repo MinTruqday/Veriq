@@ -8,7 +8,7 @@ from src.clients.ai_automation import emit_status_report_created
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
-from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import content_authorship_changes, require_automation_publication_authority, require_independent_review
 from src.modules.execution.services.test_monitoring import effective_snapshot
 from src.repositories.test_status_report import (
     find_ai_result,
@@ -254,6 +254,8 @@ async def generate_status_report(project_id, payload, user):
         "approval_history": [],
         "revision": 1,
         "created_by": user.id,
+        "content_author_ids": [user.id],
+        "content_authorship_status": "VERIFIED",
         "created_at": timestamp,
         "updated_at": timestamp,
     }
@@ -294,6 +296,7 @@ async def update_status_report(report_id, payload, user):
         changes["executive_summary_doc"] = text_document(changes["executive_summary"])
     if "forecast" in changes:
         changes["forecast"] = normalized_forecast(changes["forecast"])
+    changes = content_authorship_changes(report, user, changes)
     changes["updated_at"] = now()
     updated = await update_report(
         report_id, report["project_id"], payload.expected_revision, {"DRAFT"}, changes
@@ -400,6 +403,8 @@ async def generate_status_report_narrative(report_id, payload, user):
             payload, report_id, automation_run_id, user
         ),
         "created_by": user.id,
+        "content_author_ids": [user.id],
+        "content_authorship_status": "VERIFIED",
         "created_at": now(),
     }
     try:
@@ -444,7 +449,7 @@ async def attach_status_report_evidence(report_id, payload, user):
         report["project_id"],
         payload.expected_revision,
         {"DRAFT"},
-        {"evidence_refs": evidence_refs, "updated_at": now()},
+        {**content_authorship_changes(report, user, {"evidence_refs": evidence_refs}), "updated_at": now()},
     )
     if not updated:
         raise HTTPException(status_code=409, detail={"code": "STATUS_REPORT_REVISION_CONFLICT"})
@@ -497,6 +502,8 @@ async def transition_status_report(report_id, payload, user, transition_action):
     if target in {'APPROVED', 'PUBLISHED'}:
         require_automation_publication_authority(user, transition['permission'])
     report = await get_report_for_user(report_id, user, transition["permission"])
+    if transition_action in {"approve", "request_changes"}:
+        require_independent_review(report, user, "TEST_STATUS_REPORT_SELF_REVIEW_FORBIDDEN")
     timestamp = now()
     event = {"actor_id": user.id, "action": target, "note": payload.note, "at": timestamp}
     changes = {"status": target, "updated_at": timestamp}

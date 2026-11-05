@@ -1,7 +1,10 @@
+import asyncio
 import csv
 import hashlib
 import io
 import json
+import logging
+from array import array
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -21,10 +24,43 @@ from src.modules.requirements.services.requirement_documents import (
 )
 from src.repositories.requirement_document import requirement_document_repository
 from src.repositories.requirement_source_block import requirement_source_block_repository
+from src.repositories.ai_automation_access import ai_automation_access_repository
 
 
 SUMMARY_INPUT_LIMIT = 12000
-SUMMARY_PROMPT_VERSION = "2"
+SUMMARY_PROMPT_VERSION = "3"
+logger = logging.getLogger(__name__)
+
+
+def _cell_text(value):
+    return "" if value is None else str(value)
+
+
+def _open_xlsx_views(data):
+    formula_workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=False)
+    try:
+        cached_workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception:
+        formula_workbook.close()
+        raise
+    return formula_workbook, cached_workbook
+
+
+def _xlsx_cell_text(formula_cell, cached_cell):
+    if formula_cell.data_type != "f":
+        return _cell_text(formula_cell.value)
+    formula = _cell_text(formula_cell.value)
+    cached_value = cached_cell.value
+    if cached_value is None:
+        return formula
+    return f"{_cell_text(cached_value)} [{formula}]"
+
+
+def _xlsx_row_values(formula_row, cached_row):
+    return [
+        _xlsx_cell_text(formula_cell, cached_cell)
+        for formula_cell, cached_cell in zip(formula_row, cached_row)
+    ]
 
 
 class SummaryJobCancelled(Exception):
@@ -32,7 +68,13 @@ class SummaryJobCancelled(Exception):
 
 
 def _markdown_table(rows):
-    values = [[str(value or "").replace("|", "\\|").replace("\n", " ") for value in row] for row in rows]
+    values = [
+        [
+            _cell_text(value).replace("|", "\\|").replace("\n", " ")
+            for value in row
+        ]
+        for row in rows
+    ]
     width = max((len(row) for row in values), default=0)
     values = [row + [""] * (width - len(row)) for row in values]
     if not values:
@@ -51,6 +93,15 @@ def _markdown_table(rows):
 def _search_hits(text, query, limit, offset=0, page_no=None, sheet=None, row_offset=None):
     folded_text = text.casefold()
     folded_query = query.casefold()
+    original_offsets = None
+    if len(folded_text) != len(text):
+        folded_parts = io.StringIO()
+        original_offsets = array("Q")
+        for original_index, character in enumerate(text):
+            folded_character = character.casefold()
+            folded_parts.write(folded_character)
+            original_offsets.extend([original_index] * len(folded_character))
+        folded_text = folded_parts.getvalue()
     matches = []
     cursor = 0
     total = 0
@@ -60,11 +111,17 @@ def _search_hits(text, query, limit, offset=0, page_no=None, sheet=None, row_off
             break
         total += 1
         if len(matches) < limit:
-            start = max(0, found - 100)
-            end = min(len(text), found + len(query) + 180)
+            if original_offsets is None:
+                original_start = found
+                original_end = found + len(folded_query)
+            else:
+                original_start = original_offsets[found]
+                original_end = original_offsets[found + len(folded_query) - 1] + 1
+            start = max(0, original_start - 100)
+            end = min(len(text), original_end + 180)
             matches.append(
                 {
-                    "offset": offset + found,
+                    "offset": offset + original_start,
                     "page_no": page_no,
                     "sheet": sheet,
                     "row_offset": row_offset,
@@ -78,17 +135,22 @@ def _search_hits(text, query, limit, offset=0, page_no=None, sheet=None, row_off
 async def _document_text(document):
     if document.get("format") == "xlsx":
         data = await read_raw_requirement_source(document)
-        workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        workbook, cached_workbook = _open_xlsx_views(data)
         sections = []
         try:
-            for worksheet in workbook.worksheets:
+            for worksheet, cached_worksheet in zip(
+                workbook.worksheets, cached_workbook.worksheets
+            ):
                 rows = [
-                    ",".join(str(value or "") for value in row)
-                    for row in worksheet.iter_rows(values_only=True)
+                    ",".join(_xlsx_row_values(row, cached_row))
+                    for row, cached_row in zip(
+                        worksheet.iter_rows(), cached_worksheet.iter_rows()
+                    )
                 ]
                 sections.append(f"Sheet: {worksheet.title}\n" + "\n".join(rows))
         finally:
             workbook.close()
+            cached_workbook.close()
         return "\n\n".join(sections)
     content = document.get("normalized_content") or ""
     if isinstance(content, dict):
@@ -134,27 +196,44 @@ async def read_document_page(document_id, offset, limit, user, sheet=None, row_l
         raise HTTPException(status_code=422, detail={"code": "DOCUMENT_CONTENT_UNAVAILABLE"})
     if document.get("format") == "xlsx":
         data = await read_raw_requirement_source(document)
+        workbook = None
+        cached_workbook = None
         try:
-            workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+            workbook, cached_workbook = _open_xlsx_views(data)
             names = workbook.sheetnames
             selected_sheet = sheet if sheet in names else names[0]
             worksheet = workbook[selected_sheet]
-            header_rows = list(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))
-            body_rows = list(
-                worksheet.iter_rows(
-                    min_row=offset + 2,
-                    max_row=min(offset + row_limit + 1, worksheet.max_row or offset + row_limit + 1),
-                    values_only=True,
+            cached_worksheet = cached_workbook[selected_sheet]
+            header_rows = [
+                _xlsx_row_values(formula_row, cached_row)
+                for formula_row, cached_row in zip(
+                    worksheet.iter_rows(min_row=1, max_row=1),
+                    cached_worksheet.iter_rows(min_row=1, max_row=1),
                 )
+            ]
+            max_row = min(
+                offset + row_limit + 1,
+                worksheet.max_row or offset + row_limit + 1,
             )
-            rows = header_rows[:1] + body_rows
+            rows = header_rows[:1] + [
+                _xlsx_row_values(formula_row, cached_row)
+                for formula_row, cached_row in zip(
+                    worksheet.iter_rows(min_row=offset + 2, max_row=max_row),
+                    cached_worksheet.iter_rows(min_row=offset + 2, max_row=max_row),
+                )
+            ]
             content = _markdown_table(rows)
             total_rows = worksheet.max_row or 0
             data_row_count = max(total_rows - 1, 0)
-            next_offset = offset + len(body_rows) if offset + len(body_rows) < data_row_count else None
-            workbook.close()
+            body_row_count = len(rows) - len(header_rows[:1])
+            next_offset = offset + body_row_count if offset + body_row_count < data_row_count else None
         except Exception as error:
             raise HTTPException(status_code=422, detail={"code": "DOCUMENT_SHEET_READ_FAILED"}) from error
+        finally:
+            if workbook is not None:
+                workbook.close()
+            if cached_workbook is not None:
+                cached_workbook.close()
         return {
             "document_id": str(document["_id"]),
             "project_id": str(document["project_id"]),
@@ -365,11 +444,15 @@ async def search_document(document_id, query, user, limit=50):
         pages = None
     elif document.get("format") == "xlsx":
         data = await read_raw_requirement_source(document)
-        workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        workbook, cached_workbook = _open_xlsx_views(data)
         try:
-            for worksheet in workbook.worksheets:
-                for row_index, row in enumerate(worksheet.iter_rows(values_only=True)):
-                    row_text = " | ".join(str(value or "") for value in row)
+            for worksheet, cached_worksheet in zip(
+                workbook.worksheets, cached_workbook.worksheets
+            ):
+                for row_index, (row, cached_row) in enumerate(
+                    zip(worksheet.iter_rows(), cached_worksheet.iter_rows())
+                ):
+                    row_text = " | ".join(_xlsx_row_values(row, cached_row))
                     remaining = max(limit - len(hits), 0)
                     count, found = _search_hits(
                         row_text,
@@ -382,6 +465,7 @@ async def search_document(document_id, query, user, limit=50):
                     hits.extend(found)
         finally:
             workbook.close()
+            cached_workbook.close()
         pages = None
     else:
         content = await _document_text(document)
@@ -410,6 +494,87 @@ async def _assert_summary_source_current(document, user):
         raise RuntimeError("SOURCE_CHANGED_OR_ACCESS_REVOKED")
 
 
+async def _summarize_with_source_access(text, output_language, documents, user):
+    leases = []
+    lease_lost = asyncio.Event()
+
+    async def maintain_leases():
+        while True:
+            await asyncio.sleep(15)
+            for scope_key, lease_id in leases:
+                try:
+                    alive = await ai_automation_access_repository.heartbeat(
+                        scope_key, lease_id
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to renew summary source lease scope=%s", scope_key
+                    )
+                    alive = False
+                if not alive:
+                    lease_lost.set()
+                    return
+
+    heartbeat_task = None
+    lease_lost_task = None
+    try:
+        for document in sorted(documents, key=lambda item: str(item["_id"])):
+            await _assert_summary_source_current(document, user)
+            scope_key = f"source:{document['_id']}"
+            lease_id = str(uuid4())
+            admitted = await ai_automation_access_repository.acquire(
+                scope_key, lease_id
+            )
+            if not admitted:
+                raise RuntimeError("SUMMARY_SOURCE_ACCESS_REVOKED")
+            leases.append((scope_key, lease_id))
+            if heartbeat_task is None:
+                heartbeat_task = asyncio.create_task(maintain_leases())
+        for document in documents:
+            await _assert_summary_source_current(document, user)
+        summary_task = asyncio.create_task(
+            ai_automation_client.summarize_knowledge_text(text, output_language)
+        )
+        lease_lost_task = asyncio.create_task(lease_lost.wait())
+        completed, _ = await asyncio.wait(
+            {summary_task, lease_lost_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if lease_lost_task in completed and lease_lost.is_set():
+            summary_task.cancel()
+            try:
+                await summary_task
+            except asyncio.CancelledError:
+                pass
+            raise RuntimeError("SUMMARY_SOURCE_ACCESS_LEASE_LOST")
+        summary = await summary_task
+        if lease_lost.is_set():
+            raise RuntimeError("SUMMARY_SOURCE_ACCESS_LEASE_LOST")
+        for document in documents:
+            await _assert_summary_source_current(document, user)
+        return summary
+    finally:
+        if lease_lost_task:
+            lease_lost_task.cancel()
+            try:
+                await lease_lost_task
+            except asyncio.CancelledError:
+                pass
+        if heartbeat_task:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+        for scope_key, lease_id in reversed(leases):
+            try:
+                await ai_automation_access_repository.release(scope_key, lease_id)
+            except Exception:
+                logger.exception(
+                    "Failed to release summary source lease scope=%s", scope_key
+                )
+
+
 async def _update_summary_job(
     job_id, changes, generation=None, allow_cancelled=False, expected_status=None
 ):
@@ -434,15 +599,31 @@ async def _update_summary_job(
         )
 
 
+async def _readable_project_summary_sources(project_id, user):
+    documents = await requirement_document_repository.list({"project_id": project_id}, None)
+    candidates = []
+    for document in documents:
+        if (
+            not can_read_requirement_document(document, user)
+            or document.get("status") == "ARCHIVED"
+        ):
+            continue
+        if document.get("status") in {"EXTRACTED", "CONFIRMED"}:
+            await requirement_document_repository.normalize_requirement_import_status(
+                project_id, document["_id"]
+            )
+            document = await requirement_document_repository.find(
+                document["_id"], project_id
+            )
+            if not document or not can_read_requirement_document(document, user):
+                continue
+        candidates.append(document)
+    return candidates
+
+
 async def _lock_summary_sources(project_id, request, user):
     if request.all_readable:
-        documents = await requirement_document_repository.list({"project_id": project_id}, None)
-        candidates = [
-            document
-            for document in documents
-            if can_read_requirement_document(document, user)
-            and document.get("status") != "ARCHIVED"
-        ]
+        candidates = await _readable_project_summary_sources(project_id, user)
     else:
         candidates = []
         for document_id in request.document_ids:
@@ -482,7 +663,7 @@ async def _enqueue_summary_job(job, user, generation=0):
     queue_filter = {
         "_id": job["_id"],
         "project_id": job["project_id"],
-        "status": "QUEUED",
+        "status": {"$in": ["QUEUED", "RUNNING"]},
     }
     if generation == 0:
         queue_filter["$or"] = [
@@ -652,7 +833,7 @@ async def process_document_summary_job(body, payload, user):
 
 
 async def start_document_summary_job(project_id, request, user):
-    await get_project(project_id, user, "requirement_document.extract")
+    await get_project(project_id, user, "ai.ask_project")
     collection = database.value.document_summary_jobs
     existing = await collection.find_one(
         {
@@ -748,30 +929,51 @@ def _verify_summary_job_replay(existing, request):
 
 
 async def get_document_summary_job(project_id, job_id, user):
-    await get_project(project_id, user, "requirement_document.read")
+    await get_project(project_id, user, "ai.ask_project")
     job = await database.value.document_summary_jobs.find_one(
         {"_id": job_id, "project_id": project_id, "requester_id": user.id}
     )
     if not job:
         raise HTTPException(status_code=404, detail={"code": "DOCUMENT_SUMMARY_JOB_NOT_FOUND"})
+    for source in job.get("locked_sources") or []:
+        try:
+            document = await get_requirement_document_record(
+                source["document_id"], user
+            )
+        except HTTPException as error:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED"},
+            ) from error
+        if str(document.get("project_id")) != str(project_id):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED"},
+            )
     if job.get("status") in {"QUEUED", "RUNNING"} and job.get("worker_job_id"):
         try:
             worker_job = await worker_client.get(job["worker_job_id"])
             worker_status = str(worker_job.get("status") or "").lower()
             if worker_status == "failed":
+                cancelled = bool(job.get("cancel_requested"))
+                error_code = worker_job.get("error_code") or "SUMMARY_WORKER_FAILED"
+                changes = {
+                    "status": "CANCELLED" if cancelled else "FAILED",
+                    "completed_at": datetime.now(timezone.utc),
+                }
+                if not cancelled:
+                    changes["error_code"] = error_code
                 updated = await _update_summary_job(
                     job_id,
-                    {
-                        "status": "FAILED",
-                        "error_code": worker_job.get("error_code") or "SUMMARY_WORKER_FAILED",
-                        "completed_at": datetime.now(timezone.utc),
-                    },
+                    changes,
                     generation=int(job.get("dispatch_generation", 0)),
+                    allow_cancelled=cancelled,
                     expected_status={"$in": ["QUEUED", "RUNNING"]},
                 )
                 if updated and updated.modified_count:
-                    job["status"] = "FAILED"
-                    job["error_code"] = worker_job.get("error_code") or "SUMMARY_WORKER_FAILED"
+                    job["status"] = changes["status"]
+                    if not cancelled:
+                        job["error_code"] = error_code
             elif worker_status == "canceled":
                 updated = await _update_summary_job(
                     job_id,
@@ -782,9 +984,50 @@ async def get_document_summary_job(project_id, job_id, user):
                 )
                 if updated and updated.modified_count:
                     job["status"] = "CANCELLED"
+            elif worker_status in {"completed", "reconciliation_required"}:
+                cancelled = bool(job.get("cancel_requested"))
+                error_code = (
+                    "SUMMARY_WORKER_RESULT_NOT_PERSISTED"
+                    if worker_status == "completed"
+                    else worker_job.get("error_code")
+                    or "SUMMARY_WORKER_RECONCILIATION_REQUIRED"
+                )
+                changes = {
+                    "status": "CANCELLED" if cancelled else "FAILED",
+                    "completed_at": datetime.now(timezone.utc),
+                }
+                if not cancelled:
+                    changes["error_code"] = error_code
+                updated = await _update_summary_job(
+                    job_id,
+                    changes,
+                    generation=int(job.get("dispatch_generation", 0)),
+                    allow_cancelled=cancelled,
+                    expected_status={"$in": ["QUEUED", "RUNNING"]},
+                )
+                if updated and updated.modified_count:
+                    job["status"] = changes["status"]
+                    if not cancelled:
+                        job["error_code"] = error_code
         except WorkerClientError:
             pass
     result = job.get("result") or {}
+    for source in result.get("excluded", []):
+        document_id = source.get("document_id")
+        if not document_id:
+            continue
+        try:
+            document = await get_requirement_document_record(document_id, user)
+        except HTTPException as error:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED"},
+            ) from error
+        if str(document.get("project_id")) != str(project_id):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED"},
+            )
     for source in result.get("results", []):
         document = await get_requirement_document_record(source["document_id"], user)
         if (
@@ -794,11 +1037,31 @@ async def get_document_summary_job(project_id, job_id, user):
             or document.get("ai_enabled") is not True
         ):
             raise HTTPException(status_code=409, detail={"code": "SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED"})
-    return job
+    progress = dict(job.get("progress") or {})
+    if not job.get("locked_sources"):
+        progress.pop("current_document", None)
+    safe_job = {
+        key: job[key]
+        for key in (
+            "_id",
+            "status",
+            "progress",
+            "result",
+            "error_code",
+            "created_at",
+            "updated_at",
+            "started_at",
+            "completed_at",
+        )
+        if key in job
+    }
+    if "progress" in safe_job:
+        safe_job["progress"] = progress
+    return safe_job
 
 
 async def cancel_document_summary_job(project_id, job_id, user):
-    await get_project(project_id, user, "requirement_document.extract")
+    await get_project(project_id, user, "ai.ask_project")
     job_status = await database.value.document_summary_jobs.find_one(
         {"_id": job_id, "project_id": project_id, "requester_id": user.id},
         {"status": 1},
@@ -833,7 +1096,7 @@ async def cancel_document_summary_job(project_id, job_id, user):
 
 
 async def retry_document_summary_job(project_id, job_id, user):
-    await get_project(project_id, user, "requirement_document.extract")
+    await get_project(project_id, user, "ai.ask_project")
     collection = database.value.document_summary_jobs
     job = await collection.find_one(
         {
@@ -905,7 +1168,7 @@ async def retry_document_summary_job(project_id, job_id, user):
 
 
 async def summarize_project_documents(project_id, request, user, job_id=None, generation=None):
-    await get_project(project_id, user, "requirement_document.extract")
+    await get_project(project_id, user, "ai.ask_project")
     results = []
     excluded = []
     job = (
@@ -932,9 +1195,7 @@ async def summarize_project_documents(project_id, request, user, job_id=None, ge
                 continue
             selected.append(document)
     elif request.all_readable:
-        documents = await requirement_document_repository.list({"project_id": project_id}, None)
-        documents = [document for document in documents if can_read_requirement_document(document, user)]
-        selected = [document for document in documents if document.get("status") != "ARCHIVED"]
+        selected = await _readable_project_summary_sources(project_id, user)
     else:
         selected = []
         for document_id in request.document_ids:
@@ -967,6 +1228,16 @@ async def summarize_project_documents(project_id, request, user, job_id=None, ge
                     "reason": "CONTENT_READ_FAILED",
                     "error": type(error).__name__,
                 }
+            )
+            await _update_summary_job(
+                job_id,
+                {
+                    "progress": {
+                        "processed": len(results) + len(excluded),
+                        "total": total,
+                    }
+                },
+                generation=generation,
             )
             continue
         if not content:
@@ -1028,8 +1299,8 @@ async def summarize_project_documents(project_id, request, user, job_id=None, ge
                             generation=generation,
                         )
                         continue
-                    chunk_summary = await ai_automation_client.summarize_knowledge_text(
-                        chunk, request.output_language
+                    chunk_summary = await _summarize_with_source_access(
+                        chunk, request.output_language, [document], user
                     )
                     await database.value.document_summary_chunk_cache.replace_one(
                         {"_id": chunk_key},
@@ -1063,16 +1334,22 @@ async def summarize_project_documents(project_id, request, user, job_id=None, ge
                 while len("\n\n".join(summaries)) > SUMMARY_INPUT_LIMIT:
                     combined = "\n\n".join(summaries)
                     summaries = [
-                        await ai_automation_client.summarize_knowledge_text(
-                            combined[index : index + SUMMARY_INPUT_LIMIT], request.output_language
+                        await _summarize_with_source_access(
+                            combined[index : index + SUMMARY_INPUT_LIMIT],
+                            request.output_language,
+                            [document],
+                            user,
                         )
                         for index in range(0, len(combined), SUMMARY_INPUT_LIMIT)
                     ]
                 summary = (
                     summaries[0]
                     if len(summaries) == 1
-                    else await ai_automation_client.summarize_knowledge_text(
-                        "\n\n".join(summaries), request.output_language
+                    else await _summarize_with_source_access(
+                        "\n\n".join(summaries),
+                        request.output_language,
+                        [document],
+                        user,
                     )
                 )
             await _assert_summary_source_current(document, user)
@@ -1130,12 +1407,21 @@ async def summarize_project_documents(project_id, request, user, job_id=None, ge
         await _check_summary_job(job_id, generation)
         combined = "\n\n".join(
             [
-                await ai_automation_client.summarize_knowledge_text(
-                    combined[index : index + SUMMARY_INPUT_LIMIT], request.output_language
+                await _summarize_with_source_access(
+                    combined[index : index + SUMMARY_INPUT_LIMIT],
+                    request.output_language,
+                    [
+                        document
+                        for document in selected
+                        if str(document.get("_id"))
+                        in {item["document_id"] for item in results}
+                    ],
+                    user,
                 )
                 for index in range(0, len(combined), SUMMARY_INPUT_LIMIT)
             ]
         )
+    summary_sources = []
     for item in results:
         await _check_summary_job(job_id, generation)
         source = await get_requirement_document_record(item["document_id"], user)
@@ -1146,8 +1432,13 @@ async def summarize_project_documents(project_id, request, user, job_id=None, ge
             or source.get("ai_enabled") is not True
         ):
             raise HTTPException(status_code=409, detail={"code": "SUMMARY_SOURCE_CHANGED_OR_ACCESS_REVOKED"})
-    overall = combined if len(results) == 1 else await ai_automation_client.summarize_knowledge_text(
-        combined, request.output_language
+        summary_sources.append(source)
+    overall = (
+        combined
+        if len(results) == 1
+        else await _summarize_with_source_access(
+            combined, request.output_language, summary_sources, user
+        )
     )
     return {
         "status": "COMPLETED" if not excluded and all(item["complete"] for item in results) else "INCOMPLETE",

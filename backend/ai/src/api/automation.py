@@ -171,21 +171,17 @@ async def create_automation_definition(
     role, permissions = await project_access(payload.project_id, token)
     if "automation.create" not in permissions:
         raise HTTPException(status_code=403, detail={"code": "AUTOMATION_DEFINITION_DENIED"})
-    return await automation_service.create_definition(payload, user.id, role, permissions)
+    raise HTTPException(status_code=410, detail={"code": "EVENT_AUTOMATION_RETIRED"})
 
 
 @router.get("/triggers")
 async def list_automation_triggers():
-    return [
-        trigger.value
-        for trigger in AutomationTrigger
-        if trigger != AutomationTrigger.MANUAL
-    ]
+    raise HTTPException(status_code=410, detail={"code": "EVENT_AUTOMATION_RETIRED"})
 
 
 @router.get("/hanh-dong")
 async def list_automation_actions():
-    return [action.value for action in AutomationAction]
+    raise HTTPException(status_code=410, detail={"code": "EVENT_AUTOMATION_RETIRED"})
 
 
 @router.get("/du-an/{project_id}/dinh-nghia")
@@ -198,7 +194,7 @@ async def list_automation_definitions(
         _, permissions = await project_access(project_id, token)
         if "automation.read" not in permissions:
             raise HTTPException(status_code=403, detail={"code": "PROJECT_ACCESS_DENIED"})
-    return await automation_repository.list_definitions(project_id)
+    return []
 
 
 @router.patch("/dinh-nghia/{definition_id}")
@@ -209,7 +205,7 @@ async def update_automation_definition(
     user: CurrentUser = Depends(get_current_user),
 ):
     definition = await _controllable_definition(definition_id, token, user)
-    return await automation_service.update_definition(definition, payload)
+    raise HTTPException(status_code=410, detail={"code": "EVENT_AUTOMATION_RETIRED"})
 
 
 @router.post(
@@ -231,7 +227,7 @@ async def receive_automation_event(payload: AutomationEventRequest):
     if not runs:
         return {
             "status": "suppressed",
-            "reason_code": "AUTOMATION_TRIGGER_DISABLED",
+            "reason_code": "AGENT_REQUEST_REQUIRED",
             "runs": [],
         }
     return {"status": "accepted", "runs": runs}
@@ -260,6 +256,11 @@ async def get_internal_run_execution_status(automation_run_id: str):
         "status": run.status,
         "revision": run.revision,
         "active": run.status in {AutomationStatus.QUEUED, AutomationStatus.RUNNING},
+        "user_requested": (run.constraints or {}).get("user_requested") is True,
+        "requester_user_id": run.requester_user_id,
+        "execution_user_id": run.execution_user_id,
+        "trigger": getattr(run.trigger, "value", run.trigger),
+        "intent": run.intent,
     }
 
 

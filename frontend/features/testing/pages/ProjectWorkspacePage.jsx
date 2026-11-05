@@ -164,6 +164,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   const areaAnyPermissions =
     area === "reports"
       ? [
+          "workreport.read",
           "report.read",
           "analytics.read",
           "analytics.ai.read",

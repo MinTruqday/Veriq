@@ -2,14 +2,12 @@
 
 Đây là mục lục sở hữu prompt, không phải nơi chứa prompt dùng chung. Mỗi module chức năng giữ nội dung của nó; các tệp `agents.py`, `catalog.py`, `requirements.py` và `structured.py` chỉ còn xuất lại tên cũ để tránh làm gãy import.
 
-## Agent tự động hóa
+## Luồng AI Agent do người dùng khởi chạy
 
 | Module | Prompt/hàm sở hữu | Nơi gọi | Mục đích |
 | --- | --- | --- | --- |
-| `agent_planning.py` | `agent_plan_prompt`, `AGENT_PLAN`, `verified_source_fact_instruction`, `change_simulation_instruction` | `agents/runner/nodes.py` | Chọn tác vụ/công cụ theo mục tiêu, quyền và bằng chứng; quy định cách dùng fact và mô phỏng thay đổi |
-| `agent_execution.py` | `agent_execution_prompt`, `AGENT_EXECUTION` | `agents/agent.py` | Đánh giá kết quả gọi công cụ và ghi nhận điều đã làm/còn thiếu |
-| `automation.py` | `automation_fact_extraction_prompt` | `agents/runner/automation_graph.py` | Trích fact và câu hỏi chưa được nguồn trả lời; chỉ giữ fact có trích dẫn nguyên văn |
-| `automation_events.py` | `generic_event_objective`, `document_ingested_objective`, `api_operation_confirmed_objective`, `requirement_changed_objective`, `defect_recorded_objective`, `test_execution_recorded_objective`, `test_plan_approved_objective`, `test_plan_changed_objective`, `test_execution_observation_objective`, `work_item_changed_observation_objective`, `test_case_changed_observation_objective`, `test_case_approved_observation_objective`, `release_changed_observation_objective` | `services/automation.py`, `agents/runner/automation_event_tasks.py` | Mục tiêu riêng theo sự kiện; tự chạy các bước được cấp quyền sự kiện và qua kiểm tra xác định, giữ nguyên gate nghiệp vụ và không báo thành công khi chưa đọc lại artifact |
+| `agent_planning.py` | `agent_plan_prompt`, `AGENT_PLAN`, `verified_source_fact_instruction`, `change_simulation_instruction` | `agents/runner/nodes.py` | Chọn tác vụ/công cụ theo yêu cầu người dùng hiện tại, quyền và bằng chứng; quy định cách dùng fact và mô phỏng thay đổi |
+| `agent_execution.py` | `agent_execution_prompt`, `AGENT_EXECUTION` | `agents/agent.py` | Đánh giá kết quả gọi công cụ theo yêu cầu hiện tại và ghi nhận điều đã làm/còn thiếu |
 | `requirement_templates.py` | `requirement_document_synthesis_instruction`, `REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS`, `REQUIREMENT_TEMPLATE_REVIEW_INSTRUCTIONS` | `tools/requirement_document_workflow.py`, `prompts/testing.py` | Tổng hợp mẫu Requirement từ facts đã xác minh và rà mẫu có nguồn, không tự quyết nhập |
 | `test_generation.py` | `requirement_test_generation_instruction`, `focused_requirement_test_generation_instruction`, `retry_grounded_requirement_test_generation_instruction`, `uncovered_obligation_test_generation_instruction` | Requirement ingestion/change workflows | Tạo Test Case cho phạm vi còn thiếu, có căn cứ và tránh trùng |
 | `test_design.py` | `TEST_CASE_GENERATION_CONTRACT`, `TECHNIQUE_RECOMMENDATION_CONTRACT`, `AUTOMATED_TECHNIQUE_RECOMMENDATION_INSTRUCTION`, `TEST_CONDITION_GENERATION_CONTRACT`, `TEST_DESIGN_CAPABILITY_CONTRACTS` | `prompts/testing.py` qua `services/ai_automation.py`, `tools/test_design_tools.py` | Quy tắc sinh ca, gợi ý kỹ thuật, sinh điều kiện và chỉ gắn kỹ năng cần thiết khi nguồn ghi rõ; schema chỉ mô tả cấu trúc dữ liệu |
@@ -25,7 +23,7 @@
 | `requirement_analysis.py` | `requirement_quality_analysis_instruction` | `testing/modules/requirements/services/requirement_ai.py` qua `tools/requirement_change_workflow.py` | Đánh giá tự động Requirement khi có sự kiện thay đổi; UI chỉ đọc kết quả |
 | `prompt_data.py` | `prompt_json` | Các prompt có đầu vào động | Tuần tự hóa JSON và escape dấu đóng thẻ trước khi nhúng dữ liệu vào prompt |
 
-Các objective bổ sung của `automation_events.py` là `performance_configuration_approved_objective`, `status_report_created_objective` và `test_completion_report_created_objective`; chúng được gọi qua `services/automation.py` và `agents/runner/automation_event_tasks.py` như các objective sự kiện cùng module.
+`automation_events.py` còn giữ các objective cũ, gồm `performance_configuration_approved_objective`, `status_report_created_objective` và `test_completion_report_created_objective`, để tương thích mã/lịch sử. Bộ điều phối hiện tại không khởi chạy các objective này từ sự kiện miền.
 
 ## Requirements và kiểm thử
 
@@ -43,6 +41,8 @@ Các objective bổ sung của `automation_events.py` là `performance_configura
 
 
 ## Hạ tầng prompt
+
+Các prompt nghiệp vụ chỉ được gọi trong một lượt Agent do người dùng chủ động yêu cầu. Sự kiện miền như thay đổi Requirement, ghi nhận Defect, duyệt Test Plan hay hoàn tất Test Run không tự khởi chạy lượt AI. Những module prompt cũ còn được giữ để tương thích lịch sử/import; việc còn tên module cũ không bật lại trigger tự động.
 
 | Module | Prompt/hàm sở hữu | Nơi gọi | Mục đích |
 | --- | --- | --- | --- |

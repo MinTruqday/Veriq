@@ -16,6 +16,7 @@ from src.core.common import (
     validate_doc,
 )
 from src.core.database import database
+from src.core.human_decisions import content_authorship_changes
 from src.modules.design.services.test_adequacy import assessment_status_for_list
 from src.modules.requirements.services.requirement_indexing import (
     index_requirement_version,
@@ -137,6 +138,8 @@ async def create_requirement_record(project_id, payload, user, origin="manual", 
         "revision": 1,
         "origin": origin,
         "created_by": user.id,
+        "content_author_ids": [user.id],
+        "content_authorship_status": "VERIFIED",
         "created_at": timestamp,
         "updated_at": timestamp,
     }
@@ -334,7 +337,15 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
     if "attachments" in changes:
         await get_project(project_id, user, "attachment.manage")
     criteria = changes.pop("acceptance_criteria", None)
+    authorship_input = dict(changes)
+    authorship_record = version
     if criteria is not None:
+        existing_criteria = await requirement_repository.list_acceptance_criteria(version["_id"], None)
+        authorship_record = {**version, "acceptance_criteria": [
+            {"key": item.get("key"), "content_doc": item.get("content_doc")}
+            for item in existing_criteria
+        ]}
+        authorship_input["acceptance_criteria"] = criteria
         keys = [item.get("key") for item in criteria]
         if len(keys) != len(set(keys)):
             raise HTTPException(
@@ -387,6 +398,9 @@ async def update_requirement_draft_record(project_id, requirement_id, payload, u
             raise HTTPException(status_code=409, detail={"code": "REQUIREMENT_KEY_EXISTS"})
     identity_changes = {key: changes[key] for key in ("owner_id", "tags") if key in changes}
     parent_changes = {key: changes[key] for key in ("requirement_key",) if key in changes}
+    authorship = content_authorship_changes(authorship_record, user, authorship_input)
+    if "content_author_ids" in authorship:
+        changes["content_author_ids"] = authorship["content_author_ids"]
     updated_version = None
     async def persist(active_session):
         nonlocal updated_version
@@ -494,6 +508,8 @@ async def create_requirement_version_record(requirement_id, payload, user, sessi
         "index_status": "PENDING",
         "revision": 1,
         "created_by": user.id,
+        "content_author_ids": [user.id],
+        "content_authorship_status": "VERIFIED",
         "created_at": timestamp,
         "updated_at": timestamp,
     }

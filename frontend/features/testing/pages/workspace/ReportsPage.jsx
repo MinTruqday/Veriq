@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
+import WorkReportsPanel from "../../components/WorkReportsPanel";
 import TestStatusReportPanel from "../../components/TestStatusReportPanel";
 import CompletionPage from "./CompletionPage";
 import MetricDefinitionPanel from "../../components/MetricDefinitionPanel";
@@ -170,6 +171,7 @@ export default function ReportsPage({ project }) {
       scope.build,
   );
   const reportTabs = [
+    ...(can("workreport.read") ? [{ id: "work", label: "Công việc và định kỳ" }] : []),
     ...(canReadAnalytics || canReadAiAnalytics || canReadCoverage || canReadReports
       ? [{ id: "summary", label: "Tổng quan" }]
       : []),
@@ -286,6 +288,7 @@ export default function ReportsPage({ project }) {
           tabs={reportTabs}
         />
       )}
+      {visibleTab === "work" && <WorkReportsPanel project={project} />}
       {visibleTab === "reports" && (
         <div className="space-y-6">
           {can("teststatusreport.read") && <TestStatusReportPanel project={project} />}

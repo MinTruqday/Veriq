@@ -190,7 +190,13 @@ class AnalyticsService:
                 ],
             }
             if collection == "requirement_documents":
-                source_query["status"] = {"$ne": "ARCHIVED"}
+                source_query.update(
+                    {
+                        "status": "READY",
+                        "ai_enabled": True,
+                        "index_status": {"$in": ["INDEXED", "DEGRADED"]},
+                    }
+                )
                 if not user.is_system_admin:
                     source_query["$and"] = [
                         {"$or": source_query.pop("$or")},
@@ -265,7 +271,13 @@ class AnalyticsService:
                 continue
             dense_query = {"project_id": project_id, "_id": {"$in": list(references)}}
             if collection == "requirement_documents":
-                dense_query["status"] = {"$ne": "ARCHIVED"}
+                dense_query.update(
+                    {
+                        "status": "READY",
+                        "ai_enabled": True,
+                        "index_status": {"$in": ["INDEXED", "DEGRADED"]},
+                    }
+                )
                 if not user.is_system_admin:
                     dense_query["$or"] = [
                         {"created_by": user.id},

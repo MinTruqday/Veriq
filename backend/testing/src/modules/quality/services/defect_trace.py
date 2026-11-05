@@ -8,6 +8,7 @@ from src.core.common import audit, get_project, get_project_entity, new_id, now,
 from src.core.database import database
 from src.modules.quality.services.defect_analysis import build_defect_trace_candidates
 from src.repositories.defect import defect_repository
+from src.modules.quality.services.defect_authorization import require_defect_editor_assignment
 
 
 def _create_request_hash(payload, defect_id, automation_run_id):
@@ -32,17 +33,29 @@ async def suggest_defect_trace_record(project_id, defect_id, payload, user):
     defect = await get_project_entity("defects", defect_id, user, "ai.suggest_bug_trace")
     if defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
+    run_id = str(getattr(user, "_ai_automation_run_id", "") or "")
+    if run_id:
+        from src.clients.ai_automation import agent_run_allows_bug_trace
+
+        try:
+            admitted = await agent_run_allows_bug_trace(run_id, project_id, user.id)
+        except Exception as error:
+            raise HTTPException(503, detail={"code": "AI_AGENT_STATUS_UNAVAILABLE"}) from error
+        if not admitted:
+            raise HTTPException(403, detail={"code": "USER_REQUESTED_AGENT_REQUIRED"})
+    revision = payload.expected_revision or payload.source_event_revision
+    expected_event_id = f"defect:{defect_id}:{revision}"
     if (
-        not getattr(user, "_ai_automation_run_id", "")
-        or getattr(user, "_ai_automation_trigger", "") != payload.source_event_trigger
-    ):
-        raise HTTPException(status_code=403, detail={"code": "VERIFIED_DEFECT_EVENT_REQUIRED"})
-    expected_event_id = f"defect:{defect_id}:{payload.source_event_revision}"
-    if (
-        payload.source_event_id != expected_event_id
-        or defect.get("revision") != payload.source_event_revision
+        (payload.source_event_id is not None and payload.source_event_id != expected_event_id)
+        or defect.get("revision") != revision
     ):
         raise HTTPException(status_code=409, detail={"code": "DEFECT_TRACE_SOURCE_CHANGED"})
+    payload = payload.model_copy(update={
+        "expected_revision": revision,
+        "source_event_id": expected_event_id,
+        "source_event_revision": revision,
+        "source_event_trigger": "MANUAL",
+    })
     existing = await defect_repository.find_ai_result_by_idempotency(
         project_id, payload.idempotency_key
     )
@@ -170,6 +183,7 @@ async def update_defect_trace_record(project_id, defect_id, payload, user):
     if defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
     changes = {}
+    await require_defect_editor_assignment(defect, user)
     fields = payload.model_fields_set
     if "linked_test_result_id" in fields:
         if payload.linked_test_result_id:

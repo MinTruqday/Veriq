@@ -3,7 +3,6 @@ from typing import Optional
 
 
 class Settings:
-    AI_DOMAIN_AUTOMATION_ENABLED: bool = os.getenv("AI_DOMAIN_AUTOMATION_ENABLED", "false").lower() == "true"
     PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
     INTERNAL_API_URL: str = os.environ["INTERNAL_API_URL"]

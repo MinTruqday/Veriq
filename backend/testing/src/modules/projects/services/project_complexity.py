@@ -360,23 +360,29 @@ async def get_project_complexity_scope(project_id, user):
     }
 
 
-async def _claim_project_complexity_request(project_id, user, payload, fingerprint):
-    request_fingerprint = _fingerprint(
-        {
+async def _claim_project_complexity_request(
+    project_id, user, payload, fingerprint, output_language,
+    *, result_type="PROJECT_COMPLEXITY_ASSESSMENT", request_context=None,
+):
+    request_values = {
             "actor_id": user.id,
             "source_fingerprint": fingerprint,
             "instruction": payload.instruction.strip(),
+            "output_language": output_language,
         }
-    )
+    if request_context is not None:
+        request_values["context"] = request_context
+    request_fingerprint = _fingerprint(request_values)
     claim_token = new_id("AIC")
     timestamp = now()
     reservation = {
         "_id": new_id("AIR"),
         "project_id": project_id,
-        "result_type": "PROJECT_COMPLEXITY_ASSESSMENT_PENDING",
+        "result_type": f"{result_type}_PENDING",
         "idempotency_key": payload.idempotency_key,
         "request_fingerprint": request_fingerprint,
         "source_fingerprint": fingerprint,
+        "output_language": output_language,
         "claim_token": claim_token,
         "lease_expires_at": timestamp + timedelta(minutes=35),
         "created_by": user.id,
@@ -391,14 +397,14 @@ async def _claim_project_complexity_request(project_id, user, payload, fingerpri
         )
         if not existing or existing.get("request_fingerprint") != request_fingerprint:
             raise HTTPException(status_code=409, detail={"code": "PROJECT_COMPLEXITY_IDEMPOTENCY_KEY_REUSED"})
-        if existing.get("result_type") == "PROJECT_COMPLEXITY_ASSESSMENT":
+        if existing.get("result_type") == result_type:
             return None, existing
-        if existing.get("result_type") != "PROJECT_COMPLEXITY_ASSESSMENT_PENDING":
+        if existing.get("result_type") != f"{result_type}_PENDING":
             raise HTTPException(status_code=409, detail={"code": "PROJECT_COMPLEXITY_RESERVATION_INVALID"})
         reclaimed = await database.value.ai_results.find_one_and_update(
             {
                 "_id": existing["_id"],
-                "result_type": "PROJECT_COMPLEXITY_ASSESSMENT_PENDING",
+                "result_type": f"{result_type}_PENDING",
                 "lease_expires_at": {"$lte": timestamp},
             },
             {
@@ -418,7 +424,7 @@ async def _claim_project_complexity_request(project_id, user, payload, fingerpri
         return reclaimed, None
 
 
-async def assess_project_complexity(project_id, user, payload):
+async def assess_project_complexity(project_id, user, payload, *, output_language=None):
     scope = await _source_scope(
         project_id,
         user,
@@ -435,6 +441,8 @@ async def assess_project_complexity(project_id, user, payload):
             status_code=422,
             detail={"code": "PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE", "evidence_chunks": len(evidence), "maximum": 100},
         )
+    project = await database.value.projects.find_one({"_id": project_id}, {"locale": 1})
+    locale = str(output_language or (project or {}).get("locale") or "en")
     context = {
         "source_coverage": {
             "current_ai_readable_documents": scope["document_count"],
@@ -446,7 +454,7 @@ async def assess_project_complexity(project_id, user, payload):
         "user_instruction": payload.instruction.strip(),
     }
     reservation, replay = await _claim_project_complexity_request(
-        project_id, user, payload, scope["fingerprint"]
+        project_id, user, payload, scope["fingerprint"], locale
     )
     if replay:
         latest_scope = await _source_scope(
@@ -473,6 +481,7 @@ async def assess_project_complexity(project_id, user, payload):
             project_id,
             json.dumps(context, ensure_ascii=False),
             evidence,
+            output_language=locale,
         )
         if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
             raise HTTPException(status_code=503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True})
@@ -484,8 +493,7 @@ async def assess_project_complexity(project_id, user, payload):
         if len(dimensions) != 12 or {item.get("dimension_id") for item in dimensions} != DIMENSION_IDS:
             raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_DIMENSIONS_INVALID"})
         sources = {item["artifact_version_id"]: item for item in evidence}
-        project = await database.value.projects.find_one({"_id": project_id}, {"locale": 1})
-        locale = str((project or {}).get("locale") or "en").lower()
+        locale = locale.lower()
         insufficient_explanation = (
             "Không đủ dẫn chứng đã xác minh để đánh giá chiều này."
             if locale.startswith("vi")

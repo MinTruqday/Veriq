@@ -3,6 +3,8 @@ import hashlib
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 from src.core.human_decisions import require_automation_publication_authority
+from src.core.human_decisions import require_independent_review
+from src.modules.design.services.design_authorization import require_assigned_design_draft
 
 from src.core.common import audit, get_project, get_project_entity, new_id, now, require_action_policy
 from src.core.database import database
@@ -19,8 +21,7 @@ from src.modules.design.services.test_case_custom_fields import validate_test_ca
 
 
 async def lint_test_case_draft_record(draft_id, user, project_id=None):
-    draft = await get_project_entity('test_case_drafts', draft_id, user, 'testcase.lint')
-    await get_project(draft["project_id"], user, 'ai.run_lint')
+    draft = await require_assigned_design_draft('test_case_drafts', draft_id, user, 'testcase.lint')
     if project_id is not None and draft["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     findings = lint_test_case(draft)
@@ -71,7 +72,7 @@ async def get_latest_test_case_draft_lint(draft_id, user):
 
 
 async def submit_test_case_review_record(project_id, draft_id, payload, user):
-    draft = await get_project_entity('test_case_drafts', draft_id, user, 'testcase.submit_review')
+    draft = await require_assigned_design_draft('test_case_drafts', draft_id, user, 'testcase.submit_review')
     if draft["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     if draft["status"] == 'IN_REVIEW':
@@ -139,6 +140,7 @@ async def request_test_case_changes_record(project_id, draft_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     if draft["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
+    require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
     if draft["revision"] != payload.expected_revision:
         raise HTTPException(
             status_code=409,
@@ -182,6 +184,7 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         return await approved_test_case_result(draft, user)
     if draft["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
+    require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
     if draft["revision"] != payload.expected_revision:
         raise HTTPException(
             status_code=409,

@@ -12,7 +12,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.mq import mq
-from src.prompts.automation_events import generic_event_objective
+from src.prompts.automation_events import document_ingested_objective, generic_event_objective
 from src.repositories.automation import automation_repository
 from src.runtime.queue_names import AUTOMATION_QUEUE
 from src.runtime.limits import limits
@@ -31,7 +31,7 @@ from src.schemas.automation import (
     AutomationTrigger,
 )
 from src.services.project_access import project_access
-from src.tools.registry import registered_tools, tool_access
+from src.tools.registry import registered_tools, requires_human_decision, tool_access
 from src.tools.testing_api import AutomationOperationError, require_operation
 
 
@@ -194,8 +194,128 @@ class AutomationService:
             detail={"code": "DIRECT_AUTOMATION_RUN_RETIRED", "replacement": "enqueue_event"},
         )
 
+    async def create_user_run(self, payload, user_id: str, role: str, permissions: list[str]):
+        if payload.evidence:
+            raise HTTPException(
+                status_code=422, detail={"code": "AGENT_EVIDENCE_MUST_BE_RETRIEVED"}
+            )
+        available = []
+        for tool in registered_tools().values():
+            access = tool_access(tool)
+            if (
+                access
+                and access.permission in permissions
+                and not requires_human_decision(access.permission)
+                and (access.action != "MUTATE" or access.draft_only)
+                and tool.metadata.get("user_selectable")
+            ):
+                available.append(access.name)
+        if not available:
+            raise HTTPException(status_code=403, detail={"code": "AGENT_REQUEST_DENIED"})
+        if payload.intent:
+            tool = registered_tools().get(payload.intent)
+            access = tool_access(tool)
+            if (
+                not access
+                or payload.intent not in available
+                or not tool.metadata.get("user_selectable")
+            ):
+                raise HTTPException(status_code=403, detail={"code": "AGENT_CAPABILITY_DENIED"})
+            try:
+                intent_arguments = tool.args_schema.model_validate(
+                    payload.intent_arguments
+                ).model_dump(mode="python", exclude_unset=True)
+            except Exception as error:
+                raise HTTPException(
+                    status_code=422, detail={"code": "AGENT_ARGUMENT_INVALID"}
+                ) from error
+        elif payload.intent_arguments:
+            raise HTTPException(
+                status_code=422, detail={"code": "AGENT_ARGUMENTS_REQUIRE_CAPABILITY"}
+            )
+        else:
+            intent_arguments = {}
+        request_data = {
+            "project_id": payload.project_id,
+            "requester_user_id": user_id,
+            "objective": payload.objective.strip(),
+            "intent": payload.intent,
+            "intent_arguments": intent_arguments,
+            "target_artifact_ids": payload.target_artifact_ids,
+            "evidence": [],
+            "output_language": payload.output_language,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                request_data,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        event_id = "agent-request:" + hashlib.sha256(
+            f"{user_id}:{payload.idempotency_key}".encode("utf-8")
+        ).hexdigest()
+        existing = await automation_repository.find_event_run(payload.project_id, event_id)
+        if existing:
+            if (
+                existing.requester_user_id != user_id
+                or (existing.constraints or {}).get("request_fingerprint") != fingerprint
+            ):
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            return existing
+        run = AutomationRun(
+            project_id=payload.project_id,
+            requester_user_id=user_id,
+            requester_role=role,
+            requester_permissions=permissions,
+            execution_user_id=user_id,
+            execution_role=role,
+            execution_permissions=permissions,
+            kind=AutomationKind.ON_DEMAND,
+            trigger=AutomationTrigger.MANUAL,
+            source_event_id=event_id,
+            source_event_verified=False,
+            objective=payload.objective.strip(),
+            intent=payload.intent,
+            intent_arguments=intent_arguments,
+            target_artifact_ids=payload.target_artifact_ids,
+            evidence=[],
+            constraints={
+                "user_requested": True,
+                "output_language": payload.output_language,
+                "request_fingerprint": fingerprint,
+            },
+        )
+        try:
+            run = await automation_repository.create_run_with_checkpoint(
+                run,
+                phase=AutomationCheckpointPhase.QUEUED,
+                detail={"reason_code": "USER_REQUESTED"},
+            )
+        except DuplicateKeyError:
+            existing = await automation_repository.find_event_run(payload.project_id, event_id)
+            if (
+                not existing
+                or existing.requester_user_id != user_id
+                or (existing.constraints or {}).get("request_fingerprint") != fingerprint
+            ):
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            return existing
+        if await publish_automation_run(run.automation_run_id):
+            return run
+        degraded = await automation_repository.transition_with_checkpoint(
+            run.automation_run_id,
+            run.revision,
+            {"status": AutomationStatus.DEGRADED, "error_code": "AGENT_QUEUE_UNAVAILABLE"},
+            phase=AutomationCheckpointPhase.FINALIZED,
+            detail={"reason_code": "AGENT_QUEUE_UNAVAILABLE", "retryable": True},
+        )
+        return degraded or run
+
     async def enqueue_event(self, event: AutomationEventRequest) -> list[AutomationRun]:
-        if not settings.AI_DOMAIN_AUTOMATION_ENABLED:
+        if not event.user_requested or event.trigger != AutomationTrigger.DOCUMENT_INGESTED:
             return []
         if event.trigger == AutomationTrigger.MANUAL:
             raise HTTPException(
@@ -208,7 +328,7 @@ class AutomationService:
             )
         existing = await automation_repository.find_event_run(event.project_id, event.event_id)
         if existing:
-            if not self._event_matches_run(event, existing):
+            if not (existing.constraints or {}).get("user_requested") or not self._event_matches_run(event, existing):
                 raise HTTPException(
                     status_code=409, detail={"code": "AUTOMATION_EVENT_ID_REUSE_CONFLICT"}
                 )
@@ -262,42 +382,10 @@ class AutomationService:
             return [existing]
         token = self._token_for_user(event.requester_user_id)
         role, permissions = await project_access(event.project_id, token)
-        (
-            execution_user_id,
-            execution_role,
-            execution_permissions,
-        ) = await self._default_execution_principal(event, role, permissions)
-        definitions = await automation_repository.list_definitions(event.project_id)
-        matching_definitions = [item for item in definitions if item.trigger == event.trigger]
-        if matching_definitions:
-            enabled_definitions = [item for item in matching_definitions if item.enabled]
-            if not enabled_definitions:
-                return []
-            if len(enabled_definitions) > 1:
-                logger.warning(
-                    "Multiple enabled automation definitions found for project={} trigger={}; "
-                    "using the most recently updated definition only",
-                    event.project_id,
-                    event.trigger.value,
-                )
-            return await self._enqueue_event_runs(
-                event,
-                role,
-                permissions,
-                enabled_definitions[:1],
-                execution_user_id,
-                execution_role,
-                execution_permissions,
-            )
-
+        if "requirement_document.extract" not in permissions:
+            raise HTTPException(status_code=403, detail={"code": "AGENT_REQUEST_DENIED"})
         return await self._enqueue_event_runs(
-            event,
-            role,
-            permissions,
-            [None],
-            execution_user_id,
-            execution_role,
-            execution_permissions,
+            event, role, permissions, [None], event.requester_user_id, role, permissions
         )
 
     @staticmethod
@@ -372,7 +460,7 @@ class AutomationService:
             definition_id = definition.definition_id if definition else None
             existing = await automation_repository.find_event_run(event.project_id, event.event_id)
             if existing:
-                if not self._event_matches_run(event, existing):
+                if not (existing.constraints or {}).get("user_requested") or not self._event_matches_run(event, existing):
                     raise HTTPException(
                         status_code=409, detail={"code": "AUTOMATION_EVENT_ID_REUSE_CONFLICT"}
                     )
@@ -399,6 +487,8 @@ class AutomationService:
                 objective=(
                     definition.objective
                     if definition
+                    else document_ingested_objective()
+                    if event.trigger == AutomationTrigger.DOCUMENT_INGESTED
                     else generic_event_objective(event.trigger.value)
                 ),
                 intent=definition.intent if definition else "",
@@ -408,6 +498,12 @@ class AutomationService:
                 constraints={
                     "trigger": event.trigger.value,
                     "requester_role": role,
+                    "user_requested": event.user_requested,
+                    **(
+                        {"output_language": event.output_language}
+                        if event.output_language
+                        else {}
+                    ),
                     **(
                         {"prior_baseline_version_id": event.prior_baseline_version_id}
                         if event.prior_baseline_version_id
@@ -465,7 +561,7 @@ class AutomationService:
                     event.project_id, event.event_id
                 )
                 if existing:
-                    if not self._event_matches_run(event, existing):
+                    if not (existing.constraints or {}).get("user_requested") or not self._event_matches_run(event, existing):
                         raise HTTPException(
                             status_code=409, detail={"code": "AUTOMATION_EVENT_ID_REUSE_CONFLICT"}
                         )
@@ -496,6 +592,8 @@ class AutomationService:
         return runs
 
     async def authorize_retry(self, run: AutomationRun, expected_revision: int) -> AutomationRun:
+        if not (run.constraints or {}).get("user_requested"):
+            raise HTTPException(status_code=409, detail={"code": "AGENT_REQUEST_REQUIRED"})
         if run.revision != expected_revision:
             raise HTTPException(
                 status_code=409,
@@ -601,6 +699,8 @@ class AutomationService:
         payload: AutomationClarificationResponseRequest,
         responder_user_id: str,
     ) -> AutomationRun:
+        if not (run.constraints or {}).get("user_requested"):
+            raise HTTPException(status_code=409, detail={"code": "AGENT_REQUEST_REQUIRED"})
         if run.revision != payload.expected_revision:
             raise HTTPException(
                 status_code=409,
@@ -862,34 +962,15 @@ class AutomationService:
             event_id = str(run.source_event_id or "")
             prefix = "requirement-document:"
             if event_id.startswith(prefix):
-                document_id, separator, revision = event_id[len(prefix) :].rpartition(":")
-                if separator and document_id and revision.isdigit():
+                parts = event_id[len(prefix):].split(":", 2)
+                if len(parts) >= 2 and parts[0] and parts[1].isdigit():
+                    document_id = parts[0]
                     source_document_ids = [document_id]
                 else:
                     return None
             else:
                 return None
-        publication_permissions = (
-            [
-                "requirement.submit_review",
-                "requirement.approve",
-                "testcase.submit_review",
-                "testcase.approve",
-                "proposal.approve",
-            ]
-            if trigger in {"DOCUMENT_INGESTED", "REQUIREMENT_CHANGED"}
-            else []
-        )
-        if trigger == "TEST_PLAN_CHANGED":
-            publication_permissions = ["testplan.approve"]
-        elif trigger == "RELEASE_CHANGED":
-            publication_permissions = [
-                "release.close",
-                "testmonitor.snapshot.create",
-                "testcompletion.create",
-            ]
-        elif trigger == "TEST_EXECUTION_RECORDED":
-            publication_permissions = ["testadequacy.execution_feedback.record"]
+        publication_permissions = []
         return jwt.encode(
             {
                 "uid": execution_user_id,

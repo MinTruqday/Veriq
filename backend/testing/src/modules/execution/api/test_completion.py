@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query
+import asyncio
+
+from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 
 from src.core.auth import CurrentUser, get_current_user
@@ -188,7 +190,10 @@ async def export_test_completion_report(
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "csv": "text/csv; charset=utf-8",
     }
-    content = export_completion_report(report, format)
+    try:
+        content = await asyncio.to_thread(export_completion_report, report, format)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail={"code": str(error) if str(error).startswith("REPORT_") else "REPORT_EXPORT_UNAVAILABLE"}) from error
     return StreamingResponse(
         iter([content]),
         media_type=media_types[format],

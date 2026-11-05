@@ -1696,7 +1696,7 @@ function WorkItemList({
   const itemTitles = new Map(items.map((item) => [item._id, item.title]));
   const showActionColumn = canEdit || items.some((item) => canTransitionItem(item));
   const titleColumnWidth =
-    100 - (13 + 11 + (canReadProjectMembers ? 16 : 0) + 11 + (showActionColumn ? 8 : 0));
+    100 - (13 + 11 + (canReadProjectMembers ? 16 : 0) + 11 + (showActionColumn ? 16 : 0));
   return (
     <div className="p-4">
       <DataTable
@@ -1989,40 +1989,52 @@ function WorkItemList({
                 {
                   key: "actions",
                   label: "Thao tác",
-                  width: "8%",
-                  minWidth: 64,
-                  render: (item) => (
-                    <span className="flex flex-wrap gap-2">
-                      {canEdit && (
-                        <button
-                          aria-label={`Sửa ${item.title}`}
-                          className="icon-button h-10 w-10"
-                          title="Sửa công việc"
-                          type="button"
-                          onClick={() => onEdit(item)}
-                        >
-                          <Pencil aria-hidden="true" size={16} />
-                        </button>
-                      )}
-                      {transitions
-                        .filter((transitionValue) => transitionValue.from_status === item.status)
-                        .filter((transitionValue) =>
-                          canTransitionItem(item, transitionValue.to_status),
-                        )
-                        .map((transitionValue) => (
+                  width: "16%",
+                  minWidth: 184,
+                  render: (item) => {
+                    const availableTransitions = transitions
+                      .filter((transitionValue) => transitionValue.from_status === item.status)
+                      .filter((transitionValue) =>
+                        canTransitionItem(item, transitionValue.to_status),
+                      );
+                    return (
+                      <span className="flex min-w-0 flex-wrap items-center gap-2">
+                        {canEdit && (
                           <button
-                            className="secondary-button"
-                            key={`${item._id}-${transitionValue.to_status}`}
+                            aria-label={`Sửa ${item.title}`}
+                            className="icon-button h-10 w-10"
+                            title="Sửa công việc"
                             type="button"
-                            onClick={() => onTransition(item, transitionValue.to_status)}
+                            onClick={() => onEdit(item)}
                           >
-                            Chuyển{" "}
-                            {statuses.find((value) => value.key === transitionValue.to_status)
-                              ?.name || valueLabel(transitionValue.to_status)}
+                            <Pencil aria-hidden="true" size={16} />
                           </button>
-                        ))}
-                    </span>
-                  ),
+                        )}
+                        {availableTransitions.length > 0 && (
+                          <select
+                            aria-label={`Chuyển trạng thái ${item.title}`}
+                            className="apple-input min-w-0 flex-1 !py-2 text-xs"
+                            value=""
+                            onChange={(event) => {
+                              const nextStatus = event.target.value;
+                              if (nextStatus) onTransition(item, nextStatus);
+                            }}
+                          >
+                            <option value="">Chuyển trạng thái</option>
+                            {availableTransitions.map((transitionValue) => (
+                              <option
+                                key={`${item._id}-${transitionValue.to_status}`}
+                                value={transitionValue.to_status}
+                              >
+                                {statuses.find((value) => value.key === transitionValue.to_status)
+                                  ?.name || valueLabel(transitionValue.to_status)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </span>
+                    );
+                  },
                 },
               ]
             : []),

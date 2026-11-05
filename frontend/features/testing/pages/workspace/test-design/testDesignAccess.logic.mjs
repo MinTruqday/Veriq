@@ -1,5 +1,23 @@
 const hasPermission = (permissions, permission) => permissions.includes(permission);
 
+export function canUseAssignedDraft(project, artifact, permission) {
+  const membership = project.current_membership;
+  if (
+    project.status?.toLowerCase() === "archived" ||
+    (project.administrative_status && project.administrative_status !== "ACTIVE")
+  )
+    return false;
+  if (membership?.project_role !== "TESTER") {
+    return project.current_permissions?.includes(permission) || false;
+  }
+  return Boolean(
+    membership.status === "ACTIVE" &&
+      membership.user_id &&
+      artifact?.owner_id === membership.user_id &&
+      ["testcase.update", "testcase.submit_review", "testscenario.update"].includes(permission),
+  );
+}
+
 export function testDesignAccess({ workspaceView = "", caseTab = "cases", permissions = [] }) {
   const isCaseWorkspace = workspaceView === "" || workspaceView === "cases";
   const canReadTestCases = hasPermission(permissions, "testcase.read");

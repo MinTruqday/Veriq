@@ -18,8 +18,10 @@ FROM base AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ARG INTERNAL_API_URL
+ARG NEXT_PROXY_TIMEOUT_MS=180000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV INTERNAL_API_URL=$INTERNAL_API_URL
+ENV NEXT_PROXY_TIMEOUT_MS=$NEXT_PROXY_TIMEOUT_MS
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ .
 RUN mkdir -p public && pnpm run format:check && pnpm run lint && pnpm run build

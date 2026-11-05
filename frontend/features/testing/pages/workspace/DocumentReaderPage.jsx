@@ -11,6 +11,7 @@ import { messageOf } from "../../lib/testing";
 import { projectRoute } from "../../routes";
 import { testingApi } from "../../services/testing.service";
 import HorizontalScrollCue from "@/shared/components/navigation/HorizontalScrollCue";
+import { preferredSummaryLocale, summaryLanguageOptions } from "../../lib/summaryLanguage";
 
 function ReadableMarkdownTable({ children }) {
   const header = Children.toArray(children).find(
@@ -46,7 +47,7 @@ const markdownComponents = { table: ReadableMarkdownTable };
 export default function DocumentReaderPage({ project, section = [] }) {
   const { user } = useAuth();
   const documentId = section[0] || "";
-  const canSummarize = project?.current_permissions?.includes("requirement_document.extract");
+  const canSummarize = project?.current_permissions?.includes("ai.ask_project");
   const [document, setDocument] = useState(null);
   const [content, setContent] = useState("");
   const [nextOffset, setNextOffset] = useState(null);
@@ -61,6 +62,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const documentGenerationRef = useRef(0);
   const pageRequestSequenceRef = useRef(0);
   const summaryRequestSequenceRef = useRef(0);
+  const summaryIdempotencyRef = useRef({ scope: "", key: "" });
   const [sourceImageLoading, setSourceImageLoading] = useState({});
   const [sourceImageErrors, setSourceImageErrors] = useState({});
   const [loading, setLoading] = useState(true);
@@ -74,13 +76,11 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const [searchResults, setSearchResults] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const [language, setLanguage] = useState(
-    (user?.locale || project?.locale)?.toLowerCase().startsWith("en") ? "en" : "vi",
-  );
+  const [language, setLanguage] = useState(preferredSummaryLocale(user?.locale, project?.locale));
 
   useEffect(() => {
     const locale = user?.locale || project?.locale;
-    setLanguage(locale?.toLowerCase().startsWith("en") ? "en" : "vi");
+    setLanguage(preferredSummaryLocale(locale, navigator.language));
   }, [project?.locale, user?.locale]);
 
   const loadPage = useCallback(
@@ -150,6 +150,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
     setSourceImageErrors({});
     setSummaryJob(null);
     setSummary(null);
+    summaryIdempotencyRef.current = { scope: "", key: "" };
     setSummaryLoading(false);
     setDownloadLoading(false);
     setError("");
@@ -163,10 +164,6 @@ export default function DocumentReaderPage({ project, section = [] }) {
       summaryRequestSequenceRef.current += 1;
     };
   }, [loadPage]);
-
-  useEffect(() => {
-    setLanguage(project?.locale?.toLowerCase().startsWith("en") ? "en" : "vi");
-  }, [project?.locale]);
 
   useEffect(() => {
     if (canSummarize) return;
@@ -275,6 +272,20 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const summarize = async () => {
     if (!canSummarize) return;
     const requestSequence = ++summaryRequestSequenceRef.current;
+    const scope = [
+      project?._id,
+      documentId,
+      document?.source_version || "1",
+      document?.revision || "",
+      document?.content_hash || "",
+      language,
+    ].join(":");
+    if (summaryIdempotencyRef.current.scope !== scope) {
+      summaryIdempotencyRef.current = {
+        scope,
+        key: `summary-${crypto.randomUUID()}`,
+      };
+    }
     setSummaryLoading(true);
     setSummary(null);
     setError("");
@@ -283,7 +294,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
         document_ids: [documentId],
         all_readable: false,
         output_language: language,
-        idempotency_key: `summary-${crypto.randomUUID()}`,
+        idempotency_key: summaryIdempotencyRef.current.key,
       });
       if (requestSequence !== summaryRequestSequenceRef.current) return;
       setSummaryJob({ _id: started._id, status: started.status, progress: started.progress });
@@ -431,8 +442,13 @@ export default function DocumentReaderPage({ project, section = [] }) {
                 value={language}
                 onChange={(event) => setLanguage(event.target.value)}
               >
-                <option value="vi">Tiếng Việt</option>
-                <option value="en">English</option>
+                {summaryLanguageOptions(user?.locale || project?.locale || language).map(
+                  (option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ),
+                )}
               </select>
               <button
                 className="apple-button"
@@ -484,6 +500,11 @@ export default function DocumentReaderPage({ project, section = [] }) {
           {summaryJob.progress?.chunks_total
             ? ` · ${summaryJob.progress.chunks_processed}/${summaryJob.progress.chunks_total} phần`
             : ""}
+        </div>
+      )}
+      {!summaryLoading && summaryJob?.status === "CANCELLED" && (
+        <div className="rounded-xl border border-border bg-surface p-3 text-sm" role="status">
+          Đã hủy yêu cầu tóm tắt.
         </div>
       )}
 

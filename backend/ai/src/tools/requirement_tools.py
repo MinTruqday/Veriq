@@ -56,6 +56,7 @@ async def get_trace_links(
         "identifier": "$result._id",
         "expected": {"_id": "$result._id", "project_id": "$project.id", "status": "DRAFT", "revision": "$result.revision"},
     },
+    draft_only=True,
 )
 async def synthesize_requirement_template(
     project_id: Annotated[str, Field(description="Testing project identifier")],
@@ -64,6 +65,7 @@ async def synthesize_requirement_template(
     source_document_ids: Annotated[list[str], Field(description="Permitted source document identifiers")],
     source_template_ids: Annotated[list[str], Field(description="Existing template identifiers used as evidence")] = Field(default_factory=list),
     instruction: Annotated[str, Field(description="Evidence grounded synthesis objective")] = "",
+    output_language: Annotated[str, Field(description="Requested language for user-facing generated content")] = "auto",
     config: RunnableConfig = None,
 ) -> str:
     """Create a requirement-template draft from permitted source documents without waiting for a separate AI confirmation"""
@@ -73,6 +75,7 @@ async def synthesize_requirement_template(
         "source_document_ids": source_document_ids,
         "source_template_ids": source_template_ids,
         "instruction": instruction,
+        "output_language": output_language,
     }
     return await call("POST", f"/du-an/{project_id}/mau-yeu-cau/tong-hop", config, payload)
 
@@ -91,6 +94,7 @@ async def synthesize_requirement_template(
             "current_version.revision": 1,
         },
     },
+    draft_only=True,
 )
 
 async def create_requirement_draft(

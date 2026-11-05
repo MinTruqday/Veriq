@@ -6,7 +6,7 @@ from fastapi.encoders import jsonable_encoder
 from src.core.configuration import settings
 
 
-async def index_artifact(
+async def index_artifact_result(
     project_id,
     artifact_type,
     artifact_id,
@@ -19,9 +19,9 @@ async def index_artifact(
     module="",
     source_structure=None,
     **metadata,
-) -> bool:
+) -> dict:
     if not str(text or "").strip():
-        return False
+        return {"status": "failed", "index_cleanup_pending": []}
     payload = jsonable_encoder(
         {
             "artifact_type": artifact_type,
@@ -46,9 +46,51 @@ async def index_artifact(
             )
             response.raise_for_status()
             result = response.json()
-        return isinstance(result, dict) and result.get("status") == "indexed"
-    except httpx.HTTPError:
-        return False
+        if not isinstance(result, dict) or result.get("status") not in {
+            "indexed",
+            "degraded",
+        }:
+            return {"status": "failed", "index_cleanup_pending": []}
+        cleanup_pending = result.get("index_cleanup_pending")
+        if not isinstance(cleanup_pending, list):
+            cleanup_pending = []
+        return {
+            "status": result["status"],
+            "index_cleanup_pending": cleanup_pending,
+        }
+    except (httpx.HTTPError, ValueError):
+        return {"status": "failed", "index_cleanup_pending": []}
+
+
+async def index_artifact(
+    project_id,
+    artifact_type,
+    artifact_id,
+    artifact_version_id,
+    title,
+    text,
+    status,
+    authority,
+    version=None,
+    module="",
+    source_structure=None,
+    **metadata,
+) -> bool:
+    result = await index_artifact_result(
+        project_id,
+        artifact_type,
+        artifact_id,
+        artifact_version_id,
+        title,
+        text,
+        status,
+        authority,
+        version=version,
+        module=module,
+        source_structure=source_structure,
+        **metadata,
+    )
+    return result["status"] in {"indexed", "degraded"}
 
 
 async def remove_artifact(project_id, artifact_version_id) -> bool:

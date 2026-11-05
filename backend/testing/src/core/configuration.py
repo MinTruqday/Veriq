@@ -19,10 +19,17 @@ class Settings:
     AI_URL: str = os.environ["AI_URL"]
     CONTENT_URL: str = os.environ["CONTENT_URL"]
     WORKER_URL: str = os.environ["WORKER_URL"]
+    NOTIFICATION_URL: str = os.environ["NOTIFICATION_URL"]
     CLOUD_URL: str = os.environ["CLOUD_URL"]
     MAX_UPLOAD_SIZE_BYTES: int = int(os.environ["MAX_UPLOAD_SIZE_BYTES"])
     DOCUMENT_PARSE_LEASE_SECONDS: int = _positive_int_environment(
         "DOCUMENT_PARSE_LEASE_SECONDS", "900"
+    )
+    DOCUMENT_ARCHIVE_CLEANUP_LEASE_SECONDS: int = _positive_int_environment(
+        "DOCUMENT_ARCHIVE_CLEANUP_LEASE_SECONDS", "300"
+    )
+    DOCUMENT_ACCESS_UPDATE_LEASE_SECONDS: int = _positive_int_environment(
+        "DOCUMENT_ACCESS_UPDATE_LEASE_SECONDS", "900"
     )
     DOCUMENT_PARSE_TIMEOUT_SECONDS: int = _positive_int_environment(
         "DOCUMENT_PARSE_TIMEOUT_SECONDS", "1800"

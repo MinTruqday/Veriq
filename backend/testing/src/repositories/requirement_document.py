@@ -8,9 +8,48 @@ class RequirementDocumentRepository:
     def documents(self):
         return database.value.requirement_documents
 
+    async def find_ai_search_sources(self, project_id, document_ids):
+        return await self.documents.find(
+            {
+                "project_id": project_id,
+                "_id": {"$in": list(dict.fromkeys(map(str, document_ids)))},
+            },
+            {
+                "_id": 1,
+                "content_hash": 1,
+                "ai_enabled": 1,
+                "status": 1,
+                "index_status": 1,
+                "visibility": 1,
+                "shared_with": 1,
+                "created_by": 1,
+                "access_update_pending": 1,
+            },
+        ).to_list(len(set(map(str, document_ids))))
+
     async def find_by_hash(self, project_id, content_hash, created_by):
         return await self.documents.find_one(
             {"project_id": project_id, "content_hash": content_hash, "created_by": created_by}
+        )
+
+    async def find_embedded_knowledge_source_by_hash(
+        self, project_id, content_hash, created_by, source_type
+    ):
+        return await self.documents.find_one(
+            {
+                "project_id": project_id,
+                "content_hash": content_hash,
+                "created_by": created_by,
+                "format": "md",
+                "source_type": source_type,
+                "source_series_id": {"$exists": False},
+                "raw_source.storage": "embedded",
+                "status": {"$ne": "ARCHIVED"},
+                "$or": [
+                    {"record_kind": "KNOWLEDGE_SOURCE"},
+                    {"record_kind": {"$exists": False}},
+                ],
+            }
         )
 
     async def find_by_deduplication_key(self, project_id, deduplication_key):
@@ -67,20 +106,19 @@ class RequirementDocumentRepository:
             {"_id": document_id, "project_id": project_id}
         )
 
-    async def normalize_requirement_import_status(self, project_id, document_id=None):
+    async def normalize_requirement_import_status(self, project_id, document_id):
         base_query = {
             "project_id": project_id,
+            "_id": document_id,
             "status": {"$in": ["EXTRACTED", "CONFIRMED"]},
             "normalized_content": {"$exists": True, "$ne": None},
         }
-        if document_id:
-            base_query["_id"] = document_id
         for legacy_status, import_status in (
             ("EXTRACTED", "PREVIEW_READY"),
             ("CONFIRMED", "CONFIRMED"),
         ):
             query = {**base_query, "status": legacy_status}
-            await self.documents.update_many(
+            await self.documents.update_one(
                 query,
                 {
                     "$set": {
@@ -193,6 +231,7 @@ class RequirementDocumentRepository:
         indexed_at,
         expected_revision=None,
         index_contract_version=None,
+        index_cleanup_pending=None,
     ):
         query = {"_id": document_id, "project_id": project_id}
         if expected_revision is not None:
@@ -201,6 +240,8 @@ class RequirementDocumentRepository:
             "index_status": index_status,
             "indexed_at": indexed_at,
         }
+        if index_cleanup_pending is not None:
+            changes["index_cleanup_pending"] = list(index_cleanup_pending)
         if index_contract_version is not None:
             changes["index_contract_version"] = index_contract_version
         return await self.documents.update_one(
@@ -240,6 +281,140 @@ class RequirementDocumentRepository:
             update,
             return_document=ReturnDocument.AFTER,
         )
+
+    async def acquire_archive_cleanup_lease(
+        self, document_id, project_id, token, started_at, lease_until
+    ):
+        return await self.documents.find_one_and_update(
+            {
+                "_id": document_id,
+                "project_id": project_id,
+                "status": "ARCHIVED",
+                "archive_cleanup_status": "PENDING",
+                "$or": [
+                    {"archive_cleanup_lease_until": {"$exists": False}},
+                    {"archive_cleanup_lease_until": {"$lte": started_at}},
+                ],
+            },
+            {
+                "$set": {
+                    "archive_cleanup_token": token,
+                    "archive_cleanup_lease_until": lease_until,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def complete_archive_cleanup(
+        self, document_id, project_id, revision, token, changes, unset_fields=None
+    ):
+        update = {"$set": changes, "$inc": {"revision": 1}}
+        unset = {str(field): "" for field in (unset_fields or [])}
+        unset.update(
+            {
+                "archive_cleanup_token": "",
+                "archive_cleanup_lease_until": "",
+            }
+        )
+        update["$unset"] = unset
+        return await self.documents.find_one_and_update(
+            {
+                "_id": document_id,
+                "project_id": project_id,
+                "revision": revision,
+                "status": "ARCHIVED",
+                "archive_cleanup_status": "PENDING",
+                "archive_cleanup_token": token,
+            },
+            update,
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def release_archive_cleanup_lease(
+        self, document_id, project_id, token
+    ):
+        result = await self.documents.update_one(
+            {
+                "_id": document_id,
+                "project_id": project_id,
+                "status": "ARCHIVED",
+                "archive_cleanup_status": "PENDING",
+                "archive_cleanup_token": token,
+            },
+            {
+                "$unset": {
+                    "archive_cleanup_token": "",
+                    "archive_cleanup_lease_until": "",
+                }
+            },
+        )
+        return result.matched_count == 1
+
+    async def acquire_access_update_lease(
+        self, document_id, project_id, operation_id, token, started_at, lease_until
+    ):
+        return await self.documents.find_one_and_update(
+            {
+                "_id": document_id,
+                "project_id": project_id,
+                "access_update_id": operation_id,
+                "$or": [
+                    {"access_update_lease_until": {"$exists": False}},
+                    {"access_update_lease_until": {"$lte": started_at}},
+                ],
+            },
+            {
+                "$set": {
+                    "access_update_token": token,
+                    "access_update_lease_until": lease_until,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def complete_access_update(
+        self, document_id, project_id, revision, operation_id, token, changes
+    ):
+        update = {
+            "$set": changes,
+            "$inc": {"revision": 1},
+            "$unset": {
+                "access_update_pending": "",
+                "access_update_id": "",
+                "access_update_token": "",
+                "access_update_lease_until": "",
+            },
+        }
+        return await self.documents.find_one_and_update(
+            {
+                "_id": document_id,
+                "project_id": project_id,
+                "revision": revision,
+                "access_update_id": operation_id,
+                "access_update_token": token,
+            },
+            update,
+            return_document=ReturnDocument.AFTER,
+        )
+
+    async def release_access_update_lease(
+        self, document_id, project_id, operation_id, token
+    ):
+        result = await self.documents.update_one(
+            {
+                "_id": document_id,
+                "project_id": project_id,
+                "access_update_id": operation_id,
+                "access_update_token": token,
+            },
+            {
+                "$unset": {
+                    "access_update_token": "",
+                    "access_update_lease_until": "",
+                }
+            },
+        )
+        return result.matched_count == 1
 
     async def transition_status(
         self,
