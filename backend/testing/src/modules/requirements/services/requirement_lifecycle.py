@@ -82,21 +82,6 @@ async def submit_requirement_for_review(
                 "current_revision": version["revision"],
             },
         )
-    acceptance_criteria = await requirement_repository.list_acceptance_criteria(
-        version["_id"], None
-    )
-    findings = requirement_findings(version, acceptance_criteria)
-    project = await requirement_repository.find_project_settings(project_id)
-    lint_blocking = (project.get("settings") or {}).get(
-        'requirement_lint_blocking', True
-    )
-    if lint_blocking and any(
-        item["severity"] == 'error' for item in findings
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail={"code": 'REQUIREMENT_LINT_BLOCKED', "findings": findings},
-        )
     timestamp = now()
     async with await database.client.start_session() as session:
         async with session.start_transaction():
@@ -397,19 +382,11 @@ async def baseline_requirement(
                 "current_revision": version["revision"],
             },
         )
-    if version.get("technical_review_revision") != version["revision"] or not version.get("technical_reviewed_by"):
-        raise HTTPException(409, detail={"code": "REQUIREMENT_TECHNICAL_REVIEW_REQUIRED"})
     acceptance_criteria = await requirement_repository.list_acceptance_criteria(
         version["_id"], None
     )
     findings = requirement_findings(version, acceptance_criteria)
-    project = await requirement_repository.find_project_settings(version["project_id"])
-    lint_blocking = (project.get("settings") or {}).get(
-        'requirement_lint_blocking', True
-    )
-    if lint_blocking and any(
-        item["severity"] == 'error' for item in findings
-    ):
+    if any(item["severity"] == 'error' for item in findings):
         raise HTTPException(
             status_code=409,
             detail={"code": 'REQUIREMENT_LINT_BLOCKED', "findings": findings},

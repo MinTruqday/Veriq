@@ -46,12 +46,11 @@ Giám sát, rủi ro, quản lý thay đổi và truy nguyên chạy xuyên su�
 | Vai trò/trách nhiệm | Chịu trách nhiệm | Giới hạn |
 | --- | --- | --- |
 | BA | Nội dung nghiệp vụ, nguồn/Requirement/BR, câu hỏi làm rõ, thay đổi nghiệp vụ; cấu hình/phân công báo cáo công việc | Không tự xác nhận nội dung đã soạn/sửa; không sửa kết quả thực thi hoặc nhận quyền QA mặc nhiên |
-| QA | Test Plan, phân tích, thiết kế, rà duyệt tài sản kiểm thử, tổ chức Run, tiêu chí kết thúc và báo cáo kiểm thử | Không mặc nhiên quản trị thành viên, sửa build, xem lương/CV, tự duyệt hoặc quyết định phát hành |
+| QA | Rà soát/chấp nhận Requirement, Test Plan, phân tích, thiết kế, rà duyệt tài sản kiểm thử, tổ chức Run, tiêu chí kết thúc và báo cáo kiểm thử | Không duyệt nội dung do chính mình soạn/sửa; không mặc nhiên quản trị thành viên, sửa build, xem lương/CV hoặc quyết định phát hành |
 | Tester | Scenario/Case/dataset nháp được giao; chạy ca được giao, bằng chứng, báo lỗi và retest | Không duyệt baseline, sửa ca đã duyệt trực tiếp, ghi kết quả thay người khác hoặc sửa ngoài phân công |
 | Developer | Công việc phát triển, build, sửa lỗi, phân tích kỹ thuật, tích hợp/script được giao | Không đổi FAIL thành PASS, tự xác nhận retest hoặc tự đóng lỗi qua quyền sửa lỗi |
 | Viewer | Xem dữ liệu được chia sẻ; nhận xét/tải khi được cấp; nhận báo cáo | Không Editor, ghi kết quả, duyệt hoặc dùng AI tạo thay đổi |
 | Admin | Tài khoản, cấu hình, hạ tầng và vận hành | Không mặc nhiên đọc dữ liệu riêng hoặc duyệt nội dung dự án |
-| Người xác nhận nghiệp vụ | Quyết định xác nhận Requirement/BR theo phạm vi được chỉ định | Đủ quyền nghiệp vụ, khác người soạn/sửa; không cấp quyền chéo role |
 | Người quyết định phát hành | Chấp nhận/từ chối phát hành dựa trên hồ sơ chất lượng | Không sửa kết quả kiểm thử; nêu lý do và rủi ro khi quyết định vượt khuyến nghị |
 | AI Agent | Yêu cầu người dùng, nguồn được phép, đề xuất/bản nháp có dẫn chứng | Không tự duyệt/phát hành/ghi PASS-FAIL hoặc tăng quyền bằng tài khoản dịch vụ |
 

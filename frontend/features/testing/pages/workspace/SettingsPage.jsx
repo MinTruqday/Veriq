@@ -36,7 +36,6 @@ function auditActionLabel(action) {
 }
 
 const toggleSettings = [
-  ["requirement_lint_blocking", "Chặn duyệt yêu cầu khi còn lỗi kiểm tra"],
   ["trace_before_baseline", "Bắt buộc truy vết trước khi đặt phiên bản chuẩn cho yêu cầu"],
   ["testcase_lint_blocking", "Chặn duyệt ca kiểm thử khi còn lỗi kiểm tra"],
   ["trace_before_testcase_approve", "Bắt buộc truy vết trước khi duyệt ca kiểm thử"],
@@ -78,12 +77,7 @@ const toggleSettings = [
 const toggleSettingGroups = [
   {
     label: "Yêu cầu và ca kiểm thử",
-    keys: [
-      "requirement_lint_blocking",
-      "trace_before_baseline",
-      "testcase_lint_blocking",
-      "trace_before_testcase_approve",
-    ],
+    keys: ["trace_before_baseline", "testcase_lint_blocking", "trace_before_testcase_approve"],
   },
   {
     label: "Lần chạy kiểm thử",
@@ -691,39 +685,33 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-ink">Trách nhiệm quyết định</h3>
                   {loadErrors.members && <ErrorState message={loadErrors.members} />}
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {[
-                      ["business_confirmation", "Người xác nhận nghiệp vụ", ["BA"]],
-                      ["release_decision", "Người quyết định phát hành", ["BA", "QA"]],
-                    ].map(([key, label, roles]) => (
-                      <label className="field-label" key={key}>
-                        {label}
-                        <select
-                          className="apple-input mt-2"
-                          value={responsibilities[key] || ""}
-                          disabled={dataLoading || Boolean(loadErrors.members)}
-                          onChange={(event) =>
-                            setResponsibilities((current) => ({
-                              ...current,
-                              [key]: event.target.value || null,
-                            }))
-                          }
-                        >
-                          <option value="">Chưa phân công</option>
-                          {members
-                            .filter(
-                              (member) =>
-                                member.status === "ACTIVE" && roles.includes(member.project_role),
-                            )
-                            .map((member) => (
-                              <option key={member.user_id} value={member.user_id}>
-                                {memberDisplayName(member)}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                    ))}
-                  </div>
+                  <label className="field-label block max-w-xl">
+                    Người quyết định phát hành
+                    <select
+                      className="apple-input mt-2"
+                      value={responsibilities.release_decision || ""}
+                      disabled={dataLoading || Boolean(loadErrors.members)}
+                      onChange={(event) =>
+                        setResponsibilities((current) => ({
+                          ...current,
+                          release_decision: event.target.value || null,
+                        }))
+                      }
+                    >
+                      <option value="">Chưa phân công</option>
+                      {members
+                        .filter(
+                          (member) =>
+                            member.status === "ACTIVE" &&
+                            ["BA", "QA"].includes(member.project_role),
+                        )
+                        .map((member) => (
+                          <option key={member.user_id} value={member.user_id}>
+                            {memberDisplayName(member)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
                 </section>
               )}
               <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">

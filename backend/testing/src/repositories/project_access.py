@@ -234,8 +234,7 @@ class ProjectAccessRepository:
             role_names = sorted(role.value for role in roles)
             responsibility = None
             if capability.name == "requirement.approve":
-                role_names = ["BA"]
-                responsibility = "business_confirmation"
+                role_names = ["QA"]
             if capability.name in {"release.close", "qualitygate.decide", "qualitygate.accept_risk", "qualitygate.override"}:
                 role_names = ["BA", "QA"]
                 responsibility = "release_decision"
@@ -246,9 +245,9 @@ class ProjectAccessRepository:
         for grant in access.role_grants:
             permissions = set(grant.permissions)
             if grant.role == "QA":
-                permissions.discard("requirement.approve")
-            if grant.role == "BA":
                 permissions.add("requirement.approve")
+            else:
+                permissions.discard("requirement.approve")
             if grant.role in {"BA", "QA"}:
                 permissions.update(item.name for item in capabilities if item.responsibility == "release_decision")
             grants.append(grant.model_copy(update={"permissions": sorted(permissions)}))
@@ -304,8 +303,6 @@ class ProjectAccessRepository:
                     continue
                 required = legacy_required_business_role(capability.name)
                 roles = set(required) if isinstance(required, set) else {required} if required else set()
-                if capability.name == "requirement.approve":
-                    roles = {"BA"}
                 if not roles:
                     capabilities.append(capability)
                     continue

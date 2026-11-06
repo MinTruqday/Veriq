@@ -216,7 +216,16 @@ export default function RequirementClarificationPanel({
           {items.map((item) => (
             <article key={item._id} className="rounded-panel border border-border p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <strong>{itemStatusLabel(item, requirementRevision, requirementVersionId)}</strong>
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong>
+                    {itemStatusLabel(item, requirementRevision, requirementVersionId)}
+                  </strong>
+                  {item.finding_key && (
+                    <span className="rounded-full border border-danger/30 bg-danger-soft px-2 py-1 text-xs font-medium text-danger">
+                      Lỗi cần xử lý
+                    </span>
+                  )}
+                </div>
                 {item.source_ref && (
                   <span className="text-xs text-ink-faint">
                     Nguồn: {sourceReferenceLabel(item.source_ref)}
@@ -229,7 +238,9 @@ export default function RequirementClarificationPanel({
                 </blockquote>
               )}
               <p className="mt-3 text-sm font-medium text-ink">{item.question}</p>
-              <p className="mt-1 text-sm text-ink-muted">Lý do: {item.reason}</p>
+              <p className="mt-1 text-sm text-ink-muted">
+                {item.finding_key ? "Lỗi rà soát:" : "Lý do:"} {item.reason}
+              </p>
               {item.answer && (
                 <p className="mt-3 text-sm text-ink-muted">Phản hồi: {item.answer}</p>
               )}

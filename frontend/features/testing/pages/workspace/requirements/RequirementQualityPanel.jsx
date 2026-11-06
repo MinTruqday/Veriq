@@ -4,6 +4,16 @@ import { valueLabel } from "../../../lib/testing";
 import { requirementFieldLabel, requirementSuggestionPreview } from "./requirements.model";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
+function severityLabel(severity) {
+  return (
+    {
+      error: "Lỗi",
+      info: "Thông tin",
+      warning: "Cảnh báo",
+    }[String(severity || "").toLowerCase()] || valueLabel(severity)
+  );
+}
+
 export default function RequirementQualityPanel({ lint, loading = false, onOpenClarifications }) {
   if (!lint) {
     return (
@@ -34,9 +44,9 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
       )}
       <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-quiet px-3 py-2">
         <p className="text-sm text-ink-muted">
-          Đây là gợi ý. Hãy cập nhật bản nháp trong biểu mẫu yêu cầu; AI không tự sửa hoặc gửi rà
-          soát. Nếu cần xác nhận nghiệp vụ, tạo Phiếu làm rõ. Sau khi cập nhật, lưu bản nháp rồi gửi
-          rà soát.
+          Đây là gợi ý, AI không tự sửa hoặc gửi rà soát. Cảnh báo nhẹ không chặn chấp nhận; lỗi
+          nghiêm trọng cần được đưa vào Phiếu làm rõ để BA cập nhật trước khi QA chấp nhận
+          Requirement.
         </p>
         {onOpenClarifications && (
           <button
@@ -64,7 +74,7 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
                 <ContentOriginBadge origin={item.origin === "AI" ? "ai" : "rule"} />
               ),
             },
-            { key: "severity", label: "Mức độ", render: (item) => valueLabel(item.severity) },
+            { key: "severity", label: "Mức độ", render: (item) => severityLabel(item.severity) },
             { key: "message", label: "Nội dung" },
             { key: "suggestion", label: "Đề xuất" },
             {

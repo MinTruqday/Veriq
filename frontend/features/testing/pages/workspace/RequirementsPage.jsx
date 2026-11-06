@@ -1516,7 +1516,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               can={can}
               checkingWithAi={checkingWithAi}
               onCheckWithAI={checkRequirementWithAI}
-              onError={setError}
+              onOpenClarifications={() => setDetailTab("clarifications")}
               saveDraft={saveDraft}
               onCreateVersion={createVersion}
               onSplit={splitBaseline}

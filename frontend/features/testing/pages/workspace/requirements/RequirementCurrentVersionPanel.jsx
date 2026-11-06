@@ -18,7 +18,7 @@ export default function RequirementCurrentVersionPanel({
   can,
   checkingWithAi,
   onCheckWithAI,
-  onError,
+  onOpenClarifications,
   saveDraft,
   onCreateVersion,
   onSplit,
@@ -161,49 +161,15 @@ export default function RequirementCurrentVersionPanel({
               Mở lại để chỉnh sửa
             </button>
           )}
-          {current.status === "IN_REVIEW" &&
-            can("requirement.review") &&
-            current.technical_review_revision !== current.revision && (
-              <button
-                className="apple-button"
-                type="button"
-                onClick={async () =>
-                  ask({
-                    title: "Xác nhận rà soát kỹ thuật",
-                    description:
-                      "Xác nhận yêu cầu rõ ràng và có thể kiểm thử. Người phụ trách nghiệp vụ sẽ xác nhận trước khi chốt chuẩn.",
-                    confirmLabel: "Xác nhận rà soát",
-                    fields: [
-                      { name: "review_note", label: "Nhận xét", initialValue: "", multiline: true },
-                    ],
-                    onConfirm: async (answer) => {
-                      await testingApi.reviewRequirementTechnically(current._id, {
-                        expected_revision: current.revision,
-                        review_note: answer.review_note.trim(),
-                      });
-                      await reload();
-                    },
-                  })
-                }
-              >
-                Xác nhận rà soát kỹ thuật
-              </button>
-            )}
           {current.status === "IN_REVIEW" && can("requirement.approve") && (
             <button
               className="apple-button"
               type="button"
-              disabled={current.technical_review_revision !== current.revision}
-              title={
-                current.technical_review_revision !== current.revision
-                  ? "Cần xác nhận rà soát kỹ thuật trước"
-                  : undefined
-              }
               onClick={async () => {
                 await ask({
-                  title: "Xác nhận nghiệp vụ",
-                  description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng.`,
-                  confirmLabel: "Chấp nhận",
+                  title: "Chấp nhận Requirement",
+                  description: `${selected.requirement_key} sẽ trở thành phiên bản chuẩn để các bước kiểm thử sử dụng. Cảnh báo nhẹ không chặn thao tác; lỗi rà soát cần được xử lý qua Phiếu làm rõ trước.`,
+                  confirmLabel: "Chấp nhận Requirement",
                   fields: [
                     {
                       name: "review_note",
@@ -221,13 +187,20 @@ export default function RequirementCurrentVersionPanel({
                       });
                       await reload();
                     } catch (value) {
+                      const detail = value?.response?.data?.detail || value?.detail;
+                      if (detail?.code === "REQUIREMENT_LINT_BLOCKED") {
+                        onOpenClarifications?.();
+                        throw new Error(
+                          "Còn lỗi rà soát cần xử lý. Mở Phiếu làm rõ để tạo phiếu cho BA; các cảnh báo nhẹ không chặn chấp nhận.",
+                        );
+                      }
                       throw new Error(messageOf(value));
                     }
                   },
                 });
               }}
             >
-              Xác nhận nghiệp vụ
+              Chấp nhận Requirement
             </button>
           )}
           {current.status === "BASELINED" && can("requirement.version.create") && (
@@ -357,9 +330,8 @@ export default function RequirementCurrentVersionPanel({
           </div>
           {current.status === "IN_REVIEW" && (
             <p className="mt-2 max-w-prose text-sm text-ink-muted">
-              {current.technical_review_revision === current.revision
-                ? "QA đã xác nhận rà soát kỹ thuật. Requirement đang chờ BA xác nhận nghiệp vụ, chưa phải phiên bản chuẩn."
-                : "Requirement đã gửi rà soát. QA xác nhận kỹ thuật; BA xác nhận nghiệp vụ để đặt phiên bản chuẩn."}
+              Requirement đang chờ QA rà soát. Cảnh báo nhẹ có thể chấp nhận; lỗi chặn cần được đưa
+              vào Phiếu làm rõ để BA cập nhật trước khi QA chấp nhận.
             </p>
           )}
           {current.status === "DRAFT" &&
