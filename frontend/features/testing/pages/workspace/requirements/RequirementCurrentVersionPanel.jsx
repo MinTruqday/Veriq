@@ -232,7 +232,7 @@ export default function RequirementCurrentVersionPanel({
           )}
           {current.status === "BASELINED" && can("requirement.version.create") && (
             <button className="secondary-button" type="button" onClick={onCreateVersion}>
-              Tạo phiên bản mới
+              Tạo bản nháp để chỉnh sửa
             </button>
           )}
           {current.status === "BASELINED" && can("requirement.split") && (

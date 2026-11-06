@@ -605,9 +605,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   };
   const createVersion = async () => {
     await ask({
-      title: "Tạo phiên bản yêu cầu mới",
-      description: `${selected.requirement_key} sẽ giữ nguyên phiên bản chuẩn hiện tại để truy vết`,
-      confirmLabel: "Tạo phiên bản",
+      title: "Mở bản nháp để chỉnh sửa yêu cầu",
+      description: `${selected.requirement_key} sẽ được tạo thành phiên bản nháp tiếp theo. Phiên bản đã chốt được giữ nguyên để truy vết; bạn có thể sửa nội dung trong bản nháp rồi gửi rà soát lại.`,
+      confirmLabel: "Mở bản nháp",
       fields: [
         {
           name: "title",
