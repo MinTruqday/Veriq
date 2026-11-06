@@ -5,15 +5,15 @@ import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import {
-  automationAuthorizationGuidance,
-  canResumeAutomationRun,
-  automationCheckpointView,
-  automationRunErrorMessage,
-  latestAutomationUncertainties,
-  automationMcpDiscoveryIssues,
-  automationSourceExtractionGaps,
-  workflowForSelectedRun,
-} from "../lib/automationRun.logic.mjs";
+  agentAuthorizationGuidance,
+  canResumeAgentRun,
+  agentCheckpointView,
+  agentRunErrorMessage,
+  latestAgentUncertainties,
+  agentMcpDiscoveryIssues,
+  agentSourceExtractionGaps,
+  workflowForSelectedAgentRun,
+} from "../lib/agentRun.logic.mjs";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { preferredSummaryLocale } from "../lib/summaryLanguage";
 import { testingApi } from "../services/testing.service";
@@ -21,31 +21,22 @@ import { ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitiv
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
-const runTitlesByTrigger = {
-  DOCUMENT_INGESTED: "Rà soát tài liệu mới",
-  API_OPERATION_CONFIRMED: "Rà soát đặc tả API",
-  REQUIREMENT_CHANGED: "Rà soát yêu cầu đã thay đổi",
-  TEST_EXECUTION_RECORDED: "Phân tích kết quả kiểm thử",
-  DEFECT_RECORDED: "Phân tích lỗi mới",
-  DEFECT_CHANGED: "Rà soát thay đổi lỗi",
-  WORK_ITEM_CHANGED: "Rà soát công việc đã thay đổi",
-  TEST_CASE_CHANGED: "Rà soát ca kiểm thử đã thay đổi",
-  TEST_CASE_APPROVED: "Tiếp tục xử lý ca kiểm thử đã duyệt",
-  TEST_PLAN_CHANGED: "Rà soát kế hoạch kiểm thử đã thay đổi",
-  TEST_PLAN_APPROVED: "Tiếp tục xử lý kế hoạch kiểm thử đã duyệt",
-  STATUS_REPORT_CREATED: "Tạo báo cáo trạng thái",
-  TEST_COMPLETION_REPORT_CREATED: "Tạo báo cáo hoàn tất kiểm thử",
-  PERFORMANCE_CONFIGURATION_APPROVED: "Xử lý cấu hình hiệu năng đã duyệt",
-  RELEASE_CHANGED: "Rà soát bản phát hành đã thay đổi",
-};
 
-function automationTriggerLabel(run) {
+function agentOriginLabel(run) {
   const providedLabel = String(run?.trigger_label || run?.trigger_display_name || "").trim();
-  if (providedLabel) return providedLabel;
-  return run?.trigger === "MANUAL" ? "Theo yêu cầu người dùng" : "Cập nhật dự án";
+  const userRequested =
+    run?.trigger === "MANUAL" ||
+    run?.constraints?.user_requested === true ||
+    run?.user_requested === true;
+  if (userRequested && providedLabel) return providedLabel;
+  if (run?.trigger === "MANUAL") return "Theo yêu cầu người dùng";
+  if (run?.trigger === "DOCUMENT_INGESTED" && userRequested) {
+    return "Theo yêu cầu xử lý tài liệu";
+  }
+  return "Hoạt động AI trước đây";
 }
 
-function automationRunTitle(run) {
+function agentRunTitle(run) {
   const internalCode = /\b[A-Z][A-Z0-9]*(?:_+[A-Z0-9]+)+\b/;
   const summary = [
     run?.display_name,
@@ -57,7 +48,11 @@ function automationRunTitle(run) {
     .map((value) => String(value || "").trim())
     .find((value) => value && !internalCode.test(value));
   if (summary) return summary;
-  return runTitlesByTrigger[run?.trigger] || "Hoạt động xử lý";
+  if (run?.trigger === "MANUAL") return "Yêu cầu xử lý AI";
+  if (run?.trigger === "DOCUMENT_INGESTED" && run?.constraints?.user_requested === true) {
+    return "Rà soát tài liệu theo yêu cầu";
+  }
+  return "Hoạt động AI";
 }
 
 function sourceFactSummary(fact) {
@@ -66,6 +61,90 @@ function sourceFactSummary(fact) {
   return pages.length
     ? `${sourceType} · Trang ${pages.join(", ")}`
     : `${sourceType} · Đoạn trích đã xác minh`;
+}
+
+function sourceFactHref(projectId, fact) {
+  const artifactId = fact?.artifact_id;
+  if (!artifactId) return "";
+  if (fact.artifact_type === "requirement_version") {
+    return `/du-an/${encodeURIComponent(projectId)}/yeu-cau/${encodeURIComponent(artifactId)}`;
+  }
+  if (fact.artifact_type === "test_case_version") {
+    return `/du-an/${encodeURIComponent(projectId)}/ca-kiem-thu?case=${encodeURIComponent(artifactId)}`;
+  }
+  return "";
+}
+
+function proposalSummaryParts(summary, evidenceReferences) {
+  const referenceNumbers = new Map();
+  const referenceEntries = new Map();
+  evidenceReferences.forEach((item) => {
+    [
+      item.reference,
+      item.fact?.source_fact_id,
+      item.fact?.artifact_id,
+      item.fact?.artifact_version_id,
+    ]
+      .filter(Boolean)
+      .forEach((reference) => {
+        if (!referenceNumbers.has(reference)) referenceNumbers.set(reference, item.number);
+        if (!referenceEntries.has(reference)) referenceEntries.set(reference, item);
+      });
+  });
+  const parts = [];
+  const citationPattern = /\[([^\]]+)\]/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = citationPattern.exec(String(summary || ""))) !== null) {
+    const references = match[1].split(",").map((reference) => reference.trim());
+    const hasInternalReference = references.some((reference) => referenceNumbers.has(reference));
+    const looksLikeInternalReference = references.some((reference) =>
+      /^[A-Z0-9_-]{8,}$/.test(reference),
+    );
+    if (!hasInternalReference && !looksLikeInternalReference) continue;
+    if (match.index > lastIndex) parts.push(summary.slice(lastIndex, match.index));
+    if (!hasInternalReference) {
+      parts.push(
+        <span className="text-ink-muted" key={`unresolved-${match.index}`}>
+          [Căn cứ chưa đối chiếu]
+        </span>,
+      );
+    } else {
+      const citations = references.map((reference, index) => {
+        const item = referenceEntries.get(reference);
+        if (!item) {
+          return (
+            <span className="text-ink-muted" key={`${match.index}-missing-${index}`}>
+              Nguồn chưa tải được
+            </span>
+          );
+        }
+        const label = `Nguồn ${referenceNumbers.get(reference)}`;
+        const href = sourceFactHref(item.projectId, item.fact);
+        return href ? (
+          <Link
+            className="font-medium text-brand underline-offset-2 hover:underline"
+            href={href}
+            key={`${match.index}-${reference}`}
+          >
+            {label}
+          </Link>
+        ) : (
+          <span className="font-medium text-brand" key={`${match.index}-${reference}`}>
+            {label}
+          </span>
+        );
+      });
+      parts.push(
+        <span className="inline-flex flex-wrap gap-x-1" key={`citation-${match.index}`}>
+          [{citations.map((citation, index) => (index ? [", ", citation] : citation))}]
+        </span>,
+      );
+    }
+    lastIndex = citationPattern.lastIndex;
+  }
+  if (lastIndex < String(summary || "").length) parts.push(String(summary || "").slice(lastIndex));
+  return parts.length ? parts : [String(summary || "")];
 }
 
 function isOlderRunSnapshot(incoming, current) {
@@ -88,10 +167,11 @@ export default function AgentRunPanel({
 }) {
   const { user } = useAuth();
   const currentUserId = project.current_membership?.user_id;
+  const currentProjectRole = project.current_membership?.project_role;
   const permissions = project.current_permissions || [];
   const permissionKey = permissions.join("|");
   const canReadProjectRuns = permissions.includes("proposal.read");
-  const canReadOwnRuns = permissions.includes("automation.read");
+  const canReadOwnAgentRuns = permissions.includes("automation.read");
   const canViewRun = (item) => canReadProjectRuns || item?.requester_user_id === currentUserId;
   const [recentRuns, setRecentRuns] = useState([]);
   const [agentCapabilities, setAgentCapabilities] = useState([]);
@@ -139,8 +219,8 @@ export default function AgentRunPanel({
     setClarificationAnswers({});
     setSubmittingClarification("");
     Promise.allSettled([
-      canReadProjectRuns || canReadOwnRuns
-        ? testingApi.listAutomationRuns(project._id)
+      canReadProjectRuns || canReadOwnAgentRuns
+        ? testingApi.listAgentRuns(project._id)
         : Promise.resolve([]),
       testingApi.listAgentCapabilities(project._id),
     ])
@@ -169,7 +249,7 @@ export default function AgentRunPanel({
       }
     };
   }, [
-    canReadOwnRuns,
+    canReadOwnAgentRuns,
     canReadProjectRuns,
     currentUserId,
     initialLoadAttempt,
@@ -179,11 +259,11 @@ export default function AgentRunPanel({
   ]);
 
   const refreshRuns = useCallback(async () => {
-    if (!canReadProjectRuns && !canReadOwnRuns) return;
+    if (!canReadProjectRuns && !canReadOwnAgentRuns) return;
     const requestVersion = ++runListRequestVersion.current;
     const selectedRunId = selectedRunIdRef.current;
     const selectionVersion = detailRequestVersion.current;
-    const items = await testingApi.listAutomationRuns(project._id);
+    const items = await testingApi.listAgentRuns(project._id);
     if (requestVersion !== runListRequestVersion.current) return;
     setRecentRuns(items);
     onRunsStateChange?.({ runs: items, error: "", loading: false });
@@ -191,7 +271,7 @@ export default function AgentRunPanel({
       selectedRunId === selectedRunIdRef.current &&
       selectionVersion === detailRequestVersion.current
     ) {
-      const selectedWorkflow = workflowForSelectedRun(items, selectedRunId);
+      const selectedWorkflow = workflowForSelectedAgentRun(items, selectedRunId);
       const selectedSummary = items.find((item) => item.automation_run_id === selectedRunId);
       if (
         selectedWorkflow &&
@@ -201,7 +281,7 @@ export default function AgentRunPanel({
       }
     }
     setRunsRefreshError("");
-  }, [canReadOwnRuns, canReadProjectRuns, onRunsStateChange, project._id]);
+  }, [canReadOwnAgentRuns, canReadProjectRuns, onRunsStateChange, project._id]);
 
   const refreshRunList = async () => {
     if (refreshingRuns) return;
@@ -230,7 +310,7 @@ export default function AgentRunPanel({
     }
     let detail;
     try {
-      detail = await testingApi.getAutomationRun(runId);
+      detail = await testingApi.getAgentRun(runId);
     } catch (reason) {
       if (requestVersion !== detailRequestVersion.current) return;
       throw reason;
@@ -245,7 +325,7 @@ export default function AgentRunPanel({
     setCheckpoints(detail.checkpoints || []);
     setReceipt(detail.receipt || null);
     try {
-      const evidence = await testingApi.getAutomationRunEvidence(runId);
+      const evidence = await testingApi.getAgentRunEvidence(runId);
       if (requestVersion !== detailRequestVersion.current) return;
       setReceipt(evidence.receipt || detail.receipt || null);
       setSourceFacts(evidence.source_facts || []);
@@ -267,14 +347,14 @@ export default function AgentRunPanel({
       pending = true;
       const requestVersion = detailRequestVersion.current;
       try {
-        const detail = await testingApi.getAutomationRun(run.automation_run_id);
+        const detail = await testingApi.getAgentRun(run.automation_run_id);
         if (!active || requestVersion !== detailRequestVersion.current) return;
         if (isOlderRunSnapshot(detail.run, selectedRunSnapshotRef.current)) return;
         let evidence = null;
         let evidenceError = "";
         if (!activeStatuses.has(detail.run.status) && !(detail.workflow?.active_count > 0)) {
           try {
-            evidence = await testingApi.getAutomationRunEvidence(run.automation_run_id);
+            evidence = await testingApi.getAgentRunEvidence(run.automation_run_id);
           } catch (reason) {
             evidenceError = messageOf(reason);
           }
@@ -328,7 +408,7 @@ export default function AgentRunPanel({
     setError("");
     try {
       try {
-        await testingApi.retryAutomationRun(runId, {
+        await testingApi.resumeAgentRun(runId, {
           expected_revision: run.revision,
         });
       } catch (reason) {
@@ -368,7 +448,7 @@ export default function AgentRunPanel({
     setError("");
     try {
       try {
-        await testingApi.cancelAutomationRun(runId, {
+        await testingApi.cancelAgentRun(runId, {
           expected_revision: run.revision,
         });
       } catch (reason) {
@@ -410,7 +490,7 @@ export default function AgentRunPanel({
     setSubmittingClarification(uncertainty.code);
     setError("");
     try {
-      await testingApi.answerAutomationClarification(runId, {
+      await testingApi.answerAgentClarification(runId, {
         expected_revision: run.revision,
         uncertainty_code: uncertainty.code,
         answer,
@@ -454,25 +534,48 @@ export default function AgentRunPanel({
         .map((reference) => [reference, fact]),
     ),
   );
-  const proposalEvidence = (proposal?.evidence_refs || [])
-    .map((reference) => sourceFactsById.get(reference))
-    .filter(Boolean);
+  const proposalEvidenceReferences = [];
+  const evidenceNumbersByIdentity = new Map();
+  (proposal?.evidence_refs || []).forEach((reference) => {
+    const fact = sourceFactsById.get(reference) || null;
+    const identity = fact?.source_fact_id || reference;
+    let number = evidenceNumbersByIdentity.get(identity);
+    if (!number) {
+      number = proposalEvidenceReferences.length + 1;
+      evidenceNumbersByIdentity.set(identity, number);
+      proposalEvidenceReferences.push({
+        reference,
+        number,
+        fact,
+        projectId: project._id,
+      });
+    } else if (fact) {
+      const existing = proposalEvidenceReferences[number - 1];
+      if (!existing.fact) existing.fact = fact;
+    }
+  });
+  const proposalEvidenceFactIds = new Set(
+    proposalEvidenceReferences.map((item) => item.fact?.source_fact_id).filter(Boolean),
+  );
   const linkedSourceFactIds = new Set(
     blueprintClaims.flatMap((claim) => claim.source_fact_ids || []),
   );
   const unlinkedSourceFacts = sourceFacts.filter(
-    (fact) => !linkedSourceFactIds.has(fact.source_fact_id),
+    (fact) =>
+      !linkedSourceFactIds.has(fact.source_fact_id) &&
+      !proposalEvidenceFactIds.has(fact.source_fact_id),
   );
   const busyRun = run && activeStatuses.has(run.status);
   const visibleRuns = recentRuns.filter(canViewRun);
   const canControlRun = run?.requester_user_id === currentUserId;
-  const canAnswerClarification = permissions.includes("requirement.update");
-  const canResumeRun = canControlRun && canResumeAutomationRun(run, checkpoints, currentUserId);
+  const canAnswerClarification =
+    currentProjectRole === "BA" && permissions.includes("requirement.update");
+  const canResumeRun = canControlRun && canResumeAgentRun(run, checkpoints, currentUserId);
   const canShowRunControls = (busyRun && canControlRun) || canResumeRun;
-  const uncertainties = latestAutomationUncertainties(checkpoints);
-  const mcpDiscoveryIssues = automationMcpDiscoveryIssues(run);
-  const sourceExtractionGaps = automationSourceExtractionGaps(run);
-  const authorizationGuidance = automationAuthorizationGuidance(run);
+  const uncertainties = latestAgentUncertainties(checkpoints);
+  const mcpDiscoveryIssues = agentMcpDiscoveryIssues(run);
+  const sourceExtractionGaps = agentSourceExtractionGaps(run);
+  const authorizationGuidance = agentAuthorizationGuidance(run);
   const showCompactEmptyState = compact && !loading && !error && visibleRuns.length === 0;
   const showRecentActivity =
     visibleRuns.length > 0 || showCompactEmptyState || (!compact && !loading && !error && !run);
@@ -653,12 +756,12 @@ export default function AgentRunPanel({
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-medium text-ink">
-                      {automationRunTitle(item)}
+                      {agentRunTitle(item)}
                     </span>
                     <span className="block text-xs text-ink-muted">
                       {compact
                         ? formatDate(item.created_at)
-                        : `${automationTriggerLabel(item)}${item.created_at ? ` · ${formatDate(item.created_at)}` : ""}`}
+                        : `${agentOriginLabel(item)}${item.created_at ? ` · ${formatDate(item.created_at)}` : ""}`}
                     </span>
                   </span>
                   <StatusPill
@@ -733,7 +836,7 @@ export default function AgentRunPanel({
                               key={item.automation_run_id}
                             >
                               <span className="min-w-0 text-sm text-ink-muted">
-                                {automationRunTitle(item)}
+                                {agentRunTitle(item)}
                               </span>
                               <StatusPill value={item.status} />
                             </li>
@@ -930,7 +1033,7 @@ export default function AgentRunPanel({
                 </section>
               )}
               {run.error_code && run.status !== "AWAITING_INPUT" && (
-                <ErrorState message={automationRunErrorMessage(run.error_code)} />
+                <ErrorState message={agentRunErrorMessage(run.error_code)} />
               )}
               {run.status === "AWAITING_AUTHORIZATION" && (
                 <section
@@ -954,19 +1057,50 @@ export default function AgentRunPanel({
                     <h3 className="font-semibold text-ink">Kết quả xử lý</h3>
                     <ContentOriginBadge origin="ai_generated" />
                   </div>
-                  <p className="mt-1 whitespace-pre-wrap text-ink-muted">{proposal.summary}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-ink-muted">
+                    {proposalSummaryParts(proposal.summary, proposalEvidenceReferences)}
+                  </p>
                 </div>
               )}
               {proposal?.evidence_refs?.length > 0 && (
                 <div>
                   <h3 className="font-semibold text-ink">Căn cứ đã sử dụng</h3>
                   <p className="mt-1 text-ink-muted">
-                    {proposal.evidence_refs.length} nguồn được dùng để tạo kết quả này.
+                    {proposalEvidenceReferences.length} căn cứ được ghi nhận cho kết quả này.
                   </p>
-                  {proposalEvidence.length > 0 && (
+                  {proposalEvidenceReferences.length > 0 && (
                     <ul className="mt-2 grid gap-1 text-sm text-ink-muted">
-                      {proposalEvidence.map((fact) => (
-                        <li key={fact.source_fact_id}>{sourceFactSummary(fact)}</li>
+                      {proposalEvidenceReferences.map((item) => (
+                        <li
+                          className="grid min-w-0 gap-1 rounded-control border border-border bg-surface p-3"
+                          key={`${item.reference}-${item.number}`}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium text-ink">Nguồn {item.number}</span>
+                            {item.fact ? (
+                              <>
+                                <span>{sourceFactSummary(item.fact)}</span>
+                                {sourceFactHref(item.projectId, item.fact) && (
+                                  <Link
+                                    className="text-brand hover:underline"
+                                    href={sourceFactHref(item.projectId, item.fact)}
+                                  >
+                                    Mở nguồn
+                                  </Link>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-warning">
+                                Chưa tải được trích dẫn để đối chiếu
+                              </span>
+                            )}
+                          </div>
+                          {item.fact?.quote && (
+                            <blockquote className="break-words border-l-2 border-accent/40 pl-3 text-ink-muted">
+                              {item.fact.quote}
+                            </blockquote>
+                          )}
+                        </li>
                       ))}
                     </ul>
                   )}
@@ -986,7 +1120,7 @@ export default function AgentRunPanel({
                         <h3 className="font-semibold text-ink">Các bước đã thực hiện</h3>
                         <ol className="mt-2 grid gap-2">
                           {checkpoints.map((checkpoint) => {
-                            const item = automationCheckpointView(checkpoint);
+                            const item = agentCheckpointView(checkpoint);
                             if (!item) return null;
                             return (
                               <li

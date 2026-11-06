@@ -281,6 +281,42 @@ def resolve_report_fields(report):
                 parts[first_text] = {**parts[first_text], "text": f"{number}. {text}"}
             node["content"] = parts
             section_index += 1
+    if template_id.startswith("standard-"):
+        vi = str(report.get("output_language", "vi")).lower().startswith("vi")
+        empty_section = "Chưa có nội dung được ghi nhận trong báo cáo này." if vi else "No content was recorded for this section."
+        content = value["content"]
+        index = 0
+        while index < len(content):
+            node = content[index]
+            is_section_heading = (
+                node.get("type") == "heading"
+                and int((node.get("attrs") or {}).get("level", 1)) == 2
+            )
+            if not is_section_heading:
+                index += 1
+                continue
+            end = index + 1
+            while end < len(content):
+                candidate = content[end]
+                is_signature_table = (
+                    candidate.get("type") == "table"
+                    and (candidate.get("attrs") or {}).get("report_signatures")
+                )
+                if (
+                    candidate.get("type") == "heading"
+                    and int((candidate.get("attrs") or {}).get("level", 1)) == 2
+                ) or is_signature_table:
+                    break
+                end += 1
+            section_nodes = content[index + 1:end]
+            has_recorded_content = any(
+                node.get("type") == "image" or document_text(node).strip()
+                for node in section_nodes
+            )
+            if not has_recorded_content:
+                content[index + 1:end] = [paragraph(empty_section)]
+                end = index + 2
+            index = end
     return value
 
 

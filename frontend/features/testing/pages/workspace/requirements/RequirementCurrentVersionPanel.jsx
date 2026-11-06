@@ -189,9 +189,10 @@ export default function RequirementCurrentVersionPanel({
                     } catch (value) {
                       const detail = value?.response?.data?.detail || value?.detail;
                       if (detail?.code === "REQUIREMENT_LINT_BLOCKED") {
+                        await testingApi.createClarificationsFromReview(current._id);
                         onOpenClarifications?.();
                         throw new Error(
-                          "Còn lỗi rà soát cần xử lý. Mở Phiếu làm rõ để tạo phiếu cho BA; các cảnh báo nhẹ không chặn chấp nhận.",
+                          "Đã tạo Phiếu làm rõ cho các lỗi cần xử lý và mở danh sách phiếu. Cảnh báo nhẹ không chặn chấp nhận.",
                         );
                       }
                       throw new Error(messageOf(value));
@@ -330,15 +331,15 @@ export default function RequirementCurrentVersionPanel({
           </div>
           {current.status === "IN_REVIEW" && (
             <p className="mt-2 max-w-prose text-sm text-ink-muted">
-              Requirement đang chờ QA rà soát. Cảnh báo nhẹ có thể chấp nhận; lỗi chặn cần được đưa
-              vào Phiếu làm rõ để BA cập nhật trước khi QA chấp nhận.
+              Requirement đang chờ rà soát. Cảnh báo nhẹ có thể chấp nhận; lỗi chặn cần được đưa vào
+              Phiếu làm rõ và xử lý trước khi chấp nhận.
             </p>
           )}
           {current.status === "DRAFT" &&
             current.changes_requested_by &&
             can("requirement.update") && (
               <p className="mt-2 max-w-prose text-sm text-ink-muted">
-                QA đã yêu cầu chỉnh sửa. BA có thể cập nhật bản nháp bên dưới rồi gửi rà soát lại.
+                Có yêu cầu chỉnh sửa. Hãy cập nhật bản nháp bên dưới rồi gửi rà soát lại.
               </p>
             )}
         </div>

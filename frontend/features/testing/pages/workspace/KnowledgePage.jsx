@@ -550,7 +550,9 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                       className="apple-input mt-2"
                       name="owner_id"
                       disabled={
-                        !canReadMembers || sourceOptionsLoading || Boolean(sourceOptionErrors.members)
+                        !canReadMembers ||
+                        sourceOptionsLoading ||
+                        Boolean(sourceOptionErrors.members)
                       }
                     >
                       <option value="">
@@ -584,7 +586,9 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                       className="apple-input mt-2"
                       name="release_id"
                       disabled={
-                        !canReadReleases || sourceOptionsLoading || Boolean(sourceOptionErrors.releases)
+                        !canReadReleases ||
+                        sourceOptionsLoading ||
+                        Boolean(sourceOptionErrors.releases)
                       }
                     >
                       <option value="">
@@ -627,7 +631,11 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                   </label>
                   <label className="field-label">
                     Trạng thái phê duyệt
-                    <select className="apple-input mt-2" name="approval_status" defaultValue="DRAFT">
+                    <select
+                      className="apple-input mt-2"
+                      name="approval_status"
+                      defaultValue="DRAFT"
+                    >
                       <option value="DRAFT">Bản nháp</option>
                       <option value="IN_REVIEW">Đang rà soát</option>
                       <option value="APPROVED">Đã phê duyệt</option>
@@ -649,7 +657,9 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                       className="apple-input mt-2"
                       name="approved_by"
                       disabled={
-                        !canReadMembers || sourceOptionsLoading || Boolean(sourceOptionErrors.members)
+                        !canReadMembers ||
+                        sourceOptionsLoading ||
+                        Boolean(sourceOptionErrors.members)
                       }
                     >
                       <option value="">
@@ -673,7 +683,11 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                   </label>
                   <label className="field-label">
                     Hiệu lực từ
-                    <input className="apple-input mt-2" name="effective_from" type="datetime-local" />
+                    <input
+                      className="apple-input mt-2"
+                      name="effective_from"
+                      type="datetime-local"
+                    />
                   </label>
                   <label className="field-label">
                     Liên kết nguồn

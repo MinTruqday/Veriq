@@ -623,8 +623,8 @@ export function messageOf(reason) {
     PROJECT_INITIAL_QA_MUST_DIFFER_FROM_BA:
       "Người tạo dự án không thể đồng thời là người phụ trách kiểm thử đầu tiên. Hãy chọn thành viên khác.",
     AUTOMATION_PUBLICATION_NOT_AUTHORIZED:
-      "Lượt AI chưa được cấp quyền tự động công bố kết quả này.",
-    AUTOMATION_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện hợp lệ cho lượt tự động hóa này.",
+      "AI không được phép tự công bố kết quả này. Người có quyền cần kiểm tra và xác nhận.",
+    AUTOMATION_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện phù hợp cho tác vụ AI này.",
     AUTOMATION_PRINCIPAL_ROLE_CHANGED:
       "Vai trò người thực hiện đã thay đổi; cần kiểm tra lại quyền dự án.",
     AUTOMATION_PRINCIPAL_UNAVAILABLE: "Không thể xác minh quyền của người thực hiện hiện tại.",

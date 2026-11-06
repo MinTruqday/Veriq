@@ -132,14 +132,14 @@ export default function TestDesignPage({ project, workspaceView }) {
     status: "",
     sort: "-updated_at",
   });
-  const [automationRuns, setAutomationRuns] = useState([]);
-  const [automationRunsError, setAutomationRunsError] = useState("");
-  const [automationRunsLoading, setAutomationRunsLoading] = useState(false);
+  const [agentRuns, setAgentRuns] = useState([]);
+  const [agentRunsError, setAgentRunsError] = useState("");
+  const [agentRunsLoading, setAgentRunsLoading] = useState(false);
   const handleAgentRunsStateChange = useCallback(
     ({ runs, error: nextError, loading: nextLoading }) => {
-      setAutomationRuns(runs);
-      setAutomationRunsError(nextError);
-      setAutomationRunsLoading(nextLoading);
+      setAgentRuns(runs);
+      setAgentRunsError(nextError);
+      setAgentRunsLoading(nextLoading);
     },
     [],
   );
@@ -454,7 +454,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       active = false;
     };
   }, [canReadTestCases, linkedCaseId, showCases]);
-  const canReadAutomationRuns =
+  const canReadAgentRuns =
     permissions.includes("automation.read") || permissions.includes("proposal.read");
   const selectedRequirementRecord = requirements.find(
     (item) => item.current_version_id === selectedRequirement,
@@ -464,8 +464,8 @@ export default function TestDesignPage({ project, workspaceView }) {
     selectedRequirement && Number.isInteger(selectedRequirementVersion?.revision)
       ? `requirement-version:${selectedRequirement}:${selectedRequirementVersion.revision}:${selectedRequirementVersion.status || "DRAFT"}`
       : "";
-  const requirementAutomationRun = requirementEventId
-    ? automationRuns.find(
+  const requirementAgentRun = requirementEventId
+    ? agentRuns.find(
         (run) =>
           run.trigger === "REQUIREMENT_CHANGED" &&
           run.source_event_id === requirementEventId &&
@@ -1235,8 +1235,8 @@ export default function TestDesignPage({ project, workspaceView }) {
           canSubmit={can("testcase.submit_review")}
         />
       )}
-      {showAgentRuns && canReadAutomationRuns && (
-        <div id="automation-run-details">
+      {showAgentRuns && canReadAgentRuns && (
+        <div id="agent-run-details">
           <AgentRunPanel
             project={project}
             showPanelHeading={false}
@@ -1271,20 +1271,18 @@ export default function TestDesignPage({ project, workspaceView }) {
                             (item) => item.current_version_id === selectedRequirement,
                           )?.current_version?.title || "Yêu cầu đã chọn"}
                         </span>
-                        {requirementAutomationRun && (
-                          <StatusPill value={requirementAutomationRun.status} />
-                        )}
+                        {requirementAgentRun && <StatusPill value={requirementAgentRun.status} />}
                       </div>
-                      {automationRunsLoading ? (
+                      {agentRunsLoading ? (
                         <p className="mt-2 text-ink-muted">Đang tải hoạt động liên quan…</p>
-                      ) : automationRunsError ? (
-                        <p className="mt-2 text-danger">{automationRunsError}</p>
-                      ) : requirementAutomationRun ? (
+                      ) : agentRunsError ? (
+                        <p className="mt-2 text-danger">{agentRunsError}</p>
+                      ) : requirementAgentRun ? (
                         <p className="mt-2 whitespace-pre-wrap break-words text-ink-muted">
-                          {requirementAutomationRun.error_code
+                          {requirementAgentRun.error_code
                             ? "Có lỗi khi xử lý yêu cầu này."
-                            : requirementAutomationRun.result?.summary ||
-                              requirementAutomationRun.result?.proposal?.summary ||
+                            : requirementAgentRun.result?.summary ||
+                              requirementAgentRun.result?.proposal?.summary ||
                               "Chưa có phần tóm tắt cho hoạt động AI."}
                         </p>
                       ) : (

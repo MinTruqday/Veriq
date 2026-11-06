@@ -30,13 +30,13 @@ function sourceReferenceLabel(sourceRef) {
 function clarificationMessageOf(reason) {
   const code = reason?.response?.data?.detail?.code || reason?.code;
   if (code === "CLARIFICATION_REQUIRES_UPDATED_REQUIREMENT") {
-    return "BA cần cập nhật và lưu bản nháp yêu cầu sau khi QA yêu cầu chỉnh sửa trước khi QA xác nhận phiếu.";
+    return "Cần cập nhật và lưu bản nháp yêu cầu trước khi xác nhận phiếu.";
   }
   if (code === "CLARIFICATION_VERSION_NOT_EDITABLE") {
     return "Phiên bản yêu cầu này không còn là bản nháp để chỉnh sửa. Hãy tạo phiên bản mới trước khi xử lý phiếu.";
   }
   if (code === "CLARIFICATION_UPDATE_REQUEST_REQUIRED") {
-    return "QA cần gửi yêu cầu cập nhật cho đúng phiên bản đang mở trước khi xác nhận phiếu.";
+    return "Cần gửi yêu cầu cập nhật cho đúng phiên bản đang mở trước khi xác nhận phiếu.";
   }
   return messageOf(reason);
 }
@@ -49,11 +49,11 @@ function itemStatusLabel(item, requirementRevision, requirementVersionId) {
     requestedVersionId !== requirementVersionId ||
     item.change_requested_requirement_revision == null
   ) {
-    return "Đã có phản hồi, chờ QA yêu cầu cập nhật";
+    return "Đã có phản hồi, chờ yêu cầu cập nhật";
   }
   return requirementRevision > item.change_requested_requirement_revision
-    ? "Đã cập nhật, chờ QA xác nhận"
-    : "Đang chờ BA cập nhật bản nháp";
+    ? "Đã cập nhật, chờ xác nhận"
+    : "Đang chờ cập nhật bản nháp";
 }
 
 export default function RequirementClarificationPanel({
@@ -63,8 +63,6 @@ export default function RequirementClarificationPanel({
   ask,
   onRequirementChanged,
   onOpenRequirement,
-  role,
-  roles,
   permissions = [],
 }) {
   const [items, setItems] = useState([]);
@@ -77,9 +75,8 @@ export default function RequirementClarificationPanel({
   const activeRequirementVersion = useRef(requirementVersionId);
   activeRequirementVersion.current = requirementVersionId;
   const canRead = permissions.includes("requirement.read");
-  const memberRoles = Array.isArray(roles) && roles.length ? roles : [role].filter(Boolean);
-  const canReview = memberRoles.includes("QA") && permissions.includes("requirement.review");
-  const canAnswer = memberRoles.includes("BA") && permissions.includes("requirement.update");
+  const canReview = permissions.includes("requirement.review");
+  const canAnswer = permissions.includes("requirement.update");
   const isUpdateRequestedForCurrentVersion = (item) =>
     (item.change_requested_requirement_version_id || item.requirement_version_id) ===
     requirementVersionId;
@@ -131,16 +128,16 @@ export default function RequirementClarificationPanel({
   };
   const requestChanges = async (item) => {
     await ask({
-      title: "Yêu cầu BA cập nhật Requirement",
+      title: "Yêu cầu cập nhật Requirement",
       description:
         requirementStatus === "IN_REVIEW"
-          ? "Requirement sẽ trở về bản nháp. Ghi rõ tiêu chí cần sửa để BA cập nhật đúng nội dung trong phiếu."
-          : "Ghi rõ tiêu chí cần sửa để BA cập nhật bản nháp theo phản hồi của phiếu.",
+          ? "Requirement sẽ trở về bản nháp. Ghi rõ tiêu chí cần sửa để cập nhật đúng nội dung trong phiếu."
+          : "Ghi rõ tiêu chí cần sửa để cập nhật bản nháp theo phản hồi của phiếu.",
       confirmLabel: "Gửi yêu cầu cập nhật",
       fields: [
         {
           name: "review_note",
-          label: "Nội dung cần BA cập nhật",
+          label: "Nội dung cần cập nhật",
           required: true,
           minLength: 2,
           multiline: true,
@@ -175,8 +172,8 @@ export default function RequirementClarificationPanel({
         <div>
           <h2 className="text-base font-semibold text-ink">Phiếu làm rõ yêu cầu</h2>
           <p className="mt-1 text-sm text-ink-muted">
-            QA tạo phiếu để BA trả lời. Sau khi có phản hồi, QA yêu cầu chỉnh sửa; BA cập nhật bản
-            nháp rồi QA đối chiếu nội dung mới để xác nhận.
+            Ghi nhận câu hỏi, phản hồi và yêu cầu cập nhật. Nội dung nguồn cần được cập nhật trước
+            khi xác nhận phiếu.
           </p>
         </div>
         {canReview && (
@@ -246,7 +243,7 @@ export default function RequirementClarificationPanel({
               )}
               {item.change_request_note && (
                 <p className="mt-2 text-sm text-ink-muted">
-                  QA yêu cầu cập nhật: {item.change_request_note}
+                  Yêu cầu cập nhật: {item.change_request_note}
                 </p>
               )}
               {canAnswer && item.status === "OPEN" && (
@@ -287,7 +284,7 @@ export default function RequirementClarificationPanel({
                     disabled={busy}
                     onClick={() => void requestChanges(item)}
                   >
-                    Yêu cầu BA cập nhật
+                    Yêu cầu cập nhật
                   </button>
                 )}
               {canReview &&
@@ -331,8 +328,8 @@ export default function RequirementClarificationPanel({
                 requirementStatus === "DRAFT" && (
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <p className="text-sm text-ink-muted">
-                      QA đã yêu cầu cập nhật. BA có thể sửa bản nháp của yêu cầu này; trả lời phiếu
-                      làm rõ vẫn là thao tác riêng.
+                      Có yêu cầu cập nhật. Có thể sửa bản nháp của yêu cầu này; trả lời phiếu làm rõ
+                      vẫn là thao tác riêng.
                     </p>
                     <button
                       type="button"
@@ -350,7 +347,7 @@ export default function RequirementClarificationPanel({
                 item.change_requested_requirement_revision != null &&
                 requirementRevision <= item.change_requested_requirement_revision && (
                   <p className="mt-3 text-sm text-ink-muted">
-                    Chờ BA sửa nội dung nguồn và lưu bản nháp trước khi QA xác nhận bằng chứng.
+                    Chờ nội dung nguồn được sửa và lưu thành bản nháp trước khi xác nhận bằng chứng.
                   </p>
                 )}
             </article>

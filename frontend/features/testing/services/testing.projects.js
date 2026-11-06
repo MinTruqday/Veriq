@@ -53,20 +53,20 @@ export const projectTestingApi = {
     agentRequest(`/du-an/${encodeURIComponent(projectId)}/nang-luc`),
   createAgentRun: (payload) =>
     agentRequest("/luot-chay", { method: "POST", body: JSON.stringify(payload) }),
-  getAutomationRun: (runId) => agentWorkflowRequest(`/luot-chay/${runId}`),
-  getAutomationRunEvidence: (runId) => agentWorkflowRequest(`/luot-chay/${runId}/bang-chung`),
-  listAutomationRuns: (projectId) => agentWorkflowRequest(`/du-an/${projectId}/luot-chay`),
-  retryAutomationRun: (runId, payload) =>
+  getAgentRun: (runId) => agentWorkflowRequest(`/luot-chay/${runId}`),
+  getAgentRunEvidence: (runId) => agentWorkflowRequest(`/luot-chay/${runId}/bang-chung`),
+  listAgentRuns: (projectId) => agentWorkflowRequest(`/du-an/${projectId}/luot-chay`),
+  resumeAgentRun: (runId, payload) =>
     agentWorkflowRequest(`/luot-chay/${runId}/uy-quyen-lai`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  answerAutomationClarification: (runId, payload) =>
+  answerAgentClarification: (runId, payload) =>
     agentWorkflowRequest(`/luot-chay/${runId}/tra-loi-lam-ro`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  cancelAutomationRun: (runId, payload) =>
+  cancelAgentRun: (runId, payload) =>
     agentWorkflowRequest(`/luot-chay/${runId}/huy`, {
       method: "POST",
       body: JSON.stringify(payload),

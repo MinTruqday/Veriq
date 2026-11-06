@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Eye } from "lucide-react";
+import { Eye, RefreshCw } from "lucide-react";
 import { testingApi } from "../../../services/testing.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { docText, messageOf, textDoc, valueLabel } from "../../../lib/testing";
@@ -209,8 +209,10 @@ export default function RequirementTemplatePanel({
   const [busy, setBusy] = useState(false);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesLoadFailed, setTemplatesLoadFailed] = useState(false);
-  const [automationRuns, setAutomationRuns] = useState([]);
-  const [automationRunsError, setAutomationRunsError] = useState("");
+  const [agentRuns, setAgentRuns] = useState([]);
+  const [agentRunsError, setAgentRunsError] = useState("");
+  const [agentRunsLoading, setAgentRunsLoading] = useState(false);
+  const [agentRunsRefreshVersion, setAgentRunsRefreshVersion] = useState(0);
   const [templateReadbackError, setTemplateReadbackError] = useState("");
   const seenTerminalRunIds = useRef(new Set());
   const [fieldDraft, setFieldDraft] = useState({
@@ -251,12 +253,10 @@ export default function RequirementTemplatePanel({
     };
   }, [isOpen, project._id, onError]);
 
-  const canReadAutomationRuns =
+  const canReadAgentRuns =
     project.current_permissions?.includes("proposal.read") ||
     project.current_permissions?.includes("automation.read");
-  const projectRoles = [project.current_membership?.project_role].filter(Boolean);
-  const canApprovePublication =
-    project.current_permissions?.includes("requirement.read") && projectRoles.includes("QA");
+  const canApprovePublication = project.current_permissions?.includes("requirement.approve");
   const canManageRequirementFields = project.current_permissions?.includes("requirement.update");
   const documentEventKey = sourceDocuments
     .filter((document) => document.ai_enabled)
@@ -265,22 +265,19 @@ export default function RequirementTemplatePanel({
     .join("|");
 
   useEffect(() => {
-    if (!isOpen || !canReadAutomationRuns) {
-      setAutomationRuns([]);
-      setAutomationRunsError("");
-      return undefined;
+    if (!isOpen || !canReadAgentRuns) {
+      setAgentRuns([]);
+      setAgentRunsError("");
+      return;
     }
-
     let active = true;
-    let pending = false;
-    const refreshEventRuns = async () => {
-      if (pending) return;
-      pending = true;
+    const refreshAgentRuns = async () => {
+      setAgentRunsLoading(true);
       try {
-        const runs = await testingApi.listAutomationRuns(project._id);
+        const runs = await testingApi.listAgentRuns(project._id);
         if (!active) return;
-        setAutomationRuns(runs);
-        setAutomationRunsError("");
+        setAgentRuns(runs);
+        setAgentRunsError("");
         const terminalRunIds = runs
           .filter(
             (run) =>
@@ -305,23 +302,18 @@ export default function RequirementTemplatePanel({
         }
       } catch (reason) {
         if (active) {
-          setAutomationRuns([]);
-          setAutomationRunsError(messageOf(reason));
+          setAgentRuns([]);
+          setAgentRunsError(messageOf(reason));
         }
       } finally {
-        pending = false;
+        if (active) setAgentRunsLoading(false);
       }
     };
-
-    void refreshEventRuns();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshEventRuns();
-    }, 5000);
+    void refreshAgentRuns();
     return () => {
       active = false;
-      window.clearInterval(timer);
     };
-  }, [canReadAutomationRuns, documentEventKey, isOpen, project._id]);
+  }, [agentRunsRefreshVersion, canReadAgentRuns, documentEventKey, isOpen, project._id]);
 
   const loadTemplate = (template) => {
     setActive(template);
@@ -399,7 +391,7 @@ export default function RequirementTemplatePanel({
 
   const eventRunFor = (sourceDocument) => {
     const eventId = `requirement-document:${sourceDocument._id}:${sourceDocument.revision || 1}`;
-    return automationRuns.find((item) => item.source_event_id === eventId) || null;
+    return agentRuns.find((item) => item.source_event_id === eventId) || null;
   };
 
   const templateIdsForRun = (run) => {
@@ -544,14 +536,28 @@ export default function RequirementTemplatePanel({
         </div>
         <div className="space-y-2 rounded-control border border-border p-3">
           <p className="text-sm font-medium">Tài liệu nguồn cho AI</p>
-          {canReadAutomationRuns && (
+          {canReadAgentRuns && (
             <div className="space-y-2 border-b border-border pb-3" aria-live="polite">
-              <div>
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">Kết quả xử lý tài liệu</p>
+                <button
+                  aria-label="Cập nhật trạng thái AI"
+                  className="icon-button h-8 w-8 shrink-0"
+                  disabled={agentRunsLoading}
+                  onClick={() => setAgentRunsRefreshVersion((version) => version + 1)}
+                  title="Cập nhật trạng thái AI"
+                  type="button"
+                >
+                  <RefreshCw
+                    aria-hidden="true"
+                    className={agentRunsLoading ? "animate-spin" : ""}
+                    size={16}
+                  />
+                </button>
               </div>
-              {automationRunsError && (
+              {agentRunsError && (
                 <p className="text-sm text-danger" role="alert">
-                  Chưa tải được kết quả xử lý tài liệu: {automationRunsError}
+                  Chưa tải được kết quả xử lý tài liệu: {agentRunsError}
                 </p>
               )}
               {templateReadbackError && (
@@ -587,17 +593,25 @@ export default function RequirementTemplatePanel({
                           ))}
                           <a
                             className="text-accent underline"
-                            href={projectRoute(project._id, PROJECT_SECTION_SLUGS.automation)}
+                            href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
                           >
                             Xem tiến trình xử lý
                           </a>
                         </div>
                       ) : (
-                        <span className="text-xs text-ink-muted">
-                          {document.status === "READY"
-                            ? "Chưa có kết quả xử lý cho tài liệu này."
-                            : "Tài liệu sẽ được xử lý sau khi phân tích hoàn tất."}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+                          <span>
+                            {document.status === "READY"
+                              ? "Chưa có yêu cầu AI cho tài liệu này."
+                              : "Tài liệu đang được phân tích; AI chỉ xử lý khi bạn chủ động bắt đầu."}
+                          </span>
+                          <a
+                            className="text-accent underline"
+                            href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
+                          >
+                            Mở Hoạt động AI
+                          </a>
+                        </div>
                       )}
                     </div>
                   );

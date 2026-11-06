@@ -59,7 +59,7 @@ export default function DashboardPage({ project }) {
   const can = (permission) => permissions.includes(permission);
   const canReadAnalytics = can("analytics.read");
   const canReadCoverage = can("coverage.read");
-  const canReadAutomationRuns = can("proposal.read") || can("automation.read");
+  const canReadAgentRuns = can("proposal.read") || can("automation.read");
   const canReadKnowledge = can("knowledge.read");
   useEffect(() => {
     let active = true;
@@ -274,7 +274,7 @@ export default function DashboardPage({ project }) {
           )}
           <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,1fr)]">
             <div className="grid min-w-0 content-start gap-5">
-              {canReadAutomationRuns && <AgentRunPanel project={project} compact />}
+              {canReadAgentRuns && <AgentRunPanel project={project} compact />}
               {dashboard && can("requirement.read") && can("impact.read") && (
                 <Panel title="Thay đổi gần đây">
                   {dashboard.recent_changes?.length > 0 ? (

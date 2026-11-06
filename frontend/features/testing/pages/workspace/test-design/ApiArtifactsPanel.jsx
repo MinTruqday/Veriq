@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { messageOf } from "../../../lib/testing";
-import { automationRunErrorMessage } from "../../../lib/automationRun.logic";
+import { agentRunErrorMessage } from "../../../lib/agentRun.logic";
 import { testingApi } from "../../../services/testing.service";
 
 export default function ApiArtifactsPanel({
@@ -32,43 +32,39 @@ export default function ApiArtifactsPanel({
   const impactBusyRef = useRef(false);
   const [comparisonBusy, setComparisonBusy] = useState(false);
   const comparisonBusyRef = useRef(false);
-  const [automationRuns, setAutomationRuns] = useState([]);
-  const [automationRunsError, setAutomationRunsError] = useState("");
+  const [agentRuns, setAgentRuns] = useState([]);
+  const [agentRunsError, setAgentRunsError] = useState("");
   const confirmed = artifacts.filter((item) => item.status === "CONFIRMED");
-  const canReadAutomationRuns = can("automation.read") || can("proposal.read");
+  const canReadAgentRuns = can("automation.read") || can("proposal.read");
 
   useEffect(() => {
-    if (!canReadAutomationRuns || !confirmed.length) return undefined;
+    if (!canReadAgentRuns || !confirmed.length) return undefined;
     let active = true;
     let pending = false;
     const refreshRuns = async () => {
       if (pending) return;
       pending = true;
       try {
-        const runs = await testingApi.listAutomationRuns(projectId);
+        const runs = await testingApi.listAgentRuns(projectId);
         if (active) {
-          setAutomationRuns(runs || []);
-          setAutomationRunsError("");
+          setAgentRuns(runs || []);
+          setAgentRunsError("");
         }
       } catch (reason) {
-        if (active) setAutomationRunsError(messageOf(reason));
+        if (active) setAgentRunsError(messageOf(reason));
       } finally {
         pending = false;
       }
     };
     void refreshRuns();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refreshRuns();
-    }, 5000);
     return () => {
       active = false;
-      window.clearInterval(timer);
     };
-  }, [canReadAutomationRuns, confirmed.length, projectId]);
+  }, [canReadAgentRuns, confirmed.length, projectId]);
 
-  const automationRunFor = (operation) => {
+  const agentRunFor = (operation) => {
     const eventId = `api-operation:${operation._id}:r${operation.revision}`;
-    return automationRuns.find(
+    return agentRuns.find(
       (run) =>
         run.trigger === "API_OPERATION_CONFIRMED" &&
         (run.source_event_id === eventId ||
@@ -205,12 +201,12 @@ export default function ApiArtifactsPanel({
       onError(messageOf(reason));
     }
   };
-  const refreshAutomationState = async () => {
+  const refreshAgentState = async () => {
     try {
       await reload();
-      if (canReadAutomationRuns) {
-        setAutomationRuns(await testingApi.listAutomationRuns(projectId));
-        setAutomationRunsError("");
+      if (canReadAgentRuns) {
+        setAgentRuns(await testingApi.listAgentRuns(projectId));
+        setAgentRunsError("");
       }
     } catch (reason) {
       onError(messageOf(reason));
@@ -509,11 +505,11 @@ export default function ApiArtifactsPanel({
         <section className="space-y-3 border-t border-border pt-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">Thao tác API đã xác nhận</h3>
-            {canReadAutomationRuns && confirmed.length > 0 && (
+            {canReadAgentRuns && confirmed.length > 0 && (
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => void refreshAutomationState()}
+                onClick={() => void refreshAgentState()}
               >
                 Cập nhật trạng thái AI
               </button>
@@ -522,7 +518,7 @@ export default function ApiArtifactsPanel({
           {operations.length ? (
             <div className="divide-y divide-border border-b border-border">
               {operations.map((item) => {
-                const run = automationRunFor(item);
+                const run = agentRunFor(item);
                 return (
                   <article
                     className="grid min-w-0 gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,0.7fr)] lg:gap-6"
@@ -563,7 +559,7 @@ export default function ApiArtifactsPanel({
                               {run.result?.summary && <ContentOriginBadge origin="ai_generated" />}
                               <span className="break-words">
                                 {run.error_code
-                                  ? automationRunErrorMessage(run.error_code)
+                                  ? agentRunErrorMessage(run.error_code)
                                   : run.result.summary}
                               </span>
                             </div>
@@ -587,8 +583,8 @@ export default function ApiArtifactsPanel({
                                 : "Chưa có lượt AI"}
                         </p>
                       )}
-                      {automationRunsError && canReadAutomationRuns && (
-                        <p role="status">Chưa tải được trạng thái AI: {automationRunsError}</p>
+                      {agentRunsError && canReadAgentRuns && (
+                        <p role="status">Chưa tải được trạng thái AI: {agentRunsError}</p>
                       )}
                     </div>
                   </article>

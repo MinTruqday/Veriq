@@ -36,7 +36,6 @@ import {
 export default function RequirementsPage({ project, section, workspaceView }) {
   const { user } = useAuth();
   const { ask, dialog } = useActionDialog();
-  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const sectionKey = section[0] || "";
   const requirementId = sectionKey && !["new", "import"].includes(sectionKey) ? sectionKey : "";
   const [items, setItems] = useState([]);
@@ -1540,9 +1539,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               <TestAdequacyPanel
                 requirementVersionId={current._id}
                 members={visibleMembers}
-                canDecide={memberRoles.includes("QA") && can("testcase.read")}
-                canCreateClarification={memberRoles.includes("QA") && can("requirement.review")}
-                canApprove={memberRoles.includes("QA") && can("testcase.review")}
+                canDecide={can("testcase.read")}
+                canCreateClarification={can("requirement.review")}
+                canApprove={can("testcase.review")}
                 canSubmit={can("testcase.submit_review")}
               />
             </div>
@@ -1560,7 +1559,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 await load();
                 setDetailTab("requirement");
               }}
-              roles={memberRoles}
               permissions={project.current_permissions || []}
             />
           </div>

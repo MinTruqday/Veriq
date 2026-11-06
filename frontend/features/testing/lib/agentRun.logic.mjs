@@ -33,15 +33,15 @@ const checkpointReasonLabels = {
   QA_TEST_DESIGN_HANDOFF_DISPATCH_FAILED: "Không gửi được tác vụ thiết kế kiểm thử tiếp theo",
 };
 
-const automationRunErrorMessages = {
+const agentRunErrorMessages = {
   AUTOMATION_ACTION_OUTCOME_UNCERTAIN:
     "Chưa xác định được kết quả bước trước. Hãy kiểm tra dữ liệu trước khi tiếp tục để tránh tạo trùng.",
   AUTOMATION_CHECKPOINT_IDENTITY_MISMATCH:
     "Thông tin lượt chạy không còn khớp với dữ liệu hiện tại. Hệ thống đã dừng để tránh xử lý nhầm.",
   AUTOMATION_EXECUTION_FAILED:
-    "Lượt tự động hóa chưa hoàn tất. Hãy xem bước xử lý gần nhất trước khi tiếp tục.",
+    "Tác vụ AI chưa hoàn tất. Hãy xem kết quả gần nhất trước khi tiếp tục.",
   AUTOMATION_LIMIT_REACHED:
-    "Lượt tự động hóa đã chạm giới hạn xử lý. Hãy kiểm tra phần việc còn lại trước khi tiếp tục.",
+    "Tác vụ AI đã chạm giới hạn xử lý. Hãy kiểm tra phần việc còn lại trước khi tiếp tục.",
   AUTOMATION_QUEUE_UNAVAILABLE:
     "Hệ thống chưa thể tiếp nhận lượt chạy. Lượt này được giữ lại và sẽ được thử lại khi có thể.",
   AUTOMATION_WORKER_FAILED:
@@ -55,20 +55,19 @@ const automationRunErrorMessages = {
   AUTHORIZATION_EXPIRED: "Phiên quyền của lượt chạy đã hết hạn; cần xác minh lại quyền hiện tại.",
 };
 
-export function automationRunErrorMessage(errorCode) {
+export function agentRunErrorMessage(errorCode) {
   return (
-    automationRunErrorMessages[errorCode] ||
-    "Lượt tự động hóa chưa hoàn tất; hãy xem nhật ký các bước xử lý."
+    agentRunErrorMessages[errorCode] || "Tác vụ AI chưa hoàn tất; hãy xem kết quả các bước xử lý."
   );
 }
 
-export function workflowForSelectedRun(runs, selectedRunId) {
+export function workflowForSelectedAgentRun(runs, selectedRunId) {
   if (!Array.isArray(runs) || !selectedRunId) return null;
   const selected = runs.find((run) => run?.automation_run_id === selectedRunId);
   return selected?.workflow && typeof selected.workflow === "object" ? selected.workflow : null;
 }
 
-export function automationCheckpointView(checkpoint) {
+export function agentCheckpointView(checkpoint) {
   if (!checkpoint || typeof checkpoint !== "object") return null;
 
   const detail =
@@ -114,7 +113,7 @@ export function automationCheckpointView(checkpoint) {
   };
 }
 
-export function automationAuthorizationGuidance(run) {
+export function agentAuthorizationGuidance(run) {
   switch (run?.error_code) {
     case "PROJECT_QA_EXECUTOR_UNAVAILABLE":
       return {
@@ -162,7 +161,7 @@ export function automationAuthorizationGuidance(run) {
   }
 }
 
-export function canResumeAutomationRun(run, checkpoints, currentUserId) {
+export function canResumeAgentRun(run, checkpoints, currentUserId) {
   if (!run || !currentUserId || run.requester_user_id !== currentUserId) return false;
   if (run.error_code === "AUTOMATION_ACTION_OUTCOME_UNCERTAIN") return false;
 
@@ -181,7 +180,7 @@ export function canResumeAutomationRun(run, checkpoints, currentUserId) {
   return Boolean(latestCheckpoint?.state_snapshot);
 }
 
-export function latestAutomationUncertainties(checkpoints) {
+export function latestAgentUncertainties(checkpoints) {
   const latestCheckpoint = Array.isArray(checkpoints) ? checkpoints.at(-1) : null;
   const uncertainties = latestCheckpoint?.state_snapshot?.uncertainties;
   return Array.isArray(uncertainties) ? uncertainties : [];
@@ -202,7 +201,7 @@ const MCP_DISCOVERY_MESSAGES = {
     "Nguồn kết nối chưa cung cấp nội dung được phép đọc trong dự án.",
 };
 
-export function automationMcpDiscoveryIssues(run) {
+export function agentMcpDiscoveryIssues(run) {
   const observations = Array.isArray(run?.result?.observations)
     ? run.result.observations
     : Array.isArray(run?.observations)
@@ -221,7 +220,7 @@ export function automationMcpDiscoveryIssues(run) {
   return [...issues.values()];
 }
 
-export function automationSourceExtractionGaps(run) {
+export function agentSourceExtractionGaps(run) {
   const observations = Array.isArray(run?.result?.observations)
     ? run.result.observations
     : Array.isArray(run?.observations)
