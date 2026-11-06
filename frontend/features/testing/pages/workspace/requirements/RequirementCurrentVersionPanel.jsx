@@ -355,6 +355,20 @@ export default function RequirementCurrentVersionPanel({
           <div className="mt-2">
             <StatusPill value={current.status} />
           </div>
+          {current.status === "IN_REVIEW" && (
+            <p className="mt-2 max-w-prose text-sm text-ink-muted">
+              {current.technical_review_revision === current.revision
+                ? "QA đã xác nhận rà soát kỹ thuật. Requirement đang chờ BA xác nhận nghiệp vụ, chưa phải phiên bản chuẩn."
+                : "Requirement đã gửi rà soát. QA xác nhận kỹ thuật; BA xác nhận nghiệp vụ để đặt phiên bản chuẩn."}
+            </p>
+          )}
+          {current.status === "DRAFT" &&
+            current.changes_requested_by &&
+            can("requirement.update") && (
+              <p className="mt-2 max-w-prose text-sm text-ink-muted">
+                QA đã yêu cầu chỉnh sửa. BA có thể cập nhật bản nháp bên dưới rồi gửi rà soát lại.
+              </p>
+            )}
         </div>
         <div>
           <p className="field-label">Phiên bản</p>

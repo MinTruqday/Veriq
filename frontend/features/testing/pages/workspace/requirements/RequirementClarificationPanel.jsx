@@ -313,14 +313,15 @@ export default function RequirementClarificationPanel({
                   </div>
                 )}
               {canAnswer &&
-                item.status === "ANSWERED" &&
+                ["OPEN", "ANSWERED"].includes(item.status) &&
                 isUpdateRequestedForCurrentVersion(item) &&
                 item.change_requested_requirement_revision != null &&
                 requirementRevision <= item.change_requested_requirement_revision &&
                 requirementStatus === "DRAFT" && (
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <p className="text-sm text-ink-muted">
-                      QA đã yêu cầu cập nhật. Mở nội dung yêu cầu để chỉnh sửa bản nháp.
+                      QA đã yêu cầu cập nhật. BA có thể sửa bản nháp của yêu cầu này; trả lời phiếu
+                      làm rõ vẫn là thao tác riêng.
                     </p>
                     <button
                       type="button"
