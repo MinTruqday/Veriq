@@ -104,6 +104,7 @@ class RequirementClarificationRepository:
             {
                 "$set": {
                     "change_requested_requirement_revision": revision,
+                    "change_requested_requirement_version_id": requirement_version_id,
                     "change_requested_at": timestamp,
                     "updated_at": timestamp,
                 },

@@ -60,6 +60,11 @@ export const designTestingApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  requestRequirementClarificationChanges: (clarificationId, payload) =>
+    testingRequest(`/phieu-lam-ro/${clarificationId}/yeu-cau-cap-nhat`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   resolveRequirementClarification: (clarificationId, payload) =>
     testingRequest(`/phieu-lam-ro/${clarificationId}/xac-nhan-giai-quyet`, {
       method: "POST",

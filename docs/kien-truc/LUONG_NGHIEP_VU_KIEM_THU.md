@@ -91,6 +91,17 @@ Nghiệm thu đầu-cuối bao gồm nhập DOCX/PDF/TXT/MD/XLSX/CSV và đặc 
 - Plan cũ giữ nguyên digest và snapshot; trường kế hoạch dữ liệu/Defect chỉ được đưa vào digest khi có trong snapshot. Trường mới không ghi bù vào bản đã duyệt.
 - Run tiếp tục khóa phiên bản, build và môi trường theo hợp đồng hiện hữu. Ca/yêu cầu đổi tạo phiên bản và phạm vi mới; lịch sử kết quả được giữ.
 
+## Luồng phiếu làm rõ Requirement
+
+1. QA phát hiện một nội dung chưa rõ, tạo phiếu gắn với đúng Requirement, phiên bản và nguồn cụ thể như AC-2, quy tắc nghiệp vụ hoặc API operation. Phiếu lưu câu hỏi, lý do và trích dẫn nguồn; QA xử lý từng phiếu riêng.
+2. BA đọc và trả lời phiếu. Trả lời chỉ ghi nhận nội dung cần làm rõ, không tự sửa Requirement hoặc xác nhận phiếu.
+3. QA kiểm tra phản hồi. Nếu Requirement đang `IN_REVIEW`, QA yêu cầu cập nhật để đưa đúng phiên bản về `DRAFT`; nếu đã là `DRAFT`, QA ghi yêu cầu cập nhật trên phiên bản đó. Yêu cầu gắn với revision và phiên bản hiện tại, có lý do và audit.
+4. BA mở Requirement, sửa đúng nội dung được nêu trong phiếu rồi lưu bản nháp. Với Requirement đã chốt chuẩn, việc chỉnh sửa phải thực hiện trên phiên bản mới; không sửa đè phiên bản chuẩn.
+5. QA đối chiếu lại đúng nguồn của phiếu trên phiên bản hiện tại và cung cấp trích dẫn bằng chứng. Backend chỉ chấp nhận trích dẫn khớp nguồn tương ứng; trích dẫn từ AC khác không thể giải quyết phiếu này. Nếu chưa đạt, QA có thể yêu cầu BA cập nhật tiếp.
+6. Sau khi các nội dung cần thiết được làm rõ, BA gửi Requirement rà soát theo quyền; QA rà soát và phê duyệt theo quyền QA. Không vai trò nào được tự duyệt nội dung do chính mình tạo hoặc sửa. Tạo phiếu, trả lời, yêu cầu sửa, xác nhận bằng chứng, gửi rà soát và phê duyệt đều do người dùng chủ động thực hiện; không có Agent tự chạy xuyên suốt.
+
+Các thao tác kiểm tra revision, chuyển `IN_REVIEW` về `DRAFT`, cập nhật phiếu và audit phải nằm trong transaction để không tạo trạng thái dở dang. Xung đột revision trả lỗi để tải lại, không ghi đè nội dung mới hơn.
+
 ## Thay đổi giao diện và API
 
 - Menu đưa kế hoạch kiểm thử lên trước thiết kế, kịch bản lên trước ca; các URL cũ được giữ.

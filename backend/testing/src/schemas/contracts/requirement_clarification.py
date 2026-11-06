@@ -19,6 +19,12 @@ class RequirementClarificationAnswer(BaseModel):
     answer: str = Field(min_length=2, max_length=10000)
 
 
+class RequirementClarificationChangeRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    expected_requirement_revision: int = Field(ge=1)
+    review_note: str = Field(min_length=2, max_length=4000)
+
+
 class RequirementClarificationResolution(BaseModel):
     expected_revision: int = Field(ge=1)
     requirement_version_id: str = Field(min_length=1, max_length=200)

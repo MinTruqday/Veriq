@@ -1554,6 +1554,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               requirementVersionId={current._id}
               requirementStatus={current.status}
               requirementRevision={current.revision}
+              ask={ask}
               onRequirementChanged={load}
               roles={memberRoles}
               permissions={project.current_permissions || []}

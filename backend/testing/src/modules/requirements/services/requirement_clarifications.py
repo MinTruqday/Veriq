@@ -1,11 +1,14 @@
+import re
 from hashlib import sha256
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError, PyMongoError
-from src.core.human_decisions import require_automation_publication_authority
-
 from src.core.common import audit, get_project_entity, get_project_roles, new_id, now, plain_text
 from src.core.database import database
+from src.core.human_decisions import (
+    require_automation_publication_authority,
+    require_independent_review,
+)
 from src.modules.design.services.linters import requirement_findings
 from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_clarification import requirement_clarification_repository
@@ -107,6 +110,7 @@ async def _replace_and_audit(
     clarification, payload, changes, user, action, details=None,
     requirement_current_version_id=None,
     requirement_version_revision=None,
+    requirement_gate_version_id=None,
 ):
     async def commit(session):
         if requirement_current_version_id is not None:
@@ -134,7 +138,7 @@ async def _replace_and_audit(
         if not updated:
             raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
         if not await requirement_repository.bump_clarification_gate_revision(
-            clarification["requirement_version_id"],
+            requirement_gate_version_id or clarification["requirement_version_id"],
             clarification["project_id"],
             session=session,
             expected_revision=requirement_version_revision,
@@ -262,14 +266,181 @@ async def answer_clarification(clarification_id, payload, user):
     )
 
 
-def _version_evidence(version, criteria):
-    return "\n".join(
-        [
-            plain_text(version.get("content_doc", {})),
-            *[str(value) for value in version.get("business_rules") or []],
-            *[str(item.get("plain_text") or plain_text(item.get("content_doc", {}))) for item in criteria],
+def _normalized_evidence(value):
+    return " ".join(str(value or "").casefold().split())
+
+
+def _criterion_reference_matches(reference, criterion):
+    normalized_reference = _normalized_evidence(reference)
+    normalized_key = _normalized_evidence(criterion.get("key"))
+    if normalized_reference in {
+        normalized_key,
+        _normalized_evidence(criterion.get("_id")),
+    }:
+        return True
+    reference_match = re.fullmatch(r"ac[-_ ]?0*(\d+)", normalized_reference)
+    key_match = re.fullmatch(r"ac[-_ ]?0*(\d+)", normalized_key)
+    return bool(reference_match and key_match and reference_match.group(1) == key_match.group(1))
+
+
+def _clarification_source_evidence(version, criteria, clarification):
+    reference = str(clarification.get("source_ref") or "").strip()
+    normalized_reference = _normalized_evidence(reference).replace(" ", "_")
+    if normalized_reference in {"content", "requirement_content"}:
+        return plain_text(version.get("content_doc", {}))
+    if normalized_reference in {"title", "requirement_title"}:
+        return str(version.get("title") or "")
+    if normalized_reference == "actors":
+        return "\n".join(str(value) for value in version.get("actors") or [])
+    if normalized_reference in {"business_rules", "business_rule"}:
+        return "\n".join(str(value) for value in version.get("business_rules") or [])
+    business_rule = re.fullmatch(r"business_rules?:?[_ ]?(\d+)", normalized_reference)
+    if business_rule:
+        index = int(business_rule.group(1)) - 1
+        values = version.get("business_rules") or []
+        return str(values[index]) if 0 <= index < len(values) else ""
+    version_id = _normalized_evidence(version.get("_id"))
+    if normalized_reference in {"requirement_version", version_id}:
+        return str(
+            version.get("plain_text_projection")
+            or plain_text(version.get("content_doc", {}))
+            or version.get("title")
+            or ""
+        )
+    api_operations = (version.get("details") or {}).get("api_operations", [])
+    for operation in api_operations:
+        if not isinstance(operation, dict):
+            continue
+        method = str(operation.get("method") or "").strip().upper()
+        path = str(operation.get("path") or operation.get("url_template") or "").strip()
+        if method and path and _normalized_evidence(f"{method} {path}") == _normalized_evidence(reference):
+            return f"{method} {path}"
+    if normalized_reference in {"acceptance_criteria", "acceptance_criterion"}:
+        selected = criteria
+    else:
+        selected = [
+            item for item in criteria if _criterion_reference_matches(reference, item)
         ]
-    ).casefold()
+    return "\n".join(
+        str(item.get("plain_text") or plain_text(item.get("content_doc", {})))
+        for item in selected
+    )
+
+
+async def request_clarification_changes(clarification_id, payload, user):
+    clarification = await requirement_clarification_repository.find(clarification_id)
+    if not clarification:
+        raise HTTPException(status_code=404, detail={"code": "CLARIFICATION_NOT_FOUND"})
+    requirement = await get_project_entity(
+        "requirements", clarification["requirement_id"], user, "requirement.review"
+    )
+    await _require_role(clarification["project_id"], user, "QA")
+    source_version = await requirement_repository.find_version(
+        clarification["requirement_version_id"],
+        clarification["project_id"],
+        clarification["requirement_id"],
+    )
+    version = await requirement_repository.find_version(
+        requirement.get("current_version_id"),
+        clarification["project_id"],
+        clarification["requirement_id"],
+    )
+    if (
+        not source_version
+        or not version
+        or version.get("status") not in {"DRAFT", "IN_REVIEW"}
+    ):
+        raise HTTPException(status_code=409, detail={"code": "CLARIFICATION_VERSION_NOT_EDITABLE"})
+    if clarification.get("status") != "ANSWERED":
+        raise HTTPException(status_code=409, detail={"code": "CLARIFICATION_ANSWER_REQUIRED"})
+    if clarification.get("revision") != payload.expected_revision:
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+    if version.get("revision") != payload.expected_requirement_revision:
+        raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+    if version.get("status") == "IN_REVIEW":
+        require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    timestamp = now()
+    requirement_revision_after_request = version["revision"] + int(version["status"] == "IN_REVIEW")
+
+    async def commit(session):
+        if not await requirement_repository.bump_clarification_gate_revision(
+            version["_id"],
+            version["project_id"],
+            session=session,
+            expected_revision=version["revision"],
+        ):
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        if version.get("status") == "IN_REVIEW":
+            transitioned = await requirement_repository.transition_version(
+                version["_id"],
+                version["project_id"],
+                version["revision"],
+                "IN_REVIEW",
+                "DRAFT",
+                {
+                    "review_note": payload.review_note,
+                    "changes_requested_by": user.id,
+                    "changes_requested_at": timestamp,
+                    "updated_at": timestamp,
+                },
+                session=session,
+            )
+            if not transitioned:
+                raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+            await audit(
+                user.id,
+                "requirement_changes_requested",
+                "RequirementVersion",
+                version["_id"],
+                version["project_id"],
+                {"review_note": payload.review_note, "clarification_id": clarification_id},
+                session=session,
+            )
+        if not await requirement_repository.set_requirement_status(
+            clarification["requirement_id"],
+            clarification["project_id"],
+            version["_id"],
+            "DRAFT",
+            timestamp,
+            session=session,
+        ):
+            raise HTTPException(status_code=409, detail={"code": "REQUIREMENT_STATUS_CONFLICT"})
+        updated = await requirement_clarification_repository.replace(
+            clarification_id,
+            clarification["project_id"],
+            payload.expected_revision,
+            {
+                "change_requested_requirement_revision": requirement_revision_after_request,
+                "change_requested_requirement_version_id": version["_id"],
+                "change_request_note": payload.review_note,
+                "change_requested_by": user.id,
+                "change_requested_at": timestamp,
+                "updated_at": timestamp,
+            },
+            session=session,
+        )
+        if not updated:
+            raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
+        await audit(
+            user.id,
+            "requirement_clarification_change_requested",
+            "RequirementClarification",
+            clarification_id,
+            clarification["project_id"],
+            {
+                "requirement_version_id": version["_id"],
+                "requirement_revision": requirement_revision_after_request,
+            },
+            session=session,
+        )
+        return updated
+
+    async with await database.client.start_session() as session:
+        updated = await session.with_transaction(commit)
+    latest_version = await requirement_repository.find_version(
+        version["_id"], version["project_id"]
+    )
+    return {"clarification": updated, "requirement_version": latest_version}
 
 
 async def resolve_clarification(clarification_id, payload, user):
@@ -286,33 +457,27 @@ async def resolve_clarification(clarification_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": "RESOLUTION_VERSION_INVALID"})
     if requirement.get("current_version_id") != version["_id"]:
         raise HTTPException(status_code=409, detail={"code": "RESOLUTION_VERSION_NOT_CURRENT"})
-    required_revisions = [
-        revision
-        for revision in (
-            clarification.get("answered_requirement_version_revision"),
-            clarification.get("change_requested_requirement_revision"),
+    change_requested_version_id = clarification.get(
+        "change_requested_requirement_version_id"
+    ) or clarification["requirement_version_id"]
+    if change_requested_version_id != version["_id"]:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CLARIFICATION_UPDATE_REQUEST_REQUIRED"},
         )
-        if revision is not None
-    ]
-    required_revision = max(required_revisions, default=None)
-    if required_revision is not None and version.get("revision", 0) <= required_revision:
+    required_revision = clarification.get("change_requested_requirement_revision")
+    if required_revision is None or version.get("revision", 0) <= required_revision:
         raise HTTPException(
             status_code=409,
             detail={"code": "CLARIFICATION_REQUIRES_UPDATED_REQUIREMENT"},
         )
-    clarification_version = (
-        version
-        if clarification["requirement_version_id"] == version["_id"]
-        else await requirement_repository.find_version(
-            clarification["requirement_version_id"],
-            clarification["project_id"],
-            clarification["requirement_id"],
-        )
-    )
-    if not clarification_version:
-        raise HTTPException(status_code=409, detail={"code": "REQUIREMENT_VERSION_CHANGED"})
     criteria = await requirement_repository.list_acceptance_criteria(version["_id"], None)
-    if payload.evidence_quote.casefold() not in _version_evidence(version, criteria):
+    source_evidence = _clarification_source_evidence(version, criteria, clarification)
+    if (
+        not source_evidence
+        or _normalized_evidence(payload.evidence_quote)
+        not in _normalized_evidence(source_evidence)
+    ):
         raise HTTPException(status_code=422, detail={"code": "RESOLUTION_EVIDENCE_NOT_FOUND"})
     timestamp = now()
     return await _replace_and_audit(
@@ -330,7 +495,8 @@ async def resolve_clarification(clarification_id, payload, user):
         "requirement_clarification_resolved",
         {"requirement_version_id": version["_id"]},
         requirement_current_version_id=version["_id"],
-        requirement_version_revision=clarification_version.get("revision"),
+        requirement_version_revision=version.get("revision"),
+        requirement_gate_version_id=version["_id"],
     )
 
 

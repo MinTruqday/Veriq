@@ -14,6 +14,7 @@ from src.schemas.contracts.requirements import (
 )
 from src.schemas.contracts.requirement_clarification import (
     RequirementClarificationAnswer,
+    RequirementClarificationChangeRequest,
     RequirementClarificationCreate,
     RequirementClarificationDecision,
     RequirementClarificationResolution,
@@ -24,6 +25,7 @@ from src.modules.requirements.services.requirement_clarifications import (
     decide_clarification,
     generate_clarifications,
     list_clarifications,
+    request_clarification_changes,
     resolve_clarification,
 )
 from src.modules.requirements.services.requirement_dependencies import add_dependency, remove_dependency
@@ -91,6 +93,16 @@ async def answer_requirement_clarification(
 ):
     value = await answer_clarification(clarification_id, payload, user)
     return envelope(value, revision=value["revision"])
+
+
+@router.post("/phieu-lam-ro/{clarification_id}/yeu-cau-cap-nhat")
+async def request_requirement_clarification_changes(
+    clarification_id: str,
+    payload: RequirementClarificationChangeRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    value = await request_clarification_changes(clarification_id, payload, user)
+    return envelope(value, revision=value["clarification"]["revision"])
 
 
 @router.post("/phieu-lam-ro/{clarification_id}/xac-nhan-giai-quyet")

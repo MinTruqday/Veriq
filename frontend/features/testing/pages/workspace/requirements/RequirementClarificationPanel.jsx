@@ -5,7 +5,6 @@ import { LoadingState } from "../../../components/WorkspacePrimitives";
 
 const statusLabel = {
   OPEN: "Đang chờ cập nhật",
-  ANSWERED: "Đã có phản hồi, chờ xác nhận",
   RESOLVED: "Đã giải quyết",
   NOT_APPLICABLE: "Không áp dụng",
   WAIVED: "Đã chấp nhận ngoại lệ",
@@ -17,6 +16,7 @@ function sourceReferenceLabel(sourceRef) {
   const businessRule = /^(?:business_rule:?)\s*(\d+)$/i.exec(reference);
   if (businessRule) return `Quy tắc nghiệp vụ ${businessRule[1]}`;
   if (/^AC[-_ ]?\d+$/i.test(reference)) return reference.toUpperCase().replace(/[ _]/g, "-");
+  if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+/i.test(reference)) return reference;
   return (
     {
       content: "Nội dung yêu cầu",
@@ -32,13 +32,36 @@ function clarificationMessageOf(reason) {
   if (code === "CLARIFICATION_REQUIRES_UPDATED_REQUIREMENT") {
     return "BA cần cập nhật và lưu bản nháp yêu cầu sau khi QA yêu cầu chỉnh sửa trước khi QA xác nhận phiếu.";
   }
+  if (code === "CLARIFICATION_VERSION_NOT_EDITABLE") {
+    return "Phiên bản yêu cầu này không còn là bản nháp để chỉnh sửa. Hãy tạo phiên bản mới trước khi xử lý phiếu.";
+  }
+  if (code === "CLARIFICATION_UPDATE_REQUEST_REQUIRED") {
+    return "QA cần gửi yêu cầu cập nhật cho đúng phiên bản đang mở trước khi xác nhận phiếu.";
+  }
   return messageOf(reason);
+}
+
+function itemStatusLabel(item, requirementRevision, requirementVersionId) {
+  if (item.status !== "ANSWERED") return statusLabel[item.status] || valueLabel(item.status);
+  const requestedVersionId =
+    item.change_requested_requirement_version_id || item.requirement_version_id;
+  if (
+    requestedVersionId !== requirementVersionId ||
+    item.change_requested_requirement_revision == null
+  ) {
+    return "Đã có phản hồi, chờ QA yêu cầu cập nhật";
+  }
+  return requirementRevision > item.change_requested_requirement_revision
+    ? "Đã cập nhật, chờ QA xác nhận"
+    : "Đang chờ BA cập nhật bản nháp";
 }
 
 export default function RequirementClarificationPanel({
   requirementVersionId,
   requirementStatus,
   requirementRevision,
+  ask,
+  onRequirementChanged,
   role,
   roles,
   permissions = [],
@@ -56,6 +79,9 @@ export default function RequirementClarificationPanel({
   const memberRoles = Array.isArray(roles) && roles.length ? roles : [role].filter(Boolean);
   const canReview = memberRoles.includes("QA") && permissions.includes("requirement.review");
   const canAnswer = memberRoles.includes("BA") && permissions.includes("requirement.update");
+  const isUpdateRequestedForCurrentVersion = (item) =>
+    (item.change_requested_requirement_version_id || item.requirement_version_id) ===
+    requirementVersionId;
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     if (!requirementVersionId || !canRead) return;
@@ -101,6 +127,45 @@ export default function RequirementClarificationPanel({
     } finally {
       if (activeRequirementVersion.current === requestedVersionId) setBusy(false);
     }
+  };
+  const requestChanges = async (item) => {
+    await ask({
+      title: "Yêu cầu BA cập nhật Requirement",
+      description:
+        requirementStatus === "IN_REVIEW"
+          ? "Requirement sẽ trở về bản nháp. Ghi rõ tiêu chí cần sửa để BA cập nhật đúng nội dung trong phiếu."
+          : "Ghi rõ tiêu chí cần sửa để BA cập nhật bản nháp theo phản hồi của phiếu.",
+      confirmLabel: "Gửi yêu cầu cập nhật",
+      fields: [
+        {
+          name: "review_note",
+          label: "Nội dung cần BA cập nhật",
+          required: true,
+          minLength: 2,
+          multiline: true,
+          autoFocus: true,
+        },
+      ],
+      onConfirm: async (answer) => {
+        setBusy(true);
+        setError("");
+        try {
+          await testingApi.requestRequirementClarificationChanges(item._id, {
+            expected_revision: item.revision,
+            expected_requirement_revision: requirementRevision,
+            review_note: answer.review_note.trim(),
+          });
+          await onRequirementChanged?.();
+          if (activeRequirementVersion.current === requirementVersionId) await load();
+        } catch (reason) {
+          const message = clarificationMessageOf(reason);
+          setError(message);
+          throw new Error(message);
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
   };
   if (!requirementVersionId || !canRead) return null;
   return (
@@ -150,7 +215,7 @@ export default function RequirementClarificationPanel({
           {items.map((item) => (
             <article key={item._id} className="rounded-panel border border-border p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <strong>{statusLabel[item.status] || valueLabel(item.status)}</strong>
+                <strong>{itemStatusLabel(item, requirementRevision, requirementVersionId)}</strong>
                 {item.source_ref && (
                   <span className="text-xs text-ink-faint">
                     Nguồn: {sourceReferenceLabel(item.source_ref)}
@@ -166,6 +231,11 @@ export default function RequirementClarificationPanel({
               <p className="mt-1 text-sm text-ink-muted">Lý do: {item.reason}</p>
               {item.answer && (
                 <p className="mt-3 text-sm text-ink-muted">Phản hồi: {item.answer}</p>
+              )}
+              {item.change_request_note && (
+                <p className="mt-2 text-sm text-ink-muted">
+                  QA yêu cầu cập nhật: {item.change_request_note}
+                </p>
               )}
               {canAnswer && item.status === "OPEN" && (
                 <div className="mt-3 flex flex-col gap-2">
@@ -193,35 +263,63 @@ export default function RequirementClarificationPanel({
                   </button>
                 </div>
               )}
-              {canReview && item.status === "ANSWERED" && (
-                <div className="mt-3 flex flex-col gap-2">
-                  <textarea
-                    aria-label="Trích dẫn yêu cầu để xác nhận giải quyết"
-                    className="apple-input min-h-16 w-full"
-                    value={evidence[item._id] || ""}
-                    onChange={(event) =>
-                      setEvidence({ ...evidence, [item._id]: event.target.value })
-                    }
-                    placeholder="Trích dẫn đã xuất hiện trong phiên bản yêu cầu này"
-                  />
+              {canReview &&
+                ["DRAFT", "IN_REVIEW"].includes(requirementStatus) &&
+                item.status === "ANSWERED" &&
+                (!isUpdateRequestedForCurrentVersion(item) ||
+                  item.change_requested_requirement_revision == null ||
+                  requirementRevision > item.change_requested_requirement_revision) && (
                   <button
                     type="button"
-                    className="apple-button self-start"
-                    disabled={busy || !(evidence[item._id] || "").trim()}
-                    onClick={() =>
-                      perform(() =>
-                        testingApi.resolveRequirementClarification(item._id, {
-                          expected_revision: item.revision,
-                          requirement_version_id: requirementVersionId,
-                          evidence_quote: evidence[item._id].trim(),
-                        }),
-                      )
-                    }
+                    className="secondary-button mt-3"
+                    disabled={busy}
+                    onClick={() => void requestChanges(item)}
                   >
-                    Xác nhận giải quyết
+                    Yêu cầu BA cập nhật
                   </button>
-                </div>
-              )}
+                )}
+              {canReview &&
+                item.status === "ANSWERED" &&
+                isUpdateRequestedForCurrentVersion(item) &&
+                item.change_requested_requirement_revision != null &&
+                requirementRevision > item.change_requested_requirement_revision && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    <textarea
+                      aria-label="Trích dẫn yêu cầu để xác nhận giải quyết"
+                      className="apple-input min-h-16 w-full"
+                      value={evidence[item._id] || ""}
+                      onChange={(event) =>
+                        setEvidence({ ...evidence, [item._id]: event.target.value })
+                      }
+                      placeholder={`Trích dẫn bằng chứng trong ${item.source_ref || "nguồn của phiếu"}`}
+                    />
+                    <button
+                      type="button"
+                      className="apple-button self-start"
+                      disabled={busy || !(evidence[item._id] || "").trim()}
+                      onClick={() =>
+                        perform(() =>
+                          testingApi.resolveRequirementClarification(item._id, {
+                            expected_revision: item.revision,
+                            requirement_version_id: requirementVersionId,
+                            evidence_quote: evidence[item._id].trim(),
+                          }),
+                        )
+                      }
+                    >
+                      Xác nhận giải quyết
+                    </button>
+                  </div>
+                )}
+              {canReview &&
+                item.status === "ANSWERED" &&
+                isUpdateRequestedForCurrentVersion(item) &&
+                item.change_requested_requirement_revision != null &&
+                requirementRevision <= item.change_requested_requirement_revision && (
+                  <p className="mt-3 text-sm text-ink-muted">
+                    Chờ BA sửa nội dung nguồn và lưu bản nháp trước khi QA xác nhận bằng chứng.
+                  </p>
+                )}
             </article>
           ))}
         </div>

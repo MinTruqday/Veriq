@@ -808,6 +808,14 @@ export function messageOf(reason) {
       "Người tạo hoặc sửa đánh giá chất lượng rà soát không thể tự duyệt đánh giá đó.",
     PROJECT_MISMATCH:
       "Mục đã chọn không thuộc dự án hiện tại. Tải lại dữ liệu và chọn mục trong đúng dự án.",
+    CLARIFICATION_ANSWER_REQUIRED:
+      "BA cần trả lời phiếu trước khi QA yêu cầu cập nhật Requirement.",
+    CLARIFICATION_VERSION_NOT_EDITABLE:
+      "Requirement không còn ở bản nháp hoặc đang rà soát. Tạo phiên bản mới để tiếp tục xử lý phiếu.",
+    CLARIFICATION_UPDATE_REQUEST_REQUIRED:
+      "QA cần yêu cầu cập nhật trên phiên bản hiện tại trước khi xác nhận phiếu làm rõ.",
+    RESOLUTION_EVIDENCE_NOT_FOUND:
+      "Trích dẫn chưa khớp nguồn được nêu trong phiếu. Đối chiếu đúng tiêu chí rồi nhập bằng chứng từ tiêu chí đó.",
     VERIFIED_REQUIREMENT_EVENT_REQUIRED:
       "Chỉ có thể phân tích yêu cầu đã được xác minh. Mở yêu cầu và hoàn tất bước rà soát trước.",
     TEST_CONDITION_EVENT_KEY_INVALID:
