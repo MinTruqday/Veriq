@@ -7,6 +7,8 @@ import {
 } from "./testing.transport";
 
 export const executionTestingApi = {
+  listEligibleReportParticipants: (projectId) =>
+    testingRequest(`/du-an/${projectId}/bao-cao-cong-viec/nguoi-tham-gia`),
   listReportAssignments: (projectId, offset = 0) =>
     testingRequest(`/du-an/${projectId}/bao-cao-cong-viec/phan-cong?limit=50&offset=${offset}`),
   updateReportAssignments: (reportId, payload) =>

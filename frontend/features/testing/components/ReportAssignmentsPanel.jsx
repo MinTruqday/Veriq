@@ -31,8 +31,8 @@ export default function ReportAssignmentsPanel({ project, members }) {
       member?.user_label || member?.display_name || member?.name || member?.email || "Thành viên"
     );
   };
-  const writers = members.filter((item) =>
-    ["BA", "QA", "TESTER", "DEVELOPER"].includes(item.project_role),
+  const writers = members.filter(
+    (item) => item.status === "ACTIVE" && item.report_capabilities?.includes("workreport.write"),
   );
   useEffect(() => {
     let active = true;
@@ -72,7 +72,11 @@ export default function ReportAssignmentsPanel({ project, members }) {
           ? "Báo cáo đã thay đổi. Đóng biểu mẫu và tải lại danh sách trước khi phân công."
           : failure.code === "REPORT_REVIEWER_MUST_BE_INDEPENDENT"
             ? "Người duyệt phải khác người tạo, người đã sửa nội dung và người cùng soạn."
-            : failure.message || "Không thể lưu phân công. Các lựa chọn của bạn được giữ lại.",
+            : ["REPORT_EDITOR_PERMISSION_INVALID", "REPORT_REVIEW_PERMISSION_INVALID"].includes(
+                  failure.code,
+                )
+              ? "Quyền của một thành viên đã thay đổi. Tải lại danh sách rồi chọn lại người tham gia."
+              : failure.message || "Không thể lưu phân công. Các lựa chọn của bạn được giữ lại.",
       );
     } finally {
       setBusy(false);
@@ -119,8 +123,11 @@ export default function ReportAssignmentsPanel({ project, members }) {
                   {members
                     .filter(
                       (member) =>
-                        ["BA", "QA"].includes(member.project_role) &&
-                        ![people.owner_id, ...people.editor_ids].includes(id(member)),
+                        member.status === "ACTIVE" &&
+                        member.report_capabilities?.includes("workreport.review") &&
+                        ![editing.created_by, people.owner_id, ...people.editor_ids].includes(
+                          id(member),
+                        ),
                     )
                     .map((member) => (
                       <option key={id(member)} value={id(member)}>

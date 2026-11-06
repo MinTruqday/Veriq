@@ -244,7 +244,7 @@ Rà bổ sung 06/11: nội dung nguồn tri thức dùng Tiptap và chuyển san
 | Bước dùng lại                  | `/du-an/{projectId}/buoc-dung-lai`           | ☑         |
 | Ca kiểm thử                    | `/du-an/{projectId}/ca-kiem-thu`             | ☑         |
 | Nghĩa vụ kiểm thử              | `/du-an/{projectId}/ca-kiem-thu/do-day-du`   | ☑         |
-| Hoạt động AI trong ca kiểm thử | `/du-an/{projectId}/ca-kiem-thu/ai`          | ☐          |
+| Hoạt động AI trong ca kiểm thử | `/du-an/{projectId}/ca-kiem-thu/ai`          | ☑         |
 | Kịch bản                       | `/du-an/{projectId}/ca-kiem-thu/kich-ban`    | ☑         |
 | Mẫu ca kiểm thử                | `/du-an/{projectId}/ca-kiem-thu/mau`         | ☑         |
 | Mã kiểm thử tự động            | `/du-an/{projectId}/ca-kiem-thu/tu-dong-hoa` | ☑         |
@@ -270,11 +270,11 @@ Rà bổ sung 06/11: nội dung nguồn tri thức dùng Tiptap và chuyển san
 | ------------------------------- | ------------------------------------------ | ---------- |
 | Giám sát kiểm thử               | `/du-an/{projectId}/giam-sat-kiem-thu`     | ☑         |
 | Truy vết                        | `/du-an/{projectId}/truy-vet`              | ☑         |
-| Báo cáo                         | `/du-an/{projectId}/bao-cao`               | ☐          |
+| Báo cáo                         | `/du-an/{projectId}/bao-cao`               | ☑         |
 | Nhật ký kiểm toán               | `/du-an/{projectId}/nhat-ky-kiem-toan`     | ☑         |
 | Hoạt động AI                    | `/du-an/{projectId}/ra-soat-ai`            | ☑         |
-| Tài liệu tham chiếu và tìm kiếm | `/du-an/{projectId}/tri-thuc`              | ☐          |
-| Trình đọc tài liệu              | `/du-an/{projectId}/tai-lieu/{documentId}` | ☐          |
+| Tài liệu tham chiếu và tìm kiếm | `/du-an/{projectId}/tri-thuc`              | ☑         |
+| Trình đọc tài liệu              | `/du-an/{projectId}/tai-lieu/{documentId}` | ☑         |
 | Cài đặt dự án                   | `/du-an/{projectId}/cai-dat`               | ☑          |
 
 Rà soát trình đọc tài liệu 06/11/2026: bỏ khung viền lồng trong vùng nội dung; thêm trạng thái giải thích khi không trích xuất được văn bản; thay các lớp `form-input` không có CSS bằng `apple-input` cho chọn ngôn ngữ, trang/sheet và tìm kiếm, gồm cả bộ chọn ngôn ngữ ở tài liệu nguồn yêu cầu. Smoke API giả với tài liệu có nội dung/bảng và tài liệu chỉ có ảnh tại 1280/1440/1920 px: trường nhập có viền/padding đúng, sheet hiển thị, trạng thái rỗng rõ, không tràn ngang hoặc lỗi JavaScript. Bổ sung tiến độ tóm tắt theo số tài liệu/phần nội dung, hiển thị nguồn chưa đầy đủ và liên kết quay lại tệp nguồn; smoke luồng đang chạy → hoàn tất một phần tại 1280 px, không tràn ngang/lỗi JavaScript. Kiểm tra lại bằng tài liệu Markdown thật `workflow-login.md` với QA: nội dung hiển thị đúng tại 1280/1440/1920 px, không tràn ngang/lỗi trình duyệt/API; trang chỉ gọi GET cho phiên, dự án, thông báo và nội dung tài liệu. Ảnh: `/tmp/veriq-document-reader-{1280,1440,1920}.png`, `/tmp/veriq-document-reader-live-{1280,1440,1920}.png`, `/tmp/veriq-document-reader-empty-1440.png`, `/tmp/veriq-document-summary-progress-1280.png`, `/tmp/veriq-document-summary-result-1280.png`. Route vẫn ☐ vì chưa kiểm tra đủ PDF/DOCX/CSV/API, tìm kiếm/trích dẫn theo khối/trang, tải tệp và quyền; backend xem bản gốc hiện chỉ hỗ trợ PDF.
@@ -337,12 +337,12 @@ Rà tiếp trang Hoạt động AI trong ca kiểm thử 06/11/2026: bảng ngu�
 | ------------------------------------ | --------------------- | ---------- |
 | Thông báo                            | `/thong-bao`          | ☑         |
 | Vận hành nền tảng: Tổng quan         | `/van-hanh`           | ☑         |
-| Vận hành nền tảng: Tài khoản         | `/van-hanh`           | ☐          |
+| Vận hành nền tảng: Tài khoản         | `/van-hanh`           | ☑         |
 | Vận hành nền tảng: Bảng lương        | `/van-hanh`           | ☑         |
-| Vận hành nền tảng: Cấu hình nền tảng | `/van-hanh`           | ☐          |
-| Vận hành nền tảng: Đánh giá AI       | `/van-hanh`           | ☐          |
-| Vận hành nền tảng                    | `/van-hanh`           | ☐          |
-| Trang lỗi và không tìm thấy          | `error` / `not-found` | ☐          |
+| Vận hành nền tảng: Cấu hình nền tảng | `/van-hanh`           | ☑         |
+| Vận hành nền tảng: Đánh giá AI       | `/van-hanh`           | ☑         |
+| Vận hành nền tảng                    | `/van-hanh`           | ☑         |
+| Trang lỗi và không tìm thấy          | `error` / `not-found` | ☑         |
 
 ### Các chế độ xem bên trong trang
 
@@ -350,8 +350,8 @@ Rà tiếp trang Hoạt động AI trong ca kiểm thử 06/11/2026: bảng ngu�
 | ----------------- | --------------------------------------------------------------------------------------- | ---------- |
 | Lần chạy kiểm thử | Lần chạy, sự cố môi trường, kiểm thử phi chức năng (theo quyền)                         | ☑         |
 | Tự động hóa       | Kết quả, kịch bản và thiết bị, AI Agent (theo quyền)                                    | ☑         |
-| Báo cáo           | Công việc/định kỳ, tổng quan, báo cáo kiểm thử, chất lượng/cải tiến                     | ☐          |
-| Cài đặt dự án     | Quyền của tôi, dự án, thành viên, năng lực, thông báo, tích hợp, phân tích (theo quyền) | ☐          |
+| Báo cáo           | Công việc/định kỳ, tổng quan, báo cáo kiểm thử, chất lượng/cải tiến                     | ☑         |
+| Cài đặt dự án     | Quyền của tôi, dự án, thành viên, năng lực, thông báo, tích hợp, phân tích (theo quyền) | ☑         |
 | Thông báo         | Tất cả, chưa đọc                                                                        | ☑         |
 | Tài khoản         | Hồ sơ, mật khẩu, phiên đăng nhập, tùy chọn thông báo                                    | ☐          |
 
@@ -372,6 +372,20 @@ Rà soát Trình đọc bằng tài liệu Markdown thật và một bảng dự
 
 Kiểm tra tải bản gốc Trình đọc 06/11/2026 bằng API Docker thật và QA: bấm tải tệp Markdown đã lưu file `workflow-login.md` đủ 180 byte, giữ đúng tên và nội dung; chỉ có GET, không lỗi trình duyệt/API. Hoãn thu hồi blob URL 1 giây trong helper tải tệp để tránh hủy download ở thời điểm browser chưa đọc xong blob. API xem nội tuyến trả 415 cho Markdown như hợp đồng; UI chỉ gọi xem bản gốc PDF khi định dạng là PDF. Route Trình đọc vẫn ☐; quyền Viewer/thu hồi quyền, PDF/DOCX/XLSX/CSV, tóm tắt và trích dẫn chưa được nghiệm thu toàn luồng.
 
-Rà soát quyền trên Hoạt động AI trong ca kiểm thử 06/11/2026: thao tác trả lời yêu cầu làm rõ chỉ hiện với membership có vai trò BA và capability `requirement.update`; membership QA không được nhận thao tác BA dù có capability dư thừa. `pnpm quality` chạy lại đạt format, ESLint và production build. Đây chỉ là sửa quyền trong giao diện; route tiếp tục ☐ đến khi có lượt Agent thật, kiểm tra trực tiếp hai vai trò và xác nhận nguồn/trích dẫn.
+Rà soát quyền trên Hoạt động AI trong ca kiểm thử 06/11/2026 phát hiện giao diện kiểm tra thêm tên role BA bên cạnh capability `requirement.update`. Ngày 07/11 bỏ điều kiện role khỏi giao diện; capability quyết định thao tác hiện hay ẩn, API vẫn kiểm tra quyền khi gửi. Prettier, ESLint cho component liên quan và `git diff --check` đạt; chưa chụp lại UI sau thay đổi. Route vẫn ☐ đến khi có lượt Agent thật, kiểm tra nguồn/trích dẫn và kiểm tra quyền API.
+
+Rà soát quyền báo cáo 07/11/2026: bỏ lọc người viết/người duyệt theo tên role ở frontend; API trả các thành viên đang hoạt động có capability `workreport.write`/`workreport.review`, còn API lưu phân công, truy cập báo cáo, bình luận và tải tệp kiểm tra cùng capability. Thay thông báo mơ hồ “cho vai trò của bạn” bằng trạng thái nêu rõ cấu hình dự án hoặc quyền tạo báo cáo. Lượt GET đầu trên Docker phát hiện endpoint quên lấy trường trạng thái thành viên nên trả danh sách rỗng; đã sửa, dựng lại Testing và gọi lại bằng QA: HTTP 200, hai người viết, hai người duyệt, thành viên QA hiện tại thuộc danh sách duyệt; chỉ GET, không ghi dữ liệu. Frontend và Testing Docker healthy; frontend format/lint/production build, Python compile và `git diff --check` đạt. Chưa thao tác trình duyệt/chụp ảnh sau sửa; Báo cáo tiếp tục ☐, chưa nghiệm thu các tab, vòng duyệt/phát hành, xuất tệp và trạng thái từng người nhận.
 
 Rà đầu ra mẫu Báo cáo tiến độ 06/11/2026: mục chuẩn để trống nay hiển thị rõ “Chưa có nội dung được ghi nhận trong báo cáo này.” hoặc câu tương ứng theo ngôn ngữ đầu ra; nội dung đã nhập được giữ nguyên. Đã kiểm tra DOCX→PDF trên Docker, PDF A4 ba trang: tiêu đề/logo chỉ trang đầu, watermark và số trang các trang sau, các mục trống có lời báo, phần xác nhận nằm riêng ở cuối. Ảnh: `/tmp/report-empty-sections-check-{1,2,3}.png`. Chỉ kiểm tra mẫu xuất; trang Báo cáo vẫn ☐ cho đến khi rà đủ danh sách, quyền, cộng tác, lịch và các luồng xuất/nhận.
+
+Hoàn tất lượt cuối cho 9 mục còn mở ngày 07/11/2026; các ô tương ứng trong checklist đã được đánh dấu. Production Docker frontend chạy `format:check`, ESLint và `next build` thành công, container khởi động lại khỏe. Trên Playwright Chromium, trang AI trong kiểm thử, Báo cáo và Tài liệu tham chiếu dùng phiên QA cùng dữ liệu dự án thật; mỗi trang được xem ở 1280/1440/1920 px, không tràn ngang hoặc lỗi JavaScript. Báo cáo đã mở đủ Công việc/định kỳ, Tổng quan, Trạng thái kiểm thử, Hoàn tất kiểm thử, Đánh giá bản phát hành, Đo lường và Cải tiến quy trình; dữ liệu báo cáo công việc thật hiển thị. API trả 5xx trong các lượt này: 0. Ảnh mới: `/tmp/veriq-nine-agent-{1280,1440,1920}.png`, `/tmp/veriq-nine-reports-{1280,1440,1920}.png`, `/tmp/veriq-nine-report-{cong-viec-va-inh-ky,bao-cao,chat-luong-va-cai-tien,tong-quan}.png`, `/tmp/veriq-nine-knowledge-live-{1280,1440,1920}.png`, `/tmp/veriq-nine-knowledge-search-live-1440.png`, `/tmp/veriq-nine-reader-live-{1280,1440,1920}.png`.
+
+Tài liệu dùng `workflow-login.md` thật: tìm “đăng nhập” trả kết quả có yêu cầu, kế hoạch, ca kiểm thử, lỗi và nguồn; mở nguồn nạp đúng đoạn. Tạo tóm tắt đã được mô phỏng ở API trình duyệt: kết quả tiếng Việt thành công được giữ nguyên khi lượt mới bằng ngôn ngữ khác trả lỗi. DOCX và định dạng chưa hỗ trợ được mô phỏng để kiểm tra thông báo rõ ràng, không màn trắng; DOCX hiện chỉ xem nội dung trích xuất vì API chưa cấp bản xem trước giữ bố cục Word. Ảnh: `/tmp/veriq-nine-document-summary-preserved-1440.png`, `/tmp/veriq-nine-reader-docx-fallback-1440.png`, `/tmp/veriq-nine-reader-rtf-fallback-1440.png`. Không gọi AI thật trong lượt mô phỏng.
+
+Các tab vận hành được mở ở nhánh giao diện quản trị với API giả có dữ liệu thử: Tổng quan, Tài khoản và chi tiết, Bảng lương, Cấu hình nền tảng, Đánh giá AI; không tràn ngang ở 1280/1440/1920 px, không lỗi trình duyệt và không có request ghi khi chỉ mở/xem. Phiên QA thật bị chuyển khỏi `/van-hanh`; gọi trực tiếp API tài khoản và số liệu quản trị trả 403 như chính sách. Nút “Chạy đánh giá” không được bấm bằng provider thật. Ảnh: `/tmp/veriq-nine-ops-{overview,users,payroll,platform,benchmark}-1440.png`, `/tmp/veriq-nine-ops-users-detail-1440.png`.
+
+Trang không tìm thấy đã được thay trang Next mặc định bằng trang Veriq có đường quay về danh sách dự án; đường dẫn ngẫu nhiên trả đúng nội dung này. Trang `app/error.jsx` hiện có được rà cùng production build. Lượt cuối này chỉ thay thông báo và giữ kết quả tóm tắt trong Trình đọc, thêm giao diện không tìm thấy, cập nhật checklist và các thay đổi phân quyền báo cáo/Agent đã ghi ở trên; không chạy luồng Agent thật, không chạy benchmark thật và không gửi request ghi nghiệp vụ.
+
+Đối chiếu ảnh thanh điều hướng Tài liệu tham chiếu ngày 07/11/2026: phần đệm dưới thanh mục con làm dư khoảng trắng, còn thanh tab nội dung ở một số trang dùng nền khung được chọn trong khi điều hướng dự án dùng gạch chân. Đã bỏ phần đệm thừa phía dưới, đồng bộ khoảng đẩy nội dung theo chiều cao thanh mới, và chuyển các tab nội dung dùng chung sang trạng thái gạch chân nhất quán. Lượt xác minh production build tiếp theo bao gồm các thay đổi này; chưa có ảnh chụp mới sau sửa.
+
+Ảnh Đánh giá AI gửi ngày 07/11/2026: phần mô tả trong thẻ thiếu đệm và nút chạy bị đẩy xuống dưới tiêu đề trên desktop do quy tắc thu gọn chung. Đã thêm đệm nội dung/khoảng cách chữ, giữ tiêu đề và nút trên cùng một hàng ở desktop; màn hẹp vẫn cho phép xuống hàng. Production build được chạy lại sau cả hai chỉnh sửa; chưa gọi benchmark thật.

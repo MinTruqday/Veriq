@@ -42,7 +42,8 @@ const errors = {
     "Hãy xuất thành công ít nhất một bản DOCX hoặc PDF của phiên bản đã duyệt trước khi phát hành.",
   REPORT_TIMES_NEW_ROMAN_MISSING: "Máy chủ chưa được cấu hình font Times New Roman để tạo PDF.",
   REPORT_PDF_CONVERTER_UNAVAILABLE: "Máy chủ chưa sẵn sàng chuyển đổi PDF.",
-  REPORT_EDITOR_ROLE_INVALID: "Người soạn phải là thành viên dự án có quyền tham gia viết báo cáo.",
+  REPORT_EDITOR_PERMISSION_INVALID: "Người soạn cần được cấp quyền viết báo cáo trong dự án.",
+  REPORT_REVIEW_PERMISSION_INVALID: "Người duyệt cần được cấp quyền rà soát báo cáo trong dự án.",
   REPORT_MEMBER_NOT_ACTIVE: "Có người được chọn không còn là thành viên đang hoạt động.",
   PROJECT_REPORTING_DISABLED: "Dự án chưa bật báo cáo công việc.",
   REPORT_TRANSITION_INVALID: "Báo cáo đã đổi trạng thái. Hãy tải lại để tiếp tục.",
@@ -183,9 +184,26 @@ export default function WorkReportsPanel({ project }) {
       setReports(items);
       setTemplates(models);
       if (project.current_permissions?.includes("workreport.write")) {
-        const people = await testingApi.listMembers(project._id);
+        const [people, reportParticipants] = await Promise.all([
+          testingApi.listMembers(project._id),
+          testingApi.listEligibleReportParticipants(project._id),
+        ]);
+        const writerIds = new Set(reportParticipants.writer_ids || []);
+        const reviewerIds = new Set(reportParticipants.reviewer_ids || []);
+        const items = Array.isArray(people) ? people : people.items || [];
         if (generation === sequence.current)
-          setMembers(Array.isArray(people) ? people : people.items || []);
+          setMembers(
+            items.map((item) => {
+              const id = item.user_id || item._id;
+              return {
+                ...item,
+                report_capabilities: [
+                  ...(writerIds.has(id) ? ["workreport.write"] : []),
+                  ...(reviewerIds.has(id) ? ["workreport.review"] : []),
+                ],
+              };
+            }),
+          );
       }
       if (project.current_permissions?.includes("workreport.manage")) {
         const rows = await testingRequest(`${root}/lich`);
@@ -465,7 +483,8 @@ export default function WorkReportsPanel({ project }) {
   const reportOwnerId = owner || userId;
   const eligibleReviewers = members.filter(
     (item) =>
-      ["BA", "QA"].includes(item.project_role) &&
+      item.status === "ACTIVE" &&
+      item.report_capabilities?.includes("workreport.review") &&
       ![userId, reportOwnerId, ...editorIds].includes(memberId(item)),
   );
   const availableKinds = ["PERSONAL", "TEAM", "PROJECT"].filter(
@@ -1048,7 +1067,13 @@ export default function WorkReportsPanel({ project }) {
                         }}
                       >
                         <option value="">Bản thân</option>
-                        {choices(members.filter((item) => item.project_role !== "VIEWER"))}
+                        {choices(
+                          members.filter(
+                            (item) =>
+                              item.status === "ACTIVE" &&
+                              item.report_capabilities?.includes("workreport.write"),
+                          ),
+                        )}
                       </select>
                     </label>
                   )}
@@ -1080,7 +1105,11 @@ export default function WorkReportsPanel({ project }) {
                       <legend className="mb-2 text-sm font-medium">Người cùng soạn</legend>
                       <div className="grid max-h-40 grid-cols-3 gap-2 overflow-y-auto">
                         {members
-                          .filter((item) => item.project_role !== "VIEWER")
+                          .filter(
+                            (item) =>
+                              item.status === "ACTIVE" &&
+                              item.report_capabilities?.includes("workreport.write"),
+                          )
                           .map((item) => (
                             <label key={memberId(item)} className="flex items-center gap-2 text-sm">
                               <input
@@ -1099,9 +1128,13 @@ export default function WorkReportsPanel({ project }) {
                               {memberName(memberId(item))}
                             </label>
                           ))}
-                        {!members.some((item) => item.project_role !== "VIEWER") && (
+                        {!members.some(
+                          (item) =>
+                            item.status === "ACTIVE" &&
+                            item.report_capabilities?.includes("workreport.write"),
+                        ) && (
                           <p className="col-span-full text-sm text-ink-muted">
-                            Chưa có thành viên đủ điều kiện cùng soạn báo cáo.
+                            Không có thành viên đang hoạt động được cấp quyền viết báo cáo.
                           </p>
                         )}
                       </div>
@@ -1317,7 +1350,9 @@ export default function WorkReportsPanel({ project }) {
                   !reports.length &&
                   tab === "mine" && (
                     <p className="px-4 pb-4 text-sm text-ink-muted">
-                      Chưa có loại báo cáo nào được bật cho vai trò của bạn.
+                      {settings.allowed_kinds.length
+                        ? "Bạn chưa được cấp quyền tạo các loại báo cáo đang bật."
+                        : "Dự án chưa bật loại báo cáo nào."}
                     </p>
                   )}
                 <form

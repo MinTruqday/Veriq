@@ -39,6 +39,11 @@ async def get_settings(project_id: str, user: CurrentUser = Depends(get_current_
     return envelope(await reporting.get_settings(project_id, user))
 
 
+@router.get("/du-an/{project_id}/bao-cao-cong-viec/nguoi-tham-gia")
+async def eligible_participants(project_id: str, user: CurrentUser = Depends(get_current_user)):
+    return envelope(await reporting.list_eligible_participants(project_id, user))
+
+
 @router.put("/du-an/{project_id}/bao-cao-cong-viec/cau-hinh")
 async def update_settings(project_id: str, payload: ReportingSettings, user: CurrentUser = Depends(get_current_user)):
     return envelope(await reporting.update_settings(project_id, payload, user))
@@ -80,9 +85,19 @@ async def update_report_assignments(report_id: str, payload: ReportAssignmentPat
 async def get_report(report_id: str, user: CurrentUser = Depends(get_current_user)):
     report = await reporting.report_for_user(report_id, user)
     delivery = await repository.find("report_deliveries", {"report_id": report_id, "user_id": user.id, "revoked_at": {"$exists": False}})
-    roles = await reporting.get_project_roles(report["project_id"], user.id)
-    participating = bool(roles & reporting.WRITERS) and user.id in {report["owner_id"], report["reviewer_id"], *report.get("editor_ids", [])}
-    return envelope({**report, "current_access": {"can_comment": participating or bool(delivery and delivery["access"] == "COMMENT"), "can_download": participating or bool(delivery and delivery["can_download"])}})
+    permissions = await reporting.member_permissions(report["project_id"], user.id)
+    participating = bool(permissions & {"workreport.write", "workreport.review"}) and user.id in {
+        report["owner_id"], report["reviewer_id"], *report.get("editor_ids", [])
+    }
+    return envelope(
+        {
+            **report,
+            "current_access": {
+                "can_comment": participating or bool(delivery and delivery["access"] == "COMMENT"),
+                "can_download": participating or bool(delivery and delivery["can_download"]),
+            },
+        }
+    )
 
 
 @router.get("/bao-cao-cong-viec/{report_id}/xem-truoc")

@@ -863,7 +863,7 @@ export default function AppShell({ children, requireAuth }) {
       <main
         id="main-content"
         tabIndex={-1}
-        className={`min-h-[100dvh] min-w-0 pt-[68px] ${projectNavigationVisible ? (hasProjectSubnavigation ? "lg:pt-[158px]" : "lg:pt-[112px]") : ""} transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
+        className={`min-h-[100dvh] min-w-0 pt-[68px] ${projectNavigationVisible ? (hasProjectSubnavigation ? "lg:pt-[152px]" : "lg:pt-[112px]") : ""} transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
       >
         <div className={`page-shell ${projectNavigationVisible ? "project-navigation-shell" : ""}`}>
           {projectContextError ? (

@@ -720,6 +720,34 @@
   }
 }
 
+.benchmark-run-panel .workspace-panel-header-with-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.benchmark-run-panel .workspace-panel-header-with-actions .workspace-panel-heading {
+  flex: 1 1 auto;
+}
+
+.benchmark-run-panel .workspace-panel-header-with-actions .workspace-panel-actions {
+  flex: 0 0 auto;
+  width: auto;
+  justify-content: flex-end;
+}
+
+@media (max-width: 639px) {
+  .benchmark-run-panel .workspace-panel-header-with-actions {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .benchmark-run-panel .workspace-panel-header-with-actions .workspace-panel-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 .automation-scripts-list-panel .workspace-panel-header-with-actions {
   display: flex;
   flex-wrap: nowrap;

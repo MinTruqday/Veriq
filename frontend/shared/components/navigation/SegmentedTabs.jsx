@@ -3,13 +3,13 @@ import HorizontalScrollCue from "./HorizontalScrollCue";
 export default function SegmentedTabs({ tabs, value, onChange, label }) {
   return (
     <HorizontalScrollCue
-      className="max-w-full rounded-control bg-surface-quiet p-1"
+      className="max-w-full border-b border-border"
       viewportClassName="hide-scrollbar flex min-w-0 max-w-full flex-nowrap gap-1 overflow-x-auto overscroll-x-contain"
     >
       <div
         role="group"
         aria-label={label || "Chế độ xem"}
-        className="flex w-max min-w-full flex-nowrap gap-1"
+        className="flex h-10 w-max min-w-full flex-nowrap items-stretch gap-1"
       >
         {tabs.map((tab) => (
           <button
@@ -17,7 +17,7 @@ export default function SegmentedTabs({ tabs, value, onChange, label }) {
             type="button"
             aria-pressed={value === tab.id}
             onClick={() => onChange(tab.id)}
-            className={`min-h-11 shrink-0 whitespace-nowrap rounded-control px-3 text-[13px] font-semibold transition duration-150 md:min-h-9 ${value === tab.id ? "bg-surface text-ink shadow-[0_1px_3px_rgba(48,47,42,0.08)]" : "text-ink-muted hover:text-ink"}`}
+            className={`-mb-px flex shrink-0 items-center whitespace-nowrap border-b-2 px-3 text-[13px] font-medium transition duration-150 ${value === tab.id ? "border-brand text-brand" : "border-transparent text-ink-muted hover:border-border-strong hover:text-ink"}`}
           >
             {tab.label}
             {typeof tab.count === "number" ? ` ${tab.count}` : ""}

@@ -11,7 +11,12 @@ from src.core.auth import CurrentUser
 from src.core.common import get_project, new_id, now
 from src.core.database import database
 from src.modules.execution.services.report_document import REPORT_RENDERER_VERSION, convert_report_pdf, export_report_docx
-from src.modules.execution.services.reporting import fail, fingerprint, report_for_user
+from src.modules.execution.services.reporting import (
+    fail,
+    fingerprint,
+    member_permissions,
+    report_for_user,
+)
 from src.repositories.reporting import reporting_repository as repository
 
 logger = logging.getLogger(__name__)
@@ -128,9 +133,10 @@ async def download_export(export_id, user):
     if not job or job["status"] != "READY":
         fail("REPORT_EXPORT_NOT_READY", 404)
     report = await report_for_user(job["report_id"], user)
-    from src.core.common import get_project_roles
-    roles = await get_project_roles(report["project_id"], user.id)
-    if not roles & {"BA", "QA", "TESTER", "DEVELOPER"} or user.id not in {report["owner_id"], report["reviewer_id"], *report.get("editor_ids", [])}:
+    permissions = await member_permissions(report["project_id"], user.id)
+    if not permissions & {"workreport.write", "workreport.review"} or user.id not in {
+        report["owner_id"], report["reviewer_id"], *report.get("editor_ids", [])
+    }:
         delivery = await repository.find("report_deliveries", {"report_id": report["_id"], "user_id": user.id, "can_download": True, "revoked_at": {"$exists": False}})
         if not delivery or export_id not in report.get("published_export_ids", []):
             fail("REPORT_DOWNLOAD_FORBIDDEN", 403)

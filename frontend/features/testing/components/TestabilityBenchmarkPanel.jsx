@@ -110,6 +110,7 @@ export default function TestabilityBenchmarkPanel() {
       {error && <ErrorState message={error} />}
       <Panel
         title="Kiểm tra AI trên tình huống thử"
+        className="benchmark-run-panel"
         actions={
           <button
             type="button"
@@ -121,18 +122,18 @@ export default function TestabilityBenchmarkPanel() {
           </button>
         }
       >
-        <div className="space-y-3 text-sm text-ink-muted">
-          <p>
+        <div className="space-y-3 px-4 py-4 text-[14px] leading-6 text-ink-muted sm:px-5">
+          <p className="max-w-none">
             Bộ thử gồm 30 tình huống tạo sẵn: 10 tình huống đủ căn cứ, 10 thiếu hoặc mơ hồ, và 10
             trùng lặp hoặc mâu thuẫn. Mỗi cách xử lý được chạy ba lần.
           </p>
-          <p>
+          <p className="max-w-none">
             Đáp án chuẩn được tạo cùng các tình huống, chưa được chuyên gia độc lập xác nhận. Kết
             quả chỉ mô tả cách AI xử lý bộ thử này; không chứng minh chất lượng ngoài thực tế hoặc
             ưu thế so với sản phẩm khác. Việc chạy gọi các cách xử lý AI thật nên có thể mất vài
             phút.
           </p>
-          <p>
+          <p className="max-w-none">
             Một số tình huống có nhiều điểm thiếu. Tiêu chí “Thứ tự ưu tiên câu hỏi” so sánh thứ tự
             AI hỏi với thứ tự đã ghi trong đáp án chuẩn; đây chưa phải đánh giá độc lập của giảng
             viên hoặc chuyên gia.

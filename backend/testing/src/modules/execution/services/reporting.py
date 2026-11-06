@@ -5,16 +5,21 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.common import audit, get_project, get_project_roles, new_id, now
-from src.core.human_decisions import content_authorship_changes, require_automation_publication_authority, require_independent_review
+from src.core.auth import permissions_for_membership
+from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
+from src.core.human_decisions import (
+    content_authorship_changes,
+    require_automation_publication_authority,
+    require_independent_review,
+)
+from src.modules.execution.services.report_document import validate_report_document
+from src.repositories.common import common_repository
 from src.repositories.reporting import reporting_repository as repository
 from src.schemas.reporting import ReportCreate
-from src.modules.execution.services.report_document import validate_report_document
 
 
 COLLECTION = "work_reports"
-WRITERS = {"BA", "QA", "TESTER", "DEVELOPER"}
 
 
 def fail(code, status=409):
@@ -32,16 +37,41 @@ async def membership(project_id, user_id):
     return value
 
 
-async def participants(project_id, value, creator_id=None):
-    from src.core.auth import roles_for_membership
+async def member_permissions(project_id, user_id):
+    member = await membership(project_id, user_id)
+    project = await common_repository.find_project(project_id, {"settings": 1}) or {}
+    return permissions_for_membership(member, project.get("settings"))
 
+
+async def list_eligible_participants(project_id, user):
+    await get_project(project_id, user, "workreport.read")
+    project = await common_repository.find_project(project_id, {"settings": 1}) or {}
+    members = await database.value.project_members.find(
+        {"project_id": project_id, "status": "ACTIVE"},
+        {"user_id": 1, "project_role": 1, "project_roles": 1, "status": 1},
+    ).to_list(5000)
+    writers = []
+    reviewers = []
+    for member in members:
+        permissions = permissions_for_membership(member, project.get("settings"))
+        user_id = member.get("user_id")
+        if not user_id:
+            continue
+        if "workreport.write" in permissions:
+            writers.append(user_id)
+        if "workreport.review" in permissions:
+            reviewers.append(user_id)
+    return {"writer_ids": sorted(writers), "reviewer_ids": sorted(reviewers)}
+
+
+async def participants(project_id, value, creator_id=None):
     if value.reviewer_id in {value.owner_id, *value.editor_ids, creator_id}:
         fail("REPORT_REVIEWER_MUST_BE_INDEPENDENT", 422)
     for user_id in set([value.owner_id, *value.editor_ids]):
-        if not roles_for_membership(await membership(project_id, user_id)) & WRITERS:
-            fail("REPORT_EDITOR_ROLE_INVALID", 422)
-    if not roles_for_membership(await membership(project_id, value.reviewer_id)) & {"BA", "QA"}:
-        fail("REPORT_REVIEWER_ROLE_INVALID", 422)
+        if "workreport.write" not in await member_permissions(project_id, user_id):
+            fail("REPORT_EDITOR_PERMISSION_INVALID", 422)
+    if "workreport.review" not in await member_permissions(project_id, value.reviewer_id):
+        fail("REPORT_REVIEW_PERMISSION_INVALID", 422)
     for recipient in value.recipients:
         await membership(project_id, recipient.user_id)
 
@@ -50,10 +80,19 @@ async def report_for_user(report_id, user, action="read"):
     report = await repository.find(COLLECTION, {"_id": report_id})
     if not report:
         fail("REPORT_NOT_FOUND", 404)
-    await get_project(report["project_id"], user, f"workreport.{action}" if action in {"write", "review", "publish"} else "workreport.read")
-    roles = await get_project_roles(report["project_id"], user.id)
-    is_author = bool(roles & {"BA", "QA", "TESTER", "DEVELOPER"}) and user.id in {report["owner_id"], *report.get("editor_ids", [])}
-    is_reviewer = bool(roles & {"BA", "QA"}) and report["reviewer_id"] == user.id
+    permission = (
+        f"workreport.{action}"
+        if action in {"write", "review", "publish"}
+        else "workreport.read"
+    )
+    await get_project(report["project_id"], user, permission)
+    permissions = await member_permissions(report["project_id"], user.id)
+    is_author = "workreport.write" in permissions and user.id in {
+        report["owner_id"], *report.get("editor_ids", [])
+    }
+    is_reviewer = bool(permissions & {"workreport.review", "workreport.publish"}) and (
+        report["reviewer_id"] == user.id
+    )
     delivery = await repository.find("report_deliveries", {"report_id": report_id, "user_id": user.id, "revoked_at": {"$exists": False}})
     if action == "write" and not is_author:
         fail("REPORT_EDIT_FORBIDDEN", 403)
@@ -175,8 +214,12 @@ async def create_report(project_id, payload, user, session=None):
     config = await get_settings(project_id, user)
     if not config["enabled"] or payload.kind not in config["allowed_kinds"]:
         fail("PROJECT_REPORTING_DISABLED", 403)
-    roles = await get_project_roles(project_id, user.id)
-    if "BA" not in roles and (payload.owner_id != user.id or payload.kind != "PERSONAL" or set(payload.subject_ids) - {user.id}):
+    permissions = await member_permissions(project_id, user.id)
+    if "workreport.manage" not in permissions and (
+        payload.owner_id != user.id
+        or payload.kind != "PERSONAL"
+        or set(payload.subject_ids) - {user.id}
+    ):
         fail("REPORT_ASSIGNMENT_MANAGEMENT_REQUIRED", 403)
     request_hash = fingerprint(payload.model_dump(mode="json"))
     existing = await repository.find(COLLECTION, {"project_id": project_id, "created_by": user.id, "idempotency_key": payload.idempotency_key}, session=session)
@@ -220,7 +263,7 @@ async def create_report(project_id, payload, user, session=None):
 
 async def list_reports(project_id, user, inbox=False, limit=50, offset=0, search="", status=None):
     await get_project(project_id, user, "workreport.read")
-    roles = await get_project_roles(project_id, user.id)
+    permissions = await member_permissions(project_id, user.id)
     received = await repository.collection("report_deliveries").distinct("report_id", {"project_id": project_id, "user_id": user.id, "status": {"$in": ["RECEIVED", "VIEWED", "ACKNOWLEDGED"]}, "revoked_at": {"$exists": False}})
     query = {"project_id": project_id}
     if inbox:
@@ -230,9 +273,9 @@ async def list_reports(project_id, user, inbox=False, limit=50, offset=0, search
         ]
     else:
         visible = [{"_id": {"$in": received}, "status": {"$in": ["PUBLISHED", "ARCHIVED"]}}]
-        if roles & WRITERS:
+        if "workreport.write" in permissions:
             visible.extend([{"owner_id": user.id}, {"editor_ids": user.id}])
-        if roles & {"BA", "QA"}:
+        if "workreport.review" in permissions:
             visible.append({"reviewer_id": user.id})
         query["$or"] = visible
     if search.strip():
@@ -429,8 +472,10 @@ async def create_template(project_id, payload, user):
 async def add_comment(report_id, payload, user):
     report = await report_for_user(report_id, user)
     delivery = await repository.find("report_deliveries", {"report_id": report_id, "user_id": user.id, "revoked_at": {"$exists": False}})
-    roles = await get_project_roles(report["project_id"], user.id)
-    privileged = bool(roles & {"BA", "QA", "TESTER", "DEVELOPER"}) and user.id in {report["owner_id"], report["reviewer_id"], *report.get("editor_ids", [])}
+    permissions = await member_permissions(report["project_id"], user.id)
+    privileged = bool(permissions & {"workreport.write", "workreport.review"}) and user.id in {
+        report["owner_id"], report["reviewer_id"], *report.get("editor_ids", [])
+    }
     if not privileged and not (delivery and delivery["access"] == "COMMENT"):
         fail("REPORT_COMMENT_FORBIDDEN", 403)
     if payload.parent_id and not await repository.find("report_comments", {"_id": payload.parent_id, "report_id": report_id}):

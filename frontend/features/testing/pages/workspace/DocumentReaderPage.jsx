@@ -287,7 +287,6 @@ export default function DocumentReaderPage({ project, section = [] }) {
       };
     }
     setSummaryLoading(true);
-    setSummary(null);
     setError("");
     try {
       const started = await testingApi.summarizeRequirementDocuments(project._id, {
@@ -305,7 +304,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
         if (requestSequence !== summaryRequestSequenceRef.current) return;
         setSummaryJob(current);
       }
-      setSummary(current.result || null);
+      if (current.result) setSummary(current.result);
       if (current.status === "FAILED") {
         setError(
           current.error_code
@@ -391,6 +390,18 @@ export default function DocumentReaderPage({ project, section = [] }) {
     loadPage(0, false, selectedSheet, value ? Number(value) : null);
   };
   const summaryProgress = summaryJob?.progress || {};
+  const readableFormats = new Set([
+    "pdf",
+    "docx",
+    "md",
+    "markdown",
+    "txt",
+    "csv",
+    "xlsx",
+    "openapi",
+    "postman",
+  ]);
+  const documentFormat = String(document?.format || "").toLowerCase();
   const summaryProcessed = Number(summaryProgress.processed);
   const summaryTotal = Number(summaryProgress.total);
   const summaryProgressPercent =
@@ -495,6 +506,25 @@ export default function DocumentReaderPage({ project, section = [] }) {
         <div role="status" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm">
           Một phần tài liệu chưa đọc được. Nội dung và bản tóm tắt có thể chưa đầy đủ.
         </div>
+      )}
+      {documentFormat && !readableFormats.has(documentFormat) && (
+        <div role="status" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm">
+          Veriq chưa có trình đọc riêng cho định dạng này. Nội dung trích xuất (nếu có) vẫn hiển thị
+          bên dưới; bạn có thể tải tệp gốc để xem đầy đủ.
+        </div>
+      )}
+      {documentFormat === "docx" && (
+        <div
+          role="status"
+          className="rounded-xl border border-border bg-surface p-3 text-sm text-ink-muted"
+        >
+          Đang hiển thị nội dung đã trích xuất. Bản xem trước giữ nguyên bố cục Word chưa khả dụng.
+        </div>
+      )}
+      {summaryLoading && summary && (
+        <p role="status" className="text-sm text-ink-muted">
+          Đang tạo bản tóm tắt mới. Bản hiện tại vẫn được giữ cho đến khi kết quả mới hoàn tất.
+        </p>
       )}
       {pdfPreviewError && (
         <div role="status" className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm">

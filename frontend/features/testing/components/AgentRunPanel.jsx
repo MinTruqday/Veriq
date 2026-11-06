@@ -167,7 +167,6 @@ export default function AgentRunPanel({
 }) {
   const { user } = useAuth();
   const currentUserId = project.current_membership?.user_id;
-  const currentProjectRole = project.current_membership?.project_role;
   const permissions = project.current_permissions || [];
   const permissionKey = permissions.join("|");
   const canReadProjectRuns = permissions.includes("proposal.read");
@@ -568,8 +567,7 @@ export default function AgentRunPanel({
   const busyRun = run && activeStatuses.has(run.status);
   const visibleRuns = recentRuns.filter(canViewRun);
   const canControlRun = run?.requester_user_id === currentUserId;
-  const canAnswerClarification =
-    currentProjectRole === "BA" && permissions.includes("requirement.update");
+  const canAnswerClarification = permissions.includes("requirement.update");
   const canResumeRun = canControlRun && canResumeAgentRun(run, checkpoints, currentUserId);
   const canShowRunControls = (busyRun && canControlRun) || canResumeRun;
   const uncertainties = latestAgentUncertainties(checkpoints);
