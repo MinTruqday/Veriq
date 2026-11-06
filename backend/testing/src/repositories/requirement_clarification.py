@@ -92,6 +92,26 @@ class RequirementClarificationRepository:
             **({"session": session} if session is not None else {}),
         )
 
+    async def mark_change_requested_for_version(
+        self, project_id, requirement_version_id, revision, timestamp, session=None
+    ):
+        await self.collection.update_many(
+            {
+                "project_id": project_id,
+                "requirement_version_id": requirement_version_id,
+                "status": {"$in": ["OPEN", "ANSWERED"]},
+            },
+            {
+                "$set": {
+                    "change_requested_requirement_revision": revision,
+                    "change_requested_at": timestamp,
+                    "updated_at": timestamp,
+                },
+                "$inc": {"revision": 1},
+            },
+            **({"session": session} if session is not None else {}),
+        )
+
     async def supersede_for_requirement(
         self, project_id, requirement_id, keep_version_id, timestamp, session=None
     ):

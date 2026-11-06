@@ -27,13 +27,18 @@ function sourceReferenceLabel(sourceRef) {
   );
 }
 
+function clarificationMessageOf(reason) {
+  const code = reason?.response?.data?.detail?.code || reason?.code;
+  if (code === "CLARIFICATION_REQUIRES_UPDATED_REQUIREMENT") {
+    return "BA cần cập nhật và lưu bản nháp yêu cầu sau khi QA yêu cầu chỉnh sửa trước khi QA xác nhận phiếu.";
+  }
+  return messageOf(reason);
+}
+
 export default function RequirementClarificationPanel({
-  projectId,
-  requirementId,
   requirementVersionId,
   requirementStatus,
   requirementRevision,
-  onRequirementChanged,
   role,
   roles,
   permissions = [],
@@ -61,7 +66,7 @@ export default function RequirementClarificationPanel({
       setItems(result);
       setError("");
     } catch (reason) {
-      if (sequence === loadSequence.current) setError(messageOf(reason));
+      if (sequence === loadSequence.current) setError(clarificationMessageOf(reason));
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
@@ -81,7 +86,7 @@ export default function RequirementClarificationPanel({
     return () => {
       loadSequence.current += 1;
     };
-  }, [canRead, load]);
+  }, [canRead, load, requirementRevision, requirementStatus]);
   const perform = async (action) => {
     const requestedVersionId = requirementVersionId;
     setBusy(true);
@@ -90,7 +95,9 @@ export default function RequirementClarificationPanel({
       await action();
       if (activeRequirementVersion.current === requestedVersionId) await load();
     } catch (reason) {
-      if (activeRequirementVersion.current === requestedVersionId) setError(messageOf(reason));
+      if (activeRequirementVersion.current === requestedVersionId) {
+        setError(clarificationMessageOf(reason));
+      }
     } finally {
       if (activeRequirementVersion.current === requestedVersionId) setBusy(false);
     }
@@ -102,7 +109,8 @@ export default function RequirementClarificationPanel({
         <div>
           <h2 className="text-base font-semibold text-ink">Phiếu làm rõ yêu cầu</h2>
           <p className="mt-1 text-sm text-ink-muted">
-            Người phụ trách cập nhật yêu cầu; người rà soát xác nhận khi phiên bản mới có dẫn chứng.
+            QA tạo phiếu để BA trả lời. Sau khi có phản hồi, QA yêu cầu chỉnh sửa; BA cập nhật bản
+            nháp rồi QA đối chiếu nội dung mới để xác nhận.
           </p>
         </div>
         {canReview && (
@@ -112,25 +120,11 @@ export default function RequirementClarificationPanel({
             disabled={busy}
             onClick={() =>
               perform(async () => {
-                const created =
-                  await testingApi.createClarificationsFromReview(requirementVersionId);
-                const needsChanges =
-                  (created || []).length > 0 ||
-                  items.some((item) => ["OPEN", "ANSWERED"].includes(item.status));
-                if (requirementStatus === "IN_REVIEW" && needsChanges) {
-                  await testingApi.requestRequirementChanges(projectId, requirementId, {
-                    expected_revision: requirementRevision,
-                    review_note:
-                      "Đã tạo Phiếu làm rõ. Vui lòng cập nhật bản nháp theo các phiếu đang mở.",
-                  });
-                  await onRequirementChanged?.();
-                }
+                await testingApi.createClarificationsFromReview(requirementVersionId);
               })
             }
           >
-            {requirementStatus === "IN_REVIEW"
-              ? "Tạo phiếu và yêu cầu chỉnh sửa"
-              : "Rà soát và tạo phiếu"}
+            Rà soát và tạo phiếu
           </button>
         )}
       </div>

@@ -252,6 +252,7 @@ async def answer_clarification(clarification_id, payload, user):
             "answer": payload.answer,
             "answered_by": user.id,
             "answered_at": timestamp,
+            "answered_requirement_version_revision": version.get("revision"),
             "updated_at": timestamp,
         },
         user,
@@ -285,6 +286,20 @@ async def resolve_clarification(clarification_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": "RESOLUTION_VERSION_INVALID"})
     if requirement.get("current_version_id") != version["_id"]:
         raise HTTPException(status_code=409, detail={"code": "RESOLUTION_VERSION_NOT_CURRENT"})
+    required_revisions = [
+        revision
+        for revision in (
+            clarification.get("answered_requirement_version_revision"),
+            clarification.get("change_requested_requirement_revision"),
+        )
+        if revision is not None
+    ]
+    required_revision = max(required_revisions, default=None)
+    if required_revision is not None and version.get("revision", 0) <= required_revision:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CLARIFICATION_REQUIRES_UPDATED_REQUIREMENT"},
+        )
     clarification_version = (
         version
         if clarification["requirement_version_id"] == version["_id"]
