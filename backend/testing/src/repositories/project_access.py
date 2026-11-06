@@ -281,6 +281,94 @@ class ProjectAccessRepository:
                         access_policy.cache_clear()
                         return
 
+    async def ensure_requirement_role_grants(self):
+        from src.core.auth import access_policy
+        from src.repositories.legacy_business_roles import legacy_required_business_role
+
+        requirement_scoped_capabilities = {
+            "acceptance_criteria.manage",
+            "business_rule.manage",
+            "requirement_dependency.manage",
+        }
+        while True:
+            document = await database.value.project_access_control.find_one({"_id": "active"})
+            access = ProjectAccessControl.model_validate(document)
+            required_roles = {}
+            capabilities = []
+            for capability in access.capabilities:
+                if not (
+                    capability.name.startswith("requirement.")
+                    or capability.name in requirement_scoped_capabilities
+                ):
+                    capabilities.append(capability)
+                    continue
+                required = legacy_required_business_role(capability.name)
+                roles = set(required) if isinstance(required, set) else {required} if required else set()
+                if capability.name == "requirement.approve":
+                    roles = {"BA"}
+                if not roles:
+                    capabilities.append(capability)
+                    continue
+                role_names = sorted(role.value if hasattr(role, "value") else role for role in roles)
+                required_roles[capability.name] = set(role_names)
+                capabilities.append(
+                    capability.model_copy(update={"business_roles": role_names})
+                )
+            role_grants = []
+            for grant in access.role_grants:
+                permissions = set(grant.permissions)
+                for permission, roles in required_roles.items():
+                    if grant.role in roles:
+                        permissions.add(permission)
+                    else:
+                        permissions.discard(permission)
+                role_grants.append(
+                    grant.model_copy(update={"permissions": sorted(permissions)})
+                )
+            if capabilities == access.capabilities and role_grants == access.role_grants:
+                access_policy.cache_clear()
+                return
+            updated = access.model_copy(
+                update={
+                    "revision": access.revision + 1,
+                    "capabilities": capabilities,
+                    "role_grants": role_grants,
+                }
+            )
+            timestamp = datetime.now(timezone.utc)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    result = await database.value.project_access_control.replace_one(
+                        {"_id": "active", "revision": access.revision},
+                        {**document, **updated.model_dump(), "updated_at": timestamp},
+                        session=session,
+                    )
+                    if result.modified_count:
+                        await database.value.audit_events.update_one(
+                            {"_id": f"MIG-requirement-role-policy-{updated.revision}"},
+                            {
+                                "$setOnInsert": {
+                                    "actor_id": "SYSTEM_MIGRATION",
+                                    "action": "requirement_role_policy_corrected",
+                                    "entity_type": "ProjectAccessControl",
+                                    "entity_id": "active",
+                                    "project_id": None,
+                                    "created_at": timestamp,
+                                    "details": {
+                                        "previous_revision": access.revision,
+                                        "business_roles": {
+                                            key: sorted(value)
+                                            for key, value in required_roles.items()
+                                        },
+                                    },
+                                }
+                            },
+                            upsert=True,
+                            session=session,
+                        )
+                        access_policy.cache_clear()
+                        return
+
     async def migrate_legacy(self):
         existing = await database.value.project_access_control.find_one({"_id": "active"})
         if not existing:

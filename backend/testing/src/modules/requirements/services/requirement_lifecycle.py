@@ -242,6 +242,82 @@ async def return_requirement_for_changes(
     return version
 
 
+async def reopen_requirement_for_editing(
+    project_id: str,
+    requirement_id: str,
+    expected_revision: int,
+    reopen_note: str,
+    user: CurrentUser,
+):
+    requirement = await get_project_entity(
+        "requirements", requirement_id, user, "requirement.update"
+    )
+    if requirement["project_id"] != project_id:
+        raise HTTPException(422, detail={"code": "PROJECT_MISMATCH"})
+    version = await requirement_repository.find_version(
+        requirement["current_version_id"], project_id
+    )
+    if version.get("status") == "DRAFT":
+        if (
+            version.get("revision") == expected_revision + 1
+            and version.get("editing_reopened_by") == user.id
+            and version.get("editing_reopen_note") == reopen_note
+        ):
+            return version
+        raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION"})
+    if version.get("status") != "IN_REVIEW":
+        raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION"})
+    if version.get("revision") != expected_revision:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "REVISION_CONFLICT",
+                "current_revision": version.get("revision"),
+            },
+        )
+    timestamp = now()
+    async with await database.client.start_session() as session:
+        async with session.start_transaction():
+            transitioned = await requirement_repository.transition_version(
+                version["_id"],
+                project_id,
+                expected_revision,
+                "IN_REVIEW",
+                "DRAFT",
+                {
+                    "editing_reopened_by": user.id,
+                    "editing_reopened_at": timestamp,
+                    "editing_reopen_note": reopen_note,
+                    "updated_at": timestamp,
+                },
+                session=session,
+            )
+            if not transitioned:
+                raise HTTPException(409, detail={"code": "REVISION_CONFLICT"})
+            requirement_updated = await requirement_repository.set_requirement_status(
+                requirement_id,
+                project_id,
+                version["_id"],
+                "DRAFT",
+                timestamp,
+                session=session,
+            )
+            if not requirement_updated:
+                raise HTTPException(
+                    409, detail={"code": "REQUIREMENT_STATUS_CONFLICT"}
+                )
+            await audit(
+                user.id,
+                "requirement_review_reopened_for_editing",
+                "RequirementVersion",
+                version["_id"],
+                project_id,
+                {"reopen_note": reopen_note},
+                session=session,
+            )
+    return await requirement_repository.find_version(version["_id"], project_id)
+
+
 async def technical_review_requirement(
     version_id: str,
     expected_revision: int,

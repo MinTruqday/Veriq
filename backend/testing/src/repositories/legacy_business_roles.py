@@ -52,6 +52,7 @@ def legacy_required_business_role(permission: str) -> ProjectRole | set[ProjectR
         "requirement.merge",
         "requirement.split",
         "requirement.submit_review",
+        "requirement.approve",
         "requirement.archive",
         "requirement.restore",
         "acceptance_criteria.manage",
@@ -79,7 +80,6 @@ def legacy_required_business_role(permission: str) -> ProjectRole | set[ProjectR
         return {ProjectRole.BA, ProjectRole.QA}
     if permission in {
         "requirement.review",
-        "requirement.approve",
         "proposal.approve",
         "proposal.bulk.approve",
         "attachment.moderate",

@@ -32,6 +32,7 @@ from src.modules.requirements.services.requirement_dependencies import add_depen
 from src.modules.requirements.services.requirement_lifecycle import (
     baseline_requirement,
     make_requirement_obsolete,
+    reopen_requirement_for_editing,
     restore_obsolete_requirement,
     return_requirement_for_changes,
     submit_requirement_for_review,
@@ -271,6 +272,23 @@ async def request_requirement_changes(
     user: CurrentUser = Depends(get_current_user),
 ):
     version = await return_requirement_for_changes(
+        project_id,
+        requirement_id,
+        payload.expected_revision,
+        payload.review_note,
+        user,
+    )
+    return envelope(version, revision=version["revision"])
+
+
+@router.post("/du-an/{project_id}/yeu-cau/{requirement_id}/mo-lai-chinh-sua")
+async def reopen_requirement_editing(
+    project_id: str,
+    requirement_id: str,
+    payload: ReviewTransitionInput,
+    user: CurrentUser = Depends(get_current_user),
+):
+    version = await reopen_requirement_for_editing(
         project_id,
         requirement_id,
         payload.expected_revision,

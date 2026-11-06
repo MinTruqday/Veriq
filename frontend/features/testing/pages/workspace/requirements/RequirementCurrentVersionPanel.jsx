@@ -124,6 +124,43 @@ export default function RequirementCurrentVersionPanel({
               Yêu cầu chỉnh sửa
             </button>
           )}
+          {current.status === "IN_REVIEW" && can("requirement.update") && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                ask({
+                  title: "Mở lại để chỉnh sửa",
+                  description:
+                    "Yêu cầu sẽ trở về bản nháp. Sau khi cập nhật, cần gửi rà soát lại trước khi chốt chuẩn.",
+                  confirmLabel: "Mở bản nháp",
+                  fields: [
+                    {
+                      name: "review_note",
+                      label: "Lý do chỉnh sửa",
+                      required: true,
+                      minLength: 2,
+                      multiline: true,
+                      autoFocus: true,
+                    },
+                  ],
+                  onConfirm: async (answer) => {
+                    try {
+                      await testingApi.reopenRequirementForEditing(projectId, selected._id, {
+                        expected_revision: current.revision,
+                        review_note: answer.review_note.trim(),
+                      });
+                      await reload();
+                    } catch (value) {
+                      throw new Error(messageOf(value));
+                    }
+                  },
+                })
+              }
+            >
+              Mở lại để chỉnh sửa
+            </button>
+          )}
           {current.status === "IN_REVIEW" &&
             can("requirement.review") &&
             current.technical_review_revision !== current.revision && (

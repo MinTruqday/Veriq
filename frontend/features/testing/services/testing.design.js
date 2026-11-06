@@ -404,6 +404,11 @@ export const designTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  reopenRequirementForEditing: (projectId, requirementId, payload) =>
+    testingRequest(`/du-an/${projectId}/yeu-cau/${requirementId}/mo-lai-chinh-sua`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   approveRequirement: (projectId, requirementId, payload) =>
     testingRequest(`/du-an/${projectId}/yeu-cau/${requirementId}/phe-duyet`, {
       method: "POST",
