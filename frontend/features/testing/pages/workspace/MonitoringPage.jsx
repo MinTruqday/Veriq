@@ -6,6 +6,7 @@ import PlanVsActualPanel from "../../components/PlanVsActualPanel";
 import QualityGateBadge from "../../components/QualityGateBadge";
 import TestControlActionPanel from "../../components/TestControlActionPanel";
 import TestProgressBoard from "../../components/TestProgressBoard";
+import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
   ErrorState,
   InitialLoadState,
@@ -67,12 +68,17 @@ export default function MonitoringPage({ project }) {
   const [decisions, setDecisions] = useState([]);
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
+  const [activeView, setActiveView] = useState("overview");
   const [error, setError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
   const loadedProjectId = useRef(project._id);
   const can = (permission) => project.current_permissions?.includes(permission);
+  const memberName = (userId) => {
+    const member = members.find((item) => item.user_id === userId);
+    return member?.identity?.label || member?.full_name || member?.email || "Thành viên dự án";
+  };
   const load = useCallback(async () => {
     if (loadedProjectId.current !== project._id) {
       loadedProjectId.current = project._id;
@@ -235,7 +241,10 @@ export default function MonitoringPage({ project }) {
   const createDecision = async (decision) => {
     if (!selectedSnapshot) return;
     const fields = [{ name: "reason", label: "Lý do quyết định", required: true, multiline: true }];
-    if (decision === "APPROVE_RELEASE" && gate?.overall_status !== "PASS")
+    if (
+      decision === "APPROVE_RELEASE" &&
+      ["FAIL", "MANUAL_REQUIRED"].includes(gate?.overall_status)
+    )
       fields.push({
         name: "override_reason",
         label: "Lý do ghi đè cổng chất lượng",
@@ -303,6 +312,22 @@ export default function MonitoringPage({ project }) {
       setError(messageOf(reason));
     }
   };
+  const monitorTabs = [
+    { id: "overview", label: "Tổng quan" },
+    ...(can("qualitygate.read")
+      ? [{ id: "release", label: "Điều kiện và quyết định phát hành" }]
+      : []),
+    ...(can("testmonitor.read") ? [{ id: "actions", label: "Hành động kiểm soát" }] : []),
+  ];
+  const visibleView = monitorTabs.some((item) => item.id === activeView)
+    ? activeView
+    : monitorTabs[0].id;
+  const canApproveRelease =
+    can("qualitygate.decide") &&
+    Boolean(gate?.overall_status) &&
+    gate.overall_status !== "INSUFFICIENT_DATA" &&
+    (!["FAIL", "MANUAL_REQUIRED"].includes(gate.overall_status) ||
+      project.settings?.allow_quality_gate_override === true);
   return (
     <WorkspacePage
       title="Giám sát kiểm thử"
@@ -370,7 +395,14 @@ export default function MonitoringPage({ project }) {
       {selectedSnapshot ? (
         <>
           <Panel title="Thông tin mốc giám sát">
-            <div className="grid gap-4 p-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-x-6 gap-y-4 p-5 text-sm sm:grid-cols-2 xl:grid-cols-4">
+              <div className="min-w-0">
+                <p className="field-label">Kế hoạch</p>
+                <p className="mt-2 break-words">
+                  {plans.find((item) => item._id === selectedSnapshot.test_plan_id)?.name ||
+                    "Kế hoạch kiểm thử"}
+                </p>
+              </div>
               <div>
                 <p className="field-label">Thời điểm ghi nhận</p>
                 <p className="mt-2">{formatDate(selectedSnapshot.snapshot_at)}</p>
@@ -393,183 +425,223 @@ export default function MonitoringPage({ project }) {
             </div>
           </Panel>
           <TestProgressBoard metrics={selectedSnapshot.metrics} />
-          <Panel title="Kế hoạch và thực tế">
-            <PlanVsActualPanel snapshot={selectedSnapshot} />
-          </Panel>
-          {can("qualitygate.read") && (
-            <Panel
-              title="Điều kiện phát hành"
-              actions={
-                <QualityGateBadge
-                  status={
-                    selectedSnapshot.effective_quality_gate_status ||
-                    selectedSnapshot.quality_gate_status
-                  }
-                />
-              }
-            >
-              <ExitCriteriaPanel
-                snapshot={selectedSnapshot}
-                canOverride={can("testmonitor.exit_criteria.override")}
-                onOverride={async (criterion) => {
-                  await ask({
-                    title: "Ghi nhận ngoại lệ điều kiện phát hành",
-                    confirmLabel: "Ghi nhận",
-                    fields: [
-                      {
-                        name: "status",
-                        label: "Kết quả",
-                        required: true,
-                        options: ["PASS", "FAIL"].map((value) => ({
-                          value,
-                          label: value === "PASS" ? "Đạt" : "Không đạt",
-                        })),
-                      },
-                      { name: "reason", label: "Lý do", required: true, multiline: true },
-                    ],
-                    onConfirm: async (answer) => {
-                      try {
-                        const value = await testingApi.overrideMonitoringCriterion(
-                          selectedSnapshot._id,
-                          {
-                            expected_revision: selectedSnapshot.revision,
-                            criterion_id: criterion.criterion_id,
-                            ...answer,
-                            evidence_refs: [],
-                          },
-                        );
-                        setSelectedSnapshot(value);
-                        await load();
-                      } catch (reason) {
-                        throw new Error(messageOf(reason));
-                      }
+          <SegmentedTabs
+            label="Nội dung giám sát"
+            value={visibleView}
+            onChange={setActiveView}
+            tabs={monitorTabs}
+          />
+          {visibleView === "overview" && (
+            <div className="grid items-start gap-4 xl:grid-cols-2">
+              <Panel title="Kế hoạch và thực tế">
+                <PlanVsActualPanel snapshot={selectedSnapshot} />
+              </Panel>
+              <Panel title="Sai lệch và thay đổi cần rà soát">
+                <DataTable
+                  items={[
+                    ...(selectedSnapshot.deviations || []),
+                    ...(selectedSnapshot.blockers || []).map((item) => ({
+                      type: "BLOCKER",
+                      actual: item.title || "Có lỗi đang chặn phát hành",
+                    })),
+                  ]}
+                  empty="Không có sai lệch hoặc trở ngại"
+                  columns={[
+                    { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
+                    {
+                      key: "planned",
+                      label: "Kế hoạch",
+                      render: (item) => displayDeviationValue(item.planned),
                     },
-                  });
-                }}
-              />
-            </Panel>
+                    {
+                      key: "actual",
+                      label: "Thực tế",
+                      render: (item) => displayDeviationValue(item.actual),
+                    },
+                    { key: "unit", label: "Đơn vị" },
+                  ]}
+                />
+                <dl className="grid grid-cols-3 divide-x divide-border border-t border-border">
+                  {[
+                    ["Yêu cầu đã thay đổi", selectedSnapshot.metrics?.changed_requirements],
+                    ["Ca kiểm thử lỗi thời", selectedSnapshot.metrics?.stale_testcases],
+                    ["Đang chờ rà soát", selectedSnapshot.metrics?.impact_pending],
+                  ].map(([label, value]) => (
+                    <div className="min-w-0 px-3 py-3" key={label}>
+                      <dt className="break-words text-xs leading-5 text-ink-muted">{label}</dt>
+                      <dd className="mt-1 text-lg font-semibold text-ink">
+                        {value ?? "Chưa có dữ liệu"}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </Panel>
+            </div>
           )}
-          <Panel
-            title="Quyết định phát hành"
-            actions={
-              <div className="flex flex-wrap gap-2">
-                <button className="secondary-button" type="button" onClick={exportGate}>
-                  Xuất bằng chứng
-                </button>
-                {can("qualitygate.decide") && (
-                  <>
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => createDecision("BLOCK_RELEASE")}
-                    >
-                      Chặn phát hành
-                    </button>
-                    <button
-                      className="apple-button"
-                      type="button"
-                      onClick={() => createDecision("APPROVE_RELEASE")}
-                    >
-                      Phê duyệt phát hành
-                    </button>
-                  </>
-                )}
-                {can("qualitygate.accept_risk") && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => createDecision("ACCEPT_RISK")}
-                  >
-                    Chấp nhận rủi ro
-                  </button>
-                )}
-              </div>
-            }
-          >
-            <div className="space-y-5 p-5">
-              <DataTable
-                items={gate?.rules || []}
-                empty="Chưa có điều kiện phát hành"
-                getRowKey={(item) => item.criterion_id}
-                columns={[
-                  { key: "criterion", label: "Tiêu chí" },
-                  {
-                    key: "status",
-                    label: "Kết quả",
-                    render: (item) => <QualityGateBadge status={item.status} />,
-                  },
-                  { key: "actual", label: "Thực tế" },
-                  { key: "threshold", label: "Ngưỡng" },
-                ]}
-              />
-              <DataTable
-                items={decisions.filter((item) => item.snapshot_id === selectedSnapshot._id)}
-                empty="Chưa có quyết định phát hành"
-                columns={[
-                  {
-                    key: "decision",
-                    label: "Quyết định",
-                    render: (item) => decisionLabels[item.decision] || item.decision,
-                  },
-                  { key: "reason", label: "Lý do" },
-                  { key: "decided_by", label: "Người quyết định" },
-                  {
-                    key: "decided_at",
-                    label: "Thời điểm",
-                    render: (item) => formatDate(item.decided_at),
-                  },
-                ]}
-              />
+          {visibleView === "release" && (
+            <div className="space-y-4">
+              {can("qualitygate.read") && (
+                <Panel
+                  title="Điều kiện phát hành"
+                  actions={
+                    <QualityGateBadge
+                      status={
+                        selectedSnapshot.effective_quality_gate_status ||
+                        selectedSnapshot.quality_gate_status
+                      }
+                    />
+                  }
+                >
+                  <ExitCriteriaPanel
+                    snapshot={selectedSnapshot}
+                    canOverride={can("testmonitor.exit_criteria.override")}
+                    onOverride={async (criterion) => {
+                      await ask({
+                        title: "Ghi nhận ngoại lệ điều kiện phát hành",
+                        confirmLabel: "Ghi nhận",
+                        fields: [
+                          {
+                            name: "status",
+                            label: "Kết quả",
+                            required: true,
+                            options: ["PASS", "FAIL"].map((value) => ({
+                              value,
+                              label: value === "PASS" ? "Đạt" : "Không đạt",
+                            })),
+                          },
+                          { name: "reason", label: "Lý do", required: true, multiline: true },
+                        ],
+                        onConfirm: async (answer) => {
+                          try {
+                            const value = await testingApi.overrideMonitoringCriterion(
+                              selectedSnapshot._id,
+                              {
+                                expected_revision: selectedSnapshot.revision,
+                                criterion_id: criterion.criterion_id,
+                                ...answer,
+                                evidence_refs: [],
+                              },
+                            );
+                            setSelectedSnapshot(value);
+                            await load();
+                          } catch (reason) {
+                            throw new Error(messageOf(reason));
+                          }
+                        },
+                      });
+                    }}
+                  />
+                </Panel>
+              )}
+              <Panel
+                title="Quyết định phát hành"
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    {can("qualitygate.read") && (
+                      <button className="secondary-button" type="button" onClick={exportGate}>
+                        Xuất bằng chứng
+                      </button>
+                    )}
+                    {can("qualitygate.decide") && (
+                      <>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => createDecision("BLOCK_RELEASE")}
+                        >
+                          Chặn phát hành
+                        </button>
+                        {canApproveRelease && (
+                          <button
+                            className="apple-button"
+                            type="button"
+                            onClick={() => createDecision("APPROVE_RELEASE")}
+                          >
+                            Phê duyệt phát hành
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {can("qualitygate.accept_risk") && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => createDecision("ACCEPT_RISK")}
+                      >
+                        Chấp nhận rủi ro
+                      </button>
+                    )}
+                  </div>
+                }
+              >
+                <div className="space-y-5 p-5">
+                  {can("qualitygate.decide") && gate?.overall_status === "INSUFFICIENT_DATA" && (
+                    <p className="rounded-control border border-border bg-surface-quiet px-4 py-3 text-sm leading-6 text-ink-muted">
+                      Chưa đủ dữ liệu để phê duyệt phát hành. Hoàn tất các lượt kiểm thử còn thiếu
+                      rồi ghi nhận mốc mới.
+                    </p>
+                  )}
+                  {can("qualitygate.decide") &&
+                    ["FAIL", "MANUAL_REQUIRED"].includes(gate?.overall_status) &&
+                    project.settings?.allow_quality_gate_override !== true && (
+                      <p className="rounded-control border border-border bg-surface-quiet px-4 py-3 text-sm leading-6 text-ink-muted">
+                        Điều kiện phát hành chưa đạt và dự án không cho phép ghi đè. Cần xử lý tiêu
+                        chí chưa đạt trước khi phê duyệt.
+                      </p>
+                    )}
+                  {can("qualitygate.read") && (
+                    <DataTable
+                      items={gate?.rules || []}
+                      empty="Chưa có điều kiện phát hành"
+                      getRowKey={(item) => item.criterion_id}
+                      columns={[
+                        { key: "criterion", label: "Tiêu chí" },
+                        {
+                          key: "status",
+                          label: "Kết quả",
+                          render: (item) => <QualityGateBadge status={item.status} />,
+                        },
+                        { key: "actual", label: "Thực tế" },
+                        { key: "threshold", label: "Ngưỡng" },
+                      ]}
+                    />
+                  )}
+                  {can("qualitygate.read") && (
+                    <DataTable
+                      items={decisions.filter((item) => item.snapshot_id === selectedSnapshot._id)}
+                      empty="Chưa có quyết định phát hành"
+                      columns={[
+                        {
+                          key: "decision",
+                          label: "Quyết định",
+                          render: (item) => decisionLabels[item.decision] || item.decision,
+                        },
+                        { key: "reason", label: "Lý do" },
+                        {
+                          key: "decided_by",
+                          label: "Người quyết định",
+                          render: (item) => memberName(item.decided_by),
+                        },
+                        {
+                          key: "decided_at",
+                          label: "Thời điểm",
+                          render: (item) => formatDate(item.decided_at),
+                        },
+                      ]}
+                    />
+                  )}
+                </div>
+              </Panel>
             </div>
-          </Panel>
-          <Panel title="Sai lệch và trở ngại">
-            <DataTable
-              items={[
-                ...(selectedSnapshot.deviations || []),
-                ...(selectedSnapshot.blockers || []).map((item) => ({
-                  type: "BLOCKER",
-                  actual: item.title || "Có lỗi đang chặn phát hành",
-                })),
-              ]}
-              empty="Không có sai lệch hoặc trở ngại"
-              columns={[
-                { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
-                {
-                  key: "planned",
-                  label: "Kế hoạch",
-                  render: (item) => displayDeviationValue(item.planned),
-                },
-                {
-                  key: "actual",
-                  label: "Thực tế",
-                  render: (item) => displayDeviationValue(item.actual),
-                },
-                { key: "unit", label: "Đơn vị" },
-              ]}
-            />
-          </Panel>
-          <Panel title="Việc cần rà soát sau thay đổi">
-            <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
-              <Metric
-                label="Yêu cầu đã thay đổi"
-                value={selectedSnapshot.metrics?.changed_requirements || 0}
-              />
-              <Metric
-                label="Ca kiểm thử lỗi thời"
-                value={selectedSnapshot.metrics?.stale_testcases || 0}
-              />
-              <Metric
-                label="Thay đổi đang chờ rà soát"
-                value={selectedSnapshot.metrics?.impact_pending || 0}
-              />
-            </div>
-          </Panel>
-          {can("testmonitor.read") && (
+          )}
+          {visibleView === "actions" && can("testmonitor.read") && (
             <Panel title="Hành động kiểm soát">
               <TestControlActionPanel
                 items={actions.filter((item) => item.snapshot_id === selectedSnapshot._id)}
                 members={members}
-                typeLabel={(item) => controlTypeLabels[item.action_type] || valueLabel(item.type)}
+                typeLabel={(item) =>
+                  controlTypeLabels[item.action_type] || valueLabel(item.action_type || item.type)
+                }
                 canCreate={can("testmonitor.control.create")}
                 canUpdate={can("testmonitor.control.update")}
                 onCreate={createAction}
@@ -590,8 +662,14 @@ export default function MonitoringPage({ project }) {
         </>
       ) : (
         <Panel title="Mốc giám sát">
-          <p className="p-8 text-sm text-ink-muted">
-            Chọn kế hoạch đã phê duyệt để lưu mốc theo dõi đầu tiên.
+          <p className="p-5 text-sm leading-6 text-ink-muted">
+            {!can("testplan.read")
+              ? "Bạn chưa được cấp quyền xem kế hoạch kiểm thử."
+              : plans.length === 0
+                ? "Chưa có kế hoạch kiểm thử được phê duyệt để theo dõi."
+                : snapshots.length === 0
+                  ? "Chưa có mốc giám sát cho kế hoạch này. Chọn kế hoạch ở phía trên để bắt đầu theo dõi."
+                  : "Chọn một mốc giám sát ở phía trên để xem tiến độ và quyết định liên quan."}
           </p>
         </Panel>
       )}

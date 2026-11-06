@@ -76,6 +76,8 @@ function decisionActorLabel(actorId, members) {
 export default function TestAdequacyPanel({
   projectId,
   requirementVersionId,
+  requirements = [],
+  onRequirementChange,
   members = [],
   canDecide = false,
   canCreateClarification = false,
@@ -118,6 +120,7 @@ export default function TestAdequacyPanel({
     () => (assessment?.coverage_items || []).filter((item) => !filter || item.status === filter),
     [assessment, filter],
   );
+  const metricValue = (value) => (Number.isFinite(value) ? value : "—");
   const update = async (work) => {
     const requestedVersionId = requirementVersionId;
     setBusy(true);
@@ -380,11 +383,30 @@ export default function TestAdequacyPanel({
   return (
     <>
       <section className="space-y-5">
-        <div className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-[22px] font-semibold tracking-[-0.025em] text-ink">
-              Nghĩa vụ kiểm thử
-            </h2>
+        <div className="space-y-4 border-b border-border pb-5">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <label className="field-label min-w-[20rem] flex-1 xl:max-w-2xl">
+              Yêu cầu
+              <select
+                aria-label="Chọn yêu cầu để xem nghĩa vụ kiểm thử"
+                className="apple-input mt-1 w-full"
+                value={requirementVersionId}
+                onChange={(event) => onRequirementChange?.(event.target.value)}
+              >
+                {requirements.map((requirement) => (
+                  <option
+                    key={requirement.current_version_id}
+                    value={requirement.current_version_id}
+                  >
+                    {requirement.requirement_key || requirement.key} ·{" "}
+                    {requirement.current_version?.title || requirement.title}
+                    {requirement.current_version?.version
+                      ? ` · v${requirement.current_version.version}`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -460,7 +482,7 @@ export default function TestAdequacyPanel({
                   Đã chứng minh
                 </p>
                 <p className="mt-1 text-[20px] font-semibold text-ink">
-                  {assessment.coverage_summary?.verified || 0}
+                  {metricValue(assessment.coverage_summary?.verified)}
                 </p>
               </div>
               <div>
@@ -468,7 +490,7 @@ export default function TestAdequacyPanel({
                   Có điều kiện
                 </p>
                 <p className="mt-1 text-[20px] font-semibold text-ink">
-                  {assessment.coverage_summary?.conditional || 0}
+                  {metricValue(assessment.coverage_summary?.conditional)}
                 </p>
               </div>
               <div>
@@ -476,7 +498,7 @@ export default function TestAdequacyPanel({
                   Chưa xử lý
                 </p>
                 <p className="mt-1 text-[20px] font-semibold text-ink">
-                  {assessment.coverage_summary?.outstanding || 0}
+                  {metricValue(assessment.coverage_summary?.outstanding)}
                 </p>
               </div>
               <label className="field-label">

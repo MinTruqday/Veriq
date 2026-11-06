@@ -143,7 +143,7 @@ export default function TestCaseTransferPanel({
 
   return (
     <Panel
-      title="Nhập và xuất ca kiểm thử"
+      title="Tệp ca kiểm thử"
       actions={
         <div className="flex flex-wrap gap-2">
           {can("testcase.export") && (

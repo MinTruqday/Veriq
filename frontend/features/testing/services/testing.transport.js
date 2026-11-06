@@ -272,7 +272,7 @@ export async function downloadTestingFile(path, filename) {
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export async function readTestingFile(path) {

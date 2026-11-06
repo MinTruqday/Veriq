@@ -11,7 +11,6 @@ import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
   ErrorState,
   LoadingState,
-  Metric,
   Panel,
   ProjectCrumb,
   WorkspacePage,
@@ -85,6 +84,12 @@ function reportActivityActionLabel(value) {
   return label === rawValue && /^[a-z0-9]+(?:[._][a-z0-9]+)+$/i.test(rawValue) ? "Cập nhật" : label;
 }
 
+function reportActivityEntityLabel(value) {
+  const rawValue = String(value || "");
+  const label = valueLabel(value);
+  return label === rawValue ? "Nội dung dự án" : label;
+}
+
 function countRows(values, key) {
   const rows = [];
   let otherCount = 0;
@@ -130,11 +135,15 @@ function ReportMetric({ label, value, detail }) {
   const unavailableDetail =
     value === "Chưa có lỗi đang mở" ? "Không có lỗi đang mở" : "Chưa có dữ liệu";
   return (
-    <Metric
-      label={label}
-      value={unavailable ? "—" : value}
-      detail={detail || (unavailable ? unavailableDetail : undefined)}
-    />
+    <div className="min-w-0 rounded-xl border border-border-strong bg-surface-raised p-4 shadow-sm">
+      <dt className="min-h-10 text-[12px] font-medium leading-5 text-ink-muted">{label}</dt>
+      <dd className="mt-1 text-[27px] font-semibold tracking-[-0.04em] text-ink">
+        {unavailable ? "—" : value}
+      </dd>
+      {(detail || unavailable) && (
+        <dd className="mt-1 text-[11px] leading-4 text-ink-faint">{detail || unavailableDetail}</dd>
+      )}
+    </div>
   );
 }
 
@@ -153,7 +162,11 @@ export default function ReportsPage({ project }) {
     build_id: "",
   });
   const [activeTab, setActiveTab] = useState("summary");
+  const [activeTestReportTab, setActiveTestReportTab] = useState("status");
+  const [activeQualityTab, setActiveQualityTab] = useState("evaluation");
+  const [showAllActivity, setShowAllActivity] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const loadGeneration = useRef(0);
   const optionsGeneration = useRef(0);
   const loadedProjectId = useRef(project._id);
@@ -189,6 +202,30 @@ export default function ReportsPage({ project }) {
       : []),
   ];
   const visibleTab = reportTabs.some((tab) => tab.id === activeTab) ? activeTab : reportTabs[0]?.id;
+  const testReportTabs = [
+    ...(can("teststatusreport.read") ? [{ id: "status", label: "Trạng thái kiểm thử" }] : []),
+    ...(can("testcompletion.read") ? [{ id: "completion", label: "Hoàn tất kiểm thử" }] : []),
+  ];
+  const visibleTestReportTab = testReportTabs.some((tab) => tab.id === activeTestReportTab)
+    ? activeTestReportTab
+    : testReportTabs[0]?.id;
+  const qualityTabs = [
+    ...(can("qualityevaluation.read")
+      ? [{ id: "evaluation", label: "Đánh giá bản phát hành" }]
+      : []),
+    ...(can("measurement.read") ? [{ id: "measurement", label: "Đo lường" }] : []),
+    ...(can("processimprovement.read") ? [{ id: "improvement", label: "Cải tiến quy trình" }] : []),
+  ];
+  const visibleQualityTab = qualityTabs.some((tab) => tab.id === activeQualityTab)
+    ? activeQualityTab
+    : qualityTabs[0]?.id;
+  const recentActivity = useMemo(
+    () =>
+      (Array.isArray(value?.activity) ? value.activity : []).filter(
+        (item) => item.action !== "project_membership_required",
+      ),
+    [value?.activity],
+  );
   const load = useCallback(async () => {
     const requestGeneration = ++loadGeneration.current;
     if (loadedProjectId.current !== project._id) {
@@ -204,6 +241,7 @@ export default function ReportsPage({ project }) {
       });
     }
     setError("");
+    setLoading(true);
     const requests = [
       ["dashboard", canReadAnalytics ? testingApi.dashboard(project._id) : Promise.resolve(null)],
       [
@@ -212,7 +250,7 @@ export default function ReportsPage({ project }) {
       ],
       [
         "snapshots",
-        canReadCoverage ? testingApi.listCoverageSnapshots(project._id) : Promise.resolve([]),
+        canReadCoverage ? testingApi.listCoverageSnapshots(project._id) : Promise.resolve(null),
       ],
       [
         "maintenance",
@@ -229,29 +267,32 @@ export default function ReportsPage({ project }) {
       ],
       [
         "activity",
-        canReadAnalytics ? testingApi.projectActivity(project._id) : Promise.resolve([]),
+        canReadAnalytics ? testingApi.projectActivity(project._id) : Promise.resolve(null),
       ],
     ];
     const results = await Promise.allSettled(requests.map(([, request]) => request));
     if (requestGeneration !== loadGeneration.current) return;
-    const data = {
-      dashboard: null,
-      coverage: null,
-      snapshots: [],
-      maintenance: null,
-      ai: null,
-      execution: null,
-      defects: null,
-      activity: [],
-    };
+    const data = {};
     const errors = [];
     results.forEach((result, index) => {
       const [key] = requests[index];
       if (result.status === "fulfilled") data[key] = result.value;
       else if (result.reason?.status !== 403) errors.push(messageOf(result.reason));
     });
-    setValue(data);
+    setValue((current) => ({
+      dashboard: null,
+      coverage: null,
+      snapshots: null,
+      maintenance: null,
+      ai: null,
+      execution: null,
+      defects: null,
+      activity: null,
+      ...(current || {}),
+      ...data,
+    }));
     setError([...new Set(errors)].join(" · "));
+    setLoading(false);
   }, [canReadAiAnalytics, canReadAnalytics, canReadCoverage, canReadReports, project._id, scope]);
   useEffect(() => {
     const requestGeneration = ++optionsGeneration.current;
@@ -284,8 +325,31 @@ export default function ReportsPage({ project }) {
     if (visibleTab === "summary") void load();
   }, [load, visibleTab]);
   return (
-    <WorkspacePage title="Báo cáo" actions={<ProjectCrumb projectId={project._id} />}>
-      {error && <ErrorState message={error} />}
+    <WorkspacePage
+      title="Báo cáo"
+      actions={
+        <div className="flex flex-wrap items-center gap-3">
+          <ProjectCrumb projectId={project._id} />
+          {visibleTab === "summary" && (
+            <button
+              className="apple-button"
+              disabled={loading}
+              onClick={() => void load()}
+              type="button"
+            >
+              {loading ? "Đang tải…" : "Tải lại dữ liệu"}
+            </button>
+          )}
+        </div>
+      }
+    >
+      {error && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <ErrorState message={error} />
+          </div>
+        </div>
+      )}
       {reportTabs.length > 1 && (
         <SegmentedTabs
           label="Nhóm báo cáo"
@@ -297,24 +361,42 @@ export default function ReportsPage({ project }) {
       {visibleTab === "work" && <WorkReportsPanel project={project} />}
       {visibleTab === "reports" && (
         <div className="space-y-6">
-          {can("teststatusreport.read") && <TestStatusReportPanel project={project} />}
-          {can("testcompletion.read") && <CompletionPage project={project} />}
+          {testReportTabs.length > 1 && (
+            <SegmentedTabs
+              label="Loại báo cáo kiểm thử"
+              value={visibleTestReportTab}
+              onChange={setActiveTestReportTab}
+              tabs={testReportTabs}
+            />
+          )}
+          {visibleTestReportTab === "status" && <TestStatusReportPanel project={project} />}
+          {visibleTestReportTab === "completion" && <CompletionPage project={project} />}
         </div>
       )}
       {visibleTab === "quality" && (
         <div className="space-y-6">
-          {can("qualityevaluation.read") && <ReleaseQualityPanel project={project} />}
-          {can("measurement.read") && <MetricDefinitionPanel project={project} />}
-          {can("processimprovement.read") && <ProcessImprovementPanel project={project} />}
+          {qualityTabs.length > 1 && (
+            <SegmentedTabs
+              label="Nội dung chất lượng"
+              value={visibleQualityTab}
+              onChange={setActiveQualityTab}
+              tabs={qualityTabs}
+            />
+          )}
+          {visibleQualityTab === "evaluation" && <ReleaseQualityPanel project={project} />}
+          {visibleQualityTab === "measurement" && <MetricDefinitionPanel project={project} />}
+          {visibleQualityTab === "improvement" && <ProcessImprovementPanel project={project} />}
         </div>
       )}
       {visibleTab === "summary" && (
         <div className="space-y-6">
           {(canReadReports || canReadCoverage) && (canFilterScope || canCreateSnapshot) && (
-            <Panel
-              title="Phạm vi dữ liệu"
-              actions={
-                canCreateSnapshot ? (
+            <section aria-labelledby="report-scope-heading" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-base font-semibold" id="report-scope-heading">
+                  Phạm vi dữ liệu
+                </h2>
+                {canCreateSnapshot && (
                   <button
                     className="apple-button"
                     type="button"
@@ -351,11 +433,10 @@ export default function ReportsPage({ project }) {
                   >
                     Lưu mốc độ phủ
                   </button>
-                ) : null
-              }
-            >
+                )}
+              </div>
               {canFilterScope && (
-                <div className="grid gap-3 p-5 sm:grid-cols-3">
+                <div className="grid gap-3 border-y border-border py-4 sm:grid-cols-3">
                   {can("environment.read") && (
                     <select
                       aria-label="Lọc theo môi trường"
@@ -434,14 +515,19 @@ export default function ReportsPage({ project }) {
                   )}
                 </div>
               )}
-            </Panel>
+            </section>
           )}
-          {!value && !error ? (
+          {!value && loading ? (
+            <LoadingState />
+          ) : !value && !error ? (
             <LoadingState />
           ) : value ? (
             <>
               {value.coverage && (
-                <section aria-labelledby="coverage-metrics-heading" className="space-y-3">
+                <section
+                  aria-labelledby="coverage-metrics-heading"
+                  className="space-y-3 rounded-xl border border-border-strong bg-white p-4 shadow-sm sm:p-5"
+                >
                   <div>
                     <h2 className="text-base font-semibold" id="coverage-metrics-heading">
                       Liên kết yêu cầu và kết quả kiểm thử
@@ -451,7 +537,7 @@ export default function ReportsPage({ project }) {
                       trường.
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-5 xl:grid-cols-5">
                     <ReportMetric
                       label="Yêu cầu có liên kết kiểm thử"
                       value={metricPercentage(value.coverage.requirement_coverage)}
@@ -472,11 +558,14 @@ export default function ReportsPage({ project }) {
                       label="Ca kiểm thử cần cập nhật"
                       value={metricCount(value.coverage.stale_tests)}
                     />
-                  </div>
+                  </dl>
                 </section>
               )}
               {(value.execution || value.defects) && (
-                <section aria-labelledby="execution-metrics-heading" className="space-y-3">
+                <section
+                  aria-labelledby="execution-metrics-heading"
+                  className="space-y-3 rounded-xl border border-border-strong bg-white p-4 shadow-sm sm:p-5"
+                >
                   <div>
                     <h2 className="text-base font-semibold" id="execution-metrics-heading">
                       Kết quả thực thi và lỗi trong phạm vi đã chọn
@@ -488,7 +577,7 @@ export default function ReportsPage({ project }) {
                       </p>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-5 xl:grid-cols-2">
                     {value.execution && (
                       <ReportMetric
                         label="Kết quả kiểm thử đạt"
@@ -511,17 +600,20 @@ export default function ReportsPage({ project }) {
                         />
                       </>
                     )}
-                  </div>
+                  </dl>
                 </section>
               )}
               {(value.dashboard || value.defects || value.maintenance || value.ai) && (
-                <section aria-labelledby="project-metrics-heading" className="space-y-3">
+                <section
+                  aria-labelledby="project-metrics-heading"
+                  className="space-y-3 rounded-xl border border-border-strong bg-white p-4 shadow-sm sm:p-5"
+                >
                   <div>
                     <h2 className="text-base font-semibold" id="project-metrics-heading">
                       Chỉ số toàn dự án
                     </h2>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-5 xl:grid-cols-5">
                     {value.dashboard && (
                       <ReportMetric
                         label="Lỗi đang mở"
@@ -573,367 +665,397 @@ export default function ReportsPage({ project }) {
                         />
                       </>
                     )}
-                  </div>
+                  </dl>
                 </section>
               )}
-              <div
-                className={`grid gap-5 ${value.execution && value.defects ? "xl:grid-cols-2" : "grid-cols-1"}`}
-              >
-                {value.execution && (
-                  <Panel title="Kết quả thực thi">
-                    <DataTable
-                      items={Object.entries(value.execution.result_counts || {}).map(
-                        ([status, count]) => ({ _id: status, status, count }),
-                      )}
-                      empty="Chưa có kết quả thực thi"
-                      columns={[
-                        {
-                          key: "status",
-                          label: "Trạng thái",
-                          render: (item) => valueLabel(item.status),
-                        },
-                        { key: "count", label: "Số lượng" },
-                      ]}
-                    />
-                  </Panel>
-                )}
-                {value.defects && (
-                  <Panel title="Lỗi theo mức độ">
-                    <DataTable
-                      items={Object.entries(value.defects.severity_counts || {}).map(
-                        ([severity, count]) => ({ _id: severity, severity, count }),
-                      )}
-                      empty="Chưa có lỗi"
-                      columns={[
-                        {
-                          key: "severity",
-                          label: "Mức độ",
-                          render: (item) => valueLabel(item.severity),
-                        },
-                        { key: "count", label: "Số lượng" },
-                      ]}
-                    />
-                  </Panel>
-                )}
-              </div>
-              <div className="grid grid-cols-1 gap-5">
-                {value.coverage && (
-                  <Panel title="Yêu cầu theo nhóm tình huống kiểm thử">
-                    <DataTable
-                      items={Object.entries(value.coverage.category_coverage || {}).map(
-                        ([category, coverage]) => ({ _id: category, category, coverage }),
-                      )}
-                      empty="Chưa có dữ liệu theo nhóm tình huống"
-                      columns={[
-                        {
-                          key: "category",
-                          label: "Nhóm tình huống",
-                          render: (item) => valueLabel(item.category),
-                        },
-                        {
-                          key: "coverage",
-                          label: "Yêu cầu có liên kết",
-                          render: (item) => metricPercentage(item.coverage),
-                        },
-                      ]}
-                    />
-                  </Panel>
-                )}
-                {value.ai && (
-                  <details className="self-start rounded-xl border border-border bg-surface px-5 py-4">
-                    <summary className="cursor-pointer font-semibold text-ink">
-                      Kết quả AI và phản hồi duyệt
-                    </summary>
-                    <div className="mt-4 space-y-5">
-                      <section>
-                        <h3 className="mb-2 text-sm font-medium">Yêu cầu AI theo chức năng</h3>
+              <details className="space-y-4">
+                <summary className="cursor-pointer border-y border-border py-4 font-semibold text-ink">
+                  Số liệu chi tiết
+                </summary>
+                <div className="space-y-5">
+                  <div
+                    className={`grid gap-5 ${value.execution && value.defects ? "xl:grid-cols-2" : "grid-cols-1"}`}
+                  >
+                    {value.execution && (
+                      <Panel title="Kết quả thực thi">
                         <DataTable
-                          items={countRows(value.ai.ai_request_metrics?.by_capability, "request")}
-                          empty="Chưa ghi nhận yêu cầu AI"
-                          columns={[
-                            { key: "label", label: "Chức năng" },
-                            { key: "count", label: "Số lượt" },
-                          ]}
-                        />
-                        <p className="mt-2 text-xs text-ink-muted">
-                          Thành công:{" "}
-                          {metricCount(value.ai.ai_request_metrics?.by_status?.SUCCESS || 0)} · Cần
-                          xem lại: {metricCount(value.ai.ai_request_metrics?.degraded_count || 0)}
-                          {value.ai.ai_request_metrics?.sample_truncated
-                            ? " · Số liệu không bao gồm toàn bộ lịch sử"
-                            : ""}
-                        </p>
-                      </section>
-                      <section>
-                        <h3 className="mb-2 text-sm font-medium">Kết quả AI đã lưu</h3>
-                        <DataTable
-                          items={countRows(value.ai.ai_result_metrics?.by_capability, "result")}
-                          empty="Chưa có kết quả AI được lưu"
-                          columns={[
-                            { key: "label", label: "Chức năng" },
-                            { key: "count", label: "Số kết quả" },
-                          ]}
-                        />
-                        <p className="mt-2 text-xs text-ink-muted">
-                          Có dẫn chứng nguồn:{" "}
-                          {metricCount(value.ai.ai_result_metrics?.grounded_record_count || 0)} ·
-                          Chưa có tham chiếu nguồn:{" "}
-                          {metricCount(value.ai.ai_result_metrics?.without_evidence_ref_count || 0)}
-                          {value.ai.ai_result_metrics?.sample_truncated
-                            ? " · Số liệu không bao gồm toàn bộ lịch sử"
-                            : ""}
-                        </p>
-                      </section>
-                      <section>
-                        <h3 className="mb-2 text-sm font-medium">Quyết định duyệt đề xuất</h3>
-                        <DataTable
-                          items={
-                            Array.isArray(value.ai.proposal_status)
-                              ? value.ai.proposal_status.map((item) => ({
-                                  _id: item._id || item.status,
-                                  status: item._id || item.status,
-                                  count: item.count,
-                                }))
-                              : Object.entries(value.ai.proposal_status || {}).map(
-                                  ([status, count]) => ({ _id: status, status, count }),
-                                )
-                          }
-                          empty="Chưa có đề xuất được duyệt hoặc từ chối"
+                          items={Object.entries(value.execution.result_counts || {}).map(
+                            ([status, count]) => ({ _id: status, status, count }),
+                          )}
+                          empty="Chưa có kết quả thực thi"
                           columns={[
                             {
                               key: "status",
-                              label: "Quyết định",
+                              label: "Trạng thái",
                               render: (item) => valueLabel(item.status),
                             },
                             { key: "count", label: "Số lượng" },
                           ]}
                         />
-                        <p className="mt-2 text-xs text-ink-muted">
-                          Tỷ lệ được chấp nhận:{" "}
-                          {value.ai.proposal_acceptance_rate == null
-                            ? "Chưa đủ dữ liệu"
-                            : metricRate(value.ai.proposal_acceptance_rate)}{" "}
-                          · Đề xuất bị từ chối có ghi lý do:{" "}
-                          {metricCount(value.ai.rejection_review_note_recorded_count || 0)} · Chưa
-                          ghi lý do:{" "}
-                          {metricCount(value.ai.rejection_review_note_missing_count || 0)}
-                        </p>
-                        <p className="mt-2 text-xs text-ink-muted">
-                          Báo cáo chỉ tổng hợp dữ liệu đã lưu. Những quyết định cũ chưa có mã lý do
-                          hoặc danh sách trường thay đổi sẽ được giữ là chưa ghi nhận.
-                        </p>
-                        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                          <div>
-                            <h4 className="mb-2 text-sm font-medium">Lý do đã chọn</h4>
-                            <DataTable
-                              items={Object.entries(
-                                value.ai.decision_feedback?.reason_code_counts || {},
-                              ).map(([reason, count]) => ({
-                                _id: reason,
-                                reason,
-                                count,
-                                label: aiDecisionReasonLabels[reason] || valueLabel(reason),
-                              }))}
-                              empty="Chưa có mã lý do được ghi nhận"
-                              columns={[
-                                { key: "label", label: "Lý do" },
-                                { key: "count", label: "Số lần" },
-                              ]}
-                            />
-                          </div>
-                          <div>
-                            <h4 className="mb-2 text-sm font-medium">Nội dung thường được chỉnh</h4>
-                            <DataTable
-                              items={Object.entries(
-                                value.ai.decision_feedback?.changed_field_counts || {},
-                              ).map(([field, count]) => ({
-                                _id: field,
-                                field,
-                                count,
-                                label: aiChangedFieldLabels[field] || valueLabel(field),
-                              }))}
-                              empty="Chưa ghi nhận trường được chỉnh"
-                              columns={[
-                                { key: "label", label: "Nội dung" },
-                                { key: "count", label: "Số lần" },
-                              ]}
-                            />
-                          </div>
-                        </div>
-                        <p className="mt-2 text-xs text-ink-muted">
-                          Đã từ chối nhưng chưa chọn lý do:{" "}
-                          {metricCount(
-                            value.ai.decision_feedback?.decisions_without_reason_code || 0,
+                      </Panel>
+                    )}
+                    {value.defects && (
+                      <Panel title="Lỗi theo mức độ">
+                        <DataTable
+                          items={Object.entries(value.defects.severity_counts || {}).map(
+                            ([severity, count]) => ({ _id: severity, severity, count }),
                           )}
-                          {value.ai.decision_feedback?.sample_truncated
-                            ? " · Số liệu không bao gồm toàn bộ lịch sử"
-                            : ""}
-                        </p>
-                      </section>
-                      <section>
-                        <h3 className="mb-2 text-sm font-medium">
-                          Phản hồi về ca kiểm thử do AI đề xuất
-                        </h3>
-                        <p className="mb-3 text-xs text-ink-muted">
-                          Chỉ tính ca có nguồn gốc AI. Bản đã duyệt được so với đề xuất ban đầu; nội
-                          dung ghi chú và người duyệt không xuất hiện trong báo cáo này.
-                        </p>
-                        <div className="grid gap-4 xl:grid-cols-3">
-                          <div>
-                            <h4 className="mb-2 text-sm font-medium">Quyết định đã duyệt</h4>
+                          empty="Chưa có lỗi"
+                          columns={[
+                            {
+                              key: "severity",
+                              label: "Mức độ",
+                              render: (item) => valueLabel(item.severity),
+                            },
+                            { key: "count", label: "Số lượng" },
+                          ]}
+                        />
+                      </Panel>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 gap-5">
+                    {value.coverage && (
+                      <Panel title="Yêu cầu theo nhóm tình huống kiểm thử">
+                        <DataTable
+                          items={Object.entries(value.coverage.category_coverage || {}).map(
+                            ([category, coverage]) => ({ _id: category, category, coverage }),
+                          )}
+                          empty="Chưa có dữ liệu theo nhóm tình huống"
+                          columns={[
+                            {
+                              key: "category",
+                              label: "Nhóm tình huống",
+                              render: (item) => valueLabel(item.category),
+                            },
+                            {
+                              key: "coverage",
+                              label: "Yêu cầu có liên kết",
+                              render: (item) => metricPercentage(item.coverage),
+                            },
+                          ]}
+                        />
+                      </Panel>
+                    )}
+                    {value.ai && (
+                      <details className="self-start border-y border-border py-3">
+                        <summary className="cursor-pointer font-semibold text-ink">
+                          Kết quả AI và phản hồi duyệt
+                        </summary>
+                        <div className="mt-4 space-y-5">
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium">Yêu cầu AI theo chức năng</h3>
                             <DataTable
-                              items={Object.entries(
-                                value.ai.ai_test_case_feedback?.approved_decision_counts || {},
-                              ).map(([decision, count]) => ({
-                                _id: decision,
-                                decision,
-                                count,
-                                label: valueLabel(decision),
-                              }))}
-                              empty="Chưa có ca kiểm thử do AI đề xuất được duyệt"
+                              items={countRows(
+                                value.ai.ai_request_metrics?.by_capability,
+                                "request",
+                              )}
+                              empty="Chưa ghi nhận yêu cầu AI"
                               columns={[
-                                { key: "label", label: "Kết quả" },
+                                { key: "label", label: "Chức năng" },
+                                { key: "count", label: "Số lượt" },
+                              ]}
+                            />
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Thành công:{" "}
+                              {metricCount(value.ai.ai_request_metrics?.by_status?.SUCCESS || 0)} ·
+                              Cần xem lại:{" "}
+                              {metricCount(value.ai.ai_request_metrics?.degraded_count || 0)}
+                              {value.ai.ai_request_metrics?.sample_truncated
+                                ? " · Số liệu không bao gồm toàn bộ lịch sử"
+                                : ""}
+                            </p>
+                          </section>
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium">Kết quả AI đã lưu</h3>
+                            <DataTable
+                              items={countRows(value.ai.ai_result_metrics?.by_capability, "result")}
+                              empty="Chưa có kết quả AI được lưu"
+                              columns={[
+                                { key: "label", label: "Chức năng" },
+                                { key: "count", label: "Số kết quả" },
+                              ]}
+                            />
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Có dẫn chứng nguồn:{" "}
+                              {metricCount(value.ai.ai_result_metrics?.grounded_record_count || 0)}{" "}
+                              · Chưa có tham chiếu nguồn:{" "}
+                              {metricCount(
+                                value.ai.ai_result_metrics?.without_evidence_ref_count || 0,
+                              )}
+                              {value.ai.ai_result_metrics?.sample_truncated
+                                ? " · Số liệu không bao gồm toàn bộ lịch sử"
+                                : ""}
+                            </p>
+                          </section>
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium">Quyết định duyệt đề xuất</h3>
+                            <DataTable
+                              items={
+                                Array.isArray(value.ai.proposal_status)
+                                  ? value.ai.proposal_status.map((item) => ({
+                                      _id: item._id || item.status,
+                                      status: item._id || item.status,
+                                      count: item.count,
+                                    }))
+                                  : Object.entries(value.ai.proposal_status || {}).map(
+                                      ([status, count]) => ({ _id: status, status, count }),
+                                    )
+                              }
+                              empty="Chưa có đề xuất được duyệt hoặc từ chối"
+                              columns={[
+                                {
+                                  key: "status",
+                                  label: "Quyết định",
+                                  render: (item) => valueLabel(item.status),
+                                },
                                 { key: "count", label: "Số lượng" },
                               ]}
                             />
-                          </div>
-                          <div>
-                            <h4 className="mb-2 text-sm font-medium">Lý do yêu cầu chỉnh sửa</h4>
-                            <DataTable
-                              items={Object.entries(
-                                value.ai.ai_test_case_feedback?.changes_requested_reason_counts ||
-                                  {},
-                              ).map(([reason, count]) => ({
-                                _id: reason,
-                                reason,
-                                count,
-                                label: aiDecisionReasonLabels[reason] || valueLabel(reason),
-                              }))}
-                              empty="Chưa có lý do được ghi nhận"
-                              columns={[
-                                { key: "label", label: "Lý do" },
-                                { key: "count", label: "Số lần" },
-                              ]}
-                            />
-                          </div>
-                          <div>
-                            <h4 className="mb-2 text-sm font-medium">Trường thường được chỉnh</h4>
-                            <DataTable
-                              items={Object.entries(
-                                value.ai.ai_test_case_feedback?.changed_field_counts || {},
-                              ).map(([field, count]) => ({
-                                _id: field,
-                                field,
-                                count,
-                                label: aiChangedFieldLabels[field] || valueLabel(field),
-                              }))}
-                              empty="Chưa ghi nhận trường được chỉnh"
-                              columns={[
-                                { key: "label", label: "Nội dung" },
-                                { key: "count", label: "Số lần" },
-                              ]}
-                            />
-                          </div>
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Tỷ lệ được chấp nhận:{" "}
+                              {value.ai.proposal_acceptance_rate == null
+                                ? "Chưa đủ dữ liệu"
+                                : metricRate(value.ai.proposal_acceptance_rate)}{" "}
+                              · Đề xuất bị từ chối có ghi lý do:{" "}
+                              {metricCount(value.ai.rejection_review_note_recorded_count || 0)} ·
+                              Chưa ghi lý do:{" "}
+                              {metricCount(value.ai.rejection_review_note_missing_count || 0)}
+                            </p>
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Báo cáo chỉ tổng hợp dữ liệu đã lưu. Những quyết định cũ chưa có mã lý
+                              do hoặc danh sách trường thay đổi sẽ được giữ là chưa ghi nhận.
+                            </p>
+                            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">Lý do đã chọn</h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.decision_feedback?.reason_code_counts || {},
+                                  ).map(([reason, count]) => ({
+                                    _id: reason,
+                                    reason,
+                                    count,
+                                    label: aiDecisionReasonLabels[reason] || valueLabel(reason),
+                                  }))}
+                                  empty="Chưa có mã lý do được ghi nhận"
+                                  columns={[
+                                    { key: "label", label: "Lý do" },
+                                    { key: "count", label: "Số lần" },
+                                  ]}
+                                />
+                              </div>
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">
+                                  Nội dung thường được chỉnh
+                                </h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.decision_feedback?.changed_field_counts || {},
+                                  ).map(([field, count]) => ({
+                                    _id: field,
+                                    field,
+                                    count,
+                                    label: aiChangedFieldLabels[field] || valueLabel(field),
+                                  }))}
+                                  empty="Chưa ghi nhận trường được chỉnh"
+                                  columns={[
+                                    { key: "label", label: "Nội dung" },
+                                    { key: "count", label: "Số lần" },
+                                  ]}
+                                />
+                              </div>
+                            </div>
+                            <p className="mt-2 text-xs text-ink-muted">
+                              Đã từ chối nhưng chưa chọn lý do:{" "}
+                              {metricCount(
+                                value.ai.decision_feedback?.decisions_without_reason_code || 0,
+                              )}
+                              {value.ai.decision_feedback?.sample_truncated
+                                ? " · Số liệu không bao gồm toàn bộ lịch sử"
+                                : ""}
+                            </p>
+                          </section>
+                          <section>
+                            <h3 className="mb-2 text-sm font-medium">
+                              Phản hồi về ca kiểm thử do AI đề xuất
+                            </h3>
+                            <p className="mb-3 text-xs text-ink-muted">
+                              Chỉ tính ca có nguồn gốc AI. Bản đã duyệt được so với đề xuất ban đầu;
+                              nội dung ghi chú và người duyệt không xuất hiện trong báo cáo này.
+                            </p>
+                            <div className="grid gap-4 xl:grid-cols-3">
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">Quyết định đã duyệt</h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.ai_test_case_feedback?.approved_decision_counts || {},
+                                  ).map(([decision, count]) => ({
+                                    _id: decision,
+                                    decision,
+                                    count,
+                                    label: valueLabel(decision),
+                                  }))}
+                                  empty="Chưa có ca kiểm thử do AI đề xuất được duyệt"
+                                  columns={[
+                                    { key: "label", label: "Kết quả" },
+                                    { key: "count", label: "Số lượng" },
+                                  ]}
+                                />
+                              </div>
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">
+                                  Lý do yêu cầu chỉnh sửa
+                                </h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.ai_test_case_feedback
+                                      ?.changes_requested_reason_counts || {},
+                                  ).map(([reason, count]) => ({
+                                    _id: reason,
+                                    reason,
+                                    count,
+                                    label: aiDecisionReasonLabels[reason] || valueLabel(reason),
+                                  }))}
+                                  empty="Chưa có lý do được ghi nhận"
+                                  columns={[
+                                    { key: "label", label: "Lý do" },
+                                    { key: "count", label: "Số lần" },
+                                  ]}
+                                />
+                              </div>
+                              <div>
+                                <h4 className="mb-2 text-sm font-medium">
+                                  Trường thường được chỉnh
+                                </h4>
+                                <DataTable
+                                  items={Object.entries(
+                                    value.ai.ai_test_case_feedback?.changed_field_counts || {},
+                                  ).map(([field, count]) => ({
+                                    _id: field,
+                                    field,
+                                    count,
+                                    label: aiChangedFieldLabels[field] || valueLabel(field),
+                                  }))}
+                                  empty="Chưa ghi nhận trường được chỉnh"
+                                  columns={[
+                                    { key: "label", label: "Nội dung" },
+                                    { key: "count", label: "Số lần" },
+                                  ]}
+                                />
+                              </div>
+                            </div>
+                            <p className="mt-3 text-xs text-ink-muted">
+                              Đề xuất đã tạo:{" "}
+                              {metricCount(
+                                value.ai.ai_test_case_feedback?.generated_draft_count || 0,
+                              )}{" "}
+                              · Yêu cầu chỉnh sửa:{" "}
+                              {metricCount(
+                                value.ai.ai_test_case_feedback?.changes_requested_count || 0,
+                              )}{" "}
+                              · Ca kiểm thử AI đã duyệt trong báo cáo:{" "}
+                              {metricCount(
+                                Object.values(
+                                  value.ai.ai_test_case_feedback?.approved_decision_counts || {},
+                                ).reduce((total, count) => total + Number(count || 0), 0),
+                              )}
+                              {value.ai.ai_test_case_feedback?.generated_draft_sample_truncated ||
+                              value.ai.ai_test_case_feedback?.changes_requested_sample_truncated ||
+                              value.ai.ai_test_case_feedback?.approved_version_sample_truncated
+                                ? " · Số liệu không bao gồm toàn bộ lịch sử"
+                                : ""}
+                            </p>
+                          </section>
                         </div>
-                        <p className="mt-3 text-xs text-ink-muted">
-                          Đề xuất đã tạo:{" "}
-                          {metricCount(value.ai.ai_test_case_feedback?.generated_draft_count || 0)}{" "}
-                          · Yêu cầu chỉnh sửa:{" "}
-                          {metricCount(
-                            value.ai.ai_test_case_feedback?.changes_requested_count || 0,
-                          )}{" "}
-                          · Ca kiểm thử AI đã duyệt trong báo cáo:{" "}
-                          {metricCount(
-                            Object.values(
-                              value.ai.ai_test_case_feedback?.approved_decision_counts || {},
-                            ).reduce((total, count) => total + Number(count || 0), 0),
-                          )}
-                          {value.ai.ai_test_case_feedback?.generated_draft_sample_truncated ||
-                          value.ai.ai_test_case_feedback?.changes_requested_sample_truncated ||
-                          value.ai.ai_test_case_feedback?.approved_version_sample_truncated
-                            ? " · Số liệu không bao gồm toàn bộ lịch sử"
-                            : ""}
-                        </p>
-                      </section>
-                    </div>
-                  </details>
-                )}
-              </div>
-              {value.coverage && (
-                <Panel title="Mốc độ phủ">
-                  <DataTable
-                    items={value.snapshots}
-                    empty="Chưa có mốc độ phủ"
-                    columns={[
-                      { key: "label", label: "Tên" },
-                      {
-                        key: "created_at",
-                        label: "Thời điểm",
-                        render: (item) => formatDate(item.created_at),
-                      },
-                      {
-                        key: "requirement_coverage",
-                        label: "Yêu cầu có liên kết",
-                        render: (item) => metricPercentage(item.metrics?.requirement_coverage),
-                      },
-                      {
-                        key: "fresh_coverage",
-                        label: "Liên kết còn hiệu lực",
-                        render: (item) => metricPercentage(item.metrics?.fresh_coverage),
-                      },
-                      {
-                        key: "execution_coverage",
-                        label: "Ca kiểm thử đã chạy",
-                        render: (item) => metricPercentage(item.metrics?.execution_coverage),
-                      },
-                    ]}
-                  />
-                </Panel>
-              )}
-              {value.activity && (
-                <Panel title="Hoạt động toàn dự án">
-                  <div
-                    className="max-h-[34rem] overflow-auto overscroll-contain"
-                    role="region"
-                    aria-label="Danh sách hoạt động chất lượng"
-                    tabIndex={0}
-                  >
-                    <DataTable
-                      items={value.activity.filter(
-                        (item) => item.action !== "project_membership_required",
-                      )}
-                      empty="Chưa có hoạt động"
-                      columns={[
-                        {
-                          key: "action",
-                          label: "Hành động",
-                          render: (item) => reportActivityActionLabel(item.action),
-                        },
-                        {
-                          key: "entity_type",
-                          label: "Loại dữ liệu",
-                          render: (item) => valueLabel(item.entity_type),
-                        },
-                        {
-                          key: "entity_id",
-                          label: "Đối tượng",
-                          render: (item) =>
-                            item.entity_key ||
-                            item.entity_name ||
-                            item.entity_title ||
-                            valueLabel(item.entity_type) ||
-                            "—",
-                        },
-                        {
-                          key: "created_at",
-                          label: "Thời điểm",
-                          render: (item) => formatDate(item.created_at),
-                        },
-                      ]}
-                    />
+                      </details>
+                    )}
                   </div>
-                </Panel>
-              )}
+                  {value.coverage && Array.isArray(value.snapshots) && (
+                    <Panel title="Mốc độ phủ">
+                      <DataTable
+                        items={value.snapshots || []}
+                        empty="Chưa có mốc độ phủ"
+                        columns={[
+                          { key: "label", label: "Tên" },
+                          {
+                            key: "created_at",
+                            label: "Thời điểm",
+                            render: (item) => formatDate(item.created_at),
+                          },
+                          {
+                            key: "requirement_coverage",
+                            label: "Yêu cầu có liên kết",
+                            render: (item) => metricPercentage(item.metrics?.requirement_coverage),
+                          },
+                          {
+                            key: "fresh_coverage",
+                            label: "Liên kết còn hiệu lực",
+                            render: (item) => metricPercentage(item.metrics?.fresh_coverage),
+                          },
+                          {
+                            key: "execution_coverage",
+                            label: "Ca kiểm thử đã chạy",
+                            render: (item) => metricPercentage(item.metrics?.execution_coverage),
+                          },
+                        ]}
+                      />
+                    </Panel>
+                  )}
+                  {Array.isArray(value.activity) && (
+                    <section aria-labelledby="recent-report-activity-heading" className="space-y-3">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <h3 className="text-base font-semibold" id="recent-report-activity-heading">
+                          Hoạt động gần đây
+                        </h3>
+                        {recentActivity.length > 12 && (
+                          <button
+                            className="text-sm font-medium text-brand"
+                            type="button"
+                            onClick={() => setShowAllActivity((current) => !current)}
+                          >
+                            {showAllActivity
+                              ? "Thu gọn"
+                              : `Xem tất cả ${recentActivity.length} hoạt động`}
+                          </button>
+                        )}
+                      </div>
+                      <ol
+                        aria-label="Hoạt động gần đây"
+                        className="divide-y divide-border border-y border-border"
+                      >
+                        {(showAllActivity ? recentActivity : recentActivity.slice(0, 12)).map(
+                          (item, index) => (
+                            <li
+                              className="flex min-w-0 items-center justify-between gap-4 py-3"
+                              key={item._id || `${item.action}-${item.created_at}-${index}`}
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-ink">
+                                  {reportActivityActionLabel(item.action)}
+                                </p>
+                                <p className="mt-1 text-xs text-ink-muted">
+                                  {reportActivityEntityLabel(item.entity_type)}
+                                </p>
+                              </div>
+                              <time
+                                className="shrink-0 text-xs text-ink-muted"
+                                dateTime={item.created_at || undefined}
+                              >
+                                {formatDate(item.created_at)}
+                              </time>
+                            </li>
+                          ),
+                        )}
+                        {!recentActivity.length && (
+                          <li className="py-5 text-center text-sm text-ink-muted">
+                            Chưa có hoạt động
+                          </li>
+                        )}
+                      </ol>
+                    </section>
+                  )}
+                </div>
+              </details>
             </>
           ) : null}
         </div>

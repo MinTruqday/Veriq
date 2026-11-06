@@ -15,6 +15,8 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
 import { messageOf, valueLabel } from "../../lib/testing";
+import DocumentEditor from "../../editor/DocumentEditor";
+import { documentToMarkdown, emptyRichDocument } from "../../lib/knowledgeMarkdown.mjs";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 
 const sourceTypes = [
@@ -85,6 +87,8 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   const { ask, dialog } = useActionDialog();
   const [query, setQuery] = useState(initialQuery);
   const [result, setResult] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [sources, setSources] = useState([]);
   const [error, setError] = useState("");
   const [sourcesLoading, setSourcesLoading] = useState(true);
@@ -92,6 +96,12 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   const sourcesLoaded = useRef(false);
   const sourceListRequestGeneration = useRef(0);
   const [creatingSource, setCreatingSource] = useState(false);
+  const [sourceMembers, setSourceMembers] = useState([]);
+  const [sourceReleases, setSourceReleases] = useState([]);
+  const [sourceOptionErrors, setSourceOptionErrors] = useState({});
+  const [sourceOptionsLoading, setSourceOptionsLoading] = useState(false);
+  const [sourceContent, setSourceContent] = useState(emptyRichDocument);
+  const [sourceContentError, setSourceContentError] = useState("");
   const [metadataSource, setMetadataSource] = useState(null);
   const [metadataPage, setMetadataPage] = useState(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
@@ -106,9 +116,12 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   const sourceImageRequestGeneration = useRef(0);
   const metadataRequestGeneration = useRef(0);
   const sourceStructureRequestGeneration = useRef(0);
-  const projectSearchRequestGeneration = useRef(0);
+  const searchRequestGeneration = useRef(0);
+  const searchRequestBusy = useRef(false);
   const sourceProjectId = useRef(project._id);
   const canManage = project.current_permissions?.includes("knowledge.manage");
+  const canReadMembers = project.current_permissions?.includes("project.members.read");
+  const canReadReleases = project.current_permissions?.includes("release.read");
   const sourceHierarchy = sourceHierarchyFor(sourceStructurePage?.items);
   const loadSources = useCallback(async () => {
     const requestGeneration = ++sourceListRequestGeneration.current;
@@ -235,6 +248,36 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
     loadSources();
   }, [loadSources]);
   useEffect(() => {
+    let active = true;
+    const loadSourceOptions = async () => {
+      setSourceOptionsLoading(canReadMembers || canReadReleases);
+      const requests = await Promise.allSettled([
+        canReadMembers ? testingApi.listMembers(project._id) : Promise.resolve(null),
+        canReadReleases ? testingApi.listReleases(project._id) : Promise.resolve(null),
+      ]);
+      if (!active) return;
+      const nextErrors = {};
+      if (canReadMembers && requests[0].status === "fulfilled") {
+        setSourceMembers(requests[0].value || []);
+      } else if (canReadMembers) {
+        setSourceMembers([]);
+        nextErrors.members = messageOf(requests[0].reason);
+      }
+      if (canReadReleases && requests[1].status === "fulfilled") {
+        setSourceReleases(requests[1].value || []);
+      } else if (canReadReleases) {
+        setSourceReleases([]);
+        nextErrors.releases = messageOf(requests[1].reason);
+      }
+      setSourceOptionErrors(nextErrors);
+      setSourceOptionsLoading(false);
+    };
+    void loadSourceOptions();
+    return () => {
+      active = false;
+    };
+  }, [canReadMembers, canReadReleases, project._id]);
+  useEffect(() => {
     if (sourceProjectId.current !== project._id) {
       sourceProjectId.current = project._id;
       sourcesLoaded.current = false;
@@ -266,22 +309,34 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
   }, [project._id]);
   useEffect(() => {
     if (!useGlobalSearch || !initialQuery) return;
-    const requestGeneration = ++projectSearchRequestGeneration.current;
+    const requestGeneration = ++searchRequestGeneration.current;
+    searchRequestBusy.current = true;
+    setQuery(initialQuery);
+    setResult(null);
+    setSearching(true);
+    setSearchError("");
     testingApi
       .searchProject(project._id, initialQuery)
       .then((searchResult) => {
-        if (requestGeneration === projectSearchRequestGeneration.current) {
+        if (requestGeneration === searchRequestGeneration.current) {
           setResult(searchResult);
         }
       })
       .catch((reason) => {
-        if (requestGeneration === projectSearchRequestGeneration.current) {
-          setError(messageOf(reason));
+        if (requestGeneration === searchRequestGeneration.current) {
+          setSearchError(messageOf(reason));
+        }
+      })
+      .finally(() => {
+        if (requestGeneration === searchRequestGeneration.current) {
+          searchRequestBusy.current = false;
+          setSearching(false);
         }
       });
     return () => {
-      if (requestGeneration === projectSearchRequestGeneration.current) {
-        projectSearchRequestGeneration.current += 1;
+      if (requestGeneration === searchRequestGeneration.current) {
+        searchRequestGeneration.current += 1;
+        searchRequestBusy.current = false;
       }
     };
   }, [initialQuery, project._id, useGlobalSearch]);
@@ -303,36 +358,72 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
       <DegradedBanner mode={result?.degraded_mode} />
       <Panel title="Tìm trong dữ liệu dự án">
         <form
+          id="project-knowledge-search"
           className="flex flex-col gap-3 p-5 sm:flex-row"
           onSubmit={async (event) => {
             event.preventDefault();
+            if (searchRequestBusy.current) return;
+            const requestGeneration = ++searchRequestGeneration.current;
+            searchRequestBusy.current = true;
+            setSearching(true);
+            setSearchError("");
+            setResult(null);
             try {
-              setResult(
-                useGlobalSearch
-                  ? await testingApi.searchProject(project._id, query)
-                  : await testingApi.searchKnowledge(project._id, {
-                      query,
-                      artifact_types: [],
-                      limit: 50,
-                    }),
-              );
+              const searchResult = useGlobalSearch
+                ? await testingApi.searchProject(project._id, query)
+                : await testingApi.searchKnowledge(project._id, {
+                    query,
+                    artifact_types: [],
+                    limit: 50,
+                  });
+              if (requestGeneration === searchRequestGeneration.current) {
+                setResult(searchResult);
+              }
             } catch (reason) {
-              setError(messageOf(reason));
+              if (requestGeneration === searchRequestGeneration.current) {
+                setSearchError(messageOf(reason));
+              }
+            } finally {
+              if (requestGeneration === searchRequestGeneration.current) {
+                searchRequestBusy.current = false;
+                setSearching(false);
+              }
             }
           }}
         >
           <input
-            aria-label="Tìm trong dữ liệu dự án"
+            aria-label="Nội dung cần tìm trong dữ liệu dự án"
             className="apple-input flex-1"
             required
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Nhập nội dung cần tìm, ví dụ: quy tắc đăng nhập hoặc ca kiểm thử"
           />
-          <button className="apple-button" type="submit">
-            Tìm kiếm
+          <button className="apple-button" type="submit" disabled={searching}>
+            {searching ? "Đang tìm…" : "Tìm kiếm"}
           </button>
         </form>
+        {searchError && (
+          <div className="space-y-3 px-5 pb-5" role="alert">
+            <ErrorState message={searchError} />
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={searching}
+              onClick={() => {
+                const form = document.querySelector("#project-knowledge-search");
+                form?.requestSubmit();
+              }}
+            >
+              Thử lại tìm kiếm
+            </button>
+          </div>
+        )}
+        {searching && (
+          <p className="px-5 pb-4 text-sm text-ink-muted" role="status">
+            Đang tìm trong dữ liệu dự án…
+          </p>
+        )}
       </Panel>
       {result && (
         <Panel title="Kết quả tìm kiếm">
@@ -382,10 +473,15 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                 event.preventDefault();
                 const form = event.currentTarget;
                 const values = new FormData(form);
+                const content = documentToMarkdown(sourceContent);
+                if (!content) {
+                  setSourceContentError("Nhập nội dung tài liệu trước khi lưu.");
+                  return;
+                }
                 try {
                   await testingApi.createKnowledgeSource(project._id, {
                     title: values.get("title"),
-                    content: values.get("content"),
+                    content,
                     source_type: values.get("source_type"),
                     authority: values.get("authority"),
                     source_url: values.get("source_url") || null,
@@ -406,6 +502,8 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                       .filter(Boolean),
                   });
                   form.reset();
+                  setSourceContent(emptyRichDocument());
+                  setSourceContentError("");
                   setCreatingSource(false);
                   await loadSources();
                 } catch (reason) {
@@ -441,72 +539,170 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                   ))}
                 </select>
               </label>
-              <label className="field-label">
-                Người phụ trách
-                <input className="apple-input mt-2" name="owner_id" />
-              </label>
-              <label className="field-label">
-                Phân hệ
-                <input className="apple-input mt-2" name="module" />
-              </label>
-              <label className="field-label">
-                Thành phần
-                <input className="apple-input mt-2" name="component" />
-              </label>
-              <label className="field-label">
-                Khu vực sản phẩm
-                <input className="apple-input mt-2" name="product_area" />
-              </label>
-              <label className="field-label">
-                Bản phát hành
-                <input className="apple-input mt-2" name="release_id" />
-              </label>
-              <label className="field-label">
-                Mã nguồn bên ngoài
-                <input className="apple-input mt-2" name="external_source_id" />
-              </label>
-              <label className="field-label">
-                Trạng thái phê duyệt
-                <select className="apple-input mt-2" name="approval_status" defaultValue="DRAFT">
-                  <option value="DRAFT">Bản nháp</option>
-                  <option value="IN_REVIEW">Đang rà soát</option>
-                  <option value="APPROVED">Đã phê duyệt</option>
-                  <option value="REJECTED">Từ chối</option>
-                </select>
-              </label>
-              <label className="field-label">
-                Phiên bản nguồn
-                <input
-                  className="apple-input mt-2"
-                  name="source_version"
-                  defaultValue="1"
-                  required
+              <details className="rounded-panel border border-border md:col-span-2">
+                <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink">
+                  Thông tin phân loại và theo dõi (tùy chọn)
+                </summary>
+                <div className="grid gap-3 border-t border-border p-4 md:grid-cols-2">
+                  <label className="field-label">
+                    Người phụ trách
+                    <select
+                      className="apple-input mt-2"
+                      name="owner_id"
+                      disabled={
+                        !canReadMembers || sourceOptionsLoading || Boolean(sourceOptionErrors.members)
+                      }
+                    >
+                      <option value="">
+                        {sourceOptionsLoading ? "Đang tải thành viên" : "Chưa phân công"}
+                      </option>
+                      {sourceMembers
+                        .filter((member) => member.status === "ACTIVE")
+                        .map((member) => (
+                          <option key={member.user_id} value={member.user_id}>
+                            {member.user_label ||
+                              member.user?.full_name ||
+                              member.user?.email ||
+                              "Tài khoản không xác định"}
+                          </option>
+                        ))}
+                    </select>
+                    {!canReadMembers && (
+                      <span className="mt-1 block text-xs text-ink-muted">
+                        Cần quyền xem thành viên để phân công người phụ trách.
+                      </span>
+                    )}
+                    {sourceOptionErrors.members && (
+                      <span className="mt-1 block text-xs text-danger" role="alert">
+                        Không thể tải danh sách thành viên.
+                      </span>
+                    )}
+                  </label>
+                  <label className="field-label">
+                    Bản phát hành
+                    <select
+                      className="apple-input mt-2"
+                      name="release_id"
+                      disabled={
+                        !canReadReleases || sourceOptionsLoading || Boolean(sourceOptionErrors.releases)
+                      }
+                    >
+                      <option value="">
+                        {sourceOptionsLoading
+                          ? "Đang tải bản phát hành"
+                          : "Không gắn với bản phát hành"}
+                      </option>
+                      {sourceReleases.map((release) => (
+                        <option key={release._id} value={release._id}>
+                          {release.name || release.key || release.version || "Bản phát hành"}
+                        </option>
+                      ))}
+                    </select>
+                    {!canReadReleases && (
+                      <span className="mt-1 block text-xs text-ink-muted">
+                        Cần quyền xem bản phát hành để liên kết tài liệu.
+                      </span>
+                    )}
+                    {sourceOptionErrors.releases && (
+                      <span className="mt-1 block text-xs text-danger" role="alert">
+                        Không thể tải danh sách bản phát hành.
+                      </span>
+                    )}
+                  </label>
+                  <label className="field-label">
+                    Phân hệ
+                    <input className="apple-input mt-2" name="module" />
+                  </label>
+                  <label className="field-label">
+                    Thành phần
+                    <input className="apple-input mt-2" name="component" />
+                  </label>
+                  <label className="field-label">
+                    Khu vực sản phẩm
+                    <input className="apple-input mt-2" name="product_area" />
+                  </label>
+                  <label className="field-label">
+                    Mã nguồn bên ngoài
+                    <input className="apple-input mt-2" name="external_source_id" />
+                  </label>
+                  <label className="field-label">
+                    Trạng thái phê duyệt
+                    <select className="apple-input mt-2" name="approval_status" defaultValue="DRAFT">
+                      <option value="DRAFT">Bản nháp</option>
+                      <option value="IN_REVIEW">Đang rà soát</option>
+                      <option value="APPROVED">Đã phê duyệt</option>
+                      <option value="REJECTED">Từ chối</option>
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Phiên bản nguồn
+                    <input
+                      className="apple-input mt-2"
+                      name="source_version"
+                      defaultValue="1"
+                      required
+                    />
+                  </label>
+                  <label className="field-label">
+                    Người phê duyệt
+                    <select
+                      className="apple-input mt-2"
+                      name="approved_by"
+                      disabled={
+                        !canReadMembers || sourceOptionsLoading || Boolean(sourceOptionErrors.members)
+                      }
+                    >
+                      <option value="">
+                        {sourceOptionsLoading ? "Đang tải thành viên" : "Chưa ghi nhận"}
+                      </option>
+                      {sourceMembers
+                        .filter((member) => member.status === "ACTIVE")
+                        .map((member) => (
+                          <option key={member.user_id} value={member.user_id}>
+                            {member.user_label ||
+                              member.user?.full_name ||
+                              member.user?.email ||
+                              "Tài khoản không xác định"}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Thời điểm phê duyệt
+                    <input className="apple-input mt-2" name="approved_at" type="datetime-local" />
+                  </label>
+                  <label className="field-label">
+                    Hiệu lực từ
+                    <input className="apple-input mt-2" name="effective_from" type="datetime-local" />
+                  </label>
+                  <label className="field-label">
+                    Liên kết nguồn
+                    <input className="apple-input mt-2" name="source_url" type="url" />
+                  </label>
+                  <label className="field-label">
+                    Nhãn phân cách bằng dấu phẩy
+                    <input className="apple-input mt-2" name="tags" />
+                  </label>
+                </div>
+              </details>
+              <div className="min-w-0 md:col-span-2">
+                <p className="field-label mb-2">Nội dung tài liệu</p>
+                <DocumentEditor
+                  label="Nội dung tài liệu"
+                  minHeight="min-h-56"
+                  showTableOfContents={false}
+                  value={sourceContent}
+                  onChange={(content) => {
+                    setSourceContent(content);
+                    setSourceContentError("");
+                  }}
                 />
-              </label>
-              <label className="field-label">
-                Người phê duyệt
-                <input className="apple-input mt-2" name="approved_by" />
-              </label>
-              <label className="field-label">
-                Thời điểm phê duyệt
-                <input className="apple-input mt-2" name="approved_at" type="datetime-local" />
-              </label>
-              <label className="field-label">
-                Hiệu lực từ
-                <input className="apple-input mt-2" name="effective_from" type="datetime-local" />
-              </label>
-              <label className="field-label">
-                Liên kết nguồn
-                <input className="apple-input mt-2" name="source_url" type="url" />
-              </label>
-              <label className="field-label">
-                Nhãn phân cách bằng dấu phẩy
-                <input className="apple-input mt-2" name="tags" />
-              </label>
-              <label className="field-label md:col-span-2">
-                Nội dung tài liệu
-                <textarea className="apple-input mt-2 min-h-36" name="content" required />
-              </label>
+                {sourceContentError && (
+                  <p className="mt-2 text-sm text-danger" role="alert">
+                    {sourceContentError}
+                  </p>
+                )}
+              </div>
               <div className="action-dialog-footer flex justify-end gap-3 md:col-span-2">
                 <button
                   className="secondary-button"

@@ -24,8 +24,16 @@ import {
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
+import { RefreshCw, Trash2, UserCheck, UserX, X } from "lucide-react";
 
 const AUDIT_PAGE_SIZE = 25;
+
+function auditActionLabel(action) {
+  const label = valueLabel(action);
+  return label === action && /^[a-z0-9]+(?:[._][a-z0-9]+)+$/i.test(String(action || ""))
+    ? "Cập nhật"
+    : label;
+}
 
 const toggleSettings = [
   ["requirement_lint_blocking", "Chặn duyệt yêu cầu khi còn lỗi kiểm tra"],
@@ -67,6 +75,68 @@ const toggleSettings = [
   ],
 ];
 
+const toggleSettingGroups = [
+  {
+    label: "Yêu cầu và ca kiểm thử",
+    keys: [
+      "requirement_lint_blocking",
+      "trace_before_baseline",
+      "testcase_lint_blocking",
+      "trace_before_testcase_approve",
+    ],
+  },
+  {
+    label: "Lần chạy kiểm thử",
+    keys: [
+      "tester_can_create_run",
+      "tester_can_manage_runs",
+      "tester_can_assign_runs",
+      "tester_can_start_runs",
+      "tester_can_complete_runs",
+      "tester_can_abort_runs",
+      "tester_can_correct_results",
+      "tester_can_assign_testplans",
+      "strict_test_plan_approval",
+      "require_release_for_test_plan",
+      "require_environment_for_test_plan",
+      "partial_complete_allowed",
+      "allow_not_applicable_results",
+    ],
+  },
+  {
+    label: "Xử lý lỗi",
+    keys: [
+      "tester_can_close_defect",
+      "tester_can_reject_defect",
+      "tester_can_mark_duplicate_defect",
+      "ba_can_create_defect",
+      "developer_can_create_defect",
+      "ba_can_update_defect",
+    ],
+  },
+  {
+    label: "Truy vết và tài liệu",
+    keys: [
+      "tester_can_confirm_trace",
+      "tester_can_revoke_trace",
+      "ba_can_confirm_trace",
+      "ba_can_revoke_trace",
+      "tester_can_override_impact",
+      "tester_can_close_impact",
+      "tester_can_manage_knowledge",
+      "tester_can_archive_testcase_templates",
+    ],
+  },
+  {
+    label: "Báo cáo và phát hành",
+    keys: [
+      "viewer_can_export",
+      "developer_can_export",
+      "require_completion_report_before_release_close",
+    ],
+  },
+];
+
 const numberSettings = [
   ["impact_confidence_threshold", "Ngưỡng tin cậy phân tích ảnh hưởng", 0, 1, 0.01],
   ["testcase_duplicate_threshold", "Ngưỡng phát hiện ca kiểm thử trùng", 0, 1, 0.01],
@@ -100,6 +170,14 @@ function memberDisplayName(member) {
   );
 }
 
+function analyticsValue(value, suffix = "") {
+  if (value === null || value === undefined || value === "") return "Chưa có dữ liệu";
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return "Chưa có dữ liệu";
+  const formattedValue = suffix === "ms" ? String(Math.round(numericValue)) : String(numericValue);
+  return suffix ? `${formattedValue} ${suffix}` : formattedValue;
+}
+
 const projectTypeLabels = {
   web: "Ứng dụng web",
   mobile: "Ứng dụng di động",
@@ -125,11 +203,15 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const { ask, dialog } = useActionDialog();
   const [audit, setAudit] = useState([]);
   const [auditPage, setAuditPage] = useState(1);
+  const [auditQuery, setAuditQuery] = useState("");
+  const [auditAction, setAuditAction] = useState("");
   const [members, setMembers] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [loadErrors, setLoadErrors] = useState({});
   const [timezoneError, setTimezoneError] = useState("");
+  const [projectSaveNotice, setProjectSaveNotice] = useState("");
+  const [savingProjectSettings, setSavingProjectSettings] = useState(false);
   const [activeSettingsSection, setActiveSettingsSection] = useState("project");
   const loadedProjectId = useRef(project._id);
   const settingsLoadRevision = useRef(0);
@@ -242,6 +324,28 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   ).length;
   const isOnlyActiveQa = (item) =>
     item.status === "ACTIVE" && memberRoles(item).includes("QA") && activeQaCount === 1;
+  const auditActions = useMemo(
+    () => [...new Set(audit.map((item) => item.action).filter(Boolean))].sort(),
+    [audit],
+  );
+  const filteredAudit = useMemo(() => {
+    const query = auditQuery.trim().toLocaleLowerCase();
+    return audit.filter((item) => {
+      if (auditAction && item.action !== auditAction) return false;
+      if (!query) return true;
+      return [
+        item.action,
+        item.entity_type,
+        item.entity_id,
+        item.actor_label,
+        item.created_at,
+      ].some((value) =>
+        String(value || "")
+          .toLocaleLowerCase()
+          .includes(query),
+      );
+    });
+  }, [audit, auditAction, auditQuery]);
   const loadSettingsData = useCallback(async () => {
     const requestRevision = ++settingsLoadRevision.current;
     if (loadedProjectId.current !== project._id) {
@@ -288,31 +392,86 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   }, [loadSettingsData]);
   if (workspaceView === "audit") {
     return (
-      <WorkspacePage title="Nhật ký kiểm toán" actions={<ProjectCrumb projectId={project._id} />}>
+      <WorkspacePage
+        title="Nhật ký kiểm toán"
+        actions={
+          <div className="flex items-center gap-2">
+            <ProjectCrumb projectId={project._id} />
+            <button
+              aria-label={dataLoading ? "Đang tải nhật ký" : "Tải lại nhật ký"}
+              className="icon-button h-10 w-10"
+              disabled={dataLoading}
+              onClick={() => void loadSettingsData()}
+              title={dataLoading ? "Đang tải nhật ký" : "Tải lại nhật ký"}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+          </div>
+        }
+      >
         {error && <ErrorState message={error} />}
-        <Panel>
+        <Panel
+          title="Sự kiện trong dự án"
+          description={
+            loadErrors.audit ? "Không thể tải nhật ký" : `${filteredAudit.length} sự kiện`
+          }
+        >
           {dataLoading ? (
             <div className="p-5">
               <LoadingState />
             </div>
           ) : loadErrors.audit ? (
-            <div className="space-y-3 p-5">
+            <div className="p-5">
               <ErrorState message={loadErrors.audit} />
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => void loadSettingsData()}
-              >
-                Tải lại
-              </button>
             </div>
           ) : (
             <>
+              <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.5fr)] sm:px-5">
+                <label className="field-label">
+                  Tìm trong nhật ký
+                  <input
+                    className="apple-input mt-2"
+                    onChange={(event) => {
+                      setAuditQuery(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    placeholder="Hành động, đối tượng hoặc người thực hiện"
+                    type="search"
+                    value={auditQuery}
+                  />
+                </label>
+                <label className="field-label">
+                  Hành động
+                  <select
+                    className="apple-input mt-2"
+                    onChange={(event) => {
+                      setAuditAction(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    value={auditAction}
+                  >
+                    <option value="">Tất cả hành động</option>
+                    {auditActions.map((action) => (
+                      <option key={action} value={action}>
+                        {auditActionLabel(action)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <DataTable
-                items={audit.slice((auditPage - 1) * AUDIT_PAGE_SIZE, auditPage * AUDIT_PAGE_SIZE)}
-                empty="Chưa có sự kiện"
+                items={filteredAudit.slice(
+                  (auditPage - 1) * AUDIT_PAGE_SIZE,
+                  auditPage * AUDIT_PAGE_SIZE,
+                )}
+                empty={audit.length ? "Không có sự kiện khớp bộ lọc" : "Chưa có sự kiện"}
                 columns={[
-                  { key: "action", label: "Hành động", render: (item) => valueLabel(item.action) },
+                  {
+                    key: "action",
+                    label: "Hành động",
+                    render: (item) => auditActionLabel(item.action),
+                  },
                   {
                     key: "entity_type",
                     label: "Loại dữ liệu",
@@ -345,7 +504,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
               <Pagination
                 page={auditPage}
                 pageSize={AUDIT_PAGE_SIZE}
-                total={audit.length}
+                total={filteredAudit.length}
                 onChange={setAuditPage}
               />
             </>
@@ -372,21 +531,42 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
           <Panel title="Thông tin dự án">
             <form
               className="space-y-4 p-5"
+              onChange={() => setProjectSaveNotice("")}
               onSubmit={async (event) => {
                 event.preventDefault();
+                if (can("project.update") && plannedDateRangeInvalid) {
+                  setError("Ngày kết thúc phải sau ngày bắt đầu.");
+                  setProjectSaveNotice("");
+                  return;
+                }
                 if (can("project.update") && !timezoneIsValid) {
                   setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu.");
+                  setProjectSaveNotice("");
                   return;
                 }
                 setTimezoneError("");
                 setError("");
+                setProjectSaveNotice("");
+                setSavingProjectSettings(true);
                 try {
                   const canManageSettings = can("project.settings.manage");
                   const canUpdateProject = can("project.update");
                   const payload = {
                     expected_revision: project.revision,
                     ...(canUpdateProject
-                      ? { name, description, project_type: projectType, locale, timezone }
+                      ? {
+                          name,
+                          description,
+                          project_type: projectType,
+                          locale,
+                          timezone,
+                          planned_start_at: plannedStartAt
+                            ? new Date(`${plannedStartAt}T00:00:00.000Z`).toISOString()
+                            : null,
+                          planned_end_at: plannedEndAt
+                            ? new Date(`${plannedEndAt}T00:00:00.000Z`).toISOString()
+                            : null,
+                        }
                       : {}),
                     ...(canManageSettings
                       ? {
@@ -424,81 +604,91 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   } else {
                     await testingApi.updateProject(project._id, payload);
                   }
-                  await onProjectChange();
+                  const refreshed = await onProjectChange();
+                  setProjectSaveNotice(
+                    refreshed === false
+                      ? "Đã lưu thay đổi, nhưng chưa tải lại được thông tin dự án."
+                      : "Đã lưu thay đổi dự án.",
+                  );
                 } catch (reason) {
                   setError(messageOf(reason));
+                } finally {
+                  setSavingProjectSettings(false);
                 }
               }}
             >
-              <label className="field-label">
-                Tên
-                <input
-                  className="apple-input mt-2"
-                  readOnly={!can("project.update")}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <section className="space-y-4 rounded-xl border border-border bg-white p-4 sm:p-5">
+                <h3 className="text-sm font-semibold text-ink">Thông tin cơ bản</h3>
                 <label className="field-label">
-                  Loại dự án
-                  <select
-                    className="apple-input mt-2"
-                    disabled={!can("project.update")}
-                    value={projectType}
-                    onChange={(event) => setProjectType(event.target.value)}
-                  >
-                    {["web", "mobile", "api", "desktop", "embedded", "other"].map((value) => (
-                      <option value={value} key={value}>
-                        {projectTypeLabels[value]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-label">
-                  Ngôn ngữ và vùng
+                  Tên
                   <input
                     className="apple-input mt-2"
                     readOnly={!can("project.update")}
-                    value={locale}
-                    onChange={(event) => setLocale(event.target.value)}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
                   />
                 </label>
-                <label className="field-label sm:col-span-2">
-                  Múi giờ
-                  <select
-                    className="apple-input mt-2"
-                    aria-invalid={!timezoneIsValid || Boolean(timezoneError)}
-                    aria-describedby={
-                      !timezoneIsValid || timezoneError ? "project-timezone-error" : undefined
-                    }
-                    disabled={!can("project.update")}
-                    value={timezone}
-                    onChange={(event) => {
-                      setTimezone(event.target.value);
-                      setTimezoneError("");
-                    }}
-                  >
-                    {projectTimeZoneOptions.map((option) => (
-                      <option key={option.value} value={option.value} disabled={!option.valid}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {(timezoneError || !timezoneIsValid) && (
-                    <span
-                      id="project-timezone-error"
-                      className={`mt-2 block text-sm ${timezoneError ? "text-danger" : "text-warning"}`}
-                      role={timezoneError ? "alert" : "status"}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="field-label">
+                    Loại dự án
+                    <select
+                      className="apple-input mt-2"
+                      disabled={!can("project.update")}
+                      value={projectType}
+                      onChange={(event) => setProjectType(event.target.value)}
                     >
-                      {timezoneError ||
-                        "Múi giờ đã lưu không hợp lệ. Chọn múi giờ trong danh sách trước khi lưu."}
-                    </span>
-                  )}
-                </label>
-              </div>
+                      {["web", "mobile", "api", "desktop", "embedded", "other"].map((value) => (
+                        <option value={value} key={value}>
+                          {projectTypeLabels[value]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field-label">
+                    Ngôn ngữ và vùng
+                    <input
+                      className="apple-input mt-2"
+                      readOnly={!can("project.update")}
+                      value={locale}
+                      onChange={(event) => setLocale(event.target.value)}
+                    />
+                  </label>
+                  <label className="field-label sm:col-span-2">
+                    Múi giờ
+                    <select
+                      className="apple-input mt-2"
+                      aria-invalid={!timezoneIsValid || Boolean(timezoneError)}
+                      aria-describedby={
+                        !timezoneIsValid || timezoneError ? "project-timezone-error" : undefined
+                      }
+                      disabled={!can("project.update")}
+                      value={timezone}
+                      onChange={(event) => {
+                        setTimezone(event.target.value);
+                        setTimezoneError("");
+                      }}
+                    >
+                      {projectTimeZoneOptions.map((option) => (
+                        <option key={option.value} value={option.value} disabled={!option.valid}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {(timezoneError || !timezoneIsValid) && (
+                      <span
+                        id="project-timezone-error"
+                        className={`mt-2 block text-sm ${timezoneError ? "text-danger" : "text-warning"}`}
+                        role={timezoneError ? "alert" : "status"}
+                      >
+                        {timezoneError ||
+                          "Múi giờ đã lưu không hợp lệ. Chọn múi giờ trong danh sách trước khi lưu."}
+                      </span>
+                    )}
+                  </label>
+                </div>
+              </section>
               {can("project.settings.manage") && (
-                <section className="space-y-3 border-t border-border pt-4">
+                <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-ink">Trách nhiệm quyết định</h3>
                   {loadErrors.members && <ErrorState message={loadErrors.members} />}
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -536,7 +726,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   </div>
                 </section>
               )}
-              <section className="space-y-3 border-t border-border pt-4">
+              <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
                 <div>
                   <h3 className="text-sm font-semibold text-ink">Tự động hóa kiểm thử</h3>
                   <p className="mt-1 text-sm text-ink-muted">
@@ -590,7 +780,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 </div>
               </section>
               {can("project.update") && (
-                <section className="space-y-3 border-t border-border pt-4">
+                <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-ink">Thời gian dự án</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="field-label">
@@ -619,32 +809,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         Ngày kết thúc phải sau ngày bắt đầu.
                       </p>
                     )}
-                    <div className="sm:col-span-2">
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={!can("project.update") || plannedDateRangeInvalid}
-                        onClick={async () => {
-                          setError("");
-                          try {
-                            await testingApi.updateProject(project._id, {
-                              expected_revision: project.revision,
-                              planned_start_at: plannedStartAt
-                                ? new Date(`${plannedStartAt}T00:00:00.000Z`).toISOString()
-                                : null,
-                              planned_end_at: plannedEndAt
-                                ? new Date(`${plannedEndAt}T00:00:00.000Z`).toISOString()
-                                : null,
-                            });
-                            await onProjectChange();
-                          } catch (reason) {
-                            setError(messageOf(reason));
-                          }
-                        }}
-                      >
-                        Lưu thời gian dự án
-                      </button>
-                    </div>
                   </div>
                 </section>
               )}
@@ -654,72 +818,124 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                     Chính sách dự án
                   </summary>
                   <div className="mt-4 space-y-3">
-                    {toggleSettings.map(([key, label]) => (
-                      <label className="flex items-center gap-3 text-[13px]" key={key}>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(settings[key])}
-                          onChange={(event) =>
-                            setSettings((current) => ({ ...current, [key]: event.target.checked }))
-                          }
-                        />
-                        {label}
-                      </label>
-                    ))}
-                    {numberSettings.map(([key, label, min, max, step]) => (
-                      <label className="field-label" key={key}>
-                        {label}
-                        <input
-                          className="apple-input mt-2"
-                          type="number"
-                          min={min}
-                          max={max}
-                          step={step}
-                          value={settings[key]}
-                          onChange={(event) =>
-                            setSettings((current) => ({
-                              ...current,
-                              [key]: Number(event.target.value),
-                            }))
-                          }
-                        />
-                      </label>
-                    ))}
-                    {selectSettings.map(([key, label, values]) => (
-                      <label className="field-label" key={key}>
-                        {label}
-                        <select
-                          className="apple-input mt-2"
-                          value={settings[key]}
-                          onChange={(event) =>
-                            setSettings((current) => ({ ...current, [key]: event.target.value }))
-                          }
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {toggleSettingGroups.map((group) => (
+                        <fieldset
+                          className="min-w-0 rounded-lg border border-border p-3"
+                          key={group.label}
                         >
-                          {values.map((value) => (
-                            <option value={value} key={value}>
-                              {settingValueLabels[value] || valueLabel(value)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ))}
+                          <legend className="px-1 text-sm font-semibold text-ink">
+                            {group.label}
+                          </legend>
+                          <div className="grid gap-3 pt-1">
+                            {group.keys.map((key) => {
+                              const setting = toggleSettings.find((item) => item[0] === key);
+                              if (!setting) return null;
+                              return (
+                                <label
+                                  className="flex items-start gap-3 text-[13px] leading-5"
+                                  key={key}
+                                >
+                                  <input
+                                    className="mt-1"
+                                    type="checkbox"
+                                    checked={Boolean(settings[key])}
+                                    onChange={(event) =>
+                                      setSettings((current) => ({
+                                        ...current,
+                                        [key]: event.target.checked,
+                                      }))
+                                    }
+                                  />
+                                  <span>{setting[1]}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </fieldset>
+                      ))}
+                    </div>
+                    <section className="grid gap-3 border-t border-border pt-4">
+                      <h4 className="text-sm font-semibold text-ink">Ngưỡng kiểm soát</h4>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {numberSettings.map(([key, label, min, max, step]) => (
+                          <label className="field-label" key={key}>
+                            {label}
+                            <input
+                              className="apple-input mt-2"
+                              type="number"
+                              min={min}
+                              max={max}
+                              step={step}
+                              value={settings[key]}
+                              onChange={(event) =>
+                                setSettings((current) => ({
+                                  ...current,
+                                  [key]: Number(event.target.value),
+                                }))
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </section>
+                    <section className="grid gap-3 border-t border-border pt-4">
+                      <h4 className="text-sm font-semibold text-ink">Giá trị mặc định</h4>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {selectSettings.map(([key, label, values]) => (
+                          <label className="field-label" key={key}>
+                            {label}
+                            <select
+                              className="apple-input mt-2"
+                              value={settings[key]}
+                              onChange={(event) =>
+                                setSettings((current) => ({
+                                  ...current,
+                                  [key]: event.target.value,
+                                }))
+                              }
+                            >
+                              {values.map((value) => (
+                                <option value={value} key={value}>
+                                  {settingValueLabels[value] || valueLabel(value)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    </section>
                   </div>
                 </details>
               )}
-              <label className="field-label">
-                Mô tả
-                <textarea
-                  className="apple-input mt-2 min-h-28"
-                  readOnly={!can("project.update")}
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-              </label>
-              <div className="flex flex-wrap gap-3">
+              <section className="rounded-xl border border-border bg-white p-4 sm:p-5">
+                <label className="field-label">
+                  Mô tả
+                  <textarea
+                    className="apple-input mt-2 min-h-28"
+                    readOnly={!can("project.update")}
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                  />
+                </label>
+              </section>
+              <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
                 {(can("project.update") || can("project.settings.manage")) && (
-                  <button className="apple-button" type="submit">
-                    Lưu thay đổi
+                  <button
+                    className="apple-button"
+                    type="submit"
+                    disabled={
+                      savingProjectSettings ||
+                      (can("project.update") && (plannedDateRangeInvalid || !timezoneIsValid))
+                    }
+                  >
+                    {savingProjectSettings ? "Đang lưu…" : "Lưu thay đổi"}
                   </button>
+                )}
+                {projectSaveNotice && (
+                  <p className="text-sm text-ink-muted" role="status">
+                    {projectSaveNotice}
+                  </p>
                 )}
                 {can("project.archive") && (
                   <button
@@ -893,14 +1109,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                     </option>
                                   ))}
                                 </select>
-                                <span className="text-[11px] text-ink-muted">
-                                  Được cấp: {roleLabels.join(", ")}
-                                </span>
-                                {roles.length > 1 && (
-                                  <span className="text-[11px] text-ink-muted">
-                                    Đổi lựa chọn sẽ thay thế toàn bộ vai trò này.
-                                  </span>
-                                )}
                               </span>
                             ) : (
                               <span>{roleLabels.join(", ")}</span>
@@ -912,7 +1120,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                           label: "Trạng thái",
                           render: (item) => valueLabel(item.status),
                         },
-                        { key: "membership_revision", label: "Lần sửa đổi" },
                         {
                           key: "actions",
                           label: "Thao tác",
@@ -923,11 +1130,16 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                 Bổ nhiệm thêm trưởng nhóm trước khi thay đổi hoặc xóa
                               </span>
                             ) : (
-                              <span className="flex flex-wrap gap-2">
+                              <span
+                                aria-label={`Thao tác với ${memberDisplayName(item)}`}
+                                className="flex items-center gap-1"
+                              >
                                 {item.status === "INVITED" ? (
                                   <>
                                     <button
-                                      className="secondary-button"
+                                      aria-label={`Gửi lại lời mời cho ${memberDisplayName(item)}`}
+                                      className="icon-button h-9 w-9"
+                                      title="Gửi lại lời mời"
                                       type="button"
                                       onClick={async () => {
                                         try {
@@ -941,10 +1153,12 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                         }
                                       }}
                                     >
-                                      Gửi lại lời mời
+                                      <RefreshCw aria-hidden="true" size={16} />
                                     </button>
                                     <button
-                                      className="secondary-button"
+                                      aria-label={`Hủy lời mời của ${memberDisplayName(item)}`}
+                                      className="icon-button h-9 w-9"
+                                      title="Hủy lời mời"
                                       type="button"
                                       onClick={async () => {
                                         try {
@@ -958,12 +1172,14 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                         }
                                       }}
                                     >
-                                      Hủy lời mời
+                                      <X aria-hidden="true" size={16} />
                                     </button>
                                   </>
                                 ) : item.status !== "CANCELLED" ? (
                                   <button
-                                    className="secondary-button"
+                                    aria-label={`${item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"} ${memberDisplayName(item)}`}
+                                    className="icon-button h-9 w-9"
+                                    title={item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"}
                                     type="button"
                                     onClick={async () => {
                                       try {
@@ -977,11 +1193,17 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                       }
                                     }}
                                   >
-                                    {item.status === "ACTIVE" ? "Vô hiệu hóa" : "Kích hoạt"}
+                                    {item.status === "ACTIVE" ? (
+                                      <UserX aria-hidden="true" size={16} />
+                                    ) : (
+                                      <UserCheck aria-hidden="true" size={16} />
+                                    )}
                                   </button>
                                 ) : null}
                                 <button
-                                  className="secondary-button"
+                                  aria-label={`Xóa ${memberDisplayName(item)} khỏi dự án`}
+                                  className="icon-button h-9 w-9 text-danger"
+                                  title="Xóa thành viên"
                                   type="button"
                                   onClick={async () => {
                                     const answer = await ask({
@@ -999,7 +1221,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                     }
                                   }}
                                 >
-                                  Xóa
+                                  <Trash2 aria-hidden="true" size={16} />
                                 </button>
                               </span>
                             ),
@@ -1030,34 +1252,38 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 </button>
               </div>
             ) : (
-              <div className="grid gap-5 p-5 sm:grid-cols-2">
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
                 {can("analytics.read") && (
                   <>
-                    <div>
-                      <p className="text-3xl font-semibold">
-                        {analytics?.impact_analysis_count || 0}
+                    <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
+                      <p className="text-2xl font-semibold text-ink">
+                        {analyticsValue(analytics?.impact_analysis_count)}
                       </p>
-                      <p className="field-label mt-2">Phân tích ảnh hưởng</p>
+                      <p className="mt-2 text-sm text-ink-muted">Phân tích ảnh hưởng</p>
                     </div>
-                    <div>
-                      <p className="text-3xl font-semibold">{analytics?.tests_stale || 0}</p>
-                      <p className="field-label mt-2">Ca kiểm thử cũ</p>
+                    <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
+                      <p className="text-2xl font-semibold text-ink">
+                        {analyticsValue(analytics?.tests_stale)}
+                      </p>
+                      <p className="mt-2 text-sm text-ink-muted">Ca kiểm thử cũ</p>
                     </div>
                   </>
                 )}
                 {can("analytics.ai.read") && (
                   <>
-                    <div>
-                      <p className="text-3xl font-semibold">{analytics?.degraded_count || 0}</p>
-                      <p className="field-label mt-2">
+                    <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
+                      <p className="text-2xl font-semibold text-ink">
+                        {analyticsValue(analytics?.degraded_count)}
+                      </p>
+                      <p className="mt-2 text-sm text-ink-muted">
                         Lượt phân tích ảnh hưởng bị suy giảm hoặc không thành công
                       </p>
                     </div>
-                    <div>
-                      <p className="text-3xl font-semibold">
-                        {Math.round(analytics?.average_latency_ms || 0)} ms
+                    <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
+                      <p className="text-2xl font-semibold text-ink">
+                        {analyticsValue(analytics?.average_latency_ms, "ms")}
                       </p>
-                      <p className="field-label mt-2">
+                      <p className="mt-2 text-sm text-ink-muted">
                         Thời gian phản hồi trung bình của phân tích ảnh hưởng
                       </p>
                     </div>
@@ -1072,7 +1298,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
         <ProjectNotificationsPanel project={project} />
       )}
       {visibleSettingsSection === "integrations" && (
-        <div className="grid min-w-0 gap-5 2xl:grid-cols-2">
+        <div className="grid min-w-0 gap-5">
           <ProjectConnectorsPanel project={project} />
           <CicdPanel project={project} />
           <WebhookPanel project={project} />

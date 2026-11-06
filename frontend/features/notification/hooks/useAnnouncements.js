@@ -11,11 +11,13 @@ export function useAnnouncementsPage() {
   const { user } = useAuth();
   const userId = user?._id || null;
   const requestId = useRef(0);
+  const processingItemIds = useRef(new Set());
   const [items, setItems] = useState([]);
   const [itemsOwnerId, setItemsOwnerId] = useState(null);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [processingIds, setProcessingIds] = useState(new Set());
   const [error, setError] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
@@ -53,6 +55,8 @@ export function useAnnouncementsPage() {
     setUnread(0);
     setLoading(Boolean(userId));
     setProcessing(false);
+    processingItemIds.current.clear();
+    setProcessingIds(new Set());
     setError("");
     setLoadFailed(false);
     if (!userId) return undefined;
@@ -61,7 +65,18 @@ export function useAnnouncementsPage() {
       requestId.current += 1;
     };
   }, [load, userId]);
+  const beginItemAction = (id) => {
+    if (processingItemIds.current.has(id)) return false;
+    processingItemIds.current.add(id);
+    setProcessingIds(new Set(processingItemIds.current));
+    return true;
+  };
+  const endItemAction = (id) => {
+    processingItemIds.current.delete(id);
+    setProcessingIds(new Set(processingItemIds.current));
+  };
   const markRead = async (id) => {
+    if (!beginItemAction(id)) return;
     const currentRequest = requestId.current;
     setError("");
     try {
@@ -84,10 +99,12 @@ export function useAnnouncementsPage() {
     } catch (reason) {
       if (currentRequest !== requestId.current) return;
       setError(reason instanceof Error ? reason.message : "Không thể cập nhật thông báo");
+    } finally {
+      endItemAction(id);
     }
   };
   const markAllRead = async () => {
-    if (!unread || processing) return;
+    if (!unread || processing || processingItemIds.current.size) return;
     const currentRequest = requestId.current;
     setProcessing(true);
     setError("");
@@ -109,6 +126,7 @@ export function useAnnouncementsPage() {
     }
   };
   const remove = async (id) => {
+    if (!beginItemAction(id)) return;
     const currentRequest = requestId.current;
     setProcessing(true);
     setError("");
@@ -125,6 +143,7 @@ export function useAnnouncementsPage() {
       setError(reason instanceof Error ? reason.message : "Không thể xóa thông báo");
     } finally {
       if (currentRequest === requestId.current) setProcessing(false);
+      endItemAction(id);
     }
   };
   const visibleItems = itemsOwnerId === userId ? items : [];
@@ -133,6 +152,7 @@ export function useAnnouncementsPage() {
     unread: itemsOwnerId === userId ? unread : 0,
     loading,
     processing,
+    processingIds,
     error,
     loadFailed,
     reload: load,

@@ -9,6 +9,7 @@ import {
   Pencil,
   RefreshCw,
   RotateCcw,
+  Search,
 } from "lucide-react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
@@ -105,6 +106,7 @@ export default function TestDesignPage({ project, workspaceView }) {
   const [drafts, setDrafts] = useState([]);
   const [tests, setTests] = useState([]);
   const [suites, setSuites] = useState([]);
+  const [suiteSearch, setSuiteSearch] = useState("");
   const [testSetDialog, setTestSetDialog] = useState(null);
   const [repositoryNodes, setRepositoryNodes] = useState([]);
   const [testCaseCustomFields, setTestCaseCustomFields] = useState([]);
@@ -133,6 +135,14 @@ export default function TestDesignPage({ project, workspaceView }) {
   const [automationRuns, setAutomationRuns] = useState([]);
   const [automationRunsError, setAutomationRunsError] = useState("");
   const [automationRunsLoading, setAutomationRunsLoading] = useState(false);
+  const handleAgentRunsStateChange = useCallback(
+    ({ runs, error: nextError, loading: nextLoading }) => {
+      setAutomationRuns(runs);
+      setAutomationRunsError(nextError);
+      setAutomationRunsLoading(nextLoading);
+    },
+    [],
+  );
   const [operations, setOperations] = useState([]);
   const [apiArtifacts, setApiArtifacts] = useState([]);
   const [apiCompareFrom, setApiCompareFrom] = useState("");
@@ -243,6 +253,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       setDrafts([]);
       setTests([]);
       setSuites([]);
+      setSuiteSearch("");
       setRepositoryNodes([]);
       setReusableSteps([]);
       setTestCaseCustomFields([]);
@@ -445,41 +456,6 @@ export default function TestDesignPage({ project, workspaceView }) {
   }, [canReadTestCases, linkedCaseId, showCases]);
   const canReadAutomationRuns =
     permissions.includes("automation.read") || permissions.includes("proposal.read");
-  useEffect(() => {
-    if (!showAgentRuns || !canReadAutomationRuns) {
-      setAutomationRuns([]);
-      setAutomationRunsError("");
-      setAutomationRunsLoading(false);
-      return undefined;
-    }
-    let active = true;
-    let pending = false;
-    const refresh = async () => {
-      if (pending) return;
-      pending = true;
-      setAutomationRunsLoading(true);
-      try {
-        const values = await testingApi.listAutomationRuns(project._id);
-        if (active) {
-          setAutomationRuns(values || []);
-          setAutomationRunsError("");
-        }
-      } catch (reason) {
-        if (active) setAutomationRunsError(messageOf(reason));
-      } finally {
-        pending = false;
-        if (active) setAutomationRunsLoading(false);
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [canReadAutomationRuns, project._id, showAgentRuns]);
   const selectedRequirementRecord = requirements.find(
     (item) => item.current_version_id === selectedRequirement,
   );
@@ -1123,6 +1099,17 @@ export default function TestDesignPage({ project, workspaceView }) {
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [draftDirty, draftEdit, persistDraft, project, selectedDraft, comparisonDraftId]);
+  const visibleSuites = useMemo(() => {
+    const query = suiteSearch.trim().toLocaleLowerCase();
+    if (!query) return suites;
+    return suites.filter((item) =>
+      [item.name, valueLabel(item.suite_type)]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase()
+        .includes(query),
+    );
+  }, [suiteSearch, suites]);
   const pageTitle =
     workspaceView === "repository"
       ? "Kho kiểm thử"
@@ -1239,6 +1226,8 @@ export default function TestDesignPage({ project, workspaceView }) {
         <TestAdequacyPanel
           projectId={project._id}
           requirementVersionId={selectedRequirement}
+          requirements={requirements}
+          onRequirementChange={setSelectedRequirement}
           members={projectMembers}
           canDecide={memberRoles.includes("QA") && can("testcase.read")}
           canCreateClarification={memberRoles.includes("QA") && can("requirement.review")}
@@ -1246,56 +1235,69 @@ export default function TestDesignPage({ project, workspaceView }) {
           canSubmit={can("testcase.submit_review")}
         />
       )}
-      {showAgentRuns && permissions.includes("requirement.read") && canReadAutomationRuns && (
-        <Panel title="Lượt xử lý AI">
-          <div className="grid gap-4 p-5">
-            <label className="field-label block max-w-2xl">
-              Yêu cầu đã duyệt
-              <select
-                aria-label="Yêu cầu cần xem kết quả xử lý"
-                className="apple-input mt-2 w-full min-w-0"
-                value={selectedRequirement}
-                onChange={(event) => setSelectedRequirement(event.target.value)}
-              >
-                <option value="">Chọn yêu cầu</option>
-                {requirements.map((item) => (
-                  <option key={item._id} value={item.current_version_id}>
-                    {item.requirement_key} · {item.current_version?.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {automationRunsLoading && <LoadingState />}
-            {automationRunsError && <ErrorState message={automationRunsError} />}
-            {!automationRunsLoading &&
-              !automationRunsError &&
-              selectedRequirement &&
-              (requirementAutomationRun ? (
-                <div className="grid gap-2 rounded-control border border-border p-4 text-sm">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <StatusPill value={requirementAutomationRun.status} />
-                  </div>
-                  {requirementAutomationRun.error_code && <p>Có lỗi khi xử lý yêu cầu này.</p>}
-                  <p className="whitespace-pre-wrap break-words">
-                    {requirementAutomationRun.result?.summary ||
-                      requirementAutomationRun.result?.proposal?.summary ||
-                      "Chưa có phần tóm tắt cho hoạt động AI."}
-                  </p>
-                  <a className="text-accent underline" href="#automation-run-details">
-                    Xem hoạt động AI
-                  </a>
-                </div>
-              ) : (
-                <p className="text-sm text-ink-muted">
-                  Chưa có kết quả AI cho phiên bản yêu cầu này.
-                </p>
-              ))}
-          </div>
-        </Panel>
-      )}
       {showAgentRuns && canReadAutomationRuns && (
         <div id="automation-run-details">
-          <AgentRunPanel project={project} />
+          <AgentRunPanel
+            project={project}
+            showPanelHeading={false}
+            onRunsStateChange={handleAgentRunsStateChange}
+            contextContent={
+              permissions.includes("requirement.read") ? (
+                <section
+                  aria-label="Hoạt động theo yêu cầu"
+                  className="grid gap-3 border-b border-border pb-4 md:grid-cols-[minmax(15rem,0.7fr)_minmax(0,1.3fr)] md:items-start"
+                >
+                  <label className="field-label block min-w-0">
+                    Yêu cầu liên quan
+                    <select
+                      aria-label="Yêu cầu cần xem hoạt động AI"
+                      className="apple-input mt-2 w-full min-w-0"
+                      value={selectedRequirement}
+                      onChange={(event) => setSelectedRequirement(event.target.value)}
+                    >
+                      <option value="">Chọn yêu cầu</option>
+                      {requirements.map((item) => (
+                        <option key={item._id} value={item.current_version_id}>
+                          {item.requirement_key} · {item.current_version?.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedRequirement && (
+                    <div className="min-w-0 text-sm">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="font-medium">
+                          {requirements.find(
+                            (item) => item.current_version_id === selectedRequirement,
+                          )?.current_version?.title || "Yêu cầu đã chọn"}
+                        </span>
+                        {requirementAutomationRun && (
+                          <StatusPill value={requirementAutomationRun.status} />
+                        )}
+                      </div>
+                      {automationRunsLoading ? (
+                        <p className="mt-2 text-ink-muted">Đang tải hoạt động liên quan…</p>
+                      ) : automationRunsError ? (
+                        <p className="mt-2 text-danger">{automationRunsError}</p>
+                      ) : requirementAutomationRun ? (
+                        <p className="mt-2 whitespace-pre-wrap break-words text-ink-muted">
+                          {requirementAutomationRun.error_code
+                            ? "Có lỗi khi xử lý yêu cầu này."
+                            : requirementAutomationRun.result?.summary ||
+                              requirementAutomationRun.result?.proposal?.summary ||
+                              "Chưa có phần tóm tắt cho hoạt động AI."}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-ink-muted">
+                          Chưa có hoạt động AI cho phiên bản yêu cầu hiện tại.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </section>
+              ) : null
+            }
+          />
         </div>
       )}
       {showTemplates && can("testcase.template.read") && (
@@ -1684,21 +1686,34 @@ export default function TestDesignPage({ project, workspaceView }) {
               </div>
             }
           >
-            <details className="border-b border-border p-4">
-              <summary className="cursor-pointer text-sm font-medium">
-                Tìm kiếm bộ lọc và sắp xếp
-              </summary>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <p className="text-sm text-ink-muted">
+                {testPageInfo?.total ?? tests.length} ca kiểm thử
+                {selectedTestIds.length ? ` · Đã chọn ${selectedTestIds.length}` : ""}
+              </p>
+              <label className="relative min-w-[16rem] flex-1 xl:max-w-lg">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+                  size={16}
+                />
                 <input
                   aria-label="Tìm ca kiểm thử"
-                  className="apple-input xl:col-span-2"
-                  placeholder="Tìm theo mã hoặc tên"
+                  className="apple-input w-full pl-9"
+                  placeholder="Tìm theo mã hoặc tên ca"
                   value={testFilters.q}
                   onChange={(event) => {
                     setTestFilters({ ...testFilters, q: event.target.value });
                     setTestPage(1);
                   }}
                 />
+              </label>
+            </div>
+            <details className="border-b border-border px-4 py-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                Lọc trạng thái, ưu tiên và sắp xếp
+              </summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <select
                   aria-label="Lọc trạng thái ca kiểm thử"
                   className="apple-input"
@@ -1787,11 +1802,23 @@ export default function TestDesignPage({ project, workspaceView }) {
                   label: "Tên",
                   minWidth: 360,
                   render: (item) => (
-                    <span
-                      className="line-clamp-2 break-words [overflow-wrap:anywhere]"
-                      title={item.current_version?.title || ""}
-                    >
-                      {item.current_version?.title}
+                    <span className="block min-w-0">
+                      <span
+                        className="line-clamp-2 break-words [overflow-wrap:anywhere]"
+                        title={item.current_version?.title || ""}
+                      >
+                        {item.current_version?.title}
+                      </span>
+                      <span className="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-muted">
+                        {item.current_version?.type && (
+                          <span>{valueLabel(item.current_version.type)}</span>
+                        )}
+                        {(item.current_version?.priority || item.priority) && (
+                          <span>
+                            Ưu tiên {valueLabel(item.current_version?.priority || item.priority)}
+                          </span>
+                        )}
+                      </span>
                     </span>
                   ),
                   mobileRender: (item) => item.current_version?.title,
@@ -2869,19 +2896,28 @@ export default function TestDesignPage({ project, workspaceView }) {
         />
       )}
       {workspaceView === "test-sets" && access.canReadTestSets && (
-        <Panel
-          title="Danh sách bộ kiểm thử"
-          actions={
-            can("testsuite.create") ? (
+        <Panel title="Danh sách bộ kiểm thử">
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-4 sm:px-5">
+            <label className="min-w-64 flex-1">
+              <span className="sr-only">Tìm bộ kiểm thử</span>
+              <input
+                aria-label="Tìm bộ kiểm thử"
+                className="apple-input w-full"
+                placeholder="Tìm theo tên hoặc loại bộ"
+                value={suiteSearch}
+                onChange={(event) => setSuiteSearch(event.target.value)}
+              />
+            </label>
+            <span className="px-2 text-[12px] text-ink-muted">{visibleSuites.length} bộ</span>
+            {can("testsuite.create") && (
               <button className="apple-button" type="button" onClick={createTestSet}>
                 Tạo bộ kiểm thử
               </button>
-            ) : null
-          }
-        >
+            )}
+          </div>
           <DataTable
-            items={suites}
-            empty="Chưa có bộ kiểm thử"
+            items={visibleSuites}
+            empty={suites.length ? "Không tìm thấy bộ kiểm thử phù hợp" : "Chưa có bộ kiểm thử"}
             columns={[
               { key: "name", label: "Tên" },
               {

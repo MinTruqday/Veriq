@@ -46,12 +46,12 @@ export default function ProjectNavigation({ groups, selectedGroup, sidebarCollap
         >
           <nav
             aria-label={`Trang trong ${selectedGroup.label}`}
-            className="flex w-max min-w-full gap-1"
+            className="flex h-9 w-max min-w-full items-stretch gap-1 border-b border-border"
           >
             {selectedGroup.items.map((item) => (
               <Link
                 aria-current={item.id === selectedGroup.activeItemId ? "page" : undefined}
-                className={`flex min-h-8 shrink-0 items-center rounded-control px-3 text-[12px] font-medium transition ${item.id === selectedGroup.activeItemId ? "bg-brand-soft text-brand" : "text-ink-muted hover:bg-surface-quiet hover:text-ink"}`}
+                className={`-mb-px flex shrink-0 items-center border-b-2 px-3 text-[12px] font-medium transition ${item.id === selectedGroup.activeItemId ? "border-brand text-brand" : "border-transparent text-ink-muted hover:border-border-strong hover:text-ink"}`}
                 href={item.href}
                 key={item.id}
                 title={item.label}

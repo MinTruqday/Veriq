@@ -1556,6 +1556,10 @@ export default function RequirementsPage({ project, section, workspaceView }) {
               requirementRevision={current.revision}
               ask={ask}
               onRequirementChanged={load}
+              onOpenRequirement={async () => {
+                await load();
+                setDetailTab("requirement");
+              }}
               roles={memberRoles}
               permissions={project.current_permissions || []}
             />

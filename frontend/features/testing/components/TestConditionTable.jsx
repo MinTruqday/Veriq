@@ -1,60 +1,54 @@
-import DataTable from "./DataTable";
 import { Eye } from "lucide-react";
 import { StatusPill } from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { valueLabel } from "../lib/testing";
 
-export default function TestConditionTable({ items, onSelect }) {
-  return (
-    <DataTable
-      items={items}
-      empty="Chưa có điều kiện kiểm thử"
-      columns={[
-        { key: "condition_key", label: "Mã" },
-        { key: "title", label: "Điều kiện" },
-        {
-          key: "origin",
-          label: "Nguồn",
-          render: (item) => <ContentOriginBadge origin={item.origin || "manual"} />,
-        },
-        {
-          key: "category",
-          label: "Nhóm",
-          render: (item) => (item.category ? valueLabel(item.category) : "Chưa phân loại"),
-        },
-        { key: "coverage_item", label: "Hạng mục độ phủ" },
-        { key: "risk", label: "Rủi ro", render: (item) => <StatusPill value={item.risk} /> },
-        {
-          key: "priority",
-          label: "Ưu tiên",
-          render: (item) => <StatusPill value={item.priority} />,
-        },
-        {
-          key: "testability_status",
-          label: "Khả năng kiểm thử",
-          render: (item) => <StatusPill value={item.testability_status} />,
-        },
-        {
-          key: "status",
-          label: "Trạng thái",
-          render: (item) => <StatusPill value={item.status} />,
-        },
-        {
-          key: "actions",
-          label: "Thao tác",
-          render: (item) => (
-            <button
-              className="icon-button h-9 w-9"
-              type="button"
-              aria-label={`Mở điều kiện ${item.condition_key || item.title}`}
-              title="Mở điều kiện"
-              onClick={() => onSelect(item)}
-            >
-              <Eye aria-hidden="true" size={16} />
-            </button>
-          ),
-        },
-      ]}
-    />
+export default function TestConditionTable({ items, selectedId, onSelect }) {
+  return items.length ? (
+    <div className="divide-y divide-border">
+      {items.map((item) => (
+        <article
+          className={`min-w-0 ${selectedId === item._id ? "bg-brand-soft/50" : ""}`}
+          key={item._id}
+        >
+          <button
+            aria-label={`Mở điều kiện ${item.condition_key || item.title}`}
+            aria-pressed={selectedId === item._id}
+            className="flex min-h-20 w-full min-w-0 items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+            onClick={() => onSelect(item)}
+            type="button"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="text-[11px] font-semibold tracking-wide text-ink-muted">
+                  {item.condition_key}
+                </span>
+                <StatusPill value={item.status} />
+              </span>
+              <span className="mt-1 block break-words text-[13px] font-medium leading-5 text-ink">
+                {item.title}
+              </span>
+              <span className="mt-1 block break-words text-[12px] leading-5 text-ink-muted">
+                {item.coverage_item || "Chưa gắn hạng mục độ phủ"}
+              </span>
+            </span>
+            <span className="flex shrink-0 flex-col items-end gap-2">
+              <StatusPill value={item.risk} />
+              <Eye aria-hidden="true" className="text-ink-muted" size={15} />
+            </span>
+          </button>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pl-4 text-[11px] text-ink-muted">
+            <ContentOriginBadge origin={item.origin || "manual"} />
+            <span>{item.category ? valueLabel(item.category) : "Chưa phân loại"}</span>
+            <span>Ưu tiên: {valueLabel(item.priority)}</span>
+            <span>Khả năng kiểm thử: {valueLabel(item.testability_status)}</span>
+          </div>
+        </article>
+      ))}
+    </div>
+  ) : (
+    <p className="px-5 py-8 text-center text-sm text-ink-muted" role="status">
+      Chưa có điều kiện kiểm thử
+    </p>
   );
 }

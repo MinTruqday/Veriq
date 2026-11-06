@@ -1,10 +1,24 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import DataTable from "./DataTable";
-import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { RefreshCw, Search } from "lucide-react";
+import {
+  ErrorState,
+  LoadingState,
+  Panel,
+  StatusPill,
+  useActionDialog,
+} from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 import { testingApi } from "../services/testing.service";
-import { messageOf } from "../lib/testing";
+import { formatDate, messageOf, valueLabel } from "../lib/testing";
+
+function scriptFormatLabel(value, labels) {
+  if (!value) return "";
+  const normalized = String(value).toLowerCase();
+  return labels[normalized] || valueLabel(value);
+}
 
 export default function AutomationScriptsPanel({ project }) {
   const { ask, dialog } = useActionDialog();
@@ -12,21 +26,52 @@ export default function AutomationScriptsPanel({ project }) {
   const [selected, setSelected] = useState(null);
   const [filename, setFilename] = useState("");
   const [source, setSource] = useState("");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
-  const [draftDirty, setDraftDirty] = useState(false);
+  const [draftDirty, setDraftDirtyState] = useState(false);
+  const draftDirtyRef = useRef(false);
+  const setDraftDirty = (value) => {
+    draftDirtyRef.current = value;
+    setDraftDirtyState(value);
+  };
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const canUpdate = project.current_permissions?.includes("automation.script.update");
   const canApprove = project.current_permissions?.includes("automation.script.approve");
   const canExport = project.current_permissions?.includes("automation.script.export");
+  const frameworkLabels = {
+    cypress: "Cypress",
+    playwright: "Playwright",
+    selenium: "Selenium",
+  };
+  const languageLabels = {
+    javascript: "JavaScript",
+    python: "Python",
+    typescript: "TypeScript",
+  };
+  const visibleItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return items;
+    return items.filter((item) =>
+      [item.filename, item.test_case_key, item.framework, item.language]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase()
+        .includes(normalizedQuery),
+    );
+  }, [items, query]);
 
   const load = useCallback(async () => {
     if (!canExport) return;
+    setLoading(true);
+    setError("");
     try {
       const values = await testingApi.listAutomationScriptDrafts(project._id);
       setItems(values);
       setError("");
       setSelected((current) => {
         const next = values.find((item) => item._id === current?._id) || null;
-        if (next && !draftDirty) {
+        if (next && !draftDirtyRef.current) {
           setFilename(next.filename);
           setSource(next.source);
         }
@@ -34,33 +79,26 @@ export default function AutomationScriptsPanel({ project }) {
       });
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      setLoading(false);
     }
-  }, [canExport, draftDirty, project._id]);
+  }, [canExport, project._id]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!canExport) return undefined;
-    let active = true;
-    let pending = false;
-    const timer = window.setInterval(async () => {
-      if (!active || document.visibilityState !== "visible" || pending) return;
-      pending = true;
-      try {
-        await load();
-      } finally {
-        pending = false;
-      }
-    }, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [canExport, load]);
-
   const openDraft = async (item) => {
+    if (draftDirty) {
+      const answer = await ask({
+        title: "Bỏ thay đổi chưa lưu?",
+        description: "Nội dung đang sửa sẽ được thay bằng mã kiểm thử khác.",
+        confirmLabel: "Bỏ thay đổi",
+      });
+      if (!answer) return;
+    }
+    setBusy(true);
+    setError("");
     try {
       const value = await testingApi.getAutomationScriptDraft(item._id);
       setSelected(value);
@@ -70,30 +108,36 @@ export default function AutomationScriptsPanel({ project }) {
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      setBusy(false);
     }
   };
 
   const save = async () => {
-    if (!selected) return;
+    if (!selected || !draftDirty || busy) return;
+    setBusy(true);
+    setError("");
     try {
       const value = await testingApi.updateAutomationScriptDraft(selected._id, {
         expected_revision: selected.revision,
         filename,
         source,
       });
-      await load();
       setSelected(value);
+      setItems((current) => current.map((item) => (item._id === value._id ? value : item)));
       setFilename(value.filename);
       setSource(value.source);
       setDraftDirty(false);
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      setBusy(false);
     }
   };
 
   const approve = async () => {
-    if (!selected) return;
+    if (!selected || busy) return;
     const answer = await ask({
       title: "Phê duyệt kịch bản tự động hóa",
       description: "Kịch bản chỉ được xuất thành tệp sau bước xác nhận này",
@@ -109,76 +153,215 @@ export default function AutomationScriptsPanel({ project }) {
       ],
     });
     if (!answer) return;
+    setBusy(true);
+    setError("");
     try {
       const value = await testingApi.approveAutomationScriptDraft(selected._id, {
         expected_revision: selected.revision,
         review_note: answer.reviewNote.trim(),
       });
-      await load();
       setSelected(value);
+      setItems((current) => current.map((item) => (item._id === value._id ? value : item)));
       setFilename(value.filename);
       setSource(value.source);
       setDraftDirty(false);
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportDraft = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await testingApi.exportAutomationScriptDraft(selected._id, filename);
+    } catch (reason) {
+      setError(messageOf(reason));
+    } finally {
+      setBusy(false);
     }
   };
 
   if (!canExport) return null;
 
   return (
-    <Panel title="Kịch bản tự động hóa">
-      <p className="px-5 pt-4 text-sm text-ink-muted">
-        Khi phiên bản ca kiểm thử được phê duyệt, đánh dấu tự động hóa và dự án đã cấu hình công cụ,
-        AI sẽ tạo kịch bản theo sự kiện. Ca thủ công hoặc dự án chưa cấu hình sẽ không bị tự chọn
-        công cụ.
-      </p>
-      <div className="space-y-5 p-5">
-        {error && <ErrorState message={error} />}
-        {canExport && (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-            <div className="overflow-hidden rounded-xl border border-border">
-              <DataTable
-                items={items}
-                empty="Chưa có bản nháp kịch bản tự động hóa"
-                onSelect={openDraft}
-                columns={[
-                  {
-                    key: "filename",
-                    label: "Tệp",
-                    render: (item) => (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span>{item.filename}</span>
-                        {item.source_event_key && <ContentOriginBadge origin="ai_generated" />}
-                      </div>
-                    ),
-                  },
-                  { key: "framework", label: "Công cụ" },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    render: (item) => <StatusPill value={item.status} />,
-                  },
-                ]}
-              />
-            </div>
-            <div className="space-y-3 rounded-xl border border-border p-4">
+    <Panel
+      className="automation-scripts-list-panel"
+      title="Danh sách mã kiểm thử"
+      actions={
+        <div className="flex items-center gap-3">
+          {!loading && <span className="text-sm text-ink-muted">{items.length} mã</span>}
+          <button
+            aria-label="Tải lại danh sách mã"
+            className="icon-button h-9 w-9 shrink-0"
+            disabled={loading}
+            onClick={() => void load()}
+            title="Tải lại danh sách mã"
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={17} />
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-4 p-4 sm:p-5">
+        {error && (
+          <div className="grid gap-3">
+            <ErrorState message={error} />
+            <button
+              className="secondary-button justify-self-start"
+              disabled={loading}
+              onClick={() => void load()}
+              type="button"
+            >
+              Thử tải lại
+            </button>
+          </div>
+        )}
+        {loading ? (
+          <LoadingState />
+        ) : (
+          <div className="grid min-w-0 gap-y-5 gap-x-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)] lg:gap-x-0">
+            <section aria-label="Danh sách mã kiểm thử tự động" className="min-w-0">
+              <label className="field-label mb-5 block lg:mr-5">
+                Tìm mã kiểm thử
+                <span className="relative mt-2 block">
+                  <Search
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+                    size={17}
+                  />
+                  <input
+                    aria-label="Tìm mã kiểm thử tự động"
+                    className="apple-input pl-10"
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Tên tệp, mã ca hoặc công cụ"
+                    value={query}
+                  />
+                </span>
+              </label>
+              {visibleItems.length ? (
+                <ul className="-ml-4 divide-y divide-border border-y border-border sm:-ml-5">
+                  {visibleItems.map((item) => (
+                    <li key={item._id}>
+                      <button
+                        aria-current={selected?._id === item._id ? "true" : undefined}
+                        className={`grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3 pl-4 pr-3 text-left transition sm:pl-5 sm:pr-4 ${selected?._id === item._id ? "bg-brand-soft/50 text-ink" : "text-ink hover:bg-surface-quiet"}`}
+                        disabled={busy}
+                        onClick={() => void openDraft(item)}
+                        type="button"
+                      >
+                        <span className="min-w-0">
+                          <span className="block min-w-0 break-all font-medium">
+                            {item.filename}
+                          </span>
+                          {(item.test_case_key ||
+                            item.framework ||
+                            item.language ||
+                            item.source_event_key) && (
+                            <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+                              {item.source_event_key && (
+                                <ContentOriginBadge origin="ai_generated" />
+                              )}
+                              {[item.test_case_key, item.framework, item.language]
+                                .map((value, index) =>
+                                  index === 1
+                                    ? scriptFormatLabel(value, frameworkLabels)
+                                    : index === 2
+                                      ? scriptFormatLabel(value, languageLabels)
+                                      : value,
+                                )
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          )}
+                        </span>
+                        <StatusPill value={item.status} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                !error && (
+                  <p className="py-3 text-sm text-ink-muted">
+                    {query.trim()
+                      ? "Không tìm thấy mã kiểm thử phù hợp."
+                      : "Chưa có mã kiểm thử được tạo."}
+                  </p>
+                )
+              )}
+            </section>
+            <section
+              aria-label="Chi tiết kịch bản"
+              className="min-w-0 space-y-4 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0"
+            >
+              {busy && !selected && <LoadingState />}
               {selected ? (
                 <>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
                     <div className="flex flex-wrap items-center gap-2">
                       {selected.source_event_key && <ContentOriginBadge origin="ai_generated" />}
                       <StatusPill value={selected.status} />
-                      <StatusPill value={selected.generation_status} />
+                      {selected.generation_status && (
+                        <StatusPill value={selected.generation_status} />
+                      )}
                     </div>
-                    <span className="text-xs text-ink-muted">Không tự ghi vào kho mã nguồn</span>
                   </div>
                   {selected.degraded_mode && (
                     <p className="text-sm text-ink-muted">
                       Mô hình đã dùng để tạo bản nháp này không còn khả dụng
                     </p>
                   )}
+                  <dl className="grid gap-3 rounded-control border border-border bg-surface p-4 text-sm sm:grid-cols-2">
+                    <div className="min-w-0">
+                      <dt className="text-xs font-semibold text-ink-muted">Ca kiểm thử</dt>
+                      <dd className="mt-1 break-words text-ink">
+                        {selected.test_case_id ? (
+                          <Link
+                            className="text-brand underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
+                            href={`${projectRoute(project._id, PROJECT_SECTION_SLUGS.testCases)}?case=${encodeURIComponent(selected.test_case_id)}`}
+                          >
+                            {selected.test_case_key || "Mở ca kiểm thử"}
+                          </Link>
+                        ) : (
+                          selected.test_case_key || "Chưa liên kết ca kiểm thử"
+                        )}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs font-semibold text-ink-muted">Công cụ và ngôn ngữ</dt>
+                      <dd className="mt-1 break-words text-ink">
+                        {[
+                          scriptFormatLabel(selected.framework, frameworkLabels),
+                          scriptFormatLabel(selected.language, languageLabels),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Chưa xác định"}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs font-semibold text-ink-muted">Lần sửa ca kiểm thử</dt>
+                      <dd className="mt-1 break-words text-ink">
+                        {selected.source_event_revision ?? "Chưa có"}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs font-semibold text-ink-muted">Ngày tạo</dt>
+                      <dd className="mt-1 break-words text-ink">
+                        {formatDate(selected.created_at)}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs font-semibold text-ink-muted">Phiên bản mã</dt>
+                      <dd className="mt-1 break-words text-ink">
+                        {selected.revision ?? "Chưa có"}
+                      </dd>
+                    </div>
+                  </dl>
                   {selected.status === "DRAFT" && canUpdate ? (
                     <>
                       <label className="field-label block">
@@ -195,7 +378,7 @@ export default function AutomationScriptsPanel({ project }) {
                       <label className="field-label block">
                         Mã nguồn kịch bản
                         <textarea
-                          aria-label="Mã nguồn kịch bản tự động hóa"
+                          aria-label="Mã nguồn kịch bản"
                           className="apple-input mt-2 min-h-80 font-mono text-xs"
                           value={source}
                           onChange={(event) => {
@@ -223,22 +406,31 @@ export default function AutomationScriptsPanel({ project }) {
                   )}
                   <div className="flex flex-wrap gap-2">
                     {selected.status === "DRAFT" && canUpdate && (
-                      <button className="secondary-button" type="button" onClick={save}>
+                      <button
+                        className="apple-button"
+                        disabled={!draftDirty || busy}
+                        type="button"
+                        onClick={save}
+                      >
                         Lưu bản nháp
                       </button>
                     )}
                     {selected.status === "DRAFT" && canApprove && (
-                      <button className="apple-button" type="button" onClick={approve}>
+                      <button
+                        className="secondary-button"
+                        disabled={busy}
+                        type="button"
+                        onClick={approve}
+                      >
                         Phê duyệt kịch bản
                       </button>
                     )}
                     {selected.status === "APPROVED" && canExport && (
                       <button
                         className="apple-button"
+                        disabled={busy}
                         type="button"
-                        onClick={() =>
-                          testingApi.exportAutomationScriptDraft(selected._id, filename)
-                        }
+                        onClick={() => void exportDraft()}
                       >
                         Xuất tệp đã duyệt
                       </button>
@@ -246,9 +438,11 @@ export default function AutomationScriptsPanel({ project }) {
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-ink-muted">Chọn một bản nháp để rà soát</p>
+                <p className="py-2 text-sm text-ink-muted">
+                  Chọn một kịch bản để xem nội dung và thao tác được cấp quyền.
+                </p>
               )}
-            </div>
+            </section>
           </div>
         )}
       </div>

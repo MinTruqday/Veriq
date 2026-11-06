@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Archive, ClipboardCheck, Copy, Eye, Pencil, Send, Check } from "lucide-react";
-import DataTable from "../../components/DataTable";
 import DeviceMatricesPanel from "../../components/DeviceMatricesPanel";
 import AutomationExecutionPanel from "../../components/AutomationExecutionPanel";
 import AgentRunPanel from "../../components/AgentRunPanel";
@@ -21,7 +20,7 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { testingApi } from "../../services/testing.service";
-import { docText, messageOf, textDoc, valueLabel } from "../../lib/testing";
+import { docText, formatDate, messageOf, textDoc, valueLabel } from "../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import RunExecutionWorkspace from "./execution/RunExecutionWorkspace";
 import JUnitResultPanel from "../../components/JUnitResultPanel";
@@ -64,6 +63,8 @@ export default function ExecutionPage({ project, section, workspaceView }) {
   const [runs, setRuns] = useState([]);
   const [runPage, setRunPage] = useState(1);
   const [runPageInfo, setRunPageInfo] = useState(null);
+  const [runNameSearch, setRunNameSearch] = useState("");
+  const [runEnvironmentSearch, setRunEnvironmentSearch] = useState("");
   const [runFilters, setRunFilters] = useState({
     name: "",
     status: "",
@@ -113,7 +114,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     name: "",
     release: "",
     build: "",
-    environment: "staging",
+    environment: "",
     environmentId: "",
     releaseId: "",
     buildId: "",
@@ -258,6 +259,22 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     void load();
   }, [load]);
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setRunPage(1);
+      setRunFilters((current) => {
+        if (current.name === runNameSearch && current.environment === runEnvironmentSearch) {
+          return current;
+        }
+        return {
+          ...current,
+          name: runNameSearch,
+          environment: runEnvironmentSearch,
+        };
+      });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [runEnvironmentSearch, runNameSearch]);
+  useEffect(() => {
     const key = `${project._id}:${sourceRequirementId}`;
     if (
       workspaceView === "test-plans" &&
@@ -303,7 +320,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       test_suite_ids: runForm.suiteIds,
       test_case_version_ids: runForm.versionIds,
       assignment_strategy: runForm.assignmentStrategy,
-      environment: runForm.environment,
+      environment: runForm.environment || undefined,
       environment_id: runForm.environmentId || null,
       release: runForm.release,
       release_id: runForm.releaseId || null,
@@ -328,7 +345,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
         name: "",
         release: "",
         build: "",
-        environment: "staging",
+        environment: "",
         environmentId: "",
         releaseId: "",
         buildId: "",
@@ -1011,11 +1028,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                       setRunForm({
                         ...runForm,
                         environmentId,
-                        environment: environment?.name || "staging",
+                        environment: environment?.name || "",
                       });
                     }}
                   >
-                    <option value="">Mặc định: {valueLabel("staging")}</option>
+                    <option value="">Dùng mặc định của hệ thống</option>
                     {environments.map((item) => (
                       <option key={item._id} value={item._id}>
                         {item.name} · {valueLabel(item.environment_type)}
@@ -1164,218 +1181,294 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       {can("testplan.read") && (workspaceView === "" || workspaceView === "test-plans") && (
         <div className="w-full">
           <Panel title="Danh sách kế hoạch kiểm thử">
-            <details className="border-b border-border p-4">
-              <summary className="cursor-pointer text-sm font-medium">
-                Tìm kiếm, lọc và sắp xếp
-              </summary>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <input
-                  aria-label="Tìm kế hoạch kiểm thử"
-                  className="apple-input"
-                  placeholder="Tìm tên hoặc mục tiêu"
-                  value={planFilters.q}
-                  onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
-                />
-                <input
-                  aria-label="Lọc bản phát hành kế hoạch"
-                  className="apple-input"
-                  placeholder="Bản phát hành"
-                  value={planFilters.release}
-                  onChange={(event) =>
-                    setPlanFilters({ ...planFilters, release: event.target.value })
-                  }
-                />
-                <select
-                  aria-label="Lọc trạng thái kế hoạch"
-                  className="apple-input"
-                  value={planFilters.status}
-                  onChange={(event) =>
-                    setPlanFilters({ ...planFilters, status: event.target.value })
-                  }
-                >
-                  <option value="">Mọi trạng thái</option>
-                  {["DRAFT", "IN_REVIEW", "APPROVED", "ARCHIVED"].map((value) => (
-                    <option value={value} key={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Sắp xếp kế hoạch"
-                  className="apple-input"
-                  value={planFilters.sort}
-                  onChange={(event) => setPlanFilters({ ...planFilters, sort: event.target.value })}
-                >
-                  <option value="-updated_at">Mới cập nhật</option>
-                  <option value="updated_at">Cũ cập nhật</option>
-                  <option value="name">Tên tăng dần</option>
-                </select>
-              </div>
-            </details>
-            <DataTable
-              items={plans}
-              onSelect={(item) => setViewingPlan(item)}
-              empty="Chưa có kế hoạch kiểm thử"
-              columns={[
-                {
-                  key: "name",
-                  label: "Tên",
-                  minWidth: 240,
-                  render: (item) => (
-                    <span
-                      className="line-clamp-3 max-w-[22rem] break-words [overflow-wrap:anywhere]"
-                      title={item.name}
-                    >
-                      {item.name}
-                    </span>
-                  ),
-                },
-                { key: "release", label: "Bản phát hành", hideWhenEmpty: true },
-                {
-                  key: "build",
-                  label: "Bản dựng",
-                  hideWhenEmpty: true,
-                  render: (item) => (
-                    <span className="block max-w-48 truncate font-mono text-xs" title={item.build}>
-                      {item.build}
-                    </span>
-                  ),
-                },
-                {
-                  key: "validation",
-                  label: "Thông tin cần bổ sung",
-                  hideWhenEmpty: true,
-                  render: (item) =>
-                    planValidation?.planId === item._id ? (
-                      <span
-                        className={`inline-flex max-w-sm flex-wrap gap-1.5 rounded-lg px-3 py-2 text-xs ${planValidation.ready_for_approval ? "bg-success-soft text-success" : "bg-warning-soft text-warning"}`}
-                        role="status"
-                      >
-                        {planValidation.ready_for_approval
-                          ? "Đã đủ điều kiện phê duyệt"
-                          : planValidation.findings
-                              .map(
-                                (finding) =>
-                                  testPlanFindingLabels[finding.code] ||
-                                  "Cần bổ sung thông tin kế hoạch",
-                              )
-                              .join(" · ")}
-                      </span>
-                    ) : null,
-                },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.status} />,
-                },
-                {
-                  key: "actions",
-                  label: "Thao tác",
-                  minWidth: 200,
-                  hideWhenEmpty: true,
-                  render: (item) => (
-                    <span className="execution-plan-actions flex flex-wrap gap-2">
-                      {item.status === "IN_REVIEW" && can("testplan.review") && (
+            {workspaceView === "test-plans" ? (
+              <details className="border-b border-border p-4" open>
+                <summary className="cursor-pointer text-sm font-medium">
+                  Tìm kiếm, lọc và sắp xếp
+                </summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <input
+                    aria-label="Tìm kế hoạch kiểm thử"
+                    className="apple-input"
+                    placeholder="Tìm tên hoặc mục tiêu"
+                    value={planFilters.q}
+                    onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
+                  />
+                  <input
+                    aria-label="Lọc bản phát hành kế hoạch"
+                    className="apple-input"
+                    placeholder="Bản phát hành"
+                    value={planFilters.release}
+                    onChange={(event) =>
+                      setPlanFilters({ ...planFilters, release: event.target.value })
+                    }
+                  />
+                  <select
+                    aria-label="Lọc trạng thái kế hoạch"
+                    className="apple-input"
+                    value={planFilters.status}
+                    onChange={(event) =>
+                      setPlanFilters({ ...planFilters, status: event.target.value })
+                    }
+                  >
+                    <option value="">Mọi trạng thái</option>
+                    {["DRAFT", "IN_REVIEW", "APPROVED", "ARCHIVED"].map((value) => (
+                      <option value={value} key={value}>
+                        {valueLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Sắp xếp kế hoạch"
+                    className="apple-input"
+                    value={planFilters.sort}
+                    onChange={(event) =>
+                      setPlanFilters({ ...planFilters, sort: event.target.value })
+                    }
+                  >
+                    <option value="-updated_at">Mới cập nhật</option>
+                    <option value="updated_at">Cũ cập nhật</option>
+                    <option value="name">Tên tăng dần</option>
+                  </select>
+                </div>
+              </details>
+            ) : (
+              <details className="border-b border-border p-4">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Tìm kiếm, lọc và sắp xếp
+                </summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <input
+                    aria-label="Tìm kế hoạch kiểm thử"
+                    className="apple-input"
+                    placeholder="Tìm tên hoặc mục tiêu"
+                    value={planFilters.q}
+                    onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
+                  />
+                  <input
+                    aria-label="Lọc bản phát hành kế hoạch"
+                    className="apple-input"
+                    placeholder="Bản phát hành"
+                    value={planFilters.release}
+                    onChange={(event) =>
+                      setPlanFilters({ ...planFilters, release: event.target.value })
+                    }
+                  />
+                  <select
+                    aria-label="Lọc trạng thái kế hoạch"
+                    className="apple-input"
+                    value={planFilters.status}
+                    onChange={(event) =>
+                      setPlanFilters({ ...planFilters, status: event.target.value })
+                    }
+                  >
+                    <option value="">Mọi trạng thái</option>
+                    {["DRAFT", "IN_REVIEW", "APPROVED", "ARCHIVED"].map((value) => (
+                      <option value={value} key={value}>
+                        {valueLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Sắp xếp kế hoạch"
+                    className="apple-input"
+                    value={planFilters.sort}
+                    onChange={(event) =>
+                      setPlanFilters({ ...planFilters, sort: event.target.value })
+                    }
+                  >
+                    <option value="-updated_at">Mới cập nhật</option>
+                    <option value="updated_at">Cũ cập nhật</option>
+                    <option value="name">Tên tăng dần</option>
+                  </select>
+                </div>
+              </details>
+            )}
+            {plans.length ? (
+              <ul className="divide-y divide-border" aria-label="Kế hoạch kiểm thử">
+                {plans.map((item) => {
+                  const schedule = [item.schedule?.planned_start_at, item.schedule?.planned_end_at]
+                    .filter(Boolean)
+                    .map((value) => formatDate(value));
+                  const testTypes = Array.isArray(item.test_types)
+                    ? item.test_types.map(valueLabel).join(" · ")
+                    : "";
+                  return (
+                    <li className="min-w-0 px-4 py-4 sm:px-5" key={item._id}>
+                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-2">
                         <button
-                          className="icon-button h-10 w-10"
+                          className="min-w-0 flex-1 text-left text-[15px] font-semibold leading-6 text-ink hover:text-brand"
                           type="button"
-                          aria-label="Yêu cầu chỉnh sửa kế hoạch"
-                          title="Yêu cầu chỉnh sửa kế hoạch"
-                          onClick={() => transitionPlan(item, "revise")}
+                          onClick={() => setViewingPlan(item)}
                         >
-                          <Pencil size={16} aria-hidden="true" />
+                          <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">
+                            {item.name}
+                          </span>
                         </button>
+                        <StatusPill value={item.status} />
+                      </div>
+                      {item.objective && (
+                        <p className="mt-1 line-clamp-2 max-w-4xl break-words text-[13px] leading-5 text-ink-muted">
+                          {item.objective}
+                        </p>
                       )}
-                      {can("testplan.review") && (
-                        <button
-                          className="icon-button h-10 w-10"
-                          type="button"
-                          aria-label="Kiểm tra đầy đủ"
-                          title="Kiểm tra đầy đủ"
-                          onClick={async () => {
-                            try {
-                              setPlanValidation({
-                                ...(await testingApi.validatePlan(item._id)),
-                                planId: item._id,
-                              });
-                            } catch (reason) {
-                              setError(messageOf(reason));
-                            }
-                          }}
-                        >
-                          <ClipboardCheck size={17} aria-hidden="true" />
-                        </button>
-                      )}
-                      {item.status === "DRAFT" && can("testplan.update") && (
-                        <button
-                          className="icon-button h-10 w-10"
-                          type="button"
-                          aria-label="Sửa kế hoạch"
-                          title="Sửa kế hoạch"
-                          onClick={() => updatePlan(item)}
-                        >
-                          <Pencil size={16} aria-hidden="true" />
-                        </button>
-                      )}
-                      {item.status === "DRAFT" && can("testplan.submit_review") && (
-                        <button
-                          className="icon-button h-10 w-10"
-                          type="button"
-                          aria-label="Gửi rà soát"
-                          title="Gửi rà soát"
-                          onClick={() => transitionPlan(item, "submit")}
-                        >
-                          <Send size={16} aria-hidden="true" />
-                        </button>
-                      )}
-                      {item.status === "IN_REVIEW" &&
-                        item.created_by !== project.current_membership?.user_id &&
-                        item.submitted_by !== project.current_membership?.user_id &&
-                        can("testplan.approve") && (
-                          <button
-                            className="apple-button inline-flex size-10 items-center justify-center p-0"
-                            type="button"
-                            aria-label="Phê duyệt"
-                            title="Phê duyệt"
-                            onClick={() => transitionPlan(item, "approve")}
-                          >
-                            <Check size={17} aria-hidden="true" />
-                          </button>
+                      <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="min-w-0">
+                          <dt className="text-ink-faint">Bản phát hành</dt>
+                          <dd className="mt-0.5 break-words font-medium text-ink">
+                            {item.release || "Chưa chọn"}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-ink-faint">Bản dựng</dt>
+                          <dd className="mt-0.5 break-all font-medium text-ink">
+                            {item.build || "Chưa chọn"}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-ink-faint">Thời gian dự kiến</dt>
+                          <dd className="mt-0.5 break-words font-medium text-ink">
+                            {schedule.length ? schedule.join(" – ") : "Chưa xác định"}
+                          </dd>
+                        </div>
+                        {testTypes && (
+                          <div className="min-w-0">
+                            <dt className="text-ink-faint">Loại kiểm thử</dt>
+                            <dd className="mt-0.5 break-words font-medium text-ink">{testTypes}</dd>
+                          </div>
                         )}
-                      {can("testplan.create") && (
-                        <button
-                          className="icon-button h-10 w-10"
-                          type="button"
-                          aria-label="Nhân bản"
-                          title="Nhân bản"
-                          onClick={async () => {
-                            try {
-                              await testingApi.clonePlan(item._id);
-                              await load();
-                            } catch (reason) {
-                              setError(messageOf(reason));
-                            }
-                          }}
+                      </dl>
+                      {planValidation?.planId === item._id && (
+                        <p
+                          className={`mt-3 rounded-control px-3 py-2 text-xs ${planValidation.ready_for_approval ? "bg-success-soft text-success" : "bg-warning-soft text-warning"}`}
+                          role="status"
                         >
-                          <Copy size={16} aria-hidden="true" />
-                        </button>
+                          {planValidation.ready_for_approval
+                            ? "Đã đủ điều kiện phê duyệt"
+                            : planValidation.findings
+                                .map(
+                                  (finding) =>
+                                    testPlanFindingLabels[finding.code] ||
+                                    "Cần bổ sung thông tin kế hoạch",
+                                )
+                                .join(" · ")}
+                        </p>
                       )}
-                      {item.status !== "ARCHIVED" && can("testplan.archive") && (
-                        <button
-                          className="icon-button h-10 w-10"
-                          type="button"
-                          aria-label="Lưu trữ"
-                          title="Lưu trữ"
-                          onClick={() => transitionPlan(item, "archive")}
-                        >
-                          <Archive size={16} aria-hidden="true" />
-                        </button>
-                      )}
-                    </span>
-                  ),
-                },
-              ]}
-            />
+                      <div
+                        className="mt-3 flex flex-wrap items-center justify-between gap-3"
+                        aria-label={`Thao tác kế hoạch ${item.name}`}
+                      >
+                        <span className="text-[12px] text-ink-faint">
+                          {item.updated_at ? `Cập nhật ${formatDate(item.updated_at)}` : ""}
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {item.status === "IN_REVIEW" && can("testplan.review") && (
+                            <button
+                              className="icon-button h-10 w-10"
+                              type="button"
+                              aria-label="Yêu cầu chỉnh sửa kế hoạch"
+                              title="Yêu cầu chỉnh sửa kế hoạch"
+                              onClick={() => transitionPlan(item, "revise")}
+                            >
+                              <Pencil size={16} aria-hidden="true" />
+                            </button>
+                          )}
+                          {can("testplan.review") && (
+                            <button
+                              className="icon-button h-10 w-10"
+                              type="button"
+                              aria-label="Kiểm tra đầy đủ"
+                              title="Kiểm tra đầy đủ"
+                              onClick={async () => {
+                                try {
+                                  setPlanValidation({
+                                    ...(await testingApi.validatePlan(item._id)),
+                                    planId: item._id,
+                                  });
+                                } catch (reason) {
+                                  setError(messageOf(reason));
+                                }
+                              }}
+                            >
+                              <ClipboardCheck size={17} aria-hidden="true" />
+                            </button>
+                          )}
+                          {item.status === "DRAFT" && can("testplan.update") && (
+                            <button
+                              className="icon-button h-10 w-10"
+                              type="button"
+                              aria-label="Sửa kế hoạch"
+                              title="Sửa kế hoạch"
+                              onClick={() => updatePlan(item)}
+                            >
+                              <Pencil size={16} aria-hidden="true" />
+                            </button>
+                          )}
+                          {item.status === "DRAFT" && can("testplan.submit_review") && (
+                            <button
+                              className="icon-button h-10 w-10"
+                              type="button"
+                              aria-label="Gửi rà soát"
+                              title="Gửi rà soát"
+                              onClick={() => transitionPlan(item, "submit")}
+                            >
+                              <Send size={16} aria-hidden="true" />
+                            </button>
+                          )}
+                          {item.status === "IN_REVIEW" &&
+                            item.created_by !== project.current_membership?.user_id &&
+                            item.submitted_by !== project.current_membership?.user_id &&
+                            can("testplan.approve") && (
+                              <button
+                                className="apple-button inline-flex size-10 items-center justify-center p-0"
+                                type="button"
+                                aria-label="Phê duyệt"
+                                title="Phê duyệt"
+                                onClick={() => transitionPlan(item, "approve")}
+                              >
+                                <Check size={17} aria-hidden="true" />
+                              </button>
+                            )}
+                          {can("testplan.create") && (
+                            <button
+                              className="icon-button h-10 w-10"
+                              type="button"
+                              aria-label="Nhân bản"
+                              title="Nhân bản"
+                              onClick={async () => {
+                                try {
+                                  await testingApi.clonePlan(item._id);
+                                  await load();
+                                } catch (reason) {
+                                  setError(messageOf(reason));
+                                }
+                              }}
+                            >
+                              <Copy size={16} aria-hidden="true" />
+                            </button>
+                          )}
+                          {item.status !== "ARCHIVED" && can("testplan.archive") && (
+                            <button
+                              className="icon-button h-10 w-10"
+                              type="button"
+                              aria-label="Lưu trữ"
+                              title="Lưu trữ"
+                              onClick={() => transitionPlan(item, "archive")}
+                            >
+                              <Archive size={16} aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="px-5 py-5 text-[13px] text-ink-muted" role="status">
+                Chưa có kế hoạch kiểm thử
+              </p>
+            )}
           </Panel>
         </div>
       )}
@@ -1444,23 +1537,40 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               </select>
             </div>
           </details>
-          <DataTable
-            items={suites}
-            empty="Chưa có bộ kiểm thử"
-            columns={[
-              { key: "name", label: "Tên" },
-              { key: "suite_type", label: "Loại", render: (item) => valueLabel(item.suite_type) },
-              {
-                key: "count",
-                label: "Số ca",
-                render: (item) => item.test_case_version_ids?.length || 0,
-              },
-              {
-                key: "actions",
-                label: "Thao tác",
-                hideWhenEmpty: true,
-                render: (item) => (
-                  <span className="flex flex-wrap gap-2">
+          {suites.length ? (
+            <ul aria-label="Danh sách bộ kiểm thử" className="divide-y divide-border">
+              {suites.map((item) => (
+                <li
+                  className="flex min-w-0 flex-wrap items-start justify-between gap-4 px-4 py-4 sm:px-5"
+                  key={item._id}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                      <h3 className="break-words text-[15px] font-semibold leading-6 text-ink">
+                        {item.name}
+                      </h3>
+                      <StatusPill value={item.status} />
+                    </div>
+                    <dl className="mt-2 flex min-w-0 flex-wrap gap-x-6 gap-y-1 text-[12px]">
+                      <div>
+                        <dt className="sr-only">Loại</dt>
+                        <dd className="text-ink-muted">{valueLabel(item.suite_type)}</dd>
+                      </div>
+                      <div>
+                        <dt className="sr-only">Số ca kiểm thử</dt>
+                        <dd className="text-ink-muted">
+                          {item.test_case_version_ids?.length || 0} ca kiểm thử
+                        </dd>
+                      </div>
+                      {item.updated_at && (
+                        <div>
+                          <dt className="sr-only">Cập nhật</dt>
+                          <dd className="text-ink-faint">Cập nhật {formatDate(item.updated_at)}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
                     {can("testsuite.update") && (
                       <button
                         className="icon-button h-9 w-9"
@@ -1501,18 +1611,22 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                         <Archive aria-hidden="true" size={16} />
                       </button>
                     )}
-                  </span>
-                ),
-              },
-            ]}
-          />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-5 py-5 text-[13px] text-ink-muted" role="status">
+              Chưa có bộ kiểm thử
+            </p>
+          )}
         </Panel>
       )}
       {can("testrun.read") &&
         (workspaceView === "" || (workspaceView === "test-runs" && runSubsection === "runs")) && (
           <div>
             <Panel title="Danh sách lần chạy">
-              <details className="border-b border-border p-4">
+              <details className="border-b border-border p-4" open={workspaceView === "test-runs"}>
                 <summary className="cursor-pointer text-sm font-medium">
                   Tìm kiếm, lọc và sắp xếp
                 </summary>
@@ -1521,11 +1635,8 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     aria-label="Tìm lần chạy"
                     className="apple-input"
                     placeholder="Tên lần chạy"
-                    value={runFilters.name}
-                    onChange={(event) => {
-                      setRunFilters({ ...runFilters, name: event.target.value });
-                      setRunPage(1);
-                    }}
+                    value={runNameSearch}
+                    onChange={(event) => setRunNameSearch(event.target.value)}
                   />
                   <select
                     aria-label="Lọc trạng thái lần chạy"
@@ -1547,11 +1658,8 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                     aria-label="Lọc môi trường lần chạy"
                     className="apple-input"
                     placeholder="Môi trường"
-                    value={runFilters.environment}
-                    onChange={(event) => {
-                      setRunFilters({ ...runFilters, environment: event.target.value });
-                      setRunPage(1);
-                    }}
+                    value={runEnvironmentSearch}
+                    onChange={(event) => setRunEnvironmentSearch(event.target.value)}
                   />
                   <select
                     aria-label="Sắp xếp lần chạy"
@@ -1568,84 +1676,68 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   </select>
                 </div>
               </details>
-              <DataTable
-                onSelect={(item) =>
-                  router.push(projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns, item._id))
-                }
-                items={runs}
-                empty="Chưa có lần chạy"
-                layout="wide-table"
-                columns={[
-                  {
-                    key: "name",
-                    label: "Tên",
-                    width: "27%",
-                    minWidth: 228,
-                    render: (item) => {
-                      const name = item.name || "Lần chạy chưa có tên";
-                      return (
-                        <span
-                          className="line-clamp-2 max-w-72 break-words [overflow-wrap:anywhere]"
-                          title={name}
-                        >
-                          {name}
-                        </span>
-                      );
-                    },
-                    mobileRender: (item) => item.name || "Lần chạy chưa có tên",
-                  },
-                  {
-                    key: "environment",
-                    label: "Môi trường",
-                    width: "24%",
-                    minWidth: 204,
-                    render: (item) => {
-                      const environment = item.environment || "Chưa xác định";
-                      return (
-                        <span
-                          className="line-clamp-2 max-w-64 break-words [overflow-wrap:anywhere]"
-                          title={environment}
-                        >
-                          {environment}
-                        </span>
-                      );
-                    },
-                    mobileRender: (item) => item.environment || "Chưa xác định",
-                  },
-                  {
-                    key: "build",
-                    label: "Bản dựng",
-                    width: "24%",
-                    minWidth: 190,
-                    render: (item) => {
-                      const build = item.build || "Chưa có bản dựng";
-                      return (
-                        <span className="block max-w-60 truncate font-mono text-xs" title={build}>
-                          {build}
-                        </span>
-                      );
-                    },
-                    mobileRender: (item) => item.build || "Chưa có bản dựng",
-                  },
-                  {
-                    key: "count",
-                    label: "Số ca kiểm thử",
-                    width: "11%",
-                    minWidth: 100,
-                    render: (item) =>
-                      Array.isArray(item.test_case_version_ids)
-                        ? item.test_case_version_ids.length
-                        : "Chưa có dữ liệu",
-                  },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    width: "14%",
-                    minWidth: 132,
-                    render: (item) => <StatusPill value={item.status} />,
-                  },
-                ]}
-              />
+              {runs.length > 0 ? (
+                <ul className="divide-y divide-border" aria-label="Lần chạy kiểm thử">
+                  {runs.map((item) => {
+                    const name = item.name || "Lần chạy chưa có tên";
+                    const caseCount = Array.isArray(item.test_case_version_ids)
+                      ? item.test_case_version_ids.length
+                      : null;
+                    return (
+                      <li className="min-w-0 px-4 py-4 sm:px-5" key={item._id}>
+                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                          <button
+                            className="min-w-0 flex-1 text-left text-[15px] font-semibold leading-6 text-ink hover:text-brand"
+                            type="button"
+                            onClick={() =>
+                              router.push(
+                                projectRoute(project._id, PROJECT_SECTION_SLUGS.testRuns, item._id),
+                              )
+                            }
+                          >
+                            <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">
+                              {name}
+                            </span>
+                          </button>
+                          <StatusPill value={item.status} />
+                        </div>
+                        <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
+                          <div className="min-w-0">
+                            <dt className="text-ink-faint">Môi trường</dt>
+                            <dd className="mt-0.5 break-words font-medium text-ink">
+                              {item.environment || "Chưa xác định"}
+                            </dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-ink-faint">Bản dựng</dt>
+                            <dd className="mt-0.5 break-all font-medium text-ink">
+                              {item.build || "Chưa có bản dựng"}
+                            </dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt className="text-ink-faint">Ca kiểm thử</dt>
+                            <dd className="mt-0.5 font-medium text-ink">
+                              {caseCount === null ? "Chưa có dữ liệu" : caseCount}
+                            </dd>
+                          </div>
+                          {item.updated_at && (
+                            <div className="min-w-0">
+                              <dt className="text-ink-faint">Cập nhật lúc</dt>
+                              <dd className="mt-0.5 font-medium text-ink">
+                                {formatDate(item.updated_at)}
+                              </dd>
+                            </div>
+                          )}
+                        </dl>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="px-5 py-5 text-[13px] text-ink-muted" role="status">
+                  Chưa có lần chạy
+                </p>
+              )}
               <Pagination value={runPageInfo} onChange={setRunPage} />
             </Panel>
           </div>

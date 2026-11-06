@@ -16,7 +16,7 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { testingApi } from "../../services/testing.service";
-import { messageOf, textDoc, valueLabel } from "../../lib/testing";
+import { docText, formatDate, messageOf, textDoc, valueLabel } from "../../lib/testing";
 import { shouldReloadAfterAmbiguousMutation } from "../../lib/executionRecovery.logic.mjs";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
@@ -44,6 +44,23 @@ const traceReasonLabels = {
   SIMILAR_REQUIREMENT_TEXT: "Nội dung yêu cầu tương đồng",
 };
 
+function memberDisplayName(member) {
+  return (
+    member?.identity?.label ||
+    member?.user_label ||
+    member?.full_name ||
+    member?.user?.full_name ||
+    member?.user?.email ||
+    member?.email ||
+    "Thành viên dự án"
+  );
+}
+
+function displayEnvironment(value) {
+  const [environment, ...details] = String(value || "").split(" · ");
+  return [valueLabel(environment), ...details].filter(Boolean).join(" · ");
+}
+
 export default function DefectsPage({ project }) {
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
@@ -53,6 +70,7 @@ export default function DefectsPage({ project }) {
   const [environments, setEnvironments] = useState([]);
   const [page, setPage] = useState(1);
   const [pageInfo, setPageInfo] = useState(null);
+  const [searchText, setSearchText] = useState("");
   const [filters, setFilters] = useState({
     q: "",
     status: "",
@@ -85,13 +103,14 @@ export default function DefectsPage({ project }) {
     title: "",
     severity: "major",
     priority: "medium",
-    environment: "staging",
+    environment: "",
     environmentId: "",
     releaseId: "",
     release: "",
     build: "",
     buildId: "",
     description: "",
+    steps: "",
     actual: "",
     expected: "",
     attachments: [],
@@ -221,33 +240,12 @@ export default function DefectsPage({ project }) {
     void load();
   }, [load]);
   useEffect(() => {
-    if (!project.current_permissions?.includes("ai.suggest_bug_trace") || !items.length) {
-      return undefined;
-    }
-    let active = true;
-    let pending = false;
-    const timer = window.setInterval(async () => {
-      if (document.visibilityState !== "visible" || pending) return;
-      pending = true;
-      try {
-        const values = await testingApi.listAutomatedDefectTraceSuggestions(
-          project._id,
-          items.map((item) => item._id),
-        );
-        if (active) {
-          setTraceSuggestions(Object.fromEntries(values.map((item) => [item.subject_id, item])));
-        }
-      } catch (reason) {
-        if (active) setError(messageOf(reason));
-      } finally {
-        pending = false;
-      }
-    }, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [items, project._id, project.current_permissions]);
+    const timer = window.setTimeout(() => {
+      setFilters((current) => (current.q === searchText ? current : { ...current, q: searchText }));
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
   const create = async (event) => {
     event.preventDefault();
     if (savingDefectRef.current) return;
@@ -259,7 +257,11 @@ export default function DefectsPage({ project }) {
       project_id: project._id,
       title: form.title,
       description_doc: textDoc(form.description),
-      steps_to_reproduce: [],
+      steps_to_reproduce: form.steps
+        .split("\n")
+        .map((step) => step.trim())
+        .filter(Boolean)
+        .map((action) => ({ action_doc: textDoc(action), expected_doc: textDoc("") })),
       actual_result_doc: textDoc(form.actual),
       expected_result_doc: textDoc(form.expected),
       severity: form.severity,
@@ -291,13 +293,14 @@ export default function DefectsPage({ project }) {
         title: "",
         severity: "major",
         priority: "medium",
-        environment: "staging",
+        environment: "",
         environmentId: "",
         release: "",
         releaseId: "",
         build: "",
         buildId: "",
         description: "",
+        steps: "",
         actual: "",
         expected: "",
         attachments: [],
@@ -320,7 +323,6 @@ export default function DefectsPage({ project }) {
         {
           name: "reason",
           label: "Lý do",
-          initialValue: "Đã xác minh điều kiện chuyển trạng thái",
           required: true,
           multiline: true,
           autoFocus: true,
@@ -356,7 +358,7 @@ export default function DefectsPage({ project }) {
             { value: "", label: "Chưa gán" },
             ...members.map((member) => ({
               value: member.user_id,
-              label: member.user_label || member.user?.email || "Thành viên dự án",
+              label: memberDisplayName(member),
             })),
           ],
         },
@@ -424,15 +426,17 @@ export default function DefectsPage({ project }) {
     }
   };
   const confirmTraceCandidate = async (candidate) => {
-    await ask({
+    const currentReview = traceReview;
+    if (!currentReview) return;
+    setTraceReview(null);
+    const answer = await ask({
       title: "Xác nhận liên kết truy vết",
-      description: `${traceReview.defect.defect_key} với ${candidate.requirement_key || candidate.test_case_key}`,
+      description: `${currentReview.defect.defect_key} với ${candidate.requirement_key || candidate.test_case_key}`,
       confirmLabel: "Xác nhận liên kết",
       fields: [
         {
           name: "reason",
           label: "Lý do xác nhận",
-          initialValue: "Đã đối chiếu bằng chứng và xác nhận liên kết phù hợp",
           required: true,
           multiline: true,
           autoFocus: true,
@@ -440,15 +444,15 @@ export default function DefectsPage({ project }) {
       ],
       onConfirm: async (answer) => {
         const payload = {
-          expected_revision: traceReview.defect.revision,
+          expected_revision: currentReview.defect.revision,
           reason: answer.reason,
-          ai_result_id: traceReview.result._id,
+          ai_result_id: currentReview.result._id,
           accepted_candidate_ids: [candidate.candidate_id],
         };
         if (candidate.artifact_type === "requirement_version") {
           payload.linked_requirement_version_ids = [
             ...new Set([
-              ...(traceReview.defect.linked_requirement_version_ids || []),
+              ...(currentReview.defect.linked_requirement_version_ids || []),
               candidate.artifact_id,
             ]),
           ];
@@ -456,14 +460,14 @@ export default function DefectsPage({ project }) {
           payload.linked_test_case_version_id = candidate.artifact_id;
         }
         try {
-          await testingApi.updateDefectTrace(project._id, traceReview.defect._id, payload);
-          setTraceReview(null);
+          await testingApi.updateDefectTrace(project._id, currentReview.defect._id, payload);
           await load();
         } catch (reason) {
           throw new Error(messageOf(reason));
         }
       },
     });
+    if (!answer) setTraceReview(currentReview);
   };
   const renderTransition = (item) => {
     if (item.status === "READY_FOR_RETEST") {
@@ -481,7 +485,7 @@ export default function DefectsPage({ project }) {
               await testingApi.retestDefect(project._id, item._id, {
                 test_result_id: event.target.value,
                 expected_revision: item.revision,
-                note: "Kiểm thử lại từ giao diện quản lý lỗi",
+                note: "",
                 idempotency_key: crypto.randomUUID(),
               });
               await load();
@@ -544,7 +548,7 @@ export default function DefectsPage({ project }) {
       actions={
         <div className="flex flex-wrap items-center gap-3">
           <ProjectCrumb projectId={project._id} />
-          {can("defect.create") && memberRoles.some((role) => ["QA", "TESTER"].includes(role)) && (
+          {can("defect.create") && (
             <button
               className="apple-button"
               type="button"
@@ -658,11 +662,11 @@ export default function DefectsPage({ project }) {
                     setForm({
                       ...form,
                       environmentId,
-                      environment: environment?.name || "staging",
+                      environment: environment?.name || "",
                     });
                   }}
                 >
-                  <option value="">Mặc định staging</option>
+                  <option value="">Chọn môi trường</option>
                   {environments.map((item) => (
                     <option key={item._id} value={item._id}>
                       {item.name} · {valueLabel(item.environment_type)}
@@ -750,6 +754,16 @@ export default function DefectsPage({ project }) {
                   }
                 />
               )}
+            </label>
+            <label className="field-label md:col-span-2">
+              Các bước tái hiện
+              <textarea
+                required
+                className="apple-input mt-2 min-h-24"
+                placeholder="Mỗi dòng là một bước"
+                value={form.steps}
+                onChange={(event) => setForm({ ...form, steps: event.target.value })}
+              />
             </label>
             <label className="field-label">
               Mô tả
@@ -840,10 +854,18 @@ export default function DefectsPage({ project }) {
         </Panel>
       )}
       {traceReview && (
-        <Panel title={`Gợi ý liên kết cho ${traceReview.defect.defect_key}`}>
-          <div className="border-b border-border px-5 py-3 text-sm text-ink-muted">
-            Gợi ý chưa thay đổi lỗi. Chỉ liên kết sau khi người có quyền xác nhận.
-          </div>
+        <Modal
+          isOpen={Boolean(traceReview)}
+          onClose={() => setTraceReview(null)}
+          ariaLabel={`Gợi ý liên kết cho ${traceReview.defect.defect_key}`}
+          className="max-w-6xl"
+        >
+          <ModalHeader>
+            <ModalTitle>Gợi ý liên kết cho {traceReview.defect.defect_key}</ModalTitle>
+            <p className="mt-2 text-sm text-ink-muted">
+              Gợi ý chưa thay đổi lỗi. Chỉ liên kết sau khi người có quyền xác nhận.
+            </p>
+          </ModalHeader>
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm font-semibold text-ink">
             Yêu cầu được đề xuất
             <ContentOriginBadge origin="ai_suggested" />
@@ -922,21 +944,18 @@ export default function DefectsPage({ project }) {
               },
             ]}
           />
-        </Panel>
+        </Modal>
       )}
       <Panel title="Danh sách lỗi">
-        <details className="border-b border-border p-4">
+        <details className="border-b border-border p-4" open>
           <summary className="cursor-pointer text-sm font-medium">Tìm và lọc lỗi</summary>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <input
               aria-label="Tìm lỗi"
               className="apple-input xl:col-span-2"
               placeholder="Tìm theo mã hoặc tên"
-              value={filters.q}
-              onChange={(event) => {
-                setFilters({ ...filters, q: event.target.value });
-                setPage(1);
-              }}
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
             />
             <select
               aria-label="Lọc trạng thái lỗi"
@@ -982,7 +1001,7 @@ export default function DefectsPage({ project }) {
               <option value="">Mọi người xử lý</option>
               {members.map((item) => (
                 <option key={item.user_id} value={item.user_id}>
-                  {item.user_label || item.user?.email || "Thành viên dự án"}
+                  {memberDisplayName(item)}
                 </option>
               ))}
             </select>
@@ -1002,74 +1021,153 @@ export default function DefectsPage({ project }) {
             </select>
           </div>
         </details>
-        <DataTable
-          items={items}
-          empty="Chưa có lỗi"
-          columns={[
-            {
-              key: "defect_key",
-              label: "Lỗi",
-              minWidth: 170,
-              render: (item) => (
-                <div className="min-w-0 max-w-64 space-y-1">
-                  <span className="block whitespace-nowrap text-xs font-medium text-ink-muted">
-                    {item.defect_key}
-                  </span>
-                  <span className="block break-words font-medium">{item.title}</span>
-                </div>
-              ),
-            },
-            {
-              key: "impact",
-              label: "Mức độ và ưu tiên",
-              minWidth: 126,
-              render: (item) => (
-                <div className="space-y-1 text-sm">
-                  <p>Mức độ: {valueLabel(item.severity)}</p>
-                  <p className="text-xs text-ink-muted">Ưu tiên: {valueLabel(item.priority)}</p>
-                </div>
-              ),
-            },
-            {
-              key: "status",
-              label: "Trạng thái",
-              minWidth: 156,
-              render: (item) => (
-                <div className="flex min-w-0 flex-col items-start gap-2">
-                  <StatusPill value={item.status} />
-                  {renderTransition(item)}
-                </div>
-              ),
-            },
-            {
-              key: "trace",
-              label: "Truy vết",
-              minWidth: 170,
-              render: (item) => (
-                <span className="flex min-w-0 flex-col items-start gap-2">
-                  <span className="text-[11px] text-ink-muted">
-                    {item.linked_test_case_version_id
-                      ? "Đã liên kết ca kiểm thử"
-                      : "Chưa liên kết ca kiểm thử"}
-                  </span>
-                  <span className="flex flex-wrap gap-2">
+        {items.length ? (
+          <ul aria-label="Danh sách lỗi" className="divide-y divide-border">
+            {items.map((item) => {
+              const assignee = members.find((member) => member.user_id === item.assignee);
+              const currentTrace =
+                traceSuggestions[item._id]?.source_event_revision === item.revision;
+              const reproductionSteps = (item.steps_to_reproduce || [])
+                .map((step) => ({
+                  action: docText(step.action_doc || step.action || step.description),
+                  expected: docText(step.expected_doc || step.expected),
+                }))
+                .filter((step) => step.action || step.expected);
+              const hasResultDetails = Boolean(
+                reproductionSteps.length ||
+                  docText(item.expected_result_doc) ||
+                  docText(item.actual_result_doc),
+              );
+              return (
+                <li className="min-w-0 px-4 py-4 sm:px-5" key={item._id}>
+                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-ink-muted">{item.defect_key}</p>
+                      <h3 className="mt-1 break-words text-[15px] font-semibold leading-6 text-ink">
+                        {item.title}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusPill value={item.status} />
+                      <span className="rounded-control border border-border px-2.5 py-1 text-xs text-ink">
+                        {valueLabel(item.severity)}
+                      </span>
+                      <span className="rounded-control border border-border px-2.5 py-1 text-xs text-ink-muted">
+                        Ưu tiên {valueLabel(item.priority)}
+                      </span>
+                    </div>
+                  </div>
+                  {item.description && (
+                    <p className="mt-2 line-clamp-2 break-words text-[13px] leading-5 text-ink-muted">
+                      {item.description}
+                    </p>
+                  )}
+                  <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="min-w-0">
+                      <dt className="text-ink-faint">Người xử lý</dt>
+                      <dd className="mt-0.5 break-words font-medium text-ink">
+                        {defectActionAccess(project, item).canAssign ? (
+                          <button
+                            className="text-left text-brand hover:underline"
+                            type="button"
+                            onClick={() => assignDefect(item)}
+                          >
+                            {assignee
+                              ? memberDisplayName(assignee)
+                              : item.assignee
+                                ? "Thành viên dự án"
+                                : "Gán người xử lý"}
+                          </button>
+                        ) : assignee ? (
+                          memberDisplayName(assignee)
+                        ) : item.assignee ? (
+                          "Thành viên dự án"
+                        ) : (
+                          "Chưa gán"
+                        )}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-ink-faint">Liên kết kiểm thử</dt>
+                      <dd className="mt-0.5 break-words font-medium text-ink">
+                        {item.linked_test_case_version_id
+                          ? "Đã liên kết ca kiểm thử"
+                          : "Chưa liên kết ca kiểm thử"}
+                      </dd>
+                    </div>
+                    {(item.environment || item.build || item.release) && (
+                      <div className="min-w-0 sm:col-span-2">
+                        <dt className="text-ink-faint">Môi trường và phiên bản</dt>
+                        <dd className="mt-0.5 break-words font-medium text-ink">
+                          {[
+                            item.environment ? displayEnvironment(item.environment) : "",
+                            item.build,
+                            item.release,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                  {hasResultDetails && (
+                    <details className="mt-3 rounded-control border border-border px-3 py-2">
+                      <summary className="cursor-pointer text-[13px] font-medium text-ink">
+                        Các bước và kết quả
+                      </summary>
+                      <div className="mt-3 grid gap-4 text-[13px] leading-5 md:grid-cols-2">
+                        {reproductionSteps.length > 0 && (
+                          <div className="min-w-0">
+                            <h4 className="font-semibold text-ink">Các bước tái hiện</h4>
+                            <ol className="mt-2 list-inside list-decimal space-y-1 text-ink-muted">
+                              {reproductionSteps.map((step, index) => (
+                                <li className="break-words" key={`${item._id}-step-${index}`}>
+                                  {step.action}
+                                  {step.expected && (
+                                    <span className="mt-1 block pl-5 text-ink-faint">
+                                      Kết quả mong đợi: {step.expected}
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                        {docText(item.expected_result_doc) && (
+                          <div className="min-w-0">
+                            <h4 className="font-semibold text-ink">Kết quả mong đợi</h4>
+                            <p className="mt-2 break-words text-ink-muted">
+                              {docText(item.expected_result_doc)}
+                            </p>
+                          </div>
+                        )}
+                        {docText(item.actual_result_doc) && (
+                          <div className="min-w-0">
+                            <h4 className="font-semibold text-ink">Kết quả thực tế</h4>
+                            <p className="mt-2 break-words text-ink-muted">
+                              {docText(item.actual_result_doc)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                  <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+                    {renderTransition(item)}
                     {can("ai.suggest_bug_trace") &&
-                      traceSuggestions[item._id]?.source_event_revision === item.revision && (
+                      (currentTrace ? (
                         <button
                           aria-label={`Xem gợi ý AI cho ${item.defect_key}`}
-                          className="icon-button h-10 w-10"
+                          className="icon-button h-9 w-9"
                           title="Xem gợi ý AI"
                           type="button"
                           onClick={() =>
                             setTraceReview({ defect: item, result: traceSuggestions[item._id] })
                           }
                         >
-                          <Eye aria-hidden="true" size={17} />
+                          <Eye aria-hidden="true" size={16} />
                         </button>
-                      )}
-                    {can("ai.suggest_bug_trace") &&
-                      (!traceSuggestions[item._id] ||
-                        traceSuggestions[item._id].source_event_revision !== item.revision) && (
+                      ) : (
                         <button
                           type="button"
                           className="secondary-button text-violet-800"
@@ -1080,7 +1178,7 @@ export default function DefectsPage({ project }) {
                             ? "Đang tìm liên kết…"
                             : "Đề xuất liên kết"}
                         </button>
-                      )}
+                      ))}
                     {item.linked_test_case_version_id && canManageTrace(item) && (
                       <button
                         className="secondary-button"
@@ -1107,55 +1205,35 @@ export default function DefectsPage({ project }) {
                           });
                         }}
                       >
-                        Thu hồi
+                        Thu hồi liên kết
                       </button>
                     )}
-                  </span>
-                </span>
-              ),
-            },
-            {
-              key: "technical_edit",
-              label: "Thao tác",
-              hideWhenEmpty: true,
-              render: (item) =>
-                defectActionAccess(project, item).canEditTechnical ? (
-                  <button
-                    type="button"
-                    className="icon-button h-9 w-9"
-                    title="Cập nhật phân tích lỗi"
-                    aria-label={`Cập nhật phân tích ${item.defect_key}`}
-                    onClick={() => void editTechnicalDetails(item)}
-                  >
-                    <Pencil aria-hidden="true" size={16} />
-                  </button>
-                ) : null,
-            },
-            {
-              key: "assignee",
-              label: "Người xử lý",
-              minWidth: 140,
-              render: (item) =>
-                defectActionAccess(project, item).canAssign ? (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => assignDefect(item)}
-                  >
-                    {members.find((member) => member.user_id === item.assignee)?.user_label ||
-                      members.find((member) => member.user_id === item.assignee)?.user?.email ||
-                      (item.assignee ? "Người xử lý không còn trong danh sách thành viên" : null) ||
-                      "Gán người xử lý"}
-                  </button>
-                ) : (
-                  members.find((member) => member.user_id === item.assignee)?.user_label ||
-                  members.find((member) => member.user_id === item.assignee)?.user?.email ||
-                  (item.assignee ? "Người xử lý không còn trong danh sách thành viên" : null) ||
-                  "Chưa gán"
-                ),
-            },
-          ]}
-        />
+                    {defectActionAccess(project, item).canEditTechnical && (
+                      <button
+                        type="button"
+                        className="icon-button h-9 w-9"
+                        title="Cập nhật phân tích lỗi"
+                        aria-label={`Cập nhật phân tích ${item.defect_key}`}
+                        onClick={() => void editTechnicalDetails(item)}
+                      >
+                        <Pencil aria-hidden="true" size={16} />
+                      </button>
+                    )}
+                    {item.updated_at && (
+                      <span className="ml-auto text-xs text-ink-faint">
+                        Cập nhật {formatDate(item.updated_at)}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="px-5 py-5 text-[13px] text-ink-muted" role="status">
+            Chưa có lỗi
+          </p>
+        )}
         <Pagination value={pageInfo} onChange={setPage} />
       </Panel>
       {project.current_permissions?.includes("causalanalysis.read") && (

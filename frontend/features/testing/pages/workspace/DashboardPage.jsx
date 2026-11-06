@@ -146,14 +146,14 @@ export default function DashboardPage({ project }) {
         <LoadingState label="Đang tải tổng quan dự án" variant="dashboard" />
       ) : (
         <>
-          <Panel title="Tiến độ dự án">
+          <Panel title="Tiến độ và số liệu chính">
             <div className="grid gap-5 p-5">
               <div>
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span>
                     {taskProgress.completionPercent == null
                       ? taskProgress.label
-                      : `Tiến độ dự án ${taskProgress.completionPercent}%`}
+                      : `Hoàn thành ${taskProgress.completionPercent}%`}
                   </span>
                   {taskProgress.applicableTotal > 0 && taskProgress.completed != null && (
                     <span className="shrink-0 text-ink-muted">
@@ -177,31 +177,51 @@ export default function DashboardPage({ project }) {
                   </div>
                 )}
               </div>
+              {(dashboard || coverage) && hasOverviewMetrics && (
+                <dl className="grid gap-x-5 gap-y-4 border-t border-border pt-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {can("requirement.read") && dashboard && (
+                    <div className="min-w-0">
+                      <dt className="text-[12px] leading-5 text-ink-muted">Yêu cầu đã duyệt</dt>
+                      <dd className="mt-1 text-[24px] font-semibold leading-7 tabular-nums text-ink">
+                        {dashboard.requirements}
+                      </dd>
+                    </div>
+                  )}
+                  {can("testcase.read") && dashboard && (
+                    <div className="min-w-0">
+                      <dt className="text-[12px] leading-5 text-ink-muted">
+                        Ca kiểm thử đang hoạt động
+                      </dt>
+                      <dd className="mt-1 text-[24px] font-semibold leading-7 tabular-nums text-ink">
+                        {dashboard.active_tests}
+                      </dd>
+                    </div>
+                  )}
+                  {can("defect.read") && dashboard && (
+                    <div className="min-w-0">
+                      <dt className="text-[12px] leading-5 text-ink-muted">Lỗi đang mở</dt>
+                      <dd className="mt-1 text-[24px] font-semibold leading-7 tabular-nums text-ink">
+                        {dashboard.open_defects}
+                      </dd>
+                    </div>
+                  )}
+                  {can("coverage.read") && coverage?.requirement_coverage != null && (
+                    <div className="min-w-0">
+                      <dt className="text-[12px] leading-5 text-ink-muted">
+                        Yêu cầu có liên kết kiểm thử
+                      </dt>
+                      <dd className="mt-1 text-[24px] font-semibold leading-7 tabular-nums text-ink">
+                        {formatCoveragePercent(coverage.requirement_coverage)}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              )}
             </div>
           </Panel>
-          {(dashboard || coverage) && hasOverviewMetrics && (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
-              {can("requirement.read") && dashboard && (
-                <Metric label="Yêu cầu đã duyệt" value={dashboard.requirements} />
-              )}
-              {can("testcase.read") && dashboard && (
-                <Metric label="Ca kiểm thử đang hoạt động" value={dashboard.active_tests} />
-              )}
-              {can("defect.read") && dashboard && (
-                <Metric label="Lỗi đang mở" value={dashboard.open_defects} />
-              )}
-              {can("coverage.read") && coverage?.requirement_coverage != null && (
-                <Metric
-                  label="Yêu cầu có liên kết kiểm thử"
-                  value={formatCoveragePercent(coverage.requirement_coverage)}
-                />
-              )}
-            </div>
-          )}
-          {canReadAutomationRuns && <AgentRunPanel project={project} compact />}
           {project.current_permissions?.includes("ai.ask_project") && (
             <details onToggle={(event) => setShowAiReview(event.currentTarget.open)}>
-              <summary className="cursor-pointer rounded-control border border-border bg-surface px-4 py-3 text-sm font-medium">
+              <summary className="cursor-pointer border-y border-border py-3 text-sm font-medium">
                 Đánh giá và rà soát bằng AI
               </summary>
               {showAiReview && (
@@ -213,8 +233,8 @@ export default function DashboardPage({ project }) {
             </details>
           )}
           {(dashboard || coverage) && hasQualityMetrics && (
-            <details className="rounded-panel border border-border bg-surface p-4 shadow-sm">
-              <summary className="cursor-pointer text-sm font-medium">
+            <details className="border-y border-border">
+              <summary className="cursor-pointer py-3 text-sm font-medium">
                 Số liệu kiểm thử chi tiết
               </summary>
               <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-3">
@@ -252,116 +272,131 @@ export default function DashboardPage({ project }) {
               </div>
             </details>
           )}
+          <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,1fr)]">
+            <div className="grid min-w-0 content-start gap-5">
+              {canReadAutomationRuns && <AgentRunPanel project={project} compact />}
+              {dashboard && can("requirement.read") && can("impact.read") && (
+                <Panel title="Thay đổi gần đây">
+                  {dashboard.recent_changes?.length > 0 ? (
+                    <DataTable
+                      items={dashboard.recent_changes}
+                      columns={[
+                        { key: "requirement_label", label: "Yêu cầu" },
+                        {
+                          key: "status",
+                          label: "Trạng thái",
+                          render: (item) => <StatusPill value={item.status} />,
+                        },
+                        {
+                          key: "created_at",
+                          label: "Cập nhật lúc",
+                          render: (item) => formatDate(item.created_at),
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <p className="px-5 py-4 text-[13px] text-ink-muted">
+                      Chưa có thay đổi yêu cầu gần đây
+                    </p>
+                  )}
+                </Panel>
+              )}
+            </div>
+            <div className="grid min-w-0 content-start gap-5">
+              {dashboard && can("defect.read") && (
+                <Panel title="Lỗi đang mở theo mức độ">
+                  {openDefectSeverities.length > 0 ? (
+                    <div className="divide-y divide-border px-5">
+                      {openDefectSeverities.map(([severity, count]) => (
+                        <div
+                          className="flex min-w-0 items-center justify-between gap-4 py-3"
+                          key={severity}
+                        >
+                          <p className="min-w-0 break-words text-[13px] text-ink-muted">
+                            {valueLabel(severity)}
+                          </p>
+                          <p className="shrink-0 text-lg font-semibold tabular-nums">{count}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="p-5 text-[13px] text-ink-muted">Không có lỗi đang mở</p>
+                  )}
+                </Panel>
+              )}
+              {dashboard && can("testrun.read") && (
+                <Panel title="Lần chạy mới nhất">
+                  {dashboard.latest_run ? (
+                    <div className="space-y-3 p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <Link
+                          className="font-semibold text-brand"
+                          href={`${base}/thuc-thi/${dashboard.latest_run._id}`}
+                        >
+                          {latestRunLabel(dashboard.latest_run)}
+                        </Link>
+                        <StatusPill value={dashboard.latest_run.status} />
+                      </div>
+                      {latestRunContext(dashboard.latest_run) && (
+                        <p className="text-[12px] text-ink-muted">
+                          {latestRunContext(dashboard.latest_run)}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2 text-[12px]">
+                        {Object.entries(dashboard.latest_run.result_counts || {}).map(
+                          ([status, count]) => (
+                            <span
+                              className="rounded-full border border-border px-3 py-1"
+                              key={status}
+                            >
+                              {valueLabel(status)} {count}
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="p-5 text-[13px] text-ink-muted">Chưa có lần chạy</p>
+                  )}
+                </Panel>
+              )}
+            </div>
+          </div>
           {(navigationCards.length > 0 || canReadKnowledge) && (
-            <section aria-labelledby="project-areas-heading" className="space-y-3">
-              <h2 className="text-base font-semibold text-ink" id="project-areas-heading">
-                Mở nhanh
+            <section aria-labelledby="project-areas-heading" className="min-w-0">
+              <h2 className="mb-2 text-sm font-semibold text-ink" id="project-areas-heading">
+                Khu vực dự án
               </h2>
-              <nav aria-label="Khu vực dự án" className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
+              <nav
+                aria-label="Khu vực dự án"
+                className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 xl:grid-cols-4"
+              >
                 {navigationCards.map(([href, label]) => (
                   <Link
-                    className="flex min-h-11 items-center justify-between gap-3 border-b border-border/70 py-2 text-sm font-medium text-ink transition-colors hover:text-brand"
+                    className="flex min-h-10 min-w-0 items-center justify-between gap-3 border-b border-border/70 py-2 text-[13px] font-medium text-ink transition-colors hover:text-brand"
                     href={`${base}/${href}`}
                     key={href}
                   >
-                    <span>{label}</span>
-                    <span aria-hidden="true" className="text-ink-muted">›</span>
+                    <span className="min-w-0 break-words">{label}</span>
+                    <span aria-hidden="true" className="shrink-0 text-ink-muted">
+                      ›
+                    </span>
                   </Link>
                 ))}
                 {canReadKnowledge && (
                   <Link
-                    className="flex min-h-11 items-center justify-between gap-3 border-b border-border/70 py-2 text-sm font-medium text-ink transition-colors hover:text-brand"
+                    className="flex min-h-10 min-w-0 items-center justify-between gap-3 border-b border-border/70 py-2 text-[13px] font-medium text-ink transition-colors hover:text-brand"
                     href={`${base}/tri-thuc`}
+                    key="tri-thuc"
                   >
-                    <span>Tài liệu và nguồn</span>
-                    <span aria-hidden="true" className="text-ink-muted">›</span>
+                    <span className="min-w-0 break-words">Tài liệu và nguồn</span>
+                    <span aria-hidden="true" className="shrink-0 text-ink-muted">
+                      ›
+                    </span>
                   </Link>
                 )}
               </nav>
             </section>
-          )}
-          {dashboard && can("defect.read") && can("testrun.read") && (
-            <div className="grid items-start gap-4 lg:grid-cols-2">
-              <Panel title="Lỗi đang mở theo mức độ">
-                {openDefectSeverities.length > 0 ? (
-                  <div className="divide-y divide-border px-5">
-                    {openDefectSeverities.map(([severity, count]) => (
-                      <div
-                        className="flex min-w-0 items-center justify-between gap-4 py-3"
-                        key={severity}
-                      >
-                        <p className="min-w-0 break-words text-[13px] text-ink-muted">
-                          {valueLabel(severity)}
-                        </p>
-                        <p className="shrink-0 text-lg font-semibold tabular-nums">{count}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="p-5 text-[13px] text-ink-muted">Không có lỗi đang mở</p>
-                )}
-              </Panel>
-              <Panel title="Lần chạy mới nhất">
-                {dashboard.latest_run ? (
-                  <div className="space-y-3 p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <Link
-                        className="font-semibold text-brand"
-                        href={`${base}/thuc-thi/${dashboard.latest_run._id}`}
-                      >
-                        {latestRunLabel(dashboard.latest_run)}
-                      </Link>
-                      <StatusPill value={dashboard.latest_run.status} />
-                    </div>
-                    {latestRunContext(dashboard.latest_run) && (
-                      <p className="text-[12px] text-ink-muted">
-                        {latestRunContext(dashboard.latest_run)}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-3 text-[12px]">
-                      {Object.entries(dashboard.latest_run.result_counts || {}).map(
-                        ([status, count]) => (
-                          <span
-                            className="rounded-full border border-border px-3 py-1"
-                            key={status}
-                          >
-                            {valueLabel(status)} {count}
-                          </span>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="p-5 text-[13px] text-ink-muted">Chưa có lần chạy</p>
-                )}
-              </Panel>
-            </div>
-          )}
-          {dashboard && can("requirement.read") && can("impact.read") && (
-            <Panel title="Thay đổi gần đây">
-              {dashboard.recent_changes?.length > 0 ? (
-                <DataTable
-                  items={dashboard.recent_changes}
-                  columns={[
-                    { key: "requirement_label", label: "Yêu cầu" },
-                    {
-                      key: "status",
-                      label: "Trạng thái",
-                      render: (item) => <StatusPill value={item.status} />,
-                    },
-                    {
-                      key: "created_at",
-                      label: "Tạo lúc",
-                      render: (item) => formatDate(item.created_at),
-                    },
-                  ]}
-                />
-              ) : (
-                <p className="px-5 py-4 text-[13px] text-ink-muted">
-                  Chưa có thay đổi yêu cầu gần đây
-                </p>
-              )}
-            </Panel>
           )}
         </>
       )}

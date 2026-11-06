@@ -342,6 +342,16 @@
     @apply block min-h-11 w-full min-w-0 max-w-full rounded-control border border-border-strong bg-surface px-3.5 py-2.5 text-[15px] text-ink outline-none transition duration-150 placeholder:text-ink-faint focus:border-brand focus:ring-2 focus:ring-brand-soft disabled:cursor-not-allowed disabled:bg-surface-quiet;
   }
 
+  select.apple-input,
+  select.form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236e706b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.875rem center;
+    background-repeat: no-repeat;
+    background-size: 1rem;
+    padding-right: 2.75rem;
+  }
+
   .field-label {
     @apply block min-w-0 text-[12px] font-semibold text-ink-muted;
   }
@@ -710,6 +720,36 @@
   }
 }
 
+.automation-scripts-list-panel .workspace-panel-header-with-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.automation-scripts-list-panel .workspace-panel-header-with-actions .workspace-panel-heading {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.automation-scripts-list-panel .workspace-panel-header-with-actions .workspace-panel-actions {
+  flex: 0 0 auto;
+  width: auto;
+  justify-content: flex-end;
+}
+
+@container (max-width: 36rem) {
+  .automation-scripts-list-panel .workspace-panel-header-with-actions {
+    flex-wrap: wrap;
+  }
+
+  .automation-scripts-list-panel .workspace-panel-header-with-actions .workspace-panel-heading,
+  .automation-scripts-list-panel .workspace-panel-header-with-actions .workspace-panel-actions {
+    flex-basis: 100%;
+    width: 100%;
+  }
+}
+
 @layer utilities {
   .hide-scrollbar {
     scrollbar-width: none;
@@ -742,53 +782,91 @@
   overflow: auto;
   background: #fff;
   padding: 2rem;
+  color: #171717;
+  font-family: "Times New Roman", serif;
 }
 
 .report-print-view > :not(.report-print-controls) {
-  max-width: 18cm;
+  max-width: 16cm;
   margin-right: auto;
   margin-left: auto;
 }
 
 .report-print-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  max-width: 18cm;
-  margin: 1.5rem auto 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid #b7c4c0;
-}
-
-.report-print-header div {
   display: grid;
-  gap: 0.15rem;
+  grid-template-columns: 2.6cm minmax(0, 1fr);
+  align-items: stretch;
+  margin: 1.25rem auto 0.35rem;
+  border: 1px solid #707070;
 }
 
-.report-print-header span,
-.report-print-meta {
-  color: #59645f;
-  font-size: 0.875rem;
+.report-print-logo-cell,
+.report-print-title-cell {
+  display: flex;
+  min-height: 2.6cm;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
 }
 
-.report-print-view h1 {
-  font-size: 1.5rem;
+.report-print-logo-cell {
+  border-right: 1px solid #707070;
+}
+
+.report-print-logo-cell img {
+  width: 2.15cm;
+  height: 2.15cm;
+  object-fit: contain;
+}
+
+.report-print-title-cell h1 {
+  margin: 0;
+  font-size: 18pt;
   font-weight: 700;
   text-align: center;
-  text-transform: uppercase;
+  line-height: 1.2;
 }
 
-.report-print-meta {
-  margin-bottom: 1rem;
-  text-align: center;
+.report-print-view .testing-editor-toolbar {
+  display: none !important;
+}
+
+.report-print-view .testing-tiptap {
+  min-height: 0 !important;
+  padding: 0 !important;
+  font-family: "Times New Roman", serif !important;
+  font-size: 14pt !important;
+  line-height: 1.25 !important;
+  text-align: justify;
 }
 
 @page {
   size: A4;
-  margin: 2cm 2cm 2cm 3cm;
+  margin: 2cm 2cm 2.9cm 3cm;
+
+  @bottom-center {
+    content: "Trang " counter(page) " / " counter(pages);
+    font-family: "Times New Roman", serif;
+    font-size: 10pt;
+    vertical-align: top;
+  }
 }
 
 @media print {
+  html,
+  body {
+    width: 100%;
+    min-width: 0;
+    margin: 0 !important;
+    background: #fff !important;
+    font-family: "Times New Roman", serif !important;
+  }
+
+  body.report-print-mode
+    *:not(:has(#report-print-view)):not(#report-print-view):not(#report-print-view *) {
+    display: none !important;
+  }
+
   body.report-print-mode * {
     visibility: hidden !important;
   }
@@ -800,12 +878,91 @@
 
   body.report-print-mode .report-print-view {
     position: absolute !important;
-    inset: 0 !important;
+    inset: auto !important;
+    top: 0 !important;
+    left: 0 !important;
     overflow: visible !important;
-    width: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
     padding: 0 !important;
-    background: #fff !important;
+    background: transparent !important;
     color: #000 !important;
+  }
+
+  body.report-print-mode .report-print-view .testing-tiptap > table:last-of-type {
+    margin-top: 1.2cm !important;
+  }
+
+  body.report-print-mode .report-print-view::before {
+    position: fixed;
+    z-index: 0;
+    top: 50%;
+    left: calc(50% + 0.25cm);
+    width: 6cm;
+    height: 6cm;
+    transform: translate(-50%, -50%);
+    background: url("/brand/veriq-logo.png") center / contain no-repeat;
+    content: "";
+    opacity: 0.045;
+    pointer-events: none;
+  }
+
+  body.report-print-mode .report-print-view > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  body.report-print-mode .report-print-header {
+    display: grid !important;
+    width: 16cm !important;
+    max-width: 16cm !important;
+    margin: 0 auto 0.35cm !important;
+    break-inside: avoid;
+  }
+
+  body.report-print-mode .report-print-view .overflow-hidden.rounded-panel {
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+
+  body.report-print-mode .report-print-view .testing-tiptap h2 {
+    font-weight: 700 !important;
+    text-transform: uppercase;
+  }
+
+  body.report-print-mode .report-print-view .testing-tiptap > table:last-of-type,
+  body.report-print-mode .report-print-view .testing-tiptap > table:last-of-type td {
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  body.report-print-mode .report-print-view .testing-tiptap > h2:first-child + table {
+    table-layout: fixed;
+  }
+
+  body.report-print-mode
+    .report-print-view
+    .testing-tiptap
+    > h2:first-child
+    + table
+    col:first-child,
+  body.report-print-mode
+    .report-print-view
+    .testing-tiptap
+    > h2:first-child
+    + table
+    td:first-child {
+    width: 4.2cm !important;
+  }
+
+  body.report-print-mode
+    .report-print-view
+    .testing-tiptap
+    > p:has(> br.ProseMirror-trailingBreak) {
+    display: none !important;
   }
 
   body.report-print-mode .report-print-controls {
@@ -814,13 +971,25 @@
 
   body.report-print-mode .report-print-view .rounded-panel,
   body.report-print-mode .report-print-view .border {
-    border: 0 !important;
     box-shadow: none !important;
   }
 
+  body.report-print-mode .report-print-information,
+  body.report-print-mode .report-print-header,
   body.report-print-mode .report-print-view table,
   body.report-print-mode .report-print-view tr,
-  body.report-print-mode .report-print-view img {
+  body.report-print-mode .report-print-view img,
+  body.report-print-mode .report-print-view h1,
+  body.report-print-mode .report-print-view h2 {
     break-inside: avoid;
+  }
+
+  body.report-print-mode .report-print-view .ProseMirror > * {
+    break-inside: avoid;
+  }
+
+  body.report-print-mode .report-print-view .ProseMirror table {
+    width: 100%;
+    border-collapse: collapse;
   }
 }

@@ -1,8 +1,14 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pencil, RefreshCw, Unplug } from "lucide-react";
 import DataTable from "./DataTable";
-import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
+import {
+  ErrorState,
+  LoadingState,
+  Panel,
+  StatusPill,
+  useActionDialog,
+} from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import {
@@ -21,12 +27,20 @@ const providers = [
   ["azure_devops", "Azure DevOps"],
 ];
 
+function providerLabel(value) {
+  return providers.find(([provider]) => provider === value)?.[1] || valueLabel(value);
+}
+
 export default function ProjectConnectorsPanel({ project }) {
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [logs, setLogs] = useState([]);
   const [conflicts, setConflicts] = useState([]);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(true);
+  const hasLoaded = useRef(false);
+  const loadedProjectId = useRef(project._id);
   const [connectorEditor, setConnectorEditor] = useState(null);
   const [connectorEditorError, setConnectorEditorError] = useState("");
   const [savingConnector, setSavingConnector] = useState(false);
@@ -36,7 +50,21 @@ export default function ProjectConnectorsPanel({ project }) {
   const canReview = project.current_permissions?.includes("project.connector.review");
 
   const load = useCallback(async () => {
-    if (!canRead) return;
+    if (loadedProjectId.current !== project._id) {
+      loadedProjectId.current = project._id;
+      hasLoaded.current = false;
+      setItems([]);
+      setLogs([]);
+      setConflicts([]);
+    }
+    if (!canRead) {
+      setItems([]);
+      setLogs([]);
+      setConflicts([]);
+      setLoading(false);
+      return false;
+    }
+    if (!hasLoaded.current) setLoading(true);
     try {
       const [connectorValues, logValues, conflictValues] = await Promise.all([
         testingApi.listProjectConnectors(project._id),
@@ -47,8 +75,13 @@ export default function ProjectConnectorsPanel({ project }) {
       setLogs(logValues);
       setConflicts(conflictValues);
       setError("");
+      hasLoaded.current = true;
+      setLoading(false);
+      return true;
     } catch (reason) {
       setError(messageOf(reason));
+      setLoading(false);
+      return false;
     }
   }, [canRead, canReview, project._id]);
 
@@ -60,8 +93,8 @@ export default function ProjectConnectorsPanel({ project }) {
     setConnectorEditorError("");
     setConnectorEditor({
       source: item,
-      provider: item?.provider || "jira",
-      connectorReference: item?.connector_reference || "connector://platform/",
+      provider: item?.provider || "",
+      connectorReference: item?.connector_reference || "",
       externalTarget: item?.external_target || "",
       fieldMapping: structuredClone(item?.field_mapping || {}),
     });
@@ -87,8 +120,15 @@ export default function ProjectConnectorsPanel({ project }) {
           field_mapping: connectorEditor.fieldMapping,
         });
       }
-      await load();
+      const refreshed = await load();
       setConnectorEditor(null);
+      setNotice(
+        refreshed
+          ? connectorEditor.source
+            ? "Đã lưu ánh xạ trường."
+            : "Đã liên kết dịch vụ với dự án."
+          : "Thay đổi đã được lưu, nhưng chưa tải lại được danh sách kết nối.",
+      );
     } catch (reason) {
       setConnectorEditorError(messageOf(reason));
     } finally {
@@ -102,7 +142,7 @@ export default function ProjectConnectorsPanel({ project }) {
   const sync = async (item) => {
     await ask({
       title: "Đồng bộ thủ công",
-      description: `${item.provider} ${item.external_target}`,
+      description: `${providerLabel(item.provider)} · ${item.external_target}`,
       confirmLabel: "Đưa tác vụ vào hàng đợi",
       fields: [
         {
@@ -116,12 +156,25 @@ export default function ProjectConnectorsPanel({ project }) {
             { value: "BIDIRECTIONAL", label: "Hai chiều" },
           ],
         },
+        {
+          name: "scopes",
+          label: "Dữ liệu cần đồng bộ",
+          required: true,
+          multiple: true,
+          options: [
+            { value: "requirements", label: "Yêu cầu" },
+            { value: "defects", label: "Lỗi" },
+            { value: "statuses", label: "Trạng thái" },
+          ],
+          initialValue: [],
+        },
       ],
       onConfirm: async (answer) => {
+        if (!answer.scopes?.length) throw new Error("Chọn ít nhất một loại dữ liệu cần đồng bộ.");
         try {
           await testingApi.startProjectConnectorSync(project._id, item._id, {
             direction: answer.direction,
-            scopes: ["requirements", "defects", "statuses"],
+            scopes: answer.scopes,
             idempotency_key: crypto.randomUUID(),
           });
           await load();
@@ -195,136 +248,185 @@ export default function ProjectConnectorsPanel({ project }) {
     <Panel
       title="Kết nối dự án"
       actions={
-        canManage ? (
-          <button className="apple-button" type="button" onClick={bind}>
-            Liên kết dịch vụ
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            aria-label={loading ? "Đang tải kết nối" : "Tải lại kết nối"}
+            className="icon-button h-10 w-10"
+            disabled={loading}
+            onClick={() => void load()}
+            title={loading ? "Đang tải kết nối" : "Tải lại kết nối"}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={16} />
           </button>
-        ) : null
+          {canManage && (
+            <button className="apple-button" type="button" onClick={bind}>
+              Liên kết dịch vụ
+            </button>
+          )}
+        </div>
       }
     >
       <div className="space-y-5 p-5">
         {error && <ErrorState message={error} />}
-        <DataTable
-          items={items}
-          empty="Chưa có kết nối dự án"
-          columns={[
-            { key: "provider", label: "Nhà cung cấp" },
-            { key: "external_target", label: "Đích bên ngoài" },
-            { key: "mapping_version", label: "Phiên bản ánh xạ" },
-            { key: "last_sync_status", label: "Lần đồng bộ gần nhất" },
-            {
-              key: "status",
-              label: "Trạng thái",
-              render: (item) => <StatusPill value={item.status} />,
-            },
-            {
-              key: "actions",
-              label: "Thao tác",
-              hideWhenEmpty: true,
-              render: (item) => {
-                const canSyncItem = canSync && item.status === "BOUND";
-                const canManageItem = canManage && item.status === "BOUND";
-                if (!canSyncItem && !canManageItem) return null;
-                return (
-                  <span className="flex flex-wrap gap-2">
-                    {canSyncItem && (
-                      <button
-                        aria-label={`Đồng bộ ${valueLabel(item.provider)}`}
-                        className="icon-button h-9 w-9"
-                        title="Đồng bộ"
-                        type="button"
-                        onClick={() => sync(item)}
-                      >
-                        <RefreshCw aria-hidden="true" size={16} />
-                      </button>
-                    )}
-                    {canManageItem && (
-                      <>
-                        <button
-                          aria-label={`Sửa ánh xạ ${valueLabel(item.provider)}`}
-                          className="icon-button h-9 w-9"
-                          title="Sửa ánh xạ"
-                          type="button"
-                          onClick={() => editMapping(item)}
-                        >
-                          <Pencil aria-hidden="true" size={16} />
-                        </button>
-                        <button
-                          aria-label={`Ngắt kết nối ${valueLabel(item.provider)}`}
-                          className="icon-button h-9 w-9"
-                          title="Ngắt kết nối"
-                          type="button"
-                          onClick={() => unbind(item)}
-                        >
-                          <Unplug aria-hidden="true" size={16} />
-                        </button>
-                      </>
-                    )}
-                  </span>
-                );
-              },
-            },
-          ]}
-        />
-        {canReview && conflicts.length > 0 && (
-          <DataTable
-            items={conflicts}
-            empty="Không có xung đột"
-            columns={[
-              {
-                key: "artifact_type",
-                label: "Loại dữ liệu",
-                render: (item) => valueLabel(item.artifact_type),
-              },
-              {
-                key: "artifact_id",
-                label: "Đối tượng trong dự án",
-                render: (item) =>
-                  item.artifact_key ||
-                  item.artifact_name ||
-                  item.artifact_title ||
-                  "Đối tượng không còn khả dụng",
-              },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => valueLabel(item.status),
-              },
-              {
-                key: "action",
-                label: "Thao tác",
-                hideWhenEmpty: true,
-                render: (item) =>
-                  item.status === "OPEN" ? (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => resolve(item)}
-                    >
-                      Giải quyết xung đột
-                    </button>
-                  ) : null,
-              },
-            ]}
-          />
+        {notice && (
+          <p className="text-sm text-ink-muted" role="status">
+            {notice}
+          </p>
         )}
-        <DataTable
-          items={logs}
-          empty="Chưa có lần đồng bộ"
-          columns={[
-            { key: "direction", label: "Chiều" },
-            {
-              key: "status",
-              label: "Trạng thái",
-              render: (item) => <StatusPill value={item.status} />,
-            },
-            {
-              key: "created_at",
-              label: "Thời điểm",
-              render: (item) => formatDate(item.created_at),
-            },
-          ]}
-        />
+        {loading && !hasLoaded.current ? (
+          <LoadingState />
+        ) : (
+          <>
+            <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-ink">Dịch vụ đã liên kết</h3>
+                <span className="text-xs text-ink-muted">{items.length} kết nối</span>
+              </div>
+              <DataTable
+                items={items}
+                empty="Chưa có kết nối dự án"
+                columns={[
+                  {
+                    key: "provider",
+                    label: "Nhà cung cấp",
+                    render: (item) => providerLabel(item.provider),
+                  },
+                  { key: "external_target", label: "Đích bên ngoài" },
+                  { key: "mapping_version", label: "Phiên bản ánh xạ" },
+                  {
+                    key: "last_sync_status",
+                    label: "Lần đồng bộ gần nhất",
+                    render: (item) => valueLabel(item.last_sync_status),
+                  },
+                  {
+                    key: "status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.status} />,
+                  },
+                  {
+                    key: "actions",
+                    label: "Thao tác",
+                    hideWhenEmpty: true,
+                    render: (item) => {
+                      const canSyncItem = canSync && item.status === "BOUND";
+                      const canManageItem = canManage && item.status === "BOUND";
+                      if (!canSyncItem && !canManageItem) return null;
+                      return (
+                        <span className="flex flex-wrap gap-2">
+                          {canSyncItem && (
+                            <button
+                              aria-label={`Đồng bộ ${providerLabel(item.provider)}`}
+                              className="icon-button h-9 w-9"
+                              title="Đồng bộ"
+                              type="button"
+                              onClick={() => sync(item)}
+                            >
+                              <RefreshCw aria-hidden="true" size={16} />
+                            </button>
+                          )}
+                          {canManageItem && (
+                            <>
+                              <button
+                                aria-label={`Sửa ánh xạ ${providerLabel(item.provider)}`}
+                                className="icon-button h-9 w-9"
+                                title="Sửa ánh xạ"
+                                type="button"
+                                onClick={() => editMapping(item)}
+                              >
+                                <Pencil aria-hidden="true" size={16} />
+                              </button>
+                              <button
+                                aria-label={`Ngắt kết nối ${valueLabel(item.provider)}`}
+                                className="icon-button h-9 w-9"
+                                title="Ngắt kết nối"
+                                type="button"
+                                onClick={() => unbind(item)}
+                              >
+                                <Unplug aria-hidden="true" size={16} />
+                              </button>
+                            </>
+                          )}
+                        </span>
+                      );
+                    },
+                  },
+                ]}
+              />
+            </section>
+            {canReview && (
+              <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-ink">Xung đột cần xử lý</h3>
+                  <span className="text-xs text-ink-muted">{conflicts.length} mục</span>
+                </div>
+                <DataTable
+                  items={conflicts}
+                  empty="Không có xung đột cần xử lý"
+                  columns={[
+                    {
+                      key: "artifact_type",
+                      label: "Loại dữ liệu",
+                      render: (item) => valueLabel(item.artifact_type),
+                    },
+                    {
+                      key: "artifact_id",
+                      label: "Đối tượng trong dự án",
+                      render: (item) =>
+                        item.artifact_key ||
+                        item.artifact_name ||
+                        item.artifact_title ||
+                        "Đối tượng không còn khả dụng",
+                    },
+                    {
+                      key: "status",
+                      label: "Trạng thái",
+                      render: (item) => valueLabel(item.status),
+                    },
+                    {
+                      key: "action",
+                      label: "Thao tác",
+                      hideWhenEmpty: true,
+                      render: (item) =>
+                        item.status === "OPEN" ? (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() => resolve(item)}
+                          >
+                            Giải quyết xung đột
+                          </button>
+                        ) : null,
+                    },
+                  ]}
+                />
+              </section>
+            )}
+            <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-ink">Lịch sử đồng bộ</h3>
+                <span className="text-xs text-ink-muted">{logs.length} lần</span>
+              </div>
+              <DataTable
+                items={logs}
+                empty="Chưa có lần đồng bộ"
+                columns={[
+                  { key: "direction", label: "Chiều" },
+                  {
+                    key: "status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.status} />,
+                  },
+                  {
+                    key: "created_at",
+                    label: "Thời điểm",
+                    render: (item) => formatDate(item.created_at),
+                  },
+                ]}
+              />
+            </section>
+          </>
+        )}
       </div>
       {dialog}
       {connectorEditor && (
@@ -355,6 +457,7 @@ export default function ProjectConnectorsPanel({ project }) {
                     Nhà cung cấp
                     <select
                       className="apple-input mt-2 w-full"
+                      required
                       value={connectorEditor.provider}
                       onChange={(event) =>
                         setConnectorEditor((current) => ({
@@ -363,6 +466,9 @@ export default function ProjectConnectorsPanel({ project }) {
                         }))
                       }
                     >
+                      <option disabled value="">
+                        Chọn dịch vụ
+                      </option>
                       {providers.map(([value, label]) => (
                         <option key={value} value={value}>
                           {label}
@@ -375,6 +481,7 @@ export default function ProjectConnectorsPanel({ project }) {
                     <input
                       className="apple-input mt-2 w-full"
                       required
+                      placeholder="Nhập tham chiếu kết nối đã được cấp trên nền tảng"
                       value={connectorEditor.connectorReference}
                       onChange={(event) =>
                         setConnectorEditor((current) => ({

@@ -18,6 +18,7 @@ export default function AutomationExecutionPanel({ project }) {
   const [runner, setRunner] = useState("newman");
   const [selected, setSelected] = useState(null);
   const [evidence, setEvidence] = useState(null);
+  const [loadingExecutionId, setLoadingExecutionId] = useState("");
   const [error, setError] = useState("");
   const createOperation = useRef(null);
   const loadGeneration = useRef(0);
@@ -147,6 +148,8 @@ export default function AutomationExecutionPanel({ project }) {
   };
   const open = async (item) => {
     const requestGeneration = ++selectionGeneration.current;
+    setLoadingExecutionId(item._id);
+    setError("");
     try {
       const value = await testingApi.getAutomationExecution(item._id);
       if (requestGeneration !== selectionGeneration.current || value.project_id !== project._id)
@@ -156,6 +159,8 @@ export default function AutomationExecutionPanel({ project }) {
       if (requestGeneration === selectionGeneration.current) setEvidence(evidenceValue);
     } catch (reason) {
       if (requestGeneration === selectionGeneration.current) setError(messageOf(reason));
+    } finally {
+      if (requestGeneration === selectionGeneration.current) setLoadingExecutionId("");
     }
   };
   const reconcileAfterFailure = async (executionId, reason) => {
@@ -194,33 +199,52 @@ export default function AutomationExecutionPanel({ project }) {
   if (!can("automation.read")) return null;
   return (
     <Panel
-      title="Thực thi tự động hóa"
+      title="Lần chạy kiểm thử tự động"
       actions={
         can("automation.create") ? (
-          <div className="flex flex-wrap gap-2">
-            <select
-              aria-label="Công cụ thực thi tự động hóa"
-              className="apple-input"
-              value={runner}
-              onChange={(event) => setRunner(event.target.value)}
-            >
-              <option value="newman">Postman bằng Newman</option>
-              <option value="playwright">Playwright</option>
-            </select>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="field-label">
+              Công cụ chạy
+              <select
+                aria-label="Công cụ thực thi tự động hóa"
+                className="apple-input mt-1"
+                value={runner}
+                onChange={(event) => setRunner(event.target.value)}
+              >
+                <option value="newman">Postman bằng Newman</option>
+                <option value="playwright">Playwright</option>
+              </select>
+            </label>
             <button
               className="apple-button"
               disabled={runner === "newman" ? !artifacts.length : !scripts.length}
               type="button"
               onClick={create}
             >
-              Tạo lần chạy tự động
+              Tạo lần chạy
             </button>
           </div>
         ) : null
       }
     >
       <div className="space-y-5 p-5">
-        {error && <ErrorState message={error} />}
+        {error && (
+          <div className="grid gap-2">
+            <ErrorState message={error} />
+            <button
+              className="secondary-button justify-self-start"
+              type="button"
+              disabled={Boolean(loadingExecutionId)}
+              onClick={() => void (selected ? open(selected) : load())}
+            >
+              {loadingExecutionId
+                ? "Đang tải…"
+                : selected
+                  ? "Tải lại trạng thái"
+                  : "Tải lại danh sách"}
+            </button>
+          </div>
+        )}
         {runner === "newman" && !artifacts.length && can("automation.create") && (
           <p className="text-sm text-ink-muted">Cần xác nhận ít nhất một collection Postman</p>
         )}
@@ -231,6 +255,7 @@ export default function AutomationExecutionPanel({ project }) {
           items={items}
           empty="Chưa có lần thực thi tự động"
           onSelect={open}
+          activeRowId={selected?._id}
           columns={[
             { key: "name", label: "Tên" },
             { key: "runner", label: "Công cụ chạy" },
@@ -244,11 +269,18 @@ export default function AutomationExecutionPanel({ project }) {
         {selected && (
           <div className="space-y-3 rounded-xl border border-border p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-medium">{selected.name}</p>
-                <p className="mt-1 text-xs text-ink-muted">
-                  Không hiển thị giá trị bí mật trong log và evidence
-                </p>
+              <div className="grid min-w-0 gap-2">
+                <p className="break-words font-medium">{selected.name}</p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
+                  <StatusPill value={selected.status} />
+                  <span>
+                    {selected.runner === "playwright" ? "Playwright" : "Postman bằng Newman"}
+                  </span>
+                  {selected.environment_snapshot?.name && (
+                    <span>Môi trường: {selected.environment_snapshot.name}</span>
+                  )}
+                  <span>Thông tin bí mật được ẩn trong nhật ký và bằng chứng</span>
+                </div>
               </div>
               <div className="flex gap-2">
                 {selected.status === "CREATED" && can("automation.execute") && (
@@ -261,25 +293,83 @@ export default function AutomationExecutionPanel({ project }) {
                     Hủy tác vụ
                   </button>
                 )}
-                <button className="secondary-button" type="button" onClick={() => open(selected)}>
-                  Tải bằng chứng
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={loadingExecutionId === selected._id}
+                  onClick={() => open(selected)}
+                >
+                  {loadingExecutionId === selected._id
+                    ? "Đang tải kết quả…"
+                    : "Tải kết quả mới nhất"}
                 </button>
               </div>
             </div>
             {evidence && (
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div>
-                  <p className="text-2xl font-semibold">{evidence.results?.length || 0}</p>
-                  <p className="field-label">Kết quả request</p>
+              <div className="grid gap-4 border-t border-border pt-4">
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-muted">
+                  <span>{evidence.results?.length || 0} kết quả</span>
+                  <span>{evidence.logs?.length || 0} dòng nhật ký</span>
+                  <span>{evidence.artifact_refs?.length || 0} tệp bằng chứng</span>
                 </div>
-                <div>
-                  <p className="text-2xl font-semibold">{evidence.logs?.length || 0}</p>
-                  <p className="field-label">Dòng nhật ký an toàn</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-semibold">{evidence.artifact_refs?.length || 0}</p>
-                  <p className="field-label">Tệp bằng chứng</p>
-                </div>
+                {evidence.results?.length > 0 && (
+                  <section aria-label="Kết quả từng request" className="grid gap-2">
+                    <h3 className="text-sm font-semibold">Kết quả từng mục</h3>
+                    {evidence.results.map((result, index) => (
+                      <article
+                        className="grid min-w-0 gap-2 rounded-control border border-border p-3"
+                        key={`${result.name || "result"}-${index}`}
+                      >
+                        <h4 className="break-words text-sm font-medium">
+                          {result.name || `Kết quả ${index + 1}`}
+                        </h4>
+                        {selected.runner === "newman" ? (
+                          <div className="grid gap-2 text-xs text-ink-muted sm:grid-cols-2">
+                            {result.status_code !== null && result.status_code !== undefined && (
+                              <p>Mã phản hồi: {result.status_code}</p>
+                            )}
+                            {result.response_time_ms !== null &&
+                              result.response_time_ms !== undefined && (
+                                <p>Thời gian phản hồi: {result.response_time_ms} ms</p>
+                              )}
+                            {result.assertions?.map((assertion, assertionIndex) => (
+                              <p
+                                className="flex flex-wrap items-center gap-2 break-words"
+                                key={`${assertion.name || "assertion"}-${assertionIndex}`}
+                              >
+                                <StatusPill value={assertion.passed ? "PASS" : "FAIL"} />
+                                <span>{assertion.name || "Điều kiện kiểm tra"}</span>
+                              </p>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
+                            {result.status && <StatusPill value={result.status} />}
+                            {result.duration_ms !== null && result.duration_ms !== undefined && (
+                              <span>Thời lượng: {result.duration_ms} ms</span>
+                            )}
+                            {result.retry > 0 && <span>Số lần chạy lại: {result.retry}</span>}
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </section>
+                )}
+                {evidence.logs?.length > 0 && (
+                  <details className="rounded-control border border-border p-3">
+                    <summary className="cursor-pointer text-sm font-medium">Nhật ký xử lý</summary>
+                    <ul className="mt-3 grid gap-2">
+                      {evidence.logs.map((line, index) => (
+                        <li
+                          className="whitespace-pre-wrap break-words text-sm text-ink-muted"
+                          key={index}
+                        >
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </div>
             )}
           </div>

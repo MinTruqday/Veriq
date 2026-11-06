@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Eye } from "lucide-react";
+import { Eye, RefreshCw } from "lucide-react";
 import DataTable from "./DataTable";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
@@ -219,14 +219,27 @@ export default function ReleaseQualityPanel({ project }) {
     <Panel
       title="Chất lượng bản phát hành"
       actions={
-        can("qualityevaluation.create") &&
-        can("release.read") &&
-        can("build.read") &&
-        can("testmonitor.read") ? (
-          <button className="apple-button" type="button" onClick={create}>
-            Tạo đánh giá
-          </button>
-        ) : null
+        <div className="flex flex-wrap items-center gap-2">
+          {error && (
+            <button
+              aria-label="Tải lại đánh giá chất lượng"
+              className="icon-button h-10 w-10"
+              onClick={() => void load()}
+              title="Tải lại đánh giá chất lượng"
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+          )}
+          {can("qualityevaluation.create") &&
+            can("release.read") &&
+            can("build.read") &&
+            can("testmonitor.read") && (
+              <button className="apple-button" type="button" onClick={create}>
+                Tạo đánh giá
+              </button>
+            )}
+        </div>
       }
     >
       {dialog}

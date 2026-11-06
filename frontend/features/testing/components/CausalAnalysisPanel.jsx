@@ -31,6 +31,14 @@ const EVENT_TRIGGER_LABELS = {
   DEFECT_RECORDED: "Khi ghi nhận lỗi",
   DEFECT_CHANGED: "Khi cập nhật nội dung lỗi",
 };
+const memberLabel = (member) =>
+  member?.identity?.label ||
+  member?.user_label ||
+  member?.full_name ||
+  member?.user?.full_name ||
+  member?.email ||
+  member?.user?.email ||
+  "Thành viên dự án";
 
 export default function CausalAnalysisPanel({ project }) {
   const [items, setItems] = useState([]);
@@ -76,7 +84,7 @@ export default function CausalAnalysisPanel({ project }) {
   }, [load]);
   const memberOptions = members.map((item) => ({
     value: item.user_id,
-    label: item.user_label || item.email || item.user_id,
+    label: memberLabel(item),
   }));
   const refreshSelected = async () => {
     const [analysis, resultValue] = await Promise.all([

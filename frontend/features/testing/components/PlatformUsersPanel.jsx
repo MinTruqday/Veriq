@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, Pencil } from "lucide-react";
+import { Eye, Pencil, X } from "lucide-react";
 import { platformApi } from "@/features/authentication/services/platform.service";
 import DataTable from "./DataTable";
 import {
@@ -18,6 +18,7 @@ export default function PlatformUsersPanel() {
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [detailSection, setDetailSection] = useState("sessions");
   const [detail, setDetail] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [memberships, setMemberships] = useState([]);
@@ -274,7 +275,10 @@ export default function PlatformUsersPanel() {
                     className="icon-button h-9 w-9"
                     title="Xem chi tiết tài khoản"
                     type="button"
-                    onClick={() => setSelectedId(item._id)}
+                    onClick={() => {
+                      setDetailSection("sessions");
+                      setSelectedId(item._id);
+                    }}
                   >
                     <Eye aria-hidden="true" size={17} />
                   </button>
@@ -297,7 +301,22 @@ export default function PlatformUsersPanel() {
       )}
       {detail && (
         <>
-          <Panel title={`Chi tiết ${detail.email}`}>
+          <Panel
+            title={
+              <span className="flex min-w-0 items-center justify-between gap-3">
+                <span className="min-w-0 break-words">Chi tiết {detail.email}</span>
+                <button
+                  aria-label={`Đóng chi tiết tài khoản ${detail.email}`}
+                  title="Đóng chi tiết"
+                  className="icon-button h-9 w-9 shrink-0"
+                  type="button"
+                  onClick={() => setSelectedId("")}
+                >
+                  <X aria-hidden="true" size={16} />
+                </button>
+              </span>
+            }
+          >
             <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <p className="field-label">Tên</p>
@@ -540,47 +559,74 @@ export default function PlatformUsersPanel() {
             </details>
           </Panel>
 
-          <Panel title="Phiên đăng nhập">
-            <DataTable
-              items={sessions}
-              empty="Không có phiên đăng nhập"
-              columns={[
-                { key: "_id", label: "Mã phiên" },
-                { key: "ip", label: "Địa chỉ IP" },
-                {
-                  key: "created_at",
-                  label: "Thời điểm tạo",
-                  render: (item) => formatDate(item.created_at),
-                },
-                {
-                  key: "revoke",
-                  label: "Thao tác",
-                  render: (item) => (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={Boolean(item.revoked_at) || accountActionInFlight}
-                      onClick={() =>
-                        void runAccountAction(async () => {
-                          setError("");
-                          try {
-                            await platformApi.revokeSession(detail._id, item._id);
-                            await loadDetail(detail._id);
-                          } catch (reason) {
-                            setError(messageOf(reason));
-                          }
-                        })
-                      }
-                    >
-                      {item.revoked_at ? "Đã thu hồi" : "Thu hồi"}
-                    </button>
-                  ),
-                },
-              ]}
-            />
-          </Panel>
+          <nav
+            aria-label="Thông tin tài khoản"
+            className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-surface-quiet p-1"
+          >
+            {[
+              ["sessions", "Phiên đăng nhập"],
+              ["memberships", "Thành viên dự án"],
+              ["audit", "Nhật ký bảo mật"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={detailSection === id}
+                className={`min-h-10 shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
+                  detailSection === id
+                    ? "bg-surface text-ink shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+                onClick={() => setDetailSection(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
 
-          <div className="grid gap-5 xl:grid-cols-2">
+          {detailSection === "sessions" && (
+            <Panel title="Phiên đăng nhập">
+              <DataTable
+                items={sessions}
+                empty="Không có phiên đăng nhập"
+                columns={[
+                  { key: "_id", label: "Mã phiên" },
+                  { key: "ip", label: "Địa chỉ IP" },
+                  {
+                    key: "created_at",
+                    label: "Thời điểm tạo",
+                    render: (item) => formatDate(item.created_at),
+                  },
+                  {
+                    key: "revoke",
+                    label: "Thao tác",
+                    render: (item) => (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={Boolean(item.revoked_at) || accountActionInFlight}
+                        onClick={() =>
+                          void runAccountAction(async () => {
+                            setError("");
+                            try {
+                              await platformApi.revokeSession(detail._id, item._id);
+                              await loadDetail(detail._id);
+                            } catch (reason) {
+                              setError(messageOf(reason));
+                            }
+                          })
+                        }
+                      >
+                        {item.revoked_at ? "Đã thu hồi" : "Thu hồi"}
+                      </button>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
+          )}
+
+          {detailSection === "memberships" && (
             <Panel title="Thành viên dự án">
               <DataTable
                 items={memberships}
@@ -600,6 +646,8 @@ export default function PlatformUsersPanel() {
                 ]}
               />
             </Panel>
+          )}
+          {detailSection === "audit" && (
             <Panel title="Nhật ký bảo mật">
               <DataTable
                 items={audit}
@@ -618,7 +666,7 @@ export default function PlatformUsersPanel() {
                 ]}
               />
             </Panel>
-          </div>
+          )}
         </>
       )}
       {dialog}

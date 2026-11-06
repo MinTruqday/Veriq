@@ -7,6 +7,7 @@ import DataTable from "../../components/DataTable";
 import FormalReviewPanel from "../../components/FormalReviewPanel";
 import LessonsLearnedPanel from "../../components/LessonsLearnedPanel";
 import QualityGateBadge from "../../components/QualityGateBadge";
+import ReportSelectionList from "../../components/ReportSelectionList";
 import ResidualRiskPanel from "../../components/ResidualRiskPanel";
 import TestwareHandoverPanel from "../../components/TestwareHandoverPanel";
 import { StructuredValueView } from "../../components/StructuredValueEditor";
@@ -58,6 +59,8 @@ export default function CompletionPage({ project }) {
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const initialDataLoaded = useRef(false);
   const can = (permission) => project.current_permissions?.includes(permission);
+  const canCreateCompletion =
+    can("testcompletion.create") && can("testmonitor.read") && can("build.read");
   const load = useCallback(async () => {
     if (!initialDataLoaded.current) setInitialLoading(true);
     try {
@@ -399,7 +402,7 @@ export default function CompletionPage({ project }) {
     <Panel
       title="Báo cáo hoàn tất kiểm thử"
       actions={
-        can("testcompletion.create") && can("testmonitor.read") && can("build.read") ? (
+        canCreateCompletion ? (
           <button
             className="apple-button"
             type="button"
@@ -428,40 +431,26 @@ export default function CompletionPage({ project }) {
             Tải lại
           </button>
         </div>
+      ) : reports.length === 0 ? (
+        <p className="border-t border-border/70 px-5 py-6 text-sm text-ink-muted" role="status">
+          Chưa có báo cáo hoàn tất
+        </p>
       ) : (
-        <div className="grid border-t border-border/70 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="border-r border-border/70">
-            <DataTable
+        <div className="grid border-t border-border/70 xl:grid-cols-[minmax(250px,320px)_minmax(0,1fr)]">
+          <div className="max-h-72 overflow-y-auto border-b border-border/70 xl:max-h-[calc(100vh-16rem)] xl:border-b-0 xl:border-r">
+            <ReportSelectionList
               items={reports}
-              empty="Chưa có báo cáo hoàn tất"
-              columns={[
-                { key: "sequence", label: "Lần" },
-                {
-                  key: "created_at",
-                  label: "Thời điểm",
-                  render: (item) => (
-                    <button
-                      className="text-left text-accent"
-                      type="button"
-                      onClick={() => {
-                        setSelected(item);
-                      }}
-                    >
-                      {formatDate(item.created_at)}
-                    </button>
-                  ),
-                },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.status} />,
-                },
-              ]}
+              selectedId={selected?._id}
+              onSelect={setSelected}
+              label="Báo cáo hoàn tất đã tạo"
+              emptyMessage="Chưa có báo cáo hoàn tất"
             />
           </div>
           <div className="min-w-0 p-5">
             {!selected ? (
-              <p className="text-sm text-ink-muted">Chọn hoặc tạo báo cáo hoàn tất</p>
+              reports.length ? (
+                <p className="text-sm text-ink-muted">Chọn một báo cáo trong danh sách</p>
+              ) : null
             ) : (
               <div className="space-y-7">
                 <div className="flex flex-wrap items-center gap-2">

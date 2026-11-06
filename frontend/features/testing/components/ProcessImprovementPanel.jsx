@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye } from "lucide-react";
+import { Eye, RefreshCw } from "lucide-react";
 import DataTable from "./DataTable";
 import StatisticalControlChart from "./StatisticalControlChart";
 import { ErrorState, LoadingState, Panel, useActionDialog } from "./WorkspacePrimitives";
@@ -418,6 +418,17 @@ export default function ProcessImprovementPanel({ project }) {
       title="Cải tiến quy trình và kiểm soát thống kê"
       actions={
         <div className="flex flex-wrap gap-2">
+          {error && (
+            <button
+              aria-label="Tải lại dữ liệu cải tiến"
+              className="icon-button h-10 w-10"
+              onClick={() => void load()}
+              title="Tải lại dữ liệu cải tiến"
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+          )}
           {can("statisticalquality.read") && analyses.length > 1 && (
             <button className="secondary-button" type="button" onClick={compareAnalyses}>
               So sánh trước sau

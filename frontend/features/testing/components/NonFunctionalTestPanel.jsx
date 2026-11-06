@@ -769,59 +769,82 @@ export default function NonFunctionalTestPanel({ project }) {
         />
       )}
       {error && (
-        <div className="p-4">
-          <ErrorState message={error} />
+        <div className="flex flex-wrap items-center gap-3 p-4">
+          <div className="min-w-0 flex-1">
+            <ErrorState message={error} />
+          </div>
+          <button className="secondary-button shrink-0" type="button" onClick={() => void load()}>
+            Tải lại
+          </button>
         </div>
       )}
-      <DataTable
-        items={items}
-        empty="Chưa có kế hoạch kiểm thử phi chức năng"
-        columns={[
-          { key: "plan_type", label: "Loại", render: (item) => planTypeLabel(item.plan_type) },
-          { key: "name", label: "Tên" },
-          {
-            key: "test_conditions",
-            label: "Điều kiện kiểm thử",
-            render: (item) => item.test_conditions?.length || 0,
-          },
-          {
-            key: "test_cases",
-            label: "Ca kiểm thử",
-            render: (item) => item.test_cases?.length || 0,
-          },
-          {
-            key: "external_evidence_ids",
-            label: "Bằng chứng",
-            render: (item) => item.external_evidence_ids?.length || 0,
-          },
-          {
-            key: "status",
-            label: "Trạng thái",
-            render: (item) => <StatusPill value={item.status} />,
-          },
-          {
-            key: "action",
-            label: "Thao tác",
-            render: (item) => (
-              <button
-                className="icon-button h-9 w-9"
-                type="button"
-                aria-label={`Mở kế hoạch ${item.name}`}
-                title="Mở kế hoạch"
-                onClick={async () => {
-                  try {
-                    setSelected(await testingApi.getNonFunctionalTestPlan(item._id));
-                  } catch (reason) {
-                    setError(messageOf(reason));
-                  }
-                }}
-              >
-                <Eye aria-hidden="true" size={16} />
-              </button>
-            ),
-          },
-        ]}
-      />
+      {items.length ? (
+        <ul className="divide-y divide-border" aria-label="Kế hoạch kiểm thử phi chức năng">
+          {items.map((item) => (
+            <li className="min-w-0 px-4 py-4 sm:px-5" key={item._id}>
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                    <h3 className="break-words text-[15px] font-semibold leading-6 text-ink">
+                      {item.name}
+                    </h3>
+                    <StatusPill value={item.status} />
+                  </div>
+                  <p className="mt-1 text-[12px] text-ink-muted">{planTypeLabel(item.plan_type)}</p>
+                  {item.objective && (
+                    <p className="mt-2 line-clamp-2 max-w-4xl break-words text-[13px] leading-5 text-ink-muted">
+                      {item.objective}
+                    </p>
+                  )}
+                </div>
+                <button
+                  className="icon-button h-9 w-9 shrink-0"
+                  type="button"
+                  aria-label={`Mở kế hoạch ${item.name}`}
+                  title="Mở kế hoạch"
+                  onClick={async () => {
+                    try {
+                      setSelected(await testingApi.getNonFunctionalTestPlan(item._id));
+                    } catch (reason) {
+                      setError(messageOf(reason));
+                    }
+                  }}
+                >
+                  <Eye aria-hidden="true" size={16} />
+                </button>
+              </div>
+              <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-[12px] sm:grid-cols-3">
+                <div>
+                  <dt className="text-ink-faint">Điều kiện kiểm thử</dt>
+                  <dd className="mt-0.5 font-medium text-ink">
+                    {Array.isArray(item.test_conditions)
+                      ? item.test_conditions.length
+                      : "Chưa có dữ liệu"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-ink-faint">Ca kiểm thử</dt>
+                  <dd className="mt-0.5 font-medium text-ink">
+                    {Array.isArray(item.test_cases) ? item.test_cases.length : "Chưa có dữ liệu"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-ink-faint">Bằng chứng</dt>
+                  <dd className="mt-0.5 font-medium text-ink">
+                    {Array.isArray(item.external_evidence_ids)
+                      ? item.external_evidence_ids.length
+                      : "Chưa có dữ liệu"}
+                  </dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+      ) : error ? null : (
+        <p className="px-5 py-5 text-[13px] text-ink-muted" role="status">
+          Chưa có kế hoạch kiểm thử phi chức năng
+        </p>
+      )}
       {selected && (
         <div className="space-y-4 border-t border-border p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -874,7 +897,7 @@ export default function NonFunctionalTestPanel({ project }) {
           <div className="grid gap-3 text-sm md:grid-cols-3">
             <div>
               <p className="field-label">Phạm vi</p>
-              <p>{selected.scope?.join(", ")}</p>
+              <p>{selected.scope?.length ? selected.scope.join(", ") : "Chưa khai báo"}</p>
             </div>
             <div>
               <p className="field-label">Công cụ</p>

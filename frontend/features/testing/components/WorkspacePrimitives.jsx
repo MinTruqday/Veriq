@@ -269,7 +269,7 @@ export function WorkspacePage({ title, description, actions, children }) {
   }, [title]);
 
   return (
-    <div className="workspace-page mx-auto w-full max-w-[1600px] min-w-0 space-y-5 py-5 sm:py-6 xl:py-7">
+    <div className="workspace-page mx-auto w-full max-w-[1600px] min-w-0 space-y-5 pb-0 pt-0">
       <header
         className={`workspace-page-header min-w-0 gap-4 ${actions ? "workspace-page-header-with-actions" : ""}`}
       >

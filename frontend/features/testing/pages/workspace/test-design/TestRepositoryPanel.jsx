@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Folder, Pencil } from "lucide-react";
-import DataTable from "../../../components/DataTable";
+import { ChevronDown, ChevronRight, Folder, Pencil, Search } from "lucide-react";
 import { LoadingState, Panel } from "../../../components/WorkspacePrimitives";
 import { testingApi } from "../../../services/testing.service";
-import { messageOf, textDoc } from "../../../lib/testing";
+import { docText, messageOf, textDoc } from "../../../lib/testing";
 import { Modal, ModalFooter, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 
 function RepositoryBranch({
@@ -15,10 +14,13 @@ function RepositoryBranch({
   onToggle,
   onRename,
   canRename,
+  matches,
+  searching,
   depth = 0,
 }) {
-  const children = childrenByParent.get(node._id) || [];
-  const isExpanded = expanded.has(node._id);
+  const allChildren = childrenByParent.get(node._id) || [];
+  const children = searching ? allChildren.filter((child) => matches.has(child._id)) : allChildren;
+  const isExpanded = expanded.has(node._id) || (searching && matches.has(node._id));
   return (
     <li>
       <div
@@ -66,6 +68,8 @@ function RepositoryBranch({
               onToggle={onToggle}
               onRename={onRename}
               canRename={canRename}
+              matches={matches}
+              searching={searching}
               depth={depth + 1}
             />
           ))}
@@ -90,6 +94,8 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
   const [savingNode, setSavingNode] = useState(false);
   const [savingStep, setSavingStep] = useState(false);
   const [expandedNodeIds, setExpandedNodeIds] = useState(() => new Set());
+  const [repositoryQuery, setRepositoryQuery] = useState("");
+  const [stepsQuery, setStepsQuery] = useState("");
   const loadGeneration = useRef(0);
   const load = useCallback(async () => {
     const requestGeneration = ++loadGeneration.current;
@@ -214,7 +220,19 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
     });
   };
   const childrenByParent = new Map();
+  const normalizedRepositoryQuery = repositoryQuery.trim().toLocaleLowerCase("vi");
+  const matchingNodeIds = new Set();
   for (const node of nodes) {
+    if (
+      !normalizedRepositoryQuery ||
+      `${node.name} ${node._id}`.toLocaleLowerCase("vi").includes(normalizedRepositoryQuery)
+    ) {
+      let match = node;
+      while (match) {
+        matchingNodeIds.add(match._id);
+        match = nodes.find((item) => item._id === match.parent_id);
+      }
+    }
     const parentId =
       node.parent_id && nodes.some((item) => item._id === node.parent_id) ? node.parent_id : "";
     const children = childrenByParent.get(parentId) || [];
@@ -228,24 +246,22 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
       else next.add(nodeId);
       return next;
     });
+  const visibleSteps = steps.filter((step) =>
+    `${step.name} ${docText(step.action_doc)} ${docText(step.expected_doc)}`
+      .toLocaleLowerCase("vi")
+      .includes(stepsQuery.trim().toLocaleLowerCase("vi")),
+  );
+  const formatDate = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? ""
+      : new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium" }).format(date);
+  };
   return (
-    <div className={`grid gap-5 ${focus ? "" : "xl:grid-cols-2"}`}>
+    <div className={`grid items-start gap-6 ${focus ? "" : "xl:grid-cols-2"}`}>
       {focus !== "reusable-steps" && (
-        <Panel
-          title="Kho ca kiểm thử"
-          actions={
-            can("testcase.create") && !loading && !loadFailed ? (
-              <button
-                className="primary-button w-fit"
-                type="button"
-                onClick={() => setNodeModalOpen(true)}
-              >
-                Tạo thư mục
-              </button>
-            ) : null
-          }
-          className="!shadow-none"
-        >
+        <Panel title="Thư mục kiểm thử" className="!shadow-none">
           {loading ? (
             <div className="p-5">
               <LoadingState />
@@ -265,42 +281,77 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
               </button>
             </div>
           ) : nodes.length ? (
-            <ul aria-label="Cấu trúc kho kiểm thử" className="space-y-1 p-4">
-              {(childrenByParent.get("") || []).map((node) => (
-                <RepositoryBranch
-                  key={node._id}
-                  node={node}
-                  childrenByParent={childrenByParent}
-                  expanded={expandedNodeIds}
-                  onToggle={toggleNode}
-                  onRename={renameNode}
-                  canRename={can("testcase.update")}
-                />
-              ))}
-            </ul>
+            <div className="space-y-4 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-ink-muted">{nodes.length} thư mục</p>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                  <label className="relative min-w-[15rem] flex-1 xl:max-w-sm">
+                    <Search
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+                      size={16}
+                    />
+                    <input
+                      aria-label="Tìm thư mục kiểm thử"
+                      className="apple-input w-full pl-9"
+                      onChange={(event) => setRepositoryQuery(event.target.value)}
+                      placeholder="Tìm thư mục"
+                      value={repositoryQuery}
+                    />
+                  </label>
+                  {can("testcase.create") && (
+                    <button
+                      className="primary-button shrink-0"
+                      type="button"
+                      onClick={() => setNodeModalOpen(true)}
+                    >
+                      Tạo thư mục
+                    </button>
+                  )}
+                </div>
+              </div>
+              <ul aria-label="Cấu trúc kho kiểm thử" className="space-y-1">
+                {(childrenByParent.get("") || [])
+                  .filter((node) => matchingNodeIds.has(node._id))
+                  .map((node) => (
+                    <RepositoryBranch
+                      key={node._id}
+                      node={node}
+                      childrenByParent={childrenByParent}
+                      expanded={expandedNodeIds}
+                      onToggle={toggleNode}
+                      onRename={renameNode}
+                      canRename={can("testcase.update")}
+                      matches={matchingNodeIds}
+                      searching={Boolean(normalizedRepositoryQuery)}
+                    />
+                  ))}
+              </ul>
+              {normalizedRepositoryQuery && matchingNodeIds.size === 0 && (
+                <p className="px-3 py-2 text-sm text-ink-muted">Không tìm thấy thư mục phù hợp.</p>
+              )}
+            </div>
           ) : (
-            <div className="p-4">
-              <DataTable items={[]} empty="Chưa có thư mục kiểm thử" columns={[]} />
+            <div className="space-y-3 p-5">
+              <p className="font-medium text-ink">Kho kiểm thử chưa có thư mục</p>
+              <p className="text-sm text-ink-muted">
+                Tạo thư mục để nhóm các ca theo tính năng, phân hệ hoặc phạm vi kiểm thử.
+              </p>
+              {can("testcase.create") && !loadFailed && (
+                <button
+                  className="primary-button w-fit"
+                  type="button"
+                  onClick={() => setNodeModalOpen(true)}
+                >
+                  Tạo thư mục
+                </button>
+              )}
             </div>
           )}
         </Panel>
       )}
       {focus !== "repository" && (
-        <Panel
-          title="Danh sách bước dùng lại"
-          actions={
-            can("testcase.create") && !loading && !loadFailed ? (
-              <button
-                className="primary-button w-fit"
-                type="button"
-                onClick={() => setStepModalOpen(true)}
-              >
-                Tạo bước dùng lại
-              </button>
-            ) : null
-          }
-          className="!shadow-none"
-        >
+        <Panel title="Bước kiểm thử dùng lại" className="!shadow-none">
           {loading ? (
             <div className="p-5">
               <LoadingState />
@@ -319,31 +370,96 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
                 Thử tải lại
               </button>
             </div>
+          ) : steps.length ? (
+            <div className="divide-y divide-border">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <p className="text-sm text-ink-muted">{steps.length} bước đã lưu</p>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+                  <label className="relative min-w-[15rem] flex-1 xl:max-w-sm">
+                    <Search
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+                      size={16}
+                    />
+                    <input
+                      aria-label="Tìm bước kiểm thử dùng lại"
+                      className="apple-input w-full pl-9"
+                      onChange={(event) => setStepsQuery(event.target.value)}
+                      placeholder="Tìm theo tên hoặc nội dung"
+                      value={stepsQuery}
+                    />
+                  </label>
+                  {can("testcase.create") && (
+                    <button
+                      className="primary-button shrink-0"
+                      type="button"
+                      onClick={() => setStepModalOpen(true)}
+                    >
+                      Tạo bước dùng lại
+                    </button>
+                  )}
+                </div>
+              </div>
+              {visibleSteps.length ? (
+                <ul className="divide-y divide-border">
+                  {visibleSteps.map((step) => (
+                    <li
+                      className="flex min-w-0 items-start justify-between gap-4 px-4 py-4"
+                      key={step._id}
+                    >
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <h3 className="font-medium text-ink">{step.name}</h3>
+                          <span className="text-sm text-ink-muted">Phiên bản {step.version}</span>
+                          {formatDate(step.updated_at) && (
+                            <span className="text-sm text-ink-muted">
+                              Cập nhật {formatDate(step.updated_at)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="break-words text-sm text-ink-muted">
+                          <span className="font-medium text-ink">Thao tác:</span>{" "}
+                          {docText(step.action_doc) || "Chưa có mô tả thao tác"}
+                        </p>
+                        <p className="break-words text-sm text-ink-muted">
+                          <span className="font-medium text-ink">Kết quả:</span>{" "}
+                          {docText(step.expected_doc) || "Chưa ghi kết quả mong đợi"}
+                        </p>
+                      </div>
+                      {can("testcase.update") && (
+                        <button
+                          aria-label={`Tạo phiên bản mới cho ${step.name}`}
+                          className="icon-button h-9 w-9 shrink-0"
+                          title="Tạo phiên bản mới"
+                          type="button"
+                          onClick={() => void editStep(step)}
+                        >
+                          <Pencil aria-hidden="true" size={16} />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="p-5 text-sm text-ink-muted">Không tìm thấy bước phù hợp.</p>
+              )}
+            </div>
           ) : (
-            <DataTable
-              items={steps}
-              empty="Chưa có bước dùng lại"
-              columns={[
-                { key: "name", label: "Tên bước" },
-                { key: "version", label: "Phiên bản" },
-                { key: "updated_at", label: "Cập nhật" },
-                {
-                  key: "actions",
-                  label: "Thao tác",
-                  hideWhenEmpty: true,
-                  render: (item) =>
-                    can("testcase.update") ? (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => void editStep(item)}
-                      >
-                        Tạo phiên bản mới
-                      </button>
-                    ) : null,
-                },
-              ]}
-            />
+            <div className="space-y-3 p-5">
+              <p className="font-medium text-ink">Chưa có bước dùng lại</p>
+              <p className="text-sm text-ink-muted">
+                Lưu thao tác và kết quả chuẩn để dùng nhất quán trong nhiều ca kiểm thử.
+              </p>
+              {can("testcase.create") && !loadFailed && (
+                <button
+                  className="primary-button w-fit"
+                  type="button"
+                  onClick={() => setStepModalOpen(true)}
+                >
+                  Tạo bước dùng lại
+                </button>
+              )}
+            </div>
           )}
         </Panel>
       )}

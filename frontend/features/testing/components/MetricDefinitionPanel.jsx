@@ -1,6 +1,15 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Archive, BadgeCheck, Check, Download, FilePlus2, Pin } from "lucide-react";
+import {
+  Activity,
+  Archive,
+  BadgeCheck,
+  Check,
+  Download,
+  FilePlus2,
+  Pin,
+  RefreshCw,
+} from "lucide-react";
 import DataTable from "./DataTable";
 import MetricTrendChart from "./MetricTrendChart";
 import QualityMetricCard from "./QualityMetricCard";
@@ -90,6 +99,13 @@ const METRICS = {
 };
 
 const metricLabel = (key) => METRICS[key]?.[0] || "Chỉ số khác";
+
+function measurementValue(value, key, unit) {
+  if (value === null || value === undefined || value === "") return "Chưa có số liệu";
+  if (METRICS[key]?.[3] === "RATIO")
+    return `${(Number(value) * 100).toLocaleString("vi-VN", { maximumFractionDigits: 2 })}%`;
+  return `${value}${unit ? ` ${unit}` : ""}`;
+}
 
 export default function MetricDefinitionPanel({ project }) {
   const [definitions, setDefinitions] = useState([]);
@@ -202,6 +218,17 @@ export default function MetricDefinitionPanel({ project }) {
       title="Đo lường chất lượng"
       actions={
         <div className="flex flex-wrap gap-2">
+          {error && (
+            <button
+              aria-label="Tải lại số liệu chất lượng"
+              className="icon-button h-10 w-10"
+              onClick={() => void load()}
+              title="Tải lại số liệu chất lượng"
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+          )}
           {releases.length > 1 && (
             <button className="secondary-button" type="button" onClick={compareReleases}>
               So sánh bản phát hành
@@ -240,7 +267,7 @@ export default function MetricDefinitionPanel({ project }) {
               {
                 key: "value",
                 label: "Giá trị",
-                render: (item) => `${item.value ?? "Chưa có"}${item.unit ? ` ${item.unit}` : ""}`,
+                render: (item) => measurementValue(item.value, item.measurement_key, item.unit),
               },
             ]}
           />
@@ -397,23 +424,30 @@ export default function MetricDefinitionPanel({ project }) {
           },
         ]}
       />
-      <div className="space-y-3 p-5">
-        <label className="grid max-w-md gap-1 text-sm font-semibold text-ink">
-          Chỉ số cần xem theo thời gian
-          <select
-            className="apple-input w-full min-w-0"
-            value={chartMetricKey}
-            onChange={(event) => setSelectedKey(event.target.value)}
-          >
-            {Array.from(new Set(snapshots.map((item) => item.measurement_key))).map((key) => (
-              <option key={key} value={key}>
-                {metricLabel(key)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <MetricTrendChart snapshots={selectedSnapshots} />
-      </div>
+      {snapshots.length ? (
+        <div className="space-y-3 p-5">
+          <label className="grid max-w-md gap-1 text-sm font-semibold text-ink">
+            Chỉ số cần xem theo thời gian
+            <select
+              className="apple-input w-full min-w-0"
+              value={chartMetricKey}
+              onChange={(event) => setSelectedKey(event.target.value)}
+            >
+              {Array.from(new Set(snapshots.map((item) => item.measurement_key))).map((key) => (
+                <option key={key} value={key}>
+                  {metricLabel(key)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <MetricTrendChart
+            aggregation={METRICS[chartMetricKey]?.[3]}
+            snapshots={selectedSnapshots}
+          />
+        </div>
+      ) : (
+        <p className="px-5 pb-5 text-sm text-ink-muted">Chưa có số liệu đo để hiển thị xu hướng.</p>
+      )}
       {comparison && (
         <div className="p-5">
           <DataTable

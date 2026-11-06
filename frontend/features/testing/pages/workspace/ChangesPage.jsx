@@ -225,352 +225,393 @@ export default function ChangesPage({ project }) {
     <WorkspacePage title="Phân tích thay đổi" actions={<ProjectCrumb projectId={project._id} />}>
       {error && <ErrorState message={error} />}
       {can("changeset.read") && (
-        <Panel title="Lịch sử thay đổi yêu cầu">
-          <details className="border-b border-border p-4">
-            <summary className="cursor-pointer text-sm font-medium text-ink">
-              Lọc và sắp xếp
-            </summary>
-            <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-3">
-              <input
-                aria-label="Lọc thay đổi theo yêu cầu"
-                className="apple-input min-w-0 w-full"
-                placeholder="Mã yêu cầu"
-                value={filters.requirement_id}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, requirement_id: event.target.value }))
-                }
-              />
-              <select
-                aria-label="Lọc trạng thái thay đổi"
-                className="apple-input min-w-0 w-full"
-                value={filters.status}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, status: event.target.value }))
-                }
-              >
-                <option value="">Mọi trạng thái</option>
-                {["READY", "REVIEWED", "ANALYZED"].map((value) => (
-                  <option value={value} key={value}>
-                    {valueLabel(value)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Sắp xếp thay đổi"
-                className="apple-input min-w-0 w-full"
-                value={filters.sort}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, sort: event.target.value }))
-                }
-              >
-                <option value="-created_at">Mới nhất</option>
-                <option value="created_at">Cũ nhất</option>
-                <option value="requirement_id">Theo yêu cầu</option>
-              </select>
-            </div>
-          </details>
-          <DataTable
-            onSelect={openChangeSet}
-            items={sets}
-            empty="Chưa có thay đổi yêu cầu được ghi nhận"
-            emptyActionHref={
-              can("requirement.read")
-                ? projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)
-                : undefined
-            }
-            emptyActionLabel="Mở yêu cầu"
-            columns={[
-              { key: "requirement_label", label: "Yêu cầu" },
-              {
-                key: "versions",
-                label: "Phiên bản",
-                render: (item) =>
-                  item.from_version_label && item.to_version_label
-                    ? `${item.from_version_label} → ${item.to_version_label}`
-                    : "Chưa xác định",
-              },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-              { key: "summary", label: "Tóm tắt" },
-            ]}
-          />
-        </Panel>
-      )}
-
-      {selected && (
-        <div className="grid min-w-0 gap-5 2xl:grid-cols-2">
-          <Panel
-            title="Nội dung thay đổi"
-            actions={
-              <>
-                {selected.status === "READY" && can("changeset.review") && (
-                  <button
-                    className="primary-button"
-                    disabled={actionBusy || !(selected.changes || []).length}
-                    onClick={reviewSelectedChangeSet}
-                    type="button"
+        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(17rem,0.78fr)_minmax(0,1.65fr)] lg:items-start">
+          <div className="min-w-0 lg:sticky lg:top-4">
+            <Panel title="Lịch sử thay đổi yêu cầu">
+              <details className="border-b border-border p-4">
+                <summary className="cursor-pointer text-sm font-medium text-ink">
+                  Lọc và sắp xếp
+                </summary>
+                <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-3">
+                  <input
+                    aria-label="Lọc thay đổi theo yêu cầu"
+                    className="apple-input min-w-0 w-full"
+                    placeholder="Mã yêu cầu"
+                    value={filters.requirement_id}
+                    onChange={(event) =>
+                      setFilters((current) => ({ ...current, requirement_id: event.target.value }))
+                    }
+                  />
+                  <select
+                    aria-label="Lọc trạng thái thay đổi"
+                    className="apple-input min-w-0 w-full"
+                    value={filters.status}
+                    onChange={(event) =>
+                      setFilters((current) => ({ ...current, status: event.target.value }))
+                    }
                   >
-                    {actionBusy ? "Đang lưu…" : "Duyệt thay đổi"}
-                  </button>
+                    <option value="">Mọi trạng thái</option>
+                    {["READY", "REVIEWED", "ANALYZED"].map((value) => (
+                      <option value={value} key={value}>
+                        {valueLabel(value)}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Sắp xếp thay đổi"
+                    className="apple-input min-w-0 w-full"
+                    value={filters.sort}
+                    onChange={(event) =>
+                      setFilters((current) => ({ ...current, sort: event.target.value }))
+                    }
+                  >
+                    <option value="-created_at">Mới nhất</option>
+                    <option value="created_at">Cũ nhất</option>
+                    <option value="requirement_id">Theo yêu cầu</option>
+                  </select>
+                </div>
+              </details>
+              <DataTable
+                onSelect={openChangeSet}
+                items={sets}
+                empty="Chưa có thay đổi yêu cầu được ghi nhận"
+                emptyActionHref={
+                  can("requirement.read")
+                    ? projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)
+                    : undefined
+                }
+                emptyActionLabel="Mở yêu cầu"
+                columns={[
+                  { key: "requirement_label", label: "Yêu cầu" },
+                  {
+                    key: "versions",
+                    label: "Phiên bản",
+                    render: (item) =>
+                      item.from_version_label && item.to_version_label
+                        ? `${item.from_version_label} → ${item.to_version_label}`
+                        : "Chưa xác định",
+                  },
+                  {
+                    key: "status",
+                    label: "Trạng thái",
+                    render: (item) => <StatusPill value={item.status} />,
+                  },
+                  { key: "summary", label: "Tóm tắt" },
+                ]}
+              />
+            </Panel>
+          </div>
+          <div className="min-w-0 space-y-5">
+            {selected && (
+              <div className="min-w-0 space-y-5">
+                <Panel
+                  title="Nội dung thay đổi"
+                  actions={
+                    <>
+                      {selected.status === "READY" && can("changeset.review") && (
+                        <button
+                          className="primary-button"
+                          disabled={actionBusy || !(selected.changes || []).length}
+                          onClick={reviewSelectedChangeSet}
+                          type="button"
+                        >
+                          {actionBusy ? "Đang lưu…" : "Duyệt thay đổi"}
+                        </button>
+                      )}
+                      {["REVIEWED", "ANALYZED"].includes(selected.status) &&
+                        !impact &&
+                        can("impact.execute") &&
+                        can("ai.run_impact") && (
+                          <button
+                            className="primary-button"
+                            disabled={actionBusy}
+                            onClick={analyzeSelectedImpact}
+                            type="button"
+                          >
+                            {actionBusy ? "Đang phân tích…" : "Phân tích ảnh hưởng"}
+                          </button>
+                        )}
+                    </>
+                  }
+                >
+                  {(selected.changes || []).length ? (
+                    <div className="divide-y divide-border">
+                      {selected.changes.map((item, index) => (
+                        <article className="min-w-0 px-4 py-4" key={`${item.subject}-${index}`}>
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <h3 className="min-w-0 break-words text-sm font-semibold text-ink">
+                              {item.subject || "Nội dung thay đổi"}
+                            </h3>
+                            <StatusPill value={item.type} />
+                            {(item.wording_only || item.type === "TEXT_ONLY") && (
+                              <span className="text-xs text-ink-muted">Chỉ đổi cách diễn đạt</span>
+                            )}
+                          </div>
+                          <dl className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
+                            <div className="min-w-0">
+                              <dt className="mb-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                                Trước
+                              </dt>
+                              <dd className="min-w-0 break-words rounded-control bg-surface-quiet/60 px-3 py-2 text-[13px] leading-5 text-ink">
+                                <StructuredValueView value={item.before} />
+                              </dd>
+                            </div>
+                            <div className="min-w-0">
+                              <dt className="mb-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+                                Sau
+                              </dt>
+                              <dd className="min-w-0 break-words rounded-control bg-brand/5 px-3 py-2 text-[13px] leading-5 text-ink">
+                                <StructuredValueView value={item.after} />
+                              </dd>
+                            </div>
+                          </dl>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="px-4 py-5 text-sm text-ink-muted" role="status">
+                      Không phát hiện khác biệt nội dung
+                    </p>
+                  )}
+                </Panel>
+
+                {!impact && ["READY", "REVIEWED"].includes(selected.status) && (
+                  <Panel title="Ảnh hưởng đến kiểm thử">
+                    <p className="p-4 text-sm text-ink-muted" role="status">
+                      {selected.status === "READY"
+                        ? "Cần duyệt nội dung thay đổi trước khi phân tích ảnh hưởng."
+                        : can("impact.execute") && can("ai.run_impact")
+                          ? "Chưa có kết quả phân tích ảnh hưởng cho thay đổi này."
+                          : "Bạn không có quyền chạy phân tích ảnh hưởng."}
+                    </p>
+                  </Panel>
                 )}
-                {["REVIEWED", "ANALYZED"].includes(selected.status) &&
-                  !impact &&
-                  can("impact.execute") &&
-                  can("ai.run_impact") && (
+
+                {can("regression.read") && (
+                  <Panel title="Tác động đến kiểm thử hồi quy">
+                    <DataTable
+                      items={regression?.items || []}
+                      empty="Chưa có kết quả phân tích hồi quy cho thay đổi này"
+                      columns={[
+                        { key: "test_case_key", label: "Ca kiểm thử" },
+                        {
+                          key: "level",
+                          label: "Mức ảnh hưởng",
+                          render: (item) => <StatusPill value={item.level} />,
+                        },
+                        {
+                          key: "reasons",
+                          label: "Căn cứ",
+                          render: (item) => item.reasons?.join("; "),
+                        },
+                      ]}
+                    />
+                  </Panel>
+                )}
+              </div>
+            )}
+
+            {!selected && (
+              <Panel title="Chi tiết thay đổi">
+                <p className="px-4 py-5 text-sm text-ink-muted" role="status">
+                  Chọn một thay đổi trong danh sách để xem nội dung và tác động kiểm thử.
+                </p>
+              </Panel>
+            )}
+
+            {impact && (
+              <Panel
+                title={`Kết quả phân tích ảnh hưởng lần ${impact.snapshot_number || 1}`}
+                actions={
+                  impact.source_stale && can("impact.execute") && can("ai.run_impact") ? (
                     <button
                       className="primary-button"
                       disabled={actionBusy}
-                      onClick={analyzeSelectedImpact}
+                      onClick={rerunSelectedImpact}
                       type="button"
                     >
-                      {actionBusy ? "Đang phân tích…" : "Phân tích ảnh hưởng"}
+                      {actionBusy ? "Đang phân tích…" : "Chạy lại phân tích"}
                     </button>
-                  )}
-              </>
-            }
-          >
-            <DataTable
-              items={selected.changes || []}
-              empty="Không phát hiện khác biệt nội dung"
-              columns={[
-                { key: "type", label: "Loại", render: (item) => valueLabel(item.type) },
-                { key: "subject", label: "Trường thay đổi" },
-                {
-                  key: "before",
-                  label: "Trước",
-                  render: (item) => <StructuredValueView value={item.before} />,
-                },
-                {
-                  key: "after",
-                  label: "Sau",
-                  render: (item) => <StructuredValueView value={item.after} />,
-                },
-                {
-                  key: "wording_only",
-                  label: "Chỉ đổi cách diễn đạt",
-                  render: (item) =>
-                    item.wording_only || item.type === "TEXT_ONLY" ? "Có" : "Không",
-                },
-              ]}
-            />
-          </Panel>
+                  ) : impact.status === "REVIEW_READY" &&
+                    can("impact.close") &&
+                    can("impact.review") ? (
+                    <button
+                      className="primary-button"
+                      disabled={actionBusy}
+                      onClick={reviewSelectedImpact}
+                      type="button"
+                    >
+                      {actionBusy ? "Đang lưu…" : "Xác nhận đã rà soát"}
+                    </button>
+                  ) : null
+                }
+              >
+                <div className="border-b border-border px-4 py-3 text-sm text-ink-muted">
+                  Trạng thái: <StatusPill value={impact.status} />
+                </div>
+                {impact.source_stale && (
+                  <div
+                    className="border-b border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger"
+                    role="alert"
+                  >
+                    Nguồn hoặc liên kết truy vết đã đổi sau lần phân tích. Không thể duyệt kết quả
+                    cũ; hãy chạy lại phân tích.
+                  </div>
+                )}
+                {impact.mode === "DEGRADED_AI" && (
+                  <div className="p-4 pb-0">
+                    <DegradedBanner
+                      mode="DEGRADED_AI"
+                      message="Kết quả AI chưa đầy đủ. Chỉ dùng kết quả và căn cứ đã ghi nhận; xem hoạt động AI để biết nguyên nhân."
+                    />
+                  </div>
+                )}
+                <DataTable
+                  items={impact.reviewed_affected_test_cases || impact.affected_test_cases || []}
+                  empty="Không có ca kiểm thử nào được xác định là bị ảnh hưởng"
+                  columns={[
+                    { key: "test_case_key", label: "Ca kiểm thử" },
+                    {
+                      key: "classification",
+                      label: "Phân loại",
+                      render: (item) => <StatusPill value={item.classification} />,
+                    },
+                    { key: "confidence", label: "Mức tin cậy" },
+                    {
+                      key: "reasons",
+                      label: "Bằng chứng",
+                      render: (item) => item.reasons?.join("; "),
+                    },
+                  ]}
+                />
+                {impact.impact_limitations?.length > 0 && (
+                  <div
+                    className="border-t border-border px-4 py-3 text-sm text-ink-muted"
+                    role="status"
+                  >
+                    {impact.scope_complete === false && (
+                      <p className="mb-2 font-medium text-ink">
+                        Phân tích chỉ bao phủ một phần dữ liệu. Chưa thể kết luận rằng danh sách ảnh
+                        hưởng đã đầy đủ.
+                      </p>
+                    )}
+                    <ul className="list-disc space-y-1 pl-5">
+                      {impact.impact_limitations.map((limitation) => (
+                        <li key={limitation}>{impactLimitationMessage(limitation)}</li>
+                      ))}
+                    </ul>
+                    {impact.scope_complete === false && (
+                      <p className="mt-2">
+                        Hãy chia nhỏ phạm vi thay đổi rồi chạy phân tích cho từng phần.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="grid min-w-0 gap-4 border-t border-border p-4">
+                  <section aria-label="Kịch bản kiểm thử bị ảnh hưởng">
+                    <h3 className="mb-2 text-sm font-semibold text-ink">Kịch bản cần rà soát</h3>
+                    <DataTable
+                      items={impact.affected_test_scenarios || []}
+                      empty="Không tìm thấy kịch bản liên kết trực tiếp với phiên bản yêu cầu này"
+                      columns={[
+                        { key: "name", label: "Kịch bản" },
+                        {
+                          key: "status",
+                          label: "Trạng thái",
+                          render: (item) => <StatusPill value={item.status} />,
+                        },
+                        {
+                          key: "related_test_case_version_ids",
+                          label: "Ca liên quan",
+                          render: (item) => item.related_test_case_version_ids?.length || 0,
+                        },
+                        {
+                          key: "reasons",
+                          label: "Căn cứ",
+                          render: (item) => item.reasons?.map(valueLabel).join("; "),
+                        },
+                      ]}
+                    />
+                  </section>
+                  <section aria-label="Kế hoạch kiểm thử bị ảnh hưởng">
+                    <h3 className="mb-2 text-sm font-semibold text-ink">Kế hoạch cần xem lại</h3>
+                    <DataTable
+                      items={impact.affected_test_plans || []}
+                      empty="Không tìm thấy kế hoạch có chứa phiên bản yêu cầu hoặc ca bị ảnh hưởng"
+                      columns={[
+                        { key: "name", label: "Kế hoạch" },
+                        {
+                          key: "status",
+                          label: "Trạng thái",
+                          render: (item) => <StatusPill value={item.status} />,
+                        },
+                        {
+                          key: "related_test_case_version_ids",
+                          label: "Ca liên quan",
+                          render: (item) => item.related_test_case_version_ids?.length || 0,
+                        },
+                        {
+                          key: "reasons",
+                          label: "Căn cứ",
+                          render: (item) => item.reasons?.map(valueLabel).join("; "),
+                        },
+                      ]}
+                    />
+                  </section>
+                  <section aria-label="Lượt chạy kiểm thử có phạm vi liên quan">
+                    <h3 className="mb-2 text-sm font-semibold text-ink">
+                      Lượt chạy có phạm vi liên quan
+                    </h3>
+                    <p className="mb-2 text-xs text-ink-muted">
+                      Đây là bản ghi lịch sử. Phân tích không sửa kết quả hoặc phạm vi của lượt chạy
+                      đã tạo.
+                    </p>
+                    <DataTable
+                      items={impact.affected_test_runs || []}
+                      empty="Không tìm thấy lượt chạy có snapshot liên quan đến thay đổi này"
+                      columns={[
+                        { key: "name", label: "Lượt chạy" },
+                        {
+                          key: "execution_status",
+                          label: "Trạng thái",
+                          render: (item) => <StatusPill value={item.execution_status} />,
+                        },
+                        {
+                          key: "test_plan_id",
+                          label: "Có kế hoạch",
+                          render: (item) => (item.test_plan_id ? "Có" : "Không"),
+                        },
+                        {
+                          key: "related_test_case_version_ids",
+                          label: "Ca liên quan",
+                          render: (item) => item.related_test_case_version_ids?.length || 0,
+                        },
+                        {
+                          key: "reasons",
+                          label: "Căn cứ",
+                          render: (item) => item.reasons?.map(valueLabel).join("; "),
+                        },
+                      ]}
+                    />
+                  </section>
+                </div>
+              </Panel>
+            )}
 
-          {!impact && ["READY", "REVIEWED"].includes(selected.status) && (
-            <Panel title="Ảnh hưởng đến kiểm thử">
-              <p className="p-4 text-sm text-ink-muted" role="status">
-                {selected.status === "READY"
-                  ? "Cần duyệt nội dung thay đổi trước khi phân tích ảnh hưởng."
-                  : can("impact.execute") && can("ai.run_impact")
-                    ? "Chưa có kết quả phân tích ảnh hưởng cho thay đổi này."
-                    : "Bạn không có quyền chạy phân tích ảnh hưởng."}
-              </p>
-            </Panel>
-          )}
-
-          {can("regression.read") && (
-            <Panel title="Tác động đến kiểm thử hồi quy">
-              <DataTable
-                items={regression?.items || []}
-                empty="Chưa có kết quả phân tích hồi quy cho thay đổi này"
-                columns={[
-                  { key: "test_case_key", label: "Ca kiểm thử" },
-                  {
-                    key: "level",
-                    label: "Mức ảnh hưởng",
-                    render: (item) => <StatusPill value={item.level} />,
-                  },
-                  { key: "reasons", label: "Căn cứ", render: (item) => item.reasons?.join("; ") },
-                ]}
-              />
-            </Panel>
-          )}
+            {(can("automation.read") || can("proposal.read")) && (
+              <Panel title="Nhật ký AI">
+                <div className="p-4">
+                  <Link
+                    className="secondary-button"
+                    href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
+                  >
+                    Mở nhật ký AI
+                  </Link>
+                </div>
+              </Panel>
+            )}
+          </div>
         </div>
-      )}
-
-      {impact && (
-        <Panel
-          title={`Kết quả phân tích ảnh hưởng lần ${impact.snapshot_number || 1}`}
-          actions={
-            impact.source_stale && can("impact.execute") && can("ai.run_impact") ? (
-              <button
-                className="primary-button"
-                disabled={actionBusy}
-                onClick={rerunSelectedImpact}
-                type="button"
-              >
-                {actionBusy ? "Đang phân tích…" : "Chạy lại phân tích"}
-              </button>
-            ) : impact.status === "REVIEW_READY" && can("impact.close") && can("impact.review") ? (
-              <button
-                className="primary-button"
-                disabled={actionBusy}
-                onClick={reviewSelectedImpact}
-                type="button"
-              >
-                {actionBusy ? "Đang lưu…" : "Xác nhận đã rà soát"}
-              </button>
-            ) : null
-          }
-        >
-          <div className="border-b border-border px-4 py-3 text-sm text-ink-muted">
-            Trạng thái: <StatusPill value={impact.status} />
-          </div>
-          {impact.source_stale && (
-            <div
-              className="border-b border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger"
-              role="alert"
-            >
-              Nguồn hoặc liên kết truy vết đã đổi sau lần phân tích. Không thể duyệt kết quả cũ; hãy
-              chạy lại phân tích.
-            </div>
-          )}
-          {impact.mode === "DEGRADED_AI" && (
-            <div className="p-4 pb-0">
-              <DegradedBanner
-                mode="DEGRADED_AI"
-                message="Kết quả AI chưa đầy đủ. Chỉ dùng kết quả và căn cứ đã ghi nhận; xem hoạt động AI để biết nguyên nhân."
-              />
-            </div>
-          )}
-          <DataTable
-            items={impact.reviewed_affected_test_cases || impact.affected_test_cases || []}
-            empty="Không có ca kiểm thử nào được xác định là bị ảnh hưởng"
-            columns={[
-              { key: "test_case_key", label: "Ca kiểm thử" },
-              {
-                key: "classification",
-                label: "Phân loại",
-                render: (item) => <StatusPill value={item.classification} />,
-              },
-              { key: "confidence", label: "Mức tin cậy" },
-              { key: "reasons", label: "Bằng chứng", render: (item) => item.reasons?.join("; ") },
-            ]}
-          />
-          {impact.impact_limitations?.length > 0 && (
-            <div className="border-t border-border px-4 py-3 text-sm text-ink-muted" role="status">
-              {impact.scope_complete === false && (
-                <p className="mb-2 font-medium text-ink">
-                  Phân tích chỉ bao phủ một phần dữ liệu. Chưa thể kết luận rằng danh sách ảnh hưởng
-                  đã đầy đủ.
-                </p>
-              )}
-              <ul className="list-disc space-y-1 pl-5">
-                {impact.impact_limitations.map((limitation) => (
-                  <li key={limitation}>{impactLimitationMessage(limitation)}</li>
-                ))}
-              </ul>
-              {impact.scope_complete === false && (
-                <p className="mt-2">
-                  Hãy chia nhỏ phạm vi thay đổi rồi chạy phân tích cho từng phần.
-                </p>
-              )}
-            </div>
-          )}
-          <div className="grid min-w-0 gap-4 border-t border-border p-4">
-            <section aria-label="Kịch bản kiểm thử bị ảnh hưởng">
-              <h3 className="mb-2 text-sm font-semibold text-ink">Kịch bản cần rà soát</h3>
-              <DataTable
-                items={impact.affected_test_scenarios || []}
-                empty="Không tìm thấy kịch bản liên kết trực tiếp với phiên bản yêu cầu này"
-                columns={[
-                  { key: "name", label: "Kịch bản" },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    render: (item) => <StatusPill value={item.status} />,
-                  },
-                  {
-                    key: "related_test_case_version_ids",
-                    label: "Ca liên quan",
-                    render: (item) => item.related_test_case_version_ids?.length || 0,
-                  },
-                  {
-                    key: "reasons",
-                    label: "Căn cứ",
-                    render: (item) => item.reasons?.map(valueLabel).join("; "),
-                  },
-                ]}
-              />
-            </section>
-            <section aria-label="Kế hoạch kiểm thử bị ảnh hưởng">
-              <h3 className="mb-2 text-sm font-semibold text-ink">Kế hoạch cần xem lại</h3>
-              <DataTable
-                items={impact.affected_test_plans || []}
-                empty="Không tìm thấy kế hoạch có chứa phiên bản yêu cầu hoặc ca bị ảnh hưởng"
-                columns={[
-                  { key: "name", label: "Kế hoạch" },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    render: (item) => <StatusPill value={item.status} />,
-                  },
-                  {
-                    key: "related_test_case_version_ids",
-                    label: "Ca liên quan",
-                    render: (item) => item.related_test_case_version_ids?.length || 0,
-                  },
-                  {
-                    key: "reasons",
-                    label: "Căn cứ",
-                    render: (item) => item.reasons?.map(valueLabel).join("; "),
-                  },
-                ]}
-              />
-            </section>
-            <section aria-label="Lượt chạy kiểm thử có phạm vi liên quan">
-              <h3 className="mb-2 text-sm font-semibold text-ink">
-                Lượt chạy có phạm vi liên quan
-              </h3>
-              <p className="mb-2 text-xs text-ink-muted">
-                Đây là bản ghi lịch sử. Phân tích không sửa kết quả hoặc phạm vi của lượt chạy đã
-                tạo.
-              </p>
-              <DataTable
-                items={impact.affected_test_runs || []}
-                empty="Không tìm thấy lượt chạy có snapshot liên quan đến thay đổi này"
-                columns={[
-                  { key: "name", label: "Lượt chạy" },
-                  {
-                    key: "execution_status",
-                    label: "Trạng thái",
-                    render: (item) => <StatusPill value={item.execution_status} />,
-                  },
-                  {
-                    key: "test_plan_id",
-                    label: "Có kế hoạch",
-                    render: (item) => (item.test_plan_id ? "Có" : "Không"),
-                  },
-                  {
-                    key: "related_test_case_version_ids",
-                    label: "Ca liên quan",
-                    render: (item) => item.related_test_case_version_ids?.length || 0,
-                  },
-                  {
-                    key: "reasons",
-                    label: "Căn cứ",
-                    render: (item) => item.reasons?.map(valueLabel).join("; "),
-                  },
-                ]}
-              />
-            </section>
-          </div>
-        </Panel>
-      )}
-
-      {(can("automation.read") || can("proposal.read")) && (
-        <Panel title="Nhật ký AI">
-          <div className="p-4">
-            <Link
-              className="secondary-button"
-              href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
-            >
-              Mở nhật ký AI
-            </Link>
-          </div>
-        </Panel>
       )}
     </WorkspacePage>
   );

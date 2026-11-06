@@ -27,7 +27,7 @@ function ReadableMarkdownTable({ children }) {
         (child) => isValidElement(child) && child.type === "th",
       ).length
     : 0;
-  const tableMinWidth = Math.max(1024, columnCount * 160);
+  const tableMinWidth = Math.max(640, columnCount * 160);
 
   return (
     <HorizontalScrollCue
@@ -390,6 +390,13 @@ export default function DocumentReaderPage({ project, section = [] }) {
     setError("");
     loadPage(0, false, selectedSheet, value ? Number(value) : null);
   };
+  const summaryProgress = summaryJob?.progress || {};
+  const summaryProcessed = Number(summaryProgress.processed);
+  const summaryTotal = Number(summaryProgress.total);
+  const summaryProgressPercent =
+    Number.isFinite(summaryProcessed) && Number.isFinite(summaryTotal) && summaryTotal > 0
+      ? Math.min(100, Math.round((summaryProcessed / summaryTotal) * 100))
+      : null;
 
   if (loading && !document) {
     return <LoadingState label="Đang mở tài liệu" variant="reader" />;
@@ -437,7 +444,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
           {canSummarize && (
             <>
               <select
-                className="form-input w-auto"
+                className="apple-input w-auto"
                 aria-label="Ngôn ngữ tóm tắt"
                 value={language}
                 onChange={(event) => setLanguage(event.target.value)}
@@ -495,9 +502,45 @@ export default function DocumentReaderPage({ project, section = [] }) {
         </div>
       )}
       {summaryLoading && summaryJob && (
-        <div className="rounded-xl border border-border bg-surface p-3 text-sm" role="status">
-          {summaryJob.status === "QUEUED" ? "Đang chờ xử lý" : "Đang tóm tắt tài liệu"}
-        </div>
+        <section className="space-y-2 rounded-xl border border-border bg-surface p-4" role="status">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="font-medium text-ink">
+              {summaryJob.status === "QUEUED" ? "Đang chờ xử lý" : "Đang tóm tắt tài liệu"}
+            </span>
+            {summaryProgressPercent !== null && (
+              <span className="text-ink-muted">
+                {summaryProcessed} / {summaryTotal} tài liệu
+              </span>
+            )}
+          </div>
+          {summaryProgressPercent !== null && (
+            <div
+              aria-label="Tiến độ tóm tắt"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={summaryProgressPercent}
+              className="h-2 overflow-hidden rounded-full bg-surface-quiet"
+              role="progressbar"
+            >
+              <div
+                className="h-full rounded-full bg-brand transition-[width] duration-300"
+                style={{ width: `${summaryProgressPercent}%` }}
+              />
+            </div>
+          )}
+          {summaryProgress.current_document && (
+            <p className="break-words text-xs text-ink-muted">
+              Đang xử lý: {summaryProgress.current_document}
+            </p>
+          )}
+          {Number.isFinite(Number(summaryProgress.chunks_total)) &&
+            Number(summaryProgress.chunks_total) > 0 && (
+              <p className="text-xs text-ink-muted">
+                Đã đọc {Number(summaryProgress.chunks_processed || 0)} /{" "}
+                {Number(summaryProgress.chunks_total)} phần nội dung
+              </p>
+            )}
+        </section>
       )}
       {!summaryLoading && summaryJob?.status === "CANCELLED" && (
         <div className="rounded-xl border border-border bg-surface p-3 text-sm" role="status">
@@ -514,12 +557,30 @@ export default function DocumentReaderPage({ project, section = [] }) {
               </ReactMarkdown>
             </div>
             {summary.results?.map((source) => (
-              <div
-                className="break-words border-t border-border pt-3 text-sm text-ink-muted"
-                key={source.document_id}
-              >
-                Nguồn: {source.filename?.replaceAll("_", " ") || "Tài liệu"} · phiên bản{" "}
-                {source.source_version}
+              <div className="space-y-2 border-t border-border pt-3" key={source.document_id}>
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="min-w-0 break-words text-ink-muted">
+                    Nguồn: {source.filename?.replaceAll("_", " ") || "Tài liệu"} · phiên bản{" "}
+                    {source.source_version}
+                  </span>
+                  <a
+                    className="shrink-0 font-medium text-brand hover:underline"
+                    href={projectRoute(project._id, "tai-lieu", source.document_id)}
+                  >
+                    Mở tài liệu
+                  </a>
+                </div>
+                {source.complete === false && (
+                  <p className="text-sm text-warning">
+                    Tài liệu còn phần chưa đọc được; nội dung tóm tắt từ nguồn này có thể chưa đầy
+                    đủ.
+                  </p>
+                )}
+                {Number(source.unprocessed_blocks?.length || 0) > 0 && (
+                  <p className="text-xs text-ink-muted">
+                    Chưa xử lý được {source.unprocessed_blocks.length} phần nội dung.
+                  </p>
+                )}
               </div>
             ))}
             {summary.excluded?.length > 0 && (
@@ -553,7 +614,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
               document?.page_count > 0 &&
               document?.source_pages_available && (
                 <select
-                  className="form-input w-auto min-w-[10rem]"
+                  className="apple-input w-auto min-w-[10rem]"
                   aria-label="Trang tài liệu"
                   value={selectedPage}
                   onChange={(event) => changePage(event.target.value)}
@@ -568,7 +629,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
               )}
             {sheets.length > 0 && (
               <select
-                className="form-input w-auto min-w-[12rem]"
+                className="apple-input w-auto min-w-[12rem]"
                 aria-label="Trang tính"
                 value={selectedSheet}
                 onChange={(event) => changeSheet(event.target.value)}
@@ -581,7 +642,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
               </select>
             )}
             <input
-              className="form-input min-w-[16rem] flex-1"
+              className="apple-input min-w-[16rem] flex-1"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Tìm trong nội dung đã tải"
@@ -629,11 +690,19 @@ export default function DocumentReaderPage({ project, section = [] }) {
               ))}
             </ul>
           )}
-          <div className="max-h-[72vh] overflow-auto rounded-xl border border-border bg-surface p-5">
+          <div className="max-h-[72vh] overflow-auto overscroll-contain">
             <article className="prose prose-sm max-w-none break-words">
-              <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
-                {content}
-              </ReactMarkdown>
+              {content.trim() ? (
+                <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+                  {content}
+                </ReactMarkdown>
+              ) : (
+                <p className="py-3 text-sm text-ink-muted" role="status">
+                  {sourceBlocks.some((block) => block.image_metadata)
+                    ? "Tài liệu chưa có văn bản trích xuất. Hình ảnh nguồn được giữ bên dưới để bạn đối chiếu."
+                    : "Chưa có nội dung văn bản để hiển thị. Hãy kiểm tra bản gốc hoặc trạng thái phân tích trong danh sách tài liệu."}
+                </p>
+              )}
             </article>
             {sourceBlocks
               .filter((block) => block.image_metadata)

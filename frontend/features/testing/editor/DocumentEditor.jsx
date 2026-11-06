@@ -51,6 +51,7 @@ export default function DocumentEditor({
   ignoreUnfocusedUpdates = false,
   onImageFiles,
   documentProfile,
+  showTableOfContents = true,
 }) {
   const [tableOfContents, setTableOfContents] = useState([]);
   const { ask, dialog } = useActionDialog();
@@ -59,7 +60,7 @@ export default function DocumentEditor({
     extensions: createQaExtensions(
       !readOnly,
       label ? `Nhập ${label.toLocaleLowerCase("vi")}` : "Nhập nội dung",
-      setTableOfContents,
+      showTableOfContents ? setTableOfContents : () => {},
       onImageFiles,
     ),
     content: value,
@@ -527,7 +528,7 @@ export default function DocumentEditor({
           {editor.storage.characterCount.words()} từ
         </output>
       </div>
-      {tableOfContents.length > 0 && (
+      {showTableOfContents && tableOfContents.length > 0 && (
         <nav className="testing-table-of-contents" aria-label="Mục lục nội dung">
           <span className="testing-table-of-contents-title">Mục lục</span>
           <ol>

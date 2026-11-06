@@ -1,9 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, RefreshCw } from "lucide-react";
 import DataTable from "./DataTable";
 import FormalReviewPanel from "./FormalReviewPanel";
 import QualityGateBadge from "./QualityGateBadge";
+import ReportSelectionList from "./ReportSelectionList";
 import { ErrorState, Metric, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
@@ -48,6 +49,8 @@ export default function TestStatusReportPanel({ project }) {
   const selectedReport = useRef(selected);
   selectedReport.current = selected;
   const can = (permission) => project.current_permissions?.includes(permission);
+  const canCreateReport =
+    can("teststatusreport.create") && can("testmonitor.read") && can("build.read");
   const load = useCallback(async () => {
     try {
       const permissions = new Set(project.current_permissions || []);
@@ -376,7 +379,7 @@ export default function TestStatusReportPanel({ project }) {
     <Panel
       title="Báo cáo trạng thái kiểm thử"
       actions={
-        can("teststatusreport.create") && can("testmonitor.read") && can("build.read") ? (
+        canCreateReport ? (
           <button
             className="apple-button"
             type="button"
@@ -390,292 +393,326 @@ export default function TestStatusReportPanel({ project }) {
     >
       {dialog}
       {error && (
-        <div className="p-5">
+        <div className="flex flex-wrap items-center gap-3 p-5">
           <ErrorState message={error} />
+          <button
+            aria-label="Tải lại báo cáo trạng thái"
+            className="icon-button h-10 w-10 shrink-0"
+            onClick={() => void load()}
+            title="Tải lại báo cáo trạng thái"
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={16} />
+          </button>
         </div>
       )}
-      <div className="grid border-t border-border/70 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="border-r border-border/70">
-          <DataTable
-            items={reports}
-            empty="Chưa có báo cáo trạng thái"
-            columns={[
-              { key: "sequence", label: "Lần" },
-              {
-                key: "created_at",
-                label: "Thời điểm",
-                render: (item) => (
-                  <button
-                    className="text-left text-accent"
-                    type="button"
-                    onClick={() => {
-                      setSelected(item);
-                      setComparison(null);
-                    }}
-                  >
-                    {formatDate(item.created_at)}
-                  </button>
-                ),
-              },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-            ]}
-          />
-        </div>
-        <div className="min-w-0 p-5">
-          {!selected ? (
-            <p className="text-sm text-ink-muted">Chọn hoặc tạo báo cáo trạng thái</p>
-          ) : (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusPill value={selected.status} />
-                <QualityGateBadge status={selected.snapshot_basis?.quality_gate_status} />
-                {selected.status === "DRAFT" && can("teststatusreport.update") && (
-                  <button
-                    className="icon-button h-9 w-9"
-                    type="button"
-                    aria-label="Chỉnh sửa báo cáo trạng thái"
-                    title="Chỉnh sửa báo cáo trạng thái"
-                    onClick={edit}
-                  >
-                    <Pencil aria-hidden="true" size={16} />
-                  </button>
-                )}
-                {selected.status === "DRAFT" && can("teststatusreport.update") && (
-                  <button className="secondary-button" type="button" onClick={attachEvidence}>
-                    Gắn bằng chứng
-                  </button>
-                )}
-                {selected.status === "DRAFT" && can("teststatusreport.submit_review") && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => transition("submitTestStatusReport", "Gửi rà soát")}
-                  >
-                    Gửi rà soát
-                  </button>
-                )}
-                {selected.status === "IN_REVIEW" && can("teststatusreport.review") && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() =>
-                      transition("requestTestStatusReportChanges", "Yêu cầu chỉnh sửa")
-                    }
-                  >
-                    Yêu cầu chỉnh sửa
-                  </button>
-                )}
-                {selected.status === "IN_REVIEW" && can("teststatusreport.approve") && (
-                  <button
-                    className="apple-button"
-                    type="button"
-                    onClick={() => transition("approveTestStatusReport", "Phê duyệt")}
-                  >
-                    Phê duyệt
-                  </button>
-                )}
-                {selected.status === "APPROVED" && can("teststatusreport.publish") && (
-                  <button
-                    className="apple-button"
-                    type="button"
-                    onClick={() => transition("publishTestStatusReport", "Phát hành")}
-                  >
-                    Phát hành
-                  </button>
-                )}
-                {selected.status === "PUBLISHED" && can("teststatusreport.archive") && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => transition("archiveTestStatusReport", "Lưu trữ")}
-                  >
-                    Lưu trữ
-                  </button>
-                )}
-                {reports.length > 1 && (
-                  <button className="secondary-button" type="button" onClick={compare}>
-                    So sánh
-                  </button>
-                )}
-                {can("report.export") &&
-                  [
-                    { format: "pdf", label: "Xuất PDF" },
-                    { format: "docx", label: "Xuất DOCX" },
-                    { format: "csv", label: "Xuất CSV" },
-                  ].map((item) => (
+      {reports.length ? (
+        <div className="grid border-t border-border/70 xl:grid-cols-[minmax(250px,320px)_minmax(0,1fr)]">
+          <div className="max-h-72 overflow-y-auto border-b border-border/70 xl:max-h-[calc(100vh-16rem)] xl:border-b-0 xl:border-r">
+            <ReportSelectionList
+              items={reports}
+              selectedId={selected?._id}
+              onSelect={(item) => {
+                setSelected(item);
+                setComparison(null);
+              }}
+              label="Báo cáo trạng thái đã tạo"
+              emptyMessage="Chưa có báo cáo trạng thái"
+            />
+          </div>
+          <div className="min-w-0 p-5">
+            {!selected ? (
+              reports.length ? (
+                <p className="text-sm text-ink-muted">Chọn một báo cáo trong danh sách</p>
+              ) : null
+            ) : (
+              <div className="space-y-5">
+                <section aria-labelledby="selected-status-report-heading" className="space-y-3">
+                  <h2 className="text-lg font-semibold" id="selected-status-report-heading">
+                    Báo cáo lần {selected.sequence}
+                  </h2>
+                  <dl className="grid min-w-0 gap-x-6 gap-y-3 rounded-control border border-border p-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {selected.reporting_period?.start_at && selected.reporting_period?.end_at && (
+                      <div className="min-w-0 sm:col-span-2 xl:col-span-1">
+                        <dt className="text-xs text-ink-muted">Kỳ báo cáo</dt>
+                        <dd className="mt-1 break-words text-sm font-medium">
+                          {formatDate(selected.reporting_period.start_at)} đến{" "}
+                          {formatDate(selected.reporting_period.end_at)}
+                        </dd>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Bản dựng</dt>
+                      <dd className="mt-1 break-words text-sm font-medium">
+                        {builds.find((item) => item._id === selected.build_id)?.identifier ||
+                          selected.build ||
+                          (selected.build_id ? "Có bản dựng liên kết" : "Chưa có bản dựng")}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-ink-muted">Mốc dữ liệu</dt>
+                      <dd className="mt-1 break-words text-sm font-medium">
+                        {selected.snapshot_basis?.snapshot_at
+                          ? formatDate(selected.snapshot_basis.snapshot_at)
+                          : "Chưa có thời điểm"}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusPill value={selected.status} />
+                  <QualityGateBadge status={selected.snapshot_basis?.quality_gate_status} />
+                  {selected.status === "DRAFT" && can("teststatusreport.update") && (
+                    <button
+                      className="icon-button h-9 w-9"
+                      type="button"
+                      aria-label="Chỉnh sửa báo cáo trạng thái"
+                      title="Chỉnh sửa báo cáo trạng thái"
+                      onClick={edit}
+                    >
+                      <Pencil aria-hidden="true" size={16} />
+                    </button>
+                  )}
+                  {selected.status === "DRAFT" && can("teststatusreport.update") && (
+                    <button className="secondary-button" type="button" onClick={attachEvidence}>
+                      Gắn bằng chứng
+                    </button>
+                  )}
+                  {selected.status === "DRAFT" && can("teststatusreport.submit_review") && (
                     <button
                       className="secondary-button"
                       type="button"
-                      key={item.format}
+                      onClick={() => transition("submitTestStatusReport", "Gửi rà soát")}
+                    >
+                      Gửi rà soát
+                    </button>
+                  )}
+                  {selected.status === "IN_REVIEW" && can("teststatusreport.review") && (
+                    <button
+                      className="secondary-button"
+                      type="button"
                       onClick={() =>
-                        testingApi
-                          .exportTestStatusReport(selected._id, item.format)
-                          .catch((reason) => setError(messageOf(reason)))
+                        transition("requestTestStatusReportChanges", "Yêu cầu chỉnh sửa")
                       }
                     >
-                      {item.label}
+                      Yêu cầu chỉnh sửa
                     </button>
-                  ))}
-              </div>
-              {selected.status === "DRAFT" && can("teststatusreport.update") && (
-                <button
-                  type="button"
-                  className="secondary-button border-violet-300 text-violet-800"
-                  disabled={narrativeLoading}
-                  onClick={generateNarrative}
-                >
-                  {narrativeLoading ? "Đang xử lý" : "AI đề xuất diễn giải báo cáo"}
-                </button>
-              )}
-              {narrativeResult?.suggestions?.[0] && (
-                <Panel title="Diễn giải AI đề xuất">
-                  <div className="space-y-4 text-sm">
-                    <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
-                      <ContentOriginBadge origin="ai_generated" />
-                      <p className="mt-2 text-violet-950">
-                        Phần này do AI đề xuất riêng; không thay đổi số liệu hoặc nội dung người
-                        dùng đã nhập.
+                  )}
+                  {selected.status === "IN_REVIEW" && can("teststatusreport.approve") && (
+                    <button
+                      className="apple-button"
+                      type="button"
+                      onClick={() => transition("approveTestStatusReport", "Phê duyệt")}
+                    >
+                      Phê duyệt
+                    </button>
+                  )}
+                  {selected.status === "APPROVED" && can("teststatusreport.publish") && (
+                    <button
+                      className="apple-button"
+                      type="button"
+                      onClick={() => transition("publishTestStatusReport", "Phát hành")}
+                    >
+                      Phát hành
+                    </button>
+                  )}
+                  {selected.status === "PUBLISHED" && can("teststatusreport.archive") && (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => transition("archiveTestStatusReport", "Lưu trữ")}
+                    >
+                      Lưu trữ
+                    </button>
+                  )}
+                  {reports.length > 1 && (
+                    <button className="secondary-button" type="button" onClick={compare}>
+                      So sánh
+                    </button>
+                  )}
+                  {can("report.export") &&
+                    [
+                      { format: "pdf", label: "Xuất PDF" },
+                      { format: "docx", label: "Xuất DOCX" },
+                      { format: "csv", label: "Xuất CSV" },
+                    ].map((item) => (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        key={item.format}
+                        onClick={() =>
+                          testingApi
+                            .exportTestStatusReport(selected._id, item.format)
+                            .catch((reason) => setError(messageOf(reason)))
+                        }
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                </div>
+                {selected.status === "DRAFT" && can("teststatusreport.update") && (
+                  <button
+                    type="button"
+                    className="secondary-button border-violet-300 text-violet-800"
+                    disabled={narrativeLoading}
+                    onClick={generateNarrative}
+                  >
+                    {narrativeLoading ? "Đang xử lý" : "AI đề xuất diễn giải báo cáo"}
+                  </button>
+                )}
+                {narrativeResult?.suggestions?.[0] && (
+                  <Panel title="Diễn giải AI đề xuất">
+                    <div className="space-y-4 text-sm">
+                      <div className="rounded-control border border-violet-300 bg-violet-50/60 p-3">
+                        <ContentOriginBadge origin="ai_generated" />
+                        <p className="mt-2 text-violet-950">
+                          Phần này do AI đề xuất riêng; không thay đổi số liệu hoặc nội dung người
+                          dùng đã nhập.
+                        </p>
+                      </div>
+                      {narrativeResult.stale && (
+                        <p className="text-amber-700" role="status">
+                          Báo cáo đã đổi sau khi AI tạo phần diễn giải; kết quả này thuộc phiên bản
+                          trước và không được dùng làm nội dung hiện hành.
+                        </p>
+                      )}
+                      {[
+                        ["Tóm tắt điều hành", narrativeResult.suggestions[0].executive_summary],
+                        ["Diễn giải rủi ro", narrativeResult.suggestions[0].risk_explanation],
+                        ["Dự báo", forecastText(narrativeResult.suggestions[0].forecast)],
+                        [
+                          "Diễn giải khuyến nghị",
+                          narrativeResult.suggestions[0].recommendation_narrative,
+                        ],
+                      ].map(([label, value]) => (
+                        <div key={label}>
+                          <p className="field-label">{label}</p>
+                          <p className="mt-1 whitespace-pre-wrap">{value || "Chưa có nội dung"}</p>
+                        </div>
+                      ))}
+                      <p className="text-xs text-ink-muted">
+                        Kết quả được tạo từ sự kiện tạo báo cáo; không thay đổi số liệu hoặc nội
+                        dung báo cáo gốc.
                       </p>
                     </div>
-                    {narrativeResult.stale && (
-                      <p className="text-amber-700" role="status">
-                        Báo cáo đã đổi sau khi AI tạo phần diễn giải; kết quả này thuộc phiên bản
-                        trước và không được dùng làm nội dung hiện hành.
-                      </p>
-                    )}
-                    {[
-                      ["Tóm tắt điều hành", narrativeResult.suggestions[0].executive_summary],
-                      ["Diễn giải rủi ro", narrativeResult.suggestions[0].risk_explanation],
-                      ["Dự báo", forecastText(narrativeResult.suggestions[0].forecast)],
-                      [
-                        "Diễn giải khuyến nghị",
-                        narrativeResult.suggestions[0].recommendation_narrative,
-                      ],
-                    ].map(([label, value]) => (
-                      <div key={label}>
-                        <p className="field-label">{label}</p>
-                        <p className="mt-1 whitespace-pre-wrap">{value || "Chưa có nội dung"}</p>
-                      </div>
-                    ))}
-                    <p className="text-xs text-ink-muted">
-                      Kết quả được tạo từ sự kiện tạo báo cáo; không thay đổi số liệu hoặc nội dung
-                      báo cáo gốc.
-                    </p>
-                  </div>
-                </Panel>
-              )}
-              {narrativeResult && !narrativeResult.suggestions?.[0] && (
-                <p className="text-sm text-ink-muted" role="status">
-                  AI chưa tạo được phần diễn giải: {valueLabel(narrativeResult.status)}
-                </p>
-              )}
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <Metric
-                  label="Thực thi"
-                  value={
-                    selected.snapshot_basis?.metrics?.execution_percent == null
-                      ? "Chưa có dữ liệu"
-                      : `${selected.snapshot_basis.metrics.execution_percent}%`
-                  }
-                />
-                <Metric
-                  label="Tỷ lệ đạt"
-                  value={
-                    selected.snapshot_basis?.metrics?.pass_rate == null
-                      ? "Chưa có dữ liệu"
-                      : `${selected.snapshot_basis.metrics.pass_rate}%`
-                  }
-                />
-                <Metric
-                  label="Độ phủ yêu cầu"
-                  value={
-                    selected.snapshot_basis?.metrics?.requirement_coverage == null
-                      ? "Chưa có dữ liệu"
-                      : `${selected.snapshot_basis.metrics.requirement_coverage}%`
-                  }
-                />
-                <Metric
-                  label="Độ phủ điều kiện kiểm thử"
-                  value={
-                    selected.snapshot_basis?.metrics?.test_condition_coverage == null
-                      ? "Chưa có dữ liệu"
-                      : `${selected.snapshot_basis.metrics.test_condition_coverage}%`
-                  }
-                />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {[
-                  ["Tóm tắt điều hành", selected.executive_summary],
-                  ["Tiến độ", selected.progress_summary],
-                  ["Độ phủ", selected.coverage_summary],
-                  ["Lỗi", selected.defect_summary],
-                  ["Diễn giải rủi ro", selected.risk_explanation],
-                  ["Dự báo", forecastText(selected.forecast)],
-                  ["Khuyến nghị", valueLabel(selected.recommendation)],
-                  ["Diễn giải khuyến nghị", selected.recommendation_narrative],
-                ].map(([label, value]) => (
-                  <div key={label}>
-                    <p className="field-label">{label}</p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-ink">
-                      {value || "Chưa ghi nhận"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <DataTable
-                items={(selected.control_actions || []).map((item, index) => ({
-                  ...item,
-                  _id: item._id || `action-${index}`,
-                }))}
-                empty="Không có hành động kiểm soát"
-                columns={[
-                  { key: "title", label: "Hành động kiểm soát" },
-                  { key: "owner_id", label: "Người phụ trách" },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    render: (item) => <StatusPill value={item.status} />,
-                  },
-                ]}
-              />
-              {comparison && (
-                <Panel title="Kết quả so sánh">
-                  <DataTable
-                    items={(comparison.changes || []).map((item) => ({ ...item, _id: item.field }))}
-                    empty="Hai báo cáo không khác nhau"
-                    columns={[
-                      { key: "field", label: "Trường" },
-                      {
-                        key: "from",
-                        label: "Báo cáo hiện tại",
-                        render: (item) => <StructuredValueView value={item.from} />,
-                      },
-                      {
-                        key: "to",
-                        label: "Báo cáo đối chiếu",
-                        render: (item) => <StructuredValueView value={item.to} />,
-                      },
-                    ]}
+                  </Panel>
+                )}
+                {narrativeResult && !narrativeResult.suggestions?.[0] && (
+                  <p className="text-sm text-ink-muted" role="status">
+                    AI chưa tạo được phần diễn giải: {valueLabel(narrativeResult.status)}
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <Metric
+                    label="Thực thi"
+                    value={
+                      selected.snapshot_basis?.metrics?.execution_percent == null
+                        ? "Chưa có dữ liệu"
+                        : `${selected.snapshot_basis.metrics.execution_percent}%`
+                    }
                   />
-                </Panel>
-              )}
-              {can("reviewsession.read") && (
-                <FormalReviewPanel
-                  project={project}
-                  artifactType="STATUS_REPORT"
-                  artifactId={selected._id}
-                  artifactVersionId={selected._id}
-                  reviewType="STATUS_REPORT"
+                  <Metric
+                    label="Tỷ lệ đạt"
+                    value={
+                      selected.snapshot_basis?.metrics?.pass_rate == null
+                        ? "Chưa có dữ liệu"
+                        : `${selected.snapshot_basis.metrics.pass_rate}%`
+                    }
+                  />
+                  <Metric
+                    label="Độ phủ yêu cầu"
+                    value={
+                      selected.snapshot_basis?.metrics?.requirement_coverage == null
+                        ? "Chưa có dữ liệu"
+                        : `${selected.snapshot_basis.metrics.requirement_coverage}%`
+                    }
+                  />
+                  <Metric
+                    label="Độ phủ điều kiện kiểm thử"
+                    value={
+                      selected.snapshot_basis?.metrics?.test_condition_coverage == null
+                        ? "Chưa có dữ liệu"
+                        : `${selected.snapshot_basis.metrics.test_condition_coverage}%`
+                    }
+                  />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {[
+                    ["Tóm tắt điều hành", selected.executive_summary],
+                    ["Tiến độ", selected.progress_summary],
+                    ["Độ phủ", selected.coverage_summary],
+                    ["Lỗi", selected.defect_summary],
+                    ["Diễn giải rủi ro", selected.risk_explanation],
+                    ["Dự báo", forecastText(selected.forecast)],
+                    ["Khuyến nghị", valueLabel(selected.recommendation)],
+                    ["Diễn giải khuyến nghị", selected.recommendation_narrative],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <p className="field-label">{label}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-ink">
+                        {value || "Chưa ghi nhận"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <DataTable
+                  items={(selected.control_actions || []).map((item, index) => ({
+                    ...item,
+                    _id: item._id || `action-${index}`,
+                  }))}
+                  empty="Không có hành động kiểm soát"
+                  columns={[
+                    { key: "title", label: "Hành động kiểm soát" },
+                    { key: "owner_id", label: "Người phụ trách" },
+                    {
+                      key: "status",
+                      label: "Trạng thái",
+                      render: (item) => <StatusPill value={item.status} />,
+                    },
+                  ]}
                 />
-              )}
-            </div>
-          )}
+                {comparison && (
+                  <Panel title="Kết quả so sánh">
+                    <DataTable
+                      items={(comparison.changes || []).map((item) => ({
+                        ...item,
+                        _id: item.field,
+                      }))}
+                      empty="Hai báo cáo không khác nhau"
+                      columns={[
+                        { key: "field", label: "Trường" },
+                        {
+                          key: "from",
+                          label: "Báo cáo hiện tại",
+                          render: (item) => <StructuredValueView value={item.from} />,
+                        },
+                        {
+                          key: "to",
+                          label: "Báo cáo đối chiếu",
+                          render: (item) => <StructuredValueView value={item.to} />,
+                        },
+                      ]}
+                    />
+                  </Panel>
+                )}
+                {can("reviewsession.read") && (
+                  <FormalReviewPanel
+                    project={project}
+                    artifactType="STATUS_REPORT"
+                    artifactId={selected._id}
+                    artifactVersionId={selected._id}
+                    reviewType="STATUS_REPORT"
+                  />
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <p className="border-t border-border/70 px-5 py-6 text-sm text-ink-muted" role="status">
+          Chưa có báo cáo trạng thái
+        </p>
+      )}
     </Panel>
   );
 }

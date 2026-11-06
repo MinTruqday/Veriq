@@ -1,7 +1,6 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
-import DataTable from "./DataTable";
 import {
   EmptyState,
   ErrorState,
@@ -47,6 +46,7 @@ export default function TestCaseTemplatesPanel({ project }) {
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [templateType, setTemplateType] = useState("");
+  const [search, setSearch] = useState("");
   const [templateEditor, setTemplateEditor] = useState(null);
   const [templateError, setTemplateError] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -80,14 +80,36 @@ export default function TestCaseTemplatesPanel({ project }) {
     void load();
   }, [load]);
 
-  const openDetail = async (item) => {
+  const openDetail = useCallback(async (item) => {
     setError("");
     try {
       setSelected(await testingApi.getTestCaseTemplate(item._id));
     } catch (reason) {
       setError(messageOf(reason));
     }
-  };
+  }, []);
+
+  const visibleItems = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    if (!query) return items;
+    return items.filter((item) =>
+      [item.name, item.description, typeLabel(item.template_type), ...(item.tags || [])]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase()
+        .includes(query),
+    );
+  }, [items, search]);
+
+  useEffect(() => {
+    if (!loading && !selected && items.length) {
+      void openDetail(items[0]);
+      return;
+    }
+    if (visibleItems.length && !visibleItems.some((item) => item._id === selected?._id)) {
+      void openDetail(visibleItems[0]);
+    }
+  }, [items, loading, openDetail, selected, visibleItems]);
 
   const openTemplateEditor = (item = null) => {
     setTemplateError("");
@@ -169,13 +191,23 @@ export default function TestCaseTemplatesPanel({ project }) {
   };
 
   return (
-    <Panel
-      title="Danh sách mẫu ca kiểm thử"
-      actions={
-        <div className="flex flex-wrap gap-2">
+    <Panel title="Danh sách mẫu ca kiểm thử">
+      <div className="space-y-4 p-4 sm:p-5">
+        {error && <ErrorState message={error} />}
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="min-w-64 flex-1">
+            <span className="sr-only">Tìm mẫu ca kiểm thử</span>
+            <input
+              aria-label="Tìm mẫu ca kiểm thử"
+              className="apple-input w-full"
+              placeholder="Tìm theo tên, mô tả hoặc nhãn"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
           <select
             aria-label="Lọc loại mẫu ca kiểm thử"
-            className="apple-input min-w-48"
+            className="apple-input min-w-48 w-auto"
             value={templateType}
             onChange={(event) => setTemplateType(event.target.value)}
           >
@@ -186,43 +218,59 @@ export default function TestCaseTemplatesPanel({ project }) {
               </option>
             ))}
           </select>
+          <span className="px-2 text-[12px] text-ink-muted">{visibleItems.length} mẫu</span>
           {canManage && (
             <button className="apple-button" type="button" onClick={createTemplate}>
               Tạo mẫu
             </button>
           )}
         </div>
-      }
-    >
-      <div className="space-y-4 p-5">
-        {error && <ErrorState message={error} />}
         {loading && !items.length ? (
           <LoadingState />
         ) : (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-            <div className="overflow-hidden rounded-xl border border-border">
-              <DataTable
-                items={items}
-                empty="Chưa có mẫu ca kiểm thử đang hoạt động"
-                onSelect={openDetail}
-                columns={[
-                  { key: "name", label: "Tên mẫu" },
-                  {
-                    key: "template_type",
-                    label: "Loại",
-                    render: (item) => typeLabel(item.template_type),
-                  },
-                  {
-                    key: "status",
-                    label: "Trạng thái",
-                    render: (item) => <StatusPill value={item.status} />,
-                  },
-                  { key: "revision", label: "Phiên bản" },
-                ]}
-              />
+          <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(300px,0.9fr)_minmax(0,1.35fr)]">
+            <div className="min-w-0 space-y-2">
+              {visibleItems.length ? (
+                visibleItems.map((item) => {
+                  const active = selected?._id === item._id;
+                  return (
+                    <button
+                      key={item._id}
+                      type="button"
+                      aria-pressed={active}
+                      className={`block w-full rounded-lg border px-4 py-3 text-left transition-colors ${active ? "border-brand/40 bg-brand-soft/50" : "border-border bg-surface hover:bg-surface-raised"}`}
+                      onClick={() => void openDetail(item)}
+                    >
+                      <span className="flex min-w-0 items-start justify-between gap-3">
+                        <span className="min-w-0 break-words text-[14px] font-semibold leading-5 text-ink">
+                          {item.name}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-ink-muted">
+                          v{item.revision}
+                        </span>
+                      </span>
+                      <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-muted">
+                        <span>{typeLabel(item.template_type)}</span>
+                        <StatusPill value={item.status} />
+                      </span>
+                      {item.description && (
+                        <span className="mt-2 line-clamp-2 block break-words text-[12px] leading-5 text-ink-muted">
+                          {item.description}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              ) : (
+                <EmptyState>
+                  {items.length
+                    ? "Không tìm thấy mẫu phù hợp"
+                    : "Chưa có mẫu ca kiểm thử đang hoạt động"}
+                </EmptyState>
+              )}
             </div>
             {selected ? (
-              <section className="space-y-4 rounded-xl border border-border bg-surface-raised p-5">
+              <section className="min-w-0 space-y-4 border-t border-border pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
@@ -288,7 +336,7 @@ export default function TestCaseTemplatesPanel({ project }) {
                 )}
               </section>
             ) : (
-              <div className="rounded-xl border border-border bg-surface-raised">
+              <div className="border-t border-border pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
                 <EmptyState>Chọn một mẫu để xem định nghĩa chi tiết</EmptyState>
               </div>
             )}

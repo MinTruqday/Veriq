@@ -30,9 +30,15 @@ export default function TestControlActionPanel({
           {
             key: "owner_id",
             label: "Người phụ trách",
-            render: (item) =>
-              members.find((member) => member.user_id === item.owner_id)?.user_label ||
-              "Chưa phân công",
+            render: (item) => {
+              const member = members.find((candidate) => candidate.user_id === item.owner_id);
+              return (
+                member?.identity?.label ||
+                member?.full_name ||
+                member?.email ||
+                (item.owner_id ? "Thành viên dự án" : "Chưa phân công")
+              );
+            },
           },
           {
             key: "due_at",

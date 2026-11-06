@@ -223,7 +223,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     router,
     state.forbidden,
   ]);
-  if (state.loading)
+  if (state.loading || state.project?._id !== projectId)
     return (
       <div className="p-8">
         <LoadingState />
@@ -236,7 +236,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       </div>
     );
   if (mustLeaveWorkspace) return null;
-  if (state.error || !state.project)
+  if (!state.project)
     return (
       <div className="p-8">
         <ErrorState message={state.error || "Không tìm thấy dự án"} />
@@ -287,6 +287,11 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   };
   return (
     <div className="workspace-page min-w-0">
+      {state.error && (
+        <div className="mx-auto w-full max-w-screen-2xl px-4 pt-4 sm:px-6">
+          <ErrorState message={`Chưa làm mới được thông tin dự án: ${state.error}`} />
+        </div>
+      )}
       {state.project.access_context?.mode === "BREAK_GLASS" && (
         <div className="border-b border-warning/40 bg-warning-soft px-5 py-3 text-[13px] font-semibold text-warning">
           Quyền truy cập khẩn cấp đang hoạt động đến{" "}

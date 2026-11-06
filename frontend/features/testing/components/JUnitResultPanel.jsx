@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "./DataTable";
 import FilePicker from "./FilePicker";
-import { Panel } from "./WorkspacePrimitives";
+import { ErrorState, Panel } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
 import { clearImportMappings } from "../lib/junitImport.logic.mjs";
@@ -15,22 +15,31 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
   const [file, setFile] = useState(null);
   const [fileResetKey, setFileResetKey] = useState(0);
   const [mappings, setMappings] = useState({});
+  const [loadError, setLoadError] = useState("");
+  const [loadingImports, setLoadingImports] = useState(false);
   const loadGeneration = useRef(0);
   const load = useCallback(async () => {
     const requestGeneration = ++loadGeneration.current;
+    setLoadingImports(true);
     try {
       const values = await testingApi.listJUnitResultImports(project._id);
-      if (requestGeneration === loadGeneration.current) setImports(values);
+      if (requestGeneration === loadGeneration.current) {
+        setImports(values);
+        setLoadError("");
+      }
     } catch (reason) {
-      if (requestGeneration === loadGeneration.current) onError(messageOf(reason));
+      if (requestGeneration === loadGeneration.current) setLoadError(messageOf(reason));
+    } finally {
+      if (requestGeneration === loadGeneration.current) setLoadingImports(false);
     }
-  }, [loadGeneration, onError, project._id]);
+  }, [loadGeneration, project._id]);
   useEffect(() => {
     setImports([]);
     setRunId("");
     setFile(null);
     setFileResetKey((current) => current + 1);
     setMappings({});
+    setLoadError("");
     void load();
     return () => {
       loadGeneration.current += 1;
@@ -38,6 +47,19 @@ export default function JUnitResultPanel({ project, runs, tests, can, onError })
   }, [load, loadGeneration]);
   return (
     <Panel title="Nhập kết quả JUnit XML">
+      {loadError && (
+        <div className="grid gap-2 border-b border-border p-4">
+          <ErrorState message={loadError} />
+          <button
+            className="secondary-button justify-self-start"
+            type="button"
+            disabled={loadingImports}
+            onClick={() => void load()}
+          >
+            {loadingImports ? "Đang tải…" : "Tải lại kết quả JUnit"}
+          </button>
+        </div>
+      )}
       {can("automation.create") && (
         <form
           className="mb-4 grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] sm:items-end"

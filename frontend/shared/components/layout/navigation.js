@@ -91,7 +91,7 @@ export function testCaseSubsectionItems(projectId) {
       id: "automation",
       label: "Mã kiểm thử tự động",
       href: `${root}/tu-dong-hoa`,
-      anyPermission: ["ai.generate_automation_script", "automation.script.export"],
+      permission: "automation.script.export",
       permissions: ["testcase.read"],
     },
     {

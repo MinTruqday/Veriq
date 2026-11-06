@@ -18,6 +18,7 @@ import { Pagination } from "@/shared/components/ui/Pagination";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
+import { useRouter } from "next/navigation";
 
 const taskLabels = {
   impact_analysis: "Phân tích ảnh hưởng",
@@ -32,8 +33,10 @@ const modelLabels = {
 };
 
 function formatStorageSize(value) {
+  if (value == null || value === "") return "Chưa có dữ liệu";
   const bytes = Number(value);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 byte";
+  if (!Number.isFinite(bytes)) return "Chưa có dữ liệu";
+  if (bytes === 0) return "0 byte";
   if (bytes < 1000) return `${Math.round(bytes).toLocaleString("vi-VN")} byte`;
   const units = ["kB", "MB", "GB", "TB"];
   let size = bytes;
@@ -47,7 +50,9 @@ function formatStorageSize(value) {
 
 export default function OperationsPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
   const [section, setSection] = useState("overview");
+  const [overviewSection, setOverviewSection] = useState("summary");
   const [value, setValue] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -74,6 +79,14 @@ export default function OperationsPage() {
     if (authLoading || !user || !isPlatformAdmin) return;
     void load();
   }, [authLoading, isPlatformAdmin, load, user]);
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/dang-nhap");
+      return;
+    }
+    if (!isPlatformAdmin) router.replace("/du-an");
+  }, [authLoading, isPlatformAdmin, router, user]);
   const retryJob = async (jobId) => {
     if (retryingJobsRef.current.has(jobId)) return;
     retryingJobsRef.current.add(jobId);
@@ -135,7 +148,7 @@ export default function OperationsPage() {
         <LoadingState />
       </div>
     );
-  if (!isPlatformAdmin) return null;
+  if (!isPlatformAdmin) return <LoadingState />;
   return (
     <WorkspacePage title="Vận hành nền tảng">
       <nav
@@ -152,7 +165,7 @@ export default function OperationsPage() {
           <button
             key={value}
             type="button"
-            aria-current={section === value ? "page" : undefined}
+            aria-pressed={section === value}
             className={`min-h-10 shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
               section === value ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
             }`}
@@ -188,178 +201,265 @@ export default function OperationsPage() {
         )
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Metric label="Tài liệu chờ lập chỉ mục" value={value.knowledge_indexing_backlog} />
-            <Metric label="Lần nhập liệu bị lỗi" value={value.failed_ingestion_jobs.length} />
-            <Metric label="Phân tích ảnh hưởng lỗi" value={value.failed_impact_jobs.length} />
-            <Metric label="Lỗi xử lý nền" value={value.worker_failures.length} />
-          </div>
-          <div className="grid items-start gap-5 xl:grid-cols-2">
-            <Panel title="Mô hình đang hoạt động">
-              <DataTable
-                items={Object.entries(value.ai_models).map(([name, version]) => ({
-                  _id: name,
-                  name,
-                  version,
-                }))}
-                columns={[
-                  {
-                    key: "name",
-                    label: "Tác vụ",
-                    render: (item) => taskLabels[item.name] || item.name,
-                  },
-                  {
-                    key: "version",
-                    label: "Phiên bản",
-                    render: (item) => modelLabels[item.version] || item.version,
-                  },
-                ]}
-              />
-            </Panel>
-            <Panel title="Số liệu phân tích ảnh hưởng bằng AI">
-              <DataTable
-                items={aiMetrics}
-                columns={[
-                  { key: "name", label: "Loại" },
-                  { key: "count", label: "Số lượng" },
-                ]}
-              />
-            </Panel>
-          </div>
-          <Panel title="Lần nhập liệu bị lỗi">
-            <DataTable
-              items={value.failed_ingestion_jobs}
-              empty="Không có lần nhập liệu bị lỗi"
-              columns={[
-                {
-                  key: "summary",
-                  label: "Thông tin",
-                  render: (item) => (
-                    <div className="grid gap-1">
-                      <span className="font-medium">Không nhập được tài liệu</span>
-                      <OperationalDiagnostics item={item} includeFileName />
-                    </div>
-                  ),
-                },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.status} />,
-                },
-                {
-                  key: "created_at",
-                  label: "Thời điểm",
-                  render: (item) => formatDate(item.created_at),
-                },
-              ]}
-            />
-          </Panel>
-          <Panel title="Lỗi xử lý nền">
-            <DataTable
-              items={value.worker_failures}
-              empty="Không có lỗi xử lý nền"
-              columns={[
-                {
-                  key: "summary",
-                  label: "Công việc",
-                  render: (item) => (
-                    <div className="grid gap-1">
-                      <span className="font-medium">{operationalEventSummary(item.event)}</span>
-                      <OperationalDiagnostics item={item} includeEvent />
-                    </div>
-                  ),
-                },
-                {
-                  key: "completed_at",
-                  label: "Thời điểm",
-                  render: (item) => formatDate(item.completed_at),
-                },
-                {
-                  key: "retry",
-                  label: "Thao tác",
-                  render: (item) => (
-                    <button
-                      aria-label={`Thử lại công việc ${item._id}`}
-                      title={retryingJobs.has(item._id) ? "Đang thử lại" : "Thử lại"}
-                      className="icon-button h-9 w-9"
-                      type="button"
-                      disabled={retryingJobs.has(item._id)}
-                      onClick={() => retryJob(item._id)}
-                    >
-                      <RotateCcw aria-hidden="true" size={16} />
-                    </button>
-                  ),
-                },
-              ]}
-            />
-          </Panel>
-          <Panel title="Dung lượng theo dự án">
-            <DataTable
-              items={visibleStorageUsage}
-              empty="Chưa có dữ liệu dung lượng"
-              columns={[
-                { key: "project_key", label: "Dự án" },
-                { key: "files", label: "Tệp" },
-                {
-                  key: "bytes",
-                  label: "Dung lượng",
-                  render: (item) => formatStorageSize(item.bytes),
-                },
-              ]}
-            />
-            <Pagination
-              page={storagePage}
-              pageSize={storagePageSize}
-              total={storageUsage.length}
-              onChange={setStoragePage}
-            />
-          </Panel>
-          <Panel
-            title="Nhật ký hệ thống"
-            actions={
-              <input
-                aria-label="Tìm trong nhật ký"
-                id="operations-audit-query"
-                className="apple-input w-full sm:w-80"
-                value={auditQuery}
-                onChange={(event) => {
-                  setAuditQuery(event.target.value);
-                  setAuditPage(1);
-                }}
-                placeholder="Sự kiện, mã đối tượng hoặc người thực hiện"
-              />
-            }
+          <nav
+            aria-label="Tổng quan vận hành"
+            className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-surface-quiet p-1"
           >
-            <DataTable
-              items={visibleAuditEvents}
-              empty="Không có sự kiện phù hợp"
-              columns={[
-                {
-                  key: "action",
-                  label: "Sự kiện",
-                  render: (item) => valueLabel(item.action),
-                },
-                {
-                  key: "entity_type",
-                  label: "Loại",
-                  render: (item) => valueLabel(item.entity_type),
-                },
-                { key: "entity_id", label: "Mã" },
-                { key: "actor_label", label: "Người thực hiện" },
-                {
-                  key: "created_at",
-                  label: "Thời điểm",
-                  render: (item) => formatDate(item.created_at),
-                },
-              ]}
-            />
-            <Pagination
-              page={auditPage}
-              pageSize={auditPageSize}
-              total={auditEvents.length}
-              onChange={setAuditPage}
-            />
-          </Panel>
+            {[
+              ["summary", "Tình trạng"],
+              ["issues", "Sự cố"],
+              ["storage", "Dung lượng"],
+              ["audit", "Nhật ký"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                id={`operations-overview-tab-${id}`}
+                type="button"
+                aria-pressed={overviewSection === id}
+                className={`min-h-10 shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
+                  overviewSection === id
+                    ? "bg-surface text-ink shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+                onClick={() => setOverviewSection(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          {overviewSection === "summary" ? (
+            <section aria-label="Tình trạng vận hành" className="space-y-5">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <Metric label="Tài liệu chờ lập chỉ mục" value={value.knowledge_indexing_backlog} />
+                <Metric
+                  label="Lần nhập liệu bị lỗi"
+                  value={(value.failed_ingestion_jobs || []).length}
+                />
+                <Metric
+                  label="Phân tích ảnh hưởng lỗi"
+                  value={(value.failed_impact_jobs || []).length}
+                />
+                <Metric label="Lỗi xử lý nền" value={(value.worker_failures || []).length} />
+              </div>
+              <div className="grid items-start gap-5 xl:grid-cols-2">
+                <Panel title="Mô hình đang hoạt động">
+                  <DataTable
+                    items={Object.entries(value.ai_models).map(([name, version]) => ({
+                      _id: name,
+                      name,
+                      version,
+                    }))}
+                    columns={[
+                      {
+                        key: "name",
+                        label: "Tác vụ",
+                        render: (item) => taskLabels[item.name] || item.name,
+                      },
+                      {
+                        key: "version",
+                        label: "Phiên bản",
+                        render: (item) => modelLabels[item.version] || item.version,
+                      },
+                    ]}
+                  />
+                </Panel>
+                <Panel title="Số liệu phân tích ảnh hưởng bằng AI">
+                  <DataTable
+                    items={aiMetrics}
+                    columns={[
+                      { key: "name", label: "Loại" },
+                      { key: "count", label: "Số lượng" },
+                    ]}
+                  />
+                </Panel>
+              </div>
+            </section>
+          ) : null}
+          {overviewSection === "issues" ? (
+            <section aria-label="Sự cố vận hành" className="space-y-5">
+              <Panel title="Lần nhập liệu bị lỗi">
+                <DataTable
+                  items={value.failed_ingestion_jobs || []}
+                  empty="Không có lần nhập liệu bị lỗi"
+                  columns={[
+                    {
+                      key: "summary",
+                      label: "Thông tin",
+                      render: (item) => (
+                        <div className="grid gap-1">
+                          <span className="font-medium">Không nhập được tài liệu</span>
+                          <OperationalDiagnostics item={item} includeFileName />
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "status",
+                      label: "Trạng thái",
+                      render: (item) => <StatusPill value={item.status} />,
+                    },
+                    {
+                      key: "created_at",
+                      label: "Thời điểm",
+                      render: (item) => formatDate(item.created_at),
+                    },
+                  ]}
+                />
+              </Panel>
+              <Panel title="Lỗi xử lý nền">
+                <DataTable
+                  items={value.worker_failures || []}
+                  empty="Không có lỗi xử lý nền"
+                  columns={[
+                    {
+                      key: "summary",
+                      label: "Công việc",
+                      render: (item) => (
+                        <div className="grid gap-1">
+                          <span className="font-medium">{operationalEventSummary(item.event)}</span>
+                          <OperationalDiagnostics item={item} includeEvent />
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "completed_at",
+                      label: "Thời điểm",
+                      render: (item) => formatDate(item.completed_at),
+                    },
+                    {
+                      key: "retry",
+                      label: "Thao tác",
+                      render: (item) => (
+                        <button
+                          aria-label={`Thử lại công việc ${item._id}`}
+                          title={retryingJobs.has(item._id) ? "Đang thử lại" : "Thử lại"}
+                          className="icon-button h-9 w-9"
+                          type="button"
+                          disabled={retryingJobs.has(item._id)}
+                          onClick={() => retryJob(item._id)}
+                        >
+                          <RotateCcw aria-hidden="true" size={16} />
+                        </button>
+                      ),
+                    },
+                  ]}
+                />
+              </Panel>
+              <Panel title="Phân tích ảnh hưởng cần xem lại">
+                <DataTable
+                  items={value.failed_impact_jobs || []}
+                  empty="Không có phân tích ảnh hưởng cần xem lại"
+                  columns={[
+                    {
+                      key: "summary",
+                      label: "Thông tin",
+                      render: (item) => (
+                        <div className="grid gap-1">
+                          <span className="font-medium">Phân tích chưa hoàn tất</span>
+                          <OperationalDiagnostics item={item} />
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "status",
+                      label: "Trạng thái",
+                      render: (item) => <StatusPill value={item.status} />,
+                    },
+                    {
+                      key: "updated_at",
+                      label: "Cập nhật",
+                      render: (item) => formatDate(item.updated_at),
+                    },
+                  ]}
+                />
+              </Panel>
+            </section>
+          ) : null}
+          {overviewSection === "storage" ? (
+            <section aria-label="Dung lượng dự án">
+              <Panel title="Dung lượng theo dự án">
+                <DataTable
+                  items={visibleStorageUsage}
+                  empty="Chưa có dữ liệu dung lượng"
+                  columns={[
+                    {
+                      key: "project_key",
+                      label: "Dự án",
+                      render: (item) => (
+                        <div className="grid gap-0.5">
+                          <span className="font-medium">{item.project_name || "Dự án"}</span>
+                          {item.project_key && (
+                            <span className="text-xs text-ink-muted">{item.project_key}</span>
+                          )}
+                        </div>
+                      ),
+                    },
+                    { key: "files", label: "Tệp" },
+                    {
+                      key: "bytes",
+                      label: "Dung lượng",
+                      render: (item) => formatStorageSize(item.bytes),
+                    },
+                  ]}
+                />
+                <Pagination
+                  page={storagePage}
+                  pageSize={storagePageSize}
+                  total={storageUsage.length}
+                  onChange={setStoragePage}
+                />
+              </Panel>
+            </section>
+          ) : null}
+          {overviewSection === "audit" ? (
+            <section aria-label="Nhật ký hệ thống">
+              <Panel
+                title="Nhật ký hệ thống"
+                actions={
+                  <input
+                    aria-label="Tìm trong nhật ký"
+                    id="operations-audit-query"
+                    className="apple-input w-full sm:w-80"
+                    value={auditQuery}
+                    onChange={(event) => {
+                      setAuditQuery(event.target.value);
+                      setAuditPage(1);
+                    }}
+                    placeholder="Sự kiện, mã đối tượng hoặc người thực hiện"
+                  />
+                }
+              >
+                <DataTable
+                  items={visibleAuditEvents}
+                  empty="Không có sự kiện phù hợp"
+                  columns={[
+                    {
+                      key: "action",
+                      label: "Sự kiện",
+                      render: (item) => valueLabel(item.action),
+                    },
+                    {
+                      key: "entity_type",
+                      label: "Loại",
+                      render: (item) => valueLabel(item.entity_type),
+                    },
+                    { key: "entity_id", label: "Mã" },
+                    { key: "actor_label", label: "Người thực hiện" },
+                    {
+                      key: "created_at",
+                      label: "Thời điểm",
+                      render: (item) => formatDate(item.created_at),
+                    },
+                  ]}
+                />
+                <Pagination
+                  page={auditPage}
+                  pageSize={auditPageSize}
+                  total={auditEvents.length}
+                  onChange={setAuditPage}
+                />
+              </Panel>
+            </section>
+          ) : null}
         </>
       )}
     </WorkspacePage>

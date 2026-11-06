@@ -39,7 +39,11 @@ function activeNavigationGroup(groups, pathname) {
       (group) =>
         group.href === pathname ||
         (group.href && pathname.startsWith(`${group.href}/`)) ||
-        group.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)),
+        group.items.some(
+          (item) =>
+            pathname === item.href ||
+            (item.id !== "dashboard" && pathname.startsWith(`${item.href}/`)),
+        ),
     )
     .sort(
       (left, right) =>
@@ -449,12 +453,11 @@ export default function AppShell({ children, requireAuth }) {
       (pathname === group.href
         ? group.items.find((item) => item.id === group.defaultActiveItemId)
         : null) ||
-      (isDocumentReader
-        ? group.items.find((item) => item.id === "knowledge" || item.id === "requirements")
-        : isTestRunExecution
-          ? group.items.find((item) => item.id === "test-runs")
-          : null);
-    return { ...group, activeItemId: activeItem?.id || group.items[0]?.id };
+      (isTestRunExecution ? group.items.find((item) => item.id === "test-runs") : null);
+    return {
+      ...group,
+      activeItemId: activeItem?.id || (isDocumentReader ? null : group.items[0]?.id),
+    };
   }, [pathname, projectId, projectNavigationGroups]);
   const hasProjectSubnavigation = (selectedProjectNavigationGroup?.items.length || 0) > 1;
   const projectNavigationVisible = projectNavigationGroups.length > 0;
@@ -862,7 +865,7 @@ export default function AppShell({ children, requireAuth }) {
         tabIndex={-1}
         className={`min-h-[100dvh] min-w-0 pt-[68px] ${projectNavigationVisible ? (hasProjectSubnavigation ? "lg:pt-[158px]" : "lg:pt-[112px]") : ""} transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-[76px]" : "lg:pl-[260px]"}`}
       >
-        <div className="page-shell">
+        <div className={`page-shell ${projectNavigationVisible ? "project-navigation-shell" : ""}`}>
           {projectContextError ? (
             <section
               className="mx-auto max-w-xl rounded-panel border border-border bg-surface p-6"

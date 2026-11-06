@@ -570,7 +570,7 @@ export default function RequirementSourceDocumentsPanel({
       {canSummarize && (
         <div className="mb-4 flex flex-wrap items-center gap-2 px-4 pt-4">
           <select
-            className="form-input w-auto !min-h-9"
+            className="apple-input w-auto !min-h-9"
             aria-label="Ngôn ngữ tóm tắt"
             value={summaryLanguage}
             onChange={(event) => setSummaryLanguage(event.target.value)}

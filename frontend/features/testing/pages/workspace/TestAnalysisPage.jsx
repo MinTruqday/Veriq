@@ -264,10 +264,14 @@ export default function TestAnalysisPage({ project }) {
         />
       )}
       {can("testcondition.read") && (
-        <div className="space-y-5" hidden={visibleTab !== "conditions"}>
+        <div
+          className="grid min-w-0 gap-5 lg:grid-cols-[minmax(17rem,0.78fr)_minmax(0,1.65fr)] lg:items-start"
+          hidden={visibleTab !== "conditions"}
+          style={{ display: visibleTab === "conditions" ? "grid" : "none" }}
+        >
           <Panel title="Điều kiện kiểm thử">
             <form
-              className="grid gap-3 p-5 sm:grid-cols-[1fr_220px_auto]"
+              className="grid gap-3 p-5"
               onSubmit={(event) => {
                 event.preventDefault();
                 void load();
@@ -278,7 +282,7 @@ export default function TestAnalysisPage({ project }) {
                 aria-label="Tìm điều kiện kiểm thử"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Tìm mã điều kiện hoặc hạng mục độ phủ"
+                placeholder="Tìm mã hoặc hạng mục độ phủ"
               />
               <select
                 className="apple-input"
@@ -297,8 +301,263 @@ export default function TestAnalysisPage({ project }) {
                 Lọc
               </button>
             </form>
-            <TestConditionTable items={conditions} onSelect={setSelected} />
+            <TestConditionTable
+              items={conditions}
+              selectedId={selected?._id}
+              onSelect={setSelected}
+            />
           </Panel>
+          {selected?._id ? (
+            <div className="min-w-0" hidden={visibleTab !== "conditions"}>
+              <Panel
+                title={
+                  <span className="block min-w-0">
+                    <span className="block text-[11px] font-medium tracking-wide text-ink-muted">
+                      {selected.condition_key}
+                    </span>
+                    <span className="mt-0.5 block break-words">{selected.title}</span>
+                  </span>
+                }
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    {can("testcondition.update") && selected.status === "DRAFT" && (
+                      <button
+                        className="icon-button h-9 w-9"
+                        type="button"
+                        aria-label={`Chỉnh sửa điều kiện ${selected.condition_key}`}
+                        title="Chỉnh sửa điều kiện"
+                        onClick={() => setEditing(true)}
+                      >
+                        <Pencil aria-hidden="true" size={16} />
+                      </button>
+                    )}
+                    {can("testcondition.review") && selected.status === "DRAFT" && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          transition(
+                            "Gửi điều kiện để rà soát",
+                            "Gửi rà soát",
+                            testingApi.submitTestCondition,
+                          )
+                        }
+                      >
+                        Gửi rà soát
+                      </button>
+                    )}
+                    {can("testcondition.review") && selected.status === "IN_REVIEW" && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() =>
+                          transition(
+                            "Ghi nhận rà soát điều kiện kiểm thử",
+                            "Ghi nhận",
+                            testingApi.reviewTestCondition,
+                          )
+                        }
+                      >
+                        Ghi nhận rà soát
+                      </button>
+                    )}
+                    {can("testcondition.approve") && selected.status === "IN_REVIEW" && (
+                      <button
+                        className="apple-button"
+                        type="button"
+                        onClick={() =>
+                          transition(
+                            "Phê duyệt điều kiện kiểm thử",
+                            "Phê duyệt",
+                            testingApi.approveTestCondition,
+                          )
+                        }
+                      >
+                        Phê duyệt
+                      </button>
+                    )}
+                    {can("testcondition.archive") &&
+                      ["DRAFT", "APPROVED"].includes(selected.status) && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() =>
+                            transition(
+                              "Lưu trữ điều kiện kiểm thử",
+                              "Lưu trữ",
+                              testingApi.archiveTestCondition,
+                            )
+                          }
+                        >
+                          Lưu trữ
+                        </button>
+                      )}
+                  </div>
+                }
+              >
+                <div className="grid min-w-0 gap-4 p-5 sm:grid-cols-2">
+                  <div>
+                    <p className="field-label">Mô tả</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">
+                      {docText(selected.description_doc) || selected.description || "Chưa có mô tả"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="field-label">Nhóm điều kiện</p>
+                    <p className="mt-2 text-sm">
+                      {selected.category ? valueLabel(selected.category) : "Chưa phân loại"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="field-label">Cơ sở kiểm thử</p>
+                    <p className="mt-2 text-sm">
+                      {selected.basis_refs?.length
+                        ? selected.basis_refs
+                            .map((item) => {
+                              const referenceId = item.artifact_version_id || item.artifact_id;
+                              const requirement = requirements.find(
+                                (value) => value.current_version_id === referenceId,
+                              );
+                              return requirement
+                                ? `${requirement.requirement_key} · v${requirement.current_version?.version}`
+                                : item.label || item.source_label || "Nguồn liên kết khác";
+                            })
+                            .join(" · ")
+                        : "Chưa có căn cứ liên kết"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="field-label">Kỹ thuật</p>
+                    <p className="mt-2 text-sm">
+                      {selected.technique_candidates?.length
+                        ? selected.technique_candidates.map(techniqueLabel).join(" · ")
+                        : "Chưa xác định"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="field-label">Nguồn nội dung</p>
+                    <div className="mt-2">
+                      <ContentOriginBadge origin={selected.origin || "manual"} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="field-label">Rủi ro</p>
+                    <div className="mt-2">
+                      <StatusPill value={severityLabel(selected.risk)} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="field-label">Ưu tiên</p>
+                    <div className="mt-2">
+                      <StatusPill value={selected.priority} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="field-label">Khả năng kiểm thử</p>
+                    <div className="mt-2">
+                      <StatusPill value={selected.testability_status} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="field-label">Trạng thái</p>
+                    <div className="mt-2">
+                      <StatusPill value={selected.status} />
+                    </div>
+                  </div>
+                </div>
+                <DataTable
+                  items={selected.analysis_findings || []}
+                  empty="Không có phát hiện về khả năng kiểm thử"
+                  columns={[
+                    {
+                      key: "finding_type",
+                      label: "Loại phát hiện",
+                      render: (item) => findingTypeLabel(item.finding_type),
+                    },
+                    {
+                      key: "severity",
+                      label: "Mức độ",
+                      render: (item) => <StatusPill value={severityLabel(item.severity)} />,
+                    },
+                    { key: "description", label: "Mô tả" },
+                    { key: "suggestion", label: "Đề xuất" },
+                    {
+                      key: "status",
+                      label: "Trạng thái",
+                      render: (item) => <StatusPill value={item.status} />,
+                    },
+                    ...(can("testanalysis.resolve_finding")
+                      ? [
+                          {
+                            key: "actions",
+                            label: "Thao tác",
+                            render: (finding) =>
+                              finding.status === "OPEN" ? (
+                                <button
+                                  aria-label={`Giải quyết phát hiện ${finding.finding_id}`}
+                                  className="icon-button h-9 w-9"
+                                  title="Giải quyết phát hiện"
+                                  type="button"
+                                  onClick={async () => {
+                                    await ask({
+                                      title: "Giải quyết phát hiện",
+                                      confirmLabel: "Ghi nhận",
+                                      fields: [
+                                        {
+                                          name: "status",
+                                          label: "Kết quả",
+                                          options: [
+                                            { value: "RESOLVED", label: "Đã giải quyết" },
+                                            { value: "ACCEPTED_RISK", label: "Chấp nhận rủi ro" },
+                                          ],
+                                        },
+                                        {
+                                          name: "resolution_ref",
+                                          label: "Tham chiếu xử lý",
+                                          required: true,
+                                        },
+                                        {
+                                          name: "note",
+                                          label: "Ghi chú",
+                                          required: true,
+                                          multiline: true,
+                                        },
+                                      ],
+                                      onConfirm: async (answer) => {
+                                        try {
+                                          await testingApi.resolveTestAnalysisFinding(
+                                            selected._id,
+                                            finding.finding_id,
+                                            {
+                                              expected_revision: selected.revision,
+                                              ...answer,
+                                            },
+                                          );
+                                          await load();
+                                        } catch (reason) {
+                                          throw new Error(messageOf(reason));
+                                        }
+                                      },
+                                    });
+                                  }}
+                                >
+                                  <Check aria-hidden="true" size={16} />
+                                </button>
+                              ) : null,
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+              </Panel>
+            </div>
+          ) : (
+            <Panel title="Chi tiết điều kiện">
+              <p className="px-4 py-5 text-sm text-ink-muted" role="status">
+                Chọn một điều kiện để xem căn cứ, kết quả phân tích và thao tác rà soát.
+              </p>
+            </Panel>
+          )}
         </div>
       )}
       {can("testanalysis.read") && (
@@ -311,7 +570,7 @@ export default function TestAnalysisPage({ project }) {
                 mỗi đề xuất có dẫn chứng để bạn kiểm tra trước khi dùng làm bản nháp.
               </p>
               {can("testanalysis.run_ai") && (
-                <div className="space-y-3 rounded-lg border border-border p-4">
+                <div className="space-y-3 border-t border-border pt-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-medium">Yêu cầu nguồn</h3>
                     <div className="flex gap-2">
@@ -345,7 +604,7 @@ export default function TestAnalysisPage({ project }) {
                           );
                           return (
                             <label
-                              className="flex min-w-0 cursor-pointer items-start gap-2 rounded-md border border-border p-3"
+                              className="flex min-w-0 cursor-pointer items-start gap-2 border-b border-border py-2"
                               key={item.current_version_id}
                             >
                               <input
@@ -515,214 +774,6 @@ export default function TestAnalysisPage({ project }) {
                 ]}
               />
             </div>
-          </Panel>
-        </div>
-      )}
-      {selected?._id && (
-        <div className="space-y-5" hidden={visibleTab !== "conditions"}>
-          <Panel
-            title={`${selected.condition_key} ${selected.title}`}
-            actions={
-              <div className="flex flex-wrap gap-2">
-                {can("testcondition.update") && selected.status === "DRAFT" && (
-                  <button
-                    className="icon-button h-9 w-9"
-                    type="button"
-                    aria-label={`Chỉnh sửa điều kiện ${selected.condition_key}`}
-                    title="Chỉnh sửa điều kiện"
-                    onClick={() => setEditing(true)}
-                  >
-                    <Pencil aria-hidden="true" size={16} />
-                  </button>
-                )}
-                {can("testcondition.review") && selected.status === "DRAFT" && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() =>
-                      transition(
-                        "Gửi điều kiện để rà soát",
-                        "Gửi rà soát",
-                        testingApi.submitTestCondition,
-                      )
-                    }
-                  >
-                    Gửi rà soát
-                  </button>
-                )}
-                {can("testcondition.review") && selected.status === "IN_REVIEW" && (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() =>
-                      transition(
-                        "Ghi nhận rà soát điều kiện kiểm thử",
-                        "Ghi nhận",
-                        testingApi.reviewTestCondition,
-                      )
-                    }
-                  >
-                    Ghi nhận rà soát
-                  </button>
-                )}
-                {can("testcondition.approve") && selected.status === "IN_REVIEW" && (
-                  <button
-                    className="apple-button"
-                    type="button"
-                    onClick={() =>
-                      transition(
-                        "Phê duyệt điều kiện kiểm thử",
-                        "Phê duyệt",
-                        testingApi.approveTestCondition,
-                      )
-                    }
-                  >
-                    Phê duyệt
-                  </button>
-                )}
-                {can("testcondition.archive") &&
-                  ["DRAFT", "APPROVED"].includes(selected.status) && (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() =>
-                        transition(
-                          "Lưu trữ điều kiện kiểm thử",
-                          "Lưu trữ",
-                          testingApi.archiveTestCondition,
-                        )
-                      }
-                    >
-                      Lưu trữ
-                    </button>
-                  )}
-              </div>
-            }
-          >
-            <div className="grid min-w-0 gap-4 p-5 md:grid-cols-3">
-              <div>
-                <p className="field-label">Mô tả</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm">
-                  {docText(selected.description_doc)}
-                </p>
-              </div>
-              <div>
-                <p className="field-label">Nhóm điều kiện</p>
-                <p className="mt-2 text-sm">
-                  {selected.category ? valueLabel(selected.category) : "Chưa phân loại"}
-                </p>
-              </div>
-              <div>
-                <p className="field-label">Cơ sở kiểm thử</p>
-                <p className="mt-2 text-sm">
-                  {selected.basis_refs?.length
-                    ? selected.basis_refs
-                        .map((item) => {
-                          const referenceId = item.artifact_version_id || item.artifact_id;
-                          const requirement = requirements.find(
-                            (value) => value.current_version_id === referenceId,
-                          );
-                          return requirement
-                            ? `${requirement.requirement_key} · v${requirement.current_version?.version}`
-                            : item.label || item.source_label || "Nguồn liên kết khác";
-                        })
-                        .join(" · ")
-                    : "Chưa có căn cứ liên kết"}
-                </p>
-              </div>
-              <div>
-                <p className="field-label">Kỹ thuật</p>
-                <p className="mt-2 text-sm">
-                  {selected.technique_candidates?.length
-                    ? selected.technique_candidates.map(techniqueLabel).join(" · ")
-                    : "Chưa xác định"}
-                </p>
-              </div>
-            </div>
-            <DataTable
-              items={selected.analysis_findings || []}
-              empty="Không có phát hiện về khả năng kiểm thử"
-              columns={[
-                {
-                  key: "finding_type",
-                  label: "Loại phát hiện",
-                  render: (item) => findingTypeLabel(item.finding_type),
-                },
-                {
-                  key: "severity",
-                  label: "Mức độ",
-                  render: (item) => <StatusPill value={severityLabel(item.severity)} />,
-                },
-                { key: "description", label: "Mô tả" },
-                { key: "suggestion", label: "Đề xuất" },
-                {
-                  key: "status",
-                  label: "Trạng thái",
-                  render: (item) => <StatusPill value={item.status} />,
-                },
-                ...(can("testanalysis.resolve_finding")
-                  ? [
-                      {
-                        key: "actions",
-                        label: "Thao tác",
-                        render: (finding) =>
-                          finding.status === "OPEN" ? (
-                            <button
-                              aria-label={`Giải quyết phát hiện ${finding.finding_id}`}
-                              className="icon-button h-9 w-9"
-                              title="Giải quyết phát hiện"
-                              type="button"
-                              onClick={async () => {
-                                await ask({
-                                  title: "Giải quyết phát hiện",
-                                  confirmLabel: "Ghi nhận",
-                                  fields: [
-                                    {
-                                      name: "status",
-                                      label: "Kết quả",
-                                      options: [
-                                        { value: "RESOLVED", label: "Đã giải quyết" },
-                                        { value: "ACCEPTED_RISK", label: "Chấp nhận rủi ro" },
-                                      ],
-                                    },
-                                    {
-                                      name: "resolution_ref",
-                                      label: "Tham chiếu xử lý",
-                                      required: true,
-                                    },
-                                    {
-                                      name: "note",
-                                      label: "Ghi chú",
-                                      required: true,
-                                      multiline: true,
-                                    },
-                                  ],
-                                  onConfirm: async (answer) => {
-                                    try {
-                                      await testingApi.resolveTestAnalysisFinding(
-                                        selected._id,
-                                        finding.finding_id,
-                                        {
-                                          expected_revision: selected.revision,
-                                          ...answer,
-                                        },
-                                      );
-                                      await load();
-                                    } catch (reason) {
-                                      throw new Error(messageOf(reason));
-                                    }
-                                  },
-                                });
-                              }}
-                            >
-                              <Check aria-hidden="true" size={16} />
-                            </button>
-                          ) : null,
-                      },
-                    ]
-                  : []),
-              ]}
-            />
           </Panel>
         </div>
       )}

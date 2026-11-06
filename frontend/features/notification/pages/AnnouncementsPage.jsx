@@ -22,6 +22,32 @@ function formatDate(value, locale, configuredTimeZone) {
     ...(timeZone ? { timeZone } : {}),
   }).format(date);
 }
+function dateKey(value, configuredTimeZone) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return null;
+  const timeZone = isSupportedTimeZone(configuredTimeZone) ? configuredTimeZone : undefined;
+  const parts = new Intl.DateTimeFormat("en", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  }).formatToParts(date);
+  const fields = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${fields.year}-${fields.month}-${fields.day}`;
+}
+function notificationGroup(value, today, configuredTimeZone) {
+  const key = dateKey(value, configuredTimeZone);
+  if (!key) return "Ngày chưa xác định";
+  const [year, month, day] = key.split("-").map(Number);
+  const [todayYear, todayMonth, todayDay] = today.split("-").map(Number);
+  const dayDifference =
+    (Date.UTC(todayYear, todayMonth - 1, todayDay) - Date.UTC(year, month - 1, day)) / 86400000;
+  if (dayDifference < 0) return "Sắp tới";
+  if (dayDifference === 0) return "Hôm nay";
+  if (dayDifference === 1) return "Hôm qua";
+  if (dayDifference < 7) return "7 ngày qua";
+  return "Trước đó";
+}
 export default function AnnouncementsPage() {
   const { user } = useAuth();
   const [filter, setFilter] = useState("all");
@@ -36,11 +62,24 @@ export default function AnnouncementsPage() {
     markRead,
     markAllRead,
     remove,
+    processingIds,
   } = useAnnouncementsPage();
   const visible = useMemo(
     () => (filter === "unread" ? items.filter((item) => !item.is_read) : items),
     [filter, items],
   );
+  const groups = useMemo(() => {
+    const today = dateKey(new Date(), user?.timezone);
+    const grouped = new Map();
+    for (const item of visible) {
+      const label = notificationGroup(item.created_at, today, user?.timezone);
+      grouped.set(label, [...(grouped.get(label) || []), item]);
+    }
+    const order = ["Sắp tới", "Hôm nay", "Hôm qua", "7 ngày qua", "Trước đó", "Ngày chưa xác định"];
+    return [...grouped.entries()]
+      .sort(([left], [right]) => order.indexOf(left) - order.indexOf(right))
+      .map(([label, entries]) => ({ label, entries }));
+  }, [user?.timezone, visible]);
   if (loading) return <PageLoader rows={6} />;
   return (
     <div className="mx-auto w-full max-w-[1480px] min-w-0">
@@ -48,7 +87,11 @@ export default function AnnouncementsPage() {
         title="Thông báo"
         meta={`${unread} chưa đọc`}
         actions={
-          <Button variant="secondary" onClick={markAllRead} disabled={!unread || processing}>
+          <Button
+            variant="secondary"
+            onClick={markAllRead}
+            disabled={!unread || processing || processingIds.size > 0}
+          >
             {processing ? "Đang xử lý" : "Đánh dấu đã đọc"}
           </Button>
         }
@@ -87,68 +130,76 @@ export default function AnnouncementsPage() {
           bordered
         />
       ) : (
-        <div className="overflow-hidden rounded-panel border border-border bg-surface">
-          {visible.map((item) => {
-            const id = item._id || item.id || "";
-            return (
-              <article
-                key={id}
-                className={`border-b border-border px-4 py-4 last:border-b-0 md:px-5 ${item.is_read ? "" : "border-l-2 border-l-brand bg-brand-soft/40"}`}
-              >
-                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <h2 className="min-w-0 break-words text-[15px] font-semibold text-ink">
-                        {item.title || "Thông báo"}
-                      </h2>
-                      {!item.is_read && (
-                        <span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-semibold text-white">
-                          Chưa đọc
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 max-w-[72ch] break-words text-[14px] leading-relaxed text-ink-muted">
-                      {item.message || item.body || "Không có nội dung"}
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
-                      {item.link && (
-                        <Link
-                          href={item.link}
-                          className="font-semibold text-brand underline-offset-4 hover:text-brand-hover hover:underline"
-                        >
-                          Mở nội dung
-                        </Link>
-                      )}
-                      {!item.is_read && (
-                        <button
-                          aria-label="Đánh dấu đã đọc"
-                          type="button"
-                          onClick={() => markRead(id)}
-                          className="icon-button h-9 w-9"
-                          title="Đánh dấu đã đọc"
-                        >
-                          <Check aria-hidden="true" size={16} />
-                        </button>
-                      )}
-                      <button
-                        aria-label="Xóa thông báo"
-                        type="button"
-                        onClick={() => remove(id)}
-                        disabled={processing}
-                        className="icon-button h-9 w-9 text-danger"
-                        title="Xóa thông báo"
-                      >
-                        <Trash2 aria-hidden="true" size={16} />
-                      </button>
-                    </div>
-                  </div>
-                  <time className="shrink-0 text-[12px] text-ink-faint sm:pt-1">
-                    {formatDate(item.created_at, user?.locale, user?.timezone)}
-                  </time>
-                </div>
-              </article>
-            );
-          })}
+        <div className="space-y-5">
+          {groups.map((group) => (
+            <section key={group.label} aria-label={group.label}>
+              <h2 className="mb-2 px-1 text-sm font-semibold text-ink-muted">{group.label}</h2>
+              <div className="overflow-hidden rounded-panel border border-border bg-surface">
+                {group.entries.map((item) => {
+                  const id = item._id || item.id || "";
+                  return (
+                    <article
+                      key={id}
+                      className={`border-b border-border px-4 py-4 last:border-b-0 md:px-5 ${item.is_read ? "" : "border-l-2 border-l-brand bg-brand-soft/40"}`}
+                    >
+                      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <h2 className="min-w-0 break-words text-[15px] font-semibold text-ink">
+                              {item.title || "Thông báo"}
+                            </h2>
+                            {!item.is_read && (
+                              <span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-semibold text-white">
+                                Chưa đọc
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 max-w-[72ch] break-words text-[14px] leading-relaxed text-ink-muted">
+                            {item.message || item.body || "Không có nội dung"}
+                          </p>
+                          <div className="mt-3 flex flex-wrap items-center gap-4 text-[13px]">
+                            {item.link && (
+                              <Link
+                                href={item.link}
+                                className="font-semibold text-brand underline-offset-4 hover:text-brand-hover hover:underline"
+                              >
+                                Mở nội dung
+                              </Link>
+                            )}
+                            {!item.is_read && (
+                              <button
+                                aria-label="Đánh dấu đã đọc"
+                                type="button"
+                                onClick={() => markRead(id)}
+                                disabled={processing || processingIds.has(id)}
+                                className="icon-button h-9 w-9"
+                                title="Đánh dấu đã đọc"
+                              >
+                                <Check aria-hidden="true" size={16} />
+                              </button>
+                            )}
+                            <button
+                              aria-label="Xóa thông báo"
+                              type="button"
+                              onClick={() => remove(id)}
+                              disabled={processing || processingIds.has(id)}
+                              className="icon-button h-9 w-9 text-danger"
+                              title="Xóa thông báo"
+                            >
+                              <Trash2 aria-hidden="true" size={16} />
+                            </button>
+                          </div>
+                        </div>
+                        <time className="shrink-0 text-[12px] text-ink-faint sm:pt-1">
+                          {formatDate(item.created_at, user?.locale, user?.timezone)}
+                        </time>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </div>

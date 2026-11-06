@@ -159,6 +159,7 @@ export default function DataSetsPanel({
           {
             key: "actions",
             label: "Thao tác",
+            minWidth: 176,
             hideWhenEmpty: true,
             render: (item) => (
               <span className="flex flex-wrap gap-2">

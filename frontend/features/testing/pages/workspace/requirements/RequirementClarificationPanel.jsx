@@ -62,6 +62,7 @@ export default function RequirementClarificationPanel({
   requirementRevision,
   ask,
   onRequirementChanged,
+  onOpenRequirement,
   role,
   roles,
   permissions = [],
@@ -308,6 +309,26 @@ export default function RequirementClarificationPanel({
                       }
                     >
                       Xác nhận giải quyết
+                    </button>
+                  </div>
+                )}
+              {canAnswer &&
+                item.status === "ANSWERED" &&
+                isUpdateRequestedForCurrentVersion(item) &&
+                item.change_requested_requirement_revision != null &&
+                requirementRevision <= item.change_requested_requirement_revision &&
+                requirementStatus === "DRAFT" && (
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <p className="text-sm text-ink-muted">
+                      QA đã yêu cầu cập nhật. Mở nội dung yêu cầu để chỉnh sửa bản nháp.
+                    </p>
+                    <button
+                      type="button"
+                      className="apple-button"
+                      disabled={busy}
+                      onClick={() => void onOpenRequirement?.()}
+                    >
+                      Mở yêu cầu để chỉnh sửa
                     </button>
                   </div>
                 )}

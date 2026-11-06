@@ -53,8 +53,18 @@ export default function RunExecutionWorkspace({
   );
   const [creatingRerun, setCreatingRerun] = useState(false);
   const [resumingRun, setResumingRun] = useState(false);
+  const [focusedCaseIndex, setFocusedCaseIndex] = useState(0);
   const rerunKey = useRef(null);
   const resumeOperation = useRef(null);
+  const testCaseVersions = run.test_case_versions || [];
+  const navigateCase = (index) => {
+    const nextIndex = Math.max(0, Math.min(index, testCaseVersions.length - 1));
+    setFocusedCaseIndex(nextIndex);
+    document.getElementById(`execution-case-${nextIndex}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
   const beginAssignmentEdit = () => {
     setAssignmentProposal(null);
     const assignments = { ...(run.test_case_assignments || {}) };
@@ -182,7 +192,7 @@ export default function RunExecutionWorkspace({
     <WorkspacePage title={run.name} actions={<ProjectCrumb projectId={projectId} />}>
       {error && <ErrorState message={error} />}
       <Panel
-        title="Thao tác lần chạy"
+        title="Trạng thái"
         actions={
           <div className="flex flex-wrap gap-2">
             {can("testrun.assign") && can("project.members.read") && (
@@ -357,8 +367,26 @@ export default function RunExecutionWorkspace({
           </div>
         }
       >
-        <div className="p-5">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4">
           <StatusPill value={run.status} />
+          {run.environment && (
+            <p className="text-[13px]">
+              <span className="text-ink-muted">Môi trường: </span>
+              <span className="font-medium">{run.environment}</span>
+            </p>
+          )}
+          {run.release && (
+            <p className="text-[13px]">
+              <span className="text-ink-muted">Bản phát hành: </span>
+              <span className="font-medium">{run.release}</span>
+            </p>
+          )}
+          {run.build && (
+            <p className="break-all text-[13px]">
+              <span className="text-ink-muted">Bản dựng: </span>
+              <span className="font-medium">{run.build}</span>
+            </p>
+          )}
           {resumeContext && (
             <div className="mt-4 rounded-xl border border-border bg-surface-raised p-4 text-[13px]">
               {resumeContext.current_test_case_version ? (
@@ -595,14 +623,41 @@ export default function RunExecutionWorkspace({
           </Panel>
         )}
       <div className="w-full">
-        <Panel title="Kết quả từng ca">
+        <Panel
+          title="Kết quả từng ca"
+          actions={
+            testCaseVersions.length > 1 && (
+              <nav aria-label="Điều hướng ca kiểm thử" className="flex items-center gap-2">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={focusedCaseIndex <= 0}
+                  onClick={() => navigateCase(focusedCaseIndex - 1)}
+                >
+                  Ca trước
+                </button>
+                <span className="min-w-12 text-center text-sm text-ink-muted">
+                  {focusedCaseIndex + 1}/{testCaseVersions.length}
+                </span>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={focusedCaseIndex >= testCaseVersions.length - 1}
+                  onClick={() => navigateCase(focusedCaseIndex + 1)}
+                >
+                  Ca tiếp
+                </button>
+              </nav>
+            )
+          }
+        >
           {savingExecution && (
             <p className="px-5 pt-4 text-sm text-ink-muted" role="status">
               Đang lưu kết quả thực thi…
             </p>
           )}
           <div className="divide-y divide-border">
-            {(run.test_case_versions || []).map((item) => {
+            {testCaseVersions.map((item, caseIndex) => {
               const result = run.results?.find((value) => value.test_case_version_id === item._id);
               const assigneeId = run.test_case_assignments?.[item._id];
               const assignee = assigneeId
@@ -614,12 +669,18 @@ export default function RunExecutionWorkspace({
                 : false;
 
               return (
-                <article className="min-w-0 space-y-4 p-5" key={item._id}>
+                <article
+                  className="min-w-0 scroll-mt-6 space-y-4 p-5"
+                  id={`execution-case-${caseIndex}`}
+                  key={item._id}
+                >
                   <header className="flex min-w-0 flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="font-semibold">{item.test_case_key}</span>
-                        <span className="text-sm text-ink-muted">v{item.version}</span>
+                        {item.version !== null && item.version !== undefined && (
+                          <span className="text-sm text-ink-muted">v{item.version}</span>
+                        )}
                       </div>
                       <h3 className="mt-1 break-words font-medium">{item.title}</h3>
                     </div>
@@ -640,6 +701,74 @@ export default function RunExecutionWorkspace({
                     </p>
                   ) : !["NOT_RUN", "IN_PROGRESS"].includes(result.status) ? (
                     <div className="space-y-3">
+                      <details className="rounded-control border border-border px-4 py-3">
+                        <summary className="cursor-pointer text-sm font-medium text-ink">
+                          Xem kết quả đã ghi nhận
+                        </summary>
+                        <div className="mt-3 space-y-4 border-t border-border pt-3 text-sm">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="min-w-0">
+                              <h4 className="text-xs font-medium text-ink-muted">
+                                Kết quả mong đợi
+                              </h4>
+                              <p className="mt-1 whitespace-pre-wrap break-words">
+                                {docText(item.expected_result_doc) || "Chưa có kết quả mong đợi"}
+                              </p>
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-xs font-medium text-ink-muted">
+                                Kết quả thực tế
+                              </h4>
+                              <p className="mt-1 whitespace-pre-wrap break-words">
+                                {docText(result.actual_result_doc) ||
+                                  "Chưa ghi nhận kết quả thực tế"}
+                              </p>
+                            </div>
+                          </div>
+                          {(item.steps || []).map((step, stepIndex) => {
+                            const stepResult = result.step_results?.find(
+                              (value) => value.step_id === step.id,
+                            );
+                            if (!stepResult) return null;
+                            return (
+                              <section
+                                className="border-t border-border pt-3"
+                                key={step.id}
+                                aria-label={`Kết quả bước ${stepIndex + 1}`}
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <h4 className="font-medium">Bước {stepIndex + 1}</h4>
+                                  <StatusPill value={stepResult.status} />
+                                </div>
+                                <p className="mt-2 break-words">{docText(step.action_doc)}</p>
+                                <p className="mt-1 break-words text-ink-muted">
+                                  Mong đợi: {docText(step.expected_doc) || "Chưa có"}
+                                </p>
+                                <p className="mt-1 whitespace-pre-wrap break-words">
+                                  Thực tế: {docText(stepResult.actual_doc) || "Chưa ghi nhận"}
+                                </p>
+                                {stepResult.note && (
+                                  <p className="mt-1 whitespace-pre-wrap break-words text-ink-muted">
+                                    Ghi chú: {stepResult.note}
+                                  </p>
+                                )}
+                              </section>
+                            );
+                          })}
+                          {result.attachments?.length > 0 && (
+                            <section className="border-t border-border pt-3">
+                              <h4 className="font-medium">Tệp bằng chứng</h4>
+                              <ul className="mt-2 space-y-1">
+                                {result.attachments.map((attachment) => (
+                                  <li className="break-all text-ink-muted" key={attachment.url}>
+                                    {attachment.filename}
+                                  </li>
+                                ))}
+                              </ul>
+                            </section>
+                          )}
+                        </div>
+                      </details>
                       <div className="flex flex-wrap items-center gap-3">
                         {can("testrun.execute") && (
                           <button
@@ -719,91 +848,117 @@ export default function RunExecutionWorkspace({
                         const edited = stepResults[result._id]?.[step.id] || {};
                         return (
                           <fieldset
-                            className="min-w-0 space-y-2 rounded-xl border border-border p-3"
+                            className="min-w-0 rounded-xl border border-border p-4"
                             key={step.id}
                           >
                             <legend className="px-2 text-[12px] font-semibold">
                               Bước {stepIndex + 1}
                             </legend>
-                            <p className="break-words text-[13px]">{docText(step.action_doc)}</p>
-                            <p className="break-words text-[13px] text-ink-muted">
-                              Mong đợi: {docText(step.expected_doc)}
-                            </p>
-                            <select
-                              aria-label={`Trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
-                              className="apple-input w-full min-w-0"
-                              disabled={savingExecution}
-                              value={edited.status || existing?.status || "PASS"}
-                              onChange={(event) =>
-                                onStepResultsChange((values) => ({
-                                  ...values,
-                                  [result._id]: {
-                                    ...values[result._id],
-                                    [step.id]: {
-                                      ...values[result._id]?.[step.id],
-                                      status: event.target.value,
-                                    },
-                                  },
-                                }))
-                              }
-                            >
-                              {terminalResultStatuses.map((value) => (
-                                <option value={value} key={value}>
-                                  {valueLabel(value)}
-                                </option>
-                              ))}
-                            </select>
-                            <textarea
-                              aria-label={`Kết quả bước ${stepIndex + 1} ${item.test_case_key}`}
-                              className="apple-input min-h-16 w-full min-w-0"
-                              disabled={savingExecution}
-                              value={edited.actual ?? docText(existing?.actual_doc)}
-                              onChange={(event) =>
-                                onStepResultsChange((values) => ({
-                                  ...values,
-                                  [result._id]: {
-                                    ...values[result._id],
-                                    [step.id]: {
-                                      ...values[result._id]?.[step.id],
-                                      actual: event.target.value,
-                                    },
-                                  },
-                                }))
-                              }
-                              placeholder="Kết quả thực tế của bước"
-                            />
-                            <textarea
-                              aria-label={`Lý do trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
-                              className="apple-input min-h-16 w-full min-w-0"
-                              disabled={savingExecution}
-                              value={edited.note ?? existing?.note ?? ""}
-                              onChange={(event) =>
-                                onStepResultsChange((values) => ({
-                                  ...values,
-                                  [result._id]: {
-                                    ...values[result._id],
-                                    [step.id]: {
-                                      ...values[result._id]?.[step.id],
-                                      note: event.target.value,
-                                    },
-                                  },
-                                }))
-                              }
-                              placeholder="Ghi chú hoặc lý do Không áp dụng"
-                            />
+                            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                              <div className="min-w-0 space-y-3">
+                                <div>
+                                  <h4 className="text-xs font-medium text-ink-muted">Thao tác</h4>
+                                  <p className="mt-1 break-words text-[13px]">
+                                    {docText(step.action_doc) || "Chưa có hướng dẫn thao tác"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-medium text-ink-muted">
+                                    Kết quả mong đợi
+                                  </h4>
+                                  <p className="mt-1 break-words text-[13px]">
+                                    {docText(step.expected_doc) || "Chưa có kết quả mong đợi"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="min-w-0 space-y-3">
+                                <label className="field-label block">
+                                  Kết quả bước
+                                  <select
+                                    aria-label={`Trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
+                                    className="apple-input mt-1 w-full min-w-0"
+                                    disabled={savingExecution}
+                                    value={edited.status || existing?.status || "PASS"}
+                                    onChange={(event) =>
+                                      onStepResultsChange((values) => ({
+                                        ...values,
+                                        [result._id]: {
+                                          ...values[result._id],
+                                          [step.id]: {
+                                            ...values[result._id]?.[step.id],
+                                            status: event.target.value,
+                                          },
+                                        },
+                                      }))
+                                    }
+                                  >
+                                    {terminalResultStatuses.map((value) => (
+                                      <option value={value} key={value}>
+                                        {valueLabel(value)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="field-label block">
+                                  Ghi nhận thực tế
+                                  <textarea
+                                    aria-label={`Kết quả bước ${stepIndex + 1} ${item.test_case_key}`}
+                                    className="apple-input mt-1 min-h-16 w-full min-w-0"
+                                    disabled={savingExecution}
+                                    value={edited.actual ?? docText(existing?.actual_doc)}
+                                    onChange={(event) =>
+                                      onStepResultsChange((values) => ({
+                                        ...values,
+                                        [result._id]: {
+                                          ...values[result._id],
+                                          [step.id]: {
+                                            ...values[result._id]?.[step.id],
+                                            actual: event.target.value,
+                                          },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </label>
+                                <label className="field-label block">
+                                  Ghi chú
+                                  <textarea
+                                    aria-label={`Lý do trạng thái bước ${stepIndex + 1} ${item.test_case_key}`}
+                                    className="apple-input mt-1 min-h-16 w-full min-w-0"
+                                    disabled={savingExecution}
+                                    value={edited.note ?? existing?.note ?? ""}
+                                    onChange={(event) =>
+                                      onStepResultsChange((values) => ({
+                                        ...values,
+                                        [result._id]: {
+                                          ...values[result._id],
+                                          [step.id]: {
+                                            ...values[result._id]?.[step.id],
+                                            note: event.target.value,
+                                          },
+                                        },
+                                      }))
+                                    }
+                                    placeholder="Bắt buộc khi chọn Không áp dụng"
+                                  />
+                                </label>
+                              </div>
+                            </div>
                           </fieldset>
                         );
                       })}
-                      <textarea
-                        aria-label={`Kết quả thực tế ${item.test_case_key}`}
-                        className="apple-input min-h-20 w-full min-w-0"
-                        disabled={savingExecution}
-                        value={actuals[result._id] ?? docText(result.actual_result_doc)}
-                        onChange={(event) =>
-                          onActualsChange({ ...actuals, [result._id]: event.target.value })
-                        }
-                        placeholder="Kết quả thực tế và bằng chứng"
-                      />
+                      <label className="field-label block">
+                        Kết quả chung của ca
+                        <textarea
+                          aria-label={`Kết quả thực tế ${item.test_case_key}`}
+                          className="apple-input mt-1 min-h-20 w-full min-w-0"
+                          disabled={savingExecution}
+                          value={actuals[result._id] ?? docText(result.actual_result_doc)}
+                          onChange={(event) =>
+                            onActualsChange({ ...actuals, [result._id]: event.target.value })
+                          }
+                        />
+                      </label>
                       <FilePicker
                         ariaLabel={`Tệp bằng chứng ${item.test_case_key}`}
                         buttonLabel="Chọn tệp bằng chứng"

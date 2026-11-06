@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw } from "lucide-react";
-import DataTable from "../../components/DataTable";
 import {
+  EmptyState,
   ErrorState,
   LoadingState,
   Panel,
@@ -20,6 +20,7 @@ export default function ReleasesPage({ project }) {
   const [readiness, setReadiness] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [expandedReleaseId, setExpandedReleaseId] = useState(null);
   const loadSequence = useRef(0);
   const can = useCallback(
     (permission) => project.current_permissions?.includes(permission),
@@ -160,33 +161,100 @@ export default function ReleasesPage({ project }) {
         </Panel>
       ) : (
         <Panel title="Danh sách bản phát hành">
-          <DataTable
-            items={releases}
-            empty="Chưa có bản phát hành"
-            columns={[
-              { key: "key", label: "Mã" },
-              { key: "name", label: "Tên" },
-              { key: "version", label: "Phiên bản" },
-              {
-                key: "status",
-                label: "Trạng thái",
-                render: (item) => <StatusPill value={item.status} />,
-              },
-              {
-                key: "planned_end_at",
-                label: "Kết thúc dự kiến",
-                render: (item) =>
-                  item.planned_end_at ? formatCalendarDate(item.planned_end_at) : "Chưa đặt",
-              },
-              ...(can("release.manage") || can("release.close")
-                ? [
-                    {
-                      key: "actions",
-                      label: "Thao tác",
-                      hideWhenEmpty: true,
-                      render: (item) => {
-                        if (item.status === "PLANNED" && can("release.manage"))
-                          return (
+          {releases.length === 0 ? (
+            <EmptyState
+              onAction={can("release.create") ? createRelease : undefined}
+              actionLabel="Tạo bản phát hành"
+            >
+              Chưa có bản phát hành
+            </EmptyState>
+          ) : (
+            <div className="divide-y divide-border">
+              {releases.map((item) => {
+                const current = readiness[item._id];
+                const stale =
+                  current?.data &&
+                  (current.data.revision !== item.revision ||
+                    (item.gate_revision !== undefined &&
+                      current.data.gate_revision !== item.gate_revision));
+                const blockers = current?.data?.blockers || [];
+                const allowed = Boolean(current?.data?.can_close) && !stale;
+                const expanded = expandedReleaseId === item._id;
+                const canActivate = item.status === "PLANNED" && can("release.manage");
+                const canClose = item.status === "ACTIVE" && can("release.close");
+                return (
+                  <article className="min-w-0 px-4 py-4 sm:px-5" key={item._id}>
+                    <div className="grid min-w-0 gap-x-6 gap-y-3 2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,0.55fr)_auto] 2xl:items-start">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          <h3 className="min-w-0 break-words text-[15px] font-semibold text-ink">
+                            {item.name}
+                          </h3>
+                          <StatusPill value={item.status} />
+                        </div>
+                        <p className="mt-1 break-words text-[13px] text-ink-muted">
+                          <span className="font-medium text-ink">{item.key}</span>
+                          <span className="mx-2 text-border-strong">·</span>Phiên bản {item.version}
+                        </p>
+                        {item.notes && (
+                          <p className="mt-2 max-w-3xl break-words text-[13px] leading-5 text-ink-muted">
+                            {item.notes}
+                          </p>
+                        )}
+                      </div>
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                        <div>
+                          <dt className="text-ink-muted">Bắt đầu</dt>
+                          <dd className="mt-0.5 font-medium text-ink">
+                            {item.planned_start_at
+                              ? formatCalendarDate(item.planned_start_at)
+                              : "Chưa đặt"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-ink-muted">Kết thúc</dt>
+                          <dd className="mt-0.5 font-medium text-ink">
+                            {item.planned_end_at
+                              ? formatCalendarDate(item.planned_end_at)
+                              : "Chưa đặt"}
+                          </dd>
+                        </div>
+                        {item.status === "ACTIVE" && can("release.read") && (
+                          <div className="col-span-2 min-w-0">
+                            {current?.error ? (
+                              <p className="break-words text-danger">
+                                Chưa tải được điều kiện đóng: {current.error}
+                              </p>
+                            ) : current?.loading || !current?.data ? (
+                              <p className="text-ink-muted">Đang kiểm tra điều kiện đóng…</p>
+                            ) : stale ? (
+                              <p className="text-danger">
+                                Điều kiện đã thay đổi; cần kiểm tra lại.
+                              </p>
+                            ) : (
+                              <p
+                                className={`flex items-start gap-1.5 ${allowed ? "text-brand" : "text-danger"}`}
+                              >
+                                {allowed ? (
+                                  <CheckCircle2 className="mt-0.5 shrink-0" size={14} />
+                                ) : (
+                                  <AlertTriangle className="mt-0.5 shrink-0" size={14} />
+                                )}
+                                <span>
+                                  {allowed
+                                    ? `Đủ điều kiện đóng · ${current.data.checks?.length || 0} điều kiện đã kiểm tra`
+                                    : `Chưa đủ điều kiện · ${blockers.length} mục cần xử lý`}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </dl>
+                      {(canActivate ||
+                        canClose ||
+                        (item.status === "ACTIVE" && can("release.read"))) && (
+                        <div className="flex flex-wrap items-center gap-2 2xl:justify-end">
+                          {canActivate && (
                             <button
                               className="secondary-button"
                               type="button"
@@ -194,109 +262,8 @@ export default function ReleasesPage({ project }) {
                             >
                               Kích hoạt
                             </button>
-                          );
-                        if (item.status !== "ACTIVE" || !can("release.close")) return null;
-                        const current = readiness[item._id];
-                        const stale =
-                          current?.data &&
-                          (current.data.revision !== item.revision ||
-                            (item.gate_revision !== undefined &&
-                              current.data.gate_revision !== item.gate_revision));
-                        const blockers = current?.data?.blockers || [];
-                        const allowed = Boolean(current?.data?.can_close) && !stale;
-                        return (
-                          <div className="min-w-64 space-y-2">
-                            {!can("release.read") ? (
-                              <p className="text-xs text-ink-muted">
-                                Cần quyền xem bản phát hành để kiểm tra điều kiện đóng.
-                              </p>
-                            ) : current?.error ? (
-                              <div className="space-y-1">
-                                <p className="text-xs text-danger">
-                                  Không tải được điều kiện đóng: {current.error}
-                                </p>
-                                <button
-                                  className="secondary-button"
-                                  type="button"
-                                  onClick={() => void load()}
-                                >
-                                  <RefreshCw size={14} /> Tải lại kiểm tra
-                                </button>
-                              </div>
-                            ) : current?.loading || !current?.data ? (
-                              <p className="text-xs text-ink-muted">
-                                Đang kiểm tra điều kiện đóng…
-                              </p>
-                            ) : stale ? (
-                              <div className="space-y-1">
-                                <p className="text-xs text-danger">
-                                  Điều kiện phát hành đã thay đổi; hãy kiểm tra lại trước khi đóng.
-                                </p>
-                                <button
-                                  className="secondary-button"
-                                  type="button"
-                                  onClick={() => void load()}
-                                >
-                                  <RefreshCw size={14} /> Cập nhật điều kiện
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                <p
-                                  className={`flex items-center gap-1 text-xs ${allowed ? "text-brand" : "text-danger"}`}
-                                >
-                                  {allowed ? (
-                                    <CheckCircle2 size={14} />
-                                  ) : (
-                                    <AlertTriangle size={14} />
-                                  )}
-                                  {allowed
-                                    ? `Đủ điều kiện đóng · ${current.data.checks?.length || 0} điều kiện đã kiểm tra`
-                                    : `Chưa đủ điều kiện (${blockers.length} mục)`}
-                                </p>
-                                {!allowed && blockers.length > 0 && (
-                                  <ul className="list-disc space-y-1 pl-4 text-xs text-ink-muted">
-                                    {blockers.map((check, index) => (
-                                      <li key={`${check.gate}-${check.code}-${index}`}>
-                                        {readinessGateLabel(check.gate)}:{" "}
-                                        {readinessCodeLabel(check.code)}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                                {current.data.checks?.length > 0 && (
-                                  <details className="text-xs text-ink-muted">
-                                    <summary className="cursor-pointer py-1">
-                                      Xem toàn bộ điều kiện
-                                    </summary>
-                                    <ul className="mt-1 space-y-1 pl-1">
-                                      {current.data.checks.map((check, index) => (
-                                        <li
-                                          className="flex items-start gap-1.5"
-                                          key={`${check.gate}-${check.code}-${index}`}
-                                        >
-                                          {check.status === "PASS" ? (
-                                            <CheckCircle2
-                                              className="mt-0.5 shrink-0 text-brand"
-                                              size={13}
-                                            />
-                                          ) : (
-                                            <AlertTriangle
-                                              className="mt-0.5 shrink-0 text-danger"
-                                              size={13}
-                                            />
-                                          )}
-                                          <span>
-                                            {readinessGateLabel(check.gate)}:{" "}
-                                            {readinessCodeLabel(check.code)}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </details>
-                                )}
-                              </div>
-                            )}
+                          )}
+                          {canClose && (
                             <button
                               className="secondary-button"
                               type="button"
@@ -305,14 +272,107 @@ export default function ReleasesPage({ project }) {
                             >
                               Đóng phát hành
                             </button>
+                          )}
+                          {item.status === "ACTIVE" && can("release.read") && (
+                            <button
+                              aria-expanded={expanded}
+                              className="text-button"
+                              type="button"
+                              onClick={() => setExpandedReleaseId(expanded ? null : item._id)}
+                            >
+                              {expanded ? "Thu gọn điều kiện" : "Xem điều kiện"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {expanded && item.status === "ACTIVE" && (
+                      <div className="mt-4 border-t border-border pt-3">
+                        {current?.error ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="text-sm text-danger">
+                              Không tải được điều kiện đóng: {current.error}
+                            </p>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => void load()}
+                            >
+                              <RefreshCw size={14} /> Tải lại kiểm tra
+                            </button>
                           </div>
-                        );
-                      },
-                    },
-                  ]
-                : []),
-            ]}
-          />
+                        ) : current?.loading || !current?.data ? (
+                          <p className="text-sm text-ink-muted">Đang kiểm tra điều kiện đóng…</p>
+                        ) : stale ? (
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <p className="text-sm text-danger">
+                              Điều kiện phát hành đã thay đổi; hãy kiểm tra lại trước khi đóng.
+                            </p>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => void load()}
+                            >
+                              <RefreshCw size={14} /> Cập nhật điều kiện
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+                            <div>
+                              <h4 className="text-[13px] font-semibold">Mục cần xử lý</h4>
+                              {blockers.length ? (
+                                <ul className="mt-2 space-y-2 text-[13px] text-ink-muted">
+                                  {blockers.map((check, index) => (
+                                    <li key={`${check.gate}-${check.code}-${index}`}>
+                                      {readinessGateLabel(check.gate)}:{" "}
+                                      {readinessCodeLabel(check.code)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-2 text-[13px] text-brand">
+                                  Không còn mục chặn phát hành.
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <h4 className="text-[13px] font-semibold">
+                                Toàn bộ điều kiện ({current.data.checks?.length || 0})
+                              </h4>
+                              <ul className="mt-2 grid gap-x-5 gap-y-2 sm:grid-cols-2">
+                                {(current.data.checks || []).map((check, index) => (
+                                  <li
+                                    className="flex min-w-0 items-start gap-1.5 text-[12px] text-ink-muted"
+                                    key={`${check.gate}-${check.code}-${index}`}
+                                  >
+                                    {check.status === "PASS" ? (
+                                      <CheckCircle2
+                                        className="mt-0.5 shrink-0 text-brand"
+                                        size={13}
+                                      />
+                                    ) : (
+                                      <AlertTriangle
+                                        className="mt-0.5 shrink-0 text-danger"
+                                        size={13}
+                                      />
+                                    )}
+                                    <span>
+                                      {readinessGateLabel(check.gate)}:{" "}
+                                      {readinessCodeLabel(check.code)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </Panel>
       )}
       {dialog}

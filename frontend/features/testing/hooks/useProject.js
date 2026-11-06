@@ -9,16 +9,25 @@ export function useProject(projectId) {
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const lastAccessRefreshPath = useRef("");
+  const projectRef = useRef(null);
   const reload = useCallback(async () => {
-    setLoading(true);
+    const changingProject = projectRef.current?._id !== projectId;
+    if (changingProject) {
+      projectRef.current = null;
+      setProject(null);
+      setLoading(true);
+    }
     setError("");
     setForbidden(false);
     try {
       const value = await testingApi.getProject(projectId);
+      projectRef.current = value;
       setProject(value);
+      return true;
     } catch (reason) {
       setError(messageOf(reason));
       setForbidden(reason?.status === 403);
+      return false;
     } finally {
       setLoading(false);
     }

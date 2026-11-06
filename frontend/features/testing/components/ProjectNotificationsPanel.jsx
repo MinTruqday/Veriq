@@ -31,6 +31,7 @@ export default function ProjectNotificationsPanel({ project }) {
   const [artifactType, setArtifactType] = useState("requirement");
   const [artifactId, setArtifactId] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const can = (permission) => project.current_permissions?.includes(permission);
   const canManageWatches = can("notification.watch.manage");
   const canManagePreferences = can("notification.preferences.manage");
@@ -55,8 +56,10 @@ export default function ProjectNotificationsPanel({ project }) {
       }
       const ruleValues = canManageRules ? values[index] : null;
       if (ruleValues) setRules({ ...DEFAULT_RULES, ...ruleValues });
+      return true;
     } catch (reason) {
       setError(messageOf(reason));
+      return false;
     }
   }, [canManagePreferences, canManageRules, canManageWatches, project._id]);
   useEffect(() => {
@@ -64,16 +67,20 @@ export default function ProjectNotificationsPanel({ project }) {
   }, [load]);
   const addWatch = async (event) => {
     event.preventDefault();
+    setError("");
+    setNotice("");
     try {
       await testingApi.setProjectNotificationWatch(project._id, artifactType, artifactId, true);
       setArtifactId("");
-      await load();
+      if (await load()) setNotice("Đã thêm nội dung vào danh sách đang theo dõi.");
     } catch (reason) {
       setError(messageOf(reason));
     }
   };
   const savePreferences = async (event) => {
     event.preventDefault();
+    setError("");
+    setNotice("");
     if (!isSupportedTimeZone(preferences.timezone)) {
       setError("Hãy chọn một múi giờ IANA hợp lệ trước khi lưu giờ yên lặng.");
       return;
@@ -89,12 +96,15 @@ export default function ProjectNotificationsPanel({ project }) {
         timezone: preferences.timezone,
       });
       setPreferences({ ...DEFAULT_PREFERENCES, ...value });
+      setNotice("Đã lưu tùy chọn thông báo.");
     } catch (reason) {
       setError(messageOf(reason));
     }
   };
   const saveRules = async (event) => {
     event.preventDefault();
+    setError("");
+    setNotice("");
     try {
       const value = await testingApi.updateProjectNotificationRules(project._id, {
         expected_revision: rules.revision,
@@ -104,6 +114,7 @@ export default function ProjectNotificationsPanel({ project }) {
         escalation_minutes: rules.escalation_minutes ? Number(rules.escalation_minutes) : null,
       });
       setRules({ ...DEFAULT_RULES, ...value });
+      setNotice("Đã lưu quy tắc thông báo dự án.");
     } catch (reason) {
       setError(messageOf(reason));
     }
@@ -114,9 +125,14 @@ export default function ProjectNotificationsPanel({ project }) {
   return (
     <Panel title="Thông báo dự án">
       {error && <ErrorState message={error} />}
+      {notice && (
+        <p className="border-b border-border px-5 py-3 text-sm text-ink-muted" role="status">
+          {notice}
+        </p>
+      )}
       <div className="grid gap-5 p-5 xl:grid-cols-3">
         {can("notification.watch.manage") && (
-          <div className="space-y-3">
+          <section className="min-w-0 space-y-3 rounded-xl border border-border bg-surface p-4">
             <h3 className="font-medium text-ink">Dữ liệu đang theo dõi</h3>
             <form className="space-y-2" onSubmit={addWatch}>
               <select
@@ -142,12 +158,15 @@ export default function ProjectNotificationsPanel({ project }) {
                 Theo dõi
               </button>
             </form>
-            <div className="space-y-2">
+            <div className="divide-y divide-border">
               {watches.length === 0 && (
                 <p className="text-sm text-ink-muted">Chưa theo dõi dữ liệu nào</p>
               )}
               {watches.map((item) => (
-                <div className="flex items-center justify-between gap-2 text-sm" key={item._id}>
+                <div
+                  className="flex items-center justify-between gap-2 py-2 text-sm"
+                  key={item._id}
+                >
                   <span className="min-w-0 truncate">
                     {valueLabel(item.artifact_type)}{" "}
                     {item.artifact_label || "Đối tượng đang theo dõi"}
@@ -163,8 +182,15 @@ export default function ProjectNotificationsPanel({ project }) {
                           item.artifact_id,
                           false,
                         );
-                        await load();
+                        const refreshed = await load();
+                        if (refreshed) {
+                          setError("");
+                          setNotice("Đã bỏ theo dõi nội dung này.");
+                        } else {
+                          setNotice("");
+                        }
                       } catch (reason) {
+                        setNotice("");
                         setError(messageOf(reason));
                       }
                     }}
@@ -174,10 +200,13 @@ export default function ProjectNotificationsPanel({ project }) {
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
         {can("notification.preferences.manage") && (
-          <form className="space-y-3" onSubmit={savePreferences}>
+          <form
+            className="min-w-0 space-y-3 rounded-xl border border-border bg-surface p-4"
+            onSubmit={savePreferences}
+          >
             <h3 className="font-medium text-ink">Tùy chọn cá nhân</h3>
             <select
               aria-label="Tần suất bản tổng hợp"
@@ -205,25 +234,31 @@ export default function ProjectNotificationsPanel({ project }) {
               />
               Nhận qua thư điện tử
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                aria-label="Bắt đầu giờ yên lặng"
-                className="apple-input"
-                type="time"
-                value={preferences.quiet_hours_start || ""}
-                onChange={(event) =>
-                  setPreferences({ ...preferences, quiet_hours_start: event.target.value })
-                }
-              />
-              <input
-                aria-label="Kết thúc giờ yên lặng"
-                className="apple-input"
-                type="time"
-                value={preferences.quiet_hours_end || ""}
-                onChange={(event) =>
-                  setPreferences({ ...preferences, quiet_hours_end: event.target.value })
-                }
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="field-label">
+                Bắt đầu giờ yên lặng
+                <input
+                  aria-label="Bắt đầu giờ yên lặng"
+                  className="apple-input mt-2"
+                  type="time"
+                  value={preferences.quiet_hours_start || ""}
+                  onChange={(event) =>
+                    setPreferences({ ...preferences, quiet_hours_start: event.target.value })
+                  }
+                />
+              </label>
+              <label className="field-label">
+                Kết thúc giờ yên lặng
+                <input
+                  aria-label="Kết thúc giờ yên lặng"
+                  className="apple-input mt-2"
+                  type="time"
+                  value={preferences.quiet_hours_end || ""}
+                  onChange={(event) =>
+                    setPreferences({ ...preferences, quiet_hours_end: event.target.value })
+                  }
+                />
+              </label>
             </div>
             <label className="grid gap-1 text-sm">
               <span className="field-label">Múi giờ áp dụng</span>
@@ -254,7 +289,10 @@ export default function ProjectNotificationsPanel({ project }) {
           </form>
         )}
         {can("notification.project_rule.manage") && (
-          <form className="space-y-3" onSubmit={saveRules}>
+          <form
+            className="min-w-0 space-y-3 rounded-xl border border-border bg-surface p-4"
+            onSubmit={saveRules}
+          >
             <h3 className="font-medium text-ink">Quy tắc dự án</h3>
             <fieldset className="space-y-2">
               <legend className="field-label">Kênh gửi</legend>

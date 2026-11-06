@@ -214,13 +214,22 @@ export default function MemberSkillProfilePanel({ projectId }) {
     <Panel title="Hồ sơ năng lực của tôi">
       {error && <ErrorState message={error} />}
       <form className="space-y-5 p-5" onSubmit={save}>
-        <p className="text-sm text-muted-foreground">
-          CV chỉ được đọc tạm để trích xuất ứng viên có dẫn chứng; tệp gốc không được lưu vào hồ sơ
-          hay kho tri thức. Kết quả chỉ vào bản nháp sau khi bạn chọn, luôn chưa xác nhận cho đến
-          khi bạn tự rà soát.
-        </p>
-        <section className="space-y-3 rounded-xl border border-border p-4">
-          <h3 className="font-semibold">Trích xuất từ CV để rà soát</h3>
+        <header className="space-y-2 border-b border-border pb-4">
+          <p className="text-sm text-ink-muted">
+            CV được đọc tạm để tìm thông tin có dẫn chứng. Tệp gốc không được lưu vào hồ sơ hoặc kho
+            tri thức. Chỉ mục bạn chọn mới vào bản nháp; mỗi mục cần bạn tự rà soát và xác nhận.
+          </p>
+        </header>
+        <section
+          aria-labelledby="cv-extraction-heading"
+          className="space-y-3 border-b border-border pb-5"
+        >
+          <h3 className="font-semibold" id="cv-extraction-heading">
+            Trích xuất từ CV
+          </h3>
+          <p className="text-sm text-ink-muted">
+            Xem trích dẫn và trang nguồn trước khi thêm thông tin vào hồ sơ.
+          </p>
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <FilePicker
               ariaLabel="Chọn CV PDF DOCX hoặc TXT"
@@ -292,9 +301,14 @@ export default function MemberSkillProfilePanel({ projectId }) {
           </select>
         </label>
 
-        <section className="space-y-3">
+        <section
+          aria-labelledby="member-skills-heading"
+          className="space-y-3 border-b border-border pb-5"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-semibold">Kỹ năng</h3>
+            <h3 className="font-semibold" id="member-skills-heading">
+              Kỹ năng
+            </h3>
             <button
               className="secondary-button"
               type="button"
@@ -308,7 +322,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
           )}
           {skills.map((skill, index) => (
             <div
-              className="grid min-w-0 gap-3 rounded-xl border border-border p-4 md:grid-cols-2"
+              className="grid min-w-0 gap-3 rounded-xl border border-border bg-white p-4 md:grid-cols-2"
               key={`skill-${index}`}
             >
               <div className="flex flex-wrap items-center gap-2 md:col-span-2">
@@ -386,9 +400,11 @@ export default function MemberSkillProfilePanel({ projectId }) {
           ))}
         </section>
 
-        <section className="space-y-3">
+        <section aria-labelledby="member-experiences-heading" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-semibold">Kinh nghiệm liên quan</h3>
+            <h3 className="font-semibold" id="member-experiences-heading">
+              Kinh nghiệm liên quan
+            </h3>
             <button
               className="secondary-button"
               type="button"
@@ -402,7 +418,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
           )}
           {experiences.map((experience, index) => (
             <div
-              className="grid min-w-0 gap-3 rounded-xl border border-border p-4 md:grid-cols-2"
+              className="grid min-w-0 gap-3 rounded-xl border border-border bg-white p-4 md:grid-cols-2"
               key={`experience-${index}`}
             >
               <div className="flex flex-wrap items-center gap-2 md:col-span-2">
@@ -519,7 +535,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
           ))}
         </section>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <button className="primary-button" type="submit" disabled={saving}>
             {saving ? "Đang lưu…" : "Lưu hồ sơ"}
           </button>

@@ -10,18 +10,14 @@ export function defectActionAccess(project, defect) {
   const can = (permission) =>
     !denied.includes(permission) && project.current_permissions?.includes(permission);
   return {
-    canEditTechnical: Boolean(
-      active && role === "DEVELOPER" && owned && !denied.includes("defect.update"),
-    ),
+    canEditTechnical: Boolean(active && role === "DEVELOPER" && owned && can("defect.update")),
     canManageTrace: Boolean(
-      active &&
-        !denied.includes("defect.trace.manage") &&
-        (role === "DEVELOPER" ? owned : role === "QA" && can("defect.trace.manage")),
+      active && can("defect.trace.manage") && (role === "DEVELOPER" ? owned : role === "QA"),
     ),
     canAssign: Boolean(active && role === "QA" && can("defect.assign")),
     canTriage: Boolean(active && role === "QA" && can("defect.triage")),
     canRepair: Boolean(
-      active && role === "DEVELOPER" && owned && !denied.includes("defect.transition.developer"),
+      active && role === "DEVELOPER" && owned && can("defect.transition.developer"),
     ),
     canRetest: Boolean(
       active && role === "TESTER" && can("defect.retest") && can("testrun.execute"),

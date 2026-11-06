@@ -65,6 +65,12 @@ function message(error) {
     "Không thể hoàn tất thao tác. Nội dung đang nhập được giữ lại."
   );
 }
+function normalizeSettings(value) {
+  return {
+    ...value,
+    allowed_kinds: Array.isArray(value?.allowed_kinds) ? value.allowed_kinds : [],
+  };
+}
 
 export default function WorkReportsPanel({ project }) {
   const { user } = useAuth();
@@ -140,15 +146,26 @@ export default function WorkReportsPanel({ project }) {
   const sequence = useRef(0);
   const operationKey = useRef(key());
   const userId = user?._id || user?.id;
-  const editable =
+  const assignedAuthor =
     selected &&
     can("workreport.write") &&
-    ["DRAFT", "APPROVED"].includes(selected.status) &&
     (selected.owner_id === userId || selected.editor_ids?.includes(userId));
+  const editable = assignedAuthor && ["DRAFT", "APPROVED"].includes(selected.status);
+  const canProvideChangeReason =
+    editable ||
+    (selected?.reviewer_id === userId && selected.status === "IN_REVIEW") ||
+    (assignedAuthor && ["PUBLISHED", "ARCHIVED"].includes(selected.status));
+  const mayComment = Boolean(selected?.current_access?.can_comment || editable);
   const memberId = (member) => member.user_id || member._id;
   const memberName = (id) => {
     const member = members.find((item) => memberId(item) === id);
-    return member?.user_label || member?.display_name || member?.name || member?.email || id;
+    return (
+      member?.user_label ||
+      member?.display_name ||
+      member?.name ||
+      member?.email ||
+      "Tài khoản không xác định"
+    );
   };
   const load = useCallback(async () => {
     const generation = ++sequence.current;
@@ -162,7 +179,7 @@ export default function WorkReportsPanel({ project }) {
         testingRequest(`${root}/mau`),
       ]);
       if (generation !== sequence.current) return;
-      setSettings(config);
+      setSettings(normalizeSettings(config));
       setReports(items);
       setTemplates(models);
       if (project.current_permissions?.includes("workreport.write")) {
@@ -451,6 +468,10 @@ export default function WorkReportsPanel({ project }) {
       ["BA", "QA"].includes(item.project_role) &&
       ![userId, reportOwnerId, ...editorIds].includes(memberId(item)),
   );
+  const availableKinds = ["PERSONAL", "TEAM", "PROJECT"].filter(
+    (item) =>
+      settings?.allowed_kinds?.includes(item) && (can("workreport.manage") || item === "PERSONAL"),
+  );
 
   return (
     <div className="min-w-0 space-y-4">
@@ -496,32 +517,75 @@ export default function WorkReportsPanel({ project }) {
                     />
                     Bật báo cáo công việc
                   </label>
-                  <label className="block text-sm">
-                    Múi giờ
-                    <input
-                      className="apple-input mt-1"
-                      value={settings.timezone}
-                      onChange={(event) =>
-                        setSettings({ ...settings, timezone: event.target.value })
-                      }
-                    />
-                  </label>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block text-sm">
+                      Múi giờ của dự án
+                      <input
+                        className="apple-input mt-1"
+                        value={settings.timezone}
+                        onChange={(event) =>
+                          setSettings({ ...settings, timezone: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      Nhắc trước hạn (giờ)
+                      <input
+                        className="apple-input mt-1"
+                        type="number"
+                        min="0"
+                        max="720"
+                        value={settings.reminder_hours_before ?? ""}
+                        onChange={(event) =>
+                          setSettings({
+                            ...settings,
+                            reminder_hours_before:
+                              event.target.value === "" ? 0 : Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <fieldset>
+                    <legend className="mb-2 text-sm font-medium">Loại báo cáo được phép</legend>
+                    <div className="flex flex-wrap gap-x-6 gap-y-2">
+                      {["PERSONAL", "TEAM", "PROJECT"].map((item) => (
+                        <label key={item} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={settings.allowed_kinds.includes(item)}
+                            onChange={(event) =>
+                              setSettings({
+                                ...settings,
+                                allowed_kinds: event.target.checked
+                                  ? [...settings.allowed_kinds, item]
+                                  : settings.allowed_kinds.filter((value) => value !== item),
+                              })
+                            }
+                          />
+                          {labels[item]}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                   <button
                     className="apple-button"
                     disabled={busy}
                     onClick={() =>
                       run(async () => {
                         setSettings(
-                          await testingRequest(`${root}/cau-hinh`, {
-                            method: "PUT",
-                            body: JSON.stringify({
-                              expected_revision: settings.revision,
-                              enabled: settings.enabled,
-                              timezone: settings.timezone,
-                              allowed_kinds: settings.allowed_kinds,
-                              reminder_hours_before: settings.reminder_hours_before,
+                          normalizeSettings(
+                            await testingRequest(`${root}/cau-hinh`, {
+                              method: "PUT",
+                              body: JSON.stringify({
+                                expected_revision: settings.revision,
+                                enabled: settings.enabled,
+                                timezone: settings.timezone,
+                                allowed_kinds: settings.allowed_kinds,
+                                reminder_hours_before: settings.reminder_hours_before,
+                              }),
                             }),
-                          }),
+                          ),
                         );
                         setNotice("Đã lưu cấu hình báo cáo.");
                       })
@@ -536,6 +600,11 @@ export default function WorkReportsPanel({ project }) {
               <Panel title="Mẫu báo cáo">
                 <div className="space-y-4 p-4">
                   <ul className="divide-y divide-border">
+                    {!templates.length && (
+                      <li className="py-2 text-sm text-ink-muted">
+                        Chưa có mẫu báo cáo. Nhập mẫu Word hoặc tạo mẫu mới bên dưới.
+                      </li>
+                    )}
                     {templates.map((item) => (
                       <li key={item._id} className="py-2">
                         {item.name}{" "}
@@ -757,7 +826,7 @@ export default function WorkReportsPanel({ project }) {
                 <div className="p-4">
                   <button
                     className="apple-button mb-4"
-                    disabled={!settings.enabled || busy}
+                    disabled={!settings.enabled || !availableKinds.length || busy}
                     onClick={() => {
                       setCreating(true);
                       operationKey.current = key();
@@ -901,7 +970,7 @@ export default function WorkReportsPanel({ project }) {
             {creating && (
               <Panel title={tab === "schedules" ? "Tạo lịch báo cáo" : "Tạo báo cáo"}>
                 <p className="px-4 pt-4 text-sm text-ink-muted">
-                  Ngày giờ theo múi giờ {settings.timezone}.
+                  Thời gian theo múi giờ của dự án.
                 </p>
                 <div className="grid grid-cols-2 gap-4 p-4">
                   <label className="col-span-2 text-sm">
@@ -922,13 +991,11 @@ export default function WorkReportsPanel({ project }) {
                         setTemplateId("");
                       }}
                     >
-                      {["PERSONAL", "TEAM", "PROJECT"]
-                        .filter((item) => can("workreport.manage") || item === "PERSONAL")
-                        .map((item) => (
-                          <option key={item} value={item}>
-                            {labels[item]}
-                          </option>
-                        ))}
+                      {availableKinds.map((item) => (
+                        <option key={item} value={item}>
+                          {labels[item]}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="text-sm">
@@ -1032,6 +1099,11 @@ export default function WorkReportsPanel({ project }) {
                               {memberName(memberId(item))}
                             </label>
                           ))}
+                        {!members.some((item) => item.project_role !== "VIEWER") && (
+                          <p className="col-span-full text-sm text-ink-muted">
+                            Chưa có thành viên đủ điều kiện cùng soạn báo cáo.
+                          </p>
+                        )}
                       </div>
                     </fieldset>
                   )}
@@ -1055,6 +1127,11 @@ export default function WorkReportsPanel({ project }) {
                             {memberName(memberId(item))}
                           </label>
                         ))}
+                        {!members.length && (
+                          <p className="col-span-full text-sm text-ink-muted">
+                            Chưa có thành viên trong dự án để tổng hợp.
+                          </p>
+                        )}
                       </div>
                     </fieldset>
                   )}
@@ -1094,6 +1171,11 @@ export default function WorkReportsPanel({ project }) {
                           {memberName(memberId(item))}
                         </label>
                       ))}
+                      {!members.length && (
+                        <p className="col-span-full text-sm text-ink-muted">
+                          Chưa có thành viên trong dự án để nhận báo cáo.
+                        </p>
+                      )}
                     </div>
                   </fieldset>
                   <label className="text-sm">
@@ -1204,8 +1286,10 @@ export default function WorkReportsPanel({ project }) {
                   {can("workreport.write") && tab === "mine" && (
                     <button
                       className="apple-button inline-flex items-center gap-2"
-                      disabled={!settings.enabled || busy}
+                      disabled={!settings.enabled || !availableKinds.length || busy}
                       onClick={() => {
+                        if (!availableKinds.includes(kind))
+                          setKind(availableKinds[0] || "PERSONAL");
                         setCreating(true);
                         operationKey.current = key();
                       }}
@@ -1228,6 +1312,14 @@ export default function WorkReportsPanel({ project }) {
                     Dự án chưa bật báo cáo công việc. Các báo cáo cũ vẫn được lưu.
                   </p>
                 )}
+                {settings.enabled &&
+                  !availableKinds.length &&
+                  !reports.length &&
+                  tab === "mine" && (
+                    <p className="px-4 pb-4 text-sm text-ink-muted">
+                      Chưa có loại báo cáo nào được bật cho vai trò của bạn.
+                    </p>
+                  )}
                 <form
                   className="flex flex-wrap items-center gap-3 border-t border-border p-4"
                   onSubmit={(event) => {
@@ -1351,309 +1443,354 @@ export default function WorkReportsPanel({ project }) {
                     <ArrowLeft size={16} />
                     Danh sách
                   </button>
-                  <div className="text-sm">
-                    {labels[selected.status]} · {dirty ? "Chưa lưu" : "Đã lưu"}
+                  <div className="flex flex-wrap items-center justify-end gap-3">
+                    <div className="text-sm">
+                      {labels[selected.status]} · {dirty ? "Chưa lưu" : "Đã lưu"}
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary-button inline-flex items-center gap-2"
+                      disabled={busy}
+                      onClick={openPrintPreview}
+                    >
+                      <Printer size={16} aria-hidden="true" />
+                      In báo cáo
+                    </button>
                   </div>
                 </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    className="secondary-button inline-flex items-center gap-2"
-                    disabled={busy}
-                    onClick={openPrintPreview}
-                  >
-                    <Printer size={16} aria-hidden="true" />
-                    In báo cáo
-                  </button>
-                </div>
                 <Panel title={selected.title}>
-                  <div className="space-y-4 p-4">
-                    {editable && (
-                      <div className="flex justify-end">
-                        <button
-                          className="secondary-button"
-                          disabled={busy || dirty}
-                          onClick={() =>
-                            run(async () => {
-                              if (previewDoc) {
-                                setPreviewDoc(null);
-                                return;
-                              }
-                              const result = await testingRequest(
-                                `/bao-cao-cong-viec/${selected._id}/xem-truoc`,
-                              );
-                              if (result.revision !== selected.revision)
-                                throw new Error("Báo cáo đã thay đổi. Hãy tải lại trước khi xem.");
-                              setPreviewDoc(result.content_doc);
-                            })
-                          }
-                        >
-                          {previewDoc ? "Trở lại nội dung soạn" : "Xem trước nội dung đã điền"}
-                        </button>
-                      </div>
-                    )}
-                    <DocumentEditor
-                      documentProfile="formal-report"
-                      key={`${selected._id}-${Boolean(previewDoc)}`}
-                      value={previewDoc || content}
-                      ignoreUnfocusedUpdates
-                      onImageFiles={uploadImages}
-                      onChange={(value) => {
-                        setContent(value);
-                        editSequence.current += 1;
-                        setDirty(true);
-                      }}
-                      label="Nội dung báo cáo"
-                      readOnly={!editable || Boolean(previewDoc)}
-                      minHeight="min-h-96"
-                    />
-                    {can("workreport.ai") &&
-                      [
-                        selected.owner_id,
-                        selected.reviewer_id,
-                        ...(selected.editor_ids || []),
-                      ].includes(userId) && (
-                        <div className="space-y-3 rounded-control border border-border p-3">
-                          <ContentOriginBadge origin="ai_suggested" aiLabel="Trợ lý soạn báo cáo" />
-                          <div className="flex flex-wrap gap-2">
-                            <select
-                              aria-label="Tác vụ AI cho báo cáo"
-                              className="apple-input !w-auto"
-                              value={aiMode}
-                              onChange={(event) => setAiMode(event.target.value)}
-                            >
-                              <option value="DRAFT">Đề xuất nội dung</option>
-                              <option value="REVIEW">Rà soát báo cáo</option>
-                              <option value="SUMMARY">Tóm tắt điều hành</option>
-                              <option value="TRANSLATE">Dịch nội dung</option>
-                            </select>
-                            <select
-                              aria-label="Ngôn ngữ đầu ra AI"
-                              className="apple-input !w-auto"
-                              value={language}
-                              onChange={(event) => setLanguage(event.target.value)}
-                            >
-                              <option value="">Chọn ngôn ngữ</option>
-                              {summaryLanguageOptions(user?.locale || project.locale)
-                                .filter((item) => item.value !== "auto")
-                                .map((item) => (
-                                  <option key={item.value} value={item.value}>
-                                    {item.label}
-                                  </option>
-                                ))}
-                            </select>
-                            <button
-                              className="secondary-button"
-                              disabled={busy || dirty || !language}
-                              onClick={() =>
-                                run(async () => {
-                                  const signature = JSON.stringify([
-                                    selected._id,
-                                    selected.revision,
-                                    aiMode,
-                                    note,
-                                    language,
-                                  ]);
-                                  if (aiRequest.current?.signature !== signature)
-                                    aiRequest.current = { signature, id: key() };
-                                  setAiSections([]);
-                                  setAiDraft(
-                                    await testingRequest(
-                                      `/bao-cao-cong-viec/${selected._id}/ai/de-xuat`,
-                                      {
-                                        method: "POST",
-                                        body: JSON.stringify({
-                                          expected_revision: selected.revision,
-                                          mode: aiMode,
-                                          instruction: note,
-                                          output_language: language,
-                                          idempotency_key: aiRequest.current.id,
-                                        }),
-                                      },
-                                    ),
-                                  );
-                                })
-                              }
-                            >
-                              Chạy AI
-                            </button>
-                          </div>
-                          {aiDraft && (
-                            <div className="space-y-3">
-                              {aiDraft.result?.status !== "SUCCESS" ? (
-                                <div className="space-y-2">
-                                  <p className="text-sm text-ink-muted">
-                                    {aiDraft.status === "RUNNING"
-                                      ? "AI đang xử lý yêu cầu này."
-                                      : "AI chưa tạo được đề xuất có căn cứ. Bạn có thể tiếp tục soạn báo cáo."}
-                                  </p>
-                                  {aiDraft.status === "RUNNING" ? (
-                                    <button
-                                      className="secondary-button"
-                                      disabled={busy}
-                                      onClick={() =>
-                                        run(async () =>
-                                          setAiDraft(
-                                            await testingRequest(
-                                              `/bao-cao-cong-viec/${selected._id}/ai/de-xuat/${aiDraft._id}`,
-                                            ),
-                                          ),
-                                        )
-                                      }
-                                    >
-                                      Kiểm tra kết quả AI
-                                    </button>
-                                  ) : (
-                                    <button
-                                      className="secondary-button"
-                                      onClick={() => {
-                                        aiRequest.current = null;
-                                        setAiDraft(null);
-                                      }}
-                                    >
-                                      Chuẩn bị thử lại
-                                    </button>
-                                  )}
-                                </div>
-                              ) : (
-                                <>
-                                  {aiDraft.result.suggestions?.[0]?.sections?.map(
-                                    (section, index) => (
-                                      <div key={index} className="space-y-2">
-                                        <h4 className="font-medium">{section.title}</h4>
-                                        <p className="whitespace-pre-wrap text-sm">
-                                          {section.text}
-                                        </p>
-                                        {editable && aiDraft.mode !== "REVIEW" && (
-                                          <label className="flex items-center gap-2 text-sm">
-                                            <input
-                                              type="checkbox"
-                                              checked={aiSections.includes(index)}
-                                              onChange={(event) =>
-                                                setAiSections((current) =>
-                                                  event.target.checked
-                                                    ? [...current, index]
-                                                    : current.filter((item) => item !== index),
-                                                )
-                                              }
-                                            />
-                                            Chọn mục này
-                                          </label>
-                                        )}
-                                      </div>
-                                    ),
-                                  )}
-                                  {editable && aiDraft.mode !== "REVIEW" && (
-                                    <button
-                                      className="secondary-button"
-                                      disabled={
-                                        busy ||
-                                        dirty ||
-                                        !aiSections.length ||
-                                        aiDraft.source_revision !== selected.revision
-                                      }
-                                      onClick={() =>
-                                        run(async () => {
-                                          const updated = await testingRequest(
-                                            `/bao-cao-cong-viec/${selected._id}/ai/ap-dung`,
-                                            {
-                                              method: "POST",
-                                              body: JSON.stringify({
-                                                expected_revision: selected.revision,
-                                                proposal_id: aiDraft._id,
-                                                section_indices: aiSections,
-                                                idempotency_key: `apply-${aiDraft._id}-${[...aiSections].sort((a, b) => a - b).join("-")}`,
-                                              }),
-                                            },
-                                          );
-                                          setSelected(updated);
-                                          setContent(updated.content_doc);
-                                          setDirty(false);
-                                          setAiSections([]);
-                                          setNotice("Đã thêm các mục đã chọn vào bản nháp.");
-                                        })
-                                      }
-                                    >
-                                      Thêm các mục đã chọn
-                                    </button>
-                                  )}
-                                  {aiDraft.result.suggestions?.[0]?.missing_information?.map(
-                                    (item, index) => (
-                                      <p className="text-sm" key={`missing-${index}`}>
-                                        {item}
-                                      </p>
-                                    ),
-                                  )}
-                                  {aiDraft.result.suggestions?.[0]?.inconsistencies?.map(
-                                    (item, index) => (
-                                      <p className="text-sm" key={`issue-${index}`}>
-                                        {item}
-                                      </p>
-                                    ),
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          )}
+                  <div className="space-y-4 p-5">
+                    <div className="space-y-4 border-b border-border pb-4">
+                      <dl className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm md:grid-cols-3 xl:grid-cols-5">
+                        <div className="min-w-0">
+                          <dt className="text-ink-muted">Loại báo cáo</dt>
+                          <dd className="mt-1 font-medium">{labels[selected.kind] || "Báo cáo"}</dd>
                         </div>
-                      )}
-                    <label className="block text-sm">
-                      Ghi chú hoặc lý do thay đổi
-                      <textarea
-                        className="apple-input mt-1"
-                        value={note}
-                        onChange={(event) => setNote(event.target.value)}
-                      />
-                    </label>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {editable && (
-                        <button
-                          className="apple-button inline-flex items-center gap-2"
-                          disabled={busy || !dirty}
-                          onClick={() => run(save)}
-                        >
-                          <Save size={16} />
-                          Lưu bản nháp
-                        </button>
-                      )}
-                      {selected.status === "DRAFT" && can("workreport.write") && (
-                        <button
-                          className="secondary-button"
-                          disabled={busy || dirty}
-                          onClick={() => action("SUBMIT")}
-                        >
-                          Gửi rà soát
-                        </button>
-                      )}
-                      {selected.reviewer_id === userId && selected.status === "IN_REVIEW" && (
-                        <>
-                          <button
-                            className="apple-button"
-                            disabled={busy}
-                            onClick={() => action("APPROVE")}
+                        <div className="min-w-0">
+                          <dt className="text-ink-muted">Kỳ báo cáo</dt>
+                          <dd className="mt-1 font-medium">
+                            {date(selected.period?.start_at)} – {date(selected.period?.end_at)}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-ink-muted">Người thực hiện</dt>
+                          <dd
+                            className="mt-1 truncate font-medium"
+                            title={memberName(selected.owner_id)}
                           >
-                            Duyệt
-                          </button>
+                            {selected.owner_name || memberName(selected.owner_id)}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-ink-muted">Người xác nhận</dt>
+                          <dd
+                            className="mt-1 truncate font-medium"
+                            title={selected.reviewer_name || memberName(selected.reviewer_id)}
+                          >
+                            {selected.reviewer_id
+                              ? selected.reviewer_name || memberName(selected.reviewer_id)
+                              : "Chưa phân công"}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-ink-muted">Hạn báo cáo</dt>
+                          <dd className="mt-1 font-medium">{date(selected.due_at)}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                    <div className="space-y-4">
+                      {editable && (
+                        <div className="flex justify-end">
                           <button
                             className="secondary-button"
-                            disabled={busy || !note.trim()}
-                            onClick={() => action("REQUEST_CHANGES")}
+                            disabled={busy || dirty}
+                            onClick={() =>
+                              run(async () => {
+                                if (previewDoc) {
+                                  setPreviewDoc(null);
+                                  return;
+                                }
+                                const result = await testingRequest(
+                                  `/bao-cao-cong-viec/${selected._id}/xem-truoc`,
+                                );
+                                if (result.revision !== selected.revision)
+                                  throw new Error(
+                                    "Báo cáo đã thay đổi. Hãy tải lại trước khi xem.",
+                                  );
+                                setPreviewDoc(result.content_doc);
+                              })
+                            }
                           >
-                            Yêu cầu chỉnh sửa
+                            {previewDoc ? "Trở lại nội dung soạn" : "Xem trước nội dung đã điền"}
                           </button>
-                        </>
+                        </div>
                       )}
-                      {selected.reviewer_id === userId && selected.status === "APPROVED" && (
-                        <button
-                          className="apple-button"
-                          disabled={busy || dirty}
-                          onClick={() => action("PUBLISH")}
-                        >
-                          Phát hành và gửi
-                        </button>
+                      <DocumentEditor
+                        documentProfile="formal-report"
+                        key={`${selected._id}-${Boolean(previewDoc)}`}
+                        value={previewDoc || content}
+                        ignoreUnfocusedUpdates
+                        onImageFiles={uploadImages}
+                        onChange={(value) => {
+                          setContent(value);
+                          editSequence.current += 1;
+                          setDirty(true);
+                        }}
+                        label="Nội dung báo cáo"
+                        readOnly={!editable || Boolean(previewDoc)}
+                        minHeight="min-h-72"
+                      />
+                      {can("workreport.ai") &&
+                        [
+                          selected.owner_id,
+                          selected.reviewer_id,
+                          ...(selected.editor_ids || []),
+                        ].includes(userId) && (
+                          <div className="space-y-3 rounded-control border border-border p-3">
+                            <ContentOriginBadge
+                              origin="ai_suggested"
+                              aiLabel="Trợ lý soạn báo cáo"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <select
+                                aria-label="Tác vụ AI cho báo cáo"
+                                className="apple-input !w-auto"
+                                value={aiMode}
+                                onChange={(event) => setAiMode(event.target.value)}
+                              >
+                                <option value="DRAFT">Đề xuất nội dung</option>
+                                <option value="REVIEW">Rà soát báo cáo</option>
+                                <option value="SUMMARY">Tóm tắt điều hành</option>
+                                <option value="TRANSLATE">Dịch nội dung</option>
+                              </select>
+                              <select
+                                aria-label="Ngôn ngữ đầu ra AI"
+                                className="apple-input !w-auto"
+                                value={language}
+                                onChange={(event) => setLanguage(event.target.value)}
+                              >
+                                <option value="">Chọn ngôn ngữ</option>
+                                {summaryLanguageOptions(user?.locale || project.locale)
+                                  .filter((item) => item.value !== "auto")
+                                  .map((item) => (
+                                    <option key={item.value} value={item.value}>
+                                      {item.label}
+                                    </option>
+                                  ))}
+                              </select>
+                              <button
+                                className="secondary-button"
+                                disabled={busy || dirty || !language}
+                                onClick={() =>
+                                  run(async () => {
+                                    const signature = JSON.stringify([
+                                      selected._id,
+                                      selected.revision,
+                                      aiMode,
+                                      note,
+                                      language,
+                                    ]);
+                                    if (aiRequest.current?.signature !== signature)
+                                      aiRequest.current = { signature, id: key() };
+                                    setAiSections([]);
+                                    setAiDraft(
+                                      await testingRequest(
+                                        `/bao-cao-cong-viec/${selected._id}/ai/de-xuat`,
+                                        {
+                                          method: "POST",
+                                          body: JSON.stringify({
+                                            expected_revision: selected.revision,
+                                            mode: aiMode,
+                                            instruction: note,
+                                            output_language: language,
+                                            idempotency_key: aiRequest.current.id,
+                                          }),
+                                        },
+                                      ),
+                                    );
+                                  })
+                                }
+                              >
+                                Chạy AI
+                              </button>
+                            </div>
+                            {aiDraft && (
+                              <div className="space-y-3">
+                                {aiDraft.result?.status !== "SUCCESS" ? (
+                                  <div className="space-y-2">
+                                    <p className="text-sm text-ink-muted">
+                                      {aiDraft.status === "RUNNING"
+                                        ? "AI đang xử lý yêu cầu này."
+                                        : "AI chưa tạo được đề xuất có căn cứ. Bạn có thể tiếp tục soạn báo cáo."}
+                                    </p>
+                                    {aiDraft.status === "RUNNING" ? (
+                                      <button
+                                        className="secondary-button"
+                                        disabled={busy}
+                                        onClick={() =>
+                                          run(async () =>
+                                            setAiDraft(
+                                              await testingRequest(
+                                                `/bao-cao-cong-viec/${selected._id}/ai/de-xuat/${aiDraft._id}`,
+                                              ),
+                                            ),
+                                          )
+                                        }
+                                      >
+                                        Kiểm tra kết quả AI
+                                      </button>
+                                    ) : (
+                                      <button
+                                        className="secondary-button"
+                                        onClick={() => {
+                                          aiRequest.current = null;
+                                          setAiDraft(null);
+                                        }}
+                                      >
+                                        Chuẩn bị thử lại
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <>
+                                    {aiDraft.result.suggestions?.[0]?.sections?.map(
+                                      (section, index) => (
+                                        <div key={index} className="space-y-2">
+                                          <h4 className="font-medium">{section.title}</h4>
+                                          <p className="whitespace-pre-wrap text-sm">
+                                            {section.text}
+                                          </p>
+                                          {editable && aiDraft.mode !== "REVIEW" && (
+                                            <label className="flex items-center gap-2 text-sm">
+                                              <input
+                                                type="checkbox"
+                                                checked={aiSections.includes(index)}
+                                                onChange={(event) =>
+                                                  setAiSections((current) =>
+                                                    event.target.checked
+                                                      ? [...current, index]
+                                                      : current.filter((item) => item !== index),
+                                                  )
+                                                }
+                                              />
+                                              Chọn mục này
+                                            </label>
+                                          )}
+                                        </div>
+                                      ),
+                                    )}
+                                    {editable && aiDraft.mode !== "REVIEW" && (
+                                      <button
+                                        className="secondary-button"
+                                        disabled={
+                                          busy ||
+                                          dirty ||
+                                          !aiSections.length ||
+                                          aiDraft.source_revision !== selected.revision
+                                        }
+                                        onClick={() =>
+                                          run(async () => {
+                                            const updated = await testingRequest(
+                                              `/bao-cao-cong-viec/${selected._id}/ai/ap-dung`,
+                                              {
+                                                method: "POST",
+                                                body: JSON.stringify({
+                                                  expected_revision: selected.revision,
+                                                  proposal_id: aiDraft._id,
+                                                  section_indices: aiSections,
+                                                  idempotency_key: `apply-${aiDraft._id}-${[...aiSections].sort((a, b) => a - b).join("-")}`,
+                                                }),
+                                              },
+                                            );
+                                            setSelected(updated);
+                                            setContent(updated.content_doc);
+                                            setDirty(false);
+                                            setAiSections([]);
+                                            setNotice("Đã thêm các mục đã chọn vào bản nháp.");
+                                          })
+                                        }
+                                      >
+                                        Thêm các mục đã chọn
+                                      </button>
+                                    )}
+                                    {aiDraft.result.suggestions?.[0]?.missing_information?.map(
+                                      (item, index) => (
+                                        <p className="text-sm" key={`missing-${index}`}>
+                                          {item}
+                                        </p>
+                                      ),
+                                    )}
+                                    {aiDraft.result.suggestions?.[0]?.inconsistencies?.map(
+                                      (item, index) => (
+                                        <p className="text-sm" key={`issue-${index}`}>
+                                          {item}
+                                        </p>
+                                      ),
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      {canProvideChangeReason && (
+                        <label className="block text-sm">
+                          Ghi chú hoặc lý do thay đổi
+                          <textarea
+                            className="apple-input mt-1"
+                            value={note}
+                            onChange={(event) => setNote(event.target.value)}
+                          />
+                        </label>
                       )}
-                      {["PUBLISHED", "ARCHIVED"].includes(selected.status) &&
-                        can("workreport.write") && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {editable && (
+                          <button
+                            className="apple-button inline-flex items-center gap-2"
+                            disabled={busy || !dirty}
+                            onClick={() => run(save)}
+                          >
+                            <Save size={16} />
+                            Lưu bản nháp
+                          </button>
+                        )}
+                        {selected.status === "DRAFT" && editable && (
+                          <button
+                            className="secondary-button"
+                            disabled={busy || dirty}
+                            onClick={() => action("SUBMIT")}
+                          >
+                            Gửi rà soát
+                          </button>
+                        )}
+                        {selected.reviewer_id === userId && selected.status === "IN_REVIEW" && (
+                          <>
+                            <button
+                              className="apple-button"
+                              disabled={busy}
+                              onClick={() => action("APPROVE")}
+                            >
+                              Duyệt
+                            </button>
+                            <button
+                              className="secondary-button"
+                              disabled={busy || !note.trim()}
+                              onClick={() => action("REQUEST_CHANGES")}
+                            >
+                              Yêu cầu chỉnh sửa
+                            </button>
+                          </>
+                        )}
+                        {selected.reviewer_id === userId && selected.status === "APPROVED" && (
+                          <button
+                            className="apple-button"
+                            disabled={busy || dirty}
+                            onClick={() => action("PUBLISH")}
+                          >
+                            Phát hành và gửi
+                          </button>
+                        )}
+                        {["PUBLISHED", "ARCHIVED"].includes(selected.status) && assignedAuthor && (
                           <button
                             className="secondary-button"
                             disabled={busy || !note.trim()}
@@ -1662,21 +1799,22 @@ export default function WorkReportsPanel({ project }) {
                             Tạo phiên bản sửa
                           </button>
                         )}
-                      {[
-                        selected.owner_id,
-                        selected.reviewer_id,
-                        ...(selected.editor_ids || []),
-                      ].includes(userId) &&
-                        ["docx", "pdf"].map((format) => (
-                          <button
-                            key={format}
-                            className="secondary-button"
-                            disabled={busy || dirty}
-                            onClick={() => exportFile(format)}
-                          >
-                            Xuất {format.toUpperCase()}
-                          </button>
-                        ))}
+                        {[
+                          selected.owner_id,
+                          selected.reviewer_id,
+                          ...(selected.editor_ids || []),
+                        ].includes(userId) &&
+                          ["docx", "pdf"].map((format) => (
+                            <button
+                              key={format}
+                              className="secondary-button"
+                              disabled={busy || dirty}
+                              onClick={() => exportFile(format)}
+                            >
+                              Xuất {format.toUpperCase()}
+                            </button>
+                          ))}
+                      </div>
                     </div>
                   </div>
                 </Panel>
@@ -1734,8 +1872,14 @@ export default function WorkReportsPanel({ project }) {
                     ))}
                   </ul>
                 </details>
-                <Panel title="Bản xuất">
-                  <div className="space-y-3 p-4">
+                <section
+                  aria-labelledby="report-exports-heading"
+                  className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="font-semibold" id="report-exports-heading">
+                      Tệp báo cáo
+                    </h3>
                     <button
                       className="secondary-button"
                       disabled={busy}
@@ -1747,8 +1891,10 @@ export default function WorkReportsPanel({ project }) {
                         )
                       }
                     >
-                      Kiểm tra bản xuất
+                      Cập nhật trạng thái tệp
                     </button>
+                  </div>
+                  <div className="divide-y divide-border">
                     {exports.map((item) => (
                       <div
                         key={item._id}
@@ -1802,12 +1948,22 @@ export default function WorkReportsPanel({ project }) {
                           )}
                       </div>
                     ))}
-                    {!exports.length && <p className="text-sm text-ink-muted">Chưa có bản xuất.</p>}
+                    {!exports.length && (
+                      <p className="py-2 text-sm text-ink-muted">
+                        Chưa có tệp xuất cho phiên bản này.
+                      </p>
+                    )}
                   </div>
-                </Panel>
+                </section>
                 {deliveries.length > 0 && (
-                  <Panel title="Theo dõi người nhận">
-                    <div className="divide-y divide-border px-4">
+                  <section
+                    aria-labelledby="report-recipients-heading"
+                    className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5"
+                  >
+                    <h3 className="font-semibold" id="report-recipients-heading">
+                      Người nhận
+                    </h3>
+                    <div className="divide-y divide-border">
                       {deliveries.map((item) => (
                         <div
                           key={item._id}
@@ -1913,134 +2069,140 @@ export default function WorkReportsPanel({ project }) {
                         </div>
                       ))}
                     </div>
-                  </Panel>
+                  </section>
                 )}
-                <Panel title="Nhận xét">
-                  <div className="space-y-4 p-4">
-                    {comments.map((item) => (
-                      <div key={item._id} className="border-b border-border pb-3">
-                        <p className="text-sm font-medium">
-                          {item.author_label || memberName(item.created_by)}{" "}
-                          <span className="font-normal text-ink-muted">
-                            · {date(item.created_at)}
-                          </span>
-                        </p>
-                        <p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p>
-                        {item.parent_id && (
-                          <p className="mt-1 text-xs text-ink-muted">
-                            Trả lời:{" "}
-                            {comments
-                              .find((parent) => parent._id === item.parent_id)
-                              ?.body.slice(0, 100) || "Nhận xét trước đó"}
+                {(comments.length > 0 || mayComment) && (
+                  <section
+                    aria-labelledby="report-comments-heading"
+                    className="space-y-4 rounded-xl border border-border bg-white p-4 sm:p-5"
+                  >
+                    <h3 className="font-semibold" id="report-comments-heading">
+                      Trao đổi
+                    </h3>
+                    <div className="space-y-4">
+                      {comments.map((item) => (
+                        <div key={item._id} className="border-b border-border pb-3">
+                          <p className="text-sm font-medium">
+                            {item.author_label || memberName(item.created_by)}{" "}
+                            <span className="font-normal text-ink-muted">
+                              · {date(item.created_at)}
+                            </span>
                           </p>
-                        )}
-                        <div className="mt-2 flex items-center gap-3">
-                          {item.resolved && (
-                            <span className="text-xs text-ink-muted">Đã giải quyết</span>
+                          <p className="mt-1 whitespace-pre-wrap text-sm">{item.body}</p>
+                          {item.parent_id && (
+                            <p className="mt-1 text-xs text-ink-muted">
+                              Trả lời:{" "}
+                              {comments
+                                .find((parent) => parent._id === item.parent_id)
+                                ?.body.slice(0, 100) || "Nhận xét trước đó"}
+                            </p>
                           )}
-                          {(selected.current_access?.can_comment || editable) && (
-                            <button className="text-sm text-brand" onClick={() => setReplyTo(item)}>
-                              Trả lời
-                            </button>
-                          )}
-                          {[item.created_by, selected.owner_id, selected.reviewer_id].includes(
-                            userId,
-                          ) && (
-                            <button
-                              className="text-sm text-brand"
-                              disabled={busy}
-                              onClick={() =>
-                                run(async () => {
-                                  const updated = await testingRequest(
-                                    `/bao-cao-cong-viec/${selected._id}/binh-luan/${item._id}`,
-                                    {
-                                      method: "PATCH",
-                                      body: JSON.stringify({
-                                        expected_revision: item.revision,
-                                        resolved: !item.resolved,
-                                      }),
-                                    },
-                                  );
-                                  setComments((current) =>
-                                    current.map((entry) =>
-                                      entry._id === updated._id ? updated : entry,
-                                    ),
-                                  );
-                                })
-                              }
-                            >
-                              {item.resolved ? "Mở lại nhận xét" : "Đánh dấu đã giải quyết"}
-                            </button>
-                          )}
+                          <div className="mt-2 flex items-center gap-3">
+                            {item.resolved && (
+                              <span className="text-xs text-ink-muted">Đã giải quyết</span>
+                            )}
+                            {mayComment && (
+                              <button
+                                className="text-sm text-brand"
+                                onClick={() => setReplyTo(item)}
+                              >
+                                Trả lời
+                              </button>
+                            )}
+                            {[item.created_by, selected.owner_id, selected.reviewer_id].includes(
+                              userId,
+                            ) && (
+                              <button
+                                className="text-sm text-brand"
+                                disabled={busy}
+                                onClick={() =>
+                                  run(async () => {
+                                    const updated = await testingRequest(
+                                      `/bao-cao-cong-viec/${selected._id}/binh-luan/${item._id}`,
+                                      {
+                                        method: "PATCH",
+                                        body: JSON.stringify({
+                                          expected_revision: item.revision,
+                                          resolved: !item.resolved,
+                                        }),
+                                      },
+                                    );
+                                    setComments((current) =>
+                                      current.map((entry) =>
+                                        entry._id === updated._id ? updated : entry,
+                                      ),
+                                    );
+                                  })
+                                }
+                              >
+                                {item.resolved ? "Mở lại nhận xét" : "Đánh dấu đã giải quyết"}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    {(selected.current_access?.can_comment ||
-                      (can("workreport.write") &&
-                        [
-                          selected.owner_id,
-                          selected.reviewer_id,
-                          ...(selected.editor_ids || []),
-                        ].includes(userId))) && (
-                      <>
-                        {replyTo && (
-                          <p className="text-sm">
-                            Trả lời {memberName(replyTo.created_by)}{" "}
-                            <button className="ml-2 text-brand" onClick={() => setReplyTo(null)}>
-                              Hủy trả lời
-                            </button>
-                          </p>
-                        )}
-                        <textarea
-                          aria-label="Nội dung nhận xét"
-                          className="apple-input"
-                          value={comment}
-                          onChange={(event) => setComment(event.target.value)}
-                        />
+                      ))}
+                      {mayComment && (
+                        <>
+                          {replyTo && (
+                            <p className="text-sm">
+                              Trả lời {memberName(replyTo.created_by)}{" "}
+                              <button className="ml-2 text-brand" onClick={() => setReplyTo(null)}>
+                                Hủy trả lời
+                              </button>
+                            </p>
+                          )}
+                          <textarea
+                            aria-label="Nội dung nhận xét"
+                            className="apple-input"
+                            placeholder="Viết nhận xét về báo cáo"
+                            value={comment}
+                            onChange={(event) => setComment(event.target.value)}
+                          />
+                          <button
+                            className="secondary-button"
+                            disabled={busy || !comment.trim()}
+                            onClick={() =>
+                              run(async () => {
+                                const result = await testingRequest(
+                                  `/bao-cao-cong-viec/${selected._id}/binh-luan`,
+                                  {
+                                    method: "POST",
+                                    body: JSON.stringify({
+                                      body: comment,
+                                      parent_id: replyTo?._id || null,
+                                      idempotency_key: key(),
+                                    }),
+                                  },
+                                );
+                                setComments((current) => [result, ...current]);
+                                setComment("");
+                                setReplyTo(null);
+                              })
+                            }
+                          >
+                            Gửi nhận xét
+                          </button>
+                        </>
+                      )}
+                      {tab === "inbox" && (
                         <button
-                          className="secondary-button"
-                          disabled={busy || !comment.trim()}
+                          className="secondary-button ml-2"
+                          disabled={busy}
                           onClick={() =>
                             run(async () => {
-                              const result = await testingRequest(
-                                `/bao-cao-cong-viec/${selected._id}/binh-luan`,
-                                {
-                                  method: "POST",
-                                  body: JSON.stringify({
-                                    body: comment,
-                                    parent_id: replyTo?._id || null,
-                                    idempotency_key: key(),
-                                  }),
-                                },
-                              );
-                              setComments((current) => [result, ...current]);
-                              setComment("");
-                              setReplyTo(null);
+                              await testingRequest(`/bao-cao-cong-viec/${selected._id}/xac-nhan`, {
+                                method: "POST",
+                              });
+                              setNotice("Đã xác nhận nhận báo cáo.");
                             })
                           }
                         >
-                          Gửi nhận xét
+                          Xác nhận đã nhận
                         </button>
-                      </>
-                    )}
-                    {tab === "inbox" && (
-                      <button
-                        className="secondary-button ml-2"
-                        disabled={busy}
-                        onClick={() =>
-                          run(async () => {
-                            await testingRequest(`/bao-cao-cong-viec/${selected._id}/xac-nhan`, {
-                              method: "POST",
-                            });
-                            setNotice("Đã xác nhận nhận báo cáo.");
-                          })
-                        }
-                      >
-                        Xác nhận đã nhận
-                      </button>
-                    )}
-                  </div>
-                </Panel>
+                      )}
+                    </div>
+                  </section>
+                )}
               </>
             )}
           </>
@@ -2074,17 +2236,13 @@ export default function WorkReportsPanel({ project }) {
             </div>
           </div>
           <header className="report-print-header">
-            <Image src="/brand/veriq-logo.png" alt="Logo dự án" width={58} height={58} priority />
-            <div>
-              <strong>{project.name}</strong>
-              <span>{project.key || project._id}</span>
+            <div className="report-print-logo-cell">
+              <Image src="/brand/veriq-logo.png" alt="Logo Veriq" width={76} height={76} priority />
+            </div>
+            <div className="report-print-title-cell">
+              <h1>BÁO CÁO TIẾN ĐỘ</h1>
             </div>
           </header>
-          <h1>{selected.title.toLocaleUpperCase(user?.locale || project.locale || undefined)}</h1>
-          <p className="report-print-meta">
-            {date(selected.period?.start_at)} — {date(selected.period?.end_at)}
-            {selected.owner_name ? ` · ${selected.owner_name}` : ""}
-          </p>
           <DocumentEditor
             documentProfile="formal-report"
             key={`print-${selected._id}-${selected.revision}`}
