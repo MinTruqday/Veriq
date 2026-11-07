@@ -5,6 +5,83 @@ from src.repositories.project_access import ProjectAccessRepository
 
 
 class RequirementRolePolicyTests(unittest.TestCase):
+    def test_project_settings_are_managed_by_ba_not_qa(self):
+        document = {
+            "_id": "active",
+            "schema_version": 1,
+            "revision": 3,
+            "capabilities": [
+                {"name": "project.read", "business_roles": ["BA", "QA"]},
+                {"name": "project.update", "business_roles": ["BA"]},
+                {"name": "project.settings.manage", "business_roles": ["BA"]},
+            ],
+            "role_grants": [
+                {"role": "BA", "permissions": ["project.read"]},
+                {
+                    "role": "QA",
+                    "permissions": [
+                        "project.read",
+                        "project.update",
+                        "project.settings.manage",
+                    ],
+                },
+            ],
+        }
+
+        updated = ProjectAccessRepository.project_settings_role_policy_preview(document)
+        grants = {item.role: set(item.permissions) for item in updated.role_grants}
+
+        self.assertEqual(updated.revision, 4)
+        self.assertTrue({"project.update", "project.settings.manage"} <= grants["BA"])
+        self.assertFalse({"project.update", "project.settings.manage"} & grants["QA"])
+        repeated = ProjectAccessRepository.project_settings_role_policy_preview(updated.model_dump())
+        self.assertEqual(repeated, updated)
+
+    def test_project_settings_policy_adds_missing_roles_when_grants_are_empty(self):
+        document = {
+            "_id": "active",
+            "schema_version": 1,
+            "revision": 1,
+            "capabilities": [
+                {"name": "project.update", "business_roles": ["BA"]},
+                {"name": "project.settings.manage", "business_roles": ["BA"]},
+            ],
+            "role_grants": [],
+        }
+
+        updated = ProjectAccessRepository.project_settings_role_policy_preview(document)
+        grants = {item.role: set(item.permissions) for item in updated.role_grants}
+
+        self.assertEqual([item.role for item in updated.role_grants], ["BA", "QA"])
+        self.assertEqual(
+            grants["BA"], {"project.update", "project.settings.manage"}
+        )
+        self.assertEqual(grants["QA"], set())
+        repeated = ProjectAccessRepository.project_settings_role_policy_preview(
+            updated.model_dump()
+        )
+        self.assertEqual(repeated, updated)
+
+    def test_project_settings_policy_adds_ba_when_only_unrelated_role_exists(self):
+        document = {
+            "_id": "active",
+            "schema_version": 1,
+            "revision": 2,
+            "capabilities": [
+                {"name": "project.update", "business_roles": ["BA"]},
+                {"name": "project.settings.manage", "business_roles": ["BA"]},
+            ],
+            "role_grants": [{"role": "VIEWER", "permissions": []}],
+        }
+
+        updated = ProjectAccessRepository.project_settings_role_policy_preview(document)
+        grants = {item.role: set(item.permissions) for item in updated.role_grants}
+
+        self.assertEqual(
+            grants["BA"], {"project.update", "project.settings.manage"}
+        )
+        self.assertEqual(grants["VIEWER"], set())
+
     def test_qa_approval_is_not_gated_by_business_confirmation_responsibility(self):
         document = {
             "_id": "active",

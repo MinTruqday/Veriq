@@ -6,6 +6,72 @@ from src.schemas.project_access import ProjectAccessControl, ProjectRoleGrant
 
 class ProjectAccessRepository:
     @staticmethod
+    def project_settings_role_policy_preview(document):
+        access = ProjectAccessControl.model_validate(document)
+        permissions = {"project.update", "project.settings.manage"}
+        grants = {grant.role: set(grant.permissions) for grant in access.role_grants}
+        grants.setdefault("BA", set()).update(permissions)
+        grants.setdefault("QA", set()).difference_update(permissions)
+        roles = {grant.role for grant in access.role_grants}
+        role_grants = [
+            grant.model_copy(update={"permissions": sorted(grants[grant.role])})
+            for grant in access.role_grants
+        ] + [
+            ProjectRoleGrant(role=role, permissions=sorted(grants[role]))
+            for role in sorted({"BA", "QA"} - roles)
+        ]
+        if role_grants == access.role_grants:
+            return access
+        updated = access.model_copy(
+            update={
+                "revision": access.revision + 1,
+                "role_grants": role_grants,
+            }
+        )
+        return ProjectAccessControl.model_validate(updated.model_dump())
+
+    async def correct_project_settings_role(self):
+        from src.core.auth import access_policy
+
+        while True:
+            document = await database.value.project_access_control.find_one({"_id": "active"})
+            access = ProjectAccessControl.model_validate(document)
+            updated = self.project_settings_role_policy_preview(document)
+            if updated == access:
+                access_policy.cache_clear()
+                return
+            timestamp = datetime.now(timezone.utc)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    result = await database.value.project_access_control.replace_one(
+                        {"_id": "active", "revision": access.revision},
+                        {**document, **updated.model_dump(), "updated_at": timestamp},
+                        session=session,
+                    )
+                    if result.modified_count:
+                        await database.value.audit_events.update_one(
+                            {"_id": f"MIG-project-settings-role-{updated.revision}"},
+                            {"$setOnInsert": {
+                                "actor_id": "SYSTEM_MIGRATION",
+                                "action": "project_settings_role_corrected",
+                                "entity_type": "ProjectAccessControl",
+                                "entity_id": "active",
+                                "project_id": None,
+                                "created_at": timestamp,
+                                "details": {
+                                    "permissions": ["project.update", "project.settings.manage"],
+                                    "removed_from": "QA",
+                                    "granted_to": "BA",
+                                    "previous_revision": access.revision,
+                                },
+                            }},
+                            upsert=True,
+                            session=session,
+                        )
+                        access_policy.cache_clear()
+                        return
+
+    @staticmethod
     def _correct_build_role_grants(document):
         access = ProjectAccessControl.model_validate(document)
         build_write = {"build.create", "build.manage"}
