@@ -26,7 +26,7 @@ MIME = {"docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.
 
 
 async def enqueue_export(job):
-    payload = {"event": "report.export.requested", "project_id": job["project_id"], "artifact_version_id": job["_id"], "model_version": f"report-export-v1-g{job.get('dispatch_generation', 0)}", "requester_id": job["requested_by"], "requester_email": job["requester_email"], "payload": {"export_id": job["_id"], "dispatch_generation": job.get("dispatch_generation", 0)}}
+    payload = {"event": "report.export.requested", "project_id": job["project_id"], "artifact_version_id": job["_id"], "model_version": f"report-export-v1-g{job.get('dispatch_generation', 0)}", "requester_id": job["requested_by"], "requester_email": job.get("requester_email") or "worker@internal", "payload": {"export_id": job["_id"], "dispatch_generation": job.get("dispatch_generation", 0)}}
     worker = await worker_client.enqueue(payload)
     worker_id = worker.get("job_id") or worker.get("_id")
     if not worker_id:
