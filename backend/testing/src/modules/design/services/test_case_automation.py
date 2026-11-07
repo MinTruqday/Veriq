@@ -129,6 +129,7 @@ async def generate_test_case_draft_records(version_id, payload, user):
         "grounding_findings": result.get("findings", []),
         "generation_status": result["status"],
         "unapplied_categories": result.get("unapplied_categories", []),
+        "warnings": result.get("warnings", []),
     }
 
 

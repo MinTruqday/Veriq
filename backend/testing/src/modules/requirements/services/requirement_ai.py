@@ -269,7 +269,7 @@ async def analyze_requirement_quality(version_id, payload, user):
             "suggestions": suggestions,
             "valid": ai_result.get("status") == 'SUCCESS'
             and not ai_result.get("degraded_mode")
-            and not any(item["severity"] == 'error' for item in findings),
+            and not any(item["severity"] == 'error' for item in deterministic_findings),
             **contract_metadata,
             "idempotency_key": payload.idempotency_key,
             "human_confirmation_required": True,

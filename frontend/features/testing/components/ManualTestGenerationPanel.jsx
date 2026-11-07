@@ -152,6 +152,13 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
         {preview && (
           <div className="space-y-3">
             <ContentOriginBadge origin="ai_generated" />
+            {preview.warnings?.length > 0 && (
+              <ul className="rounded-control border border-border bg-surface-quiet px-4 py-3 text-sm text-ink-muted">
+                {preview.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            )}
             {!preview.items?.length && (
               <p className="text-sm text-ink-muted">Chưa có đề xuất phù hợp với nguồn đã chọn.</p>
             )}

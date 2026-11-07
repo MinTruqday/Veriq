@@ -201,7 +201,7 @@ export default function RequirementCurrentVersionPanel({
                 });
               }}
             >
-              Chấp nhận Requirement
+              Rà soát và chấp nhận
             </button>
           )}
           {current.status === "BASELINED" && can("requirement.version.create") && (

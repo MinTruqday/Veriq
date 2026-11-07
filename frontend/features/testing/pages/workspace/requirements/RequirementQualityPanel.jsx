@@ -2,7 +2,6 @@ import DataTable from "../../../components/DataTable";
 import { Panel } from "../../../components/WorkspacePrimitives";
 import { valueLabel } from "../../../lib/testing";
 import { requirementFieldLabel, requirementSuggestionPreview } from "./requirements.model";
-import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
 function severityLabel(severity) {
   return (
@@ -17,7 +16,7 @@ function severityLabel(severity) {
 export default function RequirementQualityPanel({ lint, loading = false, onOpenClarifications }) {
   if (!lint) {
     return (
-      <Panel title="Kết quả kiểm tra AI">
+      <Panel title="Gợi ý hoàn thiện Requirement">
         <p className="px-5 py-4 text-sm text-ink-muted" role="status" aria-live="polite">
           {loading
             ? "Đang tải kết quả đã lưu…"
@@ -27,15 +26,7 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
     );
   }
   return (
-    <Panel
-      title={
-        lint.degraded_mode
-          ? "Kiểm tra AI chưa hoàn tất"
-          : lint.valid
-            ? "AI không phát hiện lỗi chặn"
-            : "AI phát hiện vấn đề"
-      }
-    >
+    <Panel title="Gợi ý hoàn thiện Requirement">
       {lint.is_stale && (
         <p className="px-5 pt-4 text-sm text-warning" role="status">
           Kết quả này thuộc phiên bản hoặc lần sửa trước. Hãy chạy kiểm tra AI lại nếu nội dung đã
@@ -44,69 +35,82 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
       )}
       <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-quiet px-3 py-2">
         <p className="text-sm text-ink-muted">
-          Đây là gợi ý, AI không tự sửa hoặc gửi rà soát. Cảnh báo nhẹ không chặn chấp nhận; lỗi
-          nghiêm trọng cần được đưa vào Phiếu làm rõ và xử lý trước khi chấp nhận Requirement.
+          AI chỉ đưa ra nhận xét và đề xuất bổ sung; không tự sửa, không đánh dấu Requirement là lỗi
+          và không gửi rà soát. Việc chấp nhận do người có quyền thực hiện.
         </p>
-        {onOpenClarifications && (
-          <button
-            className="secondary-button shrink-0"
-            type="button"
-            onClick={onOpenClarifications}
-          >
-            Mở Phiếu làm rõ
-          </button>
-        )}
       </div>
       {lint.artifact_revision && (
         <p className="px-5 pt-3 text-sm text-ink-muted">
           Kết quả kiểm tra cho lần cập nhật {lint.artifact_revision}
         </p>
       )}
-      {lint.findings?.length > 0 ? (
-        <DataTable
-          items={lint.findings}
-          columns={[
-            {
-              key: "origin",
-              label: "Nguồn",
-              render: (item) => (
-                <ContentOriginBadge origin={item.origin === "AI" ? "ai" : "rule"} />
-              ),
-            },
-            { key: "severity", label: "Mức độ", render: (item) => severityLabel(item.severity) },
-            { key: "message", label: "Nội dung" },
-            { key: "suggestion", label: "Đề xuất" },
-            {
-              key: "evidence_quotes",
-              label: "Dẫn chứng",
-              render: (item) =>
-                item.evidence_quotes?.length ? (
-                  <ul className="space-y-2">
-                    {item.evidence_quotes.map((quote, index) => (
-                      <li key={`${quote.evidence_ref}-${index}`}>
-                        <blockquote className="whitespace-pre-wrap border-l-2 border-line pl-2 text-sm text-ink">
-                          {quote.quote}
-                        </blockquote>
-                        <span className="mt-1 block text-xs text-ink-muted">
-                          Phiên bản nguồn: {quote.evidence_ref}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  (item.evidence_refs || []).join(", ") || "Không có dẫn chứng nguồn"
-                ),
-            },
-          ]}
-        />
-      ) : (
+      {lint.findings?.some((item) => item.origin !== "AI") && (
+        <div className="mt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-ink">Kiểm tra điều kiện dữ liệu</h3>
+              <p className="mt-1 text-sm text-ink-muted">
+                Các điều kiện bắt buộc được hệ thống kiểm tra riêng khi gửi rà soát hoặc chấp nhận.
+              </p>
+            </div>
+            {onOpenClarifications && (
+              <button
+                className="secondary-button shrink-0"
+                type="button"
+                onClick={onOpenClarifications}
+              >
+                Mở Phiếu làm rõ
+              </button>
+            )}
+          </div>
+          <DataTable
+            items={lint.findings.filter((item) => item.origin !== "AI")}
+            columns={[
+              { key: "severity", label: "Mức độ", render: (item) => severityLabel(item.severity) },
+              { key: "message", label: "Điều kiện" },
+              { key: "suggestion", label: "Cách hoàn thiện" },
+            ]}
+          />
+        </div>
+      )}
+      {lint.findings?.some((item) => item.origin === "AI") && (
+        <div className="mt-4">
+          <h3 className="px-5 pb-2 text-sm font-semibold text-ink">Nhận xét tham khảo từ AI</h3>
+          <DataTable
+            items={lint.findings.filter((item) => item.origin === "AI")}
+            columns={[
+              { key: "message", label: "Nhận xét" },
+              { key: "suggestion", label: "Đề xuất bổ sung" },
+              {
+                key: "evidence_quotes",
+                label: "Dẫn chứng",
+                render: (item) =>
+                  item.evidence_quotes?.length ? (
+                    <ul className="space-y-2">
+                      {item.evidence_quotes.map((quote, index) => (
+                        <li key={`${quote.evidence_ref}-${index}`}>
+                          <blockquote className="whitespace-pre-wrap border-l-2 border-line pl-2 text-sm text-ink">
+                            {quote.quote}
+                          </blockquote>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    (item.evidence_refs || []).join(", ") || "Không có dẫn chứng nguồn"
+                  ),
+              },
+            ]}
+          />
+        </div>
+      )}
+      {!lint.findings?.length && (
         <p className="px-5 py-3 text-sm text-ink-muted" role="status">
-          Không có vấn đề cần xử lý.
+          Chưa có đề xuất bổ sung cho phiên bản này.
         </p>
       )}
       {lint.degraded_mode && (
         <p className="mt-3 text-sm text-warning">
-          Mô hình AI chưa sẵn sàng nên kết quả hiện chỉ gồm kiểm tra bằng quy tắc
+          Mô hình AI chưa sẵn sàng; hiện chỉ có các điều kiện dữ liệu được hệ thống kiểm tra.
         </p>
       )}
       {lint.suggestions?.length > 0 && (
@@ -116,7 +120,7 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
             columns={[
               {
                 key: "suggestion",
-                label: "Bản vá đề xuất",
+                label: "Đề xuất bổ sung",
                 render: (item) => (
                   <dl className="space-y-2">
                     {requirementSuggestionPreview(item).map(([label, value]) => (

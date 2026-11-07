@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import re
+import unicodedata
 import zipfile
 
 from defusedxml import ElementTree
@@ -25,6 +26,59 @@ TABLE_ACCEPTANCE_CRITERION_LINE = re.compile(
 MARKDOWN_TABLE_SEPARATOR = re.compile(
     r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$"
 )
+REQUIREMENT_TABLE_FIELDS = {
+    "requirement_key": {
+        "key",
+        "id",
+        "requirement id",
+        "requirement key",
+        "ma",
+        "ma yeu cau",
+        "ma requirement",
+    },
+    "title": {
+        "title",
+        "name",
+        "requirement",
+        "requirement name",
+        "ten",
+        "ten yeu cau",
+        "tieu de",
+    },
+    "content": {
+        "description",
+        "content",
+        "details",
+        "mo ta",
+        "noi dung",
+        "chi tiet",
+    },
+    "acceptance_criteria": {
+        "acceptance criteria",
+        "acceptance criterion",
+        "criteria",
+        "tieu chi",
+        "tieu chi chap nhan",
+        "dieu kien chap nhan",
+    },
+    "dependencies": {
+        "dependency",
+        "dependencies",
+        "related requirement",
+        "related requirements",
+        "yeu cau lien quan",
+        "phu thuoc",
+    },
+    "type": {"type", "loai", "loai yeu cau"},
+    "priority": {"priority", "uu tien", "muc uu tien"},
+    "risk": {"risk", "rui ro", "muc do rui ro"},
+    "actors": {"actor", "actors", "tac nhan", "nguoi dung"},
+    "business_rules": {"business rule", "business rules", "quy tac nghiep vu"},
+    "tags": {"tag", "tags", "the"},
+}
+REQUIREMENT_TABLE_FIELD_BY_LABEL = {
+    label: field for field, labels in REQUIREMENT_TABLE_FIELDS.items() for label in labels
+}
 
 
 def is_labeled_acceptance_criterion_line(line):
@@ -205,6 +259,211 @@ def parse_requirement_import(content, format):
     ]
 
 
+def _normalized_requirement_table_label(value):
+    value = unicodedata.normalize("NFKD", str(value or "").casefold())
+    value = "".join(character for character in value if not unicodedata.combining(character))
+    value = value.replace("đ", "d")
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+
+
+def _requirement_table_field(value):
+    return REQUIREMENT_TABLE_FIELD_BY_LABEL.get(
+        _normalized_requirement_table_label(value)
+    )
+
+
+def _markdown_table_cells(line):
+    value = line.strip()
+    if not value.startswith("|"):
+        return []
+    if value.endswith("|"):
+        value = value[1:-1]
+    else:
+        value = value[1:]
+    cells = []
+    current = []
+    escaped = False
+    for character in value:
+        if character == "|" and not escaped:
+            cells.append("".join(current).replace("\\|", "|").replace("<br>", "\n").strip())
+            current = []
+        else:
+            current.append(character)
+        escaped = character == "\\" and not escaped
+        if character != "\\":
+            escaped = False
+    cells.append("".join(current).replace("\\|", "|").replace("<br>", "\n").strip())
+    return cells
+
+
+def _requirement_table_list(value):
+    return [
+        item.strip(" \t\r\n-•")
+        for item in re.split(r"[,;\n、]+", str(value or ""))
+        if item.strip(" \t\r\n-•")
+    ]
+
+
+def _requirement_table_enum(field, value):
+    normalized = _normalized_requirement_table_label(value)
+    allowed = {
+        "type": {
+            "functional": "functional",
+            "chuc nang": "functional",
+            "non functional": "non_functional",
+            "phi chuc nang": "non_functional",
+            "business rule": "business_rule",
+            "quy tac nghiep vu": "business_rule",
+            "api": "api",
+            "ui": "ui",
+            "giao dien": "ui",
+            "data": "data",
+            "du lieu": "data",
+            "permission": "permission",
+            "phan quyen": "permission",
+            "integration": "integration",
+            "tich hop": "integration",
+            "constraint": "constraint",
+            "rang buoc": "constraint",
+        },
+        "priority": {
+            "critical": "critical",
+            "nghiem trong": "critical",
+            "high": "high",
+            "cao": "high",
+            "medium": "medium",
+            "trung binh": "medium",
+            "low": "low",
+            "thap": "low",
+        },
+        "risk": {
+            "critical": "critical",
+            "nghiem trong": "critical",
+            "high": "high",
+            "cao": "high",
+            "medium": "medium",
+            "trung binh": "medium",
+            "low": "low",
+            "thap": "low",
+        },
+    }
+    return allowed.get(field, {}).get(normalized)
+
+
+def _build_requirement_table_candidate(document, text, source_start, source_end, values):
+    title = str(values.get("title") or "").strip()
+    if len(title) < 2:
+        return None
+    source_quote = text[source_start:source_end].strip()
+    source_start = text.find(source_quote, source_start, source_end)
+    if source_start < 0:
+        return None
+    source_end = source_start + len(source_quote)
+    source_ref = {
+        "requirement_document_id": document["_id"],
+        "content_hash": document["content_hash"],
+        "source_version": document.get("source_version"),
+        "source_start": source_start,
+        "source_end": source_end,
+        "source_text_hash": hashlib.sha256(source_quote.encode("utf-8")).hexdigest(),
+        "source_quote": source_quote,
+        "section": "requirement_table_row",
+        "format": document["format"],
+    }
+    description = str(values.get("content") or title).strip()
+    candidate = {
+        "requirement_key": str(values.get("requirement_key") or "").strip() or None,
+        "title": title[:300],
+        "type": _requirement_table_enum("type", values.get("type")) or "functional",
+        "priority": _requirement_table_enum("priority", values.get("priority")) or "medium",
+        "risk": _requirement_table_enum("risk", values.get("risk")) or "medium",
+        "content_doc": text_doc(description),
+        "acceptance_criteria": [],
+        "business_rules": _requirement_table_list(values.get("business_rules")),
+        "actors": _requirement_table_list(values.get("actors")),
+        "dependencies": _requirement_table_list(values.get("dependencies")),
+        "tags": _requirement_table_list(values.get("tags")),
+        "source_refs": [source_ref],
+    }
+    for index, criterion in enumerate(
+        _requirement_table_list(values.get("acceptance_criteria")), 1
+    ):
+        candidate["acceptance_criteria"].append(
+            {
+                "key": f"AC-{index}",
+                "content_doc": text_doc(criterion),
+                "source_span": source_ref,
+            }
+        )
+    return candidate
+
+
+def _requirements_from_markdown_table(document, text, table_rows):
+    parsed_rows = []
+    for line_start, line_end, line in table_rows:
+        if MARKDOWN_TABLE_SEPARATOR.match(line.strip()):
+            continue
+        cells = _markdown_table_cells(line)
+        if cells:
+            parsed_rows.append((line_start, line_end, cells))
+    if not parsed_rows:
+        return []
+
+    header_fields = [_requirement_table_field(value) for value in parsed_rows[0][2]]
+    if "title" in header_fields and any(field for field in header_fields if field != "title"):
+        candidates = []
+        for line_start, line_end, cells in parsed_rows[1:]:
+            if len(cells) == len(header_fields) and all(
+                _requirement_table_field(cell) == field
+                for cell, field in zip(cells, header_fields)
+            ):
+                continue
+            values = {
+                field: cells[index]
+                for index, field in enumerate(header_fields)
+                if field and index < len(cells) and cells[index]
+            }
+            candidate = _build_requirement_table_candidate(
+                document, text, line_start, line_end, values
+            )
+            if candidate:
+                candidates.append(candidate)
+        if candidates:
+            return candidates
+
+    values = {}
+    candidate_ranges = []
+    first_data_line = None
+    last_data_line = None
+    for line_start, line_end, cells in parsed_rows:
+        if len(cells) < 2:
+            continue
+        field = _requirement_table_field(cells[0])
+        if field == "title" and values.get("title"):
+            candidate_ranges.append((first_data_line, last_data_line, values))
+            values = {}
+            first_data_line = None
+            last_data_line = None
+        if field:
+            values[field] = cells[1]
+            first_data_line = line_start if first_data_line is None else first_data_line
+            last_data_line = line_end
+            continue
+        inferred_field = _requirement_table_field(cells[1])
+        if not values.get("title") and inferred_field == "title":
+            values["title"] = cells[0]
+            first_data_line = line_start
+            last_data_line = line_end
+    if values.get("title") and first_data_line is not None and last_data_line is not None:
+        candidate_ranges.append((first_data_line, last_data_line, values))
+    return [
+        candidate
+        for start, end, table_values in candidate_ranges
+        if start is not None and end is not None
+        if (candidate := _build_requirement_table_candidate(document, text, start, end, table_values))
+    ]
+
+
 def atomic_requirement_candidates(document):
     content = document["normalized_content"]
     if document["format"] in set(['csv', 'xlsx', 'openapi', 'postman']):
@@ -230,6 +489,7 @@ def atomic_requirement_candidates(document):
     sections = []
     paragraph_start = None
     paragraph_end = 0
+    lines = text.splitlines(keepends=True)
 
     def add_paragraph(start, end):
         raw = text[start:end].strip()
@@ -285,10 +545,35 @@ def atomic_requirement_candidates(document):
             raise HTTPException(status_code=413, detail={"code": "IMPORT_CANDIDATE_LIMIT_EXCEEDED"})
 
     position = 0
-    for line in text.splitlines(keepends=True):
+    line_index = 0
+    while line_index < len(lines):
+        line = lines[line_index]
         line_start = position
         position += len(line)
         stripped = line.strip()
+        if stripped.startswith("|"):
+            if paragraph_start is not None:
+                add_paragraph(paragraph_start, paragraph_end)
+                paragraph_start = None
+            table_rows = [(line_start, position, stripped)]
+            line_index += 1
+            while line_index < len(lines) and lines[line_index].strip().startswith("|"):
+                table_line = lines[line_index]
+                table_start = position
+                position += len(table_line)
+                table_rows.append((table_start, position, table_line.strip()))
+                line_index += 1
+            table_candidates = _requirements_from_markdown_table(document, text, table_rows)
+            if table_candidates:
+                candidates.extend(table_candidates)
+                if len(candidates) > 500:
+                    raise HTTPException(
+                        status_code=413,
+                        detail={"code": "IMPORT_CANDIDATE_LIMIT_EXCEEDED"},
+                    )
+            else:
+                add_paragraph(table_rows[0][0], table_rows[-1][1])
+            continue
         heading = re.fullmatch(r"(#{1,6})\s+(.+)", stripped)
         if heading or not stripped:
             if paragraph_start is not None:
@@ -301,6 +586,7 @@ def atomic_requirement_candidates(document):
         if paragraph_start is None:
             paragraph_start = line_start
         paragraph_end = position
+        line_index += 1
     if paragraph_start is not None:
         add_paragraph(paragraph_start, paragraph_end)
     return candidates

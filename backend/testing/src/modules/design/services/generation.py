@@ -48,6 +48,28 @@ def validated_suggestions(result, schema, *, allow_empty=False):
         ) from error
 
 
+def remove_duplicate_generated_cases(drafts, suggestions, threshold=0.92):
+    kept_drafts = []
+    kept_suggestions = []
+    removed = 0
+    for draft, suggestion in zip(drafts, suggestions):
+        duplicate = any(
+            draft.type == kept_draft.type
+            and set(draft.acceptance_criterion_ids) == set(kept_draft.acceptance_criterion_ids)
+            and set(draft.techniques) == set(kept_draft.techniques)
+            and set(suggestion.challenge_techniques) == set(kept_suggestion.challenge_techniques)
+            and duplicate_score(draft.model_dump(), kept_draft.model_dump(), threshold)[0]
+            >= threshold
+            for kept_draft, kept_suggestion in zip(kept_drafts, kept_suggestions)
+        )
+        if duplicate:
+            removed += 1
+            continue
+        kept_drafts.append(draft)
+        kept_suggestions.append(suggestion)
+    return kept_drafts, kept_suggestions, removed
+
+
 async def generate_requirement_drafts(
     version, criteria, payload, scenario=False, acceptance_criteria_snapshot_ids=None
 ):
@@ -358,6 +380,16 @@ async def generate_requirement_drafts(
             502,
             detail={"code": 'AI_GENERATION_INVALID', "message": "AI chưa tạo được bản nháp hợp lệ", "retryable": True},
         ) from error
+    if not scenario:
+        drafts, generated, removed_duplicates = remove_duplicate_generated_cases(
+            drafts, generated
+        )
+        result["suggestions"] = [item.model_dump() for item in generated]
+        if removed_duplicates:
+            result["warnings"] = list(dict.fromkeys([
+                *(result.get("warnings") or []),
+                f"Đã loại {removed_duplicates} ca kiểm thử trùng khỏi bản xem trước.",
+            ]))
     requested_categories = Counter({category: payload.count_per_category for category in categories})
     generated_categories = Counter(item.category for item in generated)
     result["unapplied_categories"] = [category for category, requested_count in requested_categories.items() if generated_categories[category] < requested_count]
