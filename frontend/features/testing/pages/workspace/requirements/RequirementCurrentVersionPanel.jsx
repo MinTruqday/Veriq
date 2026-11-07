@@ -87,6 +87,44 @@ export default function RequirementCurrentVersionPanel({
               {checkingWithAi ? "Đang kiểm tra…" : "Kiểm tra AI"}
             </button>
           )}
+          {current.status === "IN_REVIEW" &&
+            can("requirement.review") &&
+            current.technical_review_revision !== current.revision && (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() =>
+                  ask({
+                    title: "Ghi nhận rà soát Requirement",
+                    description:
+                      "Ghi nhận kết quả rà soát cho phiên bản này. Đây là bước riêng; thao tác này chưa chốt Requirement làm chuẩn.",
+                    confirmLabel: "Ghi nhận rà soát",
+                    fields: [
+                      {
+                        name: "review_note",
+                        label: "Ghi chú rà soát",
+                        initialValue: "",
+                        multiline: true,
+                        autoFocus: true,
+                      },
+                    ],
+                    onConfirm: async (answer) => {
+                      try {
+                        await testingApi.reviewRequirementTechnically(current._id, {
+                          expected_revision: current.revision,
+                          review_note: answer.review_note.trim(),
+                        });
+                        await reload();
+                      } catch (value) {
+                        throw new Error(messageOf(value));
+                      }
+                    },
+                  })
+                }
+              >
+                Ghi nhận rà soát
+              </button>
+            )}
           {current.status === "IN_REVIEW" && can("requirement.review") && (
             <button
               className="secondary-button"
@@ -329,6 +367,10 @@ export default function RequirementCurrentVersionPanel({
           <div className="mt-2">
             <StatusPill value={current.status} />
           </div>
+          {current.status === "IN_REVIEW" &&
+            current.technical_review_revision === current.revision && (
+              <p className="mt-2 text-sm text-ink-muted">Đã ghi nhận rà soát cho phiên bản này</p>
+            )}
           {current.status === "IN_REVIEW" && (
             <p className="mt-2 max-w-prose text-sm text-ink-muted">
               Requirement đang chờ rà soát. Cảnh báo nhẹ có thể chấp nhận; lỗi chặn cần được đưa vào
