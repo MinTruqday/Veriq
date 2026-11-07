@@ -11,6 +11,7 @@ import {
   useActionDialog,
 } from "./WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
+import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 
 export default function PlatformUsersPanel() {
@@ -559,30 +560,16 @@ export default function PlatformUsersPanel() {
             </details>
           </Panel>
 
-          <nav
-            aria-label="Thông tin tài khoản"
-            className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-surface-quiet p-1"
-          >
-            {[
-              ["sessions", "Phiên đăng nhập"],
-              ["memberships", "Thành viên dự án"],
-              ["audit", "Nhật ký bảo mật"],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={detailSection === id}
-                className={`min-h-10 shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
-                  detailSection === id
-                    ? "bg-surface text-ink shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-                onClick={() => setDetailSection(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+          <SegmentedTabs
+            label="Thông tin tài khoản"
+            value={detailSection}
+            onChange={setDetailSection}
+            tabs={[
+              { id: "sessions", label: "Phiên đăng nhập" },
+              { id: "memberships", label: "Thành viên dự án" },
+              { id: "audit", label: "Nhật ký bảo mật" },
+            ]}
+          />
 
           {detailSection === "sessions" && (
             <Panel title="Phiên đăng nhập">

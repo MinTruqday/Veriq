@@ -164,12 +164,17 @@ function memberDisplayName(member) {
   );
 }
 
-function analyticsValue(value, suffix = "") {
-  if (value === null || value === undefined || value === "") return "Chưa có dữ liệu";
+function analyticsValue(value, suffix = "", sampleCount) {
+  if (value === null || value === undefined || value === "" || sampleCount === 0)
+    return "Chưa có dữ liệu";
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return "Chưa có dữ liệu";
-  const formattedValue = suffix === "ms" ? String(Math.round(numericValue)) : String(numericValue);
-  return suffix ? `${formattedValue} ${suffix}` : formattedValue;
+  if (suffix === "ms") {
+    if (numericValue >= 1000)
+      return `${(numericValue / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} giây`;
+    return `${Math.round(numericValue)} ms`;
+  }
+  return suffix ? `${numericValue} ${suffix}` : String(numericValue);
 }
 
 const projectTypeLabels = {
@@ -1269,7 +1274,11 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                     </div>
                     <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
                       <p className="text-2xl font-semibold text-ink">
-                        {analyticsValue(analytics?.average_latency_ms, "ms")}
+                        {analyticsValue(
+                          analytics?.average_latency_ms,
+                          "ms",
+                          analytics?.impact_analysis_count,
+                        )}
                       </p>
                       <p className="mt-2 text-sm text-ink-muted">
                         Thời gian phản hồi trung bình của phân tích ảnh hưởng

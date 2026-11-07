@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Children, isValidElement } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { load as loadYaml } from "js-yaml";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { ErrorState, LoadingState, Panel } from "../../components/WorkspacePrimitives";
 import { messageOf } from "../../lib/testing";
 import { projectRoute } from "../../routes";
 import { testingApi } from "../../services/testing.service";
 import HorizontalScrollCue from "@/shared/components/navigation/HorizontalScrollCue";
-import { preferredSummaryLocale, summaryLanguageOptions } from "../../lib/summaryLanguage";
+import { preferredSummaryLocale } from "../../lib/summaryLanguage";
 
 function ReadableMarkdownTable({ children }) {
   const header = Children.toArray(children).find(
@@ -43,6 +44,154 @@ function ReadableMarkdownTable({ children }) {
 }
 
 const markdownComponents = { table: ReadableMarkdownTable };
+
+const apiMethods = ["get", "post", "put", "patch", "delete", "options", "head", "trace"];
+
+function collectPostmanOperations(items, folders = []) {
+  const operations = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    if (item?.request) {
+      const request = item.request;
+      const url = request.url;
+      const path =
+        typeof url === "string"
+          ? url
+          : url?.raw || (Array.isArray(url?.path) ? `/${url.path.join("/")}` : "Chưa có đường dẫn");
+      operations.push({
+        method: String(request.method || "GET").toUpperCase(),
+        path,
+        name: item.name || "Yêu cầu API",
+        description:
+          typeof request.description === "string"
+            ? request.description
+            : request.description?.content,
+        folder: folders.join(" / "),
+        source: request,
+      });
+    } else if (Array.isArray(item?.item)) {
+      operations.push(
+        ...collectPostmanOperations(item.item, [...folders, item.name].filter(Boolean)),
+      );
+    }
+  }
+  return operations;
+}
+
+function collectApiOperations(format, specification) {
+  if (format === "postman") return collectPostmanOperations(specification?.item);
+  const paths = specification?.paths;
+  if (!paths || typeof paths !== "object") return [];
+  return Object.entries(paths).flatMap(([path, methods]) =>
+    Object.entries(methods || {})
+      .filter(([method, operation]) => apiMethods.includes(method.toLowerCase()) && operation)
+      .map(([method, operation]) => ({
+        method: method.toUpperCase(),
+        path,
+        name: operation.summary || operation.operationId || "Thao tác API",
+        description: operation.description,
+        folder: Array.isArray(operation.tags) ? operation.tags.join(" / ") : "",
+        source: operation,
+      })),
+  );
+}
+
+function ApiSpecificationView({ format, content, query }) {
+  const specification = useMemo(() => {
+    try {
+      return JSON.parse(content);
+    } catch {
+      if (format !== "openapi") return null;
+      try {
+        return loadYaml(content);
+      } catch {
+        return null;
+      }
+    }
+  }, [content, format]);
+  const operations = useMemo(
+    () => (specification ? collectApiOperations(format, specification) : []),
+    [format, specification],
+  );
+  if (!specification || !operations.length)
+    return (
+      <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+        {content}
+      </ReactMarkdown>
+    );
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleOperations = normalizedQuery
+    ? operations.filter((operation) =>
+        [operation.method, operation.path, operation.name, operation.description, operation.folder]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(normalizedQuery),
+      )
+    : operations;
+  const info = specification.info || {};
+  const title = info.name || info.title || specification.name || "Đặc tả API";
+  const version = info.version || "";
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-control border border-border bg-surface-quiet p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-base font-semibold text-ink">{title}</h2>
+          {version && <span className="text-sm text-ink-muted">Phiên bản {version}</span>}
+        </div>
+        {(info.description || specification.description) && (
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink-muted">
+            {info.description || specification.description}
+          </p>
+        )}
+        <p className="mt-2 text-sm text-ink-muted">
+          {visibleOperations.length} / {operations.length} thao tác API
+        </p>
+      </section>
+      {visibleOperations.length ? (
+        <div className="space-y-3">
+          {visibleOperations.map((operation, index) => (
+            <details
+              className="rounded-control border border-border bg-surface p-4"
+              key={`${operation.method}-${operation.path}-${index}`}
+            >
+              <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="rounded-control border border-border px-2 py-1 text-xs font-semibold">
+                  {operation.method}
+                </span>
+                <code className="min-w-0 break-all text-sm font-medium text-ink">
+                  {operation.path}
+                </code>
+                <span className="min-w-0 flex-1 text-sm text-ink-muted">{operation.name}</span>
+              </summary>
+              {operation.folder && (
+                <p className="mt-3 text-xs text-ink-muted">{operation.folder}</p>
+              )}
+              {operation.description && (
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                  {operation.description}
+                </p>
+              )}
+              <pre className="mt-3 max-h-96 overflow-auto rounded-control border border-border bg-surface-quiet p-3 text-xs leading-5">
+                {JSON.stringify(operation.source, null, 2)}
+              </pre>
+            </details>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-control border border-border p-4 text-sm text-ink-muted">
+          Không có thao tác API khớp nội dung tìm kiếm.
+        </p>
+      )}
+      <details className="rounded-control border border-border p-4">
+        <summary className="cursor-pointer text-sm font-medium">Đặc tả gốc</summary>
+        <pre className="mt-3 max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-control border border-border bg-surface-quiet p-3 text-xs leading-5">
+          {JSON.stringify(specification, null, 2)}
+        </pre>
+      </details>
+    </div>
+  );
+}
 
 export default function DocumentReaderPage({ project, section = [] }) {
   const { user } = useAuth();
@@ -76,12 +225,11 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const [searchResults, setSearchResults] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const [language, setLanguage] = useState(preferredSummaryLocale(user?.locale, project?.locale));
-
-  useEffect(() => {
-    const locale = user?.locale || project?.locale;
-    setLanguage(preferredSummaryLocale(locale, navigator.language));
-  }, [project?.locale, user?.locale]);
+  const outputLanguage = preferredSummaryLocale(
+    user?.locale,
+    project?.locale,
+    typeof navigator !== "undefined" ? navigator.language : undefined,
+  );
 
   const loadPage = useCallback(
     async (offset = 0, append = false, sheet = "", pageNo = null) => {
@@ -103,7 +251,9 @@ export default function DocumentReaderPage({ project, section = [] }) {
         );
         if (requestSequence !== pageRequestSequenceRef.current) return;
         setDocument(result);
-        setSourceBlocks(result.blocks || []);
+        setSourceBlocks((current) =>
+          append ? [...current, ...(result.blocks || [])] : result.blocks || [],
+        );
         setSheets(result.sheets || []);
         if (result.sheet) setSelectedSheet(result.sheet);
         setSelectedPage(result.page_no ? String(result.page_no) : "");
@@ -278,7 +428,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
       document?.source_version || "1",
       document?.revision || "",
       document?.content_hash || "",
-      language,
+      outputLanguage,
     ].join(":");
     if (summaryIdempotencyRef.current.scope !== scope) {
       summaryIdempotencyRef.current = {
@@ -292,7 +442,7 @@ export default function DocumentReaderPage({ project, section = [] }) {
       const started = await testingApi.summarizeRequirementDocuments(project._id, {
         document_ids: [documentId],
         all_readable: false,
-        output_language: language,
+        output_language: outputLanguage,
         idempotency_key: summaryIdempotencyRef.current.key,
       });
       if (requestSequence !== summaryRequestSequenceRef.current) return;
@@ -454,20 +604,6 @@ export default function DocumentReaderPage({ project, section = [] }) {
         <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
           {canSummarize && (
             <>
-              <select
-                className="apple-input w-auto"
-                aria-label="Ngôn ngữ tóm tắt"
-                value={language}
-                onChange={(event) => setLanguage(event.target.value)}
-              >
-                {summaryLanguageOptions(user?.locale || project?.locale || language).map(
-                  (option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ),
-                )}
-              </select>
               <button
                 className="apple-button"
                 type="button"
@@ -723,9 +859,13 @@ export default function DocumentReaderPage({ project, section = [] }) {
           <div className="max-h-[72vh] overflow-auto overscroll-contain">
             <article className="prose prose-sm max-w-none break-words">
               {content.trim() ? (
-                <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
-                  {content}
-                </ReactMarkdown>
+                ["openapi", "postman"].includes(document?.format) ? (
+                  <ApiSpecificationView format={document.format} content={content} query={query} />
+                ) : (
+                  <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+                    {content}
+                  </ReactMarkdown>
+                )
               ) : (
                 <p className="py-3 text-sm text-ink-muted" role="status">
                   {sourceBlocks.some((block) => block.image_metadata)

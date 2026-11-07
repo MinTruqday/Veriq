@@ -21,6 +21,7 @@ from src.schemas.automation import (
     AutomationWorkflowSnapshot,
 )
 from src.services.automation import automation_service
+from src.services.agent_evidence import verified_tool_evidence
 from src.services.project_access import project_access
 
 router = APIRouter(prefix="/tu-dong-hoa-ai", tags=["AI Automation"])
@@ -306,9 +307,13 @@ async def get_automation_evidence(
     token: str = Depends(oauth2_scheme),
     user: CurrentUser = Depends(get_current_user),
 ):
-    await _readable_run(automation_run_id, token, user)
+    run = await _readable_run(automation_run_id, token, user)
+    evidence_checkpoint = await automation_repository.latest_checkpoint_with_evidence(
+        automation_run_id
+    )
     return {
         "source_facts": await automation_repository.list_source_facts(automation_run_id),
+        "tool_evidence": verified_tool_evidence(run, evidence_checkpoint),
         "receipt": await automation_repository.get_receipt(automation_run_id),
     }
 

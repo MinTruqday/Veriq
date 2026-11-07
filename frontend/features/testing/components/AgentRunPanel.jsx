@@ -164,6 +164,8 @@ export default function AgentRunPanel({
   showPanelHeading = true,
   contextContent = null,
   onRunsStateChange,
+  targetArtifactIds = [],
+  targetArtifactLabels = {},
 }) {
   const { user } = useAuth();
   const currentUserId = project.current_membership?.user_id;
@@ -179,6 +181,7 @@ export default function AgentRunPanel({
   const [checkpoints, setCheckpoints] = useState([]);
   const [receipt, setReceipt] = useState(null);
   const [sourceFacts, setSourceFacts] = useState([]);
+  const [toolEvidence, setToolEvidence] = useState([]);
   const [clarificationAnswers, setClarificationAnswers] = useState({});
   const [submittingClarification, setSubmittingClarification] = useState("");
   const [busy, setBusy] = useState(false);
@@ -192,6 +195,7 @@ export default function AgentRunPanel({
   const [startingAgent, setStartingAgent] = useState(false);
   const [agentStartError, setAgentStartError] = useState("");
   const agentIdempotencyKey = useRef("");
+  const agentIdempotencyFingerprint = useRef("");
   const detailRequestVersion = useRef(0);
   const runListRequestVersion = useRef(0);
   const selectedRunIdRef = useRef(null);
@@ -215,6 +219,7 @@ export default function AgentRunPanel({
     setCheckpoints([]);
     setReceipt(null);
     setSourceFacts([]);
+    setToolEvidence([]);
     setClarificationAnswers({});
     setSubmittingClarification("");
     Promise.allSettled([
@@ -328,6 +333,7 @@ export default function AgentRunPanel({
       if (requestVersion !== detailRequestVersion.current) return;
       setReceipt(evidence.receipt || detail.receipt || null);
       setSourceFacts(evidence.source_facts || []);
+      setToolEvidence(evidence.tool_evidence || []);
     } catch (reason) {
       if (requestVersion === detailRequestVersion.current) {
         setDetailRefreshError(messageOf(reason));
@@ -377,8 +383,10 @@ export default function AgentRunPanel({
         setReceipt(evidence?.receipt || detail.receipt || null);
         if (evidence) {
           setSourceFacts(evidence.source_facts || []);
+          setToolEvidence(evidence.tool_evidence || []);
         } else if (evidenceError) {
           setSourceFacts([]);
+          setToolEvidence([]);
         }
         if (!activeStatuses.has(detail.run.status) && !(detail.workflow?.active_count > 0)) {
           try {
@@ -533,10 +541,12 @@ export default function AgentRunPanel({
         .map((reference) => [reference, fact]),
     ),
   );
+  const toolEvidenceById = new Map(toolEvidence.map((item) => [item.evidence_ref, item]));
   const proposalEvidenceReferences = [];
   const evidenceNumbersByIdentity = new Map();
   (proposal?.evidence_refs || []).forEach((reference) => {
     const fact = sourceFactsById.get(reference) || null;
+    const toolResult = toolEvidenceById.get(reference) || null;
     const identity = fact?.source_fact_id || reference;
     let number = evidenceNumbersByIdentity.get(identity);
     if (!number) {
@@ -546,11 +556,13 @@ export default function AgentRunPanel({
         reference,
         number,
         fact,
+        toolResult,
         projectId: project._id,
       });
-    } else if (fact) {
+    } else if (fact || toolResult) {
       const existing = proposalEvidenceReferences[number - 1];
       if (!existing.fact) existing.fact = fact;
+      if (!existing.toolResult) existing.toolResult = toolResult;
     }
   });
   const proposalEvidenceFactIds = new Set(
@@ -584,19 +596,25 @@ export default function AgentRunPanel({
     setStartingAgent(true);
     setAgentStartError("");
     try {
-      if (!agentIdempotencyKey.current) {
+      const requestFingerprint = JSON.stringify({
+        instruction,
+        targetArtifactIds,
+      });
+      if (agentIdempotencyFingerprint.current !== requestFingerprint) {
         agentIdempotencyKey.current = `agent-${crypto.randomUUID()}`;
+        agentIdempotencyFingerprint.current = requestFingerprint;
       }
       const started = await testingApi.createAgentRun({
         project_id: project._id,
         objective: instruction,
         intent: "",
-        target_artifact_ids: [],
+        target_artifact_ids: targetArtifactIds,
         evidence: [],
         output_language: preferredSummaryLocale(user?.locale, project.locale, navigator.language),
         idempotency_key: agentIdempotencyKey.current,
       });
       agentIdempotencyKey.current = "";
+      agentIdempotencyFingerprint.current = "";
       setAgentInstruction("");
       try {
         await refreshRuns();
@@ -647,6 +665,17 @@ export default function AgentRunPanel({
     >
       <div className={`grid gap-3 px-4 ${compact ? "py-3" : "pb-4 pt-3"}`}>
         {contextContent}
+        {!compact && !loading && !error && !canStartAgent && (
+          <section
+            className="grid gap-1 rounded-control border border-border bg-surface p-4"
+            role="status"
+          >
+            <h3 className="font-semibold text-ink">Chưa có thao tác AI khả dụng</h3>
+            <p className="text-sm text-ink-muted">
+              Hiện chưa có chức năng AI phù hợp với quyền truy cập của bạn trong dự án.
+            </p>
+          </section>
+        )}
         {!compact && canStartAgent && (
           <form
             className="grid gap-3 rounded-control border border-border p-4"
@@ -843,6 +872,28 @@ export default function AgentRunPanel({
                       )}
                     </div>
                   </details>
+                </section>
+              )}
+              {Array.isArray(run.target_artifact_ids) && (
+                <section
+                  aria-label="Phạm vi của lượt AI đang xem"
+                  className="grid gap-2 rounded-control border border-border bg-surface p-4"
+                >
+                  <h3 className="font-semibold text-ink">Phạm vi của lượt này</h3>
+                  {run.target_artifact_ids.length ? (
+                    <ul className="grid gap-1 text-ink-muted">
+                      {run.target_artifact_ids.map((artifactId, index) => (
+                        <li className="break-words" key={`${artifactId}-${index}`}>
+                          {targetArtifactLabels[artifactId] ||
+                            "Yêu cầu đã chọn khi bắt đầu lượt này"}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-ink-muted">
+                      Lượt này không giới hạn vào một yêu cầu cụ thể.
+                    </p>
+                  )}
                 </section>
               )}
               {sourceExtractionGaps.length > 0 && (
@@ -1087,6 +1138,8 @@ export default function AgentRunPanel({
                                   </Link>
                                 )}
                               </>
+                            ) : item.toolResult ? (
+                              <span>Kết quả đã kiểm tra từ {item.toolResult.tool_name}</span>
                             ) : (
                               <span className="text-warning">
                                 Chưa tải được trích dẫn để đối chiếu
@@ -1097,6 +1150,16 @@ export default function AgentRunPanel({
                             <blockquote className="break-words border-l-2 border-accent/40 pl-3 text-ink-muted">
                               {item.fact.quote}
                             </blockquote>
+                          )}
+                          {item.toolResult?.text && (
+                            <details className="rounded-control border border-border bg-surface-quiet p-3">
+                              <summary className="cursor-pointer font-medium text-ink">
+                                Mở kết quả đã kiểm tra
+                              </summary>
+                              <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs text-ink-muted">
+                                {item.toolResult.text}
+                              </pre>
+                            </details>
                           )}
                         </li>
                       ))}
@@ -1127,7 +1190,7 @@ export default function AgentRunPanel({
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <span className="font-medium text-ink">
-                                    {item.sequence !== null ? `${item.sequence}. ` : ""}
+                                    {item.sequence > 0 ? `${item.sequence}. ` : ""}
                                     {item.phase}
                                   </span>
                                   <StatusPill value={item.status} />

@@ -197,7 +197,22 @@ async def list_exports(report_id: str, user: CurrentUser = Depends(get_current_u
     values = await repository.list("report_exports", {"report_id": report_id}, 100)
     if user.id not in {report["owner_id"], report["reviewer_id"], *report.get("editor_ids", [])}:
         values = [value for value in values if value["_id"] in report.get("published_export_ids", [])]
-    return envelope([{key: value for key, value in item.items() if key not in {"file", "requester_email"}} for item in values])
+    from src.modules.execution.services.report_document import REPORT_RENDERER_VERSION
+
+    return envelope(
+        [
+            {
+                **{key: value for key, value in item.items() if key not in {"file", "requester_email"}},
+                "publishable": bool(
+                    report["status"] == "APPROVED"
+                    and item.get("status") == "READY"
+                    and item.get("revision") == report["revision"]
+                    and item.get("renderer_version") == REPORT_RENDERER_VERSION
+                ),
+            }
+            for item in values
+        ]
+    )
 
 
 @router.get("/ban-xuat-bao-cao/{export_id}/tai-xuong")

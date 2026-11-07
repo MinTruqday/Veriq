@@ -422,6 +422,25 @@ class AutomationRepository:
         value["checkpoint_id"] = str(value.pop("_id"))
         return AutomationCheckpoint.model_validate(value)
 
+    async def latest_checkpoint_with_evidence(
+        self, automation_run_id: str
+    ) -> AutomationCheckpoint | None:
+        value = await self._database.automation_checkpoints.find_one(
+            {
+                "automation_run_id": automation_run_id,
+                "state_snapshot.evidence.0": {"$exists": True},
+            },
+            sort=[
+                ("checkpoint_sequence", DESCENDING),
+                ("created_at", DESCENDING),
+                ("_id", DESCENDING),
+            ],
+        )
+        if not value:
+            return None
+        value["checkpoint_id"] = str(value.pop("_id"))
+        return AutomationCheckpoint.model_validate(value)
+
     async def save_checkpoint(
         self,
         checkpoint: AutomationCheckpoint,

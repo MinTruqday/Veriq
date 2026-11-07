@@ -15,6 +15,7 @@ import {
   StatusPill,
 } from "../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
+import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
@@ -151,33 +152,21 @@ export default function OperationsPage() {
   if (!isPlatformAdmin) return <LoadingState />;
   return (
     <WorkspacePage title="Vận hành nền tảng">
-      <nav
-        aria-label="Khu vực quản trị"
-        className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-surface-quiet p-1"
-      >
-        {[
-          ["overview", "Tổng quan"],
-          ["users", "Tài khoản"],
-          ["payroll", "Bảng lương"],
-          ["platform", "Cấu hình nền tảng"],
-          ["benchmark", "Đánh giá AI"],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={section === value}
-            className={`min-h-10 shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
-              section === value ? "bg-surface text-ink shadow-sm" : "text-ink-muted hover:text-ink"
-            }`}
-            onClick={() => {
-              setSection(value);
-              setError("");
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <SegmentedTabs
+        label="Khu vực quản trị"
+        value={section}
+        onChange={(value) => {
+          setSection(value);
+          setError("");
+        }}
+        tabs={[
+          { id: "overview", label: "Tổng quan" },
+          { id: "users", label: "Tài khoản" },
+          { id: "payroll", label: "Bảng lương" },
+          { id: "platform", label: "Cấu hình nền tảng" },
+          { id: "benchmark", label: "Đánh giá AI" },
+        ]}
+      />
       {error && <ErrorState message={error} />}
       {section === "users" ? (
         <PlatformUsersPanel />
@@ -201,32 +190,21 @@ export default function OperationsPage() {
         )
       ) : (
         <>
-          <nav
-            aria-label="Tổng quan vận hành"
-            className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-surface-quiet p-1"
-          >
-            {[
-              ["summary", "Tình trạng"],
-              ["issues", "Sự cố"],
-              ["storage", "Dung lượng"],
-              ["audit", "Nhật ký"],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                id={`operations-overview-tab-${id}`}
-                type="button"
-                aria-pressed={overviewSection === id}
-                className={`min-h-10 shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
-                  overviewSection === id
-                    ? "bg-surface text-ink shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-                onClick={() => setOverviewSection(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+          <SegmentedTabs
+            label="Tổng quan vận hành"
+            value={overviewSection}
+            onChange={setOverviewSection}
+            tabs={[
+              { id: "summary", elementId: "operations-overview-tab-summary", label: "Tình trạng" },
+              { id: "issues", elementId: "operations-overview-tab-issues", label: "Sự cố" },
+              {
+                id: "storage",
+                elementId: "operations-overview-tab-storage",
+                label: "Dung lượng",
+              },
+              { id: "audit", elementId: "operations-overview-tab-audit", label: "Nhật ký" },
+            ]}
+          />
           {overviewSection === "summary" ? (
             <section aria-label="Tình trạng vận hành" className="space-y-5">
               <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

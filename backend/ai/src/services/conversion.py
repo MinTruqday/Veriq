@@ -651,6 +651,8 @@ class ConversionService:
                 caption_text = getattr(item, "caption_text", None)
                 if callable(caption_text):
                     text = str(caption_text(document) or "").strip()
+            if label == "text" and not text:
+                continue
             provenance = getattr(item, "prov", None) or []
             page_no = getattr(provenance[0], "page_no", None) if provenance else None
             locations = []

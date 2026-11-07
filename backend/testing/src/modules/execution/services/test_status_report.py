@@ -378,7 +378,11 @@ async def generate_status_report_narrative(report_id, payload, user):
     ]
     instruction = json.dumps({"instruction": payload.instruction}, ensure_ascii=False)
     ai = await request_ai_automation(
-        "status_report_narrative", report["project_id"], instruction, evidence
+        "status_report_narrative",
+        report["project_id"],
+        instruction,
+        evidence,
+        output_language=payload.output_language,
     )
     if ai.get('status') != 'SUCCESS' or ai.get('degraded_mode'):
         raise HTTPException(502, detail={'code': 'STATUS_REPORT_AI_UNAVAILABLE'})

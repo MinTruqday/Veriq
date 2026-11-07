@@ -59,6 +59,7 @@
     "@tiptap/suggestion": "2.27.2",
     "clsx": "^2.1.1",
     "emojibase": "17.0.0",
+    "js-yaml": "4.3.1",
     "katex": "0.16.22",
     "lowlight": "3.3.0",
     "lucide-react": "^0.370.0",

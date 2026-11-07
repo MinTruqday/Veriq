@@ -5,6 +5,7 @@ import { platformApi } from "@/features/authentication/services/platform.service
 import { projectTestingApi } from "../services/testing.projects";
 import FilePicker from "./FilePicker";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
+import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { messageOf, statusLabel } from "../lib/testing";
 
 const columns = [
@@ -502,30 +503,16 @@ export default function PayrollImportPanel() {
   return (
     <div className="space-y-5">
       {error && <ErrorState message={error} />}
-      <nav
-        aria-label="Khu vực chi phí"
-        className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-surface-quiet p-1"
-      >
-        {[
-          ["rates", "Đơn giá nhân công"],
-          ["forecast", "Dự toán theo kế hoạch"],
-          ["capacity", "Công suất nhân sự"],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={payrollSection === id}
-            className={`min-h-10 shrink-0 rounded-lg px-4 text-[13px] font-semibold transition ${
-              payrollSection === id
-                ? "bg-surface text-ink shadow-sm"
-                : "text-ink-muted hover:text-ink"
-            }`}
-            onClick={() => setPayrollSection(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <SegmentedTabs
+        label="Khu vực chi phí"
+        value={payrollSection}
+        onChange={setPayrollSection}
+        tabs={[
+          { id: "rates", label: "Đơn giá nhân công" },
+          { id: "forecast", label: "Dự toán theo kế hoạch" },
+          { id: "capacity", label: "Công suất nhân sự" },
+        ]}
+      />
       {payrollSection === "forecast" && (
         <Panel title="Giá khách hàng và dự toán nhân công">
           {!projects.length ? (

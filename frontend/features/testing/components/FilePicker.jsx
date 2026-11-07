@@ -40,8 +40,13 @@ export default function FilePicker({
           ref={inputRef}
           type="file"
           onChange={(event) => {
-            setSelectedFileName(event.target.files?.[0]?.name || "");
-            onChange?.(event);
+            const input = event.currentTarget;
+            setSelectedFileName(input.files?.[0]?.name || "");
+            try {
+              onChange?.(event);
+            } finally {
+              input.value = "";
+            }
           }}
         />
         <label

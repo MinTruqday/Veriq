@@ -16,7 +16,7 @@ import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
 import { testingApi } from "../../../services/testing.service";
-import { preferredSummaryLocale, summaryLanguageOptions } from "../../../lib/summaryLanguage";
+import { preferredSummaryLocale } from "../../../lib/summaryLanguage";
 import {
   REQUIREMENT_SOURCE_APPROVAL_OPTIONS,
   REQUIREMENT_SOURCE_AUTHORITY_OPTIONS,
@@ -159,16 +159,8 @@ export default function RequirementSourceDocumentsPanel({
   const [summaryBusy, setSummaryBusy] = useState(false);
   const [summaryResult, setSummaryResult] = useState(null);
   const [summaryJob, setSummaryJob] = useState(null);
-  const [summaryLanguage, setSummaryLanguage] = useState(
-    preferredSummaryLocale(userLocale, projectLocale),
-  );
   const summaryIdempotencyRef = useRef({ scope: "", key: "" });
   const summaryRequestSequenceRef = useRef(0);
-
-  useEffect(() => {
-    const locale = userLocale || projectLocale;
-    setSummaryLanguage(preferredSummaryLocale(locale, navigator.language));
-  }, [projectLocale, userLocale]);
 
   useEffect(() => {
     summaryRequestSequenceRef.current += 1;
@@ -302,10 +294,11 @@ export default function RequirementSourceDocumentsPanel({
     setStartingAiDocumentId(item._id);
     setAiActivationNotice("");
     try {
+      const outputLanguage = preferredSummaryLocale(userLocale, projectLocale, navigator.language);
       const result = await testingApi.startRequirementDocumentAI(item._id, {
         expected_revision: item.revision,
-        idempotency_key: `start-${item._id}-r${item.revision}-${summaryLanguage.replace(/[^A-Za-z0-9_-]/g, "-")}`,
-        output_language: summaryLanguage,
+        idempotency_key: `start-${item._id}-r${item.revision}-${outputLanguage.replace(/[^A-Za-z0-9_-]/g, "-")}`,
+        output_language: outputLanguage,
       });
       await reload();
       setAiActivationNotice(
@@ -404,12 +397,13 @@ export default function RequirementSourceDocumentsPanel({
 
   const summarizeDocuments = async (documentIds, allReadable = false) => {
     const requestSequence = ++summaryRequestSequenceRef.current;
+    const outputLanguage = preferredSummaryLocale(userLocale, projectLocale, navigator.language);
     setSummaryBusy(true);
     setSummaryJob(null);
     setSummaryResult(null);
     setAiActivationNotice("");
     try {
-      const scope = `${projectId}:${summaryLanguage}:${allReadable ? "all" : [...documentIds].sort().join(",")}`;
+      const scope = `${projectId}:${outputLanguage}:${allReadable ? "all" : [...documentIds].sort().join(",")}`;
       if (summaryIdempotencyRef.current.scope !== scope) {
         summaryIdempotencyRef.current = {
           scope,
@@ -419,7 +413,7 @@ export default function RequirementSourceDocumentsPanel({
       const started = await testingApi.summarizeRequirementDocuments(projectId, {
         document_ids: documentIds,
         all_readable: allReadable,
-        output_language: summaryLanguage,
+        output_language: outputLanguage,
         idempotency_key: summaryIdempotencyRef.current.key,
       });
       if (requestSequence !== summaryRequestSequenceRef.current) return;
@@ -569,21 +563,6 @@ export default function RequirementSourceDocumentsPanel({
       )}
       {canSummarize && (
         <div className="mb-4 flex flex-wrap items-center gap-2 px-4 pt-4">
-          <select
-            className="apple-input w-auto !min-h-9"
-            aria-label="Ngôn ngữ tóm tắt"
-            value={summaryLanguage}
-            onChange={(event) => setSummaryLanguage(event.target.value)}
-            disabled={summaryBusy}
-          >
-            {summaryLanguageOptions(userLocale || projectLocale || summaryLanguage).map(
-              (option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ),
-            )}
-          </select>
           <button
             className="secondary-button !min-h-9 !px-3 !py-1.5 text-xs"
             type="button"

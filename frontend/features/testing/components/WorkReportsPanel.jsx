@@ -10,9 +10,10 @@ import ReportAssignmentsPanel from "./ReportAssignmentsPanel";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { testingApi, testingRequest } from "../services/testing.service";
 import { reportDateInput, reportDateTime } from "../lib/reportTime.mjs";
-import { summaryLanguageOptions } from "../lib/summaryLanguage";
+import { preferredSummaryLocale } from "../lib/summaryLanguage";
 import { ErrorState, LoadingState, Panel, useActionDialog } from "./WorkspacePrimitives";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
+import FilePicker from "./FilePicker";
 import { valueLabel } from "../lib/testing";
 
 const labels = {
@@ -112,6 +113,7 @@ export default function WorkReportsPanel({ project }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
+  const [referenceLoading, setReferenceLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
@@ -124,7 +126,12 @@ export default function WorkReportsPanel({ project }) {
   const [allowDownload, setAllowDownload] = useState(false);
   const [start, setStart] = useState(dayInput());
   const [end, setEnd] = useState(dayInput());
-  const [language, setLanguage] = useState(user?.locale || project.locale || "");
+  const outputLanguage = () =>
+    preferredSummaryLocale(
+      user?.locale,
+      project.locale,
+      typeof navigator === "undefined" ? "" : navigator.language,
+    );
   const [templateDoc, setTemplateDoc] = useState(blank);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
@@ -145,6 +152,7 @@ export default function WorkReportsPanel({ project }) {
   const saveInFlight = useRef(false);
   const editSequence = useRef(0);
   const sequence = useRef(0);
+  const referenceSequence = useRef(0);
   const operationKey = useRef(key());
   const userId = user?._id || user?.id;
   const assignedAuthor =
@@ -152,6 +160,7 @@ export default function WorkReportsPanel({ project }) {
     can("workreport.write") &&
     (selected.owner_id === userId || selected.editor_ids?.includes(userId));
   const editable = assignedAuthor && ["DRAFT", "APPROVED"].includes(selected.status);
+  const hasPublishableExport = exports.some((item) => item.publishable);
   const canProvideChangeReason =
     editable ||
     (selected?.reviewer_id === userId && selected.status === "IN_REVIEW") ||
@@ -170,18 +179,35 @@ export default function WorkReportsPanel({ project }) {
   };
   const load = useCallback(async () => {
     const generation = ++sequence.current;
+    if (!["mine", "inbox"].includes(tab)) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setError("");
+    setReports([]);
     try {
-      const [config, items, models] = await Promise.all([
+      const items = await testingRequest(
+        `${root}?inbox=${tab === "inbox"}&limit=50&offset=${reportPage * 50}&search=${encodeURIComponent(activeSearch)}${reportStatus ? `&status=${reportStatus}` : ""}`,
+      );
+      if (generation !== sequence.current) return;
+      setReports(items);
+    } catch (reason) {
+      if (generation === sequence.current) setError(message(reason));
+    } finally {
+      if (generation === sequence.current) setLoading(false);
+    }
+  }, [root, tab, reportPage, activeSearch, reportStatus]);
+  const loadReferenceData = useCallback(async () => {
+    const generation = ++referenceSequence.current;
+    setReferenceLoading(true);
+    try {
+      const [config, models] = await Promise.all([
         testingRequest(`${root}/cau-hinh`),
-        testingRequest(
-          `${root}?inbox=${tab === "inbox"}&limit=50&offset=${reportPage * 50}&search=${encodeURIComponent(activeSearch)}${reportStatus ? `&status=${reportStatus}` : ""}`,
-        ),
         testingRequest(`${root}/mau`),
       ]);
-      if (generation !== sequence.current) return;
+      if (generation !== referenceSequence.current) return;
       setSettings(normalizeSettings(config));
-      setReports(items);
       setTemplates(models);
       if (project.current_permissions?.includes("workreport.write")) {
         const [people, reportParticipants] = await Promise.all([
@@ -191,7 +217,7 @@ export default function WorkReportsPanel({ project }) {
         const writerIds = new Set(reportParticipants.writer_ids || []);
         const reviewerIds = new Set(reportParticipants.reviewer_ids || []);
         const items = Array.isArray(people) ? people : people.items || [];
-        if (generation === sequence.current)
+        if (generation === referenceSequence.current)
           setMembers(
             items.map((item) => {
               const id = item.user_id || item._id;
@@ -207,20 +233,26 @@ export default function WorkReportsPanel({ project }) {
       }
       if (project.current_permissions?.includes("workreport.manage")) {
         const rows = await testingRequest(`${root}/lich`);
-        if (generation === sequence.current) setSchedules(rows);
+        if (generation === referenceSequence.current) setSchedules(rows);
       }
     } catch (reason) {
-      if (generation === sequence.current) setError(message(reason));
+      if (generation === referenceSequence.current) setError(message(reason));
     } finally {
-      if (generation === sequence.current) setLoading(false);
+      if (generation === referenceSequence.current) setReferenceLoading(false);
     }
-  }, [root, tab, project._id, project.current_permissions, reportPage, activeSearch, reportStatus]);
+  }, [root, project._id, project.current_permissions]);
   useEffect(() => {
     void load();
     return () => {
       sequence.current += 1;
     };
   }, [load]);
+  useEffect(() => {
+    void loadReferenceData();
+    return () => {
+      referenceSequence.current += 1;
+    };
+  }, [loadReferenceData]);
   useEffect(() => {
     setSelected(null);
     setCreating(false);
@@ -268,6 +300,7 @@ export default function WorkReportsPanel({ project }) {
     run(async () => {
       if (!(await confirmLeave())) return;
       const report = await testingRequest(`/bao-cao-cong-viec/${item._id}`);
+      setExports([]);
       setSelected(report);
       setAiDraft(null);
       const mayEdit =
@@ -393,7 +426,7 @@ export default function WorkReportsPanel({ project }) {
           timezone: settings.timezone,
         },
         template_version_id: templateId,
-        output_language: language,
+        output_language: outputLanguage(),
         subject_ids: kind === "PERSONAL" ? [owner || userId] : subjectIds,
         due_at: dueAt ? reportDateTime(dueAt, settings.timezone) : null,
         idempotency_key: operationKey.current,
@@ -423,7 +456,8 @@ export default function WorkReportsPanel({ project }) {
       }
       operationKey.current = key();
       setCreating(false);
-      await load();
+      if (schedule) await loadReferenceData();
+      else await load();
     });
   const exportFile = (format) =>
     run(async () => {
@@ -515,7 +549,7 @@ export default function WorkReportsPanel({ project }) {
         }}
         tabs={tabs}
       />
-      {loading && !settings ? (
+      {referenceLoading && !settings ? (
         <LoadingState />
       ) : (
         settings && (
@@ -649,31 +683,28 @@ export default function WorkReportsPanel({ project }) {
                       </li>
                     ))}
                   </ul>
-                  <label className="block text-sm">
-                    Nhập mẫu Word
-                    <input
-                      className="apple-input mt-1 max-w-full"
-                      type="file"
-                      accept=".docx"
-                      disabled={busy}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (!file) return;
-                        void run(async () => {
-                          const form = new FormData();
-                          form.append("file", file);
-                          const preview = await testingRequest(`${root}/mau/xem-truoc`, {
-                            method: "POST",
-                            body: form,
-                          });
-                          setTemplatePreview(preview);
-                          setTemplateDoc(preview.content_doc);
-                          setAcceptTemplateWarnings(false);
-                          if (!title) setTitle(file.name.replace(/\.docx$/i, ""));
+                  <FilePicker
+                    label="Nhập mẫu Word"
+                    buttonLabel="Chọn tệp Word"
+                    accept=".docx"
+                    disabled={busy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      void run(async () => {
+                        const form = new FormData();
+                        form.append("file", file);
+                        const preview = await testingRequest(`${root}/mau/xem-truoc`, {
+                          method: "POST",
+                          body: form,
                         });
-                      }}
-                    />
-                  </label>
+                        setTemplatePreview(preview);
+                        setTemplateDoc(preview.content_doc);
+                        setAcceptTemplateWarnings(false);
+                        if (!title) setTitle(file.name.replace(/\.docx$/i, ""));
+                      });
+                    }}
+                  />
                   {templatePreview && (
                     <div className="space-y-2 text-sm">
                       <p>
@@ -819,7 +850,7 @@ export default function WorkReportsPanel({ project }) {
                         setEditingTemplate(null);
                         setTemplatePreview(null);
                         setAcceptTemplateWarnings(false);
-                        await load();
+                        await loadReferenceData();
                       })
                     }
                   >
@@ -900,7 +931,7 @@ export default function WorkReportsPanel({ project }) {
                                         enabled: !item.enabled,
                                       }),
                                     });
-                                    await load();
+                                    await loadReferenceData();
                                   })
                                 }
                               >
@@ -1168,23 +1199,6 @@ export default function WorkReportsPanel({ project }) {
                       </div>
                     </fieldset>
                   )}
-                  <label className="text-sm">
-                    Ngôn ngữ nội dung
-                    <select
-                      className="apple-input mt-1"
-                      value={language}
-                      onChange={(event) => setLanguage(event.target.value)}
-                    >
-                      <option value="">Chọn ngôn ngữ</option>
-                      {summaryLanguageOptions(user?.locale || project.locale)
-                        .filter((item) => item.value !== "auto")
-                        .map((item) => (
-                          <option key={item.value} value={item.value}>
-                            {item.label}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
                   <fieldset className="col-span-2">
                     <legend className="mb-2 text-sm font-medium">Người nhận</legend>
                     <div className="grid max-h-48 grid-cols-3 gap-2 overflow-y-auto">
@@ -1295,7 +1309,6 @@ export default function WorkReportsPanel({ project }) {
                         !title.trim() ||
                         !templateId ||
                         !reviewer ||
-                        !language.trim() ||
                         (tab === "schedules" && !firstRun)
                       }
                       onClick={() => submitCreate(tab === "schedules")}
@@ -1403,43 +1416,51 @@ export default function WorkReportsPanel({ project }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {reports.map((item) => (
-                        <tr key={item._id} className="border-b border-border">
-                          <td className="max-w-80 px-4 py-3">
-                            <button
-                              className="text-left font-medium text-brand"
-                              onClick={() => open(item)}
-                            >
-                              {item.title}
-                            </button>
-                            <p className="mt-1 text-xs text-ink-muted">{labels[item.kind]}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            {date(item.period.start_at)}
-                            <br />
-                            {date(item.period.end_at)}
-                          </td>
-                          <td className="px-4 py-3">
-                            {item.owner_label || memberName(item.owner_id)}
-                          </td>
-                          <td className="px-4 py-3">{labels[item.status]}</td>
-                          <td className="px-4 py-3">{date(item.updated_at)}</td>
-                          <td className="px-4 py-3">
-                            <button
-                              className="icon-button h-9 w-9"
-                              aria-label={`Mở ${item.title}`}
-                              disabled={busy}
-                              onClick={() => open(item)}
-                            >
-                              <Eye size={17} />
-                            </button>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-sm text-ink-muted">
+                            <span role="status">Đang tải danh sách báo cáo…</span>
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        reports.map((item) => (
+                          <tr key={item._id} className="border-b border-border">
+                            <td className="max-w-80 px-4 py-3">
+                              <button
+                                className="text-left font-medium text-brand"
+                                onClick={() => open(item)}
+                              >
+                                {item.title}
+                              </button>
+                              <p className="mt-1 text-xs text-ink-muted">{labels[item.kind]}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              {date(item.period.start_at)}
+                              <br />
+                              {date(item.period.end_at)}
+                            </td>
+                            <td className="px-4 py-3">
+                              {item.owner_label || memberName(item.owner_id)}
+                            </td>
+                            <td className="px-4 py-3">{labels[item.status]}</td>
+                            <td className="px-4 py-3">{date(item.updated_at)}</td>
+                            <td className="px-4 py-3">
+                              <button
+                                className="icon-button h-9 w-9"
+                                aria-label={`Mở ${item.title}`}
+                                disabled={busy}
+                                onClick={() => open(item)}
+                              >
+                                <Eye size={17} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
-                {!reports.length && (
+                {!loading && !error && !reports.length && (
                   <p className="p-4 text-sm text-ink-muted">Chưa có báo cáo trong danh sách này.</p>
                 )}
                 {(reportPage > 0 || reports.length === 50) && (
@@ -1598,26 +1619,12 @@ export default function WorkReportsPanel({ project }) {
                                 <option value="SUMMARY">Tóm tắt điều hành</option>
                                 <option value="TRANSLATE">Dịch nội dung</option>
                               </select>
-                              <select
-                                aria-label="Ngôn ngữ đầu ra AI"
-                                className="apple-input !w-auto"
-                                value={language}
-                                onChange={(event) => setLanguage(event.target.value)}
-                              >
-                                <option value="">Chọn ngôn ngữ</option>
-                                {summaryLanguageOptions(user?.locale || project.locale)
-                                  .filter((item) => item.value !== "auto")
-                                  .map((item) => (
-                                    <option key={item.value} value={item.value}>
-                                      {item.label}
-                                    </option>
-                                  ))}
-                              </select>
                               <button
                                 className="secondary-button"
-                                disabled={busy || dirty || !language}
+                                disabled={busy || dirty}
                                 onClick={() =>
                                   run(async () => {
+                                    const language = outputLanguage();
                                     const signature = JSON.stringify([
                                       selected._id,
                                       selected.revision,
@@ -1817,13 +1824,21 @@ export default function WorkReportsPanel({ project }) {
                           </>
                         )}
                         {selected.reviewer_id === userId && selected.status === "APPROVED" && (
-                          <button
-                            className="apple-button"
-                            disabled={busy || dirty}
-                            onClick={() => action("PUBLISH")}
-                          >
-                            Phát hành và gửi
-                          </button>
+                          <>
+                            <button
+                              className="apple-button"
+                              disabled={busy || dirty || !hasPublishableExport}
+                              onClick={() => action("PUBLISH")}
+                            >
+                              Phát hành và gửi
+                            </button>
+                            {!hasPublishableExport && (
+                              <p className="basis-full text-sm text-ink-muted">
+                                Cần có DOCX hoặc PDF đã xuất xong cho phiên bản hiện tại trước khi
+                                phát hành.
+                              </p>
+                            )}
+                          </>
                         )}
                         {["PUBLISHED", "ARCHIVED"].includes(selected.status) && assignedAuthor && (
                           <button

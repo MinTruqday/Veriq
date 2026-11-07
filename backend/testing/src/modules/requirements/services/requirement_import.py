@@ -342,20 +342,53 @@ def extract_docx(data):
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         root = ElementTree.fromstring(archive.read("word/document.xml"))
     namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-    paragraphs = []
-    for paragraph in root.iter(f"{namespace}p"):
+
+    def paragraph_text(paragraph):
         text = "".join(node.text or "" for node in paragraph.iter(f"{namespace}t")).strip()
-        if text:
-            properties = paragraph.find(f"{namespace}pPr")
-            style = properties.find(f"{namespace}pStyle") if properties is not None else None
-            outline = properties.find(f"{namespace}outlineLvl") if properties is not None else None
-            style_name = style.attrib.get(f"{namespace}val", "") if style is not None else ""
-            match = re.search(r"Heading([1-6])$", style_name, re.IGNORECASE)
-            level = int(match.group(1)) if match else None
-            if outline is not None and level is None:
-                level = min(int(outline.attrib.get(f"{namespace}val", "0")) + 1, 6)
-            paragraphs.append(f"{'#' * level} {text}" if level else text)
-    return "\n\n".join(paragraphs)
+        if not text:
+            return ""
+        properties = paragraph.find(f"{namespace}pPr")
+        style = properties.find(f"{namespace}pStyle") if properties is not None else None
+        outline = properties.find(f"{namespace}outlineLvl") if properties is not None else None
+        style_name = style.attrib.get(f"{namespace}val", "") if style is not None else ""
+        match = re.search(r"Heading([1-6])$", style_name, re.IGNORECASE)
+        level = int(match.group(1)) if match else None
+        if outline is not None and level is None:
+            level = min(int(outline.attrib.get(f"{namespace}val", "0")) + 1, 6)
+        return f"{'#' * level} {text}" if level else text
+
+    body = root.find(f".//{namespace}body")
+    if body is None:
+        return ""
+    blocks = []
+    for element in body:
+        if element.tag == f"{namespace}p":
+            text = paragraph_text(element)
+            if text:
+                blocks.append(text)
+            continue
+        if element.tag != f"{namespace}tbl":
+            continue
+        rows = []
+        column_counts = []
+        for row in element.findall(f"{namespace}tr"):
+            cells = []
+            for cell in row.findall(f"{namespace}tc"):
+                cell_paragraphs = [
+                    text
+                    for paragraph in cell.findall(f"{namespace}p")
+                    if (text := paragraph_text(paragraph))
+                ]
+                cells.append("<br>".join(cell_paragraphs).replace("|", "\\|"))
+            if any(cells):
+                rows.append("| " + " | ".join(cells) + " |")
+                column_counts.append(len(cells))
+        if rows:
+            if len(rows) > 1 and column_counts[0] == column_counts[1]:
+                separator = "|" + "|".join(" --- " for _ in range(column_counts[0])) + "|"
+                rows.insert(1, separator)
+            blocks.append("\n".join(rows))
+    return "\n\n".join(blocks)
 
 
 def extract_xlsx_csv(data):

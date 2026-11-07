@@ -41,12 +41,12 @@ export default function ProjectNavigation({ groups, selectedGroup, sidebarCollap
         <HorizontalScrollCue
           ariaLabel={`Trang trong ${selectedGroup.label}`}
           scrollLabel={`trang trong ${selectedGroup.label}`}
-          className="border-t border-border/70 pt-1.5"
+          className="border-t border-border/70"
           viewportClassName="hide-scrollbar min-w-0 overflow-x-auto px-4 md:px-6"
         >
           <nav
             aria-label={`Trang trong ${selectedGroup.label}`}
-            className="flex h-9 w-max min-w-full items-stretch gap-1 border-b border-border"
+            className="flex h-11 w-max min-w-full items-stretch gap-1 border-b border-border"
           >
             {selectedGroup.items.map((item) => (
               <Link

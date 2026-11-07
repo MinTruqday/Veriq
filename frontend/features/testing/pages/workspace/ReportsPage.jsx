@@ -37,6 +37,16 @@ function metricCount(value) {
   return Number.isFinite(numericValue) ? numericValue : "Chưa đủ dữ liệu";
 }
 
+function metricDuration(milliseconds) {
+  if (milliseconds === null || milliseconds === undefined || milliseconds === "") {
+    return "Chưa đủ dữ liệu";
+  }
+  const value = Number(milliseconds);
+  if (!Number.isFinite(value) || value < 0) return "Chưa đủ dữ liệu";
+  if (value < 1000) return `${Math.round(value)} ms`;
+  return `${(value / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} giây`;
+}
+
 function metricDays(value, openCount) {
   if (
     openCount !== null &&
@@ -653,15 +663,7 @@ export default function ReportsPage({ project }) {
                         })()}
                         <ReportMetric
                           label="Thời gian phản hồi AI trung bình"
-                          value={
-                            value.ai.ai_request_metrics?.average_latency_ms === null ||
-                            value.ai.ai_request_metrics?.average_latency_ms === undefined ||
-                            !Number.isFinite(
-                              Number(value.ai.ai_request_metrics?.average_latency_ms),
-                            )
-                              ? "Chưa đủ dữ liệu"
-                              : `${Math.round(Number(value.ai.ai_request_metrics.average_latency_ms))} ms`
-                          }
+                          value={metricDuration(value.ai.ai_request_metrics?.average_latency_ms)}
                         />
                       </>
                     )}

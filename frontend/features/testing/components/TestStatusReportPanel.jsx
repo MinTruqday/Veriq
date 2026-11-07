@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pencil, RefreshCw } from "lucide-react";
+import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import DataTable from "./DataTable";
 import FormalReviewPanel from "./FormalReviewPanel";
 import QualityGateBadge from "./QualityGateBadge";
@@ -10,6 +11,7 @@ import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { StructuredValueView } from "./StructuredValueEditor";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
+import { preferredSummaryLocale } from "../lib/summaryLanguage";
 
 function lines(value) {
   return String(value || "")
@@ -35,6 +37,7 @@ function forecastText(value) {
 }
 
 export default function TestStatusReportPanel({ project }) {
+  const { user } = useAuth();
   const { ask, dialog } = useActionDialog();
   const [reports, setReports] = useState([]);
   const [snapshots, setSnapshots] = useState([]);
@@ -97,11 +100,20 @@ export default function TestStatusReportPanel({ project }) {
   const generateNarrative = async () => {
     if (aiInFlight.current || !selected) return;
     const report = selected;
-    const key = `${report._id}:${report.revision}`;
+    const outputLanguage = preferredSummaryLocale(
+      user?.locale,
+      project.locale,
+      typeof navigator === "undefined" ? "" : navigator.language,
+    );
+    const key = `${report._id}:${report.revision}:${outputLanguage}`;
     if (aiOperation.current?.key !== key)
       aiOperation.current = {
         key,
-        payload: { idempotency_key: crypto.randomUUID(), source_event_revision: report.revision },
+        payload: {
+          idempotency_key: crypto.randomUUID(),
+          source_event_revision: report.revision,
+          output_language: outputLanguage,
+        },
       };
     aiInFlight.current = true;
     setNarrativeLoading(true);

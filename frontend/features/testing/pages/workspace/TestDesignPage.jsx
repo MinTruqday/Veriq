@@ -459,22 +459,18 @@ export default function TestDesignPage({ project, workspaceView }) {
   const selectedRequirementRecord = requirements.find(
     (item) => item.current_version_id === selectedRequirement,
   );
+  const requirementLabels = Object.fromEntries(
+    requirements
+      .filter((item) => item.current_version_id)
+      .map((item) => [
+        item.current_version_id,
+        `${item.requirement_key} · ${item.current_version?.title || "Yêu cầu"}`,
+      ]),
+  );
   const selectedRequirementVersion = selectedRequirementRecord?.current_version;
-  const requirementEventId =
-    selectedRequirement && Number.isInteger(selectedRequirementVersion?.revision)
-      ? `requirement-version:${selectedRequirement}:${selectedRequirementVersion.revision}:${selectedRequirementVersion.status || "DRAFT"}`
-      : "";
-  const requirementAgentRun = requirementEventId
+  const requirementAgentRun = selectedRequirement
     ? agentRuns.find(
-        (run) =>
-          run.trigger === "REQUIREMENT_CHANGED" &&
-          run.source_event_id === requirementEventId &&
-          run.evidence?.some(
-            (item) =>
-              item.artifact_type === "requirement_version" &&
-              item.artifact_version_id === selectedRequirement &&
-              item.artifact_revision === selectedRequirementVersion?.revision,
-          ),
+        (run) => run.trigger === "MANUAL" && run.target_artifact_ids?.includes(selectedRequirement),
       ) || null
     : null;
   const actionableDrafts = drafts.filter((item) => item.status !== "APPROVED");
@@ -1241,17 +1237,19 @@ export default function TestDesignPage({ project, workspaceView }) {
             project={project}
             showPanelHeading={false}
             onRunsStateChange={handleAgentRunsStateChange}
+            targetArtifactIds={selectedRequirement ? [selectedRequirement] : []}
+            targetArtifactLabels={requirementLabels}
             contextContent={
               permissions.includes("requirement.read") ? (
                 <section
-                  aria-label="Hoạt động theo yêu cầu"
-                  className="grid gap-3 border-b border-border pb-4 md:grid-cols-[minmax(15rem,0.7fr)_minmax(0,1.3fr)] md:items-start"
+                  aria-label="Phạm vi yêu cầu cho hoạt động AI"
+                  className="grid gap-3 rounded-control border border-border bg-surface p-4"
                 >
-                  <label className="field-label block min-w-0">
-                    Yêu cầu liên quan
+                  <label className="grid min-w-0 gap-2 text-sm font-medium text-ink">
+                    Yêu cầu làm phạm vi cho lượt AI mới (tùy chọn)
                     <select
-                      aria-label="Yêu cầu cần xem hoạt động AI"
-                      className="apple-input mt-2 w-full min-w-0"
+                      aria-label="Yêu cầu làm phạm vi cho lượt AI mới"
+                      className="apple-input w-full min-w-0"
                       value={selectedRequirement}
                       onChange={(event) => setSelectedRequirement(event.target.value)}
                     >
@@ -1264,30 +1262,36 @@ export default function TestDesignPage({ project, workspaceView }) {
                     </select>
                   </label>
                   {selectedRequirement && (
-                    <div className="min-w-0 text-sm">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <span className="font-medium">
-                          {requirements.find(
-                            (item) => item.current_version_id === selectedRequirement,
-                          )?.current_version?.title || "Yêu cầu đã chọn"}
-                        </span>
-                        {requirementAgentRun && <StatusPill value={requirementAgentRun.status} />}
+                    <div className="grid min-w-0 gap-3 rounded-control border border-border bg-surface-raised/40 p-4 text-sm">
+                      <div>
+                        <p className="text-xs font-medium text-ink-muted">
+                          Phạm vi cho lượt AI mới
+                        </p>
+                        <p className="mt-1 break-words font-semibold text-ink">
+                          {selectedRequirementRecord?.requirement_key} ·{" "}
+                          {selectedRequirementRecord?.current_version?.title || "Yêu cầu"}
+                        </p>
                       </div>
                       {agentRunsLoading ? (
-                        <p className="mt-2 text-ink-muted">Đang tải hoạt động liên quan…</p>
-                      ) : agentRunsError ? (
-                        <p className="mt-2 text-danger">{agentRunsError}</p>
-                      ) : requirementAgentRun ? (
-                        <p className="mt-2 whitespace-pre-wrap break-words text-ink-muted">
-                          {requirementAgentRun.error_code
-                            ? "Có lỗi khi xử lý yêu cầu này."
-                            : requirementAgentRun.result?.summary ||
-                              requirementAgentRun.result?.proposal?.summary ||
-                              "Chưa có phần tóm tắt cho hoạt động AI."}
+                        <p className="border-t border-border pt-3 text-ink-muted">
+                          Đang tải hoạt động liên quan…
                         </p>
+                      ) : agentRunsError ? (
+                        <p className="border-t border-border pt-3 text-danger" role="status">
+                          {agentRunsError}
+                        </p>
+                      ) : requirementAgentRun ? (
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                          <span className="text-ink-muted">
+                            Lượt do người dùng bắt đầu gần nhất ·{" "}
+                            {formatDate(requirementAgentRun.created_at)}
+                          </span>
+                          <StatusPill value={requirementAgentRun.status} />
+                        </div>
                       ) : (
-                        <p className="mt-2 text-ink-muted">
-                          Chưa có hoạt động AI cho phiên bản yêu cầu hiện tại.
+                        <p className="border-t border-border pt-3 text-ink-muted">
+                          Khi bấm “Bắt đầu xử lý bằng AI”, lượt mới sẽ dùng phiên bản yêu cầu này
+                          làm phạm vi tham chiếu.
                         </p>
                       )}
                     </div>

@@ -14,6 +14,7 @@ export default function SegmentedTabs({ tabs, value, onChange, label }) {
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            id={tab.elementId}
             type="button"
             aria-pressed={value === tab.id}
             onClick={() => onChange(tab.id)}
