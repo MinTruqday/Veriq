@@ -221,73 +221,6 @@ class ChangeSimulationInput(BaseModel):
         return normalized
 
 
-class AutomationRunRequest(BaseModel):
-    project_id: str = Field(min_length=1, max_length=200)
-    objective: str = Field(min_length=3, max_length=4000)
-    intent: str = Field(default="", max_length=100)
-    intent_arguments: dict[str, Any] = Field(default_factory=dict, max_length=100)
-    kind: AutomationKind = AutomationKind.ON_DEMAND
-    target_artifact_ids: list[str] = Field(default_factory=list, max_length=100)
-    evidence: list[EvidenceItem] = Field(default_factory=list, max_length=100)
-    constraints: dict[str, Any] = Field(default_factory=dict)
-    change_simulation: ChangeSimulationInput | None = None
-
-    @model_validator(mode="after")
-    def validate_change_simulation(self):
-        if self.intent_arguments and not self.intent:
-            raise ValueError("intent_arguments_require_intent")
-        if self.kind == AutomationKind.CHANGE_SIMULATION:
-            if self.change_simulation is None:
-                raise ValueError("change_simulation_input_required")
-            if self.change_simulation.base_requirement_version_id not in self.target_artifact_ids:
-                raise ValueError("change_simulation_baseline_must_be_targeted")
-            source_refs = {item.artifact_version_id or item.artifact_id for item in self.evidence}
-            if self.change_simulation.base_requirement_version_id not in source_refs:
-                raise ValueError("change_simulation_baseline_evidence_required")
-        elif self.change_simulation is not None:
-            raise ValueError("change_simulation_input_only_allowed_for_simulation")
-        return self
-
-
-class AutomationDefinitionRequest(BaseModel):
-    project_id: str = Field(min_length=1, max_length=200)
-    name: str = Field(min_length=3, max_length=160)
-    trigger: AutomationTrigger
-    objective: str = Field(min_length=3, max_length=4000)
-    intent: str = Field(default="", max_length=100)
-    actions: list[AutomationAction] | None = Field(
-        default_factory=list, max_length=len(AutomationAction)
-    )
-    conditions: AutomationEventConditions = Field(default_factory=AutomationEventConditions)
-    enabled: bool = True
-
-    @field_validator("actions")
-    @classmethod
-    def unique_actions(cls, actions):
-        if actions is not None and len(set(actions)) != len(actions):
-            raise ValueError("automation_actions_must_be_unique")
-        return actions
-
-
-class AutomationDefinitionPatch(BaseModel):
-    expected_revision: int = Field(ge=1)
-    name: str | None = Field(default=None, min_length=3, max_length=160)
-    objective: str | None = Field(default=None, min_length=3, max_length=4000)
-    intent: str | None = Field(default=None, max_length=100)
-    actions: list[AutomationAction] | None = Field(
-        default=None, max_length=len(AutomationAction)
-    )
-    conditions: AutomationEventConditions | None = None
-    enabled: bool | None = None
-
-    @field_validator("actions")
-    @classmethod
-    def unique_actions(cls, actions):
-        if actions is not None and len(set(actions)) != len(actions):
-            raise ValueError("automation_actions_must_be_unique")
-        return actions
-
-
 class AutomationEventRequest(BaseModel):
     event_id: str = Field(min_length=1, max_length=200)
     project_id: str = Field(min_length=1, max_length=200)
@@ -552,24 +485,3 @@ class AutomationWorkflowSnapshot(BaseModel):
     blocked_count: int = Field(ge=0)
     failed_count: int = Field(ge=0)
     runs: list[AutomationWorkflowRun]
-
-
-class AutomationDefinition(BaseModel):
-    definition_id: str = Field(default_factory=lambda: f"ADF-{uuid4().hex}")
-    project_id: str
-    owner_user_id: str
-    owner_role: str
-    owner_permissions: list[str] = Field(default_factory=list)
-    name: str
-    trigger: AutomationTrigger
-    objective: str
-    intent: str = ""
-    actions: list[AutomationAction] = Field(
-        default_factory=list, max_length=len(AutomationAction)
-    )
-    actions_configured: bool = False
-    conditions: AutomationEventConditions = Field(default_factory=AutomationEventConditions)
-    enabled: bool = True
-    revision: int = 1
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)

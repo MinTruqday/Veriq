@@ -27,7 +27,7 @@ function applyToken(token) {
   localStorage.setItem("veriq_token", token);
   document.cookie = `token=${token}; path=/; max-age=604800; SameSite=Lax`;
 }
-export async function refreshAccessToken(expectedToken) {
+async function refreshAccessToken(expectedToken) {
   if (typeof window === "undefined") return null;
   if (!refreshPromise) {
     refreshPromise = fetchWithNetworkError(`${API_URL}/xac-thuc/lam-moi-phien`, {

@@ -48,19 +48,6 @@ class VectorStore:
         "document_index_contract_version": PayloadSchemaType.INTEGER,
         "embedding_model": PayloadSchemaType.KEYWORD,
     }
-    UNUSED_PAYLOAD_INDEX_FIELDS = (
-        "source_hash",
-        "parser_name",
-        "parser_version",
-        "ocr_enabled",
-        "extraction_status",
-        "unprocessed_block_count",
-        "indexed_at",
-        "conflict_key",
-        "claim_value",
-    )
-    UNINDEXED_POLYMORPHIC_PAYLOAD_FIELDS = ("source_version",)
-
     @staticmethod
     def _is_project_artifact_payload(payload: Dict) -> bool:
         return not payload.get("document_id") or payload.get("artifact_type") == "requirement_document"
@@ -103,13 +90,6 @@ class VectorStore:
             ):
                 raise RuntimeError("qdrant_collection_vector_schema_mismatch")
             payload_schema = collection.payload_schema or {}
-            for field in self.UNUSED_PAYLOAD_INDEX_FIELDS:
-                if field in payload_schema:
-                    await self.client.delete_payload_index(
-                        collection_name=self.collection_name,
-                        field_name=field,
-                        wait=True,
-                    )
             for field, field_schema in self.PAYLOAD_INDEX_FIELDS.items():
                 current = payload_schema.get(field)
                 current_type = getattr(current, "data_type", None)
@@ -132,9 +112,6 @@ class VectorStore:
                         raise RuntimeError(
                             f"qdrant_payload_index_schema_mismatch:{field}"
                         )
-            for field in self.UNINDEXED_POLYMORPHIC_PAYLOAD_FIELDS:
-                if field in payload_schema:
-                    raise RuntimeError(f"qdrant_unindexed_payload_field_has_index:{field}")
         except Exception:
             logger.exception("System search index structure initialization error")
             raise

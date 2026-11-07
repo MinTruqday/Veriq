@@ -295,7 +295,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       {state.project.access_context?.mode === "BREAK_GLASS" && (
         <div className="border-b border-warning/40 bg-warning-soft px-5 py-3 text-[13px] font-semibold text-warning">
           Quyền truy cập khẩn cấp đang hoạt động đến{" "}
-          {new Date(state.project.access_context.expires_at).toLocaleString("vi-VN")}
+          {new Date(state.project.access_context.expires_at).toLocaleString()}
         </div>
       )}
       {pages[area] || <DashboardPage {...props} />}

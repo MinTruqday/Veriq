@@ -283,23 +283,11 @@ async def _plan_resource_overview(project_id, plan):
         warnings.append("PLAN_TEST_DATA_SOURCE_NOT_DECLARED")
     if plan_completeness["defect_process_fields_completed"] < 5:
         warnings.append("PLAN_DEFECT_PROCESS_INCOMPLETE")
-    role_coverage = {
-        role: sum(
-            1
-            for user_id in allocated_ids
-            if role
-            in (
-                active_memberships.get(user_id)
-                and roles_for_membership(active_memberships[user_id])
-                or set()
-            )
-        )
-        for role in ("QA", "TESTER")
-    }
-    if not role_coverage["QA"]:
-        warnings.append("NO_ACTIVE_QA_IN_PLAN_ALLOCATIONS")
-    if not role_coverage["TESTER"]:
-        warnings.append("NO_ACTIVE_TESTER_IN_PLAN_ALLOCATIONS")
+    role_coverage = {}
+    for user_id in allocated_ids:
+        membership = active_memberships.get(user_id)
+        for role in roles_for_membership(membership):
+            role_coverage[role] = role_coverage.get(role, 0) + 1
     return {
         "people": people,
         "people_summary": {

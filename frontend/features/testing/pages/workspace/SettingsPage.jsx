@@ -53,8 +53,6 @@ const toggleSettings = [
   ["partial_complete_allowed", "Cho phép hoàn tất một phần lần chạy kiểm thử"],
   ["allow_not_applicable_results", "Cho phép kết quả Không áp dụng khi có lý do"],
   ["tester_can_close_defect", "Cho phép kiểm thử viên đóng lỗi"],
-  ["tester_can_reject_defect", "Cho phép kiểm thử viên từ chối lỗi"],
-  ["tester_can_mark_duplicate_defect", "Cho phép kiểm thử viên đánh dấu lỗi trùng"],
   ["ba_can_create_defect", "Cho phép chuyên viên phân tích tạo lỗi"],
   ["developer_can_create_defect", "Cho phép lập trình viên tạo lỗi"],
   ["ba_can_update_defect", "Cho phép chuyên viên phân tích cập nhật lỗi"],
@@ -65,7 +63,6 @@ const toggleSettings = [
   ["tester_can_override_impact", "Cho phép kiểm thử viên điều chỉnh phân tích ảnh hưởng"],
   ["tester_can_close_impact", "Cho phép kiểm thử viên đóng phân tích ảnh hưởng"],
   ["tester_can_manage_knowledge", "Cho phép kiểm thử viên quản lý tài liệu tham chiếu"],
-  ["tester_can_archive_testcase_templates", "Cho phép kiểm thử viên lưu trữ mẫu ca kiểm thử"],
   ["viewer_can_export", "Cho phép người xem xuất báo cáo"],
   ["developer_can_export", "Cho phép lập trình viên xuất báo cáo"],
   [
@@ -101,8 +98,6 @@ const toggleSettingGroups = [
     label: "Xử lý lỗi",
     keys: [
       "tester_can_close_defect",
-      "tester_can_reject_defect",
-      "tester_can_mark_duplicate_defect",
       "ba_can_create_defect",
       "developer_can_create_defect",
       "ba_can_update_defect",
@@ -118,7 +113,6 @@ const toggleSettingGroups = [
       "tester_can_override_impact",
       "tester_can_close_impact",
       "tester_can_manage_knowledge",
-      "tester_can_archive_testcase_templates",
     ],
   },
   {
@@ -171,7 +165,7 @@ function analyticsValue(value, suffix = "", sampleCount) {
   if (!Number.isFinite(numericValue)) return "Chưa có dữ liệu";
   if (suffix === "ms") {
     if (numericValue >= 1000)
-      return `${(numericValue / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} giây`;
+      return `${(numericValue / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} giây`;
     return `${Math.round(numericValue)} ms`;
   }
   return suffix ? `${numericValue} ${suffix}` : String(numericValue);
@@ -215,10 +209,11 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const loadedProjectId = useRef(project._id);
   const settingsLoadRevision = useRef(0);
   const [name, setName] = useState(project.name);
+  const [projectLeadUserId, setProjectLeadUserId] = useState(project.project_lead_user_id || "");
   const [description, setDescription] = useState(project.description || "");
   const [projectType, setProjectType] = useState(project.project_type || "web");
-  const [locale, setLocale] = useState(project.locale || "vi-VN");
-  const [timezone, setTimezone] = useState(project.timezone || "Asia/Ho_Chi_Minh");
+  const [locale, setLocale] = useState(project.locale || "");
+  const [timezone, setTimezone] = useState(project.timezone || "");
   const projectTimeZoneOptions = useMemo(() => timeZoneOptions(timezone), [timezone]);
   const timezoneIsValid = isSupportedTimeZone(timezone);
   const [automationFramework, setAutomationFramework] = useState(
@@ -234,6 +229,12 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const plannedDateRangeInvalid = invalidProjectDateRange(plannedStartAt, plannedEndAt);
   const minimumPlannedEndAt = minimumProjectEndDate(plannedStartAt);
   useEffect(() => {
+    setProjectLeadUserId(project.project_lead_user_id || "");
+    setLocale(project.locale || (typeof navigator === "undefined" ? "" : navigator.language));
+    setTimezone(
+      project.timezone ||
+        (typeof Intl === "undefined" ? "" : Intl.DateTimeFormat().resolvedOptions().timeZone),
+    );
     setPlannedStartAt(
       project.planned_start_at ? String(project.planned_start_at).slice(0, 10) : "",
     );
@@ -243,10 +244,13 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   }, [
     project._id,
     project.revision,
+    project.project_lead_user_id,
     project.planned_end_at,
     project.planned_start_at,
     project.automation_framework,
     project.automation_language,
+    project.locale,
+    project.timezone,
   ]);
   const [settings, setSettings] = useState({
     impact_confidence_threshold: project.settings?.impact_confidence_threshold ?? 0.75,
@@ -318,11 +322,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
     ? activeSettingsSection
     : settingsSections[0]?.id;
   const memberRoles = (item) => [item.project_role].filter(Boolean);
-  const activeQaCount = members.filter(
-    (item) => item.status === "ACTIVE" && memberRoles(item).includes("QA"),
-  ).length;
-  const isOnlyActiveQa = (item) =>
-    item.status === "ACTIVE" && memberRoles(item).includes("QA") && activeQaCount === 1;
+  const isProjectLead = (item) => item.user_id === project.project_lead_user_id;
   const auditActions = useMemo(
     () => [...new Set(audit.map((item) => item.action).filter(Boolean))].sort(),
     [audit],
@@ -550,8 +550,15 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 try {
                   const canManageSettings = can("project.settings.manage");
                   const canUpdateProject = can("project.update");
+                  const actionPolicies = { ...(project.settings?.action_policies || {}) };
+                  delete actionPolicies["testcase.template.archive"];
+                  delete actionPolicies["defect.rejected"];
+                  delete actionPolicies["defect.duplicate"];
                   const payload = {
                     expected_revision: project.revision,
+                    ...(can("project.members.read") && (canManageSettings || canUpdateProject)
+                      ? { project_lead_user_id: projectLeadUserId || null }
+                      : {}),
                     ...(canUpdateProject
                       ? {
                           name,
@@ -574,23 +581,13 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                             ...settings,
                             responsibilities,
                             action_policies: {
-                              ...(project.settings?.action_policies || {}),
-                              "defect.rejected": settings.tester_can_reject_defect
-                                ? ["QA", "TESTER"]
-                                : ["QA"],
-                              "defect.duplicate": settings.tester_can_mark_duplicate_defect
-                                ? ["QA", "TESTER"]
-                                : ["QA"],
+                              ...actionPolicies,
                               "testplan.assignments": settings.tester_can_assign_testplans
                                 ? ["QA", "TESTER"]
                                 : ["QA"],
                               "testresult.correct": settings.tester_can_correct_results
                                 ? ["TESTER"]
                                 : [],
-                              "testcase.template.archive":
-                                settings.tester_can_archive_testcase_templates
-                                  ? ["QA", "TESTER"]
-                                  : ["QA"],
                             },
                           },
                         }
@@ -618,6 +615,40 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
             >
               <section className="space-y-4 rounded-xl border border-border bg-white p-4 sm:p-5">
                 <h3 className="text-sm font-semibold text-ink">Thông tin cơ bản</h3>
+                {(can("project.update") || can("project.settings.manage")) &&
+                  (can("project.members.read") ? (
+                    <label className="field-label block max-w-xl">
+                      Trưởng dự án
+                      <select
+                        className="apple-input mt-2"
+                        value={projectLeadUserId}
+                        disabled={dataLoading || Boolean(loadErrors.members)}
+                        onChange={(event) => setProjectLeadUserId(event.target.value)}
+                      >
+                        <option value="">Chưa phân công</option>
+                        {members
+                          .filter((member) => member.status === "ACTIVE")
+                          .map((member) => (
+                            <option key={member.user_id} value={member.user_id}>
+                              {member.user_label ||
+                                member.user?.label ||
+                                member.user?.email ||
+                                member.user_id}
+                            </option>
+                          ))}
+                      </select>
+                      <span className="mt-1 block text-xs text-ink-muted">
+                        Có thể chọn bất kỳ thành viên đang hoạt động trong dự án.
+                      </span>
+                    </label>
+                  ) : (
+                    <div className="field-label block max-w-xl">
+                      Trưởng dự án
+                      <p className="mt-2 text-sm font-medium text-ink">
+                        {project.project_lead_label || "Chưa phân công"}
+                      </p>
+                    </div>
+                  ))}
                 <label className="field-label">
                   Tên
                   <input
@@ -708,7 +739,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         .filter(
                           (member) =>
                             member.status === "ACTIVE" &&
-                            ["BA", "QA"].includes(member.project_role),
+                            member.assignable_responsibilities?.includes("release_decision"),
                         )
                         .map((member) => (
                           <option key={member.user_id} value={member.user_id}>
@@ -1075,7 +1106,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                   aria-label={`Vai trò ${memberDisplayName(item)}`}
                                   className="apple-input"
                                   value={item.project_role}
-                                  disabled={item.status !== "ACTIVE" || isOnlyActiveQa(item)}
+                                  disabled={item.status !== "ACTIVE" || isProjectLead(item)}
                                   onChange={async (event) => {
                                     try {
                                       await testingApi.updateMember(project._id, item.user_id, {
@@ -1118,9 +1149,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                           label: "Thao tác",
                           hideWhenEmpty: true,
                           render: (item) =>
-                            !can("project.members.manage") ? null : isOnlyActiveQa(item) ? (
+                            !can("project.members.manage") ? null : isProjectLead(item) ? (
                               <span className="text-[12px] text-ink-muted">
-                                Bổ nhiệm thêm trưởng nhóm trước khi thay đổi hoặc xóa
+                                Chuyển trưởng dự án sang thành viên khác trước khi thay đổi hoặc xóa
                               </span>
                             ) : (
                               <span

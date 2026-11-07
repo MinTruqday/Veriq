@@ -134,7 +134,6 @@ function planningErrorMessage(reason) {
       "Không thể chuyển một số công việc cũ vì thiếu ánh xạ hợp lệ.",
     PROJECT_TASK_MIGRATION_SOURCE_CHANGED:
       "Nguồn công việc cũ đã thay đổi; chưa có dữ liệu nào được chuyển.",
-    BA_PLANNING_REQUIRED: "Bạn không có quyền thay đổi cấu hình lập kế hoạch.",
   };
   return messages[reason?.code] || messageOf(reason);
 }
@@ -321,7 +320,7 @@ export default function PlanningPage({ project, section }) {
               ? "Lộ trình"
               : "Lập kế hoạch";
   const memberRoles = [project.current_membership?.project_role].filter(Boolean);
-  const isBa = memberRoles.includes("BA");
+  const canManagePlanning = (project.current_permissions || []).includes("project.update");
   const currentUserId = project.current_membership?.user_id;
   const canReadProjectMembers = (project.current_permissions || []).includes(
     "project.members.read",
@@ -344,13 +343,13 @@ export default function PlanningPage({ project, section }) {
       })),
   ];
   const canTransitionItem = (item, targetStatus = null) => {
-    const canActOnItem =
-      isBa || (memberRoles.includes("DEVELOPER") && item.assignee_id === currentUserId);
-    if (!canActOnItem) return false;
+    const assignedToCurrentUser = item.assignee_id === currentUserId;
     const allowedTransitions = (boardValue?.workflow?.transitions || []).filter(
       (transitionValue) =>
         transitionValue.from_status === item.status &&
-        memberRoles.some((role) => transitionValue.allowed_roles?.includes(role)),
+        (canManagePlanning ||
+          (assignedToCurrentUser &&
+            memberRoles.some((role) => transitionValue.allowed_roles?.includes(role)))),
     );
     return targetStatus
       ? allowedTransitions.some((transitionValue) => transitionValue.to_status === targetStatus)
@@ -375,7 +374,7 @@ export default function PlanningPage({ project, section }) {
         ...(isScrum ? ["SPRINT"] : []),
       ].filter(Boolean),
     ),
-  ].sort((left, right) => String(left).localeCompare(String(right), "vi"));
+  ].sort((left, right) => String(left).localeCompare(String(right)));
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     setLoading(true);
@@ -772,7 +771,7 @@ export default function PlanningPage({ project, section }) {
     <WorkspacePage
       title={pageTitle}
       actions={
-        isBa ? (
+        canManagePlanning ? (
           <div className="flex flex-wrap gap-2">
             <button className="apple-button" type="button" onClick={createItem}>
               <Plus size={16} />
@@ -952,7 +951,7 @@ export default function PlanningPage({ project, section }) {
           dependencies={roadmap?.dependencies || []}
           memberLabels={memberLabels}
           canReadProjectMembers={canReadProjectMembers}
-          canRank={isBa}
+          canRank={canManagePlanning}
           ranking={ranking}
           onRank={rank}
           onAddDependency={addDependency}
@@ -969,7 +968,7 @@ export default function PlanningPage({ project, section }) {
             totalCount={items.length}
             statuses={boardValue?.workflow?.statuses || []}
             transitions={boardValue?.workflow?.transitions || []}
-            canEdit={isBa}
+            canEdit={canManagePlanning}
             canTransitionItem={canTransitionItem}
             onEdit={editItem}
             onTransition={transition}
@@ -992,7 +991,7 @@ export default function PlanningPage({ project, section }) {
           onTransition={transition}
           roles={memberRoles}
           canTransitionItem={canTransitionItem}
-          canEdit={isBa}
+          canEdit={canManagePlanning}
           onEdit={editItem}
           canReadAudit={(project.current_permissions || []).includes("project.audit.read")}
           onReorderColumns={async (sourceStatus, targetStatus) => {
@@ -1061,7 +1060,7 @@ export default function PlanningPage({ project, section }) {
                       </dd>
                     </div>
                   </dl>
-                  {isBa && (
+                  {canManagePlanning && (
                     <div className="flex items-center justify-start gap-1.5 xl:justify-end">
                       {sprint.status === "PLANNED" && (
                         <>
@@ -1116,7 +1115,7 @@ export default function PlanningPage({ project, section }) {
           filters={planningFilters}
           memberLabels={memberLabels}
           canReadProjectMembers={canReadProjectMembers}
-          canEdit={isBa}
+          canEdit={canManagePlanning}
           onEdit={editItem}
         />
       )}
@@ -2541,7 +2540,7 @@ function Board({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <strong className="text-sm">{auditActionLabel(event.action)}</strong>
                     <time className="text-xs text-ink-muted" dateTime={event.created_at}>
-                      {event.created_at ? new Date(event.created_at).toLocaleString("vi-VN") : ""}
+                      {event.created_at ? new Date(event.created_at).toLocaleString() : ""}
                     </time>
                   </div>
                   <p className="mt-1 text-xs text-ink-muted">
@@ -2600,7 +2599,7 @@ function Roadmap({
   };
   const formatTimelineDate = (date) =>
     date
-      ? date.toLocaleDateString("vi-VN", {
+      ? date.toLocaleDateString(undefined, {
           timeZone: "UTC",
           day: "2-digit",
           month: "2-digit",
@@ -2667,7 +2666,7 @@ function Roadmap({
         leftDate - rightDate ||
         String(left.item.name || left.item.title || "").localeCompare(
           String(right.item.name || right.item.title || ""),
-          "vi",
+          undefined,
         )
       );
     });
@@ -2737,7 +2736,7 @@ function Roadmap({
       timelineTicks.push({
         date: new Date(cursor),
         label: cursor.toLocaleDateString(
-          "vi-VN",
+          undefined,
           yearlyTicks
             ? { timeZone: "UTC", year: "numeric" }
             : { timeZone: "UTC", month: "short", year: "numeric" },
@@ -2749,7 +2748,7 @@ function Roadmap({
     if (yearlyTicks && timelineTicks.at(-1)?.date.getTime() !== lastTick.getTime()) {
       timelineTicks.push({
         date: new Date(lastTick),
-        label: lastTick.toLocaleDateString("vi-VN", { timeZone: "UTC", year: "numeric" }),
+        label: lastTick.toLocaleDateString(undefined, { timeZone: "UTC", year: "numeric" }),
       });
     }
   }

@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useEffect, useState } from "react";
 const ToastContext = createContext(undefined);
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
@@ -46,9 +46,4 @@ export function ToastProvider({ children }) {
       )}
     </ToastContext.Provider>
   );
-}
-export function useToast() {
-  const context = useContext(ToastContext);
-  if (!context) throw new Error("ToastProvider chưa được khởi tạo");
-  return context;
 }

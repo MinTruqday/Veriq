@@ -34,8 +34,6 @@ export const TEST_KINDS = [
 ];
 export const EXPECTED_IMPACTS = ["unassessed", "low", "medium", "high", "critical"];
 
-export const AI_TEST_GENERATION_CATEGORIES = ["happy_path", "negative", "boundary", "validation"];
-
 export function createTestCaseForm() {
   const emptyDataEntries = () => [{ id: crypto.randomUUID(), name: "", value: "" }];
   return {
@@ -179,10 +177,6 @@ export function createDataSetForm() {
     generationSource: "USER",
     sourceRequirementVersionIds: [],
   };
-}
-
-export function selectedValues(event) {
-  return Array.from(event.target.selectedOptions, (option) => option.value);
 }
 
 export function buildTestCaseDraftChanges(snapshot, draft) {

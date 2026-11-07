@@ -1,26 +1,19 @@
 export function defectActionAccess(project, defect) {
   const membership = project.current_membership;
-  const role = membership?.project_role;
   const active =
     membership?.status === "ACTIVE" &&
     project.status?.toLowerCase() !== "archived" &&
     (!project.administrative_status || project.administrative_status === "ACTIVE");
   const owned = Boolean(membership?.user_id && defect?.assignee === membership.user_id);
-  const denied = project.settings?.permission_overrides?.[role]?.deny || [];
-  const can = (permission) =>
-    !denied.includes(permission) && project.current_permissions?.includes(permission);
+  const can = (permission) => project.current_permissions?.includes(permission);
   return {
-    canEditTechnical: Boolean(active && role === "DEVELOPER" && owned && can("defect.update")),
+    canEditTechnical: Boolean(active && owned && can("defect.update")),
     canManageTrace: Boolean(
-      active && can("defect.trace.manage") && (role === "DEVELOPER" ? owned : role === "QA"),
+      active && can("defect.trace.manage") && (owned || can("defect.triage")),
     ),
-    canAssign: Boolean(active && role === "QA" && can("defect.assign")),
-    canTriage: Boolean(active && role === "QA" && can("defect.triage")),
-    canRepair: Boolean(
-      active && role === "DEVELOPER" && owned && can("defect.transition.developer"),
-    ),
-    canRetest: Boolean(
-      active && role === "TESTER" && can("defect.retest") && can("testrun.execute"),
-    ),
+    canAssign: Boolean(active && can("defect.assign")),
+    canTriage: Boolean(active && can("defect.triage")),
+    canRepair: Boolean(active && owned && can("defect.transition.developer")),
+    canRetest: Boolean(active && can("defect.retest") && can("testrun.execute")),
   };
 }

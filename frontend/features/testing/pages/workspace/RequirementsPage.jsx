@@ -310,7 +310,6 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     (permission) => project.current_permissions?.includes(permission),
     [project.current_permissions],
   );
-  const isQa = project.current_membership?.project_role === "QA";
   const routeSelected = selectedContextKey === `${project._id}:${requirementId}` ? selected : null;
   const projectDataReady = loadedProjectId === project._id;
   const visibleItems = useMemo(() => (projectDataReady ? items : []), [items, projectDataReady]);
@@ -1557,9 +1556,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                   );
                 }}
                 members={visibleMembers}
-                canDecide={isQa && can("testcase.read")}
-                canCreateClarification={isQa && can("requirement.review")}
-                canApprove={isQa && can("testcase.review")}
+                canDecide={can("testcase.review")}
+                canCreateClarification={can("requirement.review")}
+                canApprove={can("testcase.review")}
                 canSubmit={can("testcase.submit_review")}
               />
             </div>

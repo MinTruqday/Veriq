@@ -4,7 +4,7 @@ from math import isfinite
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.common import audit, get_project, get_project_roles, new_id, now
+from src.core.common import audit, get_project, new_id, now
 from src.repositories.test_design import test_design_repository
 
 
@@ -20,9 +20,6 @@ async def list_test_case_custom_fields(project_id, user):
 
 async def list_all_test_case_custom_fields(project_id, user):
     await get_project(project_id, user, "testcase.template.manage")
-    roles = await get_project_roles(project_id, user.id)
-    if "QA" not in roles:
-        raise HTTPException(403, detail={"code": "CUSTOM_FIELD_MANAGER_REQUIRED"})
     fields = await test_design_repository.list_all_test_case_custom_fields(project_id)
     for field in fields:
         field.setdefault("revision", 1)
@@ -31,9 +28,6 @@ async def list_all_test_case_custom_fields(project_id, user):
 
 async def create_test_case_custom_field(project_id, payload, user):
     await get_project(project_id, user, "testcase.template.manage")
-    roles = await get_project_roles(project_id, user.id)
-    if "QA" not in roles:
-        raise HTTPException(403, detail={"code": "CUSTOM_FIELD_MANAGER_REQUIRED"})
     field = {
         "_id": new_id("TCF"),
         "project_id": project_id,
@@ -60,9 +54,6 @@ async def create_test_case_custom_field(project_id, payload, user):
 
 async def update_test_case_custom_field(project_id, field_id, payload, user):
     await get_project(project_id, user, "testcase.template.manage")
-    roles = await get_project_roles(project_id, user.id)
-    if "QA" not in roles:
-        raise HTTPException(403, detail={"code": "CUSTOM_FIELD_MANAGER_REQUIRED"})
     current = await test_design_repository.find_test_case_custom_field(project_id, field_id)
     if not current:
         raise HTTPException(404, detail={"code": "TEST_CASE_CUSTOM_FIELD_NOT_FOUND"})

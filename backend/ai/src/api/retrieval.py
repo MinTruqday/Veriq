@@ -17,6 +17,42 @@ from src.services.retrieval_audit import RetrievalAuditService
 router = APIRouter(dependencies=[Depends(verify_internal_token)])
 
 
+def _retrieval_response(docs, message):
+    retrieved_docs = [
+        RetrievedDocument(
+            text=document.get("text", ""),
+            metadata=public_retrieval_metadata(document.get("metadata", {})),
+            score=float(document.get("score", 0.0)),
+        )
+        for document in docs
+    ]
+    citations = [
+        CitationItem(
+            point_id=citation.get("point_id", ""),
+            chunk_id=citation.get("chunk_id", ""),
+            document_id=citation.get("document_id", ""),
+            title=citation.get("title", ""),
+            chunk_index=citation.get("chunk_index", ""),
+            label=citation.get("label", ""),
+            artifact_type=citation.get("artifact_type", ""),
+            artifact_id=citation.get("artifact_id", ""),
+            artifact_version_id=citation.get("artifact_version_id", ""),
+            source_version=citation.get("source_version"),
+            page_numbers=citation.get("page_numbers", []),
+            source_spans=citation.get("source_spans", []),
+        )
+        for citation in retriever.get_citations(docs)
+    ]
+    return APIResponse(
+        data=RetrieveResponse(
+            documents=retrieved_docs,
+            citations=citations,
+            conflicts=retriever.detect_source_conflicts(docs),
+        ),
+        message=message,
+    )
+
+
 @router.get(
     "/nhat-ky/truy-cap-truy-xuat", description="Truy vấn audit access của knowledge retrieval"
 )
@@ -55,40 +91,7 @@ async def retrieve_documents(
         raise HTTPException(status_code=503, detail={"code": str(error)}) from error
     await RetrievalAuditService.record("retrieve", req.query, requester_id, is_admin, docs)
     metrics_collector.record_artifact_retrieval(docs, req.metadata_filters.artifact_type)
-    citations_data = retriever.get_citations(docs)
-    retrieved_docs = [
-        RetrievedDocument(
-            text=d.get("text", ""),
-            metadata=public_retrieval_metadata(d.get("metadata", {})),
-            score=float(d.get("score", 0.0)),
-        )
-        for d in docs
-    ]
-    citations = [
-        CitationItem(
-            point_id=c.get("point_id", ""),
-            chunk_id=c.get("chunk_id", ""),
-            document_id=c.get("document_id", ""),
-            title=c.get("title", ""),
-            chunk_index=c.get("chunk_index", ""),
-            label=c.get("label", ""),
-            artifact_type=c.get("artifact_type", ""),
-            artifact_id=c.get("artifact_id", ""),
-            artifact_version_id=c.get("artifact_version_id", ""),
-            source_version=c.get("source_version"),
-            page_numbers=c.get("page_numbers", []),
-            source_spans=c.get("source_spans", []),
-        )
-        for c in citations_data
-    ]
-    return APIResponse(
-        data=RetrieveResponse(
-            documents=retrieved_docs,
-            citations=citations,
-            conflicts=retriever.detect_source_conflicts(docs),
-        ),
-        message="Truy xuất tài liệu thành công",
-    )
+    return _retrieval_response(docs, "Truy xuất tài liệu thành công")
 
 
 @router.post(
@@ -116,37 +119,4 @@ async def cross_document_retrieve(
         "cross_document_retrieve", req.question, requester_id, is_admin, docs
     )
     metrics_collector.record_artifact_retrieval(docs, req.metadata_filters.artifact_type)
-    citations_data = retriever.get_citations(docs)
-    retrieved_docs = [
-        RetrievedDocument(
-            text=d.get("text", ""),
-            metadata=public_retrieval_metadata(d.get("metadata", {})),
-            score=float(d.get("score", 0.0)),
-        )
-        for d in docs
-    ]
-    citations = [
-        CitationItem(
-            point_id=c.get("point_id", ""),
-            chunk_id=c.get("chunk_id", ""),
-            document_id=c.get("document_id", ""),
-            title=c.get("title", ""),
-            chunk_index=c.get("chunk_index", ""),
-            label=c.get("label", ""),
-            artifact_type=c.get("artifact_type", ""),
-            artifact_id=c.get("artifact_id", ""),
-            artifact_version_id=c.get("artifact_version_id", ""),
-            source_version=c.get("source_version"),
-            page_numbers=c.get("page_numbers", []),
-            source_spans=c.get("source_spans", []),
-        )
-        for c in citations_data
-    ]
-    return APIResponse(
-        data=RetrieveResponse(
-            documents=retrieved_docs,
-            citations=citations,
-            conflicts=retriever.detect_source_conflicts(docs),
-        ),
-        message="Truy xuất liên tài liệu thành công",
-    )
+    return _retrieval_response(docs, "Truy xuất liên tài liệu thành công")

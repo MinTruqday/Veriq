@@ -6,7 +6,7 @@ from src.core.human_decisions import require_automation_publication_authority
 from src.core.human_decisions import require_independent_review
 from src.modules.design.services.design_authorization import require_assigned_design_draft
 
-from src.core.common import audit, get_project, get_project_entity, new_id, now, require_action_policy
+from src.core.common import audit, get_project_entity, new_id, now
 from src.core.database import database
 from src.repositories.test_design import test_design_repository
 from src.modules.design.services.linters import has_verifiable_steps, lint_test_case
@@ -135,7 +135,6 @@ async def submit_test_case_review_record(project_id, draft_id, payload, user):
 
 async def request_test_case_changes_record(project_id, draft_id, payload, user):
     draft = await get_project_entity('test_case_drafts', draft_id, user, 'testcase.review')
-    await require_action_policy(draft["project_id"], user, 'testcase.request_changes', set(['QA']))
     if draft["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     if draft["status"] != 'IN_REVIEW':
@@ -218,7 +217,7 @@ async def approve_test_case_draft_record(draft_id, payload, user):
             detail={
                 "code": "TEST_CASE_DUPLICATE_REVIEW_REQUIRED",
                 "matches": comparison["duplicates"],
-                "message": "Ca này gần trùng với ca đang hiệu lực; QA cần ghi lý do xác nhận vẫn giữ riêng trước khi duyệt.",
+                "message": "Ca này gần trùng với ca đang hiệu lực; cần ghi lý do xác nhận vẫn giữ riêng trước khi duyệt.",
             },
         )
     if draft.get("origin") == "ai_generated" and not draft.get("evidence_refs"):

@@ -475,7 +475,7 @@ export default function TraceabilityPage({ project }) {
 
       <Panel
         title="Liên kết yêu cầu với ca kiểm thử"
-        description={`${filteredLinks.length.toLocaleString("vi-VN")} liên kết phù hợp`}
+        description={`${filteredLinks.length.toLocaleString()} liên kết phù hợp`}
         actions={
           <div className="grid w-full min-w-0 gap-2 sm:grid-cols-[minmax(220px,1fr)_210px]">
             <SearchField

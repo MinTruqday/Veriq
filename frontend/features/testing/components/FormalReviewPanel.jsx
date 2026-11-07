@@ -23,7 +23,6 @@ export default function FormalReviewPanel({
   const { ask, dialog } = useActionDialog();
   const can = (permission) => project.current_permissions?.includes(permission);
   const userId = project.current_membership?.user_id;
-  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const load = useCallback(async () => {
     try {
       const permissions = new Set(project.current_permissions || []);
@@ -580,11 +579,7 @@ export default function FormalReviewPanel({
           <ReviewFindingsTable
             findings={selected.findings}
             canAssign={() => !readOnly && can("reviewsession.finding.manage")}
-            canResolve={(item) =>
-              !readOnly &&
-              can("reviewsession.finding.manage") &&
-              (memberRoles.includes("QA") || item.owner_id === userId)
-            }
+            canResolve={(item) => !readOnly && can("reviewsession.finding.manage")}
             canVerify={(item) =>
               !readOnly &&
               can("reviewsession.finding.manage") &&

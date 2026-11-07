@@ -63,7 +63,7 @@ async def process_confirmed_api_operation(
             raise AutomationOperationError("API_OPERATION_REVISION_STALE")
         return operation
 
-    operation = await current_operation()
+    await current_operation()
     job = await require_operation(
         "POST",
         f"/dac-ta-giao-dien/thao-tac/{operation_id}/sinh-ca-kiem-thu",

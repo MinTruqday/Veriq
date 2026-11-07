@@ -13,10 +13,10 @@ from pymongo.errors import DuplicateKeyError
 
 from src.clients.ai_automation import ai_automation_client
 from src.clients.document_conversion import convert_requirement_source
-from src.core.auth import roles_for_membership
-from src.core.common import audit, get_project, get_project_entity, load_user_identities, now
+from src.core.common import audit, get_project, get_project_entity, load_user_identities, now, plain_text
 from src.core.configuration import settings
 from src.core.database import database
+from src.core.sensitive_data import redact_sensitive_text
 from src.repositories.project import project_repository
 from src.repositories.skill_profile import skill_profile_repository
 from src.repositories.test_run import test_run_repository
@@ -26,6 +26,12 @@ CV_MAX_EXTRACTED_CHARACTERS = 100_000
 CV_MAX_SOURCE_BLOCKS = 500
 CV_SOURCE_BLOCK_CHARACTERS = 3_000
 logger = logging.getLogger(__name__)
+
+
+async def _active_members_with_permission(project_id, permission, *, session=None):
+    return await project_repository.list_active_members_with_permission(
+        project_id, permission, session=session
+    )
 
 
 def _cv_source_blocks(conversion):
@@ -784,7 +790,7 @@ def _owner_decision_context(candidates, profiles, project_workload):
                 "domain": item.get("domain"),
                 "technologies": item.get("technologies") or [],
                 "source_kind": item.get("source_kind", "MEMBER_DECLARED"),
-                        "independently_assessed": False,
+                "independently_assessed": False,
             }
             for item in experiences
         ]
@@ -977,6 +983,34 @@ def _map_staffing_recommendations(recommendations, candidate_ref_to_user):
     }
 
 
+def _test_case_assignment_context(draft):
+    context_parts = [
+        draft.get("title"),
+        draft.get("type"),
+        draft.get("test_level"),
+        draft.get("test_kind"),
+        draft.get("expected_impact"),
+        plain_text(draft.get("objective_doc") or {}),
+        plain_text(draft.get("preconditions_doc") or {}),
+        " ".join(
+            " ".join(
+                value
+                for value in (
+                    plain_text(step.get("action_doc") or {}),
+                    plain_text(step.get("expected_doc") or {}),
+                )
+                if value
+            )
+            for step in draft.get("steps") or []
+            if isinstance(step, dict)
+        ),
+        plain_text(draft.get("expected_result_doc") or {}),
+        " ".join(draft.get("tags") or []),
+    ]
+    context = " ".join(str(value).strip() for value in context_parts if value)
+    return redact_sensitive_text(context)[:5000]
+
+
 async def automatically_assign_test_cases(
     project_id,
     versions,
@@ -986,11 +1020,9 @@ async def automatically_assign_test_cases(
     exclude_run_id=None,
     schedule=None,
 ):
-    memberships = await project_repository.list_members(project_id, session=session)
-    eligible = [
-        item for item in memberships
-        if item.get("status") == "ACTIVE" and "TESTER" in roles_for_membership(item)
-    ]
+    eligible = await _active_members_with_permission(
+        project_id, "testrun.execute", session=session
+    )
     eligible_ids = [item["user_id"] for item in eligible]
     profiles = await skill_profile_repository.list_for_members(
         project_id, eligible_ids, session=session
@@ -1078,17 +1110,17 @@ async def automatically_assign_test_cases(
             candidates.append(member_id)
         candidate_map[version["_id"]] = candidates
         candidate_reason_by_version[version["_id"]] = (
-            "NO_ELIGIBLE_TESTER"
+            "NO_ELIGIBLE_MEMBER"
             if not eligible_ids
             else "PROFILE_NOT_CONFIRMED"
             if not has_usable_skill
-            else "NO_AVAILABLE_TESTER"
+            else "NO_AVAILABLE_MEMBER"
             if not has_available_profile
             else "NO_FULL_SKILL_MATCH"
             if required and not has_skill_match
             else "MAX_CONCURRENT_PROJECTS_REACHED"
             if has_skill_match and not has_capacity_eligible_profile
-            else "NO_ELIGIBLE_TESTER"
+            else "NO_ELIGIBLE_MEMBER"
         )
     ordered = sorted(
         versions,
@@ -1187,15 +1219,14 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
             plan_source = (plan.get("approved_snapshot") or plan) if plan.get("status") == "APPROVED" else plan
             plan_staffing = (plan_source.get("estimation") or {}).get("effort_allocations") or []
             plan_schedule = plan_source.get("schedule") or {}
-    planned_tester_ids = {
+    planned_assignee_ids = {
         item.get("user_id") for item in plan_staffing if item.get("user_id")
     }
-    memberships = await project_repository.list_members(project_id)
+    memberships = await _active_members_with_permission(project_id, "testrun.execute")
     eligible = [
         item for item in memberships
         if item.get("status") == "ACTIVE"
-        and "TESTER" in roles_for_membership(item)
-        and (not plan_staffing or item.get("user_id") in planned_tester_ids)
+        and (not plan_staffing or item.get("user_id") in planned_assignee_ids)
     ]
     eligible_ids = [item["user_id"] for item in eligible]
     profiles = await skill_profile_repository.list_for_members(project_id, eligible_ids)
@@ -1268,6 +1299,9 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
             unresolved_cases.append({"test_case_version_id": version_id, "reason": "VERSION_UNAVAILABLE"})
             continue
         if existing_assignments.get(version_id):
+            existing_assignee = existing_assignments[version_id]
+            if existing_assignee in proposed_workload:
+                proposed_workload[existing_assignee] += 1
             case_recommendations_by_id[version_id] = {
                 "test_case_version_id": version_id,
                 "required_skills": version.get("required_skills", []),
@@ -1339,7 +1373,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
                 if skill_matches
                 else "NO_FULL_SKILL_MATCH"
                 if case_required
-                else "NO_ELIGIBLE_TESTER"
+                else "NO_ELIGIBLE_MEMBER"
             )
             case_recommendations_by_id[version_id] = {
                 "test_case_version_id": version_id,
@@ -1351,7 +1385,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
             }
 
     base_workloads = {
-        member_id: case_workload.get(member_id, 0)
+        member_id: proposed_workload.get(member_id, 0) + workload.get(member_id, 0)
         for member_id in eligible_ids
     }
     optimized_assignments = _minimum_cost_case_assignment(
@@ -1380,7 +1414,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
                 "test_case_version_id": version_id,
                 "required_skills": [],
                 "assignee_id": None,
-                "status": "NO_ELIGIBLE_TESTER",
+                "status": "NO_ELIGIBLE_MEMBER",
                 "candidates": candidates_for_case,
                 "near_matches": near_matches,
             }
@@ -1408,19 +1442,20 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
         "method": "GLOBAL_ASSIGNMENT_OPTIMIZATION_WITH_SOURCE_EVIDENCE_AND_ACTIVE_LOAD",
         "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
         "project_capacity_status": capacity_status,
-        "staffing_source": "TEST_PLAN_EFFORT_ALLOCATION" if plan_staffing else "ACTIVE_PROJECT_TESTERS",
+        "staffing_source": "TEST_PLAN_EFFORT_ALLOCATION" if plan_staffing else "ACTIVE_PROJECT_MEMBERS",
         "test_plan_staffing": plan_staffing,
         "applies_automatically": False,
         "case_recommendations": case_recommendations,
         "unresolved_cases": unresolved_cases,
         "assignment_plan_status": (
-            "READY" if not unresolved_cases and all(item["status"] not in {"NO_FULL_SKILL_MATCH", "NO_ELIGIBLE_TESTER", "MAX_CONCURRENT_PROJECTS_REACHED"} for item in case_recommendations)
+            "READY" if not unresolved_cases and all(item["status"] not in {"NO_FULL_SKILL_MATCH", "NO_ELIGIBLE_MEMBER", "MAX_CONCURRENT_PROJECTS_REACHED"} for item in case_recommendations)
             else "PARTIAL"
         ),
     }
 
 
 async def recommend_test_case_owner(project_id, payload, user, *, output_language=None):
+    task_context = ""
     if payload.draft_id:
         draft = await get_project_entity(
             "test_case_drafts", payload.draft_id, user, "testcase.update"
@@ -1429,6 +1464,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
         if draft.get("status") != "DRAFT":
             raise HTTPException(status_code=409, detail={"code": "IMMUTABLE_TEST_CASE_DRAFT"})
+        task_context = _test_case_assignment_context(draft)
     else:
         await get_project(project_id, user, "testcase.create")
     await get_project(project_id, user, "project.members.read")
@@ -1440,12 +1476,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     if not output_language:
         raise HTTPException(status_code=409, detail={"code": "PROJECT_OUTPUT_LOCALE_REQUIRED"})
 
-    memberships = await project_repository.list_members(project_id)
-    eligible = [
-        item
-        for item in memberships
-        if item.get("status") == "ACTIVE" and roles_for_membership(item).intersection({"QA", "TESTER"})
-    ]
+    eligible = await _active_members_with_permission(project_id, "testrun.execute")
     eligible_ids = [item["user_id"] for item in eligible]
     profiles = await skill_profile_repository.list_for_members(project_id, eligible_ids)
     profiles_by_user = {item["user_id"]: item for item in profiles}
@@ -1519,7 +1550,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             "near_matches": [],
             "recommended_user_id": None,
             "recommended_user_label": None,
-            "status": "PROJECT_LIMIT_REACHED" if excluded_by_project_limit else "NO_ELIGIBLE_TESTER",
+            "status": "PROJECT_LIMIT_REACHED" if excluded_by_project_limit else "NO_ELIGIBLE_MEMBER",
             "method": "AI_RANKED_ELIGIBLE_CANDIDATES_WITH_SKILL_GAP_ANALYSIS",
             "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
             "project_capacity_status": project_capacity_status,
@@ -1609,7 +1640,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             "active_run_count": candidate["active_run_count"],
         })
     ai_result = await ai_automation_client.recommend_test_case_owners(
-        project_id, output_language, required, ai_candidate_inputs
+        project_id, output_language, required, ai_candidate_inputs, task_context
     ) if ai_candidate_inputs else {"recommendations": [], "warnings": []}
     recommendation_by_user = _map_staffing_recommendations(
         ai_result.get("recommendations") or [], candidate_ref_to_user
@@ -1721,7 +1752,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
     status = (
         "CANDIDATES_FOUND"
         if candidates
-        else "NO_ELIGIBLE_TESTER"
+        else "NO_ELIGIBLE_MEMBER"
         if not eligible
         else "PROJECT_LIMIT_REACHED"
         if excluded_by_project_limit and not candidates

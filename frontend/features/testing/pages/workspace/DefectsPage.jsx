@@ -117,24 +117,10 @@ export default function DefectsPage({ project }) {
     attachments: [],
   });
   const can = (permission) => project.current_permissions?.includes(permission);
-  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
   const canManageTrace = (item) => defectActionAccess(project, item).canManageTrace;
   const transitionAllowed = (item, status) => {
     if (["CONFIRMED", "REJECTED", "DUPLICATE"].includes(status)) {
-      if (!defectActionAccess(project, item).canTriage) return false;
-      if (status === "REJECTED") {
-        const configured = project.settings?.action_policies?.["defect.rejected"];
-        return Array.isArray(configured)
-          ? configured.some((role) => memberRoles.includes(role))
-          : memberRoles.includes("QA");
-      }
-      if (status === "DUPLICATE") {
-        const configured = project.settings?.action_policies?.["defect.duplicate"];
-        return Array.isArray(configured)
-          ? configured.some((role) => memberRoles.includes(role))
-          : memberRoles.includes("QA");
-      }
-      return true;
+      return defectActionAccess(project, item).canTriage;
     }
     if (["IN_PROGRESS", "RESOLVED"].includes(status)) {
       return defectActionAccess(project, item).canRepair;

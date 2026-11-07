@@ -38,7 +38,7 @@ function formatStorageSize(value) {
   const bytes = Number(value);
   if (!Number.isFinite(bytes)) return "Chưa có dữ liệu";
   if (bytes === 0) return "0 byte";
-  if (bytes < 1000) return `${Math.round(bytes).toLocaleString("vi-VN")} byte`;
+  if (bytes < 1000) return `${Math.round(bytes).toLocaleString()} byte`;
   const units = ["kB", "MB", "GB", "TB"];
   let size = bytes;
   let unitIndex = -1;
@@ -46,7 +46,7 @@ function formatStorageSize(value) {
     size /= 1000;
     unitIndex += 1;
   }
-  return `${size.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
+  return `${size.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
 }
 
 export default function OperationsPage() {

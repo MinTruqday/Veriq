@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.auth import ai_automation_context
-from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now, plain_text, resolve_user_reference
+from src.core.common import audit, get_project, get_project_entity, new_id, now, plain_text, resolve_user_reference
 from src.core.database import database
 from src.core.human_decisions import require_independent_review
 from src.repositories.project import project_repository
@@ -21,19 +21,18 @@ def _item_id(requirement_version_id, source_type, source_id, quote):
     return f"COV-{sha256(value).hexdigest()[:20]}"
 
 
-async def _require_qa(project_id, user, *, allow_execution_feedback_automation=False):
-    if "QA" not in await get_project_roles(project_id, user.id):
-        automation = ai_automation_context.get()
-        if (
-            allow_execution_feedback_automation
-            and isinstance(automation, dict)
-            and automation.get("principal_id") == user.id
-            and automation.get("publication_project_id") == project_id
-            and "testadequacy.execution_feedback.record"
-            in set(automation.get("publication_permissions") or [])
-        ):
-            return
-        raise HTTPException(status_code=403, detail={"code": "QA_DECISION_REQUIRED"})
+async def _require_review_permission(project_id, user, *, allow_execution_feedback_automation=False):
+    automation = ai_automation_context.get()
+    if (
+        allow_execution_feedback_automation
+        and isinstance(automation, dict)
+        and automation.get("principal_id") == user.id
+        and automation.get("publication_project_id") == project_id
+        and "testadequacy.execution_feedback.record"
+        in set(automation.get("publication_permissions") or [])
+    ):
+        return
+    await get_project(project_id, user, "testcase.review")
 
 
 async def _replace_assessment_with_audit(
@@ -259,7 +258,7 @@ def _waiver_active(item, timestamp):
 
 
 def coverage_item_ready_for_assurance(item, timestamp):
-    """Require source-backed evidence or an auditable QA decision for every item."""
+    """Require source-backed evidence or an auditable human decision for every item."""
     if not all(
         str(item.get(field) or "").strip()
         for field in (
@@ -492,7 +491,6 @@ async def submit_adequacy_assessment(assessment_id, payload, user):
 async def approve_adequacy_assessment(assessment_id, payload, user):
     assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.review")
     assessment = await _reconcile_expired_waivers(assessment)
-    await _require_qa(assessment["project_id"], user)
     if assessment["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
     require_independent_review(assessment, user, "TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN")
@@ -554,7 +552,6 @@ async def approve_adequacy_assessment(assessment_id, payload, user):
 
 async def request_adequacy_changes(assessment_id, payload, user):
     assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.review")
-    await _require_qa(assessment["project_id"], user)
     if assessment["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
     require_independent_review(assessment, user, "TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN")
@@ -567,8 +564,8 @@ async def request_adequacy_changes(assessment_id, payload, user):
 
 
 async def decide_coverage_item(assessment_id, coverage_item_id, payload, user):
-    assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.read")
-    await _require_qa(assessment["project_id"], user)
+    assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.review")
+    await _require_review_permission(assessment["project_id"], user)
     waiver_owner_id = None
     if payload.status == "MISSING_INFORMATION":
         clarification = await requirement_clarification_repository.find(
@@ -633,7 +630,7 @@ async def decide_coverage_item(assessment_id, coverage_item_id, payload, user):
 
 async def add_execution_feedback(assessment_id, coverage_item_id, payload, user):
     assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.read")
-    await _require_qa(
+    await _require_review_permission(
         assessment["project_id"],
         user,
         allow_execution_feedback_automation=True,

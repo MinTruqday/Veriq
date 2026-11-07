@@ -310,8 +310,6 @@ async def _build_execution_assistance_record(
             detail={"code": "EXECUTION_ASSISTANCE_SOURCE_CHANGED", "retryable": True},
         )
     contract_metadata = ai_contract_metadata(ai_result)
-    # Keep only references attached to verified quotations. The model may identify
-    # additional source chunks as relevant without quoting them in its explanation.
     contract_metadata.pop("evidence_refs", None)
     record = {
         **reservation,

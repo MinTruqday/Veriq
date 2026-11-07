@@ -325,7 +325,7 @@ async def shutdown_event():
 
 
 @asynccontextmanager
-async def lifespan(application: FastAPI):
+async def lifespan(_application: FastAPI):
     await startup_event()
     try:
         yield

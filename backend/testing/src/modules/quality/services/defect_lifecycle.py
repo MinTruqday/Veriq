@@ -12,7 +12,6 @@ from src.core.common import (
     new_id,
     now,
     optimistic_patch,
-    require_action_policy,
 )
 from src.core.database import database
 from src.modules.execution.services.execution_context import (
@@ -93,12 +92,11 @@ async def update_defect_record(defect_id, payload, project_id, user):
         defect_id,
         user,
         "defect.update",
-        assigned_role="DEVELOPER",
         assigned_user_field="assignee",
     )
     if project_id is not None and defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
-    roles = await require_defect_editor_assignment(defect, user)
+    permissions = await require_defect_editor_assignment(defect, user)
     developer_fields = {
         "root_cause_category",
         "root_cause_detail",
@@ -106,9 +104,9 @@ async def update_defect_record(defect_id, payload, project_id, user):
         "escape_reason",
         "prevention_candidate",
     }
-    if "QA" in roles and developer_fields.intersection(payload):
+    if "defect.transition.developer" not in permissions and developer_fields.intersection(payload):
         raise HTTPException(status_code=403, detail={"code": "DEFECT_DEVELOPER_FIELDS_REQUIRED"})
-    if "DEVELOPER" in roles and {"assignee", "severity", "priority"}.intersection(payload):
+    if "defect.triage" not in permissions and {"assignee", "severity", "priority"}.intersection(payload):
         raise HTTPException(status_code=403, detail={"code": "DEFECT_TRIAGE_AUTHORITY_REQUIRED"})
     expected_revision = payload.get("expected_revision")
     if not isinstance(expected_revision, int):
@@ -127,7 +125,6 @@ async def update_defect_record(defect_id, payload, project_id, user):
             defect["project_id"],
             user,
             "defect.trace.manage",
-            assigned_role="DEVELOPER",
             assigned_user_id=defect.get("assignee"),
         )
     if "attachments" in payload:
@@ -135,7 +132,6 @@ async def update_defect_record(defect_id, payload, project_id, user):
             defect["project_id"],
             user,
             "attachment.manage",
-            assigned_role="DEVELOPER",
             assigned_user_id=defect.get("assignee"),
         )
     linked_run = None
@@ -295,14 +291,9 @@ async def transition_defect_record(defect_id, payload, user):
         defect_id,
         user,
         permission,
-        assigned_role="DEVELOPER" if permission == "defect.transition.developer" else None,
         assigned_user_field="assignee" if permission == "defect.transition.developer" else None,
     )
     await require_defect_editor_assignment(defect, user)
-    if payload.to_status in ["REJECTED", "DUPLICATE"]:
-        await require_action_policy(
-            defect["project_id"], user, f"defect.{payload.to_status.lower()}", set(["QA"])
-        )
     allowed = defect_transitions().get(defect["status"], set())
     if payload.to_status not in allowed:
         raise HTTPException(

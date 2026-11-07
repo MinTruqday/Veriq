@@ -16,7 +16,7 @@ function formatDate(value, locale, configuredTimeZone) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Chưa ghi nhận";
   const timeZone = isSupportedTimeZone(configuredTimeZone) ? configuredTimeZone : undefined;
-  return new Intl.DateTimeFormat(locale || "vi-VN", {
+  return new Intl.DateTimeFormat(locale || undefined, {
     dateStyle: "medium",
     timeStyle: "short",
     ...(timeZone ? { timeZone } : {}),

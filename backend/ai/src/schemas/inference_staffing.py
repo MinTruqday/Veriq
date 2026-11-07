@@ -32,6 +32,7 @@ class StaffingRecommendationRequest(BaseModel):
         max_length=35,
         pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$",
     )
+    task_context: str = Field(default="", max_length=5000)
     required_skills: list[str] = Field(default_factory=list, max_length=50)
     candidates: list[StaffingCandidateInput] = Field(min_length=1, max_length=100)
 

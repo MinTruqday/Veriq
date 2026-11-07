@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { ErrorState, Panel } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
+import { preferredSummaryLocale } from "../lib/summaryLanguage";
 import { testingApi } from "../services/testing.service";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 
@@ -312,7 +313,11 @@ export default function ProjectComplexityAssessmentPanel({ project }) {
     try {
       const documentIds = [...selectedDocumentIds].sort();
       const requirementVersionIds = [...selectedRequirementVersionIds].sort();
-      const outputLanguage = user?.locale || project.locale || "en";
+      const outputLanguage = preferredSummaryLocale(
+        user?.locale,
+        project.locale,
+        navigator.language,
+      );
       const fingerprint = JSON.stringify({
         instruction,
         document_ids: documentIds,

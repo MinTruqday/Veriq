@@ -1,6 +1,6 @@
 import re
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope

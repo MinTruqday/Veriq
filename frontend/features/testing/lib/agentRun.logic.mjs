@@ -23,10 +23,8 @@ const checkpointReasonLabels = {
   AUTOMATION_WORKER_CLAIMED: "Hệ thống đã tiếp nhận lượt chạy",
   AUTOMATION_WORKER_FAILED: "Hệ thống gặp lỗi khi xử lý lượt chạy",
   AUTOMATION_ACTION_OUTCOME_UNCERTAIN: "Chưa xác định được kết quả thao tác",
-  PROJECT_QA_EXECUTOR_UNAVAILABLE:
-    "Chưa có người phụ trách kiểm thử phù hợp để thực hiện lượt chạy",
-  PROJECT_BA_EXECUTOR_UNAVAILABLE:
-    "Chưa có người phụ trách nghiệp vụ phù hợp để thực hiện lượt chạy",
+  PROJECT_QA_EXECUTOR_UNAVAILABLE: "Không có thành viên đủ quyền thực hiện lượt chạy",
+  PROJECT_BA_EXECUTOR_UNAVAILABLE: "Không có thành viên đủ quyền thực hiện lượt chạy",
   AI_READ_PERMISSION_REVOKED: "Quyền đọc nguồn AI đã bị thu hồi",
   AUTOMATION_CANCELLED: "Lượt chạy đã được dừng",
   QA_TEST_DESIGN_SOURCE_EVIDENCE_MISSING: "Không đủ bằng chứng nguồn để bàn giao thiết kế kiểm thử",
@@ -95,7 +93,7 @@ export function agentCheckpointView(checkpoint) {
   if (typeof checkpoint.created_at === "string" || checkpoint.created_at instanceof Date) {
     const date = new Date(checkpoint.created_at);
     if (!Number.isNaN(date.getTime())) {
-      createdAt = new Intl.DateTimeFormat("vi-VN", {
+      createdAt = new Intl.DateTimeFormat(undefined, {
         dateStyle: "short",
         timeStyle: "medium",
       }).format(date);
@@ -118,14 +116,14 @@ export function agentAuthorizationGuidance(run) {
     case "PROJECT_QA_EXECUTOR_UNAVAILABLE":
       return {
         message:
-          "Dự án chưa có người phụ trách kiểm thử đang hoạt động. Hãy phân công thành viên phù hợp rồi thử lại.",
-        action: "Thử lại sau khi phân công",
+          "Thành viên khởi chạy không còn quyền cần thiết. Hãy kiểm tra quyền dự án rồi thử lại.",
+        action: "Kiểm tra quyền và thử lại",
       };
     case "PROJECT_BA_EXECUTOR_UNAVAILABLE":
       return {
         message:
-          "Dự án chưa có người phụ trách nghiệp vụ đang hoạt động. Hãy phân công thành viên phù hợp rồi thử lại.",
-        action: "Thử lại sau khi phân công",
+          "Thành viên khởi chạy không còn quyền cần thiết. Hãy kiểm tra quyền dự án rồi thử lại.",
+        action: "Kiểm tra quyền và thử lại",
       };
     case "AUTOMATION_PRINCIPAL_ROLE_CHANGED":
       return {

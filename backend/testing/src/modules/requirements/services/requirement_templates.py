@@ -10,7 +10,7 @@ from src.core.ai_automation import (
     request_ai_automation,
     require_document_ingestion_event,
 )
-from src.core.common import audit, get_project, get_project_roles, new_id, now, plain_text
+from src.core.common import audit, get_project, new_id, now, plain_text
 from src.modules.requirements.services.requirement_documents import require_document_access
 from src.modules.requirements.services.requirement_import import api_operation_identifiers
 from src.modules.requirements.services.requirement_import_workflow import create_requirement_preview_from_candidates
@@ -153,6 +153,13 @@ async def visible_template(template_id, project_id, user):
 
 async def list_templates(project_id, user):
     await get_project(project_id, user, "requirement.read")
+    try:
+        await get_project(project_id, user, "requirement.approve")
+        can_approve = True
+    except HTTPException as error:
+        if error.status_code != 403:
+            raise
+        can_approve = False
     templates = await requirement_template_repository.list_visible(project_id)
     visible = starter_templates()
     for item in templates:
@@ -171,7 +178,7 @@ async def list_templates(project_id, user):
                 continue
             source_documents = await requirement_document_repository.list_by_ids(project_id, required_ids)
             if item.get("status") == "PENDING_PUBLICATION" and (
-                "QA" in await get_project_roles(project_id, user.id)
+                can_approve
                 or user.is_system_admin
                 or any(document.get("created_by") == user.id for document in source_documents)
             ):
@@ -965,9 +972,7 @@ async def consent_publication(project_id, template_id, payload, user):
 
 
 async def approve_publication(project_id, template_id, user):
-    await get_project(project_id, user, "requirement.read")
-    if "QA" not in await get_project_roles(project_id, user.id):
-        raise HTTPException(status_code=403, detail={"code": "TEMPLATE_APPROVER_REQUIRED"})
+    await get_project(project_id, user, "requirement.approve")
     template = await requirement_template_repository.find(template_id)
     if not template or template.get("project_id") != project_id or template.get("status") != "PENDING_PUBLICATION" or template.get("publication_requested_by") == user.id:
         raise HTTPException(status_code=409, detail={"code": "TEMPLATE_APPROVAL_INVALID"})

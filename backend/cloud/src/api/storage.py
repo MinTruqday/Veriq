@@ -1,7 +1,7 @@
 import secrets
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from loguru import logger
 
 from src.core.dependency import CurrentUser, get_current_user, get_db
@@ -41,7 +41,6 @@ async def create_folder(
 
 @router.post("/tap-tin", response_model=APIResponse[StorageItemResponse], status_code=201)
 async def create_file(
-    background_tasks: BackgroundTasks,
     data: StorageItemCreate = Body(...),
     current_user: CurrentUser = Depends(get_current_user),
     db=Depends(get_db),

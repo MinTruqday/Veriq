@@ -45,7 +45,7 @@ def testing_skill(capability, description, domains, permission, label=None, user
     return value
 
 
-structured_skills = [
+agent_capabilities = [
     testing_skill(
         "project_question",
         "Answer a project question only from retrieved evidence",

@@ -264,7 +264,7 @@ export default function ProjectAccessPanel({ project }) {
               </p>
               <div className="mt-3 max-h-[28rem] space-y-1 overflow-y-auto overscroll-contain pr-2">
                 {[...grouped]
-                  .sort(([left], [right]) => left.localeCompare(right, "vi"))
+                  .sort(([left], [right]) => left.localeCompare(right))
                   .map(([label, items]) => (
                     <details className="border-b border-border py-2" key={label}>
                       <summary className="cursor-pointer text-[13px]">

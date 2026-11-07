@@ -501,8 +501,6 @@ async def make_requirement_obsolete(
         )
     version_status = current_version["status"]
     timestamp = now()
-    from src.clients.ai_automation import queue_requirement_changed
-
     async with await database.client.start_session() as session:
         async with session.start_transaction():
             updated = await requirement_repository.mark_requirement_obsolete(

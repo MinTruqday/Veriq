@@ -55,11 +55,6 @@ class ReviewRepository:
             {"project_id": project_id, "user_id": {"$in": user_ids}, "status": status}
         )
 
-    async def find_active_member(self, project_id, user_id, status):
-        return await database.value.project_members.find_one(
-            {"project_id": project_id, "user_id": user_id, "status": status}
-        )
-
     async def find_review(self, review_id):
         return await database.value.review_sessions.find_one({"_id": review_id})
 

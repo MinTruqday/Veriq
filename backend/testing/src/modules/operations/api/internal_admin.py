@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, Query
 
 from src.core.internal import require_internal_token
 from src.schemas.internal_admin import (
-    AutomationPrincipalResolve,
     BreakGlassGrant,
     BreakGlassRevoke,
     ProjectDelete,
@@ -31,13 +30,6 @@ async def projects(
     limit: int = Query(default=200, ge=1, le=1000),
 ):
     return await InternalAdminService.projects(search, status, limit)
-
-
-@router.post("/tu-dong-hoa/du-an/{project_id}/nguoi-thuc-thi")
-async def resolve_automation_principal(
-    project_id: str, payload: AutomationPrincipalResolve
-):
-    return await InternalAdminService.resolve_automation_principal(project_id, payload)
 
 
 @router.get("/du-an/{project_id}")

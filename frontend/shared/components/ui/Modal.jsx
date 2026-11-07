@@ -151,11 +151,6 @@ export function ModalTitle({ children, className }) {
     </h3>
   );
 }
-export function ModalDescription({ children, className }) {
-  return (
-    <p className={cn("mt-1 text-[14px] leading-relaxed text-ink-muted", className)}>{children}</p>
-  );
-}
 export function ModalContent({ children, className }) {
   return <div className={cn("space-y-4 bg-surface p-6", className)}>{children}</div>;
 }

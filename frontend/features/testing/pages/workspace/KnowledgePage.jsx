@@ -1147,13 +1147,13 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             [
                               "Thời điểm duyệt",
                               metadata.approved_at
-                                ? new Date(metadata.approved_at).toLocaleString("vi-VN")
+                                ? new Date(metadata.approved_at).toLocaleString()
                                 : null,
                             ],
                             [
                               "Thời điểm có hiệu lực",
                               metadata.effective_from
-                                ? new Date(metadata.effective_from).toLocaleString("vi-VN")
+                                ? new Date(metadata.effective_from).toLocaleString()
                                 : null,
                             ],
                             [
@@ -1245,19 +1245,19 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             [
                               "Thời điểm tài liệu được tạo",
                               metadata.source_created_at
-                                ? new Date(metadata.source_created_at).toLocaleString("vi-VN")
+                                ? new Date(metadata.source_created_at).toLocaleString()
                                 : null,
                             ],
                             [
                               "Thời điểm tài liệu được cập nhật",
                               metadata.source_updated_at
-                                ? new Date(metadata.source_updated_at).toLocaleString("vi-VN")
+                                ? new Date(metadata.source_updated_at).toLocaleString()
                                 : null,
                             ],
                             [
                               "Thời điểm lập chỉ mục",
                               metadata.indexed_at
-                                ? new Date(metadata.indexed_at).toLocaleString("vi-VN")
+                                ? new Date(metadata.indexed_at).toLocaleString()
                                 : null,
                             ],
                             [

@@ -155,7 +155,7 @@ class ProjectNotificationRulePatch(BaseModel):
         default_factory=lambda: ["in_app"], max_length=3
     )
     target_roles: list[Literal["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"]] = Field(
-        default_factory=lambda: ["QA"], max_length=5
+        default_factory=list, max_length=5
     )
     escalation_minutes: int | None = Field(default=None, ge=1, le=10080)
 
@@ -169,7 +169,7 @@ class ProjectNotificationPreferencePatch(BaseModel):
     muted_events: list[str] = Field(default_factory=list, max_length=200)
     quiet_hours_start: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     quiet_hours_end: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
-    timezone: str = Field(default="Asia/Ho_Chi_Minh", min_length=2, max_length=80)
+    timezone: str = Field(min_length=2, max_length=80)
 
 
 class SecurityTestSuggestionInput(BaseModel):

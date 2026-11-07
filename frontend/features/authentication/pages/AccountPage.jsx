@@ -20,8 +20,8 @@ export default function AccountPage() {
   const sessionsRequestId = useRef(0);
   const [profile, setProfile] = useState({
     full_name: "",
-    locale: "vi-VN",
-    timezone: "Asia/Ho_Chi_Minh",
+    locale: "",
+    timezone: "",
   });
   const [password, setPassword] = useState({ current_password: "", new_password: "" });
   const [sessions, setSessions] = useState([]);
@@ -40,8 +40,10 @@ export default function AccountPage() {
   useEffect(() => {
     setProfile({
       full_name: user?.full_name || "",
-      locale: user?.locale || "vi-VN",
-      timezone: user?.timezone || "Asia/Ho_Chi_Minh",
+      locale: user?.locale || (typeof navigator === "undefined" ? "" : navigator.language),
+      timezone:
+        user?.timezone ||
+        (typeof Intl === "undefined" ? "" : Intl.DateTimeFormat().resolvedOptions().timeZone),
     });
     setTimezoneError("");
   }, [user]);

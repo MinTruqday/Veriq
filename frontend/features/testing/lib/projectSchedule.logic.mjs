@@ -31,7 +31,7 @@ export function formatProjectDate(value) {
   ) {
     return "Ngày không hợp lệ";
   }
-  return date.toLocaleDateString("vi-VN", {
+  return date.toLocaleDateString(undefined, {
     timeZone: "UTC",
     day: "2-digit",
     month: "2-digit",

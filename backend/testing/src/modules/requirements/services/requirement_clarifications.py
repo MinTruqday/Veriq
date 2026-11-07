@@ -3,7 +3,7 @@ from hashlib import sha256
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError, PyMongoError
-from src.core.common import audit, get_project_entity, get_project_roles, new_id, now, plain_text
+from src.core.common import audit, get_project_entity, new_id, now, plain_text
 from src.core.database import database
 from src.core.human_decisions import (
     require_automation_publication_authority,
@@ -12,18 +12,6 @@ from src.core.human_decisions import (
 from src.modules.design.services.linters import requirement_findings
 from src.repositories.requirement import requirement_repository
 from src.repositories.requirement_clarification import requirement_clarification_repository
-
-
-async def _require_role(project_id, user, role):
-    if role not in await get_project_roles(project_id, user.id):
-        raise HTTPException(status_code=403, detail={"code": f"{role}_ROLE_REQUIRED"})
-
-
-async def _require_question_author(project_id, user):
-    roles = await get_project_roles(project_id, user.id)
-    if "QA" in roles or (getattr(user, "_ai_automation_run_id", None) and "BA" in roles):
-        return
-    raise HTTPException(status_code=403, detail={"code": "QA_ROLE_REQUIRED"})
 
 
 async def list_clarifications(requirement_version_id, user):
@@ -161,7 +149,6 @@ async def _replace_and_audit(
 
 async def create_clarification(requirement_version_id, payload, user):
     version = await get_project_entity("requirement_versions", requirement_version_id, user, "requirement.review")
-    await _require_question_author(version["project_id"], user)
     return await _create(
         version["project_id"],
         version["requirement_id"],
@@ -174,7 +161,6 @@ async def create_clarification(requirement_version_id, payload, user):
 
 async def generate_clarifications(requirement_version_id, user):
     version = await get_project_entity("requirement_versions", requirement_version_id, user, "requirement.review")
-    await _require_question_author(version["project_id"], user)
     criteria = await requirement_repository.list_acceptance_criteria(version["_id"], None)
     findings = [
         finding
@@ -233,7 +219,6 @@ async def answer_clarification(clarification_id, payload, user):
     requirement = await get_project_entity(
         "requirements", clarification["requirement_id"], user, "requirement.update"
     )
-    await _require_role(clarification["project_id"], user, "BA")
     version = await requirement_repository.find_version(
         clarification["requirement_version_id"],
         clarification["project_id"],
@@ -334,7 +319,6 @@ async def request_clarification_changes(clarification_id, payload, user):
     requirement = await get_project_entity(
         "requirements", clarification["requirement_id"], user, "requirement.review"
     )
-    await _require_role(clarification["project_id"], user, "QA")
     source_version = await requirement_repository.find_version(
         clarification["requirement_version_id"],
         clarification["project_id"],
@@ -449,7 +433,6 @@ async def resolve_clarification(clarification_id, payload, user):
     if not clarification:
         raise HTTPException(status_code=404, detail={"code": "CLARIFICATION_NOT_FOUND"})
     requirement = await get_project_entity("requirements", clarification["requirement_id"], user, "requirement.review")
-    await _require_role(clarification["project_id"], user, "QA")
     if clarification["status"] != "ANSWERED":
         raise HTTPException(status_code=409, detail={"code": "CLARIFICATION_ANSWER_REQUIRED"})
     version = await requirement_repository.find_version(payload.requirement_version_id, clarification["project_id"], clarification["requirement_id"])
@@ -511,7 +494,6 @@ async def decide_clarification(clarification_id, payload, user):
         user,
         "requirement.review",
     )
-    await _require_role(clarification["project_id"], user, "QA")
     if clarification["status"] not in {"OPEN", "ANSWERED"}:
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
     version = await requirement_repository.find_version(

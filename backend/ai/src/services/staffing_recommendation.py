@@ -21,6 +21,7 @@ async def recommend_staffing(request: StaffingRecommendationRequest) -> Staffing
             request.required_skills,
             [item.model_dump() for item in request.candidates],
             request.output_language,
+            request.task_context,
         ),
         StaffingRecommendationOutput,
         max_tokens=min(5000, 300 + len(request.candidates) * 180),

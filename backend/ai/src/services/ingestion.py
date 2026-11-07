@@ -731,7 +731,7 @@ class IngestionPipelineService:
         diagnostic_limit = settings.DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS
         quarantined_chunks = BoundedIngestionDiagnostics(diagnostic_limit)
 
-        async def indexed_chunks(semantic=semantic):
+        async def indexed_chunks(semantic=semantic, raw_markdown=raw_markdown):
             sampler = DocumentSummarySampler(
                 settings.DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT,
                 f"{document_id}:{metadata['index_generation']}",
@@ -994,7 +994,6 @@ class IngestionPipelineService:
             "failed_chunks": failed_chunks,
             "failed_chunk_count": failed_chunks.total_count,
             "failed_chunk_details_truncated": failed_chunks.total_count > len(failed_chunks),
-            "failed_chunks": failed_chunks,
             "unprocessed_blocks": unprocessed_blocks,
             "extraction_warnings": parse_result.get("extraction_warnings", []),
             "index_cleanup_pending": cleanup_pending,

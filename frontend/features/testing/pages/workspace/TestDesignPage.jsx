@@ -188,16 +188,14 @@ export default function TestDesignPage({ project, workspaceView }) {
   const creationInFlight = useRef(new Set());
   const testImportPanelRef = useRef(null);
   const can = (permission) => project.current_permissions?.includes(permission);
-  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
-  const isTester = memberRoles.includes("TESTER");
   const canDraft = (permission, draft) => canUseAssignedDraft(project, draft, permission);
   const assignedScenarios = scenarios.filter(
     (scenario) => scenario.owner_id === currentUserId && scenario.status !== "archived",
   );
-  const canCreateCase = isTester
-    ? assignedScenarios.some((scenario) => canDraft("testscenario.update", scenario))
-    : can("testcase.create");
-  const canManageTestCaseFields = can("testcase.template.manage") && memberRoles.includes("QA");
+  const canCreateCase =
+    can("testcase.create") ||
+    assignedScenarios.some((scenario) => canDraft("testscenario.update", scenario));
+  const canManageTestCaseFields = can("testcase.template.manage");
   const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
   const permissions = useMemo(
     () => project.current_permissions || [],
@@ -712,7 +710,7 @@ export default function TestDesignPage({ project, workspaceView }) {
         },
         {
           name: "required",
-          label: "Bắt buộc khi QA duyệt",
+          label: "Bắt buộc khi duyệt",
           options: [
             { value: "false", label: "Không" },
             { value: "true", label: "Có" },
@@ -1225,9 +1223,9 @@ export default function TestDesignPage({ project, workspaceView }) {
           requirements={requirements}
           onRequirementChange={setSelectedRequirement}
           members={projectMembers}
-          canDecide={memberRoles.includes("QA") && can("testcase.read")}
-          canCreateClarification={memberRoles.includes("QA") && can("requirement.review")}
-          canApprove={memberRoles.includes("QA") && can("testcase.review")}
+          canDecide={can("testcase.review")}
+          canCreateClarification={can("requirement.review")}
+          canApprove={can("testcase.review")}
           canSubmit={can("testcase.submit_review")}
         />
       )}
@@ -2854,9 +2852,9 @@ export default function TestDesignPage({ project, workspaceView }) {
           onSubmit={createScenario}
           requirements={requirements}
           members={projectMembers}
-          canReview={memberRoles.includes("QA")}
+          canReview={can("testscenario.update")}
           canEdit={(scenario) => canDraft("testscenario.update", scenario)}
-          canAssignOwner={!isTester}
+          canAssignOwner={can("project.members.manage")}
           canReadTestConditions={permissions.includes("testcondition.read")}
           ask={ask}
           reload={load}

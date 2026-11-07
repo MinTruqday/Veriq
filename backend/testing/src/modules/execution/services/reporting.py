@@ -126,8 +126,15 @@ async def report_for_user(report_id, user, action="read"):
 
 
 async def get_settings(project_id, user):
-    await get_project(project_id, user, "workreport.read")
-    return await repository.find("report_settings", {"project_id": project_id}) or {"project_id": project_id, "revision": 0, "enabled": False, "timezone": "Asia/Ho_Chi_Minh", "allowed_kinds": ["PERSONAL", "TEAM", "PROJECT"], "reminder_hours_before": 24}
+    project = await get_project(project_id, user, "workreport.read")
+    return await repository.find("report_settings", {"project_id": project_id}) or {
+        "project_id": project_id,
+        "revision": 0,
+        "enabled": False,
+        "timezone": project.get("timezone"),
+        "allowed_kinds": ["PERSONAL", "TEAM", "PROJECT"],
+        "reminder_hours_before": 24,
+    }
 
 
 async def update_settings(project_id, payload, user):
@@ -496,7 +503,7 @@ async def add_comment(report_id, payload, user):
 
 
 async def receipt(report_id, user, acknowledge=False):
-    report = await report_for_user(report_id, user)
+    await report_for_user(report_id, user)
     query = {"report_id": report_id, "user_id": user.id, "revoked_at": {"$exists": False}}
     delivery = await repository.find("report_deliveries", query)
     if not delivery or delivery["status"] not in {"RECEIVED", "VIEWED", "ACKNOWLEDGED"}:

@@ -13,9 +13,8 @@ class ProjectCreate(BaseModel):
     locale: str | None = Field(
         default=None, min_length=2, max_length=35, pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
     )
-    timezone: str = Field(default="Asia/Ho_Chi_Minh", min_length=2, max_length=80)
+    timezone: str = Field(min_length=2, max_length=80)
     settings: dict[str, Any] = Field(default_factory=dict)
-    initial_qa_user_id: str = Field(min_length=1, max_length=320)
     planning_method: Literal["SCRUM", "KANBAN"] = "SCRUM"
     planned_start_at: datetime | None = None
     planned_end_at: datetime | None = None
@@ -72,6 +71,7 @@ class ProjectComplexityAssessmentInput(BaseModel):
 class ProjectPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)
+    project_lead_user_id: str | None = Field(default=None, min_length=1, max_length=320)
     description: str | None = Field(default=None, max_length=5000)
     project_type: Literal["web", "mobile", "api", "desktop", "embedded", "other"] | None = None
     locale: str | None = Field(default=None, min_length=2, max_length=20)

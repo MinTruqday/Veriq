@@ -11,7 +11,6 @@ from src.core.common import (
     load_user_identities,
     new_id,
     now,
-    require_action_policy,
 )
 from src.repositories.test_design import test_design_repository
 from src.schemas.test_case_template import (
@@ -128,12 +127,6 @@ class TestCaseTemplateService:
             template_id,
             user,
             'testcase.template.manage',
-        )
-        await require_action_policy(
-            template["project_id"],
-            user,
-            'testcase.template.archive',
-            set(['QA']),
         )
         if template.get("status") == 'ARCHIVED':
             return template

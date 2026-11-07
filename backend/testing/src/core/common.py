@@ -5,8 +5,8 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from src.clients.authentication import load_accounts, resolve_account
-from src.core.auth import CurrentUser, ai_automation_context, archive_read_permissions, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership
-from src.core.auth import ASSIGNED_DRAFT_PERMISSIONS, access_policy, business_role_allows, permission_explicitly_denied, refresh_access_policy
+from src.core.auth import CurrentUser, ai_automation_context, archive_read_permissions, permissions_for_membership, project_permissions, roles_for_membership
+from src.core.auth import ASSIGNED_OWNER_PERMISSIONS, access_policy, business_role_allows, permission_explicitly_denied, refresh_access_policy
 from src.core.human_decisions import require_automation_publication_authority
 from src.repositories.common import common_repository
 
@@ -233,7 +233,6 @@ async def get_project(
     project_id: str,
     user: CurrentUser,
     permission: str = 'project.read',
-    assigned_role: str | None = None,
     assigned_user_id: str | None = None,
 ):
     
@@ -272,34 +271,21 @@ async def get_project(
     active_roles = memberships_roles if membership and membership.get("status") == 'ACTIVE' else set()
     if permission_explicitly_denied(permission, active_roles, project.get("settings")):
         raise HTTPException(status_code=403, detail={"code": "PROJECT_PERMISSION_DENIED", "permission": permission})
-    assigned_draft_access = (
-        assigned_role == "TESTER"
-        and active_roles == {"TESTER"}
-        and assigned_user_id == user.id
-        and permission in ASSIGNED_DRAFT_PERMISSIONS
-    )
-    assigned_developer_access = (
-        assigned_role == "DEVELOPER" and active_roles == {"DEVELOPER"}
-        and assigned_user_id == user.id and permission == "defect.trace.manage"
+    assigned_owner_access = (
+        assigned_user_id == user.id and permission in ASSIGNED_OWNER_PERMISSIONS
     )
     responsibility = access_policy().get("responsibility_permissions", {}).get(permission)
     if responsibility:
         designated = (project.get("settings") or {}).get("responsibilities") or {}
         if designated.get(responsibility) != user.id:
             raise HTTPException(status_code=403, detail={"code": "PROJECT_RESPONSIBILITY_REQUIRED", "responsibility": responsibility})
-    if not automation_publication_allowed and not assigned_draft_access and not assigned_developer_access and not business_role_allows(permission, active_roles):
+    if not automation_publication_allowed and not assigned_owner_access and not business_role_allows(permission, active_roles):
         await audit(user.id, 'project_business_role_denied', 'Project', project_id, project_id, {"permission": permission})
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_PERMISSION_DENIED', "permission": permission})
     permissions = permissions_for_membership(membership, project.get("settings")) if (
         membership and membership.get("status") == 'ACTIVE'
     ) else set()
-    assigned_access = (
-        assigned_role is not None
-        and membership is not None
-        and assigned_role in memberships_roles
-        and assigned_user_id == user.id
-        and (assigned_role != "TESTER" or assigned_draft_access or permission == "testrun.execute")
-    )
+    assigned_access = assigned_owner_access and membership is not None
     if (
         permission not in permissions
         and permission not in grant_permissions
@@ -382,7 +368,6 @@ async def get_project_entity(
     entity_id: str,
     user: CurrentUser,
     permission: str,
-    assigned_role: str | None = None,
     assigned_user_field: str | None = None,
 ):
     projection = {"_id": 1, "project_id": 1}
@@ -400,7 +385,6 @@ async def get_project_entity(
         identity["project_id"],
         user,
         permission,
-        assigned_role=assigned_role,
         assigned_user_id=identity.get(assigned_user_field) if assigned_user_field else None,
     )
     entity = await common_repository.find_project_entity(

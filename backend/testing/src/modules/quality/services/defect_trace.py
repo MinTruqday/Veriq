@@ -177,7 +177,6 @@ async def update_defect_trace_record(project_id, defect_id, payload, user):
         defect_id,
         user,
         "defect.trace.manage",
-        assigned_role="DEVELOPER",
         assigned_user_field="assignee",
     )
     if defect["project_id"] != project_id:

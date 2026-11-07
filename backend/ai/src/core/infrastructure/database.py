@@ -120,16 +120,6 @@ async def setup_indexes():
                     },
                 ),
             ],
-            "automation_definitions": [
-                IndexModel([("project_id", ASCENDING), ("updated_at", DESCENDING)]),
-                IndexModel([("project_id", ASCENDING), ("trigger", ASCENDING), ("enabled", ASCENDING)]),
-                IndexModel(
-                    [("project_id", ASCENDING), ("trigger", ASCENDING)],
-                    unique=True,
-                    name="one_enabled_automation_definition_per_trigger",
-                    partialFilterExpression={"enabled": True},
-                ),
-            ],
             "automation_checkpoints": [
                 IndexModel(
                     [

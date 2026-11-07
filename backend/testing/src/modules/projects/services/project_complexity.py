@@ -442,7 +442,12 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
             detail={"code": "PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE", "evidence_chunks": len(evidence), "maximum": 100},
         )
     project = await database.value.projects.find_one({"_id": project_id}, {"locale": 1})
-    locale = str(output_language or (project or {}).get("locale") or "en")
+    locale = str(output_language or (project or {}).get("locale") or "").strip()
+    if not locale:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "PROJECT_OUTPUT_LANGUAGE_REQUIRED"},
+        )
     context = {
         "source_coverage": {
             "current_ai_readable_documents": scope["document_count"],

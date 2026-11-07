@@ -148,6 +148,12 @@ export default function DashboardPage({ project }) {
         <>
           <Panel title="Tiến độ và số liệu chính">
             <div className="grid gap-5 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                <span className="text-sm text-ink-muted">Trưởng dự án</span>
+                <span className="text-sm font-medium text-ink">
+                  {project.project_lead_label || "Chưa phân công"}
+                </span>
+              </div>
               <div>
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span>

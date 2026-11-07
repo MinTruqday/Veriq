@@ -59,7 +59,7 @@ export default function DocumentEditor({
     immediatelyRender: false,
     extensions: createQaExtensions(
       !readOnly,
-      label ? `Nhập ${label.toLocaleLowerCase("vi")}` : "Nhập nội dung",
+      label ? `Nhập ${label.toLocaleLowerCase()}` : "Nhập nội dung",
       showTableOfContents ? setTableOfContents : () => {},
       onImageFiles,
     ),

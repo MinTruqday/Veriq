@@ -13,7 +13,6 @@ from src.runtime.limits import limits
 from src.schemas.automation import (
     AutomationCheckpoint,
     AutomationCheckpointPhase,
-    AutomationDefinition,
     AutomationRun,
     AutomationStatus,
     AutomationTrigger,
@@ -57,51 +56,6 @@ class AutomationRepository:
                     session=session,
                 )
         return run.model_copy(update={"checkpoint_sequence": 1})
-
-    async def create_definition(self, definition: AutomationDefinition) -> AutomationDefinition:
-        payload = definition.model_dump(mode="python")
-        payload["_id"] = payload.pop("definition_id")
-        await self._database.automation_definitions.insert_one(payload)
-        return definition
-
-    async def get_definition(self, definition_id: str) -> AutomationDefinition | None:
-        payload = await self._database.automation_definitions.find_one({"_id": definition_id})
-        if not payload:
-            return None
-        payload["definition_id"] = str(payload.pop("_id"))
-        return AutomationDefinition.model_validate(payload)
-
-    async def list_definitions(self, project_id: str, limit: int = 100) -> list[AutomationDefinition]:
-        values = await self._database.automation_definitions.find({"project_id": project_id}).sort(
-            [("updated_at", DESCENDING), ("_id", 1)]
-        ).to_list(length=limit)
-        for value in values:
-            value["definition_id"] = str(value.pop("_id"))
-        return [AutomationDefinition.model_validate(value) for value in values]
-
-    async def list_enabled_definitions(
-        self, project_id: str, trigger: AutomationTrigger
-    ) -> list[AutomationDefinition]:
-        values = await self._database.automation_definitions.find(
-            {"project_id": project_id, "trigger": trigger.value, "enabled": True}
-        ).sort([("updated_at", DESCENDING), ("_id", 1)]).to_list(length=100)
-        for value in values:
-            value["definition_id"] = str(value.pop("_id"))
-        return [AutomationDefinition.model_validate(value) for value in values]
-
-    async def patch_definition(
-        self, definition_id: str, expected_revision: int, values: dict
-    ) -> AutomationDefinition | None:
-        values = {**values, "updated_at": datetime.now(timezone.utc)}
-        result = await self._database.automation_definitions.find_one_and_update(
-            {"_id": definition_id, "revision": expected_revision},
-            {"$set": values, "$inc": {"revision": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if not result:
-            return None
-        result["definition_id"] = str(result.pop("_id"))
-        return AutomationDefinition.model_validate(result)
 
     async def get_run(self, automation_run_id: str) -> AutomationRun | None:
         payload = await self._database.automation_runs.find_one({"_id": automation_run_id})

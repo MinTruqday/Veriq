@@ -334,16 +334,17 @@ async def create_test_run_record(payload, project_id, user):
                         session=session,
                         schedule=(approved_snapshot or {}).get("schedule"),
                     )
-                    stale_members = await project_repository.fence_active_testers(
+                    stale_members = await project_repository.fence_active_members_with_permission(
                         payload.project_id,
                         test_case_assignments.values(),
+                        "testrun.execute",
                         session=session,
                     )
                     if stale_members:
                         raise HTTPException(
                             status_code=409,
                             detail={
-                                "code": "TESTER_MEMBERSHIP_CHANGED_RETRY_RUN_CREATION",
+                                "code": "ASSIGNEE_PERMISSION_CHANGED_RETRY_RUN_CREATION",
                                 "user_ids": stale_members,
                             },
                         )
@@ -922,14 +923,14 @@ async def _update_test_run_record(project_id, run_id, payload, user):
                     schedule=effective_run.get("test_plan_schedule_snapshot"),
                 )
                 assigned_users = set(assigned.values())
-                stale_members = await project_repository.fence_active_testers(
-                    project_id, assigned_users, session=session
+                stale_members = await project_repository.fence_active_members_with_permission(
+                    project_id, assigned_users, "testrun.execute", session=session
                 )
                 if stale_members:
                     raise HTTPException(
                         status_code=409,
                         detail={
-                            "code": "TESTER_MEMBERSHIP_CHANGED_RETRY_RUN_CREATION",
+                            "code": "ASSIGNEE_PERMISSION_CHANGED_RETRY_RUN_CREATION",
                             "user_ids": stale_members,
                         },
                     )
@@ -1028,16 +1029,14 @@ async def update_test_run_record(project_id, run_id, payload, user):
 
 
 async def assign_test_run_record(project_id, run_id, payload, user):
-    execution_roles = ("TESTER",)
     run = await get_project_entity('test_runs', run_id, user, 'testrun.assign')
     if run["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     if payload.assignee_id:
-        assignee = await test_run_repository.find_active_tester(
+        assignee = await project_repository.list_active_members_with_permission(
             project_id,
-            payload.assignee_id,
-            'ACTIVE',
-            execution_roles,
+            "testrun.execute",
+            [payload.assignee_id],
         )
         if not assignee:
             raise HTTPException(
@@ -1046,13 +1045,12 @@ async def assign_test_run_record(project_id, run_id, payload, user):
             )
     assigned_users = set(payload.test_case_assignments.values())
     if assigned_users:
-        valid_members = await test_run_repository.count_active_testers(
+        valid_members = await project_repository.list_active_members_with_permission(
             project_id,
+            "testrun.execute",
             list(assigned_users),
-            'ACTIVE',
-            execution_roles,
         )
-        if valid_members != len(assigned_users):
+        if len(valid_members) != len(assigned_users):
             raise HTTPException(status_code=422, detail={"code": 'INVALID_TEST_CASE_ASSIGNEE'})
     unknown = set(payload.test_case_assignments) - set(run.get("test_case_version_ids", []))
     if unknown:
@@ -1075,17 +1073,17 @@ async def assign_test_run_record(project_id, run_id, payload, user):
                 )
                 if not current_run:
                     raise HTTPException(status_code=404, detail={"code": "TEST_RUN_NOT_FOUND"})
-                stale_members = await project_repository.fence_active_testers(
+                stale_members = await project_repository.fence_active_members_with_permission(
                     project_id,
-                    assigned_users | {payload.assignee_id},
+                    assigned_users | ({payload.assignee_id} if payload.assignee_id else set()),
+                    "testrun.execute",
                     session=session,
-                    roles=execution_roles,
                 )
                 if stale_members:
                     raise HTTPException(
                         status_code=409,
                         detail={
-                            "code": "TESTER_MEMBERSHIP_CHANGED_RECOMMEND_AGAIN",
+                            "code": "ASSIGNEE_PERMISSION_CHANGED_RECOMMEND_AGAIN",
                             "user_ids": stale_members,
                         },
                     )

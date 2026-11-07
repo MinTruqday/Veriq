@@ -49,46 +49,6 @@ class TestRunRepository:
             {"_id": run_id, "project_id": project_id}
         )
 
-    async def find_active_tester(self, project_id, user_id, status, role):
-        roles = [role] if isinstance(role, str) else list(role)
-        return await database.value.project_members.find_one(
-            {
-                "project_id": project_id,
-                "user_id": user_id,
-                "status": status,
-                "$or": [
-                    {"project_role": {"$in": roles}},
-                    {
-                        "$and": [
-                            {"project_role": {"$exists": False}},
-                            {"project_roles": {"$in": roles}},
-                            {"project_roles": {"$size": 1}},
-                        ]
-                    },
-                ],
-            }
-        )
-
-    async def count_active_testers(self, project_id, user_ids, status, role):
-        roles = [role] if isinstance(role, str) else list(role)
-        return await database.value.project_members.count_documents(
-            {
-                "project_id": project_id,
-                "user_id": {"$in": user_ids},
-                "status": status,
-                "$or": [
-                    {"project_role": {"$in": roles}},
-                    {
-                        "$and": [
-                            {"project_role": {"$exists": False}},
-                            {"project_roles": {"$in": roles}},
-                            {"project_roles": {"$size": 1}},
-                        ]
-                    },
-                ],
-            }
-        )
-
     async def count_runs(self, query):
         return await database.value.test_runs.count_documents(query)
 

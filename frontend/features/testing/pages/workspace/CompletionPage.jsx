@@ -849,7 +849,11 @@ export default function CompletionPage({ project }) {
                           members.find((member) => member.user_id === item.user_id)?.user?.email ||
                           "Không có tên hiển thị",
                       },
-                      { key: "role", label: "Vai trò", render: (item) => valueLabel(item.role) },
+                      {
+                        key: "permission",
+                        label: "Quyền xác nhận",
+                        render: (item) => valueLabel(item.permission || item.role),
+                      },
                       {
                         key: "decision",
                         label: "Quyết định",

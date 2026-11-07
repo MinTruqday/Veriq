@@ -81,9 +81,6 @@ const overviewLabels = {
   PLAN_ENTRY_OR_EXIT_CRITERIA_INCOMPLETE: "Chưa khai báo đủ điều kiện bắt đầu và kết thúc.",
   PLAN_TEST_DATA_SOURCE_NOT_DECLARED: "Chưa nêu nguồn dữ liệu kiểm thử.",
   PLAN_DEFECT_PROCESS_INCOMPLETE: "Quy trình xử lý lỗi chưa được khai báo đầy đủ.",
-  NO_ACTIVE_QA_IN_PLAN_ALLOCATIONS:
-    "Chưa có người phụ trách kiểm thử đang hoạt động trong phân bổ nguồn lực.",
-  NO_ACTIVE_TESTER_IN_PLAN_ALLOCATIONS: "Chưa có Tester đang hoạt động trong phân bổ nguồn lực.",
   AVAILABILITY_NOT_CONFIRMED: "Chưa xác nhận khả dụng",
   NOT_ACTIVE_PROJECT_MEMBER: "Không còn là thành viên đang hoạt động của dự án",
   CAPACITY_NOT_DECLARED_FOR_MEMBER: "Chưa khai báo công suất cho người này",
@@ -100,7 +97,7 @@ function displayAmount(value) {
   if (value == null || value === "") return "—";
   const amount = Number(value);
   return Number.isFinite(amount)
-    ? amount.toLocaleString("vi-VN", { maximumFractionDigits: 4 })
+    ? amount.toLocaleString(undefined, { maximumFractionDigits: 4 })
     : "—";
 }
 
@@ -109,7 +106,7 @@ function displayCalendarDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
   if (match) return `${match[3]}/${match[2]}/${match[1]}`;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("vi-VN");
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
 }
 
 function defaultCapacityPeriod() {
@@ -823,14 +820,21 @@ export default function PayrollImportPanel() {
                       <div className="mt-3 rounded-control border border-border p-3">
                         <h4 className="font-medium">Độ phủ đội ngũ và trách nhiệm</h4>
                         <div className="mt-2 grid gap-2 text-sm text-ink-muted sm:grid-cols-2 lg:grid-cols-4">
-                          <p>
-                            Người phụ trách kiểm thử được phân bổ:{" "}
-                            {forecast.resource_overview.team_coverage.role_member_counts.QA}
-                          </p>
-                          <p>
-                            Tester được phân bổ:{" "}
-                            {forecast.resource_overview.team_coverage.role_member_counts.TESTER}
-                          </p>
+                          <div className="sm:col-span-2 lg:col-span-4">
+                            <p>Thành viên được phân bổ theo vai trò</p>
+                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-ink">
+                              {Object.entries(
+                                forecast.resource_overview.team_coverage.role_member_counts || {},
+                              ).map(([role, count]) => (
+                                <span key={role}>
+                                  {valueLabel(role)}: {count}
+                                </span>
+                              ))}
+                              {!Object.keys(
+                                forecast.resource_overview.team_coverage.role_member_counts || {},
+                              ).length && <span>Chưa có phân bổ theo vai trò</span>}
+                            </div>
+                          </div>
                           <p>
                             Người trong ma trận trách nhiệm:{" "}
                             {forecast.resource_overview.team_coverage.responsibility_user_count}

@@ -7,7 +7,6 @@ from src.core.text_matching import source_quote_spans
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.skill_profile import build_skill_profile_extraction_prompt
 from src.schemas.inference_skill_profile import (
-    ExtractedExperienceCandidate,
     ExtractedSkillCandidate,
     SkillProfileExtractionOutput,
     SkillProfileExtractionRequest,

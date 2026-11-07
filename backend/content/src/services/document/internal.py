@@ -3,9 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from loguru import logger
 
-from src.clients.knowledge import knowledge_client
 from src.core.infrastructure.configuration import settings
 from src.core.dependency import SystemRole
 from src.repositories.document import DocumentRepository

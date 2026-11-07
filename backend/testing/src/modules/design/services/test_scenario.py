@@ -12,7 +12,6 @@ from src.core.common import (
     now,
     optimistic_patch,
     plain_text,
-    require_action_policy,
     sort_spec,
 )
 from src.core.database import database
@@ -331,7 +330,6 @@ async def transition_test_scenario_record(scenario_id, payload, user, action):
         scenario = await require_assigned_design_draft('test_scenarios', scenario_id, user, 'testscenario.update')
     else:
         scenario = await get_project_entity('test_scenarios', scenario_id, user, 'testscenario.update')
-        await require_action_policy(scenario['project_id'], user, 'testscenario.review', {'QA'})
     transitions = {
         'submit': ('draft', 'in_review'),
         'approve': ('in_review', 'approved'),

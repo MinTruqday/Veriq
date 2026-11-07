@@ -50,7 +50,7 @@ from src.tools.requirement_tools import (
     get_traceability_links,
     synthesize_requirement_template,
 )
-from src.tools.skills import structured_skills
+from src.tools.skills import agent_capabilities
 from src.tools.test_analysis_tools import generate_test_conditions_for_requirement_baseline
 from src.tools.test_design_tools import (
     apply_maintenance_proposal,
@@ -142,6 +142,6 @@ tools = [
     get_execution_history,
     get_bug_history,
     link_bug_candidates,
-    *structured_skills,
+    *agent_capabilities,
     call_mcp_read_tool,
 ]

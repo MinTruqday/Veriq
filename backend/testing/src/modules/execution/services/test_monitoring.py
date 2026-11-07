@@ -3,6 +3,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.auth import permissions_for_membership
 from src.core.common import audit, get_project, new_id, now
+from src.core.database import database
 from src.schemas.test_monitoring import (
     ControlActionCreate,
     ControlActionPatch,
@@ -481,7 +482,6 @@ async def update_control_action(action_id, payload: ControlActionPatch, user):
         action["project_id"],
         user,
         'testmonitor.control.update',
-        assigned_role='TESTER',
         assigned_user_id=action.get("owner_id"),
     )
     actor_membership = await test_monitoring_repository.find_active_membership(

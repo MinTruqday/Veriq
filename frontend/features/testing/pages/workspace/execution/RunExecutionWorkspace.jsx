@@ -37,8 +37,8 @@ export default function RunExecutionWorkspace({
   dialog,
   savingExecution = false,
 }) {
-  const activeTesters = (members || []).filter(
-    (member) => member.status === "ACTIVE" && member.project_role === "TESTER",
+  const eligibleExecutors = (members || []).filter(
+    (member) => member.status === "ACTIVE" && member.permissions?.includes("testrun.execute"),
   );
   const [assignmentEditing, setAssignmentEditing] = useState(false);
   const [assignmentDraft, setAssignmentDraft] = useState({});
@@ -72,7 +72,7 @@ export default function RunExecutionWorkspace({
     setRunAssigneeDraft(
       run.assignee_id ||
         Object.values(assignments).find(Boolean) ||
-        activeTesters[0]?.user_id ||
+        eligibleExecutors[0]?.user_id ||
         "",
     );
     setAssignmentEditing(true);
@@ -148,7 +148,8 @@ export default function RunExecutionWorkspace({
       );
       setAssignmentDraft((current) => ({ ...current, ...recommended }));
       setRunAssigneeDraft(
-        (current) => current || Object.values(recommended)[0] || activeTesters[0]?.user_id || "",
+        (current) =>
+          current || Object.values(recommended)[0] || eligibleExecutors[0]?.user_id || "",
       );
       setAssignmentEditing(true);
     } catch (reason) {
@@ -200,7 +201,7 @@ export default function RunExecutionWorkspace({
                 <button
                   className="secondary-button"
                   type="button"
-                  disabled={!activeTesters.length || loadingAssignmentProposal}
+                  disabled={!eligibleExecutors.length || loadingAssignmentProposal}
                   onClick={() => void proposeAssignments()}
                 >
                   {loadingAssignmentProposal ? "Đang lập đề xuất" : "Đề xuất người thực hiện"}
@@ -208,7 +209,7 @@ export default function RunExecutionWorkspace({
                 <button
                   className="secondary-button"
                   type="button"
-                  disabled={!activeTesters.length}
+                  disabled={!eligibleExecutors.length}
                   onClick={beginAssignmentEdit}
                 >
                   Chọn thủ công
@@ -429,8 +430,8 @@ export default function RunExecutionWorkspace({
                 value={runAssigneeDraft}
                 onChange={(event) => setRunAssigneeDraft(event.target.value)}
               >
-                <option value="">Chọn người kiểm thử</option>
-                {activeTesters.map((member) => (
+                <option value="">Chọn thành viên</option>
+                {eligibleExecutors.map((member) => (
                   <option key={member.user_id} value={member.user_id}>
                     {member.user_label ||
                       member.user?.label ||
@@ -464,7 +465,7 @@ export default function RunExecutionWorkspace({
                       }
                     >
                       <option value="">Chưa phân công ca này</option>
-                      {activeTesters.map((member) => (
+                      {eligibleExecutors.map((member) => (
                         <option key={member.user_id} value={member.user_id}>
                           {member.user_label ||
                             member.user?.label ||
@@ -481,7 +482,7 @@ export default function RunExecutionWorkspace({
                         (candidate) => candidate.test_case_version_id === version._id,
                       );
                       if (!item) return null;
-                      const suggestedMember = activeTesters.find(
+                      const suggestedMember = eligibleExecutors.find(
                         (candidate) => candidate.user_id === item.assignee_id,
                       );
                       return (
@@ -527,9 +528,9 @@ export default function RunExecutionWorkspace({
                 </div>
               ))}
             </div>
-            {!activeTesters.length && (
+            {!eligibleExecutors.length && (
               <p className="text-sm text-danger">
-                Không có người kiểm thử đang hoạt động để phân công.
+                Không có thành viên đủ quyền thực hiện để phân công.
               </p>
             )}
             <div className="flex flex-wrap justify-end gap-2">
@@ -544,7 +545,7 @@ export default function RunExecutionWorkspace({
               <button
                 className="apple-button"
                 type="button"
-                disabled={!activeTesters.length || savingAssignment}
+                disabled={!eligibleExecutors.length || savingAssignment}
                 onClick={saveAssignments}
               >
                 {savingAssignment

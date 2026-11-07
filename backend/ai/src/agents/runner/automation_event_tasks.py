@@ -1409,7 +1409,7 @@ def direct_test_case_change_impact_task(run, state, evidence_refs):
                 objective=(
                     "Compare the changed Test Case draft with its exact parent version and trace links for the "
                     "Requirement versions linked to that case. List only Requirements, criteria, obligations, "
-                    "and test cases in that verified scope; identify links needing QA review because fields changed. "
+                    "and test cases in that verified scope; identify links needing authorized review because fields changed. "
                     "Do not read the project-wide matrix to infer broader impact. Do not modify Requirements, drafts, "
                     "or frozen versions, and do not infer relationships from textual similarity alone. If a source "
                     "cannot be read, report that part as unverified."

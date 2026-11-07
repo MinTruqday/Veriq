@@ -5,7 +5,6 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.ai_automation import emit_test_completion_report_created
-from src.core.auth import roles_for_membership
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
 from src.core.human_decisions import content_authorship_changes, require_automation_publication_authority, require_independent_review
@@ -31,7 +30,6 @@ from src.modules.execution.services.test_completion_updates import (
     manage_completion_handover,
 )
 from src.repositories.test_completion import (
-    find_active_member,
     find_completion_by_idempotency_key,
     find_latest_completion_ai_result,
     find_monitoring_snapshot,
@@ -476,13 +474,10 @@ async def decide_residual_risk(report_id, risk_id, payload, user):
     mutable_statuses = {"DRAFT", "IN_REVIEW"}
     if report["status"] not in mutable_statuses:
         raise HTTPException(status_code=409, detail={"code": "COMPLETION_REPORT_IMMUTABLE"})
-    membership = await find_active_member(report["project_id"], user.id, "ACTIVE")
     risks = [dict(item) for item in report.get("residual_risks", [])]
     risk = next((item for item in risks if item.get("risk_id") == risk_id), None)
     if not risk:
         raise HTTPException(status_code=404, detail={"code": "RESIDUAL_RISK_NOT_FOUND"})
-    if risk.get("owner_id") != user.id and "QA" not in roles_for_membership(membership):
-        raise HTTPException(status_code=403, detail={"code": "RESIDUAL_RISK_DECISION_DENIED"})
     risk.update(
         {
             "treatment": payload.acceptance,
@@ -524,16 +519,11 @@ async def sign_off_completion(report_id, payload, user):
     report = await get_completion_for_user(report_id, user, "testcompletion.review")
     if report["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "COMPLETION_SIGN_OFF_STATE_INVALID"})
-    membership = await find_active_member(report["project_id"], user.id, "ACTIVE")
-    if not membership:
-        raise HTTPException(status_code=403, detail={"code": "PROJECT_MEMBERSHIP_REQUIRED"})
-    member_roles = roles_for_membership(membership)
     sign_offs = [item for item in report.get("sign_offs", []) if item.get("user_id") != user.id]
     sign_offs.append(
         {
             "user_id": user.id,
-            "role": "QA" if "QA" in member_roles else membership.get("project_role"),
-            "roles": sorted(member_roles),
+            "permission": "testcompletion.review",
             "decision": payload.decision,
             "note": payload.note,
             "at": now(),
@@ -554,7 +544,7 @@ async def sign_off_completion(report_id, payload, user):
         "TestCompletionReport",
         report_id,
         report["project_id"],
-        {"decision": payload.decision, "role": membership.get("project_role")},
+        {"decision": payload.decision, "permission": "testcompletion.review"},
     )
     return updated
 
@@ -595,11 +585,15 @@ async def transition_completion(report_id, payload, user, transition_action):
         require_independent_review(report, user, "TEST_COMPLETION_SELF_REVIEW_FORBIDDEN")
     if target == "APPROVED":
         await validate_completion_readiness(report)
-        qa_approved = any(
-            item.get("role") == "QA" and item.get("decision") == "APPROVE"
+        reviewer_approved = any(
+            (
+                item.get("permission") == "testcompletion.review"
+                or item.get("role") == "QA"
+            )
+            and item.get("decision") == "APPROVE"
             for item in report.get("sign_offs", [])
         )
-        if not qa_approved:
+        if not reviewer_approved:
             raise HTTPException(status_code=409, detail={"code": "QA_SIGN_OFF_REQUIRED"})
         if any(
             item.get("treatment", item.get("acceptance")) == "PENDING"

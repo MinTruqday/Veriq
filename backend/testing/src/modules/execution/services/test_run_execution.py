@@ -10,7 +10,6 @@ from src.core.common import (
     new_id,
     now,
     plain_text,
-    require_action_policy,
 )
 from src.core.database import database
 from src.repositories.test_run import test_run_repository
@@ -535,9 +534,6 @@ async def correct_test_result_record(result_id, payload, user):
     run = await test_run_repository.find_run(result.get("test_run_id"), result["project_id"])
     if not run:
         raise HTTPException(status_code=404, detail={"code": "TEST_RUN_NOT_FOUND"})
-    await require_action_policy(
-        result["project_id"], user, "testresult.correct", {"TESTER"}
-    )
     await require_case_execution_assignment(run, result.get("test_case_version_id"), user)
     existing = await test_run_repository.find_correction(result_id, payload.idempotency_key)
     if existing:

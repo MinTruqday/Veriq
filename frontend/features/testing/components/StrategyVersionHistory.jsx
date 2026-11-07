@@ -18,7 +18,7 @@ export default function StrategyVersionHistory({ items, lineageId, onSelect }) {
         {
           key: "updated_at",
           label: "Cập nhật",
-          render: (item) => new Date(item.updated_at).toLocaleString("vi-VN"),
+          render: (item) => new Date(item.updated_at).toLocaleString(),
         },
         {
           key: "actions",

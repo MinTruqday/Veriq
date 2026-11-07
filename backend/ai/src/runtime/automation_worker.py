@@ -1322,7 +1322,7 @@ class AutomationWorker:
                 child_runs = await automation_service.enqueue_event(event)
             except Exception:
                 logger.exception(
-                    "Could not enqueue QA test-design handoff parent_run={} requirement_version={}",
+                    "Could not enqueue authorized test-design handoff parent_run={} requirement_version={}",
                     running.automation_run_id,
                     version_id,
                 )

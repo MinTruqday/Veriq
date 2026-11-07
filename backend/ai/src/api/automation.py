@@ -1,22 +1,17 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 
 from src.core.dependency import get_current_user, oauth2_scheme, verify_internal_token
 from src.repositories.automation import automation_repository
 from src.schemas.auth import CurrentUser, SystemRole
 from src.schemas.automation import (
-    AutomationAction,
     AutomationCancelRequest,
     AutomationClarificationResponseRequest,
-    AutomationDefinitionPatch,
-    AutomationDefinitionRequest,
     AutomationEventRequest,
     AutomationEventResponse,
     AutomationRetryRequest,
-    AutomationRunRequest,
     AutomationStatus,
-    AutomationTrigger,
     AutomationWorkflowRun,
     AutomationWorkflowSnapshot,
 )
@@ -147,68 +142,6 @@ async def _controllable_run(run_id: str, token: str, user: CurrentUser):
     return run
 
 
-async def _controllable_definition(definition_id: str, token: str, user: CurrentUser):
-    definition = await automation_repository.get_definition(definition_id)
-    if not definition:
-        raise HTTPException(status_code=404, detail={"code": "ENTITY_NOT_FOUND"})
-    if user.system_role == SystemRole.ADMIN:
-        return definition
-    role, permissions = await project_access(definition.project_id, token)
-    if (
-        definition.owner_user_id != user.id
-        or role not in {"BA", "QA"}
-        or "automation.create" not in permissions
-    ):
-        raise HTTPException(status_code=403, detail={"code": "AUTOMATION_DEFINITION_CONTROL_DENIED"})
-    return definition
-
-
-@router.post("/dinh-nghia", status_code=status.HTTP_201_CREATED)
-async def create_automation_definition(
-    payload: AutomationDefinitionRequest,
-    token: str = Depends(oauth2_scheme),
-    user: CurrentUser = Depends(get_current_user),
-):
-    role, permissions = await project_access(payload.project_id, token)
-    if "automation.create" not in permissions:
-        raise HTTPException(status_code=403, detail={"code": "AUTOMATION_DEFINITION_DENIED"})
-    raise HTTPException(status_code=410, detail={"code": "EVENT_AUTOMATION_RETIRED"})
-
-
-@router.get("/triggers")
-async def list_automation_triggers():
-    raise HTTPException(status_code=410, detail={"code": "EVENT_AUTOMATION_RETIRED"})
-
-
-@router.get("/hanh-dong")
-async def list_automation_actions():
-    raise HTTPException(status_code=410, detail={"code": "EVENT_AUTOMATION_RETIRED"})
-
-
-@router.get("/du-an/{project_id}/dinh-nghia")
-async def list_automation_definitions(
-    project_id: str,
-    token: str = Depends(oauth2_scheme),
-    user: CurrentUser = Depends(get_current_user),
-):
-    if user.system_role != SystemRole.ADMIN:
-        _, permissions = await project_access(project_id, token)
-        if "automation.read" not in permissions:
-            raise HTTPException(status_code=403, detail={"code": "PROJECT_ACCESS_DENIED"})
-    return []
-
-
-@router.patch("/dinh-nghia/{definition_id}")
-async def update_automation_definition(
-    definition_id: str,
-    payload: AutomationDefinitionPatch,
-    token: str = Depends(oauth2_scheme),
-    user: CurrentUser = Depends(get_current_user),
-):
-    definition = await _controllable_definition(definition_id, token, user)
-    raise HTTPException(status_code=410, detail={"code": "EVENT_AUTOMATION_RETIRED"})
-
-
 @router.post(
     "/noi-bo/su-kien",
     dependencies=[Depends(verify_internal_token)],
@@ -263,21 +196,6 @@ async def get_internal_run_execution_status(automation_run_id: str):
         "trigger": getattr(run.trigger, "value", run.trigger),
         "intent": run.intent,
     }
-
-
-@router.post("/luot-chay", status_code=status.HTTP_202_ACCEPTED)
-async def create_automation_run(
-    payload: AutomationRunRequest,
-    token: str = Depends(oauth2_scheme),
-    user: CurrentUser = Depends(get_current_user),
-):
-    _, permissions = await project_access(payload.project_id, token)
-    if "automation.create" not in permissions:
-        raise HTTPException(status_code=403, detail={"code": "AUTOMATION_CAPABILITY_DENIED"})
-    raise HTTPException(
-        status_code=410,
-        detail={"code": "DIRECT_AUTOMATION_RUN_RETIRED", "replacement": "noi-bo/su-kien"},
-    )
 
 
 @router.get("/luot-chay/{automation_run_id}")

@@ -2,11 +2,11 @@ import hashlib
 import json
 
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from src.core.common import (
     audit,
     get_project,
-    get_project_entity,
     new_id,
     next_key,
     now,

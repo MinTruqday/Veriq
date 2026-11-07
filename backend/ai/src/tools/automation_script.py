@@ -6,7 +6,7 @@ from pydantic import Field
 from typing import Annotated
 
 from src.tools.registry import with_tool_access
-from src.tools.testing_api import AutomationOperationError, parse, require_operation
+from src.tools.testing_api import AutomationOperationError, require_operation
 
 
 @with_tool_access(("execution", "analysis"), "MUTATE", "ai.generate_automation_script")

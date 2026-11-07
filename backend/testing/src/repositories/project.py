@@ -1,5 +1,6 @@
 from pymongo import ReturnDocument
 
+from src.core.auth import permissions_for_membership
 from src.core.database import database
 from src.repositories.common import common_repository
 
@@ -33,25 +34,6 @@ class ProjectRepository:
         return await self.members.find(
             {"user_id": user_id, "status": active_status}
         ).to_list(limit)
-
-    async def has_active_membership_with_role(self, user_id, active_status, role):
-        return await self.members.find_one(
-            {
-                "user_id": user_id,
-                "status": active_status,
-                "$or": [
-                    {"project_role": role},
-                    {
-                        "$and": [
-                            {"project_role": {"$exists": False}},
-                            {"project_roles": role},
-                            {"project_roles": {"$size": 1}},
-                        ]
-                    },
-                ],
-            },
-            {"_id": 1},
-        ) is not None
 
     async def list_active_grants(self, user_id, active_status, active_after, limit=5000):
         return await self.grants.find(
@@ -99,6 +81,23 @@ class ProjectRepository:
             "created_at", 1
         ).to_list(limit)
 
+    async def list_active_members_with_permission(
+        self, project_id, permission, user_ids=None, session=None
+    ):
+        query = {"project_id": project_id, "status": "ACTIVE"}
+        if user_ids is not None:
+            query["user_id"] = {"$in": list(set(user_ids))}
+        memberships = await self.members.find(query, session=session).to_list(5000)
+        project = await self.projects.find_one(
+            {"_id": project_id}, {"settings": 1}, session=session
+        )
+        project_settings = (project or {}).get("settings") or {}
+        return [
+            item
+            for item in memberships
+            if permission in permissions_for_membership(item, project_settings)
+        ]
+
     async def add_member(self, membership):
         await self.members.insert_one(membership)
         return membership
@@ -129,49 +128,47 @@ class ProjectRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def count_members_by_role_status(self, project_id, role, status):
-        return await self.members.count_documents(
+    async def fence_active_members_with_permission(
+        self, project_id, user_ids, permission, *, session
+    ):
+        requested_ids = sorted(set(user_ids))
+        if not requested_ids:
+            return []
+        memberships = await self.members.find(
             {
                 "project_id": project_id,
-                "status": status,
-                "$or": [
-                    {"project_role": role},
-                    {
-                        "$and": [
-                            {"project_role": {"$exists": False}},
-                            {"project_roles": role},
-                            {"project_roles": {"$size": 1}},
-                        ]
-                    },
-                ],
-            }
+                "user_id": {"$in": requested_ids},
+                "status": "ACTIVE",
+            },
+            session=session,
+        ).to_list(len(requested_ids))
+        project = await self.projects.find_one(
+            {"_id": project_id}, {"settings": 1}, session=session
         )
-
-    async def fence_active_testers(self, project_id, user_ids, *, session, roles=("TESTER",)):
-        eligible_roles = list(roles)
-        for user_id in sorted(set(user_ids)):
+        project_settings = (project or {}).get("settings") or {}
+        membership_by_user = {item["user_id"]: item for item in memberships}
+        stale_members = []
+        for user_id in requested_ids:
+            membership = membership_by_user.get(user_id)
+            if (
+                membership is None
+                or permission not in permissions_for_membership(membership, project_settings)
+            ):
+                stale_members.append(user_id)
+                continue
             result = await self.members.update_one(
                 {
                     "project_id": project_id,
                     "user_id": user_id,
                     "status": "ACTIVE",
-                    "$or": [
-                        {"project_role": {"$in": eligible_roles}},
-                        {
-                            "$and": [
-                                {"project_role": {"$exists": False}},
-                                {"project_roles": {"$in": eligible_roles}},
-                                {"project_roles": {"$size": 1}},
-                            ]
-                        },
-                    ],
+                    "membership_revision": membership.get("membership_revision"),
                 },
                 {"$inc": {"assignment_fence_revision": 1}},
                 session=session,
             )
             if result.matched_count != 1:
-                return [user_id]
-        return []
+                stale_members.append(user_id)
+        return stale_members
 
     async def update_member(self, project_id, user_id, revision, changes):
         return await self.members.find_one_and_update(

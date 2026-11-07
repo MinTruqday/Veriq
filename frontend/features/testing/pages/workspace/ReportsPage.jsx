@@ -44,7 +44,7 @@ function metricDuration(milliseconds) {
   const value = Number(milliseconds);
   if (!Number.isFinite(value) || value < 0) return "Chưa đủ dữ liệu";
   if (value < 1000) return `${Math.round(value)} ms`;
-  return `${(value / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} giây`;
+  return `${(value / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} giây`;
 }
 
 function metricDays(value, openCount) {

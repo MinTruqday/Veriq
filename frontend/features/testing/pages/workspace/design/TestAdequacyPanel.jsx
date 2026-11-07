@@ -314,7 +314,7 @@ export default function TestAdequacyPanel({
       {item.decision?.decided_at && (
         <div className="mt-1 text-xs text-ink-muted">
           Ghi nhận bởi {decisionActorLabel(item.decision.decided_by, members)} ·{" "}
-          {new Date(item.decision.decided_at).toLocaleString("vi-VN")}
+          {new Date(item.decision.decided_at).toLocaleString()}
         </div>
       )}
       {item.decision?.clarification_id && (
@@ -326,13 +326,13 @@ export default function TestAdequacyPanel({
           <div>
             Rà soát lại{" "}
             {item.decision?.waiver_review_at
-              ? new Date(item.decision.waiver_review_at).toLocaleDateString("vi-VN")
+              ? new Date(item.decision.waiver_review_at).toLocaleDateString()
               : "Chưa có"}
           </div>
           <div>
             Hết hạn{" "}
             {item.decision?.waiver_expires_at
-              ? new Date(item.decision.waiver_expires_at).toLocaleDateString("vi-VN")
+              ? new Date(item.decision.waiver_expires_at).toLocaleDateString()
               : "Chưa có"}
           </div>
           {item.decision?.waiver_expired_at && <div>Chấp nhận có điều kiện đã hết hạn</div>}

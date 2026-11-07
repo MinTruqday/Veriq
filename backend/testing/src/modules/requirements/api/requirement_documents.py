@@ -238,6 +238,14 @@ async def list_knowledge_source_structure(
     document = await get_project_entity(
         "requirement_documents", document_id, user, "knowledge.read"
     )
+    if document.get("project_id") != project_id:
+        raise HTTPException(status_code=404, detail={"code": "KNOWLEDGE_SOURCE_NOT_FOUND"})
+    await require_document_access(document, user, "knowledge.read")
+    return envelope(
+        await list_requirement_source_structure_page(
+            document_id, offset, limit, user, permission="knowledge.read"
+        )
+    )
 
 
 @router.get("/du-an/{project_id}/nguon-tri-thuc/{document_id}/anh/{block_index}")
@@ -297,16 +305,6 @@ async def read_knowledge_source_image(
             "X-Content-Type-Options": "nosniff",
         },
     )
-    if document.get("project_id") != project_id:
-        raise HTTPException(status_code=404, detail={"code": "KNOWLEDGE_SOURCE_NOT_FOUND"})
-    await require_document_access(document, user, "knowledge.read")
-    return envelope(
-        await list_requirement_source_structure_page(
-            document_id, offset, limit, user, permission="knowledge.read"
-        )
-    )
-
-
 @router.post("/nguon-tri-thuc/{document_id}/luu-tru")
 async def archive_knowledge_source(
     document_id: str, payload: ProjectArchiveInput, user: CurrentUser = Depends(get_current_user)

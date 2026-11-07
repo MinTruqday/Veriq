@@ -5,7 +5,7 @@ import {
   getAuthHeaders,
   getToken,
 } from "@/shared/services/api-client";
-export { API_URL, getAuthHeaders, getToken };
+export { getToken };
 export function removeToken(expectedToken) {
   if (typeof window !== "undefined") {
     const currentToken = getToken();
@@ -118,42 +118,6 @@ export function changeMyPassword(payload) {
     "Không thể đổi mật khẩu",
   );
 }
-export function changeMyEmail(payload) {
-  return authenticatedJson(
-    "/xac-thuc/doi-thu-dien-tu",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
-    "Không thể đổi email",
-  );
-}
-export function getMySettings() {
-  return authenticatedJson("/xac-thuc/cai-dat", {}, "Không thể tải cài đặt cá nhân");
-}
-export function updateMySettings(payload) {
-  return authenticatedJson(
-    "/xac-thuc/cai-dat",
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
-    "Không thể cập nhật cài đặt cá nhân",
-  );
-}
-export function updateMyNotifications(payload) {
-  return authenticatedJson(
-    "/xac-thuc/thong-bao",
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
-    "Không thể cập nhật cài đặt thông báo",
-  );
-}
 export function listMySessions() {
   return authenticatedJson("/xac-thuc/phien", {}, "Không thể tải danh sách phiên đăng nhập");
 }
@@ -225,25 +189,5 @@ export const passkeyLoginFinishAPI = async (email, credential) => {
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(data, "Lỗi hoàn tất luồng đăng nhập chứng thư số"));
-  return data?.data || data;
-};
-export const passkeyRegisterBeginAPI = async (email) => {
-  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/khoa-bao-mat/dang-ky/bat-dau`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(data, "Không thể tạo luồng đăng ký chứng thư số"));
-  return data?.data || data;
-};
-export const passkeyRegisterFinishAPI = async (email, credential) => {
-  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/khoa-bao-mat/dang-ky/hoan-tat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, credential }),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(data, "Lỗi hoàn tất luồng đăng ký chứng thư số"));
   return data?.data || data;
 };

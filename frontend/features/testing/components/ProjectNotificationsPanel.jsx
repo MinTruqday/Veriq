@@ -13,20 +13,22 @@ const DEFAULT_PREFERENCES = {
   muted_events: [],
   quiet_hours_start: "",
   quiet_hours_end: "",
-  timezone: "Asia/Ho_Chi_Minh",
 };
 
 const DEFAULT_RULES = {
   revision: 0,
   enabled_events: [],
   channels: ["in_app"],
-  target_roles: ["QA"],
+  target_roles: [],
   escalation_minutes: "",
 };
 
 export default function ProjectNotificationsPanel({ project }) {
   const [watches, setWatches] = useState([]);
-  const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
+  const [preferences, setPreferences] = useState({
+    ...DEFAULT_PREFERENCES,
+    timezone: project.timezone || "",
+  });
   const [rules, setRules] = useState(DEFAULT_RULES);
   const [artifactType, setArtifactType] = useState("requirement");
   const [artifactId, setArtifactId] = useState("");
@@ -52,7 +54,15 @@ export default function ProjectNotificationsPanel({ project }) {
       let index = 0;
       if (canManageWatches) setWatches(values[index++]);
       if (canManagePreferences) {
-        setPreferences({ ...DEFAULT_PREFERENCES, ...values[index++] });
+        const preferenceValues = values[index++];
+        setPreferences({
+          ...DEFAULT_PREFERENCES,
+          ...preferenceValues,
+          timezone:
+            preferenceValues?.timezone ||
+            project.timezone ||
+            Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
       }
       const ruleValues = canManageRules ? values[index] : null;
       if (ruleValues) setRules({ ...DEFAULT_RULES, ...ruleValues });
@@ -61,7 +71,7 @@ export default function ProjectNotificationsPanel({ project }) {
       setError(messageOf(reason));
       return false;
     }
-  }, [canManagePreferences, canManageRules, canManageWatches, project._id]);
+  }, [canManagePreferences, canManageRules, canManageWatches, project._id, project.timezone]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -95,7 +105,11 @@ export default function ProjectNotificationsPanel({ project }) {
         quiet_hours_end: preferences.quiet_hours_end || null,
         timezone: preferences.timezone,
       });
-      setPreferences({ ...DEFAULT_PREFERENCES, ...value });
+      setPreferences({
+        ...DEFAULT_PREFERENCES,
+        timezone: project.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...value,
+      });
       setNotice("Đã lưu tùy chọn thông báo.");
     } catch (reason) {
       setError(messageOf(reason));

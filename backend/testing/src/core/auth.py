@@ -90,6 +90,10 @@ ASSIGNED_DRAFT_PERMISSIONS = frozenset({
     "testcase.create", "testcase.update", "testcase.submit_review",
     "testcase.lint", "testscenario.update",
 })
+ASSIGNED_OWNER_PERMISSIONS = ASSIGNED_DRAFT_PERMISSIONS | frozenset({
+    "attachment.manage", "defect.update", "defect.trace.manage",
+    "defect.transition.developer", "testmonitor.control.update",
+})
 
 
 def required_business_role(permission: str) -> set[ProjectRole]:

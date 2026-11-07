@@ -22,10 +22,8 @@ async def _project_planning(project_id, user):
     return await get_project(project_id, user, "project.read")
 
 
-async def _require_ba(project_id, user):
-    await _project_planning(project_id, user)
-    if "BA" not in await get_project_roles(project_id, user.id):
-        raise HTTPException(status_code=403, detail={"code": "BA_PLANNING_REQUIRED"})
+async def _require_project_editor(project_id, user):
+    return await get_project(project_id, user, "project.update")
 
 
 async def _resolve_assignee(project_id, value):
@@ -211,7 +209,7 @@ class WorkItemService:
 
     @staticmethod
     async def create_item(project_id, payload, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         project = await _project_planning(project_id, user)
         await _validate_parent(project_id, payload.item_type, payload.parent_id)
         await _validate_requirements(project_id, payload.requirement_ids)
@@ -260,7 +258,7 @@ class WorkItemService:
 
     @staticmethod
     async def update_item(project_id, item_id, payload, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         item = await work_item_repository.find_item(project_id, item_id)
         if not item:
             raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
@@ -306,8 +304,9 @@ class WorkItemService:
         if not item:
             raise HTTPException(status_code=404, detail={"code": "WORK_ITEM_NOT_FOUND"})
         roles = await get_project_roles(project_id, user.id)
-        if "BA" not in roles and not ("DEVELOPER" in roles and item.get("assignee_id") == user.id):
-            raise HTTPException(status_code=403, detail={"code": "WORK_ITEM_TRANSITION_DENIED"})
+        can_manage = item.get("assignee_id") != user.id
+        if can_manage:
+            await get_project(project_id, user, "project.update")
         workflow = await _workflow(project_id)
         transition = next(
             (
@@ -317,7 +316,9 @@ class WorkItemService:
             ),
             None,
         )
-        if not transition or not roles.intersection(transition["allowed_roles"]):
+        if not transition or (
+            not can_manage and not roles.intersection(transition["allowed_roles"])
+        ):
             raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_WORKFLOW_TRANSITION_INVALID"})
         if payload.status == "IN_PROGRESS" and item.get("sprint_id") is None and project.get("planning_method") == "SCRUM":
             raise HTTPException(status_code=422, detail={"code": "SCRUM_SPRINT_SCOPE_REQUIRED"})
@@ -351,7 +352,10 @@ class WorkItemService:
                     )
                     if (
                         not current_transition
-                        or not roles.intersection(current_transition["allowed_roles"])
+                        or (
+                            not can_manage
+                            and not roles.intersection(current_transition["allowed_roles"])
+                        )
                     ):
                         raise HTTPException(
                             status_code=422,
@@ -463,7 +467,7 @@ class WorkItemService:
 
     @staticmethod
     async def create_dependency(project_id, item_id, payload, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         project = await _project_planning(project_id, user)
         source = await work_item_repository.find_item(project_id, item_id)
         target = await work_item_repository.find_item(project_id, payload.target_item_id)
@@ -561,7 +565,7 @@ class WorkItemService:
     @staticmethod
     async def update_board(project_id, payload, user):
         project = await _project_planning(project_id, user)
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         statuses = [column.status for column in payload.columns]
         if len(statuses) != len(set(statuses)):
             raise HTTPException(status_code=422, detail={"code": "BOARD_COLUMN_STATUS_DUPLICATE"})
@@ -617,7 +621,7 @@ class WorkItemService:
 
     @staticmethod
     async def update_workflow(project_id, payload, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         transitions = [value.model_dump() for value in payload.transitions]
         statuses = [value.model_dump() for value in payload.statuses]
         status_keys = {value["key"] for value in statuses}
@@ -687,7 +691,7 @@ class WorkItemService:
 
     @staticmethod
     async def rank_item(project_id, item_id, payload, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         from src.clients.ai_automation import emit_work_item_changed
 
         timestamp = now()
@@ -913,7 +917,7 @@ class WorkItemService:
     @staticmethod
     async def create_sprint(project_id, payload, user):
         project = await _project_planning(project_id, user)
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         if project.get("planning_method", "SCRUM") != "SCRUM":
             raise HTTPException(status_code=422, detail={"code": "SCRUM_REQUIRED"})
         if payload.end_at <= payload.start_at:
@@ -925,7 +929,7 @@ class WorkItemService:
 
     @staticmethod
     async def patch_sprint_scope(project_id, sprint_id, payload, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         client = database.client
         if client is None:
             raise RuntimeError("Cơ sở dữ liệu chưa sẵn sàng")
@@ -1031,7 +1035,7 @@ class WorkItemService:
 
     @staticmethod
     async def transition_sprint(project_id, sprint_id, payload, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         workflow = await _workflow(project_id) if payload.action == "COMPLETE" else None
         client = database.client
         if client is None:
@@ -1142,7 +1146,7 @@ class WorkItemService:
 
     @staticmethod
     async def preview_project_task_migration(project_id, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         prior = await work_item_repository.find_migration(project_id)
         tasks = await project_repository.list_tasks(project_id)
         workflow = await _workflow(project_id)
@@ -1156,7 +1160,7 @@ class WorkItemService:
 
     @staticmethod
     async def migrate_project_tasks(project_id, payload, user):
-        await _require_ba(project_id, user)
+        await _require_project_editor(project_id, user)
         project = await _project_planning(project_id, user)
         await _board(project_id, project.get("planning_method", "SCRUM"))
         timestamp = now()

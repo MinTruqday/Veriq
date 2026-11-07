@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument
 from pymongo.errors import OperationFailure
 
-from src.core.common import audit, get_project, get_project_roles, new_id, now, optimistic_patch, resolve_user_reference
+from src.core.common import audit, get_project, new_id, now, optimistic_patch, resolve_user_reference
 from src.core.database import database
 from src.repositories.project import project_repository
 
@@ -99,15 +99,12 @@ async def _run_legacy_task_write(project_id, operation):
 
 class ProjectProgressService:
     @staticmethod
-    async def _require_ba(project_id, user):
-        await get_project(project_id, user, "project.read")
-        if "BA" not in await get_project_roles(project_id, user.id):
-            raise HTTPException(status_code=403, detail={"code": "BA_PROJECT_PLANNING_REQUIRED"})
+    async def _require_project_editor(project_id, user):
+        await get_project(project_id, user, "project.update")
 
     @staticmethod
     async def update_project_progress(project_id, payload, user):
-        await get_project(project_id, user, "project.read")
-        await ProjectProgressService._require_ba(project_id, user)
+        await ProjectProgressService._require_project_editor(project_id, user)
 
         async def operation(session):
             current = await database.value.projects.find_one(
@@ -170,7 +167,7 @@ class ProjectProgressService:
 
     @staticmethod
     async def create_task(project_id, payload, user):
-        await ProjectProgressService._require_ba(project_id, user)
+        await ProjectProgressService._require_project_editor(project_id, user)
         assignee_id = await ProjectProgressService._resolve_assignee(project_id, payload.assignee_id)
         timestamp = now()
         task = {
@@ -201,7 +198,7 @@ class ProjectProgressService:
 
     @staticmethod
     async def update_task(project_id, task_id, payload, user):
-        await ProjectProgressService._require_ba(project_id, user)
+        await ProjectProgressService._require_project_editor(project_id, user)
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("expected_revision", None)
         if not changes:
@@ -256,7 +253,7 @@ class ProjectProgressService:
 
     @staticmethod
     async def delete_task(project_id, task_id, payload, user):
-        await ProjectProgressService._require_ba(project_id, user)
+        await ProjectProgressService._require_project_editor(project_id, user)
 
         async def operation(session):
             await _ensure_legacy_task_catalog_writable(project_id, session)

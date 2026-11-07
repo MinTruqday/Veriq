@@ -343,7 +343,7 @@ async def validate_test_case_publication_uniqueness(draft, threshold, session):
             detail={
                 "code": "TEST_CASE_DUPLICATE_REVIEW_REQUIRED",
                 "matches": sorted(duplicates, key=lambda item: (-item["score"], item.get("test_case_key") or "")),
-                "message": "Ca này gần trùng với ca đang hiệu lực; QA cần ghi lý do xác nhận vẫn giữ riêng trước khi duyệt.",
+                "message": "Ca này gần trùng với ca đang hiệu lực; cần ghi lý do xác nhận vẫn giữ riêng trước khi duyệt.",
             },
         )
 

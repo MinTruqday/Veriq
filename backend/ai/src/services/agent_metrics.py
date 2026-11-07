@@ -60,7 +60,7 @@ class AgentMetrics:
                 logger.exception("MongoDB connection error")
         return self._db_client
 
-    def record_session_start(self, session_id: str, user_id: str, query_preview: str = ""):
+    def record_session_start(self, session_id: str, user_id: str):
         metrics = SessionMetrics(
             session_id=session_id, user_id=user_id, started_at=datetime.now(timezone.utc)
         )

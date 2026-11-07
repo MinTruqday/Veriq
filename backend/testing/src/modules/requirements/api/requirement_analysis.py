@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.core.auth import CurrentUser, get_current_user
-from src.core.common import envelope, get_project, get_project_entity
+from src.core.common import envelope, get_project
 from src.core.internal import require_internal_token
 from src.schemas.contracts.requirements import (
     RequirementAIAnalysisInput,

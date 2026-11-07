@@ -54,12 +54,7 @@ export default function TestCaseTemplatesPanel({ project }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const canManage = project.current_permissions?.includes("testcase.template.manage");
-  const memberRoles = [project.current_membership?.project_role].filter(Boolean);
-  const canArchive =
-    canManage &&
-    (memberRoles.includes("QA") ||
-      (memberRoles.includes("TESTER") &&
-        project.settings?.tester_can_archive_testcase_templates === true));
+  const canArchive = canManage;
 
   const load = useCallback(async () => {
     setLoading(true);

@@ -98,12 +98,19 @@ const METRICS = {
   ],
 };
 
+const METRIC_OWNER_ROLES = [
+  ["QA", "QA"],
+  ["TESTER", "Kiểm thử viên"],
+  ["BA", "Phân tích nghiệp vụ"],
+  ["DEVELOPER", "Lập trình viên"],
+];
+
 const metricLabel = (key) => METRICS[key]?.[0] || "Chỉ số khác";
 
 function measurementValue(value, key, unit) {
   if (value === null || value === undefined || value === "") return "Chưa có số liệu";
   if (METRICS[key]?.[3] === "RATIO")
-    return `${(Number(value) * 100).toLocaleString("vi-VN", { maximumFractionDigits: 2 })}%`;
+    return `${(Number(value) * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
   return `${value}${unit ? ` ${unit}` : ""}`;
 }
 
@@ -151,6 +158,12 @@ export default function MetricDefinitionPanel({ project }) {
         { name: "target", label: "Mục tiêu số", type: "number" },
         { name: "warning", label: "Ngưỡng cảnh báo", type: "number" },
         { name: "critical", label: "Ngưỡng nghiêm trọng", type: "number" },
+        {
+          name: "owner_role",
+          label: "Vai trò chịu trách nhiệm",
+          required: true,
+          options: METRIC_OWNER_ROLES.map(([value, label]) => ({ value, label })),
+        },
       ],
     });
     if (!answer) return;
@@ -172,7 +185,7 @@ export default function MetricDefinitionPanel({ project }) {
         target: answer.target === "" ? null : Number(answer.target),
         warning_threshold: answer.warning === "" ? null : Number(answer.warning),
         critical_threshold: answer.critical === "" ? null : Number(answer.critical),
-        owner_role: "QA",
+        owner_role: answer.owner_role,
       });
       await load();
     } catch (reason) {

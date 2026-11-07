@@ -3,7 +3,7 @@ import ThresholdStatus from "./ThresholdStatus";
 export default function QualityMetricCard({ definition, snapshot }) {
   const displayedValue =
     snapshot && definition.aggregation === "RATIO"
-      ? `${(Number(snapshot.value) * 100).toLocaleString("vi-VN", { maximumFractionDigits: 2 })}%`
+      ? `${(Number(snapshot.value) * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`
       : snapshot
         ? `${snapshot.value} ${snapshot.unit || definition.unit || ""}`.trim()
         : "Chưa đo";

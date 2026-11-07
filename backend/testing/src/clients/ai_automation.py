@@ -107,6 +107,7 @@ class AIAutomationClient:
         output_language: str,
         required_skills: list[str],
         candidates: list[dict],
+        task_context: str = "",
     ) -> dict:
         async with httpx.AsyncClient(timeout=180) as client:
             response = await client.post(
@@ -115,6 +116,7 @@ class AIAutomationClient:
                 json={
                     "project_id": project_id,
                     "output_language": output_language,
+                    "task_context": task_context,
                     "required_skills": required_skills,
                     "candidates": candidates,
                 },

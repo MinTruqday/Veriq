@@ -117,6 +117,7 @@ __all__ = [
     "ProjectComplexityAssessmentOutput",
     "ProjectComplexityAssessmentSuggestionOutput",
     "ProjectComplexityDimensionOutput",
+    "ProjectCompletenessOutput",
     "ProjectQuestionOutput",
     "RequirementAcceptanceCriterionSuggestionOutput",
     "RequirementQualityModelOutput",

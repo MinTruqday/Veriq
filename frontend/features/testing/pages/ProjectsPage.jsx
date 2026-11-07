@@ -58,13 +58,13 @@ function formatProjectUpdatedAt(value, configuredTimeZone) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Chưa có thông tin";
   const timeZone = isSupportedTimeZone(configuredTimeZone) ? configuredTimeZone : undefined;
-  const dateLabel = date.toLocaleDateString("vi-VN", {
+  const dateLabel = date.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     ...(timeZone ? { timeZone } : {}),
   });
-  const timeLabel = date.toLocaleTimeString("vi-VN", {
+  const timeLabel = date.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
@@ -91,7 +91,6 @@ export default function ProjectsPage() {
     description: "",
     project_type: "web",
     planning_method: "SCRUM",
-    initial_qa_user_id: "",
     planned_start_at: "",
     planned_end_at: "",
   });
@@ -195,6 +194,8 @@ export default function ProjectsPage() {
         ...form,
         key: form.key.trim().toUpperCase(),
         name: form.name.trim(),
+        locale: user?.locale || navigator.language,
+        timezone: user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         planned_start_at: form.planned_start_at
           ? new Date(`${form.planned_start_at}T00:00:00.000Z`).toISOString()
           : null,
@@ -208,7 +209,6 @@ export default function ProjectsPage() {
         description: "",
         project_type: "web",
         planning_method: "SCRUM",
-        initial_qa_user_id: "",
         planned_start_at: "",
         planned_end_at: "",
       });
@@ -292,22 +292,6 @@ export default function ProjectsPage() {
               onChange={(event) => setForm({ ...form, key: event.target.value })}
               placeholder="THANHTOAN"
             />
-          </label>
-          <label className="field-label block min-w-0">
-            Người phụ trách kiểm thử đầu tiên
-            <input
-              className="apple-input mt-2 w-full"
-              type="text"
-              autoComplete="username"
-              required
-              value={form.initial_qa_user_id}
-              onChange={(event) => setForm({ ...form, initial_qa_user_id: event.target.value })}
-              aria-describedby="initial-qa-help"
-              placeholder="Email hoặc mã thành viên dự án"
-            />
-            <span className="mt-1 block text-xs leading-5 text-ink-muted" id="initial-qa-help">
-              Chọn thành viên khác với người tạo để tách việc thiết lập dự án và rà soát kiểm thử.
-            </span>
           </label>
           <label className="field-label block min-w-0">
             Tên dự án
@@ -592,6 +576,9 @@ export default function ProjectsPage() {
                           {projectTypeLabels[item.project_type] || valueLabel(item.project_type)}
                         </small>
                       )}
+                      <small className="mt-1 block text-[12px] text-ink-muted">
+                        Trưởng dự án: {item.project_lead_label || "Chưa phân công"}
+                      </small>
                     </Link>
                   </div>
                   <div className="flex min-w-0 items-start gap-2 text-[12px]">

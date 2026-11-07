@@ -1,7 +1,7 @@
 import hashlib
 from bson.json_util import dumps as bson_dumps
 from fastapi import HTTPException
-from src.core.auth import roles_for_membership
+from src.core.common import get_project
 from src.repositories.execution_state import execution_state_repository
 
 def defect_transitions():
@@ -59,14 +59,7 @@ async def enforce_not_applicable_policy(project_id, status, step_results=None):
 
 
 async def assigned_execution_versions(run, user):
-    membership = await execution_state_repository.active_membership_role(
-        run["project_id"], user.id, 'ACTIVE'
-    )
-    if not roles_for_membership(membership).intersection({"TESTER"}):
-        raise HTTPException(
-            status_code=403,
-            detail={"code": 'TEST_EXECUTION_ROLE_REQUIRED'},
-        )
+    await get_project(run["project_id"], user, "testrun.execute")
     version_ids = list(run.get("test_case_version_ids", []))
     assignments = run.get("test_case_assignments") or {}
     explicit_ids = [

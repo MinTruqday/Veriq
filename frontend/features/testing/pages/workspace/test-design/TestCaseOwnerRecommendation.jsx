@@ -30,6 +30,37 @@ export default function TestCaseOwnerRecommendation({
             </span>
           </div>
           <p className="mt-2 text-sm text-ink-muted">{candidate.ai_reason}</p>
+          {candidate.decision_context && (
+            <details className="mt-3 rounded-control border border-border p-3">
+              <summary className="cursor-pointer text-sm font-medium text-ink">
+                Căn cứ và giới hạn đánh giá
+              </summary>
+              <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                <div>
+                  <p className="font-medium text-ink">Tải hiện tại</p>
+                  <p className="mt-1 text-ink-muted">
+                    {candidate.decision_context.availability || "Chưa khai báo mức sẵn sàng"} ·{" "}
+                    {candidate.decision_context.workload?.active_cases ?? 0} ca ·{" "}
+                    {candidate.decision_context.workload?.active_runs ?? 0} lượt chạy ·{" "}
+                    {candidate.decision_context.workload?.active_projects ?? 0} dự án có hoạt động
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium text-ink">Mức xác minh</p>
+                  <p className="mt-1 text-ink-muted">
+                    {candidate.decision_context_status?.skill_evidence ===
+                    "PROFILE_EVIDENCE_NOT_INDEPENDENTLY_VERIFIED"
+                      ? "Kỹ năng trong hồ sơ chưa được đánh giá độc lập."
+                      : "Không có đủ dữ liệu xác minh kỹ năng."}
+                    {candidate.decision_context_status?.experience_evidence ===
+                    "NO_CONFIRMED_EXPERIENCE_EVIDENCE"
+                      ? " Chưa có kinh nghiệm được xác nhận trong hồ sơ."
+                      : " Kinh nghiệm hồ sơ cũng chưa được xác minh độc lập."}
+                  </p>
+                </div>
+              </div>
+            </details>
+          )}
           <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
             <div>
               <p className="font-medium text-ink">Kỹ năng và bằng chứng</p>
@@ -40,6 +71,7 @@ export default function TestCaseOwnerRecommendation({
                       {item.required_skill} ← {item.name}
                       {item.match_type === "EQUIVALENT" ? " · tương đương theo AI" : " · trùng tên"}
                       {` · ${item.evidence_status === "DOCUMENT_SUPPORTED" ? "có dẫn chứng tài liệu" : "tự khai trong hồ sơ"}`}
+                      {item.level ? ` · mức tự đánh giá: ${item.level}` : " · chưa khai mức độ"}
                       {item.independently_assessed
                         ? " · đã đánh giá độc lập"
                         : " · chưa đánh giá độc lập"}
@@ -169,8 +201,8 @@ export default function TestCaseOwnerRecommendation({
             <p role="status" className="text-sm text-ink-muted">
               {result.status === "PROJECT_LIMIT_REACHED"
                 ? "Các ứng viên đạt kỹ năng đã chạm giới hạn dự án được Admin khai báo cho kỳ này. Hãy điều chỉnh giới hạn hoặc chọn người có quyền và xem lại tải trước khi phân công."
-                : result.status === "NO_ELIGIBLE_TESTER"
-                  ? "Dự án chưa có người phụ trách kiểm thử đang hoạt động để đề xuất."
+                : result.status === "NO_ELIGIBLE_MEMBER"
+                  ? "Dự án chưa có thành viên đang hoạt động được cấp quyền thực hiện kiểm thử để đề xuất."
                   : "Chưa có người phù hợp với kỹ năng đã xác nhận và mức sẵn sàng. Có thể chọn thủ công ở danh sách người phụ trách."}
             </p>
           )}

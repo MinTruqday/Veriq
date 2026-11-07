@@ -68,9 +68,11 @@ function message(error) {
     "Không thể hoàn tất thao tác. Nội dung đang nhập được giữ lại."
   );
 }
-function normalizeSettings(value) {
+function normalizeSettings(value, timezoneFallback) {
   return {
     ...value,
+    timezone:
+      value?.timezone || timezoneFallback || Intl.DateTimeFormat().resolvedOptions().timeZone,
     allowed_kinds: Array.isArray(value?.allowed_kinds) ? value.allowed_kinds : [],
   };
 }
@@ -208,7 +210,7 @@ export default function WorkReportsPanel({ project }) {
         testingRequest(`${root}/mau`),
       ]);
       if (generation !== referenceSequence.current) return;
-      setSettings(normalizeSettings(config));
+      setSettings(normalizeSettings(config, project.timezone));
       setTemplates(models);
       if (project.current_permissions?.includes("workreport.write")) {
         const [people, reportParticipants] = await Promise.all([
@@ -241,7 +243,7 @@ export default function WorkReportsPanel({ project }) {
     } finally {
       if (generation === referenceSequence.current) setReferenceLoading(false);
     }
-  }, [root, project._id, project.current_permissions]);
+  }, [root, project._id, project.current_permissions, project.timezone]);
   useEffect(() => {
     void load();
     return () => {
@@ -639,6 +641,7 @@ export default function WorkReportsPanel({ project }) {
                                 reminder_hours_before: settings.reminder_hours_before,
                               }),
                             }),
+                            project.timezone,
                           ),
                         );
                         setNotice("Đã lưu cấu hình báo cáo.");

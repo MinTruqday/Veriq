@@ -581,7 +581,7 @@ export function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Chưa có"
-    : date.toLocaleString("vi-VN", {
+    : date.toLocaleString(undefined, {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
@@ -594,7 +594,7 @@ export function formatCalendarDate(value) {
   if (!value) return "Chưa có";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("vi-VN", {
+  return date.toLocaleDateString(undefined, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -636,8 +636,6 @@ export function messageOf(reason) {
     return "Tài liệu và yêu cầu đã chọn có quá nhiều nội dung để đánh giá trong một lượt. Hãy chọn phạm vi nhỏ hơn rồi thử lại; kết quả chưa được tạo.";
   }
   const automationMessages = {
-    PROJECT_INITIAL_QA_MUST_DIFFER_FROM_BA:
-      "Người tạo dự án không thể đồng thời là người phụ trách kiểm thử đầu tiên. Hãy chọn thành viên khác.",
     AUTOMATION_PUBLICATION_NOT_AUTHORIZED:
       "AI không được phép tự công bố kết quả này. Người có quyền cần kiểm tra và xác nhận.",
     AUTOMATION_EXECUTOR_UNAVAILABLE: "Chưa có người thực hiện phù hợp cho tác vụ AI này.",
@@ -648,8 +646,8 @@ export function messageOf(reason) {
       "Phiên ủy quyền của lượt chạy đã hết hạn; hãy kiểm tra quyền hiện tại rồi tiếp tục.",
     PROJECT_AUTHORIZATION_CHECK_FAILED:
       "Chưa xác minh được quyền truy cập dự án. Hãy thử lại khi dịch vụ phân quyền sẵn sàng.",
-    PROJECT_BA_EXECUTOR_UNAVAILABLE: "Dự án chưa có người phụ trách nghiệp vụ đang hoạt động.",
-    PROJECT_QA_EXECUTOR_UNAVAILABLE: "Dự án chưa có người phụ trách kiểm thử đang hoạt động.",
+    PROJECT_BA_EXECUTOR_UNAVAILABLE: "Thành viên khởi chạy không còn quyền cần thiết.",
+    PROJECT_QA_EXECUTOR_UNAVAILABLE: "Thành viên khởi chạy không còn quyền cần thiết.",
     AUTOMATION_RETRY_REQUIRES_RECONCILIATION:
       "Chưa thể tiếp tục an toàn. Hãy đối soát kết quả thao tác trước.",
     AUTOMATION_RETRY_NOT_ALLOWED: "Lượt chạy hiện không ở trạng thái có thể tiếp tục.",
@@ -863,12 +861,11 @@ export function messageOf(reason) {
       "Người tạo hoặc sửa đánh giá chất lượng rà soát không thể tự duyệt đánh giá đó.",
     PROJECT_MISMATCH:
       "Mục đã chọn không thuộc dự án hiện tại. Tải lại dữ liệu và chọn mục trong đúng dự án.",
-    CLARIFICATION_ANSWER_REQUIRED:
-      "BA cần trả lời phiếu trước khi QA yêu cầu cập nhật Requirement.",
+    CLARIFICATION_ANSWER_REQUIRED: "Cần có câu trả lời trước khi yêu cầu cập nhật Requirement.",
     CLARIFICATION_VERSION_NOT_EDITABLE:
       "Requirement không còn ở bản nháp hoặc đang rà soát. Tạo phiên bản mới để tiếp tục xử lý phiếu.",
     CLARIFICATION_UPDATE_REQUEST_REQUIRED:
-      "QA cần yêu cầu cập nhật trên phiên bản hiện tại trước khi xác nhận phiếu làm rõ.",
+      "Cần yêu cầu cập nhật trên phiên bản hiện tại trước khi xác nhận phiếu làm rõ.",
     RESOLUTION_EVIDENCE_NOT_FOUND:
       "Trích dẫn chưa khớp nguồn được nêu trong phiếu. Đối chiếu đúng tiêu chí rồi nhập bằng chứng từ tiêu chí đó.",
     VERIFIED_REQUIREMENT_EVENT_REQUIRED:

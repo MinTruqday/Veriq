@@ -74,7 +74,7 @@ async def accept_test_case_group(project_id, payload, user):
                     "code": "TEST_CASE_DUPLICATE_REVIEW_REQUIRED",
                     "draft_id": item.draft_id,
                     "matches": context["duplicates"],
-                    "message": "Ca này gần trùng với ca khác đang hiệu lực; QA cần ghi lý do xác nhận vẫn giữ riêng trước khi duyệt nhóm.",
+                    "message": "Ca này gần trùng với ca khác đang hiệu lực; cần ghi lý do xác nhận vẫn giữ riêng trước khi duyệt nhóm.",
                 },
             )
         findings = lint_test_case(draft)
@@ -96,7 +96,7 @@ async def accept_test_case_group(project_id, payload, user):
                     "code": "TEST_CASE_BATCH_DUPLICATE_REVIEW_REQUIRED",
                     "draft_id": draft["_id"],
                     "matches": [item["_id"] for item in duplicate_matches],
-                    "message": "Các ca trong nhóm gần giống nhau; cần bỏ ca trùng hoặc ghi lý do QA xác nhận tạo riêng.",
+                    "message": "Các ca trong nhóm gần giống nhau; cần bỏ ca trùng hoặc ghi lý do xác nhận tạo riêng.",
                 },
             )
 
@@ -163,7 +163,7 @@ async def accept_test_case_group(project_id, payload, user):
                 case = {"_id": new_id("TC"), "project_id": project_id, "test_case_key": draft["test_case_key"], "current_version_id": None, "status": "ACTIVE", "owner_id": draft.get("owner_id") or draft.get("created_by"), "tags": draft.get("tags", []), "created_at": timestamp, "updated_at": timestamp}
                 await database.value.test_cases.insert_one(case, session=session)
                 number, parent_id = 1, None
-            approval = TestCaseFreezeInput(expected_revision=draft["revision"], change_reason="QA chấp nhận nhóm ca đã chọn", review_note=payload.review_note)
+            approval = TestCaseFreezeInput(expected_revision=draft["revision"], change_reason="Chấp nhận nhóm ca đã chọn", review_note=payload.review_note)
             version = build_test_case_version(draft, case["_id"], number, parent_id, approval, user, timestamp)
             await database.value.test_case_versions.insert_one(version, session=session)
             changed = await database.value.test_cases.update_one({"_id": case["_id"], "project_id": project_id, "current_version_id": parent_id}, {"$set": {"current_version_id": version["_id"], "status": "ACTIVE", "updated_at": timestamp}}, session=session)

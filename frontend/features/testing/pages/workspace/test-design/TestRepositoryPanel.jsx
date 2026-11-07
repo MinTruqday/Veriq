@@ -221,12 +221,12 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
     });
   };
   const childrenByParent = new Map();
-  const normalizedRepositoryQuery = repositoryQuery.trim().toLocaleLowerCase("vi");
+  const normalizedRepositoryQuery = repositoryQuery.trim().toLocaleLowerCase();
   const matchingNodeIds = new Set();
   for (const node of nodes) {
     if (
       !normalizedRepositoryQuery ||
-      `${node.name} ${node._id}`.toLocaleLowerCase("vi").includes(normalizedRepositoryQuery)
+      `${node.name} ${node._id}`.toLocaleLowerCase().includes(normalizedRepositoryQuery)
     ) {
       let match = node;
       while (match) {
@@ -249,15 +249,15 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
     });
   const visibleSteps = steps.filter((step) =>
     `${step.name} ${docText(step.action_doc)} ${docText(step.expected_doc)}`
-      .toLocaleLowerCase("vi")
-      .includes(stepsQuery.trim().toLocaleLowerCase("vi")),
+      .toLocaleLowerCase()
+      .includes(stepsQuery.trim().toLocaleLowerCase()),
   );
   const formatDate = (value) => {
     if (!value) return "";
     const date = new Date(value);
     return Number.isNaN(date.getTime())
       ? ""
-      : new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium" }).format(date);
+      : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
   };
   return (
     <div className={`grid items-start gap-6 ${focus ? "" : "xl:grid-cols-2"}`}>

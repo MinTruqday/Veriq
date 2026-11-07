@@ -32,7 +32,16 @@ async def list_work_items(
     backlog_only: bool = Query(default=False),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return envelope(await WorkItemService.list_items(project_id, locals(), user))
+    filters = {
+        "item_type": item_type,
+        "status": status,
+        "parent_id": parent_id,
+        "sprint_id": sprint_id,
+        "release_id": release_id,
+        "assignee_id": assignee_id,
+        "backlog_only": backlog_only,
+    }
+    return envelope(await WorkItemService.list_items(project_id, filters, user))
 
 
 @router.post("/du-an/{project_id}/cong-viec", status_code=201)

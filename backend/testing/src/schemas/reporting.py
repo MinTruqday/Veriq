@@ -12,7 +12,7 @@ class ReportingModel(BaseModel):
 class ReportPeriod(ReportingModel):
     start_at: datetime
     end_at: datetime
-    timezone: str = "Asia/Ho_Chi_Minh"
+    timezone: str
 
     @model_validator(mode="after")
     def validate_period(self):
@@ -115,7 +115,7 @@ class ReportTemplateCreate(ReportingModel):
 class ReportingSettings(ReportingModel):
     expected_revision: int = Field(ge=0)
     enabled: bool
-    timezone: str = "Asia/Ho_Chi_Minh"
+    timezone: str
     allowed_kinds: list[Literal["PERSONAL", "TEAM", "PROJECT"]] = Field(default_factory=lambda: ["PERSONAL", "TEAM", "PROJECT"])
     reminder_hours_before: int = Field(default=24, ge=0, le=720)
 

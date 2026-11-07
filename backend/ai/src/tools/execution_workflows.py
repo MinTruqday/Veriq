@@ -702,9 +702,9 @@ def _valid_confirmed_assignment_snapshot(run: dict, version_ids: list[str]) -> b
 
     allowed_unassigned_reasons = {
         "NO_FULL_SKILL_MATCH",
-        "NO_ELIGIBLE_TESTER",
+        "NO_ELIGIBLE_MEMBER",
         "PROFILE_NOT_CONFIRMED",
-        "NO_AVAILABLE_TESTER",
+        "NO_AVAILABLE_MEMBER",
     }
     if any(
         item.get("reason") not in allowed_unassigned_reasons for item in unresolved_by_case.values()

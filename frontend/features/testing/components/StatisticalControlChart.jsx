@@ -62,7 +62,7 @@ export default function StatisticalControlChart({ analysis }) {
             key={item.snapshot_id}
             r={item.outlier ? 2 : 1.4}
           >
-            <title>{`Lần đo ${index + 1}${item.measured_at ? ` · ${new Date(item.measured_at).toLocaleString("vi-VN")}` : ""} · ${item.value}${analysis?.unit ? ` ${analysis.unit}` : ""}${item.outlier ? " · Vượt giới hạn kiểm soát" : ""}`}</title>
+            <title>{`Lần đo ${index + 1}${item.measured_at ? ` · ${new Date(item.measured_at).toLocaleString()}` : ""} · ${item.value}${analysis?.unit ? ` ${analysis.unit}` : ""}${item.outlier ? " · Vượt giới hạn kiểm soát" : ""}`}</title>
           </circle>
         ))}
       </svg>

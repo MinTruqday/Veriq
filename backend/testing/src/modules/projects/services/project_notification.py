@@ -21,13 +21,13 @@ def default_rules(project_id):
         "project_id": project_id,
         "enabled_events": [],
         "channels": ["in_app"],
-        "target_roles": ["QA"],
+        "target_roles": [],
         "escalation_minutes": None,
         "revision": 0,
     }
 
 
-def default_preferences(project_id, user_id):
+def default_preferences(project_id, user_id, timezone_name):
     return {
         "_id": f"NPREF:{project_id}:{user_id}",
         "project_id": project_id,
@@ -37,7 +37,7 @@ def default_preferences(project_id, user_id):
         "muted_events": [],
         "quiet_hours_start": None,
         "quiet_hours_end": None,
-        "timezone": "Asia/Ho_Chi_Minh",
+        "timezone": timezone_name,
         "revision": 0,
     }
 
@@ -163,13 +163,13 @@ class ProjectNotificationService:
 
     @staticmethod
     async def get_preferences(project_id, user):
-        await get_project(project_id, user, "notification.preferences.manage")
+        project = await get_project(project_id, user, "notification.preferences.manage")
         value = await project_notification_repository.find_preferences(project_id, user.id)
-        return value or default_preferences(project_id, user.id)
+        return value or default_preferences(project_id, user.id, project.get("timezone"))
 
     @staticmethod
     async def update_preferences(project_id, payload, user):
-        await get_project(project_id, user, "notification.preferences.manage")
+        project = await get_project(project_id, user, "notification.preferences.manage")
         current = await project_notification_repository.find_preferences(project_id, user.id)
         changes = payload.model_dump(exclude={"expected_revision"})
         if current:
@@ -188,7 +188,7 @@ class ProjectNotificationService:
                 )
             timestamp = now()
             updated = {
-                **default_preferences(project_id, user.id),
+                **default_preferences(project_id, user.id, project.get("timezone")),
                 **changes,
                 "revision": 1,
                 "created_at": timestamp,

@@ -1,6 +1,5 @@
 from fastapi import HTTPException
 
-from src.core.auth import roles_for_membership
 from src.core.common import audit, get_project, new_id, now
 from src.repositories.review import review_repository
 from src.modules.quality.services.review_session_query import get_review, validate_members
@@ -114,15 +113,6 @@ async def assign_finding(finding_id, payload, user):
 async def resolve_finding(finding_id, payload, user):
     
     finding, _ = await get_finding_for_update(finding_id, user)
-    if finding.get("owner_id") != user.id:
-        membership = await review_repository.find_active_member(
-            finding["project_id"], user.id, 'ACTIVE'
-        )
-        if 'QA' not in roles_for_membership(membership):
-            raise HTTPException(
-                status_code=403,
-                detail={"code": 'REVIEW_FINDING_OWNER_REQUIRED'},
-            )
     timestamp = now()
     value = await review_repository.update_finding(
         {

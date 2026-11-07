@@ -107,7 +107,7 @@ def test_case_changed_observation_objective():
 def test_case_approved_observation_objective():
     return _event_objective(
         "TEST_CASE_APPROVED",
-        "Read the exact newly locked Test Case version and refresh the Requirement assurance snapshot from verified links. Use revisions to prevent overwriting concurrent changes and read back each refreshed snapshot. Update derived status only; do not approve an assurance record, change a QA decision, or modify a locked Test Case.",
+        "Read the exact newly locked Test Case version and refresh the Requirement assurance snapshot from verified links. Use revisions to prevent overwriting concurrent changes and read back each refreshed snapshot. Update derived status only; do not approve an assurance record, change a human review decision, or modify a locked Test Case.",
     )
 
 
