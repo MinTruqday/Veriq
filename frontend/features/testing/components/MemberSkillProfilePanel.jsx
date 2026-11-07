@@ -10,7 +10,7 @@ import FilePicker from "./FilePicker";
 
 const emptySkill = () => ({
   name: "",
-  level: "NOT_ASSESSED",
+  level: "",
   evidence: "",
   source_block_id: null,
   source_page_no: null,
@@ -162,7 +162,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
     if (!cvPreview) return;
     const candidateSkills = (cvPreview.skills || []).map((item) => ({
       name: item.name,
-      level: "NOT_ASSESSED",
+      level: "",
       evidence: item.evidence_quote,
       source_block_id: item.source_block_id,
       source_page_no: item.page_no,
@@ -348,16 +348,13 @@ export default function MemberSkillProfilePanel({ projectId }) {
               </label>
               <label className="field-label">
                 Mức độ tự đánh giá
-                <select
+                <input
                   className="apple-input mt-2"
-                  value={skill.level}
+                  value={skill.level || ""}
                   onChange={(event) => patchAt(setSkills, index, { level: event.target.value })}
-                >
-                  <option value="NOT_ASSESSED">Chưa đánh giá</option>
-                  <option value="BEGINNER">Cơ bản</option>
-                  <option value="INTERMEDIATE">Trung bình</option>
-                  <option value="ADVANCED">Nâng cao</option>
-                </select>
+                  placeholder="Nhập cấp độ nếu dự án cần (tùy chọn)"
+                  maxLength={100}
+                />
               </label>
               <label className="field-label md:col-span-2">
                 Minh chứng hoặc kinh nghiệm liên quan

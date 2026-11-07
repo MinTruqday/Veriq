@@ -19,7 +19,7 @@ def _evidence_supports_claim(claim, evidence):
 
 class ConfirmedSkill(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    level: Literal["NOT_ASSESSED", "BEGINNER", "INTERMEDIATE", "ADVANCED"] = "NOT_ASSESSED"
+    level: str = Field(default="", max_length=100)
     evidence: str = Field(default="", max_length=1000)
     source_block_id: str | None = Field(default=None, min_length=1, max_length=300)
     source_page_no: int | None = Field(default=None, ge=1)
@@ -30,6 +30,11 @@ class ConfirmedSkill(BaseModel):
     @field_validator("name")
     @classmethod
     def normalize_name(cls, value):
+        return " ".join(value.split())
+
+    @field_validator("level")
+    @classmethod
+    def normalize_level(cls, value):
         return " ".join(value.split())
 
     @model_validator(mode="after")

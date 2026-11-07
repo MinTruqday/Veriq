@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -14,7 +16,7 @@ class StaffingCandidateInput(BaseModel):
     candidate_id: str = Field(min_length=1, max_length=200)
     confirmed_skills: list[str] = Field(default_factory=list, max_length=100)
     relevant_experience: list[str] = Field(default_factory=list, max_length=50)
-    evidence_facts: list[StaffingEvidenceFact] = Field(default_factory=list, max_length=100)
+    evidence_facts: list[StaffingEvidenceFact] = Field(default_factory=list, max_length=160)
     availability: str = Field(min_length=1, max_length=30)
     active_project_count: int = Field(ge=0)
     active_case_count: int = Field(ge=0)
@@ -46,12 +48,23 @@ class StaffingRecommendationRequest(BaseModel):
         return self
 
 
+class StaffingSkillMatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    required_skill: str = Field(min_length=1, max_length=120)
+    evidence_fact_id: str = Field(min_length=1, max_length=100)
+    match_type: Literal["EXACT", "EQUIVALENT"]
+    rationale: str = Field(min_length=3, max_length=300)
+
+
 class StaffingCandidateRecommendation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     candidate_id: str = Field(min_length=1, max_length=200)
     reason: str = Field(min_length=3, max_length=500)
     supporting_facts: list[str] = Field(min_length=1, max_length=20)
+    skill_matches: list[StaffingSkillMatch] = Field(default_factory=list, max_length=50)
+    unmatched_required_skills: list[str] = Field(default_factory=list, max_length=50)
 
 
 class StaffingRecommendationOutput(BaseModel):

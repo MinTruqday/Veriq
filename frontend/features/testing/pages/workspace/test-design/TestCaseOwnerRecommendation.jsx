@@ -14,6 +14,65 @@ export default function TestCaseOwnerRecommendation({
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
 
+  const renderCandidate = (candidate, rank, isNearMatch = false) => (
+    <article className="rounded-control border border-border p-3" key={candidate.user_id}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium text-ink">{candidate.user_label}</p>
+            <span className="rounded-full bg-surface-muted px-2 py-1 text-xs text-ink-muted">
+              {isNearMatch ? "Cần xem xét khoảng thiếu" : `Đề xuất AI #${candidate.recommendation_rank || rank}`}
+            </span>
+            <span className="text-xs text-ink-muted">
+              {candidate.matched_skill_count}/{candidate.required_skill_count} yêu cầu có căn cứ
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-ink-muted">{candidate.ai_reason}</p>
+          <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+            <div>
+              <p className="font-medium text-ink">Kỹ năng và bằng chứng</p>
+              {candidate.matched_skill_evidence?.length ? (
+                <ul className="mt-1 list-inside list-disc text-ink-muted">
+                  {candidate.matched_skill_evidence.map((item) => (
+                    <li key={`${candidate.user_id}:${item.required_skill}:${item.name}`}>
+                      {item.required_skill} ← {item.name}
+                      {item.match_type === "EQUIVALENT" ? " · tương đương theo AI" : " · trùng tên"}
+                      {` · ${item.evidence_status === "DOCUMENT_SUPPORTED" ? "có dẫn chứng tài liệu" : "tự khai trong hồ sơ"}`}
+                      {item.independently_assessed ? " · đã đánh giá độc lập" : " · chưa đánh giá độc lập"}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-ink-muted">Chưa có kỹ năng hồ sơ đủ căn cứ cho yêu cầu.</p>
+              )}
+              {candidate.unmatched_required_skills?.length > 0 && (
+                <p className="mt-2 text-ink-muted">
+                  Chưa có căn cứ: {candidate.unmatched_required_skills.join(", ")}
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="font-medium text-ink">Tải và mức sẵn sàng</p>
+              <p className="mt-1 text-ink-muted">
+                {candidate.availability} · {candidate.active_case_count} ca đang được giao · {candidate.active_run_count} lượt chạy · {candidate.active_project_count} dự án có hoạt động trùng lịch
+              </p>
+              {candidate.ai_supporting_facts?.length > 0 && (
+                <ul className="mt-2 list-inside list-disc text-ink-muted">
+                  {candidate.ai_supporting_facts.map((fact, index) => <li key={`${candidate.user_id}:fact:${index}`}>{fact}</li>)}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+        {!isNearMatch && (
+          <button className="secondary-button shrink-0" type="button" onClick={() => onSelect(candidate)}>
+            Chọn người này
+          </button>
+        )}
+      </div>
+    </article>
+  );
+
   const recommend = async () => {
     setLoading(true);
     setError("");
@@ -74,31 +133,22 @@ export default function TestCaseOwnerRecommendation({
             </p>
           )}
           {result.candidates?.length ? (
-            result.candidates.slice(0, 3).map((candidate) => (
-              <div
-                className="flex flex-wrap items-center justify-between gap-2"
-                key={candidate.user_id}
-              >
-                <div className="min-w-0 text-sm">
-                  <p className="font-medium">{candidate.user_label}</p>
-                  <p className="text-ink-muted">
-                    {candidate.matched_skills.length
-                      ? `Kỹ năng phù hợp: ${candidate.matched_skills.join(", ")}`
-                      : "Chưa khai báo kỹ năng cần thiết"}
-                    {` · ${candidate.active_case_count} ca đang được giao · ${candidate.active_project_count} dự án có lượt mở`}
-                    {candidate.max_concurrent_projects != null &&
-                      ` · giới hạn ${candidate.max_concurrent_projects} dự án`}
-                  </p>
-                </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => onSelect(candidate)}
-                >
-                  Chọn người này
-                </button>
-              </div>
-            ))
+            <div className="space-y-2">
+              {result.candidates.map((candidate, index) => renderCandidate(candidate, index + 1))}
+              {result.near_matches?.length > 0 && (
+                <details className="rounded-control border border-border p-3">
+                  <summary className="cursor-pointer font-medium text-ink">
+                    Ứng viên cần xem xét thêm ({result.near_matches.length})
+                  </summary>
+                  <div className="mt-3 space-y-2">
+                    {result.near_matches.map((candidate, index) => renderCandidate(candidate, index + 1, true))}
+                  </div>
+                </details>
+              )}
+              {result.recommendation_warnings?.map((warning, index) => (
+                <p className="text-sm text-amber-800" key={`warning:${index}`}>{warning}</p>
+              ))}
+            </div>
           ) : (
             <p role="status" className="text-sm text-ink-muted">
               {result.status === "PROJECT_LIMIT_REACHED"

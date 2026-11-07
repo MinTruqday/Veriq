@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import heapq
 import logging
 import re
 import unicodedata
@@ -146,7 +147,7 @@ def _cv_profile_entries(extracted, source_sha256):
         seen_skills.add(key)
         skills.append({
             "name": name,
-            "level": "NOT_ASSESSED",
+            "level": "",
             "evidence": candidate["evidence_quote"],
             "source_block_id": candidate["source_block_id"],
             "source_page_no": candidate.get("page_no"),
@@ -512,6 +513,11 @@ def _normalized(value):
     return " ".join(str(value).strip().casefold().split())
 
 
+def _skill_key(value):
+    normalized = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return " ".join(normalized.split())
+
+
 def _availability_rank(value):
     return {"AVAILABLE": 0, "LIMITED": 1}.get(value, 2)
 
@@ -749,63 +755,45 @@ async def _check_test_plan_assignment_capacity(
         )
 
 
-def _owner_score_factors(candidates, profiles):
-    member_ids = list(candidates)
-    max_workload = max(
-        (candidates[member_id]["active_case_count"] + candidates[member_id]["active_run_count"] for member_id in member_ids),
-        default=0,
-    )
-    has_experience_data = all(
-        any(item.get("confirmed") is True for item in (profiles.get(member_id) or {}).get("experiences", []))
-        for member_id in member_ids
-    )
+def _owner_decision_context(candidates, profiles, project_workload):
     results = {}
-    for member_id in member_ids:
-        candidate = candidates[member_id]
+    for member_id, candidate in candidates.items():
         profile = profiles.get(member_id) or {}
-        levels = {
-            "BEGINNER": 1 / 3,
-            "INTERMEDIATE": 2 / 3,
-            "ADVANCED": 1.0,
-        }
-        skill_values = [
-            levels[skill["level"]]
-            for skill in candidate["matched_skill_evidence"]
-            if skill.get("level") in levels
-        ]
         factors = {
-            "skill_level": round(sum(skill_values) / len(skill_values), 3) if skill_values else 0.5,
-            "availability": 1.0 if candidate["availability"] == "AVAILABLE" else 0.5,
-            "workload": (
-                round(1 - (candidate["active_case_count"] + candidate["active_run_count"]) / max_workload, 3)
-                if max_workload else 1.0
-            ),
-        }
-        if has_experience_data:
-            experiences = [
-                item for item in profile.get("experiences", [])
-                if item.get("confirmed") is True
-            ]
-            experience_text = " ".join(
-                str(value or "")
-                for item in experiences
-                for value in (
-                    item.get("title"), item.get("domain"), item.get("responsibilities"),
-                    *(item.get("technologies") or []),
-                )
-            )
-            factors["experience_relevance"] = round(
-                sum(1 for skill in candidate["matched_skills"] if _normalized(skill) in _normalized(experience_text))
-                / max(len(candidate["matched_skills"]), 1),
-                3,
-            )
-        results[member_id] = {
-            "factors": factors,
-            "factor_status": {
-                "skill_level": "ASSESSED" if skill_values else "NOT_ASSESSED_NEUTRAL",
-                "experience_relevance": "ASSESSED" if has_experience_data else "MISSING_FOR_COMPARISON",
+            "skill_evidence": [
+                {
+                    "required_skill": item.get("required_skill"),
+                    "profile_skill": item.get("name"),
+                    "reported_level": item.get("level", ""),
+                    "evidence_status": item.get("evidence_status", "DECLARED"),
+                    "independently_assessed": item.get("independently_assessed") is True,
+                }
+                for item in candidate["matched_skill_evidence"]
+            ],
+            "availability": candidate["availability"],
+            "workload": {
+                "active_cases": candidate["active_case_count"],
+                "active_runs": candidate["active_run_count"],
+                "active_projects": len(project_workload.get(member_id, set())),
             },
-            "score": round(sum(factors.values()) / len(factors), 3),
+        }
+        experiences = [item for item in profile.get("experiences", []) if item.get("confirmed") is True]
+        factors["experience_evidence"] = [
+            {
+                "title": item.get("title"),
+                "domain": item.get("domain"),
+                "technologies": item.get("technologies") or [],
+                "source_kind": item.get("source_kind", "MEMBER_DECLARED"),
+                        "independently_assessed": False,
+            }
+            for item in experiences
+        ]
+        results[member_id] = {
+            "context": factors,
+            "context_status": {
+                "skill_evidence": "PROFILE_EVIDENCE_NOT_INDEPENDENTLY_VERIFIED",
+                "experience_evidence": "PROFILE_EVIDENCE_NOT_INDEPENDENTLY_VERIFIED" if experiences else "NO_CONFIRMED_EXPERIENCE_EVIDENCE",
+            },
         }
     return results
 
@@ -815,7 +803,7 @@ def _confirmed_skills(profile):
     for skill in profile.get("skills", []):
         if skill.get("confirmed") is not True:
             continue
-        key = _normalized(skill.get("name"))
+        key = _skill_key(skill.get("name"))
         if key:
             confirmed.setdefault(key, skill)
     return confirmed
@@ -828,9 +816,12 @@ def _assignment_skills(profile):
 def rank_skill_candidates(
     memberships, profiles, workloads, required_skills, *, case_workloads=None
 ):
-    required = list(
-        dict.fromkeys(_normalized(value) for value in required_skills if _normalized(value))
-    )
+    required_by_key = {}
+    for value in required_skills:
+        key = _skill_key(value)
+        if key:
+            required_by_key.setdefault(key, str(value).strip())
+    required_keys = list(required_by_key)
     case_workloads = case_workloads or {}
     profile_by_user = {item["user_id"]: item for item in profiles}
     candidates = []
@@ -841,40 +832,120 @@ def rank_skill_candidates(
         if availability == "UNAVAILABLE":
             continue
         usable = _assignment_skills(profile)
-        matched = [skill for skill in required if skill in usable]
-        if required and not matched:
-            continue
+        matched = [skill for skill in required_keys if skill in usable]
         candidates.append(
             {
                 "user_id": member_id,
                 "matched_skills": [usable[key].get("name") for key in matched],
+                "matched_required_skills": [required_by_key[key] for key in matched],
+                "confirmed_skills": [item.get("name") for item in usable.values() if item.get("name")],
                 "matched_skill_evidence": [
                     {
+                        "required_skill": required_by_key[key],
                         "name": usable[key].get("name"),
-                        "level": usable[key].get("level", "NOT_ASSESSED"),
+                        "level": usable[key].get("level", ""),
                         "source_kind": usable[key].get("source_kind", "MEMBER_DECLARED"),
+                        "evidence_status": (
+                            "DOCUMENT_SUPPORTED"
+                            if usable[key].get("source_kind") == "CV_EXTRACTED"
+                            and str(usable[key].get("evidence") or "").strip()
+                            else "DECLARED"
+                        ),
+                        "independently_assessed": False,
                         "confirmed": usable[key].get("confirmed") is True,
                     }
                     for key in matched
                 ],
-                "unmatched_skills": [item for item in required if item not in usable],
+                "unmatched_skills": [required_by_key[key] for key in required_keys if key not in usable],
                 "availability": profile.get("availability", "PROFILE_NOT_SET"),
                 "active_run_count": workloads.get(member_id, 0),
                 "active_case_count": case_workloads.get(member_id, 0),
                 "profile_exists": bool(profile),
-                "score": len(matched),
+                "skill_match_count": len(matched),
+                "matched_skill_count": len(matched),
             }
         )
-    candidates.sort(
-        key=lambda item: (
-            -item["score"],
-            _availability_rank(item["availability"]),
-            item["active_case_count"],
-            item["active_run_count"],
-            item["user_id"],
-        )
-    )
-    return required, candidates
+    return list(required_by_key.values()), candidates
+
+
+def _minimum_cost_case_assignment(case_ids, options_by_case, base_workloads):
+    candidate_ids = sorted({candidate_id for options in options_by_case.values() for candidate_id in options})
+    if not case_ids or not candidate_ids:
+        return {}
+
+    source = 0
+    case_offset = 1
+    candidate_offset = case_offset + len(case_ids)
+    sink = candidate_offset + len(candidate_ids)
+    graph = [[] for _ in range(sink + 1)]
+
+    def add_edge(start, end, capacity, cost):
+        forward = [end, len(graph[end]), capacity, cost]
+        reverse = [start, len(graph[start]), 0, -cost]
+        graph[start].append(forward)
+        graph[end].append(reverse)
+        return forward
+
+    candidate_index = {candidate_id: candidate_offset + index for index, candidate_id in enumerate(candidate_ids)}
+    assignment_edges = {}
+    for index, case_id in enumerate(case_ids):
+        case_node = case_offset + index
+        add_edge(source, case_node, 1, 0)
+        options = options_by_case.get(case_id, {})
+        if not options:
+            continue
+        for candidate_id in options:
+            assignment_edges[(case_id, candidate_id)] = add_edge(
+                case_node,
+                candidate_index[candidate_id],
+                1,
+                0,
+            )
+    for candidate_id in candidate_ids:
+        candidate_node = candidate_index[candidate_id]
+        base_load = max(0, int(base_workloads.get(candidate_id, 0)))
+        for slot in range(len(case_ids)):
+            current_load = base_load + slot
+            add_edge(candidate_node, sink, 1, (current_load + 1) ** 2 - current_load**2)
+
+    node_count = len(graph)
+    potentials = [0] * node_count
+    while True:
+        distances = [float("inf")] * node_count
+        previous = [None] * node_count
+        distances[source] = 0
+        queue = [(0, source)]
+        while queue:
+            distance, node = heapq.heappop(queue)
+            if distance != distances[node]:
+                continue
+            for edge_index, edge in enumerate(graph[node]):
+                target, _, capacity, cost = edge
+                if capacity <= 0:
+                    continue
+                next_distance = distance + cost + potentials[node] - potentials[target]
+                if next_distance < distances[target]:
+                    distances[target] = next_distance
+                    previous[target] = (node, edge_index)
+                    heapq.heappush(queue, (next_distance, target))
+        if previous[sink] is None:
+            break
+        for node, distance in enumerate(distances):
+            if distance < float("inf"):
+                potentials[node] += distance
+        node = sink
+        while node != source:
+            parent, edge_index = previous[node]
+            edge = graph[parent][edge_index]
+            edge[2] -= 1
+            graph[node][edge[1]][2] += 1
+            node = parent
+
+    result = {}
+    for (case_id, candidate_id), edge in assignment_edges.items():
+        if edge[2] == 0:
+            result[case_id] = candidate_id
+    return result
 
 
 def _opaque_staffing_candidate_refs(user_ids):
@@ -1068,7 +1139,7 @@ async def automatically_assign_test_cases(
             "matched_skill_evidence": [
                 {
                     "name": usable_skills[name].get("name"),
-                    "level": usable_skills[name].get("level", "NOT_ASSESSED"),
+                    "level": usable_skills[name].get("level", ""),
                     "source_kind": usable_skills[name].get("source_kind", "MEMBER_DECLARED"),
                     "confirmed": usable_skills[name].get("confirmed") is True,
                 }
@@ -1131,14 +1202,14 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
     by_user = {item["user_id"]: item for item in profiles}
     workload = {member_id: 0 for member_id in eligible_ids}
     case_workload = {member_id: 0 for member_id in eligible_ids}
-    project_workload = await _member_project_workload(eligible_ids, plan_schedule)
+    project_workload = await _member_project_workload(eligible_ids, plan_schedule, exclude_run_id=run_id)
     capacity_status, project_limits = await _project_capacity_limits(
         eligible_ids,
         plan_schedule.get("planned_start_at"),
         plan_schedule.get("planned_end_at"),
     )
     async for active_run in skill_profile_repository.iter_active_runs_for_members(
-        eligible_ids
+        eligible_ids, exclude_run_id=run_id
     ):
         case_assignments = list((active_run.get("test_case_assignments") or {}).values())
         case_assignees = set(case_assignments)
@@ -1180,7 +1251,16 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
     proposed_workload = dict(case_workload)
     proposed_projects = {member_id: set(projects) for member_id, projects in project_workload.items()}
     existing_assignments = run.get("test_case_assignments") or {}
-    case_recommendations = []
+    existing_run_members = set(existing_assignments.values())
+    if run.get("assignee_id"):
+        existing_run_members.add(run["assignee_id"])
+    for member_id in existing_run_members:
+        if member_id in workload:
+            workload[member_id] += 1
+            project_workload[member_id].add(project_id)
+    case_recommendations_by_id = {}
+    assignment_options = {}
+    assignment_candidates = {}
     unresolved_cases = []
     for version_id in run.get("test_case_version_ids", []):
         version = versions_by_id.get(version_id)
@@ -1188,19 +1268,21 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
             unresolved_cases.append({"test_case_version_id": version_id, "reason": "VERSION_UNAVAILABLE"})
             continue
         if existing_assignments.get(version_id):
-            case_recommendations.append({
+            case_recommendations_by_id[version_id] = {
                 "test_case_version_id": version_id,
                 "required_skills": version.get("required_skills", []),
                 "assignee_id": existing_assignments[version_id],
                 "status": "EXISTING_ASSIGNMENT_PRESERVED",
                 "candidates": [],
-            })
+                "near_matches": [],
+            }
             continue
-        case_required = list(dict.fromkeys(
-            _normalized(value)
-            for value in (version.get("required_skills") or payload.required_skills)
-            if _normalized(value)
-        ))
+        case_required_by_key = {}
+        for value in (version.get("required_skills") or payload.required_skills):
+            key = _skill_key(value)
+            if key:
+                case_required_by_key.setdefault(key, str(value).strip())
+        case_required = list(case_required_by_key.values())
         _, ranked = rank_skill_candidates(
             eligible,
             profiles,
@@ -1218,12 +1300,23 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
                 and project_id not in proposed_projects[member_id]
                 and len(proposed_projects[member_id]) >= limit
             )
+        near_matches = [
+            candidate
+            for candidate in ranked
+            if candidate["profile_exists"]
+            and candidate["availability"] in {"AVAILABLE", "LIMITED"}
+            and not candidate["project_limit_reached"]
+            and candidate["matched_skill_count"] < len(case_required)
+        ]
+        for candidate in near_matches:
+            member_id = candidate["user_id"]
+            candidate["user_label"] = (identities.get(member_id) or {}).get("label") or member_id
         skill_matches = [
             candidate
             for candidate in ranked
             if candidate["profile_exists"]
             and candidate["availability"] in {"AVAILABLE", "LIMITED"}
-            and not candidate["unmatched_skills"]
+            and candidate["matched_skill_count"] == len(case_required)
         ]
         suitable = [
             candidate
@@ -1233,33 +1326,69 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
         for candidate in suitable:
             member_id = candidate["user_id"]
             candidate["user_label"] = (identities.get(member_id) or {}).get("label") or member_id
-        if suitable:
-            chosen = suitable[0]
-            proposed_workload[chosen["user_id"]] = proposed_workload.get(chosen["user_id"], 0) + 1
-            proposed_projects[chosen["user_id"]].add(project_id)
-            case_recommendations.append({
-                "test_case_version_id": version_id,
-                "required_skills": case_required,
-                "assignee_id": chosen["user_id"],
-                "assignee_label": chosen["user_label"],
-                "matched_skill_evidence": chosen["matched_skill_evidence"],
-                "status": "PROPOSED",
-                "candidates": suitable,
-            })
+        case_candidate_options = {
+            candidate["user_id"]: 0
+            for candidate in suitable
+        }
+        if case_candidate_options:
+            assignment_options[version_id] = case_candidate_options
+            assignment_candidates[version_id] = suitable
         else:
-            case_recommendations.append({
+            unresolved_reason = (
+                "MAX_CONCURRENT_PROJECTS_REACHED"
+                if skill_matches
+                else "NO_FULL_SKILL_MATCH"
+                if case_required
+                else "NO_ELIGIBLE_TESTER"
+            )
+            case_recommendations_by_id[version_id] = {
                 "test_case_version_id": version_id,
                 "required_skills": case_required,
                 "assignee_id": None,
-                "status": (
-                    "MAX_CONCURRENT_PROJECTS_REACHED"
-                    if skill_matches and not suitable
-                    else "NO_FULL_SKILL_MATCH"
-                    if case_required
-                    else "NO_ELIGIBLE_TESTER"
-                ),
+                "status": unresolved_reason,
                 "candidates": ranked,
-            })
+                "near_matches": near_matches,
+            }
+
+    base_workloads = {
+        member_id: case_workload.get(member_id, 0)
+        for member_id in eligible_ids
+    }
+    optimized_assignments = _minimum_cost_case_assignment(
+        list(assignment_options), assignment_options, base_workloads
+    )
+    for version_id, candidate_options in assignment_candidates.items():
+        chosen_id = optimized_assignments.get(version_id)
+        candidates_for_case = candidate_options
+        if chosen_id:
+            chosen = next(item for item in candidates_for_case if item["user_id"] == chosen_id)
+            proposed_workload[chosen_id] = proposed_workload.get(chosen_id, 0) + 1
+            proposed_projects[chosen_id].add(project_id)
+            case_recommendations_by_id[version_id] = {
+                "test_case_version_id": version_id,
+                "required_skills": chosen["matched_required_skills"],
+                "assignee_id": chosen_id,
+                "assignee_label": chosen["user_label"],
+                "matched_skill_evidence": chosen["matched_skill_evidence"],
+                "status": "PROPOSED",
+                "assignment_method": "GLOBAL_MIN_COST_SKILL_AND_WORKLOAD_OPTIMIZATION",
+                "candidates": candidates_for_case,
+                "near_matches": near_matches,
+            }
+        else:
+            case_recommendations_by_id[version_id] = {
+                "test_case_version_id": version_id,
+                "required_skills": [],
+                "assignee_id": None,
+                "status": "NO_ELIGIBLE_TESTER",
+                "candidates": candidates_for_case,
+                "near_matches": near_matches,
+            }
+    case_recommendations = [
+        case_recommendations_by_id[version_id]
+        for version_id in run.get("test_case_version_ids", [])
+        if version_id in case_recommendations_by_id
+    ]
     return {
         "test_run_id": run_id,
         "run_revision": run.get("revision", 1),
@@ -1276,7 +1405,7 @@ async def recommend_test_run_assignments(project_id, run_id, payload, user):
             if candidates
             else "NO_MATCHING_SKILL_EVIDENCE"
         ),
-        "method": "SOURCE_EVIDENCE_AVAILABILITY_AND_ACTIVE_CASE_AND_RUN_LOAD",
+        "method": "GLOBAL_ASSIGNMENT_OPTIMIZATION_WITH_SOURCE_EVIDENCE_AND_ACTIVE_LOAD",
         "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
         "project_capacity_status": capacity_status,
         "staffing_source": "TEST_PLAN_EFFORT_ALLOCATION" if plan_staffing else "ACTIVE_PROJECT_TESTERS",
@@ -1353,14 +1482,12 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         case_workloads=case_workload,
     )
     identities = await load_user_identities(eligible_ids)
-    qualified_candidates = []
+    recommendation_pool = []
     excluded_by_project_limit = 0
     for candidate in ranked:
         member_id = candidate["user_id"]
         profile = profiles_by_user.get(member_id)
         if not profile or profile.get("availability") not in {"AVAILABLE", "LIMITED"}:
-            continue
-        if candidate["unmatched_skills"]:
             continue
         project_limit = project_limits.get(member_id)
         if (
@@ -1370,7 +1497,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         ):
             excluded_by_project_limit += 1
             continue
-        qualified_candidates.append(
+        recommendation_pool.append(
             {
                 **candidate,
                 "user_label": (identities.get(member_id) or {}).get("label") or member_id,
@@ -1380,19 +1507,26 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
                 "project_limit_reached": False,
             }
         )
-    candidates = list(qualified_candidates)
-    candidates.sort(
-        key=lambda item: (
-            -item["score"],
-            _availability_rank(item["availability"]),
-            item["active_project_count"],
-            item["active_case_count"],
-            item["active_run_count"],
-            item["user_id"],
-        )
-    )
+    recommendation_pool.sort(key=lambda item: item["user_id"])
 
-    candidates_by_user = {item["user_id"]: item for item in candidates}
+    candidates_by_user = {item["user_id"]: item for item in recommendation_pool}
+    if not candidates_by_user:
+        return {
+            "project_id": project_id,
+            "draft_id": payload.draft_id,
+            "required_skills": required,
+            "candidates": [],
+            "near_matches": [],
+            "recommended_user_id": None,
+            "recommended_user_label": None,
+            "status": "PROJECT_LIMIT_REACHED" if excluded_by_project_limit else "NO_ELIGIBLE_TESTER",
+            "method": "AI_RANKED_ELIGIBLE_CANDIDATES_WITH_SKILL_GAP_ANALYSIS",
+            "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
+            "project_capacity_status": project_capacity_status,
+            "excluded_by_project_limit_count": excluded_by_project_limit,
+            "recommendation_engine": "AI",
+            "applies_automatically": False,
+        }
     candidate_ref_to_user = _opaque_staffing_candidate_refs(
         list(candidates_by_user)
     )
@@ -1400,18 +1534,41 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         user_id: candidate_ref
         for candidate_ref, user_id in candidate_ref_to_user.items()
     }
-    score_factors = _owner_score_factors(candidates_by_user, profiles_by_user)
     ai_candidate_inputs = []
     facts_by_user = {}
-    for candidate in candidates:
+    skill_evidence_by_user = {}
+    for candidate in recommendation_pool:
         member_id = candidate["user_id"]
         profile = profiles_by_user.get(member_id) or {}
         facts = []
-        for index, skill in enumerate(candidate["matched_skill_evidence"]):
+        skill_evidence_by_user[member_id] = {}
+        confirmed_skills = list(_confirmed_skills(profile).values())
+        required_keys = {_skill_key(value) for value in required}
+        for index, skill in enumerate(confirmed_skills):
+            match_state = (
+                "Tên kỹ năng khớp yêu cầu"
+                if _skill_key(skill.get("name")) in required_keys
+                else "Tên kỹ năng chưa khớp trực tiếp yêu cầu"
+            )
+            skill_description = f"Kỹ năng trong hồ sơ: {skill['name']}"
+            if skill.get("level"):
+                skill_description = f"{skill_description} ({skill['level']})"
             facts.append({
                 "fact_id": f"skill-{index + 1}",
-                "description": f"Kỹ năng đã xác nhận: {skill['name']} ({skill.get('level', 'NOT_ASSESSED')})",
+                "description": f"{skill_description}; nguồn {skill.get('source_kind', 'MEMBER_DECLARED')}; người dùng đã xác nhận trong hồ sơ; chưa có xác minh độc lập; {match_state}",
             })
+            skill_evidence_by_user[member_id][f"skill-{index + 1}"] = {
+                "name": skill["name"],
+                "level": skill.get("level", ""),
+                "source_kind": skill.get("source_kind", "MEMBER_DECLARED"),
+                "evidence_status": (
+                    "DOCUMENT_SUPPORTED"
+                    if skill.get("source_kind") == "CV_EXTRACTED" and str(skill.get("evidence") or "").strip()
+                    else "DECLARED"
+                ),
+                "independently_assessed": False,
+                "confirmed": skill.get("confirmed") is True,
+            }
         for index, experience in enumerate(profile.get("experiences") or []):
             if experience.get("confirmed") is not True:
                 continue
@@ -1441,7 +1598,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         facts_by_user[member_id] = facts
         ai_candidate_inputs.append({
             "candidate_id": candidate_ref_by_user[member_id],
-            "confirmed_skills": candidate["matched_skills"],
+            "confirmed_skills": candidate["confirmed_skills"],
             "relevant_experience": [
                 fact["description"] for fact in facts if fact["fact_id"].startswith("experience-")
             ],
@@ -1462,21 +1619,104 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         candidate_ref_to_user[item["candidate_id"]]: rank
         for rank, item in enumerate(ai_result.get("recommendations") or [], start=1)
     }
+    exact_required_by_key = {_skill_key(value): value for value in required}
     for member_id, candidate in candidates_by_user.items():
         recommendation = recommendation_by_user[member_id]
+        validated_skill_matches = []
+        matched_keys = set()
+        evidence_keys = set()
+        for match in recommendation.get("skill_matches") or []:
+            required_skill = str(match.get("required_skill") or "").strip()
+            required_key = _skill_key(required_skill)
+            evidence_id = match.get("evidence_fact_id")
+            evidence = skill_evidence_by_user[member_id].get(evidence_id)
+            match_type = match.get("match_type")
+            if (
+                required_key not in exact_required_by_key
+                or required_key in matched_keys
+                or not evidence
+                or evidence_id in evidence_keys
+                or match_type not in {"EXACT", "EQUIVALENT"}
+                or (match_type == "EXACT" and _skill_key(evidence["name"]) != required_key)
+                or (match_type == "EQUIVALENT" and _skill_key(evidence["name"]) == required_key)
+            ):
+                raise HTTPException(
+                    status_code=502,
+                    detail={"code": "AI_OWNER_SKILL_MATCH_EVIDENCE_INVALID"},
+                )
+            matched_keys.add(required_key)
+            evidence_keys.add(evidence_id)
+            validated_skill_matches.append({
+                "required_skill": exact_required_by_key[required_key],
+                "confirmed_skill": evidence["name"],
+                "evidence_fact_id": evidence_id,
+                "match_type": match_type,
+                "rationale": match.get("rationale", ""),
+            })
+        unmatched = [
+            exact_required_by_key[key]
+            for key in exact_required_by_key
+            if key not in matched_keys
+        ]
+        model_unmatched = recommendation.get("unmatched_required_skills") or []
+        if (
+            len({_skill_key(value) for value in model_unmatched}) != len(model_unmatched)
+            or {_skill_key(value) for value in model_unmatched}
+            != {_skill_key(value) for value in unmatched}
+        ):
+            raise HTTPException(
+                status_code=502,
+                detail={"code": "AI_OWNER_SKILL_GAP_ANALYSIS_INVALID"},
+            )
+        candidate["exact_skill_matches"] = candidate["matched_skill_evidence"]
+        candidate["semantic_skill_matches"] = [
+            item for item in validated_skill_matches if item["match_type"] == "EQUIVALENT"
+        ]
+        candidate["matched_skill_evidence"] = [
+            {
+                **skill_evidence_by_user[member_id][item["evidence_fact_id"]],
+                "required_skill": item["required_skill"],
+                "match_type": item["match_type"],
+            }
+            for item in validated_skill_matches
+        ]
+        candidate["matched_skills"] = list(dict.fromkeys(
+            item["confirmed_skill"] for item in validated_skill_matches
+        ))
+        candidate["matched_required_skills"] = [item["required_skill"] for item in validated_skill_matches]
+        candidate["unmatched_skills"] = unmatched
+        candidate["unmatched_required_skills"] = unmatched
         candidate["ai_rank"] = ai_rank_by_user[member_id]
         candidate["ai_reason"] = recommendation["reason"]
         candidate["ai_supporting_facts"] = [
             next(fact["description"] for fact in facts_by_user[member_id] if fact["fact_id"] == fact_id)
             for fact_id in recommendation["supporting_facts"]
         ]
-        candidate["score_0_to_1"] = score_factors[member_id]["score"]
-        candidate["score_factors"] = score_factors[member_id]["factors"]
-        candidate["score_factor_status"] = score_factors[member_id]["factor_status"]
+    decision_context = _owner_decision_context(candidates_by_user, profiles_by_user, project_workload)
+    for member_id, candidate in candidates_by_user.items():
+        candidate["decision_context"] = decision_context[member_id]["context"]
+        candidate["decision_context_status"] = decision_context[member_id]["context_status"]
     candidates = sorted(
-        candidates_by_user.values(),
-        key=lambda item: (-item["score_0_to_1"], item["ai_rank"], item["user_id"]),
+        (item for item in candidates_by_user.values() if not item["unmatched_skills"]),
+        key=lambda item: (item["ai_rank"], item["user_id"]),
     )
+    near_matches = sorted(
+        (item for item in candidates_by_user.values() if item["unmatched_skills"]),
+        key=lambda item: (
+            len(item["unmatched_skills"]),
+            item["ai_rank"],
+            item["user_id"],
+        ),
+    )
+    for rank, candidate in enumerate(candidates, start=1):
+        candidate["recommendation_rank"] = rank
+    for candidate in [*candidates, *near_matches]:
+        candidate["matched_skill_count"] = len(candidate["matched_required_skills"])
+        candidate["required_skill_count"] = len(required)
+        candidate["skill_coverage"] = (
+            len(candidate["matched_required_skills"]) / len(required)
+            if required else 1.0
+        )
 
     status = (
         "CANDIDATES_FOUND"
@@ -1485,6 +1725,8 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         if not eligible
         else "PROJECT_LIMIT_REACHED"
         if excluded_by_project_limit and not candidates
+        else "NEAR_MATCHES_FOUND"
+        if near_matches and not candidates
         else "NO_CONFIRMED_SKILL_MATCH"
     )
     return {
@@ -1492,22 +1734,15 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
         "draft_id": payload.draft_id,
         "required_skills": required,
         "candidates": candidates,
+        "near_matches": near_matches,
         "recommended_user_id": candidates[0]["user_id"] if candidates else None,
         "recommended_user_label": candidates[0]["user_label"] if candidates else None,
         "status": status,
-        "method": "AI_RANKED_CONFIRMED_SKILLS_EXPERIENCE_AVAILABILITY_AND_WORKLOAD",
+        "method": "AI_RANKED_ELIGIBLE_CANDIDATES_WITH_SKILL_GAP_ANALYSIS",
         "active_project_count_basis": "OPEN_TEST_RUNS_OR_OVERLAPPING_REVIEWED_TEST_PLANS",
         "project_capacity_status": project_capacity_status,
         "excluded_by_project_limit_count": excluded_by_project_limit,
         "recommendation_engine": "AI",
-        "score_method": "EQUAL_WEIGHT_MEAN_OF_AVAILABLE_NORMALIZED_FACTORS",
-        "score_note": "Điểm 0–1 là mức phù hợp tương đối trong nhóm ứng viên đủ điều kiện, không phải xác suất thành công.",
-        "score_factors_considered": list(score_factors[candidates[0]["user_id"]]["factors"]) if candidates else [],
-        "score_factors_excluded": [
-            key for key in ("experience_relevance",)
-            if candidates and score_factors[candidates[0]["user_id"]]["factor_status"][key]
-            == "MISSING_FOR_COMPARISON"
-        ],
         "recommendation_warnings": ai_result.get("warnings") or [],
         "applies_automatically": False,
     }

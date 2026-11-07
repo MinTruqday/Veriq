@@ -485,30 +485,39 @@ export default function RunExecutionWorkspace({
                         (candidate) => candidate.user_id === item.assignee_id,
                       );
                       return (
-                        <p className="text-xs text-ink-muted">
-                          {item.status === "PROPOSED" ? (
-                            <>
-                              Veriq đề xuất theo hồ sơ kỹ năng và tải công việc:{" "}
-                              <span className="font-medium text-ink">
-                                {suggestedMember?.user_label ||
-                                  suggestedMember?.user?.label ||
-                                  suggestedMember?.user?.full_name ||
-                                  suggestedMember?.user?.email ||
-                                  item.assignee_label ||
-                                  "Thành viên không còn trong dự án"}
-                              </span>
-                              {item.required_skills?.length
-                                ? ` · Kỹ năng yêu cầu: ${item.required_skills.join(", ")}`
-                                : " · Không yêu cầu kỹ năng cụ thể"}
-                            </>
-                          ) : item.status === "EXISTING_ASSIGNMENT_PRESERVED" ? (
-                            "Giữ nguyên phân công hiện tại"
-                          ) : item.status === "MAX_CONCURRENT_PROJECTS_REACHED" ? (
-                            "Ứng viên đủ kỹ năng đã chạm mức dự án tối đa được Admin khai báo. Hãy xem lại giới hạn trước khi phân công thủ công."
-                          ) : (
-                            "Chưa có người khớp điều kiện; hãy chọn thủ công nếu cần."
+                        <div className="space-y-1 text-xs text-ink-muted">
+                          <p>
+                            {item.status === "PROPOSED" ? (
+                              <>
+                                Veriq đề xuất theo hồ sơ kỹ năng và tải công việc:{" "}
+                                <span className="font-medium text-ink">
+                                  {suggestedMember?.user_label ||
+                                    suggestedMember?.user?.label ||
+                                    suggestedMember?.user?.full_name ||
+                                    suggestedMember?.user?.email ||
+                                    item.assignee_label ||
+                                    "Thành viên không còn trong dự án"}
+                                </span>
+                                {item.required_skills?.length
+                                  ? ` · Kỹ năng yêu cầu: ${item.required_skills.join(", ")}`
+                                  : " · Không yêu cầu kỹ năng cụ thể"}
+                              </>
+                            ) : item.status === "EXISTING_ASSIGNMENT_PRESERVED" ? (
+                              "Giữ nguyên phân công hiện tại"
+                            ) : item.status === "MAX_CONCURRENT_PROJECTS_REACHED" ? (
+                              "Ứng viên đủ kỹ năng đã chạm mức dự án tối đa được Admin khai báo. Hãy xem lại giới hạn trước khi phân công thủ công."
+                            ) : (
+                              "Chưa có người khớp điều kiện; hãy chọn thủ công nếu cần."
+                            )}
+                          </p>
+                          {item.near_matches?.length > 0 && (
+                            <p>
+                              Ứng viên còn thiếu kỹ năng yêu cầu: {item.near_matches.map((candidate) =>
+                                `${candidate.user_label} (${candidate.unmatched_skills.join(", ") || "chưa có hồ sơ kỹ năng"})`,
+                              ).join("; ")}
+                            </p>
                           )}
-                        </p>
+                        </div>
                       );
                     })()}
                 </div>
