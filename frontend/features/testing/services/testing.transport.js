@@ -8,10 +8,7 @@ function userFacingError(message, fallback) {
 
 function responseErrorMessage(response, body, fallback) {
   const detail = body?.error || body?.detail;
-  const message = userFacingError(
-    typeof detail === "string" ? detail : detail?.message,
-    "",
-  );
+  const message = userFacingError(typeof detail === "string" ? detail : detail?.message, "");
   if (message) return message;
   if (response.status >= 500)
     return `Máy chủ gặp lỗi khi xử lý yêu cầu (HTTP ${response.status}). Vui lòng thử lại.`;

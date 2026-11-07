@@ -38,7 +38,8 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
   const aiReasonCodes = new Set(lint.reason_codes || []);
   const aiDegradedMessage = aiReasonCodes.has("AI_PROVIDER_UNAVAILABLE")
     ? "Không kết nối được mô hình AI. Hệ thống vẫn hiển thị các điều kiện dữ liệu; hãy thử lại khi dịch vụ AI hoạt động."
-    : aiReasonCodes.has("AI_OUTPUT_INVALID") || aiReasonCodes.has("AI_UNGROUNDED_CANDIDATES_REJECTED")
+    : aiReasonCodes.has("AI_OUTPUT_INVALID") ||
+        aiReasonCodes.has("AI_UNGROUNDED_CANDIDATES_REJECTED")
       ? "AI đã trả kết quả nhưng nội dung không vượt qua kiểm tra cấu trúc hoặc căn cứ nguồn. Phần đó đã bị loại; các kiểm tra dữ liệu vẫn được giữ."
       : "Lượt AI chưa tạo được đề xuất. Các điều kiện dữ liệu do hệ thống kiểm tra vẫn có sẵn.";
   return (
@@ -126,7 +127,8 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
       )}
       {lint.warnings?.includes("AI_UNGROUNDED_CANDIDATES_REJECTED") && !lint.degraded_mode && (
         <p className="mt-3 text-sm text-warning" role="status">
-          Một số nhận xét AI không khớp nguồn nên đã bị loại. Những nhận xét còn lại vẫn cần người dùng rà soát.
+          Một số nhận xét AI không khớp nguồn nên đã bị loại. Những nhận xét còn lại vẫn cần người
+          dùng rà soát.
         </p>
       )}
       {lint.degraded_mode && (
