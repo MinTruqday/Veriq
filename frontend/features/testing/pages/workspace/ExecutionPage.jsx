@@ -22,6 +22,7 @@ import { Pagination } from "@/shared/components/ui/Pagination";
 import { testingApi } from "../../services/testing.service";
 import { docText, formatDate, messageOf, textDoc, valueLabel } from "../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import SearchField from "@/shared/components/ui/SearchField";
 import RunExecutionWorkspace from "./execution/RunExecutionWorkspace";
 import JUnitResultPanel from "../../components/JUnitResultPanel";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
@@ -1187,12 +1188,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   Tìm kiếm, lọc và sắp xếp
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <input
-                    aria-label="Tìm kế hoạch kiểm thử"
-                    className="apple-input"
+                  <SearchField
+                    ariaLabel="Tìm kế hoạch kiểm thử"
+                    onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
                     placeholder="Tìm tên hoặc mục tiêu"
                     value={planFilters.q}
-                    onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
                   />
                   <input
                     aria-label="Lọc bản phát hành kế hoạch"
@@ -1238,12 +1238,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   Tìm kiếm, lọc và sắp xếp
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <input
-                    aria-label="Tìm kế hoạch kiểm thử"
-                    className="apple-input"
+                  <SearchField
+                    ariaLabel="Tìm kế hoạch kiểm thử"
+                    onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
                     placeholder="Tìm tên hoặc mục tiêu"
                     value={planFilters.q}
-                    onChange={(event) => setPlanFilters({ ...planFilters, q: event.target.value })}
                   />
                   <input
                     aria-label="Lọc bản phát hành kế hoạch"
@@ -1479,12 +1478,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               Tìm kiếm, lọc và sắp xếp
             </summary>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <input
-                aria-label="Tìm bộ kiểm thử"
-                className="apple-input"
+              <SearchField
+                ariaLabel="Tìm bộ kiểm thử"
+                onChange={(event) => setSuiteFilters({ ...suiteFilters, q: event.target.value })}
                 placeholder="Tìm tên bộ kiểm thử"
                 value={suiteFilters.q}
-                onChange={(event) => setSuiteFilters({ ...suiteFilters, q: event.target.value })}
               />
               <select
                 aria-label="Lọc loại bộ kiểm thử"
@@ -1631,12 +1629,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                   Tìm kiếm, lọc và sắp xếp
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <input
-                    aria-label="Tìm lần chạy"
-                    className="apple-input"
+                  <SearchField
+                    ariaLabel="Tìm lần chạy"
+                    onChange={(event) => setRunNameSearch(event.target.value)}
                     placeholder="Tên lần chạy"
                     value={runNameSearch}
-                    onChange={(event) => setRunNameSearch(event.target.value)}
                   />
                   <select
                     aria-label="Lọc trạng thái lần chạy"

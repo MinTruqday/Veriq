@@ -43,20 +43,22 @@ class VectorStore:
         "source_document_id": PayloadSchemaType.KEYWORD,
         "visibility": PayloadSchemaType.KEYWORD,
         "shared_with": PayloadSchemaType.KEYWORD,
-        "source_hash": PayloadSchemaType.KEYWORD,
         "content_type": PayloadSchemaType.KEYWORD,
-        "parser_name": PayloadSchemaType.KEYWORD,
-        "parser_version": PayloadSchemaType.KEYWORD,
-        "ocr_enabled": PayloadSchemaType.BOOL,
-        "extraction_status": PayloadSchemaType.KEYWORD,
-        "unprocessed_block_count": PayloadSchemaType.INTEGER,
         "index_generation": PayloadSchemaType.KEYWORD,
         "document_index_contract_version": PayloadSchemaType.INTEGER,
-        "indexed_at": PayloadSchemaType.DATETIME,
-        "conflict_key": PayloadSchemaType.KEYWORD,
-        "claim_value": PayloadSchemaType.KEYWORD,
         "embedding_model": PayloadSchemaType.KEYWORD,
     }
+    UNUSED_PAYLOAD_INDEX_FIELDS = (
+        "source_hash",
+        "parser_name",
+        "parser_version",
+        "ocr_enabled",
+        "extraction_status",
+        "unprocessed_block_count",
+        "indexed_at",
+        "conflict_key",
+        "claim_value",
+    )
     UNINDEXED_POLYMORPHIC_PAYLOAD_FIELDS = ("source_version",)
 
     @staticmethod
@@ -101,6 +103,13 @@ class VectorStore:
             ):
                 raise RuntimeError("qdrant_collection_vector_schema_mismatch")
             payload_schema = collection.payload_schema or {}
+            for field in self.UNUSED_PAYLOAD_INDEX_FIELDS:
+                if field in payload_schema:
+                    await self.client.delete_payload_index(
+                        collection_name=self.collection_name,
+                        field_name=field,
+                        wait=True,
+                    )
             for field, field_schema in self.PAYLOAD_INDEX_FIELDS.items():
                 current = payload_schema.get(field)
                 current_type = getattr(current, "data_type", None)

@@ -2,6 +2,7 @@ import DataTable from "../../../components/DataTable";
 import { LoadingState, Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { valueLabel } from "../../../lib/testing";
+import SearchField from "@/shared/components/ui/SearchField";
 import {
   REQUIREMENT_COVERAGE_FILTERS,
   REQUIREMENT_SORT_OPTIONS,
@@ -44,24 +45,22 @@ export default function RequirementsListPanel({
   };
 
   return (
-    <Panel
-      title={title}
-      className="requirements-list-panel"
-      actions={
+    <Panel title={title} className="requirements-list-panel">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border p-4 sm:px-5">
+        <SearchField
+          ariaLabel="Tìm yêu cầu"
+          className="min-w-0 flex-1 sm:max-w-sm"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(1);
+          }}
+          placeholder="Tìm yêu cầu"
+          value={query}
+        />
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <input
-            aria-label="Tìm yêu cầu"
-            className="apple-input w-full min-w-0 sm:w-64"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Tìm yêu cầu"
-          />
           {selectedIds.length > 0 && can("requirement.update") && (
             <button
-              className="secondary-button w-full whitespace-nowrap sm:w-auto"
+              className="secondary-button whitespace-nowrap"
               type="button"
               onClick={onBulkTags}
             >
@@ -70,7 +69,7 @@ export default function RequirementsListPanel({
           )}
           {can("requirement.duplicate_check") && (
             <button
-              className="secondary-button w-full whitespace-nowrap sm:w-auto"
+              className="secondary-button whitespace-nowrap"
               type="button"
               onClick={onScanDuplicates}
             >
@@ -79,7 +78,7 @@ export default function RequirementsListPanel({
           )}
           {selectedIds.length > 0 && can("requirement.merge") && (
             <button
-              className="secondary-button w-full whitespace-nowrap sm:w-auto"
+              className="secondary-button whitespace-nowrap"
               disabled={selectedIds.length < 2}
               type="button"
               onClick={onMerge}
@@ -89,7 +88,7 @@ export default function RequirementsListPanel({
           )}
           {selectedIds.length > 0 && can("requirement.archive") && (
             <button
-              className="danger-button w-full whitespace-nowrap sm:w-auto"
+              className="danger-button whitespace-nowrap"
               type="button"
               onClick={onBulkArchive}
             >
@@ -97,8 +96,7 @@ export default function RequirementsListPanel({
             </button>
           )}
         </div>
-      }
-    >
+      </div>
       {loading ? (
         <div className="p-5">
           <LoadingState />

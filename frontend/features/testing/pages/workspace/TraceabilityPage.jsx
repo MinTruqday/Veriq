@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronLeft, ChevronRight, RotateCcw, Search, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, RotateCcw, X } from "lucide-react";
 import {
   ErrorState,
   InitialLoadState,
@@ -15,6 +15,7 @@ import {
 import { testingApi } from "../../services/testing.service";
 import { formatDate, messageOf, valueLabel } from "../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const PAGE_SIZE = 25;
 
@@ -477,24 +478,16 @@ export default function TraceabilityPage({ project }) {
         description={`${filteredLinks.length.toLocaleString("vi-VN")} liên kết phù hợp`}
         actions={
           <div className="grid w-full min-w-0 gap-2 sm:grid-cols-[minmax(220px,1fr)_210px]">
-            <label className="relative block min-w-0">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
-                size={16}
-              />
-              <input
-                aria-label="Tìm liên kết"
-                className="apple-input w-full pl-9"
-                placeholder="Tìm mã hoặc nội dung"
-                type="search"
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  setPage(0);
-                }}
-              />
-            </label>
+            <SearchField
+              ariaLabel="Tìm liên kết"
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(0);
+              }}
+              placeholder="Tìm mã hoặc nội dung"
+              type="search"
+              value={query}
+            />
             <label className="sr-only" htmlFor="trace-status-filter">
               Lọc trạng thái liên kết
             </label>

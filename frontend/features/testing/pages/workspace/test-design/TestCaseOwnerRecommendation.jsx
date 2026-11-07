@@ -21,7 +21,9 @@ export default function TestCaseOwnerRecommendation({
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-medium text-ink">{candidate.user_label}</p>
             <span className="rounded-full bg-surface-muted px-2 py-1 text-xs text-ink-muted">
-              {isNearMatch ? "Cần xem xét khoảng thiếu" : `Đề xuất AI #${candidate.recommendation_rank || rank}`}
+              {isNearMatch
+                ? "Cần xem xét khoảng thiếu"
+                : `Đề xuất AI #${candidate.recommendation_rank || rank}`}
             </span>
             <span className="text-xs text-ink-muted">
               {candidate.matched_skill_count}/{candidate.required_skill_count} yêu cầu có căn cứ
@@ -38,7 +40,9 @@ export default function TestCaseOwnerRecommendation({
                       {item.required_skill} ← {item.name}
                       {item.match_type === "EQUIVALENT" ? " · tương đương theo AI" : " · trùng tên"}
                       {` · ${item.evidence_status === "DOCUMENT_SUPPORTED" ? "có dẫn chứng tài liệu" : "tự khai trong hồ sơ"}`}
-                      {item.independently_assessed ? " · đã đánh giá độc lập" : " · chưa đánh giá độc lập"}
+                      {item.independently_assessed
+                        ? " · đã đánh giá độc lập"
+                        : " · chưa đánh giá độc lập"}
                     </li>
                   ))}
                 </ul>
@@ -54,18 +58,26 @@ export default function TestCaseOwnerRecommendation({
             <div>
               <p className="font-medium text-ink">Tải và mức sẵn sàng</p>
               <p className="mt-1 text-ink-muted">
-                {candidate.availability} · {candidate.active_case_count} ca đang được giao · {candidate.active_run_count} lượt chạy · {candidate.active_project_count} dự án có hoạt động trùng lịch
+                {candidate.availability} · {candidate.active_case_count} ca đang được giao ·{" "}
+                {candidate.active_run_count} lượt chạy · {candidate.active_project_count} dự án có
+                hoạt động trùng lịch
               </p>
               {candidate.ai_supporting_facts?.length > 0 && (
                 <ul className="mt-2 list-inside list-disc text-ink-muted">
-                  {candidate.ai_supporting_facts.map((fact, index) => <li key={`${candidate.user_id}:fact:${index}`}>{fact}</li>)}
+                  {candidate.ai_supporting_facts.map((fact, index) => (
+                    <li key={`${candidate.user_id}:fact:${index}`}>{fact}</li>
+                  ))}
                 </ul>
               )}
             </div>
           </div>
         </div>
         {!isNearMatch && (
-          <button className="secondary-button shrink-0" type="button" onClick={() => onSelect(candidate)}>
+          <button
+            className="secondary-button shrink-0"
+            type="button"
+            onClick={() => onSelect(candidate)}
+          >
             Chọn người này
           </button>
         )}
@@ -141,12 +153,16 @@ export default function TestCaseOwnerRecommendation({
                     Ứng viên cần xem xét thêm ({result.near_matches.length})
                   </summary>
                   <div className="mt-3 space-y-2">
-                    {result.near_matches.map((candidate, index) => renderCandidate(candidate, index + 1, true))}
+                    {result.near_matches.map((candidate, index) =>
+                      renderCandidate(candidate, index + 1, true),
+                    )}
                   </div>
                 </details>
               )}
               {result.recommendation_warnings?.map((warning, index) => (
-                <p className="text-sm text-amber-800" key={`warning:${index}`}>{warning}</p>
+                <p className="text-sm text-amber-800" key={`warning:${index}`}>
+                  {warning}
+                </p>
               ))}
             </div>
           ) : (

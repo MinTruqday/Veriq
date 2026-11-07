@@ -13,6 +13,7 @@ import {
 import { Pagination } from "@/shared/components/ui/Pagination";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import SearchField from "@/shared/components/ui/SearchField";
 
 export default function PlatformUsersPanel() {
   const { ask, dialog } = useActionDialog();
@@ -231,12 +232,12 @@ export default function PlatformUsersPanel() {
                 void loadUsers(query);
               }}
             >
-              <input
-                className="apple-input min-w-0 w-full sm:w-72"
-                aria-label="Tìm tài khoản"
-                value={query}
+              <SearchField
+                ariaLabel="Tìm tài khoản"
+                className="w-full sm:w-72"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Email, họ tên hoặc tên đăng nhập"
+                value={query}
               />
               <button className="secondary-button shrink-0" type="submit">
                 Tìm

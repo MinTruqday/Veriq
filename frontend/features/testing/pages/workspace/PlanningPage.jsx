@@ -45,6 +45,7 @@ import {
   ModalTitle,
 } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
+import SearchField from "@/shared/components/ui/SearchField";
 
 function itemOptions(items) {
   return [
@@ -853,19 +854,16 @@ export default function PlanningPage({ project, section }) {
                   : "grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1.25fr)_repeat(2,minmax(10rem,0.75fr))]"
               }
             >
-              <label className="field-label">
-                Tìm công việc
-                <input
-                  aria-label="Tìm công việc trong lập kế hoạch"
-                  className="apple-input mt-2"
-                  disabled={loading}
-                  value={planningFilters.query}
-                  onChange={(event) =>
-                    updatePlanningFilters((current) => ({ ...current, query: event.target.value }))
-                  }
-                  placeholder="Mã, tên hoặc mô tả"
-                />
-              </label>
+              <SearchField
+                ariaLabel="Tìm công việc trong lập kế hoạch"
+                disabled={loading}
+                label="Tìm công việc"
+                onChange={(event) =>
+                  updatePlanningFilters((current) => ({ ...current, query: event.target.value }))
+                }
+                placeholder="Mã, tên hoặc mô tả"
+                value={planningFilters.query}
+              />
               <label className="field-label">
                 Trạng thái
                 <select

@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import {
   ErrorState,
   LoadingState,
@@ -9,6 +9,7 @@ import {
   StatusPill,
   useActionDialog,
 } from "./WorkspacePrimitives";
+import SearchField from "@/shared/components/ui/SearchField";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 import { testingApi } from "../services/testing.service";
@@ -227,23 +228,14 @@ export default function AutomationScriptsPanel({ project }) {
         ) : (
           <div className="grid min-w-0 gap-y-5 gap-x-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)] lg:gap-x-0">
             <section aria-label="Danh sách mã kiểm thử tự động" className="min-w-0">
-              <label className="field-label mb-5 block lg:mr-5">
-                Tìm mã kiểm thử
-                <span className="relative mt-2 block">
-                  <Search
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
-                    size={17}
-                  />
-                  <input
-                    aria-label="Tìm mã kiểm thử tự động"
-                    className="apple-input pl-10"
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Tên tệp, mã ca hoặc công cụ"
-                    value={query}
-                  />
-                </span>
-              </label>
+              <SearchField
+                ariaLabel="Tìm mã kiểm thử tự động"
+                className="mb-5 lg:mr-5"
+                label="Tìm mã kiểm thử"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Tên tệp, mã ca hoặc công cụ"
+                value={query}
+              />
               {visibleItems.length ? (
                 <ul className="-ml-4 divide-y divide-border border-y border-border sm:-ml-5">
                   {visibleItems.map((item) => (

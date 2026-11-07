@@ -16,6 +16,7 @@ import {
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const strategyFindingLabels = {
   STRATEGY_OBJECTIVE_MISSING: "Bổ sung mục tiêu chiến lược.",
@@ -163,12 +164,11 @@ export default function TestGovernancePage({ project }) {
             void load();
           }}
         >
-          <input
-            className="apple-input"
-            aria-label="Tìm chiến lược"
-            value={query}
+          <SearchField
+            ariaLabel="Tìm chiến lược"
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Tìm theo mã hoặc tên"
+            value={query}
           />
           <select
             className="apple-input"

@@ -20,6 +20,7 @@ import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { docText, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const findingTypeLabels = {
   AMBIGUITY: "Nội dung chưa rõ",
@@ -277,12 +278,11 @@ export default function TestAnalysisPage({ project }) {
                 void load();
               }}
             >
-              <input
-                className="apple-input"
-                aria-label="Tìm điều kiện kiểm thử"
-                value={query}
+              <SearchField
+                ariaLabel="Tìm điều kiện kiểm thử"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Tìm mã hoặc hạng mục độ phủ"
+                value={query}
               />
               <select
                 className="apple-input"

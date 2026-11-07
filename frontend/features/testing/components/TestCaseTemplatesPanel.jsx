@@ -11,6 +11,7 @@ import {
 } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { formatDate, messageOf } from "../lib/testing";
+import SearchField from "@/shared/components/ui/SearchField";
 import {
   Modal,
   ModalContent,
@@ -195,16 +196,13 @@ export default function TestCaseTemplatesPanel({ project }) {
       <div className="space-y-4 p-4 sm:p-5">
         {error && <ErrorState message={error} />}
         <div className="flex flex-wrap items-center gap-2">
-          <label className="min-w-64 flex-1">
-            <span className="sr-only">Tìm mẫu ca kiểm thử</span>
-            <input
-              aria-label="Tìm mẫu ca kiểm thử"
-              className="apple-input w-full"
-              placeholder="Tìm theo tên, mô tả hoặc nhãn"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
+          <SearchField
+            ariaLabel="Tìm mẫu ca kiểm thử"
+            className="min-w-64 flex-1"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Tìm theo tên, mô tả hoặc nhãn"
+            value={search}
+          />
           <select
             aria-label="Lọc loại mẫu ca kiểm thử"
             className="apple-input min-w-48 w-auto"

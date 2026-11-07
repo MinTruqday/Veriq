@@ -512,9 +512,13 @@ export default function RunExecutionWorkspace({
                           </p>
                           {item.near_matches?.length > 0 && (
                             <p>
-                              Ứng viên còn thiếu kỹ năng yêu cầu: {item.near_matches.map((candidate) =>
-                                `${candidate.user_label} (${candidate.unmatched_skills.join(", ") || "chưa có hồ sơ kỹ năng"})`,
-                              ).join("; ")}
+                              Ứng viên còn thiếu kỹ năng yêu cầu:{" "}
+                              {item.near_matches
+                                .map(
+                                  (candidate) =>
+                                    `${candidate.user_label} (${candidate.unmatched_skills.join(", ") || "chưa có hồ sơ kỹ năng"})`,
+                                )
+                                .join("; ")}
                             </p>
                           )}
                         </div>

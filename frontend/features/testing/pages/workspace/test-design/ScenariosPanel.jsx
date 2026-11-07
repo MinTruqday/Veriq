@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { Archive, Copy, Send, Check, RotateCcw, Search } from "lucide-react";
+import { Archive, Copy, Send, Check, RotateCcw } from "lucide-react";
+import SearchField from "@/shared/components/ui/SearchField";
 import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
@@ -222,20 +223,13 @@ export default function ScenariosPanel({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
         <p className="text-sm text-ink-muted">{scenarios.length} kịch bản trong danh sách</p>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-          <label className="relative min-w-[16rem] flex-1 xl:max-w-lg">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
-              size={16}
-            />
-            <input
-              aria-label="Tìm kịch bản"
-              className="apple-input w-full pl-9"
-              placeholder="Tìm theo mã hoặc tên kịch bản"
-              value={filters.q}
-              onChange={(event) => setFilters({ ...filters, q: event.target.value })}
-            />
-          </label>
+          <SearchField
+            ariaLabel="Tìm kịch bản"
+            className="min-w-[16rem] flex-1 xl:max-w-lg"
+            onChange={(event) => setFilters({ ...filters, q: event.target.value })}
+            placeholder="Tìm theo mã hoặc tên kịch bản"
+            value={filters.q}
+          />
           {can("testscenario.create") && (
             <button
               className="primary-button shrink-0"

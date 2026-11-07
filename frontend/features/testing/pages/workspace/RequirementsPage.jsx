@@ -313,10 +313,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
   const isQa = project.current_membership?.project_role === "QA";
   const routeSelected = selectedContextKey === `${project._id}:${requirementId}` ? selected : null;
   const projectDataReady = loadedProjectId === project._id;
-  const visibleItems = useMemo(
-    () => (projectDataReady ? items : []),
-    [items, projectDataReady],
-  );
+  const visibleItems = useMemo(() => (projectDataReady ? items : []), [items, projectDataReady]);
   const assuranceRequirements = useMemo(() => {
     if (!routeSelected?.current_version_id) return visibleItems;
     return visibleItems.some((item) => item.current_version_id === routeSelected.current_version_id)
@@ -1556,11 +1553,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                   );
                   if (!requirement) return;
                   window.location.assign(
-                    projectRoute(
-                      project._id,
-                      PROJECT_SECTION_SLUGS.assurance,
-                      requirement._id,
-                    ),
+                    projectRoute(project._id, PROJECT_SECTION_SLUGS.assurance, requirement._id),
                   );
                 }}
                 members={visibleMembers}

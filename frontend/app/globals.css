@@ -199,24 +199,6 @@
     width: auto;
   }
 
-  .requirements-list-panel .workspace-panel-header-with-actions {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-heading,
-  .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-actions {
-    grid-column: 1 / -1;
-    width: 100%;
-    min-width: 0;
-    flex: 0 1 auto;
-  }
-
-  .requirements-list-panel .workspace-panel-header-with-actions .workspace-panel-actions {
-    justify-content: flex-start;
-  }
-
   .workspace-panel-heading h2 {
     overflow-wrap: break-word;
     word-break: normal;

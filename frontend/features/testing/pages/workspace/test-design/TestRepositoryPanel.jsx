@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Folder, Pencil, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, Pencil } from "lucide-react";
+import SearchField from "@/shared/components/ui/SearchField";
 import { LoadingState, Panel } from "../../../components/WorkspacePrimitives";
 import { testingApi } from "../../../services/testing.service";
 import { docText, messageOf, textDoc } from "../../../lib/testing";
@@ -285,20 +286,13 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-ink-muted">{nodes.length} thư mục</p>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-                  <label className="relative min-w-[15rem] flex-1 xl:max-w-sm">
-                    <Search
-                      aria-hidden="true"
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
-                      size={16}
-                    />
-                    <input
-                      aria-label="Tìm thư mục kiểm thử"
-                      className="apple-input w-full pl-9"
-                      onChange={(event) => setRepositoryQuery(event.target.value)}
-                      placeholder="Tìm thư mục"
-                      value={repositoryQuery}
-                    />
-                  </label>
+                  <SearchField
+                    ariaLabel="Tìm thư mục kiểm thử"
+                    className="min-w-[15rem] flex-1 xl:max-w-sm"
+                    onChange={(event) => setRepositoryQuery(event.target.value)}
+                    placeholder="Tìm thư mục"
+                    value={repositoryQuery}
+                  />
                   {can("testcase.create") && (
                     <button
                       className="primary-button shrink-0"
@@ -375,20 +369,13 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
               <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <p className="text-sm text-ink-muted">{steps.length} bước đã lưu</p>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-                  <label className="relative min-w-[15rem] flex-1 xl:max-w-sm">
-                    <Search
-                      aria-hidden="true"
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
-                      size={16}
-                    />
-                    <input
-                      aria-label="Tìm bước kiểm thử dùng lại"
-                      className="apple-input w-full pl-9"
-                      onChange={(event) => setStepsQuery(event.target.value)}
-                      placeholder="Tìm theo tên hoặc nội dung"
-                      value={stepsQuery}
-                    />
-                  </label>
+                  <SearchField
+                    ariaLabel="Tìm bước kiểm thử dùng lại"
+                    className="min-w-[15rem] flex-1 xl:max-w-sm"
+                    onChange={(event) => setStepsQuery(event.target.value)}
+                    placeholder="Tìm theo tên hoặc nội dung"
+                    value={stepsQuery}
+                  />
                   {can("testcase.create") && (
                     <button
                       className="primary-button shrink-0"

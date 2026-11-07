@@ -575,6 +575,17 @@ async def resolve_comment(report_id, comment_id, payload, user):
     comment = await repository.find("report_comments", {"_id": comment_id, "report_id": report_id})
     if not comment:
         fail("REPORT_COMMENT_NOT_FOUND", 404)
+    delivery = await repository.find(
+        "report_deliveries",
+        {"report_id": report_id, "user_id": user.id, "revoked_at": {"$exists": False}},
+    )
+    permissions = await member_permissions(report["project_id"], user.id)
+    privileged = bool(permissions & {"workreport.write", "workreport.review"}) and user.id in {
+        report["owner_id"], report["reviewer_id"], *report.get("editor_ids", [])
+    }
+    can_comment = privileged or bool(delivery and delivery["access"] == "COMMENT")
+    if not can_comment:
+        fail("REPORT_COMMENT_RESOLVE_FORBIDDEN", 403)
     if user.id not in {comment["created_by"], report["owner_id"], report["reviewer_id"]}:
         fail("REPORT_COMMENT_RESOLVE_FORBIDDEN", 403)
     value = await repository.change("report_comments", {"_id": comment_id, "report_id": report_id, "revision": payload.expected_revision}, {"$set": {"resolved": payload.resolved, "resolved_by": user.id, "updated_at": now()}, "$inc": {"revision": 1}})

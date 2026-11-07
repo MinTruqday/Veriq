@@ -1,5 +1,4 @@
-import Link from "next/link";
-import HorizontalScrollCue from "@/shared/components/navigation/HorizontalScrollCue";
+import LinkTabs from "@/shared/components/navigation/LinkTabs";
 
 export default function ProjectNavigation({ groups, selectedGroup, sidebarCollapsed }) {
   if (!groups.length || !selectedGroup) return null;
@@ -9,58 +8,31 @@ export default function ProjectNavigation({ groups, selectedGroup, sidebarCollap
     <div
       className={`fixed left-0 right-0 top-[68px] z-30 hidden border-b border-border bg-surface transition-[left] duration-200 lg:block ${sidebarCollapsed ? "lg:left-[76px]" : "lg:left-[260px]"}`}
     >
-      <HorizontalScrollCue
-        ariaLabel="Khu vực dự án"
+      <LinkTabs
+        items={groups.map((group) => ({
+          id: group.label,
+          href: group.href || group.items[0]?.href,
+          active: group.label === selectedGroup.label,
+          label: group.items.some((item) => item.id === "dashboard") ? "Tổng quan" : group.label,
+        }))}
+        label="Khu vực dự án"
         scrollLabel="các khu vực dự án"
         className="h-11 items-center"
-        viewportClassName="hide-scrollbar min-w-0 overflow-x-auto px-4 md:px-6"
-      >
-        <nav aria-label="Khu vực dự án" className="flex h-11 w-max min-w-full items-stretch gap-1">
-          {groups.map((group) => {
-            const destination = group.href || group.items[0]?.href;
-            const active = group.label === selectedGroup.label;
-            const label = group.items.some((item) => item.id === "dashboard")
-              ? "Tổng quan"
-              : group.label;
-            if (!destination) return null;
-            return (
-              <Link
-                aria-current={active ? "page" : undefined}
-                className={`flex shrink-0 items-center border-b-2 px-3 text-[13px] font-medium transition ${active ? "border-brand text-brand" : "border-transparent text-ink-muted hover:border-border-strong hover:text-ink"}`}
-                href={destination}
-                key={group.label}
-                title={label}
-              >
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
-      </HorizontalScrollCue>
+        viewportClassName="px-4 md:px-6"
+      />
       {hasSubnavigation && (
-        <HorizontalScrollCue
-          ariaLabel={`Trang trong ${selectedGroup.label}`}
+        <LinkTabs
+          items={selectedGroup.items.map((item) => ({
+            ...item,
+            active: item.id === selectedGroup.activeItemId,
+          }))}
+          label={`Trang trong ${selectedGroup.label}`}
           scrollLabel={`trang trong ${selectedGroup.label}`}
+          compact
+          baseline
           className="border-t border-border/70"
-          viewportClassName="hide-scrollbar min-w-0 overflow-x-auto px-4 md:px-6"
-        >
-          <nav
-            aria-label={`Trang trong ${selectedGroup.label}`}
-            className="flex h-11 w-max min-w-full items-stretch gap-1 border-b border-border"
-          >
-            {selectedGroup.items.map((item) => (
-              <Link
-                aria-current={item.id === selectedGroup.activeItemId ? "page" : undefined}
-                className={`-mb-px flex shrink-0 items-center border-b-2 px-3 text-[12px] font-medium transition ${item.id === selectedGroup.activeItemId ? "border-brand text-brand" : "border-transparent text-ink-muted hover:border-border-strong hover:text-ink"}`}
-                href={item.href}
-                key={item.id}
-                title={item.label}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </HorizontalScrollCue>
+          viewportClassName="px-4 md:px-6"
+        />
       )}
     </div>
   );

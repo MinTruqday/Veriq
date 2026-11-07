@@ -9,7 +9,6 @@ import {
   Pencil,
   RefreshCw,
   RotateCcw,
-  Search,
 } from "lucide-react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import DataTable from "../../components/DataTable";
@@ -33,6 +32,7 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
+import SearchField from "@/shared/components/ui/SearchField";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import {
   testCaseSubsectionItems,
@@ -1693,23 +1693,16 @@ export default function TestDesignPage({ project, workspaceView }) {
                 {testPageInfo?.total ?? tests.length} ca kiểm thử
                 {selectedTestIds.length ? ` · Đã chọn ${selectedTestIds.length}` : ""}
               </p>
-              <label className="relative min-w-[16rem] flex-1 xl:max-w-lg">
-                <Search
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
-                  size={16}
-                />
-                <input
-                  aria-label="Tìm ca kiểm thử"
-                  className="apple-input w-full pl-9"
-                  placeholder="Tìm theo mã hoặc tên ca"
-                  value={testFilters.q}
-                  onChange={(event) => {
-                    setTestFilters({ ...testFilters, q: event.target.value });
-                    setTestPage(1);
-                  }}
-                />
-              </label>
+              <SearchField
+                ariaLabel="Tìm ca kiểm thử"
+                className="min-w-[16rem] flex-1 xl:max-w-lg"
+                onChange={(event) => {
+                  setTestFilters({ ...testFilters, q: event.target.value });
+                  setTestPage(1);
+                }}
+                placeholder="Tìm theo mã hoặc tên ca"
+                value={testFilters.q}
+              />
             </div>
             <details className="border-b border-border px-4 py-3">
               <summary className="cursor-pointer text-sm font-medium">
@@ -2900,16 +2893,13 @@ export default function TestDesignPage({ project, workspaceView }) {
       {workspaceView === "test-sets" && access.canReadTestSets && (
         <Panel title="Danh sách bộ kiểm thử">
           <div className="flex flex-wrap items-center gap-2 px-4 pt-4 sm:px-5">
-            <label className="min-w-64 flex-1">
-              <span className="sr-only">Tìm bộ kiểm thử</span>
-              <input
-                aria-label="Tìm bộ kiểm thử"
-                className="apple-input w-full"
-                placeholder="Tìm theo tên hoặc loại bộ"
-                value={suiteSearch}
-                onChange={(event) => setSuiteSearch(event.target.value)}
-              />
-            </label>
+            <SearchField
+              ariaLabel="Tìm bộ kiểm thử"
+              className="min-w-64 flex-1"
+              onChange={(event) => setSuiteSearch(event.target.value)}
+              placeholder="Tìm theo tên hoặc loại bộ"
+              value={suiteSearch}
+            />
             <span className="px-2 text-[12px] text-ink-muted">{visibleSuites.length} bộ</span>
             {can("testsuite.create") && (
               <button className="apple-button" type="button" onClick={createTestSet}>

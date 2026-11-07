@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
+import LinkTabs from "@/shared/components/navigation/LinkTabs";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { hasNavigationPermission } from "@/shared/components/layout/navigation";
-import HorizontalScrollCue from "@/shared/components/navigation/HorizontalScrollCue";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import { messageOf, statusLabel, valueLabel } from "../lib/testing";
 
@@ -296,30 +296,12 @@ export function WorkspaceSectionNav({ items, current, compact = false, permissio
   const visibleItems = items.filter((item) => hasNavigationPermission(item, permissions));
   if (visibleItems.length < 2) return null;
   return (
-    <HorizontalScrollCue
-      className={`border-b border-border ${compact ? "pb-3" : "pb-4"}`}
-      viewportClassName="hide-scrollbar flex gap-2 overflow-x-auto overscroll-x-contain"
-    >
-      <nav aria-label="Điều hướng khu vực" className="flex w-max min-w-full gap-2">
-        {visibleItems.map((item) => {
-          const active = item.id === current;
-          return (
-            <Link
-              key={item.id}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={`shrink-0 rounded-control ${compact ? "px-2.5 py-1.5 text-[12px]" : "px-3 py-2 text-[13px]"} font-semibold transition ${
-                active
-                  ? "bg-brand text-white"
-                  : "bg-surface-quiet text-ink-muted hover:bg-brand-soft hover:text-brand"
-              }`}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-    </HorizontalScrollCue>
+    <LinkTabs
+      items={visibleItems.map((item) => ({ ...item, active: item.id === current }))}
+      label="Điều hướng khu vực"
+      compact={compact}
+      baseline
+    />
   );
 }
 

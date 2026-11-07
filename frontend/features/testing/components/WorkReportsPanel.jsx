@@ -15,6 +15,7 @@ import { ErrorState, LoadingState, Panel, useActionDialog } from "./WorkspacePri
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import FilePicker from "./FilePicker";
 import { valueLabel } from "../lib/testing";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const labels = {
   DRAFT: "Bản nháp",
@@ -1376,12 +1377,12 @@ export default function WorkReportsPanel({ project }) {
                     setActiveSearch(reportSearch);
                   }}
                 >
-                  <input
-                    aria-label="Tìm báo cáo"
-                    placeholder="Tìm tên báo cáo"
-                    className="apple-input !w-auto min-w-64 flex-1"
-                    value={reportSearch}
+                  <SearchField
+                    ariaLabel="Tìm báo cáo"
+                    className="min-w-64 flex-1"
                     onChange={(event) => setReportSearch(event.target.value)}
+                    placeholder="Tìm tên báo cáo"
+                    value={reportSearch}
                   />
                   <select
                     aria-label="Trạng thái báo cáo"
@@ -2159,35 +2160,36 @@ export default function WorkReportsPanel({ project }) {
                                 Trả lời
                               </button>
                             )}
-                            {[item.created_by, selected.owner_id, selected.reviewer_id].includes(
-                              userId,
-                            ) && (
-                              <button
-                                className="text-sm text-brand"
-                                disabled={busy}
-                                onClick={() =>
-                                  run(async () => {
-                                    const updated = await testingRequest(
-                                      `/bao-cao-cong-viec/${selected._id}/binh-luan/${item._id}`,
-                                      {
-                                        method: "PATCH",
-                                        body: JSON.stringify({
-                                          expected_revision: item.revision,
-                                          resolved: !item.resolved,
-                                        }),
-                                      },
-                                    );
-                                    setComments((current) =>
-                                      current.map((entry) =>
-                                        entry._id === updated._id ? updated : entry,
-                                      ),
-                                    );
-                                  })
-                                }
-                              >
-                                {item.resolved ? "Mở lại nhận xét" : "Đánh dấu đã giải quyết"}
-                              </button>
-                            )}
+                            {mayComment &&
+                              [item.created_by, selected.owner_id, selected.reviewer_id].includes(
+                                userId,
+                              ) && (
+                                <button
+                                  className="text-sm text-brand"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    run(async () => {
+                                      const updated = await testingRequest(
+                                        `/bao-cao-cong-viec/${selected._id}/binh-luan/${item._id}`,
+                                        {
+                                          method: "PATCH",
+                                          body: JSON.stringify({
+                                            expected_revision: item.revision,
+                                            resolved: !item.resolved,
+                                          }),
+                                        },
+                                      );
+                                      setComments((current) =>
+                                        current.map((entry) =>
+                                          entry._id === updated._id ? updated : entry,
+                                        ),
+                                      );
+                                    })
+                                  }
+                                >
+                                  {item.resolved ? "Mở lại nhận xét" : "Đánh dấu đã giải quyết"}
+                                </button>
+                              )}
                           </div>
                         </div>
                       ))}

@@ -610,6 +610,14 @@ export function messageOf(reason) {
       "Đề xuất có nội dung chưa được tài liệu xác nhận. Bổ sung nguồn hoặc điều chỉnh phạm vi rồi thử lại.";
     return claims.length ? `${message} Nội dung chưa đủ căn cứ: ${claims.join("; ")}` : message;
   }
+  const documentMessages = {
+    DOCUMENT_CONTENT_NOT_READY:
+      "Tài liệu đã lưu trữ hoặc chưa xử lý xong nên chưa thể mở. Hãy quay lại danh sách và chọn bản tài liệu có thể đọc.",
+    DOCUMENT_CONTENT_UNAVAILABLE:
+      "Chưa có nội dung có thể đọc trong tài liệu này. Hãy kiểm tra bản gốc hoặc chọn phiên bản khác.",
+    DOCUMENT_NOT_FOUND: "Không tìm thấy tài liệu hoặc quyền xem đã thay đổi.",
+  };
+  if (documentMessages[reason?.code]) return documentMessages[reason.code];
   const profileMessages = {
     CV_AI_EXTRACTION_UNAVAILABLE:
       "Dịch vụ trích xuất CV đang tạm thời không phản hồi. Hồ sơ chưa được cập nhật; hãy thử lại sau.",

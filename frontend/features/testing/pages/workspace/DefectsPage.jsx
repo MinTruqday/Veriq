@@ -22,6 +22,7 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { eligibleRetestResults } from "./defectRetest.logic.mjs";
 import { defectActionAccess } from "./defectAccess.logic.mjs";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const nextStates = {
   NEW: ["CONFIRMED", "REJECTED", "DUPLICATE"],
@@ -950,12 +951,12 @@ export default function DefectsPage({ project }) {
         <details className="border-b border-border p-4" open>
           <summary className="cursor-pointer text-sm font-medium">Tìm và lọc lỗi</summary>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-            <input
-              aria-label="Tìm lỗi"
-              className="apple-input xl:col-span-2"
+            <SearchField
+              ariaLabel="Tìm lỗi"
+              className="xl:col-span-2"
+              onChange={(event) => setSearchText(event.target.value)}
               placeholder="Tìm theo mã hoặc tên"
               value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
             />
             <select
               aria-label="Lọc trạng thái lỗi"

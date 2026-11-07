@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Modal, ModalFooter, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const PAGE_SIZE = 50;
 const SUITE_TYPES = [
@@ -227,12 +228,9 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
-            <input
-              className="apple-input min-w-0 flex-1"
-              type="search"
-              value={query}
-              placeholder="Tìm ca kiểm thử theo mã hoặc tên"
-              aria-label="Tìm ca kiểm thử"
+            <SearchField
+              ariaLabel="Tìm ca kiểm thử"
+              className="min-w-0 flex-1"
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
@@ -240,6 +238,9 @@ export default function TestSetEditorModal({ projectId, mode, suite, onClose, on
                   applySearch();
                 }
               }}
+              placeholder="Tìm ca kiểm thử theo mã hoặc tên"
+              type="search"
+              value={query}
             />
             <button className="secondary-button" type="button" onClick={applySearch}>
               Tìm
