@@ -602,6 +602,14 @@ export function formatCalendarDate(value) {
 }
 
 export function messageOf(reason) {
+  if (reason?.code === "AI_UNGROUNDED_OUTPUT") {
+    const claims = Array.isArray(reason.details?.unsupported_claims)
+      ? reason.details.unsupported_claims.filter((item) => typeof item === "string" && item.trim())
+      : [];
+    const message =
+      "Đề xuất có nội dung chưa được tài liệu xác nhận. Bổ sung nguồn hoặc điều chỉnh phạm vi rồi thử lại.";
+    return claims.length ? `${message} Nội dung chưa đủ căn cứ: ${claims.join("; ")}` : message;
+  }
   const profileMessages = {
     CV_AI_EXTRACTION_UNAVAILABLE:
       "Dịch vụ trích xuất CV đang tạm thời không phản hồi. Hồ sơ chưa được cập nhật; hãy thử lại sau.",

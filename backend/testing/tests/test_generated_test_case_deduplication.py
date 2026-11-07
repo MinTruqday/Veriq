@@ -1,7 +1,12 @@
+import json
 import unittest
+from unittest.mock import AsyncMock, patch
 
 from src.core.rich_text import text_document
-from src.modules.design.services.generation import merge_duplicate_generated_cases
+from src.modules.design.services.generation import (
+    merge_duplicate_generated_cases,
+    request_grounded_test_generation,
+)
 from src.schemas.contracts.design import TestCaseDraftCreate
 from src.schemas.test_analysis import GeneratedCase
 
@@ -138,6 +143,48 @@ class GeneratedTestCaseDeduplicationTests(unittest.TestCase):
         self.assertEqual(merged, 1)
         self.assertEqual(set(cases[0].techniques), {"equivalence_partitioning", "boundary_value"})
         self.assertEqual(set(suggestions[0].techniques), {"equivalence_partitioning", "boundary_value"})
+
+
+class GroundedTestGenerationRetryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_ungrounded_generation_retries_once_with_reviewer_feedback(self):
+        first = {
+            "status": "DEGRADED",
+            "reason_codes": ["AI_UNGROUNDED_OUTPUT"],
+            "findings": [{"unsupported_claims": ["Tự động gửi email"]}],
+        }
+        second = {"status": "SUCCESS", "suggestions": []}
+        with patch(
+            "src.modules.design.services.generation.request_ai_automation",
+            new=AsyncMock(side_effect=[first, second]),
+        ) as request:
+            result = await request_grounded_test_generation(
+                "PRJ-1",
+                '{"user_instruction":"Tạo ca kiểm thử"}',
+                [{"artifact_version_id": "REQ-1", "text": "Ghi nhận yêu cầu"}],
+            )
+
+        self.assertEqual(result, second)
+        self.assertEqual(request.await_count, 2)
+        retry_instruction = json.loads(request.await_args_list[1].args[2])
+        self.assertEqual(retry_instruction["user_instruction"], "Tạo ca kiểm thử")
+        self.assertEqual(
+            retry_instruction["grounding_retry"]["rejected_claims"],
+            ["Tự động gửi email"],
+        )
+
+    async def test_provider_failure_does_not_trigger_grounding_retry(self):
+        result = {
+            "status": "DEGRADED",
+            "reason_codes": ["AI_PROVIDER_UNAVAILABLE"],
+        }
+        with patch(
+            "src.modules.design.services.generation.request_ai_automation",
+            new=AsyncMock(return_value=result),
+        ) as request:
+            returned = await request_grounded_test_generation("PRJ-1", "{}", [])
+
+        self.assertEqual(returned, result)
+        self.assertEqual(request.await_count, 1)
 
 
 if __name__ == "__main__":

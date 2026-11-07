@@ -49,6 +49,44 @@ def validated_suggestions(result, schema, *, allow_empty=False):
         ) from error
 
 
+def grounded_retry_instruction(instruction, result):
+    try:
+        value = json.loads(instruction)
+    except (TypeError, ValueError):
+        value = {"user_instruction": str(instruction or "")}
+    if not isinstance(value, dict):
+        value = {"user_instruction": value}
+    claims = [
+        claim
+        for finding in result.get("findings", [])
+        if isinstance(finding, dict)
+        for claim in finding.get("unsupported_claims", [])
+        if isinstance(claim, str) and claim.strip()
+    ]
+    value["grounding_retry"] = {
+        "instruction": "Regenerate once using only claims directly supported by the supplied source evidence. Omit cases that cannot be supported; do not invent replacement behavior.",
+        "rejected_claims": list(dict.fromkeys(claims))[:20],
+    }
+    return json.dumps(value, ensure_ascii=False)
+
+
+async def request_grounded_test_generation(project_id, instruction, evidence):
+    result = await request_ai_automation(
+        "test_generation", project_id, instruction, evidence
+    )
+    if (
+        result.get("status") == "SUCCESS"
+        and not result.get("degraded_mode")
+    ) or "AI_UNGROUNDED_OUTPUT" not in (result.get("reason_codes") or []):
+        return result
+    return await request_ai_automation(
+        "test_generation",
+        project_id,
+        grounded_retry_instruction(instruction, result),
+        evidence,
+    )
+
+
 def merge_duplicate_generated_cases(drafts, suggestions, threshold=0.72):
     kept_drafts = []
     kept_suggestions = []
@@ -258,13 +296,14 @@ async def generate_requirement_drafts(
         raise HTTPException(
             422, detail={"code": 'GENERATION_INSTRUCTION_TOO_LONG'}
         )
-    result = await request_ai_automation(
-        'scenario_generation'
+    result = (
+        await request_ai_automation(
+            "scenario_generation", version["project_id"], instruction, evidence
+        )
         if scenario
-        else 'test_generation',
-        version["project_id"],
-        instruction,
-        evidence,
+        else await request_grounded_test_generation(
+            version["project_id"], instruction, evidence
+        )
     )
     if result.get("status") != 'SUCCESS' or result.get(
         "degraded_mode"

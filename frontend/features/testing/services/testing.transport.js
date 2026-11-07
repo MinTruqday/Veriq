@@ -69,7 +69,7 @@ export async function testingRequest(path, options = {}) {
     const error = new Error(responseErrorMessage(response, body, "Không thể hoàn tất yêu cầu"));
     error.status = response.status;
     error.code = body?.error?.code || body?.detail?.code;
-    error.details = body?.error?.details || body?.detail?.details;
+    error.details = body?.error?.details || body?.detail?.details || body?.detail;
     error.traceId = body?.trace_id;
     throw error;
   }

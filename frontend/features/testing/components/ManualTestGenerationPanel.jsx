@@ -132,6 +132,20 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
             {busy ? "Đang xử lý" : "Tạo đề xuất"}
           </button>
         </div>
+        {source && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <p className="min-w-0 truncate text-sm text-ink-muted">
+              Nguồn đang chọn: {source.requirement_key} ·{" "}
+              {source.current_version?.title || source.title}
+            </p>
+            <Link
+              className="secondary-button shrink-0"
+              href={`/du-an/${projectId}/yeu-cau/${source._id}`}
+            >
+              Mở yêu cầu nguồn
+            </Link>
+          </div>
+        )}
         <label className="field-label block">
           Yêu cầu bổ sung cho AI
           <textarea
@@ -141,14 +155,6 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
             onChange={(event) => setInstruction(event.target.value)}
           />
         </label>
-        {source && (
-          <Link
-            className="text-sm text-brand underline"
-            href={`/du-an/${projectId}/yeu-cau/${source._id}`}
-          >
-            Mở yêu cầu nguồn
-          </Link>
-        )}
         {preview && (
           <div className="space-y-3">
             <ContentOriginBadge origin="ai_generated" />
