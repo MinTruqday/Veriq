@@ -501,116 +501,141 @@ class RetrievalService:
         metadata_filters: Optional[Dict] = None,
     ) -> List[Dict]:
         result_count = 5 if k is None else k
-        fetch_limit = min(
-            max(result_count * 3, result_count),
-            100,
-        )
+        if (
+            not isinstance(result_count, int)
+            or isinstance(result_count, bool)
+            or result_count < 1
+            or result_count > 100
+        ):
+            raise ValueError("retrieval_result_count_invalid")
+        fetch_limit = result_count
+        query_embedding_task = None
 
-        async def dense_search():
+        async def dense_search(limit):
+            nonlocal query_embedding_task
             query_vector = query_vector_override
             if query_vector is None:
-                query_vector = await embedder.embed_query(query)
+                if query_embedding_task is None:
+                    query_embedding_task = asyncio.create_task(embedder.embed_query(query))
+                query_vector = await query_embedding_task
             return await vector_store.query(
                 query_vector=query_vector,
                 document_ids=document_ids,
-                limit=fetch_limit,
+                limit=limit,
                 requester_id=requester_id,
                 is_admin=is_admin,
                 metadata_filters=metadata_filters,
             )
 
-        dense_result, sparse_result = await asyncio.gather(
-            asyncio.wait_for(
-                dense_search(), timeout=settings.MODEL_TIMEOUT_SECONDS
-            ),
-            bm25_store.search(
-                query=query,
-                document_ids=document_ids,
-                limit=fetch_limit,
-                requester_id=requester_id,
-                is_admin=is_admin,
-                metadata_filters=metadata_filters,
-            ),
-            return_exceptions=True,
-        )
-        if isinstance(dense_result, (Exception, asyncio.CancelledError)):
-            logger.error("Dense retrieval failed: {}", type(dense_result).__name__)
-            dense_documents = []
-        else:
-            dense_documents = dense_result
-        if isinstance(sparse_result, (Exception, asyncio.CancelledError)):
-            logger.error("BM25 retrieval failed: {}", type(sparse_result).__name__)
-            sparse_documents = []
-        else:
-            sparse_documents = sparse_result
-        if isinstance(dense_result, (Exception, asyncio.CancelledError)) and isinstance(
-            sparse_result, (Exception, asyncio.CancelledError)
-        ):
-            raise RetrievalUnavailableError("dense_and_sparse_retrieval_unavailable")
-        candidates = [*dense_documents, *sparse_documents]
-        if not candidates:
-            return []
-
-        candidates = self._filter_document_index_contract(candidates)
-        if not candidates:
-            return []
-        candidates = await self._filter_active_artifact_generations(candidates)
-        candidates = await self._filter_currently_accessible_sources(
-            candidates, requester_id, is_admin
-        )
-        if not candidates:
-            return []
-
-        current_candidate_keys = {self._result_key(document) for document in candidates}
-        dense_documents = [
-            document
-            for document in dense_documents
-            if self._result_key(document) in current_candidate_keys
-        ]
-        sparse_documents = [
-            document
-            for document in sparse_documents
-            if self._result_key(document) in current_candidate_keys
-        ]
-        documents = self._rrf_fuse(dense_documents, sparse_documents)
-        if not documents:
-            return []
-
-        if not self._reranker_ready:
-            return documents[:result_count]
-
-        try:
-            pairs = [[query, doc.get("text", "")] for doc in documents]
-            scores = await asyncio.wait_for(
-                auxiliary_client.rerank(pairs),
-                timeout=settings.MODEL_TIMEOUT_SECONDS,
+        while True:
+            dense_result, sparse_result = await asyncio.gather(
+                asyncio.wait_for(
+                    dense_search(fetch_limit), timeout=settings.MODEL_TIMEOUT_SECONDS
+                ),
+                bm25_store.search(
+                    query=query,
+                    document_ids=document_ids,
+                    limit=fetch_limit,
+                    requester_id=requester_id,
+                    is_admin=is_admin,
+                    metadata_filters=metadata_filters,
+                ),
+                return_exceptions=True,
             )
-            if not isinstance(scores, (list, tuple)) or len(scores) != len(documents):
-                raise ValueError("reranker_score_count_mismatch")
-            if any(
-                isinstance(score, bool)
-                or not isinstance(score, Real)
-                or not math.isfinite(float(score))
-                for score in scores
+            if isinstance(dense_result, (Exception, asyncio.CancelledError)):
+                logger.error("Dense retrieval failed: {}", type(dense_result).__name__)
+                dense_documents = []
+            else:
+                dense_documents = dense_result
+            if isinstance(sparse_result, (Exception, asyncio.CancelledError)):
+                logger.error("BM25 retrieval failed: {}", type(sparse_result).__name__)
+                sparse_documents = []
+            else:
+                sparse_documents = sparse_result
+            if isinstance(dense_result, (Exception, asyncio.CancelledError)) and isinstance(
+                sparse_result, (Exception, asyncio.CancelledError)
             ):
-                raise ValueError("reranker_score_invalid")
-            scored_documents = sorted(
-                zip(documents, scores), key=lambda item: item[1], reverse=True
+                raise RetrievalUnavailableError("dense_and_sparse_retrieval_unavailable")
+
+            candidates = [*dense_documents, *sparse_documents]
+            if candidates:
+                candidates = self._filter_document_index_contract(candidates)
+            if candidates:
+                candidates = await self._filter_active_artifact_generations(candidates)
+            if candidates:
+                candidates = await self._filter_currently_accessible_sources(
+                    candidates, requester_id, is_admin
+                )
+
+            if candidates:
+                current_candidate_keys = {
+                    self._result_key(document) for document in candidates
+                }
+                current_dense_documents = [
+                    document
+                    for document in dense_documents
+                    if self._result_key(document) in current_candidate_keys
+                ]
+                current_sparse_documents = [
+                    document
+                    for document in sparse_documents
+                    if self._result_key(document) in current_candidate_keys
+                ]
+                documents = self._rrf_fuse(
+                    current_dense_documents, current_sparse_documents
+                )
+            else:
+                documents = []
+
+            if not documents:
+                ranked_documents = []
+            elif not self._reranker_ready:
+                ranked_documents = documents
+            else:
+                try:
+                    pairs = [[query, doc.get("text", "")] for doc in documents]
+                    scores = await asyncio.wait_for(
+                        auxiliary_client.rerank(pairs),
+                        timeout=settings.MODEL_TIMEOUT_SECONDS,
+                    )
+                    if not isinstance(scores, (list, tuple)) or len(scores) != len(documents):
+                        raise ValueError("reranker_score_count_mismatch")
+                    if any(
+                        isinstance(score, bool)
+                        or not isinstance(score, Real)
+                        or not math.isfinite(float(score))
+                        for score in scores
+                    ):
+                        raise ValueError("reranker_score_invalid")
+                    ranked_documents = [
+                        document
+                        for document, _ in sorted(
+                            zip(documents, scores),
+                            key=lambda item: item[1],
+                            reverse=True,
+                        )
+                    ]
+                except Exception:
+                    logger.exception("Search result sorting error")
+                    ranked_documents = documents
+
+            if ranked_documents and self._reranker_ready:
+                ranked_documents = await self._filter_active_artifact_generations(
+                    ranked_documents
+                )
+                ranked_documents = await self._filter_currently_accessible_sources(
+                    ranked_documents, requester_id, is_admin
+                )
+            if len(ranked_documents) >= result_count:
+                return ranked_documents[:result_count]
+
+            source_exhausted_at_limit = (
+                len(dense_documents) < fetch_limit
+                and len(sparse_documents) < fetch_limit
             )
-            results = await self._filter_active_artifact_generations(
-                [doc for doc, _ in scored_documents[:result_count]]
-            )
-            return await self._filter_currently_accessible_sources(
-                results, requester_id, is_admin
-            )
-        except Exception:
-            logger.exception("Search result sorting error")
-            results = await self._filter_active_artifact_generations(
-                documents[:result_count]
-            )
-            return await self._filter_currently_accessible_sources(
-                results, requester_id, is_admin
-            )
+            if fetch_limit >= 100 or source_exhausted_at_limit:
+                return ranked_documents[:result_count]
+            fetch_limit = min(100, max(fetch_limit * 2, fetch_limit + result_count))
 
     async def cross_document_retrieve(
         self,

@@ -91,23 +91,23 @@ class VectorStore:
                         raise
                     logger.info("Using existing Qdrant alias for %s", self.collection_name)
             collection = await self.client.get_collection(self.collection_name)
+            from src.services.embedding import embedder
+
+            vector_config = collection.config.params.vectors
+            if (
+                isinstance(vector_config, dict)
+                or getattr(vector_config, "size", None) != embedder._dimensions
+                or getattr(vector_config, "distance", None) != Distance.COSINE
+            ):
+                raise RuntimeError("qdrant_collection_vector_schema_mismatch")
             payload_schema = collection.payload_schema or {}
             for field, field_schema in self.PAYLOAD_INDEX_FIELDS.items():
                 current = payload_schema.get(field)
                 current_type = getattr(current, "data_type", None)
-                if current_type is not None and current_type != field_schema:
-                    try:
-                        await self.client.delete_payload_index(
-                            collection_name=self.collection_name,
-                            field_name=field,
-                            wait=True,
-                        )
-                    except Exception:
-                        latest = await self.client.get_collection(self.collection_name)
-                        latest_schema = latest.payload_schema or {}
-                        latest_type = getattr(latest_schema.get(field), "data_type", None)
-                        if latest_type != field_schema:
-                            raise
+                if current is not None:
+                    if current_type != field_schema:
+                        raise RuntimeError(f"qdrant_payload_index_schema_mismatch:{field}")
+                    continue
                 try:
                     await self.client.create_payload_index(
                         collection_name=self.collection_name,
@@ -120,19 +120,12 @@ class VectorStore:
                     latest_schema = latest.payload_schema or {}
                     latest_type = getattr(latest_schema.get(field), "data_type", None)
                     if latest_type != field_schema:
-                        raise
+                        raise RuntimeError(
+                            f"qdrant_payload_index_schema_mismatch:{field}"
+                        )
             for field in self.UNINDEXED_POLYMORPHIC_PAYLOAD_FIELDS:
                 if field in payload_schema:
-                    try:
-                        await self.client.delete_payload_index(
-                            collection_name=self.collection_name,
-                            field_name=field,
-                            wait=True,
-                        )
-                    except Exception:
-                        latest = await self.client.get_collection(self.collection_name)
-                        if field in (latest.payload_schema or {}):
-                            raise
+                    raise RuntimeError(f"qdrant_unindexed_payload_field_has_index:{field}")
         except Exception:
             logger.exception("System search index structure initialization error")
             raise
@@ -386,6 +379,7 @@ class VectorStore:
                 points_selector=Filter(
                     must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]
                 ),
+                wait=True,
             )
         except Exception:
             logger.exception("Search index deletion error")
