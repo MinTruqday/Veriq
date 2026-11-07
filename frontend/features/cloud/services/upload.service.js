@@ -61,7 +61,21 @@ async function doDirectUpload(file, isSystem, isMessageAttachment) {
   return confirmData;
 }
 export async function uploadAssetAPI(file, type = "document") {
-  return await doDirectUpload(file, false, false);
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await authenticatedFetch(`${API_URL}/tai-len/tap-tin`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = body?.error?.message || body?.detail || body?.message;
+    throw new Error(
+      typeof detail === "string" && detail ? detail : "Không thể tải tệp lên. Vui lòng thử lại.",
+    );
+  }
+  return body;
 }
 export async function uploadDocumentAPI(file) {
   return await doDirectUpload(file, true, false);

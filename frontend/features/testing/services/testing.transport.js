@@ -7,7 +7,11 @@ function userFacingError(message, fallback) {
 }
 
 function responseErrorMessage(response, body, fallback) {
-  const message = userFacingError(body?.error?.message, "");
+  const detail = body?.error || body?.detail;
+  const message = userFacingError(
+    typeof detail === "string" ? detail : detail?.message,
+    "",
+  );
   if (message) return message;
   if (response.status >= 500)
     return `Máy chủ gặp lỗi khi xử lý yêu cầu (HTTP ${response.status}). Vui lòng thử lại.`;
@@ -56,11 +60,16 @@ export async function testingRequest(path, options = {}) {
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    refreshProjectAccessAfterDenial(path, response.status, body?.error?.details, body?.error?.code);
+    refreshProjectAccessAfterDenial(
+      path,
+      response.status,
+      body?.error?.details || body?.detail?.details || body?.detail,
+      body?.error?.code || body?.detail?.code,
+    );
     const error = new Error(responseErrorMessage(response, body, "Không thể hoàn tất yêu cầu"));
     error.status = response.status;
-    error.code = body?.error?.code;
-    error.details = body?.error?.details;
+    error.code = body?.error?.code || body?.detail?.code;
+    error.details = body?.error?.details || body?.detail?.details;
     error.traceId = body?.trace_id;
     throw error;
   }

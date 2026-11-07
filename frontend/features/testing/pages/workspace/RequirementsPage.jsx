@@ -310,9 +310,19 @@ export default function RequirementsPage({ project, section, workspaceView }) {
     (permission) => project.current_permissions?.includes(permission),
     [project.current_permissions],
   );
+  const isQa = project.current_membership?.project_role === "QA";
   const routeSelected = selectedContextKey === `${project._id}:${requirementId}` ? selected : null;
   const projectDataReady = loadedProjectId === project._id;
-  const visibleItems = projectDataReady ? items : [];
+  const visibleItems = useMemo(
+    () => (projectDataReady ? items : []),
+    [items, projectDataReady],
+  );
+  const assuranceRequirements = useMemo(() => {
+    if (!routeSelected?.current_version_id) return visibleItems;
+    return visibleItems.some((item) => item.current_version_id === routeSelected.current_version_id)
+      ? visibleItems
+      : [...visibleItems, routeSelected];
+  }, [routeSelected, visibleItems]);
   const visibleMembers = projectDataReady ? members : [];
   const visibleSourceDocuments = projectDataReady ? sourceDocuments : [];
   useEffect(() => {
@@ -1537,11 +1547,26 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           {can("testcase.read") && (
             <div className="space-y-6" hidden={activeDetailTab !== "assurance"}>
               <TestAdequacyPanel
+                projectId={project._id}
                 requirementVersionId={current._id}
+                requirements={assuranceRequirements}
+                onRequirementChange={(versionId) => {
+                  const requirement = assuranceRequirements.find(
+                    (item) => item.current_version_id === versionId,
+                  );
+                  if (!requirement) return;
+                  window.location.assign(
+                    projectRoute(
+                      project._id,
+                      PROJECT_SECTION_SLUGS.assurance,
+                      requirement._id,
+                    ),
+                  );
+                }}
                 members={visibleMembers}
-                canDecide={can("testcase.read")}
-                canCreateClarification={can("requirement.review")}
-                canApprove={can("testcase.review")}
+                canDecide={isQa && can("testcase.read")}
+                canCreateClarification={isQa && can("requirement.review")}
+                canApprove={isQa && can("testcase.review")}
                 canSubmit={can("testcase.submit_review")}
               />
             </div>

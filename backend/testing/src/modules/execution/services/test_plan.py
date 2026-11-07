@@ -769,18 +769,22 @@ def validate_test_plan_ai_field_grounding(proposal, source_text):
         "defect_classification", "defect_triage", "defect_retest", "defect_closure",
     )
     field_evidence = {}
+    unsupported_fields = []
     for item in proposal.get("field_evidence") or []:
         field_name = item.get("field")
         if field_name in field_evidence:
             raise HTTPException(502, detail={"code": "TEST_PLAN_AI_FIELD_EVIDENCE_DUPLICATE"})
         quotes = item.get("evidence_quotes") or []
-        if not quotes:
-            raise HTTPException(502, detail={"code": "TEST_PLAN_AI_FIELD_GROUNDING_REQUIRED"})
+        grounded_quotes = []
         for quote in quotes:
             source = source_text.get(quote.get("evidence_ref"))
-            if not source or quote.get("quote", "").strip() not in source:
-                raise HTTPException(502, detail={"code": "TEST_PLAN_AI_GROUNDING_INVALID"})
-        field_evidence[field_name] = quotes
+            text = str(quote.get("quote") or "").strip()
+            if source and text and text in source:
+                grounded_quotes.append(quote)
+        if grounded_quotes:
+            field_evidence[field_name] = grounded_quotes
+        else:
+            unsupported_fields.append(field_name)
     for field_name in fields:
         value = proposal.get(field_name)
         has_value = (
@@ -789,16 +793,15 @@ def validate_test_plan_ai_field_grounding(proposal, source_text):
             else bool(str(value or "").strip())
         )
         if has_value and field_name not in field_evidence:
-            raise HTTPException(
-                502,
-                detail={"code": "TEST_PLAN_AI_FIELD_GROUNDING_REQUIRED", "field": field_name},
-            )
-        if not has_value and field_name in field_evidence:
-            raise HTTPException(
-                502,
-                detail={"code": "TEST_PLAN_AI_FIELD_WITHOUT_PROPOSAL", "field": field_name},
-            )
-    return field_evidence
+            proposal[field_name] = [] if isinstance(value, list) else ""
+            unsupported_fields.append(field_name)
+        elif not has_value and field_name in field_evidence:
+            field_evidence.pop(field_name, None)
+    proposal["field_evidence"] = [
+        {"field": field_name, "evidence_quotes": quotes}
+        for field_name, quotes in field_evidence.items()
+    ]
+    return list(dict.fromkeys(unsupported_fields))
 
 
 async def generate_test_plan_draft_suggestion(project_id, payload, user):
@@ -849,11 +852,35 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
     if set(result.get("evidence_refs") or []) - set(source_text):
         raise HTTPException(502, detail={"code": "TEST_PLAN_AI_EVIDENCE_REFERENCE_INVALID"})
     proposal = suggestions[0]
-    validate_test_plan_ai_field_grounding(proposal, source_text)
+    unsupported_fields = validate_test_plan_ai_field_grounding(proposal, source_text)
+    valid_evidence_quotes = []
     for quote in proposal.get("evidence_quotes") or []:
         source = source_text.get(quote.get("evidence_ref"))
-        if not source or quote.get("quote", "").strip() not in source:
-            raise HTTPException(502, detail={"code": "TEST_PLAN_AI_GROUNDING_INVALID"})
+        quote_text = str(quote.get("quote") or "").strip()
+        if source and quote_text and quote_text in source:
+            valid_evidence_quotes.append(quote)
+    proposal["evidence_quotes"] = valid_evidence_quotes
+    if unsupported_fields:
+        warnings = list(proposal.get("warnings") or [])
+        warnings.append(
+            "Một số trường chưa có trích dẫn khớp nguồn nên đã được để trống: "
+            + ", ".join(unsupported_fields)
+        )
+        proposal["warnings"] = list(dict.fromkeys(warnings))
+    if not any(
+        any(str(item or "").strip() for item in value)
+        if isinstance(value, list)
+        else bool(str(value or "").strip())
+        for field_name, value in proposal.items()
+        if field_name in {
+            "objective", "scope_in", "scope_out", "test_approach", "test_level", "test_types",
+            "environment", "entry_criteria", "exit_criteria", "risks", "assumptions",
+            "constraints", "data_sources", "data_preparation", "data_privacy", "data_reset",
+            "role_guidance", "milestones", "deliverables", "tools", "defect_reporting",
+            "defect_classification", "defect_triage", "defect_retest", "defect_closure",
+        }
+    ):
+        raise HTTPException(502, detail={"code": "TEST_PLAN_AI_NO_GROUNDED_FIELDS"})
     await get_project(project_id, user, "testplan.create")
     latest_versions = await database.value.requirement_versions.find({
         "project_id": project_id,
