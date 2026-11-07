@@ -38,6 +38,44 @@ from src.modules.requirements.services.requirement_workflow import (
 from src.modules.design.services.linters import requirement_duplicate_score
 from src.schemas.contracts.requirements import RequirementDuplicateCheckInput
 
+REQUIREMENT_EXTRACTION_VERSION = 2
+
+
+def requirement_import_needs_refresh(job):
+    return bool(
+        job.get("status") == "PREVIEW_READY"
+        and not job.get("reviewed_at")
+        and not job.get("resolutions")
+        and int(job.get("extraction_version") or 0) < REQUIREMENT_EXTRACTION_VERSION
+    )
+
+
+async def extract_document_candidates(document, include_business_rules=True):
+    conflicts = []
+    if document.get("ai_enabled") and document.get("format") not in {"openapi", "postman"}:
+        extracted, conflicts = await extract_grounded_requirement_candidates(
+            document, document["project_id"], include_business_rules
+        )
+        extraction_mode = "AI_GROUNDED"
+    else:
+        extracted = atomic_requirement_candidates(document)
+        extraction_mode = "DETERMINISTIC"
+    extracted = attach_labeled_acceptance_criteria(extracted, document)
+    if not include_business_rules:
+        for candidate in extracted:
+            candidate["business_rules"] = []
+            candidate["source_refs"] = [
+                reference
+                for reference in candidate.get("source_refs", [])
+                if reference.get("section") != "business_rules"
+            ]
+            section_states = dict(candidate.get("section_states") or {})
+            section_states.pop("business_rules", None)
+            candidate["section_states"] = section_states
+    if len(extracted) > 500:
+        raise HTTPException(status_code=413, detail={"code": "IMPORT_CANDIDATE_LIMIT_EXCEEDED"})
+    return extracted, conflicts, extraction_mode
+
 
 def grounded_requirement_candidates(document, result_batches):
     text = source_document_text(document["normalized_content"])
@@ -148,11 +186,17 @@ def grounded_requirement_candidates(document, result_batches):
 
             def grounded_values(values, section):
                 accepted = []
+                seen = set()
                 for value in values:
+                    normalized = normalized_acceptance_criterion(value)
+                    if section == "acceptance_criteria" and normalized in seen:
+                        continue
                     reference = source_reference_for(value, section)
                     if reference:
                         accepted.append(value)
                         source_refs.append(reference)
+                        if section == "acceptance_criteria":
+                            seen.add(normalized)
                 return accepted
 
             criterion_values = [
@@ -937,6 +981,42 @@ async def extract_requirement_candidates(document_id, payload, user):
                 status_code=409,
                 detail={"code": "IMPORT_SOURCE_CHANGED"},
             )
+        if requirement_import_needs_refresh(existing):
+            extracted, conflicts, extraction_mode = await extract_document_candidates(
+                document,
+                existing.get("include_business_rules", True),
+            )
+            preview = prepare_requirement_candidates(existing["_id"], extracted)
+            refreshed = await requirement_import_repository.refresh_unreviewed_preview(
+                existing["_id"],
+                existing["project_id"],
+                existing["revision"],
+                preview,
+                {
+                    "extraction_version": REQUIREMENT_EXTRACTION_VERSION,
+                    "extraction_mode": extraction_mode,
+                    "warnings": (["NO_DOCUMENTED_BEHAVIOR_TO_DRAFT"] if not preview else [])
+                    + (["SOURCE_CONFLICTS_FOUND"] if conflicts else []),
+                    "source_conflicts": conflicts,
+                    "candidate_count": len(preview),
+                    "updated_at": now(),
+                },
+            )
+            if refreshed:
+                await audit(
+                    user.id,
+                    "requirement_extraction_preview_refreshed",
+                    "RequirementImport",
+                    existing["_id"],
+                    existing["project_id"],
+                    {"from_version": existing.get("extraction_version", 0), "to_version": REQUIREMENT_EXTRACTION_VERSION},
+                )
+                return refreshed
+            current = await requirement_import_repository.find(
+                existing["_id"], existing["project_id"]
+            )
+            if current:
+                return current
         return existing
     await audit(
         user.id,
@@ -946,29 +1026,9 @@ async def extract_requirement_candidates(document_id, payload, user):
         document["project_id"],
     )
     job_id = new_id('RIMP')
-    extraction_mode = "DETERMINISTIC"
-    conflicts = []
-    if document.get("ai_enabled") and document.get("format") not in {"openapi", "postman"}:
-        extracted, conflicts = await extract_grounded_requirement_candidates(
-            document, document["project_id"], payload.include_business_rules
-        )
-        extraction_mode = "AI_GROUNDED"
-    else:
-        extracted = atomic_requirement_candidates(document)
-    extracted = attach_labeled_acceptance_criteria(extracted, document)
-    if not payload.include_business_rules:
-        for candidate in extracted:
-            candidate["business_rules"] = []
-            candidate["source_refs"] = [
-                reference
-                for reference in candidate.get("source_refs", [])
-                if reference.get("section") != "business_rules"
-            ]
-            section_states = dict(candidate.get("section_states") or {})
-            section_states.pop("business_rules", None)
-            candidate["section_states"] = section_states
-    if len(extracted) > 500:
-        raise HTTPException(status_code=413, detail={"code": "IMPORT_CANDIDATE_LIMIT_EXCEEDED"})
+    extracted, conflicts, extraction_mode = await extract_document_candidates(
+        document, payload.include_business_rules
+    )
     candidates = prepare_requirement_candidates(job_id, extracted)
     job = {
         "_id": job_id,
@@ -984,6 +1044,7 @@ async def extract_requirement_candidates(document_id, payload, user):
         + (["SOURCE_CONFLICTS_FOUND"] if conflicts else []),
         "source_conflicts": conflicts,
         "extraction_mode": extraction_mode,
+        "extraction_version": REQUIREMENT_EXTRACTION_VERSION,
         "include_business_rules": payload.include_business_rules,
         "idempotency_key": payload.idempotency_key,
         "revision": 1,

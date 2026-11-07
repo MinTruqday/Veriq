@@ -4,6 +4,7 @@ import unittest
 import zipfile
 
 from src.modules.requirements.services.requirement_import import (
+    attach_labeled_acceptance_criteria,
     atomic_requirement_candidates,
     extract_docx,
     explicit_acceptance_criteria,
@@ -13,6 +14,7 @@ from src.modules.requirements.services.requirement_workflow import (
 )
 from src.modules.requirements.services.requirement_import_workflow import (
     grounded_requirement_candidates,
+    requirement_import_needs_refresh,
 )
 
 
@@ -291,6 +293,56 @@ class RequirementDocxTableExtractionTests(unittest.TestCase):
         criteria = explicit_acceptance_criteria(document)
 
         self.assertEqual(criteria, {"ghi chú được lưu và hiển thị."})
+
+    def test_source_criteria_are_not_added_again_when_ai_uses_an_equivalent_key(self):
+        content = "AC-01: Lưu ghi chú và hiển thị nội dung."
+        document = {
+            "_id": "doc-duplicate-criteria",
+            "content_hash": "hash-duplicate-criteria",
+            "source_version": 1,
+            "format": "docx",
+            "normalized_content": content,
+        }
+        candidates = [
+            {
+                "source_refs": [{"source_start": 0}],
+                "acceptance_criteria": [
+                    {
+                        "key": "AC-1",
+                        "content_doc": {
+                            "type": "doc",
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [
+                                        {"type": "text", "text": "Lưu ghi chú và hiển thị nội dung."}
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ]
+
+        result = attach_labeled_acceptance_criteria(candidates, document)
+
+        self.assertEqual(len(result[0]["acceptance_criteria"]), 1)
+
+    def test_only_unreviewed_legacy_import_previews_are_refreshed(self):
+        self.assertTrue(requirement_import_needs_refresh({"status": "PREVIEW_READY"}))
+        self.assertFalse(requirement_import_needs_refresh({
+            "status": "PREVIEW_READY",
+            "reviewed_at": "2026-11-07T00:00:00Z",
+        }))
+        self.assertFalse(requirement_import_needs_refresh({
+            "status": "PREVIEW_READY",
+            "resolutions": [{"action": "reject"}],
+        }))
+        self.assertFalse(requirement_import_needs_refresh({
+            "status": "PREVIEW_READY",
+            "extraction_version": 2,
+        }))
 
 
 if __name__ == "__main__":

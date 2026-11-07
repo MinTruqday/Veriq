@@ -118,6 +118,28 @@ class RequirementImportRepository:
             return_document=ReturnDocument.AFTER,
         )
 
+    async def refresh_unreviewed_preview(
+        self, job_id, project_id, revision, preview, metadata
+    ):
+        return await database.value.import_jobs.find_one_and_update(
+            {
+                "_id": job_id,
+                "project_id": project_id,
+                "status": "PREVIEW_READY",
+                "revision": revision,
+                "reviewed_at": {"$exists": False},
+                "$or": [
+                    {"resolutions": {"$exists": False}},
+                    {"resolutions": []},
+                ],
+            },
+            {
+                "$set": {"preview": preview, **metadata},
+                "$inc": {"revision": 1},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
     async def finish_resolution(self, job_id, project_id, revision, preview, resolution, updated_at, session=None):
         update = {
             "$set": {

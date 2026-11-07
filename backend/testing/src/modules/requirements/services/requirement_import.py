@@ -255,7 +255,15 @@ def attach_labeled_acceptance_criteria(candidates, document):
         existing_keys = {
             normalized_acceptance_criterion_key(item.get("key")) for item in values
         }
-        if normalized_acceptance_criterion_key(criterion_value["key"]) not in existing_keys:
+        existing_content = {
+            normalized_acceptance_criterion(
+                source_document_text(item.get("content_doc", {}))
+            )
+            for item in values
+        }
+        criterion_key = normalized_acceptance_criterion_key(criterion_value["key"])
+        criterion_content = normalized_acceptance_criterion(criterion["content"])
+        if criterion_key not in existing_keys and criterion_content not in existing_content:
             values.append(criterion_value)
         states = candidates[candidate_index].setdefault("section_states", {})
         states["acceptance_criteria"] = "provided"
