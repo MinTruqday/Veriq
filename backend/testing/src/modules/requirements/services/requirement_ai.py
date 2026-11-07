@@ -215,16 +215,14 @@ async def analyze_requirement_quality(version_id, payload, user):
                 status_code=409,
                 detail={"code": "REQUIREMENT_QUALITY_ANALYSIS_SOURCE_CHANGED", "retryable": True},
             )
-        ai_findings = [
+        ai_recommendations = [
             {
                 **item,
-                "rule_id": item.get(
-                    "reason_codes", [item.get("category", 'AI_FINDING')]
-                )[0],
+                "recommendation_id": f"REQ-REC-{index:02d}",
                 "origin": 'AI',
-                "span": None,
+                "status": 'CANDIDATE',
             }
-            for item in ai_result.get("findings", [])
+            for index, item in enumerate(ai_result.get("recommendations", []), 1)
         ]
         aggregate = {"patch": {}, "target_fields": [], "evidence_refs": [], "reason_codes": []}
         for candidate in ai_result.get("suggestions", []):
@@ -251,7 +249,7 @@ async def analyze_requirement_quality(version_id, payload, user):
                     "candidate_only": True,
                 }
             )
-        findings = deterministic_findings + ai_findings
+        findings = deterministic_findings
         contract_metadata = ai_contract_metadata(ai_result)
         if contract_metadata.get("degraded_mode") is None:
             contract_metadata["degraded_mode"] = False
@@ -266,6 +264,7 @@ async def analyze_requirement_quality(version_id, payload, user):
             "source_hash": source_hash,
             "request_fingerprint": request_fingerprint,
             "findings": findings,
+            "recommendations": ai_recommendations,
             "suggestions": suggestions,
             "valid": ai_result.get("status") == 'SUCCESS'
             and not ai_result.get("degraded_mode")

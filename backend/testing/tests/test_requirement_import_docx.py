@@ -6,6 +6,7 @@ import zipfile
 from src.modules.requirements.services.requirement_import import (
     atomic_requirement_candidates,
     extract_docx,
+    explicit_acceptance_criteria,
 )
 from src.modules.requirements.services.requirement_workflow import (
     prepare_requirement_candidates,
@@ -134,7 +135,11 @@ class RequirementDocxTableExtractionTests(unittest.TestCase):
                 "title": "Ghi chú nội bộ",
                 "type": "functional",
                 "content": content,
-                "acceptance_criteria": [],
+                "acceptance_criteria": [
+                    "Hệ thống quản lý đặt phòng khách sạn cung cấp chức năng thêm ghi chú nội bộ vào một đặt phòng đã tồn tại.",
+                    "Người dùng mở chi tiết đặt phòng, nhập nội dung ghi chú và chọn Lưu.",
+                    "Hệ thống xử lý thao tác theo quyền của người dùng hiện tại.",
+                ],
                 "actors": [],
                 "business_rules": [],
                 "dependencies": [],
@@ -149,6 +154,143 @@ class RequirementDocxTableExtractionTests(unittest.TestCase):
 
         self.assertEqual(candidates[0]["content_doc"]["content"][0]["content"][0]["text"], content)
         self.assertEqual(candidates[0]["acceptance_criteria"], [])
+
+    def test_only_explicit_acceptance_criteria_are_retained_from_ai(self):
+        content = (
+            "Thêm ghi chú nội bộ cho đặt phòng.\n\n"
+            "AC-01: Khi nhân viên lễ tân lưu ghi chú, hệ thống lưu và hiển thị nội dung.\n"
+            "AC-02: Người không có quyền không thể thêm ghi chú."
+        )
+        document = {
+            "_id": "doc-5",
+            "content_hash": "hash-5",
+            "source_version": 1,
+            "format": "docx",
+            "source_type": "REFERENCE",
+            "normalized_content": content,
+        }
+        result = [{
+            "conflicts": [],
+            "suggestions": [{
+                "requirement_key": None,
+                "title": "Thêm ghi chú nội bộ cho đặt phòng",
+                "type": "functional",
+                "content": "Thêm ghi chú nội bộ cho đặt phòng.",
+                "acceptance_criteria": [
+                    "Thêm ghi chú nội bộ cho đặt phòng.",
+                    "AC-01: Khi nhân viên lễ tân lưu ghi chú, hệ thống lưu và hiển thị nội dung.",
+                    "AC-02: Người không có quyền không thể thêm ghi chú.",
+                ],
+                "actors": [],
+                "business_rules": [],
+                "dependencies": [],
+                "missing_sections": [],
+                "not_applicable_sections": [],
+                "evidence_refs": ["doc-5:0"],
+                "source_quotes": {"doc-5:0": content},
+            }],
+        }]
+
+        candidates, _ = grounded_requirement_candidates(document, result)
+
+        self.assertEqual(
+            [item["content_doc"]["content"][0]["content"][0]["text"] for item in candidates[0]["acceptance_criteria"]],
+            [
+                "Khi nhân viên lễ tân lưu ghi chú, hệ thống lưu và hiển thị nội dung.",
+                "Người không có quyền không thể thêm ghi chú.",
+            ],
+        )
+
+    def test_acceptance_criteria_section_keeps_each_list_item_separate(self):
+        document = {
+            "_id": "doc-6",
+            "content_hash": "hash-6",
+            "source_version": 1,
+            "format": "md",
+            "normalized_content": (
+                "Mô tả: Ghi chú được lưu trong hệ thống.\n\n"
+                "## Tiêu chí chấp nhận\n"
+                "- Khi lưu ghi chú, hệ thống hiển thị nội dung đã lưu.\n"
+                "- Người không có quyền không thể thêm ghi chú.\n\n"
+                "## Quy tắc nghiệp vụ\n"
+                "- Ghi chú chỉ hiển thị với nhân viên."
+            ),
+        }
+
+        criteria = explicit_acceptance_criteria(document)
+
+        self.assertEqual(len(criteria), 2)
+        self.assertIn("khi lưu ghi chú, hệ thống hiển thị nội dung đã lưu.", criteria)
+        self.assertIn("người không có quyền không thể thêm ghi chú.", criteria)
+        self.assertNotIn("ghi chú chỉ hiển thị với nhân viên.", criteria)
+
+    def test_import_does_not_promote_requirement_body_sentences_to_acceptance_criteria(self):
+        content = (
+            "ĐẶC TẢ YÊU CẦU PHẦN MỀM\n\n"
+            "1. THÔNG TIN YÊU CẦU\n"
+            "Nội dung yêu cầu: Hệ thống quản lý đặt phòng khách sạn cung cấp chức năng thêm ghi chú nội bộ vào một đặt phòng đã tồn tại. "
+            "Người dùng mở chi tiết đặt phòng, nhập nội dung ghi chú và chọn Lưu. "
+            "Hệ thống xử lý thao tác theo quyền của người dùng hiện tại.\n\n"
+            "2. TIÊU CHÍ CHẤP NHẬN (AC)\n"
+            "AC-01: Khi nhân viên lễ tân lưu ghi chú, hệ thống lưu và hiển thị nội dung.\n"
+            "AC-02: Người không có quyền không thể thêm ghi chú.\n\n"
+            "3. QUY TẮC NGHIỆP VỤ (BR)\n"
+            "BR-01: Chỉ nhân viên lễ tân được phép sửa ghi chú."
+        )
+        document = {
+            "_id": "doc-body-criteria",
+            "content_hash": "hash-body-criteria",
+            "source_version": 1,
+            "format": "docx",
+            "normalized_content": content,
+        }
+        suggestion = {
+            "requirement_key": None,
+            "title": "Thêm ghi chú nội bộ",
+            "type": "functional",
+            "content": content,
+            "acceptance_criteria": [
+                "Hệ thống quản lý đặt phòng khách sạn cung cấp chức năng thêm ghi chú nội bộ vào một đặt phòng đã tồn tại.",
+                "Người dùng mở chi tiết đặt phòng, nhập nội dung ghi chú và chọn Lưu.",
+                "Hệ thống xử lý thao tác theo quyền của người dùng hiện tại.",
+                "AC-01: Khi nhân viên lễ tân lưu ghi chú, hệ thống lưu và hiển thị nội dung.",
+                "AC-02: Người không có quyền không thể thêm ghi chú.",
+            ],
+            "actors": [],
+            "business_rules": [],
+            "dependencies": [],
+            "missing_sections": [],
+            "not_applicable_sections": [],
+            "evidence_refs": ["doc-body-criteria:0"],
+            "source_quotes": {"doc-body-criteria:0": content},
+        }
+
+        candidates, _ = grounded_requirement_candidates(document, [{"conflicts": [], "suggestions": [suggestion]}])
+
+        self.assertEqual(
+            [item["content_doc"]["content"][0]["content"][0]["text"] for item in candidates[0]["acceptance_criteria"]],
+            [
+                "Khi nhân viên lễ tân lưu ghi chú, hệ thống lưu và hiển thị nội dung.",
+                "Người không có quyền không thể thêm ghi chú.",
+            ],
+        )
+
+    def test_explicit_acceptance_criteria_table_values_remain_available(self):
+        document = {
+            "_id": "doc-table-criteria",
+            "content_hash": "hash-table-criteria",
+            "source_version": 1,
+            "format": "md",
+            "normalized_content": (
+                "| Mã yêu cầu | Tiêu đề | Mô tả | Tiêu chí chấp nhận |\n"
+                "| --- | --- | --- | --- |\n"
+                "| REQ-1 | Ghi chú | Lưu ghi chú. | Ghi chú được lưu và hiển thị. |\n"
+            ),
+        }
+
+        criteria = explicit_acceptance_criteria(document)
+
+        self.assertEqual(criteria, {"ghi chú được lưu và hiển thị."})
 
 
 if __name__ == "__main__":

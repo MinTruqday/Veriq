@@ -14,6 +14,8 @@ from src.repositories.requirement_document import requirement_document_repositor
 from src.modules.requirements.services.requirement_import import (
     attach_labeled_acceptance_criteria,
     atomic_requirement_candidates,
+    explicit_acceptance_criteria,
+    normalized_acceptance_criterion,
     source_document_text,
 )
 from src.modules.requirements.services.requirement_documents import create_requirement_document_record, require_document_access
@@ -99,6 +101,7 @@ def grounded_requirement_candidates(document, result_batches):
             "text": text[start : start + 3500],
         })
     evidence_by_ref = {item["artifact_id"]: item["text"] for item in evidence}
+    documented_acceptance_criteria = explicit_acceptance_criteria(document)
     candidates = []
     conflicts = []
     for result in result_batches:
@@ -152,7 +155,11 @@ def grounded_requirement_candidates(document, result_batches):
                         source_refs.append(reference)
                 return accepted
 
-            criterion_values = list(suggestion.get("acceptance_criteria", []))
+            criterion_values = [
+                value
+                for value in suggestion.get("acceptance_criteria", [])
+                if normalized_acceptance_criterion(value) in documented_acceptance_criteria
+            ]
             acceptance_criteria = grounded_values(
                 criterion_values, "acceptance_criteria"
             )

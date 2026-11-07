@@ -25,6 +25,16 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
       </Panel>
     );
   }
+  const systemFindings = (lint.findings || []).filter((item) => item.origin !== "AI");
+  const recommendations = [
+    ...(lint.recommendations || []),
+    ...(lint.findings || [])
+      .filter((item) => item.origin === "AI")
+      .map((item, index) => ({
+        ...item,
+        recommendation_id: item.recommendation_id || `legacy-${index}`,
+      })),
+  ];
   return (
     <Panel title="Gợi ý hoàn thiện Requirement">
       {lint.is_stale && (
@@ -44,7 +54,7 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
           Kết quả kiểm tra cho lần cập nhật {lint.artifact_revision}
         </p>
       )}
-      {lint.findings?.some((item) => item.origin !== "AI") && (
+      {systemFindings.length > 0 && (
         <div className="mt-4">
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-3">
             <div>
@@ -64,7 +74,7 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
             )}
           </div>
           <DataTable
-            items={lint.findings.filter((item) => item.origin !== "AI")}
+            items={systemFindings}
             columns={[
               { key: "severity", label: "Mức độ", render: (item) => severityLabel(item.severity) },
               { key: "message", label: "Điều kiện" },
@@ -73,11 +83,11 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
           />
         </div>
       )}
-      {lint.findings?.some((item) => item.origin === "AI") && (
+      {recommendations.length > 0 && (
         <div className="mt-4">
           <h3 className="px-5 pb-2 text-sm font-semibold text-ink">Nhận xét tham khảo từ AI</h3>
           <DataTable
-            items={lint.findings.filter((item) => item.origin === "AI")}
+            items={recommendations}
             columns={[
               { key: "message", label: "Nhận xét" },
               { key: "suggestion", label: "Đề xuất bổ sung" },
@@ -103,7 +113,7 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
           />
         </div>
       )}
-      {!lint.findings?.length && (
+      {!systemFindings.length && !recommendations.length && !lint.suggestions?.length && (
         <p className="px-5 py-3 text-sm text-ink-muted" role="status">
           Chưa có đề xuất bổ sung cho phiên bản này.
         </p>

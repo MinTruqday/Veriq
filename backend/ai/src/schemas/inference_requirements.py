@@ -23,11 +23,10 @@ class RequirementEvidenceQuoteOutput(BaseModel):
     quote: str = Field(min_length=2, max_length=1000)
 
 
-class RequirementQualityFindingOutput(BaseModel):
+class RequirementQualityRecommendationOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     category: RequirementQualityCategory
-    severity: Literal["error", "warning", "info"]
     message: str = Field(min_length=2, max_length=5000)
     suggestion: str = Field(min_length=2, max_length=5000)
     evidence_refs: List[str] = Field(min_length=1, max_length=100)
@@ -91,7 +90,7 @@ class RequirementRevisionSuggestionOutput(BaseModel):
         return self
 
 class RequirementQualityModelOutput(BaseModel):
-    """Structured Requirement quality findings and revision candidates."""
+    """Structured Requirement recommendations and revision candidates."""
     model_config = ConfigDict(extra="forbid")
 
     capability: Literal["requirement_quality_analysis"] = "requirement_quality_analysis"
@@ -99,7 +98,10 @@ class RequirementQualityModelOutput(BaseModel):
         default_factory=list,
         max_length=1,
     )
-    findings: List[RequirementQualityFindingOutput] = Field(max_length=100)
+    recommendations: List[RequirementQualityRecommendationOutput] = Field(
+        default_factory=list,
+        max_length=100,
+    )
 
 class RequirementTemplateAPIOperationOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")

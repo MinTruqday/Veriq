@@ -144,13 +144,19 @@ async def assess_changed_requirement_quality(project_id, version, config):
         or result.get("idempotency_key") != idempotency_key
     ):
         raise AutomationOperationError("REQUIREMENT_QUALITY_READBACK_INVALID")
-    findings = result.get("findings")
-    if not isinstance(findings, list) or any(
+    system_checks = result.get("findings")
+    recommendations = result.get("recommendations")
+    if not isinstance(system_checks, list) or any(
         not isinstance(item, dict)
         or item.get("severity") not in {"error", "warning", "info"}
-        for item in findings
+        for item in system_checks
     ):
         raise AutomationOperationError("REQUIREMENT_QUALITY_FINDINGS_INVALID")
+    if not isinstance(recommendations, list) or any(
+        not isinstance(item, dict) or "severity" in item
+        for item in recommendations
+    ):
+        raise AutomationOperationError("REQUIREMENT_QUALITY_RECOMMENDATIONS_INVALID")
     status = result.get("status")
     if status not in {"SUCCESS", "DEGRADED", "FAILED"}:
         raise AutomationOperationError("REQUIREMENT_QUALITY_STATUS_INVALID")
@@ -162,10 +168,11 @@ async def assess_changed_requirement_quality(project_id, version, config):
         "status": status,
         "valid": result["valid"],
         "degraded_mode": degraded_mode,
-        "finding_count": len(findings),
-        "blocking_finding_count": sum(
-            item.get("severity") == "error" for item in findings
+        "system_check_count": len(system_checks),
+        "blocking_system_check_count": sum(
+            item.get("severity") == "error" for item in system_checks
         ),
+        "recommendation_count": len(recommendations),
     }
 
 
@@ -175,7 +182,7 @@ def requirement_quality_allows_automatic_publication(assessment):
         and assessment.get("status") == "SUCCESS"
         and assessment.get("valid") is True
         and assessment.get("degraded_mode") is not True
-        and assessment.get("blocking_finding_count") == 0
+        and assessment.get("blocking_system_check_count") == 0
     )
 
 

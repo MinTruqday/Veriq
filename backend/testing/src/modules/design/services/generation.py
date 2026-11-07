@@ -1,5 +1,6 @@
 import json
 from collections import Counter
+from difflib import SequenceMatcher
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -48,26 +49,126 @@ def validated_suggestions(result, schema, *, allow_empty=False):
         ) from error
 
 
-def remove_duplicate_generated_cases(drafts, suggestions, threshold=0.92):
+def merge_duplicate_generated_cases(drafts, suggestions, threshold=0.72):
     kept_drafts = []
     kept_suggestions = []
-    removed = 0
+    merged_count = 0
     for draft, suggestion in zip(drafts, suggestions):
-        duplicate = any(
+        duplicate_index = next((
+            index
+            for index, (kept_draft, kept_suggestion) in enumerate(
+                zip(kept_drafts, kept_suggestions)
+            )
+            if (
             draft.type == kept_draft.type
-            and set(draft.acceptance_criterion_ids) == set(kept_draft.acceptance_criterion_ids)
-            and set(draft.techniques) == set(kept_draft.techniques)
             and set(suggestion.challenge_techniques) == set(kept_suggestion.challenge_techniques)
+            and generated_cases_have_equivalent_actions(draft, kept_draft)
             and duplicate_score(draft.model_dump(), kept_draft.model_dump(), threshold)[0]
             >= threshold
-            for kept_draft, kept_suggestion in zip(kept_drafts, kept_suggestions)
-        )
-        if duplicate:
-            removed += 1
+            )
+        ), None)
+        if duplicate_index is not None:
+            kept_draft = kept_drafts[duplicate_index]
+            kept_suggestion = kept_suggestions[duplicate_index]
+            criterion_ids = list(dict.fromkeys([
+                *kept_draft.acceptance_criterion_ids,
+                *draft.acceptance_criterion_ids,
+            ]))
+            evidence_refs = list(dict.fromkeys([
+                *kept_suggestion.evidence_refs,
+                *suggestion.evidence_refs,
+            ]))
+            evidence_quotes = list({
+                (quote.evidence_ref, quote.quote): quote
+                for quote in [*kept_suggestion.evidence_quotes, *suggestion.evidence_quotes]
+            }.values())
+            obligations = list(dict.fromkeys([
+                *kept_suggestion.coverage_obligations,
+                *suggestion.coverage_obligations,
+            ]))
+            techniques = list(dict.fromkeys([
+                *kept_suggestion.techniques,
+                *suggestion.techniques,
+            ]))
+            obligation_evidence_by_key = {}
+            for item in [*kept_suggestion.obligation_evidence, *suggestion.obligation_evidence]:
+                evidence = obligation_evidence_by_key.setdefault(item.obligation_key, {})
+                evidence.update({
+                    (quote.evidence_ref, quote.quote): quote
+                    for quote in item.evidence_quotes
+                })
+            obligation_evidence = [
+                {
+                    "obligation_key": key,
+                    "evidence_quotes": list(quotes.values()),
+                }
+                for key, quotes in obligation_evidence_by_key.items()
+            ]
+            if (
+                len(evidence_quotes) > 20
+                or len(obligations) > 100
+                or len(techniques) > 50
+                or len(obligation_evidence) > 100
+                or len(criterion_ids) > 500
+                or len(evidence_refs) > 200
+            ):
+                kept_drafts.append(draft)
+                kept_suggestions.append(suggestion)
+                continue
+            try:
+                merged_suggestion = GeneratedCase.model_validate({
+                    **kept_suggestion.model_dump(),
+                    "acceptance_criterion_ids": criterion_ids,
+                    "techniques": techniques,
+                    "evidence_refs": evidence_refs,
+                    "evidence_quotes": [item.model_dump() for item in evidence_quotes],
+                    "coverage_obligations": obligations,
+                    "obligation_evidence": obligation_evidence,
+                    "required_skills": list(dict.fromkeys([
+                        *kept_suggestion.required_skills,
+                        *suggestion.required_skills,
+                    ])),
+                })
+                merged_draft = type(kept_draft).model_validate({
+                    **kept_draft.model_dump(),
+                    "acceptance_criterion_ids": criterion_ids,
+                    "techniques": techniques,
+                    "evidence_refs": evidence_refs,
+                    "evidence_quotes": [item.model_dump() for item in evidence_quotes],
+                    "coverage_obligations": obligations,
+                    "obligation_evidence": obligation_evidence,
+                    "required_skills": merged_suggestion.required_skills,
+                })
+            except ValidationError:
+                kept_drafts.append(draft)
+                kept_suggestions.append(suggestion)
+                continue
+            kept_drafts[duplicate_index] = merged_draft
+            kept_suggestions[duplicate_index] = merged_suggestion
+            merged_count += 1
             continue
         kept_drafts.append(draft)
         kept_suggestions.append(suggestion)
-    return kept_drafts, kept_suggestions, removed
+    return kept_drafts, kept_suggestions, merged_count
+
+
+def generated_cases_have_equivalent_actions(left, right):
+    if left.test_data != right.test_data:
+        return False
+    left_preconditions = " ".join(plain_text(left.preconditions_doc).casefold().split())
+    right_preconditions = " ".join(plain_text(right.preconditions_doc).casefold().split())
+    if SequenceMatcher(None, left_preconditions, right_preconditions).ratio() < 0.9:
+        return False
+    if len(left.steps) != len(right.steps):
+        return False
+    for left_step, right_step in zip(left.steps, right.steps):
+        if left_step.test_data != right_step.test_data:
+            return False
+        left_action = " ".join(plain_text(left_step.action_doc).casefold().split())
+        right_action = " ".join(plain_text(right_step.action_doc).casefold().split())
+        if SequenceMatcher(None, left_action, right_action).ratio() < 0.9:
+            return False
+    return True
 
 
 async def generate_requirement_drafts(
@@ -381,14 +482,14 @@ async def generate_requirement_drafts(
             detail={"code": 'AI_GENERATION_INVALID', "message": "AI chưa tạo được bản nháp hợp lệ", "retryable": True},
         ) from error
     if not scenario:
-        drafts, generated, removed_duplicates = remove_duplicate_generated_cases(
+        drafts, generated, merged_duplicates = merge_duplicate_generated_cases(
             drafts, generated
         )
         result["suggestions"] = [item.model_dump() for item in generated]
-        if removed_duplicates:
+        if merged_duplicates:
             result["warnings"] = list(dict.fromkeys([
                 *(result.get("warnings") or []),
-                f"Đã loại {removed_duplicates} ca kiểm thử trùng khỏi bản xem trước.",
+                f"Đã gộp {merged_duplicates} ca trùng vào ca kiểm thử tương ứng và giữ đủ liên kết tiêu chí.",
             ]))
     requested_categories = Counter({category: payload.count_per_category for category in categories})
     generated_categories = Counter(item.category for item in generated)

@@ -26,6 +26,13 @@ TABLE_ACCEPTANCE_CRITERION_LINE = re.compile(
 MARKDOWN_TABLE_SEPARATOR = re.compile(
     r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$"
 )
+ACCEPTANCE_CRITERIA_SECTION = re.compile(
+    r"^\s*(?:#{1,6}\s*)?(?:\d+(?:\.\d+)*[.)]?\s*)?(?:acceptance criteria|acceptance criterion|tiêu chí chấp nhận|điều kiện chấp nhận)(?:\s*\([^)]*\))?\s*[:.]?\s*$",
+    re.IGNORECASE,
+)
+NUMBERED_UPPERCASE_SECTION = re.compile(
+    r"^\s*(?:#{1,6}\s*)?\d+(?:\.\d+)*[.)]?\s+[A-ZÀ-Ỹ0-9][A-ZÀ-Ỹ0-9\s()/:_-]{3,}\s*$"
+)
 REQUIREMENT_TABLE_FIELDS = {
     "requirement_key": {
         "key",
@@ -130,6 +137,77 @@ def extract_labeled_acceptance_criteria(text):
     return criteria
 
 
+def normalized_acceptance_criterion(value):
+    normalized = re.sub(r"\s+", " ", str(value or "")).strip()
+    normalized = re.sub(
+        r"^(?:AC|ACCEPTANCE[-_ ]?CRITERION)[-_ ]?\d+\s*[:.)\-–—]?\s*",
+        "",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    return normalized.casefold()
+
+
+def normalized_acceptance_criterion_key(value):
+    match = re.fullmatch(r"\s*(AC|ACCEPTANCE[-_ ]?CRITERION)[-_ ]?(\d+)\s*", str(value or ""), re.IGNORECASE)
+    return f"AC-{int(match.group(2))}" if match else str(value or "").strip().casefold()
+
+
+def explicit_acceptance_criteria(document):
+    text = source_document_text(document["normalized_content"])
+    values = [item["content"] for item in extract_labeled_acceptance_criteria(text)]
+    in_criteria_section = False
+    pending = []
+
+    def retain_pending():
+        if pending:
+            values.append(" ".join(pending).strip())
+            pending.clear()
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if ACCEPTANCE_CRITERIA_SECTION.match(stripped):
+            retain_pending()
+            in_criteria_section = True
+            continue
+        if in_criteria_section and (
+            stripped.startswith("#") or NUMBERED_UPPERCASE_SECTION.match(stripped)
+        ):
+            retain_pending()
+            in_criteria_section = False
+        if not in_criteria_section:
+            continue
+        if not stripped:
+            retain_pending()
+            continue
+        labeled = ACCEPTANCE_CRITERION_LINE.match(stripped)
+        if labeled:
+            retain_pending()
+            values.append(labeled.group(2).strip())
+            continue
+        bullet = re.match(r"^(?:[-*•]|\d+[.)])\s+(.+)$", stripped)
+        if bullet:
+            retain_pending()
+            values.append(bullet.group(1).strip())
+            continue
+        pending.append(stripped)
+    retain_pending()
+    values.extend(
+        source_document_text(criterion.get("content_doc", {}))
+        for candidate in atomic_requirement_candidates(document)
+        if any(
+            reference.get("section") == "requirement_table_row"
+            for reference in candidate.get("source_refs", [])
+        )
+        for criterion in candidate.get("acceptance_criteria", [])
+    )
+    return {
+        normalized
+        for value in values
+        if (normalized := normalized_acceptance_criterion(value))
+    }
+
+
 def attach_labeled_acceptance_criteria(candidates, document):
     text = source_document_text(document["normalized_content"])
     criteria = extract_labeled_acceptance_criteria(text)
@@ -174,8 +252,10 @@ def attach_labeled_acceptance_criteria(candidates, document):
             },
         }
         values = candidates[candidate_index].setdefault("acceptance_criteria", [])
-        existing_keys = {str(item.get("key", "")).casefold() for item in values}
-        if criterion_value["key"].casefold() not in existing_keys:
+        existing_keys = {
+            normalized_acceptance_criterion_key(item.get("key")) for item in values
+        }
+        if normalized_acceptance_criterion_key(criterion_value["key"]) not in existing_keys:
             values.append(criterion_value)
         states = candidates[candidate_index].setdefault("section_states", {})
         states["acceptance_criteria"] = "provided"
@@ -582,6 +662,7 @@ def atomic_requirement_candidates(document):
             if heading:
                 sections = sections[: len(heading.group(1)) - 1]
                 sections.append(heading.group(2).strip())
+            line_index += 1
             continue
         if paragraph_start is None:
             paragraph_start = line_start

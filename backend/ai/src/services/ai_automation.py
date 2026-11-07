@@ -249,7 +249,7 @@ def generated_cases_have_grounded_citations(cases, evidence):
     return True
 
 
-def grounded_requirement_findings(findings, evidence):
+def grounded_requirement_recommendations(recommendations, evidence):
     source_text = {
         str(item.get("artifact_version_id") or item.get("artifact_id")): str(
             item.get("text") or ""
@@ -259,9 +259,9 @@ def grounded_requirement_findings(findings, evidence):
     }
     accepted = []
     rejected = False
-    for finding in findings:
-        refs = set(finding.get("evidence_refs") or [])
-        quotes = finding.get("evidence_quotes") or []
+    for recommendation in recommendations:
+        refs = set(recommendation.get("evidence_refs") or [])
+        quotes = recommendation.get("evidence_quotes") or []
         valid = bool(refs) and refs.issubset(source_text) and bool(quotes)
         if valid:
             for quote in quotes:
@@ -276,7 +276,7 @@ def grounded_requirement_findings(findings, evidence):
                     valid = False
                     break
         if valid:
-            accepted.append(finding)
+            accepted.append(recommendation)
         else:
             rejected = True
     return accepted, rejected
@@ -360,10 +360,10 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
         if req.capability == "execution_assistance":
             suppress_execution_assistance_credential_requests(generated_data)
         if req.capability == "requirement_quality_analysis":
-            generated_data["findings"], rejected_findings = grounded_requirement_findings(
-                generated_data.get("findings") or [], evidence
+            generated_data["recommendations"], rejected_recommendations = grounded_requirement_recommendations(
+                generated_data.get("recommendations") or [], evidence
             )
-            if rejected_findings:
+            if rejected_recommendations:
                 generated_data["warnings"] = list(
                     dict.fromkeys(
                         [
