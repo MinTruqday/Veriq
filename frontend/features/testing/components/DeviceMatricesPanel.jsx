@@ -12,7 +12,7 @@ const EMPTY_FORM = {
   description: "",
   profileKey: "",
   profileName: "",
-  deviceType: "desktop",
+  deviceType: "",
   operatingSystem: "",
   browser: "",
   viewportWidth: "",
@@ -35,6 +35,17 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
     [plans, runs, targetType],
   );
   const selectedMatrix = matrices.find((item) => item._id === selectedMatrixId);
+  const knownDeviceTypes = useMemo(
+    () =>
+      [
+        ...new Set(
+          matrices
+            .flatMap((matrix) => (matrix.profiles || []).map((item) => item.device_type))
+            .filter(Boolean),
+        ),
+      ].sort(),
+    [matrices],
+  );
   const load = useCallback(async () => {
     try {
       const values = await testingApi.listDeviceMatrices(project._id);
@@ -189,18 +200,20 @@ export default function DeviceMatricesPanel({ project, plans, runs, onChanged })
               value={form.profileName}
               onChange={(event) => setForm({ ...form, profileName: event.target.value })}
             />
-            <select
+            <input
               aria-label="Loại thiết bị"
               className="apple-input w-full min-w-0"
+              list="project-device-type-options"
+              required
+              placeholder="Loại thiết bị"
               value={form.deviceType}
               onChange={(event) => setForm({ ...form, deviceType: event.target.value })}
-            >
-              <option value="desktop">Máy tính để bàn</option>
-              <option value="laptop">Máy tính xách tay</option>
-              <option value="tablet">Máy tính bảng</option>
-              <option value="mobile">Điện thoại</option>
-              <option value="other">Khác</option>
-            </select>
+            />
+            <datalist id="project-device-type-options">
+              {knownDeviceTypes.map((deviceType) => (
+                <option value={deviceType} key={deviceType} />
+              ))}
+            </datalist>
             <input
               aria-label="Hệ điều hành"
               className="apple-input w-full min-w-0"

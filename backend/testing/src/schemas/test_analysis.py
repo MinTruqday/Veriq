@@ -160,18 +160,7 @@ class TestBasisRef(BaseModel):
 
 class AnalysisFinding(BaseModel):
     finding_id: str = Field(min_length=1, max_length=200)
-    finding_type: Literal[
-        "AMBIGUITY",
-        "OMISSION",
-        "INCONSISTENCY",
-        "CONTRADICTION",
-        "UNTESTABLE",
-        "MISSING_ACCEPTANCE_CRITERIA",
-        "MISSING_ERROR_BEHAVIOR",
-        "MISSING_PERMISSION_RULE",
-        "MISSING_BOUNDARY",
-        "MISSING_NON_FUNCTIONAL_CRITERIA",
-    ]
+    finding_type: str = Field(min_length=1, max_length=100)
     severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
     source_ref: TestBasisRef
     description: str = Field(min_length=2, max_length=5000)
@@ -184,7 +173,7 @@ class AnalysisFinding(BaseModel):
 class TestConditionCreate(BaseModel):
     condition_key: str | None = Field(default=None, max_length=80, pattern=r"^[A-Z][A-Z0-9_-]+$")
     title: str = Field(min_length=2, max_length=300)
-    category: Literal["POSITIVE", "NEGATIVE", "BOUNDARY"] | None = None
+    category: str | None = Field(default=None, max_length=100)
     description_doc: dict[str, Any]
     basis_refs: list[TestBasisRef] = Field(min_length=1, max_length=200)
     coverage_item: str = Field(min_length=1, max_length=500)
@@ -208,11 +197,17 @@ class TestConditionCreate(BaseModel):
     def normalize_testability(cls, value):
         return normalize_testability_status(value)
 
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value):
+        normalized = " ".join(value.split()) if value else ""
+        return normalized or None
+
 
 class TestConditionPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=2, max_length=300)
-    category: Literal["POSITIVE", "NEGATIVE", "BOUNDARY"] | None = None
+    category: str | None = Field(default=None, max_length=100)
     description_doc: dict[str, Any] | None = None
     basis_refs: list[TestBasisRef] | None = Field(default=None, min_length=1, max_length=200)
     coverage_item: str | None = Field(default=None, min_length=1, max_length=500)
@@ -228,6 +223,12 @@ class TestConditionPatch(BaseModel):
     @classmethod
     def normalize_testability(cls, value):
         return normalize_testability_status(value)
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value):
+        normalized = " ".join(value.split()) if value else ""
+        return normalized or None
 
 
 class TestConditionTransition(BaseModel):
@@ -258,22 +259,7 @@ class AnalysisFindingCreate(BaseModel):
     artifact_type: str = Field(min_length=1, max_length=100)
     artifact_id: str = Field(min_length=1, max_length=200)
     artifact_version_id: str | None = Field(default=None, max_length=200)
-    category: Literal[
-        "AMBIGUITY",
-        "OMISSION",
-        "INCONSISTENCY",
-        "CONTRADICTION",
-        "UNTESTABLE",
-        "MISSING_ACCEPTANCE_CRITERIA",
-        "MISSING_ERROR_BEHAVIOR",
-        "MISSING_PERMISSION_RULE",
-        "MISSING_BOUNDARY",
-        "MISSING_STATE_RULE",
-        "MISSING_DATA_RULE",
-        "MISSING_NON_FUNCTIONAL_CRITERIA",
-        "DUPLICATE",
-        "OTHER",
-    ]
+    category: str = Field(min_length=1, max_length=100)
     severity: Literal["BLOCKER", "MAJOR", "MINOR", "INFO"]
     title: str = Field(min_length=2, max_length=300)
     description: str = Field(min_length=2, max_length=5000)

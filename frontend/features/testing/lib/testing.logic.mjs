@@ -1059,6 +1059,8 @@ export function messageOf(reason) {
       "Một trích dẫn không khớp nguyên văn với nguồn. Không có kết quả nào được lưu.",
     PROJECT_COMPLEXITY_SOURCES_CHANGED:
       "Nguồn đã thay đổi trong lúc đánh giá. Hãy chạy lại để dùng phiên bản mới nhất.",
+    PROJECT_COMPLEXITY_RUBRIC_CHANGED:
+      "Tiêu chí đánh giá đã thay đổi trong lúc AI xử lý. Hãy chạy lại để dùng bộ tiêu chí mới nhất.",
     PROJECT_COMPLEXITY_IDEMPOTENCY_KEY_REUSED:
       "Yêu cầu đánh giá đã đổi nhưng đang dùng lại mã của lần trước. Hãy bấm đánh giá lại.",
     PROJECT_COMPLEXITY_ASSESSMENT_IN_PROGRESS:

@@ -9,13 +9,11 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronsUp,
   Check,
   Columns3,
   GitBranch,
   GripVertical,
   History,
-  Minus,
   Pencil,
   Play,
   Plus,
@@ -182,25 +180,10 @@ function sortWorkItems(items, sort) {
   return items;
 }
 
-function priorityClass(priority) {
-  const normalized = String(priority || "MEDIUM").toUpperCase();
-  if (normalized === "HIGHEST") return "border-2 border-ink bg-surface-quiet text-ink";
-  if (normalized === "HIGH") return "border-border-strong bg-surface text-ink";
-  if (normalized === "LOW") return "border-border bg-surface text-ink-muted";
-  return "border-border bg-surface-quiet text-ink";
-}
+const PRIORITY_BADGE_CLASS = "border-border bg-surface-quiet text-ink";
 
 function PriorityMark({ value, prefix = "" }) {
-  const normalized = String(value || "MEDIUM").toUpperCase();
-  const Icon =
-    normalized === "HIGHEST"
-      ? ChevronsUp
-      : normalized === "HIGH"
-        ? ArrowUp
-        : normalized === "LOW"
-          ? ArrowDown
-          : Minus;
-  const label = valueLabel(normalized);
+  const label = String(value || "").trim() || "Chưa đặt mức ưu tiên";
   return (
     <span
       aria-label={`Mức ưu tiên: ${label}`}
@@ -208,7 +191,6 @@ function PriorityMark({ value, prefix = "" }) {
       title={`Mức ưu tiên: ${label}`}
     >
       {prefix}
-      <Icon aria-hidden="true" size={13} />
       {label}
     </span>
   );
@@ -431,10 +413,7 @@ export default function PlanningPage({ project, section }) {
         {
           name: "priority",
           label: "Ưu tiên",
-          options: ["LOW", "MEDIUM", "HIGH", "HIGHEST"].map((value) => ({
-            value,
-            label: valueLabel(value),
-          })),
+          placeholder: "Nhập mức ưu tiên của dự án",
         },
         { name: "estimate", label: "Ước lượng", type: "number" },
         { name: "planned_start_at", label: "Bắt đầu dự kiến", type: "date" },
@@ -499,11 +478,8 @@ export default function PlanningPage({ project, section }) {
         {
           name: "priority",
           label: "Ưu tiên",
-          initialValue: item.priority || "MEDIUM",
-          options: ["LOW", "MEDIUM", "HIGH", "HIGHEST"].map((value) => ({
-            value,
-            label: valueLabel(value),
-          })),
+          initialValue: item.priority || "",
+          placeholder: "Nhập mức ưu tiên của dự án",
         },
         {
           name: "estimate",
@@ -1605,7 +1581,7 @@ function Backlog({
                     <span
                       className={
                         "inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold " +
-                        priorityClass(item.priority)
+                        PRIORITY_BADGE_CLASS
                       }
                     >
                       <PriorityMark value={item.priority} prefix="Ưu tiên" />
@@ -1866,7 +1842,7 @@ function WorkItemList({
         </h2>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${priorityClass(selectedItem.priority)}`}
+            className={`inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold ${PRIORITY_BADGE_CLASS}`}
           >
             <PriorityMark value={selectedItem.priority} />
           </span>
@@ -2348,7 +2324,7 @@ function Board({
                                   <span
                                     className={
                                       "inline-flex min-h-7 items-center rounded-full border px-2.5 text-xs font-semibold " +
-                                      priorityClass(item.priority)
+                                      PRIORITY_BADGE_CLASS
                                     }
                                   >
                                     <PriorityMark value={item.priority} />

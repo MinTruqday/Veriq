@@ -57,6 +57,7 @@ export default function TestAnalysisPage({ project }) {
   const { ask, dialog } = useActionDialog();
   const [conditions, setConditions] = useState([]);
   const [requirements, setRequirements] = useState([]);
+  const [strategies, setStrategies] = useState([]);
   const [members, setMembers] = useState([]);
   const [coverage, setCoverage] = useState(null);
   const [findings, setFindings] = useState([]);
@@ -95,6 +96,7 @@ export default function TestAnalysisPage({ project }) {
         findingValues,
         aiResultValues,
         memberValues,
+        strategyValues,
       ] = await Promise.all([
         can("testcondition.read")
           ? testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 })
@@ -111,6 +113,11 @@ export default function TestAnalysisPage({ project }) {
         can("testanalysis.read")
           ? testingApi.listTestAnalysisAiResults(project._id)
           : Promise.resolve([]),
+        can("teststrategy.read")
+          ? testingApi
+              .listTestStrategies(project._id, { status: "APPROVED", page_size: 200 })
+              .catch(() => ({ items: [] }))
+          : Promise.resolve({ items: [] }),
         can("testanalysis.finding.assign") && can("project.members.read")
           ? testingApi.listMembers(project._id).catch((reason) => {
               memberLoadError = `Không tải được danh sách thành viên để phân công: ${messageOf(reason)}`;
@@ -123,6 +130,7 @@ export default function TestAnalysisPage({ project }) {
       setCoverage(coverageValue);
       setFindings(findingValues.items || []);
       setAiResults(aiResultValues || []);
+      setStrategies(strategyValues.items || []);
       setMembers(memberValues || []);
       setError(memberLoadError);
       setSelected(
@@ -1059,6 +1067,7 @@ export default function TestAnalysisPage({ project }) {
               : null
           }
           requirements={requirements}
+          strategies={strategies}
           onCancel={() => setEditing(false)}
           onSave={async (payload) => {
             const value = selected?._id

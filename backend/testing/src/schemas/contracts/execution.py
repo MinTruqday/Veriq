@@ -116,7 +116,7 @@ class TestRunCreate(BaseModel):
     test_suite_ids: list[str] = Field(default_factory=list, max_length=500)
     test_case_version_ids: list[str] = Field(default_factory=list, max_length=5000)
     assignment_strategy: Literal["MANUAL", "CONFIRMED_SKILLS", "PROFILE_EVIDENCE"] = "PROFILE_EVIDENCE"
-    environment: str = Field(default="staging", max_length=200)
+    environment: str = Field(default="", max_length=200)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str = Field(default="", max_length=200)
     release_id: str | None = Field(default=None, max_length=200)

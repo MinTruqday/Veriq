@@ -8,21 +8,6 @@ import { preferredSummaryLocale } from "../lib/summaryLanguage";
 import { testingApi } from "../services/testing.service";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 
-const dimensions = {
-  SCOPE: "Phạm vi và phân rã",
-  BUSINESS_RULES: "Quy tắc nghiệp vụ",
-  REQUIREMENT_TESTABILITY: "Độ rõ của yêu cầu",
-  INTEGRATIONS: "Tích hợp và phụ thuộc",
-  DATA_LIFECYCLE: "Dữ liệu và vòng đời",
-  SECURITY_COMPLIANCE: "Bảo mật và tuân thủ",
-  NON_FUNCTIONAL: "Yêu cầu phi chức năng",
-  ARCHITECTURE_ENVIRONMENT: "Kiến trúc và môi trường",
-  TEST_COMBINATORICS: "Tổ hợp kiểm thử",
-  AUTOMATION_OBSERVABILITY: "Tự động hóa và khả năng quan sát",
-  BUSINESS_RISK: "Rủi ro kinh doanh",
-  UNCERTAINTY_CHANGE: "Bất định và thay đổi",
-};
-
 const levels = {
   LOW: "Thấp",
   MEDIUM: "Trung bình",
@@ -64,9 +49,7 @@ function AssessmentResult({ projectId, result }) {
             {(suggestion.dimensions || []).map((item) => (
               <article className="rounded-control border border-border p-4" key={item.dimension_id}>
                 <div className="flex items-start justify-between gap-3">
-                  <h4 className="text-[13px] font-semibold">
-                    {dimensions[item.dimension_id] || item.dimension_id}
-                  </h4>
+                  <h4 className="text-[13px] font-semibold">{item.label || item.dimension_id}</h4>
                   <span className="shrink-0 rounded-full bg-surface-quiet px-2.5 py-1 text-[11px]">
                     {levels[item.level] || item.level}
                   </span>
@@ -74,6 +57,9 @@ function AssessmentResult({ projectId, result }) {
                 <p className="mt-2 whitespace-pre-wrap text-[12px] leading-5 text-ink-muted">
                   {item.explanation}
                 </p>
+                {item.description && (
+                  <p className="mt-2 text-[11px] leading-5 text-ink-faint">{item.description}</p>
+                )}
                 {item.uncertainty?.length > 0 && (
                   <ul className="mt-2 list-disc space-y-1 pl-4 text-[12px] text-ink-muted">
                     {item.uncertainty.map((value, index) => (

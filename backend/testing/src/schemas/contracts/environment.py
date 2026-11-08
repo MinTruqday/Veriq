@@ -49,9 +49,7 @@ class BuildPatch(BaseModel):
 
 class EnvironmentCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
-    environment_type: Literal["development", "testing", "staging", "production", "custom"] = (
-        "testing"
-    )
+    environment_type: str = Field(min_length=1, max_length=100)
     base_url: str | None = Field(default=None, max_length=2000)
     capabilities: dict[str, Any] = Field(default_factory=dict)
     availability: Literal["AVAILABLE", "UNAVAILABLE", "MAINTENANCE"] = "AVAILABLE"
@@ -68,9 +66,7 @@ class EnvironmentCreate(BaseModel):
 class EnvironmentPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=2, max_length=200)
-    environment_type: (
-        Literal["development", "testing", "staging", "production", "custom"] | None
-    ) = None
+    environment_type: str | None = Field(default=None, min_length=1, max_length=100)
     base_url: str | None = Field(default=None, max_length=2000)
     capabilities: dict[str, Any] | None = None
     availability: Literal["AVAILABLE", "UNAVAILABLE", "MAINTENANCE"] | None = None
@@ -91,7 +87,7 @@ class EnvironmentSecretRefs(BaseModel):
 class DeviceProfileInput(BaseModel):
     key: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     name: str = Field(min_length=2, max_length=200)
-    device_type: Literal["desktop", "laptop", "tablet", "mobile", "other"]
+    device_type: str = Field(min_length=1, max_length=100)
     operating_system: str = Field(min_length=1, max_length=120)
     operating_system_version: str = Field(default="", max_length=120)
     browser: str = Field(default="", max_length=120)

@@ -174,7 +174,7 @@ class TestConditionSuggestionOutput(BaseModel):
 
     title: str = Field(min_length=2, max_length=300)
     description: str = Field(min_length=2, max_length=5000)
-    category: Literal["POSITIVE", "NEGATIVE", "BOUNDARY"]
+    category: str = Field(min_length=1, max_length=100)
     coverage_item: str = Field(min_length=1, max_length=500)
     test_level: str = Field(min_length=1, max_length=100)
     test_type: str = Field(min_length=1, max_length=100)
@@ -192,7 +192,7 @@ class TestConditionSuggestionsOutput(BaseModel):
     condition_candidates: List[TestConditionSuggestionOutput] = Field(
         default_factory=list,
         max_length=100,
-        description="Test-condition candidates grouped by supported category.",
+        description="Test-condition candidates grouped by evidence-supported category.",
     )
     evidence_refs: List[str] = Field(min_length=1, max_length=200)
     confidence: float = Field(ge=0, le=1)

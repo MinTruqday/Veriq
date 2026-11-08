@@ -156,6 +156,7 @@ def plan_completeness(plan, settings=None):
  {'code': 'TEST_PLAN_TEST_TYPE_REQUIRED', 'field': 'test_types'},
  {'code': 'TEST_PLAN_QUALITY_TARGET_REQUIRED', 'field': 'quality_targets'}]
         ],
+        ('TEST_PLAN_TEST_LEVEL_REQUIRED', bool(plan.get('test_level'))),
         (
             'TEST_PLAN_SCHEDULE_REQUIRED',
             all(
@@ -314,6 +315,13 @@ async def create_test_plan_record(payload, project_id, user):
         payload.strategy_version_id,
         auto_bind=True,
     )
+    strategy = (
+        await test_plan_repository.find_strategy(
+            payload.project_id, strategy_binding["strategy_version_id"]
+        )
+        if strategy_binding["strategy_version_id"]
+        else None
+    )
     scope = await validate_plan_scope(
         payload.project_id,
         payload.requirement_version_ids,
@@ -324,6 +332,11 @@ async def create_test_plan_record(payload, project_id, user):
     plan = {
         "_id": new_id('TP'),
         **payload.model_dump(),
+        "test_level": payload.test_level
+        or next(iter((strategy or {}).get("test_levels") or []), None),
+        "test_types": payload.test_types
+        or (strategy or {}).get("test_types")
+        or [],
         **scope,
         **context,
         **strategy_binding,

@@ -24,7 +24,7 @@ import {
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
-import { RefreshCw, Trash2, UserCheck, UserX, X } from "lucide-react";
+import { Plus, RefreshCw, Trash2, UserCheck, UserX, X } from "lucide-react";
 
 const AUDIT_PAGE_SIZE = 25;
 
@@ -88,7 +88,6 @@ const numberSettings = [
 
 const selectSettings = [
   ["read_after_archive_policy", "Quyền đọc sau khi lưu trữ", ["ALLOW_READ", "DENY_READ"]],
-  ["default_environment", "Môi trường mặc định", ["development", "staging", "production"]],
 ];
 
 function memberDisplayName(member) {
@@ -125,9 +124,6 @@ function analyticsValue(value, suffix = "", sampleCount) {
 const settingValueLabels = {
   ALLOW_READ: "Cho phép đọc",
   DENY_READ: "Không cho phép đọc",
-  development: "Phát triển",
-  staging: "Tiền sản xuất",
-  production: "Sản xuất",
 };
 
 export default function SettingsPage({ project, onProjectChange, workspaceView }) {
@@ -150,6 +146,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const [projectLeadUserId, setProjectLeadUserId] = useState(project.project_lead_user_id || "");
   const [description, setDescription] = useState(project.description || "");
   const [projectType, setProjectType] = useState(project.project_type || "");
+  const [complexityDimensions, setComplexityDimensions] = useState(
+    project.complexity_dimensions || [],
+  );
   const [locale, setLocale] = useState(project.locale || "");
   const [timezone, setTimezone] = useState(project.timezone || "");
   const projectTimeZoneOptions = useMemo(() => timeZoneOptions(timezone), [timezone]);
@@ -182,6 +181,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
     project.locale,
     project.timezone,
   ]);
+  useEffect(() => {
+    setComplexityDimensions(project.complexity_dimensions || []);
+  }, [project._id, project.revision, project.complexity_dimensions]);
   const [settings, setSettings] = useState({
     impact_confidence_threshold: project.settings?.impact_confidence_threshold ?? 0.75,
     ...Object.fromEntries(toggleSettings.map(([key]) => [key, project.settings?.[key] ?? false])),
@@ -484,6 +486,23 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   setProjectSaveNotice("");
                   return;
                 }
+                if (can("project.settings.manage")) {
+                  const ids = complexityDimensions.map((item) =>
+                    String(item.id || "")
+                      .trim()
+                      .toLowerCase(),
+                  );
+                  if (
+                    !complexityDimensions.length ||
+                    ids.some((id) => !id) ||
+                    new Set(ids).size !== ids.length ||
+                    complexityDimensions.some((item) => !String(item.label || "").trim())
+                  ) {
+                    setError("Mỗi tiêu chí cần có mã duy nhất và tên hiển thị.");
+                    setProjectSaveNotice("");
+                    return;
+                  }
+                }
                 setTimezoneError("");
                 setError("");
                 setProjectSaveNotice("");
@@ -520,6 +539,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                           settings: {
                             ...(project.settings || {}),
                             ...settings,
+                            complexity_dimensions: complexityDimensions,
                             responsibilities,
                             action_policies: actionPolicies,
                           },
@@ -851,6 +871,96 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                               ))}
                             </select>
                           </label>
+                        ))}
+                      </div>
+                    </section>
+                    <section className="space-y-3 border-t border-border pt-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-ink">
+                            Tiêu chí đánh giá độ phức tạp dự án
+                          </h4>
+                          <p className="mt-1 text-xs text-ink-muted">
+                            AI đánh giá riêng từng tiêu chí, không tính điểm tổng. Thay đổi tiêu chí
+                            sẽ làm kết quả đánh giá trước đó được đánh dấu cũ.
+                          </p>
+                        </div>
+                        <button
+                          className="secondary-button inline-flex items-center gap-2"
+                          type="button"
+                          disabled={complexityDimensions.length >= 100}
+                          onClick={() =>
+                            setComplexityDimensions((current) => [
+                              ...current,
+                              {
+                                id: `D${crypto.randomUUID().replaceAll("-", "")}`,
+                                label: "",
+                                description: "",
+                              },
+                            ])
+                          }
+                        >
+                          <Plus aria-hidden="true" size={16} />
+                          Thêm tiêu chí
+                        </button>
+                      </div>
+                      <div className="space-y-3">
+                        {complexityDimensions.map((dimension, index) => (
+                          <fieldset
+                            className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-[minmax(8rem,0.7fr)_minmax(12rem,1fr)_minmax(16rem,2fr)_auto]"
+                            key={dimension.id}
+                          >
+                            <label className="field-label">
+                              Mã ổn định
+                              <input className="apple-input mt-2" readOnly value={dimension.id} />
+                            </label>
+                            <label className="field-label">
+                              Tên tiêu chí
+                              <input
+                                className="apple-input mt-2"
+                                maxLength={200}
+                                value={dimension.label}
+                                onChange={(event) =>
+                                  setComplexityDimensions((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...item, label: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                            </label>
+                            <label className="field-label">
+                              Mô tả phạm vi đánh giá
+                              <textarea
+                                className="apple-input mt-2 min-h-20"
+                                maxLength={2000}
+                                value={dimension.description || ""}
+                                onChange={(event) =>
+                                  setComplexityDimensions((current) =>
+                                    current.map((item, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...item, description: event.target.value }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                            </label>
+                            <button
+                              aria-label={`Xóa tiêu chí ${dimension.label || index + 1}`}
+                              className="icon-button h-10 w-10 self-end"
+                              type="button"
+                              onClick={() =>
+                                setComplexityDimensions((current) =>
+                                  current.filter((_, itemIndex) => itemIndex !== index),
+                                )
+                              }
+                            >
+                              <Trash2 aria-hidden="true" size={16} />
+                            </button>
+                          </fieldset>
                         ))}
                       </div>
                     </section>

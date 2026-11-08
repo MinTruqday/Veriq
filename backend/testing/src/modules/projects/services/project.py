@@ -22,6 +22,10 @@ from src.core.common import (
     resolve_user_reference,
 )
 from src.modules.projects.services.project_progress import task_summaries
+from src.modules.projects.services.project_complexity_config import (
+    normalize_project_settings,
+    resolve_project_complexity_dimensions,
+)
 from src.modules.projects.services.project_responsibilities import (
     assignable_responsibilities,
     validate_project_responsibilities,
@@ -103,6 +107,9 @@ def project_access(project, membership, grant):
         grant_permissions &= allowed
     return {
         **project,
+        "complexity_dimensions": resolve_project_complexity_dimensions(
+            project.get("settings")
+        ),
         "available_project_roles": available_project_roles,
         "configurable_role_settings": [
             {"key": key, "rules": rules}
@@ -207,8 +214,10 @@ class ProjectService:
         timestamp = now()
         _validate_project_dates(payload.planned_start_at, payload.planned_end_at)
         setup_role = ProjectService._project_setup_role()
+        project_values = payload.model_dump()
+        project_values["settings"] = normalize_project_settings(project_values.get("settings"))
         await validate_project_responsibilities(
-            payload.settings,
+            project_values["settings"],
             initial_members={
                 user.id: {
                     "status": "ACTIVE",
@@ -219,7 +228,7 @@ class ProjectService:
         )
         project = {
             "_id": new_id('PRJ'),
-            **payload.model_dump(),
+            **project_values,
             "project_lead_user_id": None,
             "created_by": user.id,
             "status": 'active',
@@ -262,6 +271,9 @@ class ProjectService:
             )
         return {
             **project,
+            "complexity_dimensions": resolve_project_complexity_dimensions(
+                project.get("settings")
+            ),
             "task_summary": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "cancelled": 0, "applicable_total": 0, "completion_percent": None},
             "current_membership": creator_membership,
             "current_permissions": sorted(permissions_for_membership(creator_membership, project["settings"])),
@@ -348,9 +360,12 @@ class ProjectService:
         current = await get_project(project_id, user, 'project.update')
         if payload.settings is not None:
             await get_project(project_id, user, 'project.settings.manage')
-            await validate_project_responsibilities(payload.settings, project_id)
+            changes_settings = normalize_project_settings(payload.settings)
+            await validate_project_responsibilities(changes_settings, project_id)
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("expected_revision", None)
+        if payload.settings is not None:
+            changes["settings"] = changes_settings
         await ProjectService._validate_project_lead(project_id, changes)
         if {"planned_start_at", "planned_end_at"} & set(changes):
             _validate_project_dates(
@@ -382,9 +397,12 @@ class ProjectService:
         
         await get_project(project_id, user, 'project.settings.manage')
         if payload.settings is not None:
-            await validate_project_responsibilities(payload.settings, project_id)
+            changes_settings = normalize_project_settings(payload.settings)
+            await validate_project_responsibilities(changes_settings, project_id)
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("expected_revision", None)
+        if payload.settings is not None:
+            changes["settings"] = changes_settings
         await ProjectService._validate_project_lead(project_id, changes)
         if not changes:
             raise HTTPException(

@@ -9,8 +9,8 @@ const defaults = {
   description: "",
   basis_refs: [],
   coverage_item: "",
-  test_level: "SYSTEM",
-  test_type: "FUNCTIONAL",
+  test_level: "",
+  test_type: "",
   risk: "MEDIUM",
   priority: "MEDIUM",
   technique_candidates: [],
@@ -18,7 +18,13 @@ const defaults = {
   analysis_findings: [],
 };
 
-export default function TestConditionEditor({ initialValue, requirements, onSave, onCancel }) {
+export default function TestConditionEditor({
+  initialValue,
+  requirements,
+  strategies = [],
+  onSave,
+  onCancel,
+}) {
   const [value, setValue] = useState(defaults);
   const [error, setError] = useState("");
   useEffect(
@@ -35,6 +41,16 @@ export default function TestConditionEditor({ initialValue, requirements, onSave
       ),
     [initialValue],
   );
+  useEffect(() => {
+    if (initialValue) return;
+    const strategy = strategies.find((item) => item.active_approved);
+    if (!strategy) return;
+    setValue((current) => ({
+      ...current,
+      test_level: current.test_level || strategy.test_levels?.[0] || "",
+      test_type: current.test_type || strategy.test_types?.[0] || "",
+    }));
+  }, [initialValue, strategies]);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
   return (
     <form
@@ -103,35 +119,43 @@ export default function TestConditionEditor({ initialValue, requirements, onSave
         </label>
         <label className="field-label">
           Nhóm điều kiện
-          <select
+          <input
             className="apple-input mt-2"
             value={value.category}
             onChange={(event) => setField("category", event.target.value)}
-            required
-          >
-            <option value="">Chọn nhóm điều kiện</option>
-            <option value="POSITIVE">Dương</option>
-            <option value="NEGATIVE">Âm</option>
-            <option value="BOUNDARY">Biên</option>
-          </select>
+            maxLength={100}
+            placeholder="Nhập nhóm điều kiện"
+          />
         </label>
         <label className="field-label">
           Cấp kiểm thử
           <input
             className="apple-input mt-2"
+            list="test-condition-level-options"
             value={value.test_level}
             onChange={(event) => setField("test_level", event.target.value)}
             required
           />
+          <datalist id="test-condition-level-options">
+            {[...new Set(strategies.flatMap((item) => item.test_levels || []))].map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
         </label>
         <label className="field-label">
           Loại kiểm thử
           <input
             className="apple-input mt-2"
+            list="test-condition-type-options"
             value={value.test_type}
             onChange={(event) => setField("test_type", event.target.value)}
             required
           />
+          <datalist id="test-condition-type-options">
+            {[...new Set(strategies.flatMap((item) => item.test_types || []))].map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
         </label>
         <label className="field-label">
           Rủi ro

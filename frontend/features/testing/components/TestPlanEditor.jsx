@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import StructuredValueEditor from "./StructuredValueEditor";
@@ -64,7 +64,6 @@ const conditionFields = [
   ["entry_criteria", "Tiêu chí đầu vào"],
   ["exit_criteria", "Tiêu chí đầu ra"],
   ["risks", "Rủi ro"],
-  ["test_types", "Loại kiểm thử"],
   ["assumptions", "Giả định"],
   ["constraints", "Ràng buộc"],
   ["suspension_criteria", "Tiêu chí đình chỉ"],
@@ -88,9 +87,9 @@ const defaults = {
   name: "",
   objective: "",
   strategy_version_id: "",
-  test_level: "SYSTEM",
+  test_level: "",
   test_approach: "",
-  environment: "staging",
+  environment: "",
   scope_in: [],
   scope_out: [],
   requirement_version_ids: [],
@@ -99,7 +98,7 @@ const defaults = {
   entry_criteria: [],
   exit_criteria: [],
   risks: [],
-  test_types: ["FUNCTIONAL"],
+  test_types: [],
   members: [],
   assumptions: [],
   constraints: [],
@@ -133,7 +132,7 @@ const defaults = {
 export default function TestPlanEditor({
   projectId,
   initialValue,
-  strategies,
+  strategies = [],
   requirements,
   suites,
   tests,
@@ -177,6 +176,32 @@ export default function TestPlanEditor({
       },
     };
   });
+  const selectedStrategy =
+    strategies.find(
+      (item) => item._id === value.strategy_version_id && item.status === "APPROVED",
+    ) ||
+    (!value.strategy_version_id
+      ? strategies.find((item) => item.status === "APPROVED" && item.active_approved)
+      : null);
+  useEffect(() => {
+    if (initialValue) return;
+    const strategy = selectedStrategy;
+    if (!strategy) return;
+    setValue((current) => ({
+      ...current,
+      test_level: current.test_level || strategy.test_levels?.[0] || "",
+      test_types: current.test_types.length > 0 ? current.test_types : strategy.test_types || [],
+      test_approach: current.test_approach || strategy.approach || "",
+      entry_criteria:
+        current.entry_criteria.length > 0
+          ? current.entry_criteria
+          : strategy.entry_criteria_defaults || [],
+      exit_criteria:
+        current.exit_criteria.length > 0
+          ? current.exit_criteria
+          : strategy.exit_criteria_defaults || [],
+    }));
+  }, [initialValue, selectedStrategy, value.strategy_version_id]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
@@ -539,7 +564,19 @@ export default function TestPlanEditor({
               <select
                 className="apple-input mt-2"
                 value={value.environment_id || ""}
-                onChange={(event) => setField("environment_id", event.target.value)}
+                onChange={(event) => {
+                  const environmentId = event.target.value;
+                  const selectedEnvironment = environments.find(
+                    (item) => item._id === environmentId,
+                  );
+                  setValue((current) => ({
+                    ...current,
+                    environment_id: environmentId,
+                    environment: selectedEnvironment
+                      ? selectedEnvironment.name || selectedEnvironment.key || ""
+                      : current.environment,
+                  }));
+                }}
               >
                 <option value="">Chọn môi trường</option>
                 {environments.map((item) => (
@@ -563,7 +600,27 @@ export default function TestPlanEditor({
               <select
                 className="apple-input mt-2"
                 value={value.strategy_version_id}
-                onChange={(event) => setField("strategy_version_id", event.target.value)}
+                onChange={(event) => {
+                  const strategyVersionId = event.target.value;
+                  const strategy =
+                    strategies.find(
+                      (item) => item._id === strategyVersionId && item.status === "APPROVED",
+                    ) ||
+                    (!strategyVersionId
+                      ? strategies.find(
+                          (item) => item.status === "APPROVED" && item.active_approved,
+                        )
+                      : null);
+                  setValue((current) => ({
+                    ...current,
+                    strategy_version_id: strategyVersionId,
+                    test_level: strategy?.test_levels?.[0] || "",
+                    test_types: strategy?.test_types || [],
+                    test_approach: strategy?.approach || "",
+                    entry_criteria: strategy?.entry_criteria_defaults || [],
+                    exit_criteria: strategy?.exit_criteria_defaults || [],
+                  }));
+                }}
               >
                 <option value="">Mặc định theo chiến lược đang áp dụng</option>
                 {strategies
@@ -577,11 +634,37 @@ export default function TestPlanEditor({
             </label>
             <label className="field-label">
               Cấp kiểm thử
-              <input
+              <select
                 className="apple-input mt-2"
                 value={value.test_level}
                 onChange={(event) => setField("test_level", event.target.value)}
                 required
+              >
+                <option value="">Chọn cấp kiểm thử</option>
+                {(selectedStrategy?.test_levels || []).map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+                {value.test_level && !selectedStrategy?.test_levels?.includes(value.test_level) && (
+                  <option value={value.test_level}>{value.test_level}</option>
+                )}
+              </select>
+            </label>
+            <label className="field-label md:col-span-2">
+              Loại kiểm thử mỗi dòng một giá trị
+              <textarea
+                className="apple-input mt-2 min-h-24"
+                value={(value.test_types || []).join("\n")}
+                onChange={(event) =>
+                  setField(
+                    "test_types",
+                    event.target.value
+                      .split("\n")
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  )
+                }
               />
             </label>
             <label className="field-label">

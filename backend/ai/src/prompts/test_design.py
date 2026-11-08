@@ -23,7 +23,7 @@ AUTOMATED_TECHNIQUE_RECOMMENDATION_INSTRUCTION = "Recommend test-design techniqu
 
 
 TEST_CONDITION_GENERATION_CONTRACT = """<test_condition_generation_rules>
-Generate evidence-grounded condition candidates with concrete titles, descriptions, coverage items, test levels, test types, risk, priority, candidate techniques, and testability status. Include positive, negative, and boundary categories only when the supplied evidence supports them; if a category cannot be grounded, return a warning rather than inventing behavior or limits.
+Generate evidence-grounded condition candidates with concrete titles, descriptions, coverage items, test levels, test types, risk, priority, candidate techniques, and testability status. Give each condition a concise category that describes the evidence-supported behavior. Do not force a preset category list. If a category cannot be grounded, return a warning rather than inventing behavior or limits.
 For every candidate, include one or more exact contiguous evidence quotes and the corresponding evidence references from the supplied sources; a candidate without a verifiable quote is invalid. Use only cited evidence references and distinguish an untestable condition from a condition whose needed information is missing. Do not create executable Test Cases in this capability.
 </test_condition_generation_rules>"""
 

@@ -106,7 +106,7 @@ class WorkItemCreate(BaseModel):
     title: str = Field(min_length=2, max_length=300)
     description: str = Field(default="", max_length=5000)
     parent_id: str | None = Field(default=None, min_length=1, max_length=200)
-    priority: Literal["LOW", "MEDIUM", "HIGH", "HIGHEST"] = "MEDIUM"
+    priority: str | None = Field(default=None, min_length=1, max_length=100)
     estimate: float | None = Field(default=None, gt=0, le=1_000_000)
     assignee_id: str | None = Field(default=None, min_length=1, max_length=200)
     planned_start_at: datetime | None = None
@@ -131,12 +131,20 @@ class WorkItemCreate(BaseModel):
                 normalized.append(label)
         return normalized
 
+    @field_validator("priority", mode="before")
+    @classmethod
+    def normalize_priority(cls, value):
+        if value is None:
+            return None
+        normalized = " ".join(str(value).split())
+        return normalized or None
+
 
 class WorkItemPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=2, max_length=300)
     description: str | None = Field(default=None, max_length=5000)
-    priority: Literal["LOW", "MEDIUM", "HIGH", "HIGHEST"] | None = None
+    priority: str | None = Field(default=None, min_length=1, max_length=100)
     estimate: float | None = Field(default=None, gt=0, le=1_000_000)
     assignee_id: str | None = Field(default=None, min_length=1, max_length=200)
     planned_start_at: datetime | None = None
@@ -162,6 +170,14 @@ class WorkItemPatch(BaseModel):
                 seen.add(identity)
                 normalized.append(label)
         return normalized
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def normalize_priority(cls, value):
+        if value is None:
+            return None
+        normalized = " ".join(str(value).split())
+        return normalized or None
 
 
 class WorkItemTransition(BaseModel):

@@ -1249,7 +1249,7 @@ class WorkItemService:
                         "title": task["title"],
                         "description": task.get("description", ""),
                         "parent_id": None,
-                        "priority": "MEDIUM",
+                        "priority": None,
                         "estimate": task.get("weight"),
                         "assignee_id": task.get("assignee_id"),
                         "due_at": task.get("due_at"),

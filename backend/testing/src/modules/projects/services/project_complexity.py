@@ -13,22 +13,9 @@ from src.core.database import database
 from src.modules.requirements.services.document_reader import _document_text
 from src.modules.requirements.services.requirement_documents import can_read_requirement_document
 from src.core.source_evidence import split_source_evidence
-
-
-DIMENSION_IDS = {
-    "SCOPE",
-    "BUSINESS_RULES",
-    "REQUIREMENT_TESTABILITY",
-    "INTEGRATIONS",
-    "DATA_LIFECYCLE",
-    "SECURITY_COMPLIANCE",
-    "NON_FUNCTIONAL",
-    "ARCHITECTURE_ENVIRONMENT",
-    "TEST_COMBINATORICS",
-    "AUTOMATION_OBSERVABILITY",
-    "BUSINESS_RISK",
-    "UNCERTAINTY_CHANGE",
-}
+from src.modules.projects.services.project_complexity_config import (
+    resolve_project_complexity_dimensions,
+)
 
 
 def _fingerprint(manifest):
@@ -441,15 +428,25 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
             status_code=422,
             detail={"code": "PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE", "evidence_chunks": len(evidence), "maximum": 100},
         )
-    project = await database.value.projects.find_one({"_id": project_id}, {"locale": 1})
+    project = await database.value.projects.find_one(
+        {"_id": project_id}, {"locale": 1, "settings": 1}
+    )
     locale = str(output_language or (project or {}).get("locale") or "").strip()
     if not locale:
         raise HTTPException(
             status_code=422,
             detail={"code": "PROJECT_OUTPUT_LANGUAGE_REQUIRED"},
         )
+    dimensions_config = resolve_project_complexity_dimensions(
+        (project or {}).get("settings")
+    )
+    dimension_ids = {item["id"] for item in dimensions_config}
+    rubric_fingerprint = _fingerprint(dimensions_config)
+    request_fingerprint = _fingerprint(
+        {"source_fingerprint": scope["fingerprint"], "rubric_fingerprint": rubric_fingerprint}
+    )
     context = {
-        "assessment_dimensions": sorted(DIMENSION_IDS),
+        "assessment_dimensions": dimensions_config,
         "source_coverage": {
             "current_ai_readable_documents": scope["document_count"],
             "baselined_requirements": scope["requirement_count"],
@@ -460,7 +457,7 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
         "user_instruction": payload.instruction.strip(),
     }
     reservation, replay = await _claim_project_complexity_request(
-        project_id, user, payload, scope["fingerprint"], locale
+        project_id, user, payload, request_fingerprint, locale
     )
     if replay:
         latest_scope = await _source_scope(
@@ -470,7 +467,11 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
             requirement_version_ids=payload.requirement_version_ids,
             include_documents=bool(payload.document_ids),
         )
-        if latest_scope["fingerprint"] != scope["fingerprint"]:
+        replay_dimensions = replay.get("complexity_dimensions") or resolve_project_complexity_dimensions({})
+        if (
+            latest_scope["fingerprint"] != scope["fingerprint"]
+            or replay_dimensions != dimensions_config
+        ):
             raise HTTPException(
                 status_code=409,
                 detail={"code": "PROJECT_COMPLEXITY_SOURCES_CHANGED", "retryable": True},
@@ -479,6 +480,9 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
         response.pop("source_manifest", None)
         response.pop("claim_token", None)
         response.pop("lease_expires_at", None)
+        labels = {item["id"]: item["label"] for item in dimensions_config}
+        for item in (response.get("suggestions") or [{}])[0].get("dimensions") or []:
+            item.setdefault("label", labels.get(item.get("dimension_id"), item.get("dimension_id")))
         response["commercial_feasibility"] = await _commercial_feasibility(project_id, user)
         return response
     try:
@@ -496,9 +500,13 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
             raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_RESPONSE_INVALID"})
         suggestion = suggestions[0]
         dimensions = suggestion.get("dimensions") or []
-        dimension_ids = [item.get("dimension_id") for item in dimensions]
-        if len(dimension_ids) != len(DIMENSION_IDS) or set(dimension_ids) != DIMENSION_IDS:
+        returned_dimension_ids = [item.get("dimension_id") for item in dimensions]
+        if len(returned_dimension_ids) != len(dimension_ids) or set(returned_dimension_ids) != dimension_ids:
             raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_DIMENSIONS_INVALID"})
+        dimension_by_id = {item["id"]: item for item in dimensions_config}
+        for dimension in dimensions:
+            dimension["label"] = dimension_by_id[dimension["dimension_id"]]["label"]
+            dimension["description"] = dimension_by_id[dimension["dimension_id"]]["description"]
         sources = {item["artifact_version_id"]: item for item in evidence}
         locale = locale.lower()
         insufficient_explanation = (
@@ -562,6 +570,17 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
         )
         if latest_scope["fingerprint"] != scope["fingerprint"]:
             raise HTTPException(status_code=409, detail={"code": "PROJECT_COMPLEXITY_SOURCES_CHANGED", "retryable": True})
+        latest_project = await database.value.projects.find_one(
+            {"_id": project_id}, {"settings": 1}
+        )
+        latest_dimensions = resolve_project_complexity_dimensions(
+            (latest_project or {}).get("settings")
+        )
+        if latest_dimensions != dimensions_config:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "PROJECT_COMPLEXITY_RUBRIC_CHANGED", "retryable": True},
+            )
         record = {
             **reservation,
             "result_type": "PROJECT_COMPLEXITY_ASSESSMENT",
@@ -575,6 +594,8 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
                 "requirement_version_ids": payload.requirement_version_ids,
             },
             "source_fingerprint": scope["fingerprint"],
+            "rubric_fingerprint": rubric_fingerprint,
+            "complexity_dimensions": dimensions_config,
             "scope_summary": {
                 "current_ai_readable_documents": scope["document_count"],
                 "baselined_requirements": scope["requirement_count"],
@@ -607,7 +628,7 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
 
 
 async def get_latest_project_complexity(project_id, user):
-    await get_project(project_id, user, "ai.ask_project")
+    project = await get_project(project_id, user, "ai.ask_project")
     record = await database.value.ai_results.find_one(
         {"project_id": project_id, "result_type": "PROJECT_COMPLEXITY_ASSESSMENT"},
         sort=[("created_at", -1)],
@@ -625,7 +646,14 @@ async def get_latest_project_complexity(project_id, user):
             selection.get("document_ids") is None or bool(selection.get("document_ids"))
         ),
         )
-        stale = scope["fingerprint"] != record.get("source_fingerprint")
+        current_dimensions = resolve_project_complexity_dimensions(
+            project.get("settings")
+        )
+        stored_dimensions = record.get("complexity_dimensions") or resolve_project_complexity_dimensions({})
+        stale = (
+            scope["fingerprint"] != record.get("source_fingerprint")
+            or current_dimensions != stored_dimensions
+        )
     except HTTPException as error:
         error_detail = error.detail if isinstance(error.detail, dict) else {}
         inaccessible_selected_documents = (
@@ -641,6 +669,13 @@ async def get_latest_project_complexity(project_id, user):
     if stale:
         record["citations"] = []
         record["suggestions"] = []
+    else:
+        labels = {
+            item["id"]: item["label"]
+            for item in resolve_project_complexity_dimensions(project.get("settings"))
+        }
+        for item in (record.get("suggestions") or [{}])[0].get("dimensions") or []:
+            item.setdefault("label", labels.get(item.get("dimension_id"), item.get("dimension_id")))
     record.pop("source_manifest", None)
     record.pop("evidence_refs", None)
     record["stale"] = stale
