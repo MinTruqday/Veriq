@@ -214,6 +214,7 @@ class WorkflowStatusInput(BaseModel):
     key: str = Field(min_length=1, max_length=100, pattern=r"^[A-Z][A-Z0-9_]*$")
     name: str = Field(min_length=2, max_length=100)
     counts_as_completed: bool = False
+    requires_sprint: bool | None = None
 
 
 class PlanningWorkflowUpdate(BaseModel):

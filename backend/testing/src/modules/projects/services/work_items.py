@@ -31,6 +31,10 @@ def _default_completed_statuses():
     return set(_default_planning_settings().get("completed_statuses") or [])
 
 
+def _default_sprint_required_statuses():
+    return set(_default_planning_settings().get("requires_sprint_statuses") or [])
+
+
 def _conflict(existing):
     raise HTTPException(
         status_code=409,
@@ -153,8 +157,25 @@ async def _workflow(project_id):
                         "key": column["status"],
                         "name": column.get("name") or column["status"],
                         "counts_as_completed": column["status"] in completed_statuses,
+                        "requires_sprint": column["status"] in _default_sprint_required_statuses(),
                     }
                     for column in (board or {}).get("columns", [])
+                ],
+            }
+        else:
+            required_sprint_statuses = _default_sprint_required_statuses()
+            workflow = {
+                **workflow,
+                "statuses": [
+                    {
+                        **status,
+                        "requires_sprint": (
+                            status.get("requires_sprint")
+                            if isinstance(status.get("requires_sprint"), bool)
+                            else status.get("key") in required_sprint_statuses
+                        ),
+                    }
+                    for status in workflow["statuses"]
                 ],
             }
         return workflow
@@ -197,6 +218,7 @@ async def _workflow(project_id):
                 "key": column["status"],
                 "name": column.get("name") or column["status"],
                 "counts_as_completed": column["status"] in completed_statuses,
+                "requires_sprint": column["status"] in _default_sprint_required_statuses(),
             }
             for column in board.get("columns", [])
         ],
@@ -373,7 +395,16 @@ class WorkItemService:
             not can_manage and not roles.intersection(transition["allowed_roles"])
         ):
             raise HTTPException(status_code=422, detail={"code": "WORK_ITEM_WORKFLOW_TRANSITION_INVALID"})
-        if payload.status == "IN_PROGRESS" and item.get("sprint_id") is None and project.get("planning_method") == "SCRUM":
+        target_status = next(
+            (value for value in workflow.get("statuses", []) if value["key"] == payload.status),
+            None,
+        )
+        if (
+            target_status
+            and target_status.get("requires_sprint")
+            and item.get("sprint_id") is None
+            and project.get("planning_method") == "SCRUM"
+        ):
             raise HTTPException(status_code=422, detail={"code": "SCRUM_SPRINT_SCOPE_REQUIRED"})
         is_kanban = project.get("planning_method") == "KANBAN"
         if is_kanban:
@@ -692,6 +723,16 @@ class WorkItemService:
         ):
             raise HTTPException(status_code=422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
         workflow = await _workflow(project_id)
+        previous_sprint_requirements = {
+            value["key"]: value.get("requires_sprint", False)
+            for value in workflow.get("statuses", [])
+        }
+        default_sprint_requirements = _default_sprint_required_statuses()
+        for status in statuses:
+            if status["requires_sprint"] is None:
+                status["requires_sprint"] = previous_sprint_requirements.get(
+                    status["key"], status["key"] in default_sprint_requirements
+                )
         removed_statuses = {
             value["key"] for value in workflow.get("statuses", [])
         } - status_keys

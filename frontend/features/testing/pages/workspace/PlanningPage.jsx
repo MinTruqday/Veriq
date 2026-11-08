@@ -1184,6 +1184,7 @@ function PlanningConfigurationModal({
           key: item.key.trim(),
           name: item.name.trim(),
           counts_as_completed: Boolean(item.counts_as_completed),
+          requires_sprint: Boolean(item.requires_sprint),
         }));
         const nextTransitions = transitions.map((item) => ({
           from_status: item.from_status,
@@ -1319,7 +1320,7 @@ function PlanningConfigurationModal({
                   </div>
                   {statuses.map((status, index) => (
                     <div
-                      className="grid min-w-0 gap-3 rounded-control border border-border p-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+                      className="grid min-w-0 gap-3 rounded-control border border-border p-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto_auto]"
                       key={`${status.key}-${index}`}
                     >
                       <input
@@ -1366,6 +1367,22 @@ function PlanningConfigurationModal({
                         />{" "}
                         Hoàn thành
                       </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(status.requires_sprint)}
+                          onChange={(event) =>
+                            setStatuses((items) =>
+                              items.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, requires_sprint: event.target.checked }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />{" "}
+                        Cần đợt lặp
+                      </label>
                       <button
                         className="secondary-button"
                         type="button"
@@ -1385,7 +1402,7 @@ function PlanningConfigurationModal({
                     onClick={() =>
                       setStatuses((items) => [
                         ...items,
-                        { key: "", name: "", counts_as_completed: false },
+                        { key: "", name: "", counts_as_completed: false, requires_sprint: false },
                       ])
                     }
                   >
