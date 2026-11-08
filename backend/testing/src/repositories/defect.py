@@ -9,7 +9,16 @@ class DefectRepository:
 
         severity = {
             "$toLower": {
-                "$trim": {"input": {"$ifNull": ["$severity", ""]}}
+                "$trim": {
+                    "input": {
+                        "$convert": {
+                            "input": "$severity",
+                            "to": "string",
+                            "onError": "",
+                            "onNull": "",
+                        }
+                    }
+                }
             }
         }
         blocking = {"$in": [severity, ["blocker", "critical"]]}
@@ -238,11 +247,6 @@ class DefectRepository:
             },
             return_document=ReturnDocument.AFTER,
             **({"session": session} if session is not None else {}),
-        )
-
-    async def delete_retest(self, event_id, application_status):
-        await database.value.defect_retests.delete_one(
-            {"_id": event_id, "application_status": application_status}
         )
 
     async def mark_retest_applied(self, event_id, application_status, session=None):

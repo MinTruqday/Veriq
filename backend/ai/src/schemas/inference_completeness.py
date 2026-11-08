@@ -30,7 +30,7 @@ class CompletenessFindingOutput(BaseModel):
     rationale: str = Field(min_length=2, max_length=1500)
     requested_document: str = Field(default="", max_length=500)
     requested_details: list[str] = Field(min_length=1, max_length=8)
-    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    priority: str | None = Field(default=None, max_length=80)
     evidence_quotes: list[CompletenessQuoteOutput] = Field(min_length=1, max_length=4)
 
 

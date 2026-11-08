@@ -2,7 +2,6 @@ import os
 from typing import Optional
 
 class Settings:
-    PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
     INTERNAL_API_URL: str = os.environ["INTERNAL_API_URL"]
     SECRET_KEY: str = os.environ["SECRET_KEY"]
@@ -17,7 +16,6 @@ class Settings:
     OBJECT_STORAGE_LEGACY_BUCKET: str = os.environ["OBJECT_STORAGE_LEGACY_BUCKET"]
     OBJECT_STORAGE_REGION: str = os.environ["OBJECT_STORAGE_REGION"]
     OBJECT_STORAGE_PUBLIC_URL: Optional[str] = os.environ["OBJECT_STORAGE_PUBLIC_URL"]
-    PLATFORM_SYSTEM_ID: str = os.environ["PLATFORM_SYSTEM_ID"]
     AUTHENTICATION_URL: str = os.environ["AUTHENTICATION_URL"]
     CLOUD_DB_NAME: str = os.environ["CLOUD_DB_NAME"]
     COMPRESSIBLE_TEXT_EXTENSIONS: str = os.environ["COMPRESSIBLE_TEXT_EXTENSIONS"]

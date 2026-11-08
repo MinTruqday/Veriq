@@ -131,9 +131,6 @@ class ReviewRepository:
             {"review_session_id": review_id}
         ).sort("created_at", 1).to_list(limit)
 
-    async def count_findings(self, query):
-        return await database.value.review_findings.count_documents(query)
-
     async def insert_finding(self, value):
         await database.value.review_findings.insert_one(value)
         return value

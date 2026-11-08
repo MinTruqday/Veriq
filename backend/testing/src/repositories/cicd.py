@@ -68,11 +68,6 @@ class CiCdRepository:
     async def insert_execution(self, value, session=None):
         await database.value.automation_executions.insert_one(value, session=session)
 
-    async def delete_execution(self, execution_id, project_id):
-        await database.value.automation_executions.delete_one(
-            {"_id": execution_id, "project_id": project_id}
-        )
-
     async def insert_run(self, value, session=None):
         await database.value.pipeline_runs.insert_one(value, session=session)
 

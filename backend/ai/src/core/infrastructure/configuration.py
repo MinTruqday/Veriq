@@ -3,7 +3,6 @@ from typing import Optional
 
 
 class Settings:
-    PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
     INTERNAL_API_URL: str = os.environ["INTERNAL_API_URL"]
     SECRET_KEY: str = os.environ["SECRET_KEY"]
@@ -16,7 +15,6 @@ class Settings:
     NEO4J_USER: str = os.environ["NEO4J_USER"]
     NEO4J_PASSWORD: str = os.environ["NEO4J_PASSWORD"]
     EMBEDDING_MODEL: str = os.environ["EMBEDDING_MODEL"]
-    DOCKER_HOST: str = os.environ["DOCKER_HOST"]
     OBJECT_STORAGE_ENDPOINT: str = os.environ["OBJECT_STORAGE_ENDPOINT"]
     OBJECT_STORAGE_ACCESS_KEY: str = os.environ["OBJECT_STORAGE_ACCESS_KEY"]
     OBJECT_STORAGE_SECRET_KEY: str = os.environ["OBJECT_STORAGE_SECRET_KEY"]
@@ -35,8 +33,6 @@ class Settings:
     FALLBACK_MODEL_TOKEN: str = os.getenv("FALLBACK_MODEL_TOKEN", "").strip()
     MODEL_TIMEOUT_SECONDS: int = int(os.environ["MODEL_TIMEOUT_SECONDS"])
     RERANKER_MODEL: str = os.environ["RERANKER_MODEL"]
-    NLI_MODEL_NAME: str = os.environ["NLI_MODEL_NAME"]
-    PLATFORM_SYSTEM_ID: str = os.environ["PLATFORM_SYSTEM_ID"]
     AI_DB_NAME: str = os.environ["AI_DB_NAME"]
     AUTHENTICATION_URL: str = os.environ["AUTHENTICATION_URL"]
     CONTENT_URL: str = os.environ["CONTENT_URL"]

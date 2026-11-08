@@ -223,12 +223,6 @@ class RequirementRepository:
             version, **({"session": session} if session is not None else {})
         )
 
-    async def delete_requirement(self, requirement_id, project_id=None):
-        query = {"_id": requirement_id}
-        if project_id:
-            query["project_id"] = project_id
-        await database.value.requirements.delete_one(query)
-
     async def delete_version(self, version_id, project_id=None):
         query = {"_id": version_id}
         if project_id:
@@ -349,35 +343,6 @@ class RequirementRepository:
                 }
             },
             **({"session": session} if session is not None else {}),
-        )
-        return result.modified_count == 1
-
-    async def rollback_activated_version(
-        self,
-        requirement_id,
-        project_id,
-        activated_version_id,
-        previous_version_id,
-        previous_status,
-        previous_tags,
-        previous_owner_id,
-        updated_at,
-    ):
-        result = await database.value.requirements.update_one(
-            {
-                "_id": requirement_id,
-                "project_id": project_id,
-                "current_version_id": activated_version_id,
-            },
-            {
-                "$set": {
-                    "current_version_id": previous_version_id,
-                    "status": previous_status,
-                    "tags": previous_tags,
-                    "owner_id": previous_owner_id,
-                    "updated_at": updated_at,
-                }
-            },
         )
         return result.modified_count == 1
 
@@ -604,27 +569,6 @@ class RequirementRepository:
         )
         return result.matched_count == 1
 
-    async def rollback_requirement_obsolete(
-        self, requirement_id, project_id, obsolete_status, obsolete_at, restored_status, updated_at
-    ):
-        await database.value.requirements.update_one(
-            {
-                "_id": requirement_id,
-                "project_id": project_id,
-                "status": obsolete_status,
-                "obsolete_at": obsolete_at,
-            },
-            {
-                "$set": {"status": restored_status, "updated_at": updated_at},
-                "$unset": {
-                    "obsolete_reason": "",
-                    "obsolete_by": "",
-                    "obsolete_at": "",
-                    "status_before_obsolete": "",
-                },
-            },
-        )
-
     async def restore_version(
         self,
         version_id,
@@ -705,21 +649,5 @@ class RequirementRepository:
             return_document=ReturnDocument.AFTER,
             **({"session": session} if session is not None else {}),
         )
-
-    async def rollback_version_restore(
-        self, version_id, project_id, obsolete_status, restored_status, updated_at
-    ):
-        await database.value.requirement_versions.update_one(
-            {"_id": version_id, "project_id": project_id},
-            {
-                "$set": {
-                    "status": obsolete_status,
-                    "status_before_obsolete": restored_status,
-                    "updated_at": updated_at,
-                },
-                "$inc": {"revision": 1},
-            },
-        )
-
 
 requirement_repository = RequirementRepository()

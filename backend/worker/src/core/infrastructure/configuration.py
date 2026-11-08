@@ -2,7 +2,6 @@ import os
 
 
 class Settings:
-    PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
     SECRET_KEY: str = os.environ["SECRET_KEY"]
     MONGODB_URI: str = os.environ["MONGODB_URI"]

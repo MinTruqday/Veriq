@@ -176,7 +176,7 @@ def plan_completeness(plan, settings=None):
         if settings.get(requirement["setting"], requirement["default"]):
             checks.append((requirement["code"], bool(plan.get(requirement["field"]))))
     findings = [
-        {"code": code, "severity": 'MAJOR'}
+        {"code": code, "blocks_approval": True}
         for code, passed in checks
         if not passed
     ]

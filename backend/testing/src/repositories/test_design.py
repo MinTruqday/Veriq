@@ -64,25 +64,10 @@ class TestDesignRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def count_repository_children(self, project_id, node_id):
-        return await database.value.test_repository_nodes.count_documents(
-            {"project_id": project_id, "parent_id": node_id, "status": "ACTIVE"}
-        )
-
-    async def count_repository_cases(self, project_id, node_id):
-        return await database.value.test_cases.count_documents(
-            {"project_id": project_id, "repository_node_id": node_id}
-        )
-
     async def list_reusable_steps(self, project_id):
         return await database.value.reusable_test_steps.find(
             {"project_id": project_id, "status": "ACTIVE"}
         ).sort("updated_at", -1).to_list(1000)
-
-    async def find_reusable_step(self, project_id, step_id):
-        return await database.value.reusable_test_steps.find_one(
-            {"_id": step_id, "project_id": project_id, "status": "ACTIVE"}
-        )
 
     async def find_reusable_step_version(self, project_id, version_id):
         return await database.value.reusable_test_step_versions.find_one(
@@ -298,20 +283,6 @@ class TestDesignRepository:
         )
         return result.matched_count == 1
 
-    async def claim_case_draft(
-        self, draft_id, project_id, revision, source_status, target_status, changes
-    ):
-        return await database.value.test_case_drafts.find_one_and_update(
-            {
-                "_id": draft_id,
-                "project_id": project_id,
-                "status": source_status,
-                "revision": revision,
-            },
-            {"$set": {**changes, "status": target_status}, "$inc": {"revision": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-
     async def find_case_version(self, version_id, project_id):
         return await database.value.test_case_versions.find_one(
             {"_id": version_id, "project_id": project_id}
@@ -325,31 +296,6 @@ class TestDesignRepository:
     async def find_case_by_key(self, project_id, test_case_key):
         return await database.value.test_cases.find_one(
             {"project_id": project_id, "test_case_key": test_case_key}
-        )
-
-    async def find_latest_case_version(self, test_case_id):
-        return await database.value.test_case_versions.find_one(
-            {"test_case_id": test_case_id}, sort=[("version", -1)]
-        )
-
-    async def insert_case(self, value):
-        await database.value.test_cases.insert_one(value)
-
-    async def insert_case_version(self, value):
-        await database.value.test_case_versions.insert_one(value)
-
-    async def set_case_version_index_result(
-        self, version_id, project_id, index_status, error_code, indexed_at
-    ):
-        return await database.value.test_case_versions.update_one(
-            {"_id": version_id, "project_id": project_id},
-            {
-                "$set": {
-                    "index_status": index_status,
-                    "index_error_code": error_code,
-                    "indexed_at": indexed_at,
-                }
-            },
         )
 
     async def set_case_version_approval_result(
@@ -379,91 +325,6 @@ class TestDesignRepository:
                     "approval_audit_error_code": approval_audit_error_code,
                     "adequacy_invalidation_status": adequacy_invalidation_status,
                     "adequacy_invalidation_error_code": adequacy_invalidation_error_code,
-                }
-            },
-        )
-
-    async def activate_case_version(
-        self, test_case_id, project_id, parent_version_id, version_id, status, updated_at
-    ):
-        result = await database.value.test_cases.update_one(
-            {
-                "_id": test_case_id,
-                "project_id": project_id,
-                "current_version_id": parent_version_id,
-            },
-            {
-                "$set": {
-                    "current_version_id": version_id,
-                    "status": status,
-                    "updated_at": updated_at,
-                }
-            },
-        )
-        return result.matched_count == 1
-
-    async def approve_case_draft(
-        self,
-        draft_id,
-        project_id,
-        revision,
-        source_status,
-        target_status,
-        version_id,
-        updated_at,
-    ):
-        result = await database.value.test_case_drafts.update_one(
-            {
-                "_id": draft_id,
-                "project_id": project_id,
-                "status": source_status,
-                "revision": revision,
-            },
-            {
-                "$set": {
-                    "status": target_status,
-                    "frozen_version_id": version_id,
-                    "updated_at": updated_at,
-                },
-                "$inc": {"revision": 1},
-            },
-        )
-        return result.matched_count == 1
-
-    async def delete_case_version(self, version_id, project_id):
-        await database.value.test_case_versions.delete_one(
-            {"_id": version_id, "project_id": project_id}
-        )
-
-    async def delete_unactivated_case(self, test_case_id, project_id, version_ids):
-        await database.value.test_cases.delete_one(
-            {
-                "_id": test_case_id,
-                "project_id": project_id,
-                "current_version_id": {"$in": version_ids},
-            }
-        )
-
-    async def restore_case_version(self, test_case_id, project_id, version_id, parent_id, updated_at):
-        await database.value.test_cases.update_one(
-            {
-                "_id": test_case_id,
-                "project_id": project_id,
-                "current_version_id": version_id,
-            },
-            {"$set": {"current_version_id": parent_id, "updated_at": updated_at}},
-        )
-
-    async def reset_case_draft(
-        self, draft_id, project_id, source_status, target_status, updated_at
-    ):
-        await database.value.test_case_drafts.update_one(
-            {"_id": draft_id, "project_id": project_id, "status": source_status},
-            {
-                "$set": {
-                    "status": target_status,
-                    "approval_error_at": updated_at,
-                    "updated_at": updated_at,
                 }
             },
         )

@@ -37,17 +37,6 @@ class ExecutionContextRepository:
     async def project_settings(self, project_id):
         return await database.value.projects.find_one({"_id": project_id}, {"settings": 1})
 
-    async def find_approved_completion(self, project_id, release_id, statuses, session=None):
-        return await database.value.test_completion_reports.find_one(
-            {
-                "project_id": project_id,
-                "release_id": release_id,
-                "status": {"$in": statuses},
-            },
-            sort=[("approved_at", -1), ("created_at", -1)],
-            **({"session": session} if session is not None else {}),
-        )
-
     async def list_approved_completions(self, project_id, release_id, statuses, session=None):
         return await database.value.test_completion_reports.find(
             {

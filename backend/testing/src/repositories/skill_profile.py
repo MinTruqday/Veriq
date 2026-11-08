@@ -107,20 +107,6 @@ class SkillProfileRepository:
             session=session,
         ).to_list(len(user_ids))
 
-    async def iter_active_runs(self, project_id, user_ids, session=None):
-        if not user_ids:
-            return
-        cursor = database.value.test_runs.find(
-            {
-                "project_id": project_id,
-                "status": {"$in": ["READY", "IN_PROGRESS"]},
-            },
-            {"assignee_id": 1, "test_case_assignments": 1},
-            session=session,
-        )
-        async for run in cursor:
-            yield run
-
     async def iter_active_runs_for_members(
         self, user_ids, session=None, exclude_run_id=None, include_drafts=False
     ):

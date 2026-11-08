@@ -181,24 +181,6 @@ class ProjectRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def restore_member(self, membership, previous, updated_at):
-        return await self.members.update_one(
-            {
-                "_id": membership["_id"],
-                "project_id": membership["project_id"],
-                "membership_revision": membership["membership_revision"],
-            },
-            {
-                "$set": {
-                    "project_role": previous["project_role"],
-                    "project_roles": [previous["project_role"]],
-                    "status": previous["status"],
-                    "updated_at": updated_at,
-                },
-                "$inc": {"membership_revision": 1},
-            },
-        )
-
     async def remove_member(self, project_id, user_id):
         return await self.members.delete_one(
             {"project_id": project_id, "user_id": user_id}
@@ -216,9 +198,6 @@ class ProjectRepository:
         return await self.tasks.find(
             {"project_id": {"$in": list(project_ids)}}
         ).to_list(length=limit)
-
-    async def find_task(self, project_id, task_id):
-        return await self.tasks.find_one({"_id": task_id, "project_id": project_id})
 
     async def create_task(self, task):
         await self.tasks.insert_one(task)

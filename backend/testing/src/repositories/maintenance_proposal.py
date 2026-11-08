@@ -9,11 +9,6 @@ class MaintenanceProposalRepository:
             {"impact_analysis_id": analysis_id}
         ).sort([("created_at", 1), ("_id", 1)]).to_list(limit)
 
-    async def list_by_impact_and_status(self, analysis_id, status, limit):
-        return await database.value.maintenance_proposals.find(
-            {"impact_analysis_id": analysis_id, "status": status}
-        ).to_list(limit)
-
     async def find_change_set(self, change_set_id):
         return await database.value.requirement_change_sets.find_one(
             {"_id": change_set_id}

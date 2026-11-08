@@ -84,14 +84,6 @@ class RequirementAiRepository:
         )
         return value
 
-    async def update_requirement(self, query, changes, session=None):
-        return await database.value.requirement_versions.find_one_and_update(
-            query,
-            {"$set": changes, "$inc": {"revision": 1}},
-            return_document=ReturnDocument.AFTER,
-            **({"session": session} if session is not None else {}),
-        )
-
     async def delete_acceptance_criteria(self, version_id, session=None):
         await database.value.acceptance_criteria.delete_many(
             {"requirement_version_id": version_id},
@@ -102,19 +94,5 @@ class RequirementAiRepository:
         return await database.value.requirement_versions.find_one(
             {"_id": version_id}, **({"session": session} if session is not None else {})
         )
-
-    async def mark_suggestion_applied(
-        self, finding_id, project_id, suggestion_id, updated_at, session=None
-    ):
-        result = await database.value.ai_findings.update_one(
-            {"_id": finding_id, "project_id": project_id},
-            {
-                "$addToSet": {"applied_suggestion_ids": suggestion_id},
-                "$set": {"updated_at": updated_at},
-            },
-            **({"session": session} if session is not None else {}),
-        )
-        return result.matched_count == 1
-
 
 requirement_ai_repository = RequirementAiRepository()

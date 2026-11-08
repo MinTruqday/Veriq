@@ -9,7 +9,6 @@ def _positive_int_environment(name: str, default: str) -> int:
 
 
 class Settings:
-    PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
     SECRET_KEY: str = os.environ["SECRET_KEY"]
     CORS_ALLOWED_ORIGINS: str = os.environ["CORS_ALLOWED_ORIGINS"]

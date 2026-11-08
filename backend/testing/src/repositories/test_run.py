@@ -39,16 +39,6 @@ class TestRunRepository:
             await database.value.test_results.insert_many(values, session=session)
         return values
 
-    async def delete_run_results(self, run_id, project_id):
-        await database.value.test_results.delete_many(
-            {"test_run_id": run_id, "project_id": project_id}
-        )
-
-    async def delete_run(self, run_id, project_id):
-        await database.value.test_runs.delete_one(
-            {"_id": run_id, "project_id": project_id}
-        )
-
     async def count_runs(self, query):
         return await database.value.test_runs.count_documents(query)
 

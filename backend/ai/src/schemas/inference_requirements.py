@@ -221,7 +221,7 @@ class TestabilityBlueprintClarificationOutput(BaseModel):
         default="",
         max_length=1000,
     )
-    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    priority: str | None = Field(default=None, max_length=80)
     evidence_refs: List[str] = Field(min_length=1, max_length=20)
     source_quote: str = Field(min_length=2, max_length=2000)
     unlocks_obligation_keys: List[str] = Field(
@@ -287,7 +287,7 @@ class ClarificationBaselineQuestionOutput(BaseModel):
     code: str = Field(min_length=1, max_length=160)
     category: RequirementQualityCategory
     question: str = Field(min_length=2, max_length=1000)
-    priority: Literal["HIGH", "MEDIUM", "LOW"]
+    priority: str | None = Field(default=None, max_length=80)
     evidence_refs: List[str] = Field(min_length=1, max_length=20)
     source_quote: str = Field(min_length=2, max_length=2000)
 

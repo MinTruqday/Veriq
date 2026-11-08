@@ -2,7 +2,6 @@ name: veriq
 
 x-service-environment: &service-environment
   PYTHONDONTWRITEBYTECODE: "1"
-  PROJECT_NAME: ${PROJECT_NAME:?PROJECT_NAME is required}
   VERSION: ${VERSION:?VERSION is required}
   SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:?ACCESS_TOKEN_EXPIRE_MINUTES is required}
@@ -10,7 +9,6 @@ x-service-environment: &service-environment
   CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
   MONGODB_URI: ${MONGODB_URI:?MONGODB_URI is required}
   REDIS_URI: ${REDIS_URI:?REDIS_URI is required}
-  PLATFORM_SYSTEM_ID: ${PLATFORM_SYSTEM_ID:?PLATFORM_SYSTEM_ID is required}
   INTERNAL_API_URL: ${INTERNAL_API_URL:?INTERNAL_API_URL is required}
   MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:?MAX_UPLOAD_SIZE_BYTES is required}
   MIN_UPLOAD_SIZE_BYTES: ${MIN_UPLOAD_SIZE_BYTES:?MIN_UPLOAD_SIZE_BYTES is required}
@@ -274,7 +272,6 @@ services:
       CONTENT_URL: ${CONTENT_URL:?CONTENT_URL is required}
       RABBITMQ_URI: ${RABBITMQ_URI:?RABBITMQ_URI is required}
       QDRANT_URL: ${QDRANT_URL:?QDRANT_URL is required}
-      DOCKER_HOST: ${DOCKER_HOST:?DOCKER_HOST is required}
       HF_TOKEN: ${HF_TOKEN:?HF_TOKEN is required}
       HF_HOME: ${HF_HOME:?HF_HOME is required}
       HF_INFERENCE_URL: ${HF_INFERENCE_URL:?HF_INFERENCE_URL is required}
@@ -288,7 +285,6 @@ services:
       FALLBACK_MODEL_TOKEN: ${FALLBACK_MODEL_TOKEN:-}
       RERANKER_MODEL: ${RERANKER_MODEL:?RERANKER_MODEL is required}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:?EMBEDDING_MODEL is required}
-      NLI_MODEL_NAME: ${NLI_MODEL_NAME:?NLI_MODEL_NAME is required}
       NEO4J_URI: ${NEO4J_URI:?NEO4J_URI is required}
       NEO4J_USER: ${NEO4J_USER:?NEO4J_USER is required}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
@@ -602,7 +598,6 @@ services:
       - traefik.http.routers.worker.rule=PathPrefix(`/xu-ly-nen`)
       - traefik.http.services.worker.loadbalancer.server.port=8000
     environment:
-      PROJECT_NAME: ${PROJECT_NAME:?PROJECT_NAME is required}
       VERSION: ${VERSION:?VERSION is required}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
       MONGODB_URI: ${MONGODB_URI:?MONGODB_URI is required}

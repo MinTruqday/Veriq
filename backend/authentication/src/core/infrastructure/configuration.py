@@ -2,7 +2,6 @@ import os
 from typing import Optional
 
 class Settings:
-    PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
     SECRET_KEY: str = os.environ["SECRET_KEY"]
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"])
@@ -19,7 +18,6 @@ class Settings:
     SMTP_PASS: Optional[str] = os.environ["SMTP_PASS"]
     SENDER_EMAIL: Optional[str] = os.environ["SENDER_EMAIL"]
     SENDER_NAME: Optional[str] = os.environ["SENDER_NAME"]
-    PLATFORM_SYSTEM_ID: str = os.environ["PLATFORM_SYSTEM_ID"]
     AUTHENTICATION_DB_NAME: str = os.environ["AUTHENTICATION_DB_NAME"]
     AI_INTERNAL_URL: str = os.environ["AI_INTERNAL_URL"]
     AUTHENTICATION_INTERNAL_URL: str = os.environ["AUTHENTICATION_INTERNAL_URL"]

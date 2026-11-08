@@ -87,19 +87,9 @@ class WorkItemRepository:
     async def list_sprints(self, project_id):
         return await self.sprints.find({"project_id": project_id}).sort("start_at", -1).to_list(500)
 
-    async def find_sprint(self, project_id, sprint_id):
-        return await self.sprints.find_one({"_id": sprint_id, "project_id": project_id})
-
     async def create_sprint(self, sprint):
         await self.sprints.insert_one(sprint)
         return sprint
-
-    async def patch_sprint(self, project_id, sprint_id, revision, changes):
-        return await self.sprints.find_one_and_update(
-            {"_id": sprint_id, "project_id": project_id, "revision": revision},
-            {"$set": changes, "$inc": {"revision": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
 
     async def find_board(self, project_id, session=None):
         return await self.boards.find_one(

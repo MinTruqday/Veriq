@@ -66,10 +66,4 @@ class RegressionRecommendationRepository:
             {"_id": suite_id, "project_id": project_id}
         )
 
-    async def find_recommendation(self, recommendation_id, project_id):
-        return await database.value.regression_recommendations.find_one(
-            {"_id": recommendation_id, "project_id": project_id}
-        )
-
-
 regression_recommendation_repository = RegressionRecommendationRepository()

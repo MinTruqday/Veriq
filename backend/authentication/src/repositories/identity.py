@@ -18,10 +18,6 @@ class IdentityRepository:
         ).hexdigest()
 
     @staticmethod
-    async def get_system_config():
-        return await mongo.find_one("system_configs", {"type": "registration"})
-
-    @staticmethod
     async def get_system_config_by_type(config_type: str, projection: dict | None = None):
         return await mongo.find_one("system_configs", {"type": config_type}, projection)
 
@@ -270,14 +266,6 @@ class IdentityRepository:
         )
 
     @staticmethod
-    async def mark_password_reset_token_used(token_id: str):
-        return await mongo.update_one(
-            "password_reset_tokens",
-            {"_id": token_id},
-            {"$set": {"used": True, "used_at": datetime.now(timezone.utc)}},
-        )
-
-    @staticmethod
     async def create_email_verification_token(document: dict):
         token = document.pop("token")
         document["token_hash"] = IdentityRepository._token_hash(token)
@@ -326,15 +314,6 @@ class IdentityRepository:
         )
 
     @staticmethod
-    async def get_redis_passkey_challenge(email: str):
-        value = await redis.get(f"passkey_challenge:{email.lower()}")
-        return base64.b64decode(value) if value else None
-
-    @staticmethod
-    async def delete_redis_passkey_challenge(email: str):
-        return await redis.delete(f"passkey_challenge:{email.lower()}")
-
-    @staticmethod
     async def upsert_passkey_challenge(email: str, challenge: bytes):
         now = datetime.now(timezone.utc)
         return await mongo.update_one(
@@ -350,17 +329,6 @@ class IdentityRepository:
             },
             upsert=True,
         )
-
-    @staticmethod
-    async def get_passkey_challenge(email: str):
-        return await mongo.find_one(
-            "passkey_challenges",
-            {"_id": email.lower(), "expires_at": {"$gt": datetime.now(timezone.utc)}},
-        )
-
-    @staticmethod
-    async def delete_passkey_challenge(email: str):
-        return await mongo.delete_one("passkey_challenges", {"_id": email.lower()})
 
     @staticmethod
     async def consume_passkey_challenge(email: str):

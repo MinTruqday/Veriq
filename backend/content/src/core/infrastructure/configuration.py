@@ -2,7 +2,6 @@ import os
 
 
 class Settings:
-    PROJECT_NAME: str = os.environ["PROJECT_NAME"]
     VERSION: str = os.environ["VERSION"]
     INTERNAL_API_URL: str = os.environ["INTERNAL_API_URL"]
     SECRET_KEY: str = os.environ["SECRET_KEY"]
@@ -10,7 +9,6 @@ class Settings:
     MONGODB_URI: str = os.environ["MONGODB_URI"]
     REDIS_URI: str = os.environ["REDIS_URI"]
     RABBITMQ_URI: str = os.environ["RABBITMQ_URI"]
-    PLATFORM_SYSTEM_ID: str = os.environ["PLATFORM_SYSTEM_ID"]
     AUTHENTICATION_URL: str = os.environ["AUTHENTICATION_URL"]
     AI_URL: str = os.environ["AI_URL"]
     NOTIFICATION_URL: str = os.environ["NOTIFICATION_URL"]

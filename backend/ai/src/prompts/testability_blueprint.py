@@ -29,6 +29,7 @@ When sources conflict, preserve each independently testable claim as its own obl
 </evidence_rules>
 
 <clarification_rules>
+Use a clarification priority only when the supplied project vocabulary or cited evidence supports it. Preserve project-defined labels and never force a fixed priority vocabulary; return no priority when it cannot be supported.
 Ask for clarification only when a specific obligation cannot be made testable without a decision or fact absent from the evidence.
 Do not ask for optional presentation details, exact message wording, or unstated rules when the stated behavior already has an observable result. Request those details only when a source or user instruction makes them material to the behavior being tested.
 For each clarification, explain in the requested output language why the missing decision or fact prevents testing the affected obligation; do not claim that unspecified response wording or optional behavior is required. Include an exact, contiguous supporting quote copied from one cited source and select the closest issue category defined by the output contract. When multiple sources conflict, cite every relevant source in evidence_refs, but keep source_quote copied verbatim from only one source; never join quotes, paraphrase them, or insert ellipses.

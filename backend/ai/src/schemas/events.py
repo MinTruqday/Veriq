@@ -103,25 +103,3 @@ class DeadLetterRecoveryAudit(BaseModel):
     published_at: Optional[datetime] = None
     acknowledged_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
-
-class ScheduleResponse(EventRequest):
-    schedule_id: str = Field(
-        description="Schedule identifier"
-    )
-    name: str = Field(description="Schedule name")
-    interval_seconds: int = Field(
-        description="Interval between runs in seconds"
-    )
-    event_type: str = Field(
-        description="Scheduled event type"
-    )
-    enabled: bool = Field(
-        description="Whether the schedule is enabled"
-    )
-    run_count: int = Field(
-        description="Total schedule run count"
-    )
-    last_run_at: Optional[str] = Field(
-        default=None, description="Most recent run time"
-    )
