@@ -468,7 +468,7 @@ export default function TestAdequacyPanel({
         )}
         {assessment && (
           <>
-            <div className="grid gap-3 rounded-2xl border border-border bg-surface p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.25fr)_repeat(3,minmax(0,.65fr))_minmax(210px,.9fr)] xl:items-center">
+            <div className="grid gap-3 rounded-2xl border border-border bg-surface p-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.25fr)_repeat(4,minmax(0,.65fr))_minmax(210px,.9fr)] xl:items-center">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
                   Trạng thái hồ sơ
@@ -495,7 +495,15 @@ export default function TestAdequacyPanel({
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
-                  Chưa xử lý
+                  Chờ rà soát
+                </p>
+                <p className="mt-1 text-[20px] font-semibold text-ink">
+                  {metricValue(assessment.coverage_summary?.pending_review)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                  Còn thiếu
                 </p>
                 <p className="mt-1 text-[20px] font-semibold text-ink">
                   {metricValue(assessment.coverage_summary?.outstanding)}

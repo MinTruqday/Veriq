@@ -638,6 +638,19 @@ export function messageOf(reason) {
   if (reason?.code === "PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE") {
     return "Tài liệu và yêu cầu đã chọn có quá nhiều nội dung để đánh giá trong một lượt. Hãy chọn phạm vi nhỏ hơn rồi thử lại; kết quả chưa được tạo.";
   }
+  if (reason?.code === "ADEQUACY_UNRESOLVED_ITEMS") {
+    const count = reason.details?.coverage_item_ids?.length;
+    const countLabel = Number.isInteger(count) ? `còn ${count} nghĩa vụ` : "còn nghĩa vụ";
+    return `Chưa thể xác nhận hồ sơ vì ${countLabel} chưa có bằng chứng kiểm thử khớp với nguồn yêu cầu. Kiểm tra ca đã liên kết, tiêu chí nguồn và trích dẫn trong từng nghĩa vụ, rồi cập nhật hồ sơ.`;
+  }
+  if (reason?.code === "ADEQUACY_OPEN_CLARIFICATIONS") {
+    const count = reason.details?.clarification_ids?.length;
+    const countLabel = Number.isInteger(count) ? `còn ${count} Phiếu làm rõ` : "còn Phiếu làm rõ";
+    return `Chưa thể xác nhận hồ sơ vì ${countLabel} chưa được giải quyết. Hoàn tất các phiếu rồi thử lại.`;
+  }
+  if (reason?.code === "ADEQUACY_NO_COVERAGE_ITEMS") {
+    return "Hồ sơ chưa có nghĩa vụ kiểm thử. Cập nhật hồ sơ từ Requirement trước khi gửi rà soát.";
+  }
   const automationMessages = {
     AUTOMATION_PUBLICATION_NOT_AUTHORIZED:
       "AI không được phép tự công bố kết quả này. Người có quyền cần kiểm tra và xác nhận.",

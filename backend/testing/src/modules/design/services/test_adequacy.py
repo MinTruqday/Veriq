@@ -329,13 +329,15 @@ def _summary(items, timestamp):
     verified = sum(item.get("status") == "VERIFIED_COVERED" for item in items)
     not_applicable = sum(item.get("status") == "NOT_APPLICABLE" for item in items)
     conditional = sum(_waiver_active(item, timestamp) for item in items)
+    pending_review = sum(item.get("status") == "COVERED_PENDING_REVIEW" for item in items)
     expired = sum(item.get("status") == "WAIVED" and not _waiver_active(item, timestamp) for item in items)
-    outstanding = len(items) - verified - not_applicable - conditional
+    outstanding = len(items) - verified - not_applicable - conditional - pending_review
     return {
         "total": len(items),
         "verified": verified,
         "not_applicable": not_applicable,
         "conditional": conditional,
+        "pending_review": pending_review,
         "expired_waivers": expired,
         "outstanding": outstanding,
     }
@@ -389,7 +391,13 @@ async def get_adequacy_assessment(requirement_version_id, user):
     version = await get_project_entity("requirement_versions", requirement_version_id, user, "testcase.read")
     assessment = await test_adequacy_repository.find(version["project_id"], requirement_version_id)
     if assessment:
-        return await _reconcile_expired_waivers(assessment)
+        assessment = await _reconcile_expired_waivers(assessment)
+        return {
+            **assessment,
+            "coverage_summary": _summary(
+                assessment.get("coverage_items", []), now()
+            ),
+        }
     return await refresh_adequacy_assessment(requirement_version_id, user, None)
 
 
@@ -503,7 +511,30 @@ async def approve_adequacy_assessment(assessment_id, payload, user):
         if not coverage_item_ready_for_assurance(item, timestamp)
     ]
     if unresolved:
-        raise HTTPException(status_code=409, detail={"code": "ADEQUACY_UNRESOLVED_ITEMS", "coverage_item_ids": unresolved})
+        unresolved_items = [
+            item
+            for item in assessment["coverage_items"]
+            if item.get("coverage_item_id") in unresolved
+        ]
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "ADEQUACY_UNRESOLVED_ITEMS",
+                "coverage_item_ids": unresolved,
+                "message": (
+                    f"Chưa thể xác nhận hồ sơ: còn {len(unresolved)} nghĩa vụ chưa có "
+                    "bằng chứng kiểm thử khớp với nguồn yêu cầu. Kiểm tra ca đã liên kết, "
+                    "tiêu chí nguồn và trích dẫn trong từng nghĩa vụ, rồi cập nhật hồ sơ."
+                ),
+                "unresolved_items": [
+                    {
+                        "coverage_item_id": item.get("coverage_item_id"),
+                        "source_ref": item.get("source_ref"),
+                    }
+                    for item in unresolved_items
+                ],
+            },
+        )
     items = []
     for item in assessment["coverage_items"]:
         item = dict(item)
@@ -539,6 +570,10 @@ async def approve_adequacy_assessment(assessment_id, payload, user):
                 detail={
                     "code": "ADEQUACY_OPEN_CLARIFICATIONS",
                     "clarification_ids": [item["_id"] for item in open_items],
+                    "message": (
+                        f"Chưa thể xác nhận hồ sơ: còn {len(open_items)} Phiếu làm rõ "
+                        "chưa được giải quyết. Hoàn tất các phiếu rồi thử lại."
+                    ),
                 },
             )
 
