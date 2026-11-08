@@ -2783,6 +2783,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           members={projectMembers}
           canReadMembers={permissions.includes("project.members.read")}
           membersUnavailable={projectMembersUnavailable}
+          onRetryMembers={() => load()}
           onSubmit={create}
         />
       )}

@@ -17,7 +17,15 @@ class AttachmentService:
 
     @staticmethod
     async def register(project_id: str, payload: AttachmentCreate, user: CurrentUser):
-        await get_project(project_id, user, "attachment.upload")
+        result_evidence = (
+            payload.artifact_type == "test_result"
+            and payload.artifact_id is not None
+        )
+        await get_project(
+            project_id,
+            user,
+            "testrun.execute" if result_evidence else "attachment.upload",
+        )
         if (payload.artifact_type is None) != (payload.artifact_id is None):
             raise HTTPException(
                 status_code=422,

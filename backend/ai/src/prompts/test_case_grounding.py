@@ -12,7 +12,7 @@ def build_generated_cases_grounding_prompt(evidence, cases):
             "Review each title, objective, precondition, step, expected result, required skill, coverage obligation, and cited acceptance criterion.",
             "A citation identifier alone does not prove that its source text supports the claim. Treat an exact paraphrase or logically necessary consequence of a source statement as supported, even when wording differs.",
             "Do not flag a concise synonym or generic success/failure qualifier when it only restates an explicit source outcome. For example, if a source says an actor performs an action and the system stores the changed value, saying the changed value is stored after that action is supported.",
-            "Do not treat plausible behavior, implementation detail, or a testing hypothesis as a necessary consequence or documented product requirement.",
+            "A user action explicitly described by a cited acceptance criterion, including entering the value that the criterion validates, is supported test input. Do not flag that action merely because the source does not separately describe its screen control. Do not treat other plausible behavior, implementation detail, or a testing hypothesis as a necessary consequence or documented product requirement.",
             "For every unsupported_claims item, copy the shortest exact unsupported phrase from the proposed case in its original language. Do not explain or paraphrase it.",
             "Return one review per case in input order. Do not revise the proposed cases.",
             "</review_rules>",

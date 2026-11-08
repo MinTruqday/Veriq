@@ -13,7 +13,7 @@ async def require_assigned_design_draft(collection, artifact_id, user, permissio
         and "owner_id" in proposed_changes
         and proposed_changes["owner_id"] != artifact.get("owner_id")
     ):
-        await get_project(artifact["project_id"], user, "project.members.manage")
+        await get_project(artifact["project_id"], user, "project.members.read")
     return artifact
 
 

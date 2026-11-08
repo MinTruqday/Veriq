@@ -90,6 +90,7 @@ export default function TestCaseCreateModal({
   members = [],
   canReadMembers = false,
   membersUnavailable = false,
+  onRetryMembers,
   saving,
   onSubmit,
 }) {
@@ -334,9 +335,16 @@ export default function TestCaseCreateModal({
               Test Run.
             </p>
             {membersUnavailable && (
-              <span role="status" className="text-sm text-amber-800">
-                Không tải được thành viên dự án; hãy thử tải lại trước khi phân công.
-              </span>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-amber-800">
+                <span role="status">
+                  Không tải được thành viên dự án nên chưa thể chọn người phụ trách.
+                </span>
+                {onRetryMembers && (
+                  <button type="button" className="text-forest underline" onClick={onRetryMembers}>
+                    Tải lại danh sách thành viên
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
