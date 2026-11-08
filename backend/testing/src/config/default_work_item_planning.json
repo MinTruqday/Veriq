@@ -1,0 +1,41 @@
+{
+  "columns": [
+    {
+      "status": "BACKLOG",
+      "name": "Danh sách chờ",
+      "position": 0,
+      "wip_limit": null
+    },
+    {
+      "status": "TODO",
+      "name": "Cần làm",
+      "position": 1,
+      "wip_limit": null
+    },
+    {
+      "status": "IN_PROGRESS",
+      "name": "Đang thực hiện",
+      "position": 2,
+      "wip_limit": null
+    },
+    {
+      "status": "BLOCKED",
+      "name": "Bị chặn",
+      "position": 3,
+      "wip_limit": null
+    },
+    {
+      "status": "DONE",
+      "name": "Hoàn thành",
+      "position": 4,
+      "wip_limit": null
+    },
+    {
+      "status": "CANCELLED",
+      "name": "Đã hủy",
+      "position": 5,
+      "wip_limit": null
+    }
+  ],
+  "completed_statuses": ["DONE"]
+}

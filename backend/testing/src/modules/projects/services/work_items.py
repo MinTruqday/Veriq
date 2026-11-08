@@ -1,3 +1,8 @@
+import json
+from copy import deepcopy
+from functools import lru_cache
+from pathlib import Path
+
 from fastapi import HTTPException
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import DuplicateKeyError, OperationFailure
@@ -14,6 +19,16 @@ from src.core.common import (
 from src.core.database import database
 from src.repositories.project import project_repository
 from src.repositories.work_item import work_item_repository
+
+
+@lru_cache(maxsize=1)
+def _default_planning_settings():
+    path = Path(__file__).resolve().parents[3] / "config" / "default_work_item_planning.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _default_completed_statuses():
+    return set(_default_planning_settings().get("completed_statuses") or [])
 
 
 def _conflict(existing):
@@ -87,14 +102,7 @@ async def _board(project_id, planning_method):
         "project_id": project_id,
         "planning_method": planning_method,
         "revision": 1,
-        "columns": [
-            {"status": "BACKLOG", "name": "Danh sách chờ", "position": 0, "wip_limit": None},
-            {"status": "TODO", "name": "Cần làm", "position": 1, "wip_limit": None},
-            {"status": "IN_PROGRESS", "name": "Đang thực hiện", "position": 2, "wip_limit": None},
-            {"status": "BLOCKED", "name": "Bị chặn", "position": 3, "wip_limit": None},
-            {"status": "DONE", "name": "Hoàn thành", "position": 4, "wip_limit": None},
-            {"status": "CANCELLED", "name": "Đã hủy", "position": 5, "wip_limit": None},
-        ],
+        "columns": deepcopy(_default_planning_settings().get("columns") or []),
         "created_at": timestamp,
         "updated_at": timestamp,
     }
@@ -112,24 +120,63 @@ async def _board(project_id, planning_method):
         raise
 
 
+def _initial_board_status(board):
+    columns = board.get("columns") or []
+    if not columns:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "WORK_ITEM_PLANNING_BOARD_COLUMNS_REQUIRED"},
+        )
+    initial_column = min(
+        enumerate(columns),
+        key=lambda item: (item[1].get("position", item[0]), item[0]),
+    )[1]
+    status = str(initial_column.get("status") or "").strip()
+    if not status:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "WORK_ITEM_PLANNING_BOARD_COLUMNS_INVALID"},
+        )
+    return status
+
+
 async def _workflow(project_id):
     workflow = await work_item_repository.find_workflow(project_id)
     if workflow:
         if not workflow.get("statuses"):
             board = await work_item_repository.find_board(project_id)
+            completed_statuses = _default_completed_statuses()
             workflow = {
                 **workflow,
                 "statuses": [
                     {
                         "key": column["status"],
                         "name": column.get("name") or column["status"],
-                        "counts_as_completed": column["status"] == "DONE",
+                        "counts_as_completed": column["status"] in completed_statuses,
                     }
                     for column in (board or {}).get("columns", [])
                 ],
             }
         return workflow
-    statuses = ("BACKLOG", "TODO", "IN_PROGRESS", "BLOCKED", "DONE", "CANCELLED")
+    board = await work_item_repository.find_board(project_id)
+    if not board:
+        project = await database.value.projects.find_one(
+            {"_id": project_id}, {"planning_method": 1}
+        )
+        board = await _board(
+            project_id, (project or {}).get("planning_method", "SCRUM")
+        )
+    statuses = tuple(
+        column["status"]
+        for column in board.get("columns", [])
+        if column.get("status")
+    )
+    if not statuses or len(statuses) != len(set(statuses)):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "WORK_ITEM_WORKFLOW_COLUMNS_INVALID"},
+        )
+    completed_statuses = _default_completed_statuses()
     transition_roles = sorted(
         role
         for role in access_policy().get("role_permissions", {})
@@ -141,14 +188,6 @@ async def _workflow(project_id):
         for target in statuses
         if source != target
     ]
-    board = await work_item_repository.find_board(project_id)
-    if not board:
-        project = await database.value.projects.find_one(
-            {"_id": project_id}, {"planning_method": 1}
-        )
-        board = await _board(
-            project_id, (project or {}).get("planning_method", "SCRUM")
-        )
     value = {
         "_id": new_id("WFL"),
         "project_id": project_id,
@@ -157,7 +196,7 @@ async def _workflow(project_id):
             {
                 "key": column["status"],
                 "name": column.get("name") or column["status"],
-                "counts_as_completed": column["status"] == "DONE",
+                "counts_as_completed": column["status"] in completed_statuses,
             }
             for column in board.get("columns", [])
         ],
@@ -231,7 +270,7 @@ class WorkItemService:
         item = {
             "_id": new_id("WI"), "project_id": project_id, **payload.model_dump(),
             "assignee_id": await _resolve_assignee(project_id, payload.assignee_id),
-            "status": "BACKLOG", "sprint_id": None,
+            "sprint_id": None,
             "revision": 1, "created_by": user.id, "created_at": timestamp, "updated_at": timestamp,
         }
         await _board(project_id, project.get("planning_method", "SCRUM"))
@@ -245,6 +284,7 @@ class WorkItemService:
                         raise HTTPException(
                             status_code=409, detail={"code": "WORK_ITEM_PLANNING_BOARD_UNAVAILABLE"}
                         )
+                    item["status"] = _initial_board_status(board)
                     if not await work_item_repository.advance_board_revision(
                         project_id, board["revision"], timestamp, session=session
                     ):

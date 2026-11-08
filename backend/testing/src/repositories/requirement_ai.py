@@ -84,12 +84,6 @@ class RequirementAiRepository:
         )
         return value
 
-    async def delete_acceptance_criteria(self, version_id, session=None):
-        await database.value.acceptance_criteria.delete_many(
-            {"requirement_version_id": version_id},
-            **({"session": session} if session is not None else {}),
-        )
-
     async def find_requirement_version(self, version_id, session=None):
         return await database.value.requirement_versions.find_one(
             {"_id": version_id}, **({"session": session} if session is not None else {})

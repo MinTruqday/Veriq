@@ -229,11 +229,6 @@ class RequirementRepository:
             query["project_id"] = project_id
         await database.value.requirement_versions.delete_one(query)
 
-    async def delete_acceptance_criteria(self, version_id):
-        await database.value.acceptance_criteria.delete_many(
-            {"requirement_version_id": version_id}
-        )
-
     async def list_requirements(self, project_id, status=None, limit=20000):
         query = {"project_id": project_id}
         if status:

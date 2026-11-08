@@ -92,15 +92,6 @@ class WorkItemType(str, Enum):
     SUBTASK = "SUBTASK"
 
 
-class WorkItemStatus(str, Enum):
-    BACKLOG = "BACKLOG"
-    TODO = "TODO"
-    IN_PROGRESS = "IN_PROGRESS"
-    BLOCKED = "BLOCKED"
-    DONE = "DONE"
-    CANCELLED = "CANCELLED"
-
-
 class WorkItemCreate(BaseModel):
     item_type: WorkItemType
     title: str = Field(min_length=2, max_length=300)
