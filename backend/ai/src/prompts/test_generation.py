@@ -48,10 +48,3 @@ def retry_grounded_requirement_test_generation_instruction(testability_obligatio
         "Remove every claim not supported by the Requirement or cited acceptance criteria. Keep expected results at the documented final outcome; do not infer intermediate behavior. Return no case for a gap the source cannot support. Avoid duplicates and preserve exact Requirement and obligation links.",
         testability_obligations,
     )
-
-
-def uncovered_obligation_test_generation_instruction():
-    return _render_generation_instruction(
-        "Generate new Test Cases only for supplied obligations not covered by existing Test Cases.",
-        "Exclude duplicates and retain the link to the applicable Requirement version. Use only cited evidence; report unsupported obligations instead of guessing.",
-    )

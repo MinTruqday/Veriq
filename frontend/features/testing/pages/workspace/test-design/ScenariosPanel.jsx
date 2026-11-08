@@ -5,12 +5,7 @@ import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 import ScenarioCreateModal from "./ScenarioCreateModal";
-import {
-  TEST_LEVELS,
-  TEST_SCENARIO_CATEGORIES,
-  scenarioPayload,
-  scenarioFormFromRecord,
-} from "./testDesign.model";
+import { TEST_LEVELS, scenarioPayload, scenarioFormFromRecord } from "./testDesign.model";
 
 export default function ScenariosPanel({
   can,
@@ -246,19 +241,13 @@ export default function ScenariosPanel({
           Lọc nhóm, rủi ro và trạng thái
         </summary>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <select
+          <input
             aria-label="Lọc nhóm kịch bản"
             className="apple-input"
             value={filters.category}
             onChange={(event) => setFilters({ ...filters, category: event.target.value })}
-          >
-            <option value="">Mọi nhóm</option>
-            {TEST_SCENARIO_CATEGORIES.map((value) => (
-              <option value={value} key={value}>
-                {valueLabel(value)}
-              </option>
-            ))}
-          </select>
+            placeholder="Lọc theo nhóm kịch bản"
+          />
           <select
             aria-label="Lọc rủi ro kịch bản"
             className="apple-input"

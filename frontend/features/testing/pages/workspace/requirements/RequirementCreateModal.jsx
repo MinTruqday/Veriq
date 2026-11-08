@@ -2,7 +2,7 @@ import DocumentEditor from "../../../editor/DocumentEditor";
 import { valueLabel } from "../../../lib/testing";
 import { ErrorState } from "../../../components/WorkspacePrimitives";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
-import { REQUIREMENT_LEVELS, REQUIREMENT_TYPES } from "./requirements.model";
+import { REQUIREMENT_LEVELS } from "./requirements.model";
 
 export default function RequirementCreateModal({
   isOpen,
@@ -48,17 +48,14 @@ export default function RequirementCreateModal({
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="field-label">
             Loại
-            <select
+            <input
               className="apple-input mt-2"
+              required
+              maxLength={100}
               value={form.type}
               onChange={(event) => updateForm({ type: event.target.value })}
-            >
-              {REQUIREMENT_TYPES.map((value) => (
-                <option key={value} value={value}>
-                  {valueLabel(value)}
-                </option>
-              ))}
-            </select>
+              placeholder="Nhập loại yêu cầu"
+            />
           </label>
           <label className="field-label">
             Ưu tiên

@@ -183,24 +183,29 @@ class ProjectNotificationPreferencePatch(BaseModel):
 
 class SecurityTestSuggestionInput(BaseModel):
     requirement_version_ids: list[str] = Field(default_factory=list, max_length=500)
-    categories: list[
-        Literal["authorization", "authentication", "input_validation", "session", "data_protection"]
-    ] = Field(
-        default_factory=list,
-        max_length=5,
-    )
+    categories: list[str] = Field(default_factory=list, max_length=100)
     context: str = Field(default="", max_length=5000)
     idempotency_key: str = Field(min_length=8, max_length=200)
     source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
     source_event_revision: int | None = Field(default=None, ge=1)
+
+    @field_validator("categories")
+    @classmethod
+    def normalize_categories(cls, values):
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("security_category_required")
+        if len({value.casefold() for value in normalized}) != len(normalized):
+            raise ValueError("security_categories_must_be_unique")
+        return normalized
 
 
 class PerformancePlanDraftInput(BaseModel):
     name: str = Field(min_length=2, max_length=300)
     objective: str = Field(default="", max_length=5000)
     requirement_version_ids: list[str] = Field(default_factory=list, max_length=500)
-    workload_types: list[Literal["baseline", "load", "stress", "spike", "soak"]] = Field(
-        default_factory=lambda: ["baseline", "load", "stress"], min_length=1, max_length=5
+    workload_types: list[str] = Field(
+        default_factory=lambda: ["baseline", "load", "stress"], min_length=1, max_length=100
     )
     target_virtual_users: int = Field(ge=1, le=1000000)
     target_requests_per_second: float | None = Field(default=None, gt=0, le=1000000)
@@ -209,6 +214,16 @@ class PerformancePlanDraftInput(BaseModel):
     maximum_error_rate: float | None = Field(default=None, ge=0, le=1)
     context: str = Field(default="", max_length=5000)
     idempotency_key: str = Field(min_length=8, max_length=200)
+
+    @field_validator("workload_types")
+    @classmethod
+    def normalize_workload_types(cls, values):
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("workload_type_required")
+        if len({value.casefold() for value in normalized}) != len(normalized):
+            raise ValueError("workload_types_must_be_unique")
+        return normalized
 
 
 class WebhookSubscriptionCreate(BaseModel):

@@ -1,10 +1,17 @@
 """Typed project grants, owned by project authorization rather than runtime policies."""
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-ProjectRoleValue = str
+ProjectRoleId = str
+PERMISSION_ALIASES = {"defect.transition.developer": "defect.transition.resolve"}
+
+
+def canonical_permission(value):
+    permission = str(value or "").strip()
+    return PERMISSION_ALIASES.get(permission, permission)
 
 
 def _normalize_role(value):
@@ -14,22 +21,18 @@ def _normalize_role(value):
 class ProjectCapability(BaseModel):
     name: str = Field(min_length=1)
     read_only: bool = False
-    business_roles: list[ProjectRoleValue] = Field(default_factory=list, max_length=100)
-    responsibility: Literal["business_confirmation", "release_decision"] | None = None
+    responsibility: str | None = Field(default=None, min_length=1, max_length=80)
 
-    @field_validator("business_roles")
+    @field_validator("responsibility")
     @classmethod
-    def normalize_business_roles(cls, values):
-        normalized = [_normalize_role(value) for value in values]
-        if any(not value or len(value) > 80 for value in normalized):
-            raise ValueError("PROJECT_ROLE_INVALID")
-        if len(normalized) != len(set(normalized)):
-            raise ValueError("DUPLICATE_PROJECT_BUSINESS_ROLE")
-        return normalized
+    def validate_responsibility(cls, value):
+        if value is not None and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]*", value):
+            raise ValueError("PROJECT_RESPONSIBILITY_INVALID")
+        return value
 
 
 class ProjectRoleGrant(BaseModel):
-    role: ProjectRoleValue = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    role: ProjectRoleId = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
     permissions: list[str]
 
     @field_validator("role")
@@ -39,7 +42,7 @@ class ProjectRoleGrant(BaseModel):
 
 
 class ProjectSettingGrant(BaseModel):
-    role: ProjectRoleValue = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+    role: ProjectRoleId = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
     setting: str = Field(min_length=1)
     enabled: bool
     effect: Literal["ALLOW", "DENY"]
@@ -67,11 +70,6 @@ class ProjectAccessControl(BaseModel):
         if len(roles) != len(set(roles)):
             raise ValueError("DUPLICATE_PROJECT_ROLE_GRANT")
         role_names = set(roles)
-        if any(
-            not set(capability.business_roles).issubset(role_names)
-            for capability in self.capabilities
-        ):
-            raise ValueError("UNKNOWN_PROJECT_BUSINESS_ROLE")
         if any(
             grant.role not in role_names
             for grant in self.setting_grants
@@ -103,13 +101,31 @@ class ProjectAccessControl(BaseModel):
 
     def permission_values(self):
         """Compatibility interface for callers; database authority is the typed model."""
+        capabilities = {canonical_permission(item.name): item for item in self.capabilities}
+        role_permissions = {
+            grant.role: sorted({canonical_permission(item) for item in grant.permissions})
+            for grant in self.role_grants
+        }
+        setting_grants = [
+            (
+                grant.effect,
+                {
+                    **grant.model_dump(exclude={"effect"}),
+                    "permissions": sorted({canonical_permission(item) for item in grant.permissions}),
+                },
+            )
+            for grant in self.setting_grants
+        ]
         return {
             "revision": self.revision,
-            "project_permissions": [item.name for item in self.capabilities],
-            "business_role_permissions": {item.name: item.business_roles for item in self.capabilities},
-            "responsibility_permissions": {item.name: item.responsibility for item in self.capabilities if item.responsibility},
-            "read_only_permissions": [item.name for item in self.capabilities if item.read_only],
-            "role_permissions": {grant.role: grant.permissions for grant in self.role_grants},
-            "conditional_permissions": [grant.model_dump(exclude={"effect"}) for grant in self.setting_grants if grant.effect == "ALLOW"],
-            "conditional_denials": [grant.model_dump(exclude={"effect"}) for grant in self.setting_grants if grant.effect == "DENY"],
+            "project_permissions": sorted(capabilities),
+            "responsibility_permissions": {
+                name: item.responsibility for name, item in capabilities.items() if item.responsibility
+            },
+            "read_only_permissions": sorted(
+                name for name, item in capabilities.items() if item.read_only
+            ),
+            "role_permissions": role_permissions,
+            "conditional_permissions": [item for effect, item in setting_grants if effect == "ALLOW"],
+            "conditional_denials": [item for effect, item in setting_grants if effect == "DENY"],
         }

@@ -19,7 +19,7 @@ export default function LessonsLearnedPanel({
       ...lessons,
       {
         observation: "",
-        category: "WORKED",
+        category: "",
         impact: "",
         recommendation: "",
         evidence_refs: [],
@@ -72,18 +72,15 @@ export default function LessonsLearnedPanel({
               className="grid min-w-0 gap-3 rounded-xl border border-border p-3 md:grid-cols-[180px_minmax(0,1fr)_auto]"
               key={`lesson-${index}`}
             >
-              <select
+              <input
                 aria-label={`Loại bài học ${index + 1}`}
                 className="apple-input"
-                value={item.category || "WORKED"}
+                maxLength={200}
+                placeholder="Nhóm bài học"
+                required
+                value={item.category || ""}
                 onChange={(event) => updateLesson(index, "category", event.target.value)}
-              >
-                {["WORKED", "FAILED", "BLOCKER", "IMPROVEMENT", "OTHER"].map((value) => (
-                  <option key={value} value={value}>
-                    {valueLabel(value)}
-                  </option>
-                ))}
-              </select>
+              />
               <textarea
                 aria-label={`Bài học ${index + 1}`}
                 className="apple-input min-h-16 w-full min-w-0"

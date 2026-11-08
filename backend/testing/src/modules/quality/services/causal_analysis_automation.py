@@ -104,7 +104,7 @@ async def generate_hypotheses(analysis_id, payload, user):
         {
             "project_id": value["project_id"],
             "_id": {"$nin": value["defect_ids"]},
-            "root_cause_category": {"$ne": 'UNKNOWN'},
+            "root_cause_category": {"$nin": [None, "", "UNKNOWN"]},
         },
         100,
         {"_id": 1, "title": 1, "root_cause_category": 1, "root_cause_detail": 1},

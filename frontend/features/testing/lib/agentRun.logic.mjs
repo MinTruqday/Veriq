@@ -26,8 +26,8 @@ const checkpointReasonLabels = {
   AUTOMATION_EXECUTOR_UNAVAILABLE: "Không có thành viên đủ quyền thực hiện lượt chạy",
   AI_READ_PERMISSION_REVOKED: "Quyền đọc nguồn AI đã bị thu hồi",
   AUTOMATION_CANCELLED: "Lượt chạy đã được dừng",
-  QA_TEST_DESIGN_SOURCE_EVIDENCE_MISSING: "Không đủ bằng chứng nguồn để bàn giao thiết kế kiểm thử",
-  QA_TEST_DESIGN_HANDOFF_DISPATCH_FAILED: "Không gửi được tác vụ thiết kế kiểm thử tiếp theo",
+  TEST_DESIGN_SOURCE_EVIDENCE_MISSING: "Không đủ bằng chứng nguồn để bàn giao thiết kế kiểm thử",
+  TEST_DESIGN_HANDOFF_DISPATCH_FAILED: "Không gửi được tác vụ thiết kế kiểm thử tiếp theo",
 };
 
 const agentRunErrorMessages = {

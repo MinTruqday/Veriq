@@ -4,17 +4,19 @@ Ngày lập: 05/11/2026. Tài liệu theo dõi triển khai kế hoạch đã ch
 
 ## 1. Quyết định nghiệp vụ đã chốt
 
-- Giữ các role BA, QA, Tester, Developer, Viewer và Admin nền tảng. Một thành viên có một role nghiệp vụ chính trong một dự án.
-- Tester được soạn/sửa bản nháp Scenario và Test Case trong phạm vi được giao; QA rà duyệt và quản lý baseline.
+- Không khóa danh mục role nghiệp vụ trong sản phẩm. Mỗi dự án cấu hình role ID, capability và phạm vi trách nhiệm theo chính sách của dự án; một người có thể được gán các trách nhiệm khác nhau theo từng phạm vi nếu policy cho phép.
+- Quyền soạn, sửa, rà soát, duyệt, thực thi, ghi kết quả, xử lý lỗi và phát hành được cấu hình thành capability riêng; người dùng chỉ thao tác trong scope được giao.
 - Tác giả và người tham gia sửa nội dung của revision gửi duyệt không được duyệt revision đó. Việc gửi hộ, nếu không sửa nội dung, không biến người gửi thành tác giả.
-- Thiếu người duyệt đủ quyền thì chờ phân công; không có ngoại lệ tự duyệt cho QA hoặc Admin.
+- Thiếu người duyệt đủ capability thì chờ phân công; người tạo/sửa revision không được tự duyệt revision đó. Quyền quản trị nền tảng không tự cấp quyền nghiệp vụ dự án.
 - Chủ nghiệp vụ và người quyết định phát hành là trách nhiệm được chỉ định rõ, có phạm vi; không cấp thêm toàn bộ quyền của role khác.
 - Quyền xem, tải, nhận xét, sửa, AI đọc nguồn và quyết định nghiệp vụ được kiểm tra riêng.
-- AI chạy khi người dùng yêu cầu, dùng quyền hiện tại của người yêu cầu và chỉ tạo đề xuất/bản nháp trong phạm vi được phép.
+- AI Agent chỉ chạy từ thao tác người dùng khởi tạo, dùng quyền hiện tại của người yêu cầu và tạo đề xuất/bản nháp; mọi thao tác ghi và quyết định tiếp theo cần thao tác riêng có quyền.
 - Ưu tiên desktop 1280/1440/1920 px. Không thay thiết kế toàn dự án ngoài phần cần làm rõ trách nhiệm và hành động.
 - Không commit/push nếu chưa có yêu cầu mới của người dùng.
 
 ## 2. Cơ sở đối chiếu
+
+Tên BA, QA, Tester, Developer, Viewer và Admin xuất hiện ở các bảng kiểm thử phía dưới chỉ là nhãn người/fixture của những lượt nghiệm thu đã ghi ngày. Chúng không phải danh mục role cố định hay phân quyền mặc định của sản phẩm.
 
 ISTQB mô tả lập kế hoạch, giám sát/điều chỉnh, phân tích, thiết kế, chuẩn bị, thực thi và hoàn tất. Các hoạt động có thể lặp hoặc song song tùy dự án. Requirement, Plan, Scenario, Case và Run là dữ liệu phục vụ các hoạt động, không phải một tiêu chuẩn bắt buộc mọi tổ chức phải đi qua cùng các màn hình. Nguồn: [ISTQB CTFL, 1.4.1](https://tbok.istqb.org/search?q=FL-1.4.1).
 
@@ -38,19 +40,19 @@ Giám sát, rủi ro, quản lý thay đổi và truy nguyên chạy xuyên su�
 | Test Design | Điều kiện, kỹ thuật, nguồn đã xác nhận | Scenario/Case có hành động, dữ liệu, kết quả mong đợi, nguồn, reviewer độc lập và phiên bản |
 | Test Implementation | Plan, phiên bản ca, nguồn lực | Bộ ca, dataset, build, môi trường sẵn sàng, lịch/phân công; không chạy khi điều kiện bắt đầu bắt buộc chưa đạt |
 | Test Execution | Run đã chuẩn bị | Kết quả từng ca/bước, bằng chứng, sai lệch và Defect; ghi đúng người chạy và phiên bản |
-| Defect và hồi quy | Bằng chứng lỗi, build sửa | Triage, sửa, retest, reopen/close, ca hồi quy; Developer không tự xác nhận retest bằng quyền sửa lỗi |
+| Defect và hồi quy | Bằng chứng lỗi, build sửa | Triage, sửa, retest, reopen/close, ca hồi quy; người sửa không tự xác nhận retest khi policy yêu cầu độc lập |
 | Completion | Kết quả, exit criteria, lỗi/rủi ro còn lại | Báo cáo hoàn tất, bàn giao, tồn đọng, bài học; quyết định phát hành tách khỏi việc đánh giá chất lượng |
 
 ## 4. Ma trận trách nhiệm mục tiêu
 
-| Vai trò/trách nhiệm | Chịu trách nhiệm | Giới hạn |
+| Capability/trách nhiệm | Chịu trách nhiệm | Giới hạn |
 | --- | --- | --- |
-| BA | Nội dung nghiệp vụ, nguồn/Requirement/BR, câu hỏi làm rõ, thay đổi nghiệp vụ; cấu hình/phân công báo cáo công việc | Không tự xác nhận nội dung đã soạn/sửa; không sửa kết quả thực thi hoặc nhận quyền QA mặc nhiên |
-| QA | Rà soát/chấp nhận Requirement, Test Plan, phân tích, thiết kế, rà duyệt tài sản kiểm thử, tổ chức Run, tiêu chí kết thúc và báo cáo kiểm thử | Không duyệt nội dung do chính mình soạn/sửa; không mặc nhiên quản trị thành viên, sửa build, xem lương/CV hoặc quyết định phát hành |
-| Tester | Scenario/Case/dataset nháp được giao; chạy ca được giao, bằng chứng, báo lỗi và retest | Không duyệt baseline, sửa ca đã duyệt trực tiếp, ghi kết quả thay người khác hoặc sửa ngoài phân công |
-| Developer | Công việc phát triển, build, sửa lỗi, phân tích kỹ thuật, tích hợp/script được giao | Không đổi FAIL thành PASS, tự xác nhận retest hoặc tự đóng lỗi qua quyền sửa lỗi |
-| Viewer | Xem dữ liệu được chia sẻ; nhận xét/tải khi được cấp; nhận báo cáo | Không Editor, ghi kết quả, duyệt hoặc dùng AI tạo thay đổi |
-| Admin | Tài khoản, cấu hình, hạ tầng và vận hành | Không mặc nhiên đọc dữ liệu riêng hoặc duyệt nội dung dự án |
+| Requirement | Người được giao nội dung nghiệp vụ tạo/sửa; người có capability rà soát/duyệt | Không tự duyệt revision mình tạo/sửa; quyền nền tảng không thay quyền dự án |
+| Test Plan và Test Analysis | Người được giao lập kế hoạch/phân tích; reviewer được chỉ định độc lập | Không sửa dữ liệu nguồn nếu không có capability riêng |
+| Test Design | Người được giao tạo Scenario/Case; reviewer có capability tương ứng | Không sửa baseline đã duyệt; thay đổi qua revision |
+| Test Execution | Người được phân công và có capability ghi kết quả | Không ghi thay hoặc tự xác nhận kết quả người khác |
+| Defect và hồi quy | Người được giao xử lý; người retest độc lập khi policy yêu cầu | Người sửa không tự xác nhận retest/đóng lỗi nếu thiếu quyền |
+| Dữ liệu dự án và nền tảng | Capability quản trị dự án/nền tảng được cấp riêng | Không tự mở quyền đọc riêng tư, duyệt nghiệp vụ hoặc xem dữ liệu tài chính |
 | Người quyết định phát hành | Chấp nhận/từ chối phát hành dựa trên hồ sơ chất lượng | Không sửa kết quả kiểm thử; nêu lý do và rủi ro khi quyết định vượt khuyến nghị |
 | AI Agent | Yêu cầu người dùng, nguồn được phép, đề xuất/bản nháp có dẫn chứng | Không tự duyệt/phát hành/ghi PASS-FAIL hoặc tăng quyền bằng tài khoản dịch vụ |
 

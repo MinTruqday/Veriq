@@ -1,12 +1,7 @@
 import { valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
-import {
-  TEST_SCENARIO_CATEGORIES,
-  TESTING_LEVELS,
-  TEST_KINDS,
-  TEST_LEVELS,
-} from "./testDesign.model";
+import { TEST_LEVELS } from "./testDesign.model";
 
 export default function ScenarioCreateModal({
   isOpen,
@@ -83,17 +78,14 @@ export default function ScenarioCreateModal({
           </label>
           <label className="field-label block min-w-0">
             Nhóm kịch bản
-            <select
+            <input
               className="apple-input mt-2 w-full min-w-0"
+              required
+              maxLength={100}
               value={form.category}
               onChange={(event) => update({ category: event.target.value })}
-            >
-              {TEST_SCENARIO_CATEGORIES.map((value) => (
-                <option key={value} value={value}>
-                  {valueLabel(value)}
-                </option>
-              ))}
-            </select>
+              placeholder="Nhập nhóm kịch bản"
+            />
           </label>
           <MultiSelect
             label="Phạm vi yêu cầu"
@@ -163,23 +155,17 @@ export default function ScenarioCreateModal({
             {[
               ["risk", "Rủi ro", TEST_LEVELS],
               ["priority", "Ưu tiên", TEST_LEVELS],
-              ["test_level", "Cấp kiểm thử", TESTING_LEVELS],
-              ["test_kind", "Loại kiểm thử", TEST_KINDS],
-            ].map(([key, label, options]) => (
+              ["test_level", "Cấp kiểm thử"],
+              ["test_kind", "Loại kiểm thử"],
+            ].map(([key, label]) => (
               <label className="field-label" key={key}>
                 {label}
-                <select
+                <input
                   className="apple-input mt-2"
+                  maxLength={100}
                   value={form[key]}
                   onChange={(event) => update({ [key]: event.target.value })}
-                >
-                  <option value="">Chưa chọn</option>
-                  {options.map((option) => (
-                    <option key={option} value={option}>
-                      {valueLabel(option)}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
             ))}
             <label className="field-label">

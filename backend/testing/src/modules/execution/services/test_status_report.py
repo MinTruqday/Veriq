@@ -7,8 +7,14 @@ from pymongo.errors import DuplicateKeyError
 from src.clients.ai_automation import emit_status_report_created
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.common import audit, get_project, new_id, now
+from src.core.common import idempotency_request_hash as _create_request_hash
+from src.core.common import verify_idempotency_replay as _verify_create_replay
 from src.core.database import database
-from src.core.human_decisions import content_authorship_changes, require_automation_publication_authority, require_independent_review
+from src.core.human_decisions import (
+    content_authorship_changes,
+    require_automation_publication_authority,
+    require_independent_review,
+)
 from src.modules.execution.services.test_monitoring import effective_snapshot
 from src.repositories.test_status_report import (
     find_ai_result,
@@ -62,34 +68,8 @@ def normalized_forecast(value):
     return value or {"expected_completion_at": None, "confidence": None, "assumptions": []}
 
 
-def _create_request_hash(payload):
-    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    canonical = json.dumps(
-        request,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _verify_create_replay(existing, payload, user):
-    created_by = existing.get("created_by")
-    if not created_by:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
-        )
-    if created_by != user.id:
-        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
-    request_hash = existing.get("idempotency_request_hash")
-    if not request_hash:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
-        )
-    if request_hash != _create_request_hash(payload):
-        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 def _narrative_request_hash(payload, report_id, automation_run_id, user):

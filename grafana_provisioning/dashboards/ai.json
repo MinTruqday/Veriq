@@ -7,37 +7,37 @@
       "title": "Active Agent Sessions",
       "type": "stat",
       "gridPos": {"h": 7, "w": 6, "x": 0, "y": 0},
-      "targets": [{"expr": "system_agent_active_sessions", "legendFormat": "Active"}]
+      "targets": [{"expr": "veriq_agent_active_sessions", "legendFormat": "Active"}]
     },
     {
       "title": "LLM Calls in Active Sessions",
       "type": "stat",
       "gridPos": {"h": 7, "w": 6, "x": 6, "y": 0},
-      "targets": [{"expr": "system_agent_llm_calls_total", "legendFormat": "LLM calls"}]
+      "targets": [{"expr": "veriq_agent_llm_calls_total", "legendFormat": "LLM calls"}]
     },
     {
       "title": "Tokens in Active Sessions",
       "type": "stat",
       "gridPos": {"h": 7, "w": 6, "x": 12, "y": 0},
-      "targets": [{"expr": "system_agent_tokens_total", "legendFormat": "Tokens"}]
+      "targets": [{"expr": "veriq_agent_tokens_total", "legendFormat": "Tokens"}]
     },
     {
       "title": "Security Violations in Active Sessions",
       "type": "stat",
       "gridPos": {"h": 7, "w": 6, "x": 18, "y": 0},
-      "targets": [{"expr": "system_agent_security_violations_total", "legendFormat": "Violations"}]
+      "targets": [{"expr": "veriq_agent_security_violations_total", "legendFormat": "Violations"}]
     },
     {
       "title": "Tool Calls in Active Sessions",
       "type": "timeseries",
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
-      "targets": [{"expr": "system_agent_tool_calls_total", "legendFormat": "Tool calls"}]
+      "targets": [{"expr": "veriq_agent_tool_calls_total", "legendFormat": "Tool calls"}]
     },
     {
       "title": "Average Tool Latency",
       "type": "timeseries",
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
-      "targets": [{"expr": "system_agent_tool_avg_latency_ms", "legendFormat": "{{tool}}"}]
+      "targets": [{"expr": "veriq_agent_tool_avg_latency_ms", "legendFormat": "{{tool}}"}]
     },
     {
       "title": "AI API Average Latency",

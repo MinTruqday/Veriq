@@ -1,7 +1,5 @@
 import csv
-import hashlib
 import io
-import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
@@ -15,27 +13,11 @@ from src.core.common import (
     now,
     visible_defect,
 )
+from src.core.common import idempotency_request_hash as _snapshot_request_hash
+from src.core.common import verify_idempotency_replay as _verify_snapshot_replay
 from src.core.database import database
 from src.core.metrics import STALE, TRACE_ACCEPTANCE_RATE, UNCOVERED
 from src.repositories.traceability import traceability_repository
-
-
-def _snapshot_request_hash(payload):
-    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _verify_snapshot_replay(existing, payload, user):
-    if not existing.get("created_by"):
-        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
-    if existing["created_by"] != user.id:
-        raise HTTPException(403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
-    request_hash = existing.get("idempotency_request_hash")
-    if not request_hash:
-        raise HTTPException(409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
-    if request_hash != _snapshot_request_hash(payload):
-        raise HTTPException(409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 
 def percent(value, total):
@@ -459,7 +441,7 @@ class TraceabilityService:
         }
         criterion_ids = {item["_id"] for item in criteria}
         categories = {}
-        for category in ['happy_path', 'negative', 'boundary', 'permission']:
+        for category in sorted({str(item.get("type") or "").strip() for item in test_versions} - {""}):
             category_versions = {item["_id"] for item in test_versions if item.get("type") == category}
             covered_sources = {link["source_id"] for link in links if link["target_id"] in category_versions}
             categories[category] = percent(len(requirement_versions & covered_sources), len(requirement_versions))

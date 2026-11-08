@@ -37,11 +37,7 @@ class GeneratedCaseOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=2, max_length=300)
-    category: Literal[
-        "happy_path", "negative", "boundary", "validation", "permission",
-        "state_transition", "integration", "error_handling", "data_persistence",
-        "concurrency", "api", "ui", "custom",
-    ]
+    category: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=2, max_length=5000)
     preconditions: str = Field(default="", max_length=5000)
     steps: List[GeneratedStepOutput] = Field(min_length=1, max_length=50)
@@ -62,6 +58,14 @@ class GeneratedCaseOutput(BaseModel):
     )
     evidence_refs: List[str] = Field(default_factory=list, max_length=100)
     evidence_quotes: List[GeneratedEvidenceQuoteOutput] = Field(min_length=1, max_length=20)
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("test_case_category_must_not_be_empty")
+        return normalized
 
     @field_validator("required_skills")
     @classmethod

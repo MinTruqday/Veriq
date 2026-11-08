@@ -4,23 +4,15 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.core.sensitive_data import secret_pattern
-from src.schemas.contracts.common import empty_doc
+from src.schemas.contracts.common import empty_doc, validate_tiptap_document
 from src.schemas.contracts.utility import TestDesignChallengeInput
 
 RiskLevel: TypeAlias = Literal["critical", "high", "medium", "low"]
 TestCaseAssessmentLevel: TypeAlias = Literal[
     "unassessed", "critical", "high", "medium", "low"
 ]
-TestScenarioCategory: TypeAlias = Literal[
-    "happy_path", "negative", "boundary", "validation", "permission",
-    "state_transition", "integration", "error_handling", "data_persistence",
-    "concurrency",
-]
-TestCaseType: TypeAlias = Literal[
-    "happy_path", "negative", "boundary", "validation", "permission",
-    "state_transition", "integration", "error_handling", "data_persistence",
-    "concurrency", "api", "ui", "custom",
-]
+TestScenarioCategory: TypeAlias = str
+TestCaseType: TypeAlias = str
 AutomationStatus: TypeAlias = Literal["manual", "candidate", "automated"]
 
 class ScenarioCreate(BaseModel):
@@ -34,17 +26,25 @@ class ScenarioCreate(BaseModel):
     test_condition_ids: list[str] = Field(default_factory=list, max_length=500)
     status: Literal["draft", "in_review", "approved", "archived"] = "draft"
     origin: Literal["manual", "ai_generated", "import"] = "manual"
-    category: TestScenarioCategory = "happy_path"
+    category: TestScenarioCategory = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=10000)
     actors: list[str] = Field(default_factory=list, max_length=100)
     preconditions: str = Field(default="", max_length=5000)
     business_flow: str = Field(default="", max_length=10000)
     expected_outcome: str = Field(default="", max_length=5000)
     test_data_notes: str = Field(default="", max_length=5000)
-    test_level: Literal["", "UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"] | None = None
+    test_level: str | None = Field(default=None, max_length=100)
     test_kind: str = Field(default="", max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
     tags: list[str] = Field(default_factory=list, max_length=100)
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Scenario category must not be empty")
+        return normalized
 
 
 class ScenarioPatch(BaseModel):
@@ -63,10 +63,20 @@ class ScenarioPatch(BaseModel):
     business_flow: str | None = Field(default=None, max_length=10000)
     expected_outcome: str | None = Field(default=None, max_length=5000)
     test_data_notes: str | None = Field(default=None, max_length=5000)
-    test_level: Literal["", "UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"] | None = None
+    test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
     owner_id: str | None = Field(default=None, max_length=200)
     tags: list[str] | None = Field(default=None, max_length=100)
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value):
+        if value is None:
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Scenario category must not be empty")
+        return normalized
 
 
 class TestStep(BaseModel):
@@ -79,9 +89,7 @@ class TestStep(BaseModel):
     @field_validator("action_doc", "expected_doc")
     @classmethod
     def validate_documents(cls, value):
-        if value.get("type") != "doc" or not isinstance(value.get("content", []), list):
-            raise ValueError("Tiptap JSON không hợp lệ")
-        return value
+        return validate_tiptap_document(value)
 
 
 class BddStep(BaseModel):
@@ -199,9 +207,9 @@ class TestImportConfirm(BaseModel):
 class TestCaseDraftCreate(BaseModel):
     test_case_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
-    type: TestCaseType = "happy_path"
-    test_level: Literal["UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"] | None = None
-    test_kind: Literal["functional", "performance", "security", "usability", "compatibility", "reliability", "accessibility"] | None = None
+    type: TestCaseType = Field(min_length=1, max_length=100)
+    test_level: str | None = Field(default=None, max_length=100)
+    test_kind: str | None = Field(default=None, max_length=100)
     expected_impact: Literal["unassessed", "low", "medium", "high", "critical"] = "unassessed"
     assessment_reason: str = Field(default="", max_length=2000)
     priority: TestCaseAssessmentLevel = "unassessed"
@@ -240,14 +248,20 @@ class TestCaseDraftCreate(BaseModel):
     target_version_id: str | None = Field(default=None, min_length=1, max_length=200)
     version_reason: str | None = Field(default=None, min_length=2, max_length=2000)
 
+    @field_validator("type")
+    @classmethod
+    def normalize_type(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Test case type must not be empty")
+        return normalized
+
     @field_validator(
         "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc"
     )
     @classmethod
     def validate_documents(cls, value):
-        if value.get("type") != "doc" or not isinstance(value.get("content", []), list):
-            raise ValueError("Tiptap JSON không hợp lệ")
-        return value
+        return validate_tiptap_document(value)
 
     @model_validator(mode="after")
     def validate_step_order(self):
@@ -312,8 +326,8 @@ class TestCaseDraftPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=2, max_length=300)
     type: TestCaseType | None = None
-    test_level: Literal["UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"] | None = None
-    test_kind: Literal["functional", "performance", "security", "usability", "compatibility", "reliability", "accessibility"] | None = None
+    test_level: str | None = Field(default=None, max_length=100)
+    test_kind: str | None = Field(default=None, max_length=100)
     expected_impact: Literal["unassessed", "low", "medium", "high", "critical"] | None = None
     assessment_reason: str | None = Field(default=None, max_length=2000)
     priority: TestCaseAssessmentLevel | None = None
@@ -341,16 +355,22 @@ class TestCaseDraftPatch(BaseModel):
     bdd: BddScenario | None = None
     duplicate_reason: str | None = Field(default=None, min_length=2, max_length=2000)
 
+    @field_validator("type")
+    @classmethod
+    def normalize_type(cls, value):
+        if value is None:
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Test case type must not be empty")
+        return normalized
+
     @field_validator(
         "preconditions_doc", "objective_doc", "expected_result_doc", "postconditions_doc"
     )
     @classmethod
     def validate_documents(cls, value):
-        if value is not None and (
-            value.get("type") != "doc" or not isinstance(value.get("content", []), list)
-        ):
-            raise ValueError("Tiptap JSON không hợp lệ")
-        return value
+        return validate_tiptap_document(value)
 
     @field_validator("required_skills")
     @classmethod

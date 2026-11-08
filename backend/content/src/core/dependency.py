@@ -1,5 +1,5 @@
 import hmac
-from typing import List, Optional
+from typing import Optional
 
 import jwt
 from fastapi import Depends, Header, HTTPException, Request, status
@@ -12,10 +12,8 @@ from src.core.infrastructure.redis import redis
 from src.clients.authentication import AuthenticationClient
 from src.schemas.common import CurrentUser, SystemRole
 
-
 ALGORITHM = "HS256"
 SECRET_KEY = settings.SECRET_KEY
-
 
 async def verify_internal_token(x_internal_token: str = Header(default="")) -> None:
     if not settings.SECRET_KEY or not hmac.compare_digest(x_internal_token, settings.SECRET_KEY):
@@ -23,9 +21,7 @@ async def verify_internal_token(x_internal_token: str = Header(default="")) -> N
             status_code=status.HTTP_403_FORBIDDEN, detail="Mã xác thực nội bộ không hợp lệ"
         )
 
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/xac-thuc/dang-nhap")
-
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> CurrentUser:
     credentials_exception = HTTPException(
@@ -66,7 +62,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> CurrentUser:
     }
     return CurrentUser(**user_doc)
 
-
 async def get_current_user_optional(
     token: Optional[str] = Depends(
         OAuth2PasswordBearer(tokenUrl="/xac-thuc/dang-nhap", auto_error=False)
@@ -79,11 +74,6 @@ async def get_current_user_optional(
     except HTTPException:
         return None
 
-
-async def get_current_user_token_param(token: str) -> CurrentUser:
-    return await get_current_user(token)
-
-
 async def require_system_admin(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CurrentUser:
@@ -93,7 +83,6 @@ async def require_system_admin(
             detail="Chức năng chỉ dành cho quản trị hệ thống",
         )
     return current_user
-
 
 class RateLimiting:
     def __init__(self, calls: int, period: int):
@@ -112,25 +101,6 @@ class RateLimiting:
             )
         await redis.pipeline_incr_expire(key, self.period)
         return True
-
-
-def require_permissions(required_permissions: List[str]):
-    async def permission_checker(
-        current_user: CurrentUser = Depends(get_current_user),
-    ) -> CurrentUser:
-        user_perms = current_user.permissions or []
-        if current_user.system_role == SystemRole.ADMIN:
-            return current_user
-        missing = [p for p in required_permissions if p not in user_perms]
-        if missing:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tài khoản không đủ quyền thực hiện thao tác này",
-            )
-        return current_user
-
-    return permission_checker
-
 
 async def get_db():
     return mongo.get_db()

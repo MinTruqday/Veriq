@@ -3,13 +3,7 @@ import { Trash2 } from "lucide-react";
 import { docText, valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
-import {
-  TEST_CASE_TYPES,
-  TEST_CASE_ASSESSMENT_LEVELS,
-  TESTING_LEVELS,
-  TEST_KINDS,
-  EXPECTED_IMPACTS,
-} from "./testDesign.model";
+import { TEST_CASE_ASSESSMENT_LEVELS, EXPECTED_IMPACTS } from "./testDesign.model";
 import TestCaseCustomValues from "./TestCaseCustomValues";
 import TestCaseOwnerRecommendation from "./TestCaseOwnerRecommendation";
 import RequirementCoverageSelector from "./RequirementCoverageSelector";
@@ -218,18 +212,15 @@ export default function TestCaseCreateModal({
           </label>
           <label className="field-label">
             Loại
-            <select
+            <input
               aria-label="Loại ca kiểm thử"
               className="apple-input"
+              required
+              maxLength={100}
               value={form.type}
               onChange={(event) => update({ type: event.target.value })}
-            >
-              {TEST_CASE_TYPES.map((value) => (
-                <option key={value} value={value}>
-                  {valueLabel(value)}
-                </option>
-              ))}
-            </select>
+              placeholder="Nhập loại ca kiểm thử"
+            />
           </label>
           <label className="field-label">
             Ưu tiên
@@ -264,25 +255,34 @@ export default function TestCaseCreateModal({
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { field: "testLevel", label: "Cấp kiểm thử", options: TESTING_LEVELS },
-            { field: "testKind", label: "Loại kiểm thử", options: TEST_KINDS },
+            { field: "testLevel", label: "Cấp kiểm thử", freeText: true },
+            { field: "testKind", label: "Loại kiểm thử", freeText: true },
             { field: "expectedImpact", label: "Ảnh hưởng dự kiến", options: EXPECTED_IMPACTS },
-          ].map(({ field, label, options }) => (
+          ].map(({ field, label, options, freeText }) => (
             <label className="field-label" key={field}>
               {label}
-              <select
-                className="apple-input mt-2"
-                value={form[field]}
-                aria-label={label}
-                onChange={(event) => update({ [field]: event.target.value })}
-              >
-                {field !== "expectedImpact" && <option value="">Chưa phân loại</option>}
-                {options.map((value) => (
-                  <option key={value} value={value}>
-                    {valueLabel(value)}
-                  </option>
-                ))}
-              </select>
+              {freeText ? (
+                <input
+                  className="apple-input mt-2"
+                  value={form[field]}
+                  aria-label={label}
+                  maxLength={100}
+                  onChange={(event) => update({ [field]: event.target.value })}
+                />
+              ) : (
+                <select
+                  className="apple-input mt-2"
+                  value={form[field]}
+                  aria-label={label}
+                  onChange={(event) => update({ [field]: event.target.value })}
+                >
+                  {options.map((value) => (
+                    <option key={value} value={value}>
+                      {valueLabel(value)}
+                    </option>
+                  ))}
+                </select>
+              )}
             </label>
           ))}
         </div>

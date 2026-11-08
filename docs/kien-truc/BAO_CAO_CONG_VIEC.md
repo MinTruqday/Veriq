@@ -6,22 +6,24 @@ Báo cáo công việc là một khu vực tùy chọn theo từng dự án, dù
 
 Báo cáo có thể là cá nhân, nhóm hoặc toàn dự án. Kỳ báo cáo có ngày giờ bắt đầu, kết thúc và múi giờ. Có thể tạo bản nháp thủ công hoặc đặt lịch để hệ thống chuẩn bị bản nháp và tệp xuất. Mọi bản phát hành đều cần người có quyền rà soát và bấm phát hành.
 
-## Vai trò và quyền
+## Phân quyền theo năng lực và phân công
 
-| Vai trò | Tạo và viết | Rà soát và phát hành | Nhận báo cáo |
+Quyền báo cáo được quyết định bởi capability hiện hành, membership còn hiệu lực và phạm vi phân công trên từng báo cáo. Tên role của dự án là dữ liệu cấu hình; không có role nào được ngầm hiểu là người viết, người duyệt hoặc người nhận.
+
+| Năng lực hoặc phân công | Tạo và viết | Rà soát và phát hành | Nhận báo cáo |
 |---|---|---|---|
-| BA | Quản lý cấu hình dự án, mẫu, lịch, người tham gia; tạo và viết báo cáo theo phạm vi được giao | Có thể quản lý báo cáo dự án; quyết định rà soát theo vai trò được gán | Có thể xem, bình luận hoặc tải nếu được cấp |
-| QA | Viết báo cáo khi được giao; tiếp tục quản lý các báo cáo kiểm thử chính thức theo quyền QA hiện có | Chỉ người được chỉ định làm người rà soát mới duyệt/phát hành bản đó | Có thể xem, bình luận hoặc tải nếu được cấp |
-| Tester, Developer | Viết khi là chủ sở hữu hoặc biên tập viên của báo cáo được giao | Không tự duyệt nếu không được chỉ định là BA/QA rà soát | Theo quyền thành viên và quyền báo cáo |
-| Viewer | Không tạo, sửa, duyệt, phát hành hoặc sửa mẫu | Không | Chỉ xem hoặc bình luận theo quyền nhận; không mặc định được tải |
-| Admin nền tảng | Quản trị tài khoản/nền tảng theo quyền hiện có | Không mặc định có quyền nghiệp vụ trong dự án | Theo tư cách thành viên được cấp |
+| Quản lý cấu hình báo cáo | Quản lý loại báo cáo, mẫu, lịch và phân công trong phạm vi được cấp; quyền này không tự cấp quyền sửa nội dung báo cáo | Không mặc định được duyệt hoặc phát hành | Có thể xem khi được phân công hoặc được cấp quyền đọc |
+| Người phụ trách hoặc biên tập viên được giao | Sửa bản nháp và phần nội dung thuộc phạm vi được giao | Không mặc định được tự duyệt nội dung mình đã sửa | Có thể xem, bình luận hoặc tải nếu được cấp riêng |
+| Người rà soát được chỉ định | Xem phiên bản gửi rà soát | Yêu cầu chỉnh sửa hoặc duyệt; phát hành chỉ khi có capability tương ứng | Có thể xem, bình luận hoặc tải nếu được cấp riêng |
+| Người nhận có quyền xem | Không sửa nội dung | Không duyệt hoặc phát hành | Chỉ xem; bình luận, xác nhận hoặc tải cần capability riêng |
+| Quản trị nền tảng | Quản trị tài khoản và cấu hình nền tảng theo quyền hiện có | Không mặc nhiên có quyền nghiệp vụ trong dự án | Chỉ xem báo cáo nếu có membership và quyền nội dung tương ứng |
 
 Quyền được kiểm tra tại API; ẩn nút trên giao diện không phải là cơ chế bảo vệ dữ liệu. Quyền nhận báo cáo có thể thu hồi, sau đó truy cập và tải bị chặn ngay ở backend.
 
 ## Luồng trạng thái
 
-1. BA bật báo cáo cho dự án, chọn múi giờ, loại báo cáo được phép và mẫu dùng chung.
-2. Người tạo chọn loại, kỳ, chủ sở hữu, biên tập viên, QA/BA rà soát và người nhận. Máy chủ xác nhận tất cả là thành viên đang hoạt động và vai trò phù hợp.
+1. Người có capability quản lý cấu hình bật báo cáo cho dự án, chọn múi giờ, loại báo cáo được phép và mẫu dùng chung.
+2. Người tạo chọn loại, kỳ, chủ sở hữu, biên tập viên, người rà soát và người nhận. Máy chủ xác nhận các tài khoản được phân công là thành viên đang hoạt động và có capability phù hợp.
 3. Veriq chụp ảnh dữ liệu công việc trong phạm vi tại thời điểm tạo. Nội dung có thể được biên tập trực tiếp bằng Tiptap; phần dữ liệu nguồn được phân biệt với nội dung do người viết bổ sung.
 4. Người viết lưu bản nháp, yêu cầu thay đổi hoặc gửi rà soát. Nội dung sửa đổi dùng revision để từ chối ghi đè nếu một người khác đã cập nhật trước.
 5. Người rà soát có thể yêu cầu chỉnh sửa hoặc duyệt. Tệp DOCX/PDF phải hoàn tất cho đúng revision đã duyệt trước khi phát hành.
@@ -68,4 +70,4 @@ Prompt dùng tiếng Anh theo cấu trúc prompt chung của Veriq; đầu ra th
 
 ## Kiểm chứng chức năng
 
-Kiểm thử tích hợp bao gồm quyền BA/QA/Tester/Viewer, tạo và sửa báo cáo, revision xung đột, mẫu DOCX có bảng/ảnh, tạo DOCX/PDF qua worker, lịch đến hạn tạo nháp, duyệt/phát hành, biên nhận, bình luận, tải/thu hồi quyền, retry sau lỗi nguồn, tính lặp idempotency và đầu ra AI có kiểm soát. Kiểm thử giao diện dùng dữ liệu thử trong dự án cách ly; không ghi dữ liệu mẫu vào dự án nghiệp vụ.
+Kiểm thử tích hợp bao gồm các tổ hợp capability và phân công: người quản lý cấu hình, người viết, người rà soát, người nhận chỉ xem/nhận xét/tải; đồng thời kiểm tra người không có quyền, revision xung đột, mẫu DOCX có bảng/ảnh, tạo DOCX/PDF qua worker, lịch đến hạn tạo nháp, duyệt/phát hành, biên nhận, bình luận, tải/thu hồi quyền, retry sau lỗi nguồn, tính lặp idempotency và đầu ra AI có kiểm soát. Kiểm thử giao diện dùng dữ liệu thử trong dự án cách ly; không ghi dữ liệu mẫu vào dự án nghiệp vụ.

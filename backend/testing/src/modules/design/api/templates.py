@@ -1,5 +1,3 @@
-from typing import Literal
-
 from fastapi import APIRouter, Depends, Query
 
 from src.core.auth import CurrentUser, get_current_user
@@ -18,9 +16,7 @@ router = APIRouter(prefix="/kiem-thu", tags=["Mẫu ca kiểm thử"])
 @router.get("/du-an/{project_id}/mau-ca-kiem-thu", openapi_extra={"x-function-ids": ["TPLT-01"]})
 async def list_templates(
     project_id: str,
-    template_type: Literal["functional", "api", "rbac", "state", "bva"] | None = Query(
-        default=None
-    ),
+    template_type: str | None = Query(default=None, max_length=100),
     user: CurrentUser = Depends(get_current_user),
 ):
     return envelope(await TestCaseTemplateService.list(project_id, template_type, user))

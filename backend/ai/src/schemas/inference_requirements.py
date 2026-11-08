@@ -1,6 +1,6 @@
 from typing import Any, List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 TESTABILITY_BLUEPRINT_MAX_OBLIGATIONS = 300
@@ -130,7 +130,7 @@ class RequirementTemplateSuggestionOutput(BaseModel):
 
     requirement_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
-    type: Literal["functional", "non_functional", "business_rule", "api", "ui", "data", "permission", "integration", "constraint"]
+    type: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=2, max_length=10000)
     evidence_refs: List[str] = Field(min_length=1, max_length=20)
     source_quotes: dict[str, str] = Field(default_factory=dict)
@@ -158,6 +158,14 @@ class RequirementTemplateSuggestionOutput(BaseModel):
     integration: str | None = None
     quality_measure: str | None = None
     api_operations: List[RequirementTemplateAPIOperationOutput] = Field(default_factory=list, max_length=50)
+
+    @field_validator("type")
+    @classmethod
+    def normalize_type(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("requirement_type_must_not_be_empty")
+        return normalized
 
 class RequirementTemplateSynthesisOutput(BaseModel):
     """Structured Requirement template synthesis draft."""

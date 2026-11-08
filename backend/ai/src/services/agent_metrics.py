@@ -12,15 +12,6 @@ from src.utils.background import create_background_task
 
 
 @dataclass
-class TraceEvent:
-    event_type: str
-    session_id: str
-    user_id: str
-    timestamp: datetime
-    data: dict = field(default_factory=dict)
-
-
-@dataclass
 class SessionMetrics:
     session_id: str
     user_id: str
@@ -127,7 +118,12 @@ class AgentMetrics:
         metrics = self._sessions.get(session_id)
         if metrics:
             metrics.security_violations += 1
-        logger.warning("Recorded security violation risk")
+        logger.warning(
+            "Recorded security event type={} risk_score={} violations={}",
+            event_type,
+            risk_score,
+            len(violations or []),
+        )
 
     async def _flush_session(self, session_id: str):
         metrics = self._sessions.pop(session_id, None)

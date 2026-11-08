@@ -21,17 +21,6 @@ import {
 } from "@/shared/components/ui/Modal";
 import StructuredValueEditor, { StructuredValueView } from "./StructuredValueEditor";
 
-const templateTypes = [
-  ["functional", "Chức năng"],
-  ["api", "API"],
-  ["rbac", "Phân quyền RBAC"],
-  ["state", "Chuyển trạng thái"],
-  ["bva", "Giá trị biên BVA"],
-];
-
-const typeLabel = (value) =>
-  templateTypes.find(([templateType]) => templateType === value)?.[1] || value;
-
 const splitTags = (value) =>
   Array.from(
     new Set(
@@ -89,7 +78,7 @@ export default function TestCaseTemplatesPanel({ project }) {
     const query = search.trim().toLocaleLowerCase();
     if (!query) return items;
     return items.filter((item) =>
-      [item.name, item.description, typeLabel(item.template_type), ...(item.tags || [])]
+      [item.name, item.description, item.template_type, ...(item.tags || [])]
         .filter(Boolean)
         .join(" ")
         .toLocaleLowerCase()
@@ -112,7 +101,7 @@ export default function TestCaseTemplatesPanel({ project }) {
     setTemplateEditor({
       source: item,
       name: item?.name || "",
-      templateType: item?.template_type || "functional",
+      templateType: item?.template_type || "",
       description: item?.description || "",
       definition: structuredClone(item?.definition || {}),
       tags: (item?.tags || []).join(", "),
@@ -198,19 +187,13 @@ export default function TestCaseTemplatesPanel({ project }) {
             placeholder="Tìm theo tên, mô tả hoặc nhãn"
             value={search}
           />
-          <select
+          <input
             aria-label="Lọc loại mẫu ca kiểm thử"
             className="apple-input min-w-48 w-auto"
             value={templateType}
             onChange={(event) => setTemplateType(event.target.value)}
-          >
-            <option value="">Tất cả loại mẫu</option>
-            {templateTypes.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+            placeholder="Lọc loại mẫu"
+          />
           <span className="px-2 text-[12px] text-ink-muted">{visibleItems.length} mẫu</span>
           {canManage && (
             <button className="apple-button" type="button" onClick={createTemplate}>
@@ -243,7 +226,7 @@ export default function TestCaseTemplatesPanel({ project }) {
                         </span>
                       </span>
                       <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-muted">
-                        <span>{typeLabel(item.template_type)}</span>
+                        <span>{item.template_type}</span>
                         <StatusPill value={item.status} />
                       </span>
                       {item.description && (
@@ -267,7 +250,7 @@ export default function TestCaseTemplatesPanel({ project }) {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                      {typeLabel(selected.template_type)}
+                      {selected.template_type}
                     </p>
                     <h3 className="mt-1 font-semibold">{selected.name}</h3>
                   </div>
@@ -367,8 +350,10 @@ export default function TestCaseTemplatesPanel({ project }) {
               </label>
               <label className="field-label block">
                 Loại mẫu
-                <select
+                <input
                   className="apple-input mt-2 w-full"
+                  required
+                  maxLength={100}
                   value={templateEditor.templateType}
                   onChange={(event) =>
                     setTemplateEditor((current) => ({
@@ -376,13 +361,8 @@ export default function TestCaseTemplatesPanel({ project }) {
                       templateType: event.target.value,
                     }))
                   }
-                >
-                  {templateTypes.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Nhập loại mẫu"
+                />
               </label>
               <label className="field-label block">
                 Mô tả

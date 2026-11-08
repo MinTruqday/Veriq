@@ -73,6 +73,16 @@ def _require_independently_reviewed_benchmark_dataset(dataset):
         )
 
 
+async def _run_and_persist_synthetic_testability_benchmark():
+    async def save_report(report):
+        await testability_benchmark_repository.save_run(report.model_dump(mode="json"))
+
+    return await testability_benchmark.run_synthetic_benchmark(
+        repetitions=3,
+        on_report=save_report,
+    )
+
+
 @router.post(
     "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu",
     dependencies=[Depends(verify_internal_token)],
@@ -231,15 +241,7 @@ async def repeat_testability_benchmark_dataset(
 async def run_synthetic_testability_benchmark(
     current_user: CurrentUser = Depends(require_system_admin),
 ):
-    async def save_report(report):
-        await testability_benchmark_repository.save_run(
-            report.model_dump(mode="json")
-        )
-
-    return await testability_benchmark.run_synthetic_benchmark(
-        repetitions=3,
-        on_report=save_report,
-    )
+    return await _run_and_persist_synthetic_testability_benchmark()
 
 
 @router.get(
@@ -267,15 +269,7 @@ async def list_synthetic_testability_benchmark_runs(
 async def run_synthetic_testability_benchmark_for_admin(
     current_user: CurrentUser = Depends(require_system_admin),
 ):
-    async def save_report(report):
-        await testability_benchmark_repository.save_run(
-            report.model_dump(mode="json")
-        )
-
-    return await testability_benchmark.run_synthetic_benchmark(
-        repetitions=3,
-        on_report=save_report,
-    )
+    return await _run_and_persist_synthetic_testability_benchmark()
 
 
 @router.get(

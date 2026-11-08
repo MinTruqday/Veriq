@@ -146,7 +146,7 @@ const actions = {
   "script.update": "Chỉnh sửa script",
   "script.approve": "Duyệt script",
   "script.export": "Xuất script",
-  "transition.developer": "Cập nhật tiến độ sửa lỗi",
+  "transition.resolve": "Cập nhật tiến độ xử lý lỗi",
   "trace.manage": "Quản lý liên kết truy vết",
   "handover.manage": "Quản lý bàn giao",
   "risk.manage": "Quản lý rủi ro tồn đọng",
@@ -170,10 +170,11 @@ const reasons = {
   PROJECT_ARCHIVED_READ_DENIED: "Dự án đã lưu trữ và hạn chế quyền xem",
 };
 
-const responsibilities = {
-  business_confirmation: "Xác nhận nghiệp vụ",
-  release_decision: "Quyết định phát hành",
-};
+function responsibilityLabel(value) {
+  return `Trách nhiệm · ${String(value)
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase())}`;
+}
 
 export default function ProjectAccessPanel({ project }) {
   const [data, setData] = useState(null);
@@ -244,7 +245,7 @@ export default function ProjectAccessPanel({ project }) {
               </div>
               {(data.responsibilities || []).map((item) => (
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1" key={item.name}>
-                  <dt className="text-ink-muted">{responsibilities[item.name] || "Trách nhiệm"}</dt>
+                  <dt className="text-ink-muted">{responsibilityLabel(item.name)}</dt>
                   <dd className={item.assigned_to_you ? "font-medium" : ""}>
                     {item.assigned_to_you
                       ? "Được giao cho bạn"

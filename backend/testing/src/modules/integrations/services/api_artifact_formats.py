@@ -160,23 +160,6 @@ def parse_postman(value):
     return operations[: 5000]
 
 
-def api_case_blueprints(operation):
-    responses = operation.get("responses") or {}
-    if not isinstance(responses, dict):
-        return []
-    cases = []
-    for code, response in responses.items():
-        status = str(code).strip()
-        if not status.isdigit() or not 100 <= int(status) <= 599:
-            continue
-        detail = response if isinstance(response, dict) else {}
-        description = str(detail.get("description") or detail.get("name") or "").strip()
-        cases.append({
-            "response_code": status,
-            "title": f"{operation['method']} {operation['path']} phản hồi {status}",
-            "expected": f"HTTP {status} {description}".strip(),
-        })
-    return cases
 
 
 def sanitize(value, sensitive_context=False):

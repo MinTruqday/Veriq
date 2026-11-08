@@ -5,7 +5,6 @@ from src.clients.authentication import get_project_creation_policy
 from src.core.auth import (
     access_policy,
     archive_read_permissions,
-    business_role_allows,
     permissions_for_membership,
     permissions_for_role,
     project_permissions,
@@ -77,7 +76,6 @@ def project_access(project, membership, grant):
         })
     role_permissions = permissions_for_membership(membership, project.get("settings"))
     grant_permissions = set(grant.get("permissions", [])) & project_permissions() if grant else set()
-    active_roles = roles_for_membership(membership) if membership and membership.get("status") == "ACTIVE" else set()
     effective_roles = roles_for_membership(membership)
     public_membership = (
         {
@@ -88,7 +86,15 @@ def project_access(project, membership, grant):
         if membership
         else None
     )
-    grant_permissions = {item for item in grant_permissions if business_role_allows(item, active_roles) and responsibility_allows(item, membership.get("user_id") if membership else None, project.get("settings"))}
+    grant_permissions = {
+        item
+        for item in grant_permissions
+        if responsibility_allows(
+            item,
+            membership.get("user_id") if membership else None,
+            project.get("settings"),
+        )
+    }
     if project.get("status", "active").lower() == "archived":
         allowed = archive_read_permissions() | {"project.restore"}
         if (project.get("settings") or {}).get("read_after_archive_policy", "ALLOW_READ") == "DENY_READ":
@@ -126,8 +132,6 @@ def project_settings(project):
         "project_type": project.get("project_type"),
         "locale": project.get("locale"),
         "timezone": project.get("timezone"),
-        "automation_framework": project.get("automation_framework"),
-        "automation_language": project.get("automation_language"),
         "settings": project.get("settings", {}),
     }
 

@@ -53,11 +53,6 @@ const overviewLabels = {
   LIMITED: "Khả dụng có giới hạn",
   UNAVAILABLE: "Không khả dụng",
   NOT_RECORDED: "Chưa khai báo",
-  QA: "QA",
-  TESTER: "Tester",
-  BA: "BA",
-  DEVELOPER: "Nhà phát triển",
-  VIEWER: "Người xem",
   ALLOCATED_PERSON_NOT_ACTIVE_PROJECT_MEMBER:
     "Có người được phân bổ không còn là thành viên đang hoạt động của dự án.",
   PERSON_AVAILABILITY_MISSING_OR_RESTRICTED:

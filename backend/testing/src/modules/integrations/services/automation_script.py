@@ -150,15 +150,7 @@ class AutomationScriptService:
                 status_code=409,
                 detail={"code": "TEST_CASE_AUTOMATION_SOURCE_CHANGED"},
             )
-        project = await get_project(project_id, user, "project.read")
-        if (
-            project.get("automation_framework") != payload.framework
-            or project.get("automation_language") != payload.language
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "PROJECT_AUTOMATION_RUNTIME_CHANGED"},
-            )
+        await get_project(project_id, user, "project.read")
         expected_idempotency_key = "approved-test-case-script:" + hashlib.sha256(
             f"{payload.source_event_key}:{version['_id']}:{payload.framework}:{payload.language}".encode(
                 "utf-8"

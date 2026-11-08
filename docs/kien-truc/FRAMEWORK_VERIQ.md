@@ -1,6 +1,6 @@
 # Framework Veriq
 
-Luồng nghiệp vụ đang được nâng cấp theo [Luồng nghiệp vụ kiểm thử](LUONG_NGHIEP_VU_KIEM_THU.md). Tài liệu đó ghi hợp đồng mới, thay đổi tương thích và bằng chứng kiểm chứng. Các mô tả sự kiện AI tự động bên dưới cần được đọc cùng chế độ mặc định người dùng bấm chạy của luồng mới.
+Luồng nghiệp vụ hiện hành được mô tả trong [Luồng nghiệp vụ kiểm thử](LUONG_NGHIEP_VU_KIEM_THU.md). AI Agent bắt đầu từ thao tác do người dùng khởi tạo; queue/worker chỉ thực hiện công việc đã được yêu cầu và không tự khởi chạy nghiệp vụ khi dữ liệu dự án thay đổi. Các ghi chép cũ bên dưới đã được cập nhật theo quy tắc này.
 
 ## Mục đích và căn cứ
 
@@ -57,7 +57,7 @@ Tài liệu tách riêng bốn vấn đề để tránh lẫn lộn
 
 9  Các service dùng cùng MongoDB deployment nhưng có database logic riêng  Không service nào tự sở hữu dữ liệu của service khác
 
-10  Luồng AI sự kiện tài liệu hiện có thể tự chốt chuẩn Requirement và công bố Test Case sau các kiểm tra nguồn, chất lượng, trạng thái và quyền trong dự án; người dùng không phải bấm duyệt để luồng tiếp tục. Thao tác đi qua API Testing bằng quyền QA được ủy quyền và giới hạn theo lượt chạy, không phải quyền Admin hay đường vòng phân quyền. API đánh giá chất lượng Requirement chỉ cho phép gọi nội bộ; giao diện chỉ đọc kết quả do event ghi. Các nghiệp vụ khác chỉ tự ghi khi có tool, permission và hậu kiểm tương ứng; không suy rộng rằng AI có thể archive hoặc tự quyết mọi thay đổi.
+10  Các thao tác AI được gọi bởi người dùng qua UI/API đã xác thực; quyền được kiểm tra theo capability và phạm vi dự án. AI trả kết quả/đề xuất để người dùng xem. AI không tự chốt Requirement, duyệt Test Case, phát hành hay tiếp tục sang nghiệp vụ khác chỉ vì nguồn đã được tải hoặc dữ liệu dự án đổi.
 
 ## 1  Bối cảnh triển khai và điểm vào
 
@@ -113,7 +113,7 @@ flowchart TB
     TR --> NO
     TR --> WO
 
-    TE -->|X Internal Token<br/>AI automation stream hoặc result| AI
+    TE -->|X Internal Token<br/>Yêu cầu AI Agent hoặc kết quả| AI
     TE -->|X Internal Token<br/>index search delete project artifact| AI
     TE -->|X Internal Token<br/>requirement source read write| CL
     TE -->|X Internal Token<br/>enqueue get retry cancel job| WO
@@ -342,7 +342,7 @@ flowchart TD
 
 Consumer thử handler tối đa ba lần trong một lần nhận message  Job failed có thể retry thủ công tối đa chín lần  Đây không phải cơ chế retry chung cho toàn bộ API
 
-### 5.1  Hai đường xử lý tài liệu và AI automation
+### 5.1  Lập chỉ mục tài liệu và lượt AI do người dùng khởi tạo
 
 Không gộp hai loại sự kiện dưới đây thành một queue hoặc một lượt chạy:
 
@@ -361,19 +361,19 @@ flowchart LR
       A6 -->|Không| A8[Giữ nguồn cũ; retry hoặc lỗi]
     end
 
-    subgraph AUTOMATION[Đường sự kiện nghiệp vụ trong Testing]
-      T1[Testing ghi nghiệp vụ và transactional outbox] --> T2[Testing dispatcher claim outbox]
-      T2 -->|HTTP X Internal Token| A9[AI API nhận sự kiện nghiệp vụ]
-      A9 --> A10[Tạo/reuse Automation Run theo event ID]
-      A10 -->|Publish| MQ2[(RabbitMQ ai.automation)]
-      MQ2 --> A11[AI automation worker]
-      A11 --> A12[Đọc nguồn được phép; chạy workflow theo trigger]
-      A12 --> A13[Gọi API Testing theo quyền giới hạn]
-      A13 --> A14[Readback, provenance và checkpoint của run]
+    subgraph REQUESTED[Đường xử lý lượt AI được người dùng yêu cầu]
+      T1[Người dùng bấm một thao tác AI trên UI/API] --> T2[Testing xác thực người dùng, capability, dự án và phạm vi]
+      T2 -->|Được phép| A9[Tạo lượt Agent gắn người khởi tạo và mục tiêu]
+      A9 --> A10[AI đọc nguồn được phép và lập kế hoạch có cấu trúc]
+      A10 --> A11[Gọi công cụ chỉ trong phạm vi đã được cấp]
+      A11 --> A12[Readback, kiểm tra revision, provenance và kết quả]
+      A12 --> A13[Trả đề xuất/bản nháp cho người dùng xem]
+      A13 --> A14[Người dùng quyết định có áp dụng bằng thao tác riêng]
+      T2 -->|Bị từ chối| DENY([Không tạo lượt AI])
     end
 ```
 
-Đường lập chỉ mục dùng `Content.document_ingestion_outbox`, webhook `/su-kien/webhook/tai-lieu-dang-tai`, queue `ai.document_ingestion` và `DocumentIngestionWorker`. Đường automation nghiệp vụ dùng `Testing.ai_automation_outbox`, endpoint nội bộ `/tu-dong-hoa-ai/noi-bo/su-kien`, queue `ai.automation` và `AutomationWorker`. Cả hai dùng RabbitMQ nhưng khác payload, idempotency key, worker và trạng thái; việc tài liệu được lập chỉ mục không tự nó chứng minh rằng Requirement/Test Case đã được tạo.
+Đường lập chỉ mục tài liệu dùng outbox/worker để xử lý tệp đã được người dùng tải lên; việc lập chỉ mục không tự tạo hoặc sửa dữ liệu nghiệp vụ. Lượt AI nghiệp vụ chỉ bắt đầu sau thao tác rõ ràng của người dùng, sau đó có thể dùng job/queue để hoàn tất lượt được yêu cầu. Queue, retry và worker là cơ chế thực thi, không phải trigger tự trị hay quyền tự duyệt/phát hành.
 
 ## 6  Vòng đời Requirements và ranh giới template
 
@@ -441,126 +441,44 @@ flowchart TD
 
 Không được vẽ mọi defect tự động sửa Requirement  Điểm quay về Requirement chỉ xảy ra khi có thay đổi ảnh hưởng hoặc cần làm rõ
 
-## 8  Luồng AI automation xuyên suốt dự án
+## 8  Luồng AI Agent do người dùng khởi tạo
 
-### Sơ đồ tổng thể: luồng dự án và benchmark trong cùng một bức tranh
+AI Agent không tự bắt đầu nghiệp vụ khi tài liệu, Requirement, Test Case, Test Plan, Test Run, Defect hay Work Item thay đổi. Việc tải tệp có thể khởi chạy xử lý kỹ thuật để trích xuất và lập chỉ mục theo yêu cầu tải lên; bước đó không tự tạo, duyệt hay phát hành tài sản nghiệp vụ. Một lượt Agent chỉ bắt đầu khi người dùng bấm thao tác AI cụ thể và có quyền trong dự án.
 
-Hai nhánh nằm trong cùng sơ đồ nhưng có mục đích khác nhau. Luồng dự án tự xử lý sự kiện và tài liệu thật. Benchmark (đánh giá đối chứng) là lượt chạy có chủ đích trên bộ tình huống cùng đáp án chuẩn; nó kiểm tra cách tiếp cận dựa trên Bản thiết kế kiểm thử so với các cách đối chứng, không chạy sau mỗi lần tải tài liệu và không ghi kết quả vào dữ liệu nghiệp vụ.
-
-**Bản thiết kế kiểm thử** là danh sách nghĩa vụ cần kiểm thử, mỗi nghĩa vụ có nguồn dẫn, cùng câu hỏi cần làm rõ nếu còn thiếu. Nó khác với **mẫu cấu trúc yêu cầu**. Trong luồng tài liệu, bản thiết kế được tạo sau khi kiểm chứng thông tin trích xuất, được đưa vào tổng hợp yêu cầu, rồi những nghĩa vụ có nguồn khớp phiên bản yêu cầu được dùng để định hướng sinh ca kiểm thử.
+Mỗi lượt có một mục tiêu, phạm vi nguồn, ngôn ngữ đầu ra và người khởi tạo. Agent có thể lập kế hoạch, gọi các công cụ được cấp trong cùng phạm vi, kiểm tra nguồn/revision và trả đề xuất hoặc bản nháp. Việc lưu, gửi rà soát, duyệt, phân công hoặc phát hành là hành động riêng; chỉ người dùng đủ capability mới thực hiện. Job, queue, retry và worker chỉ vận chuyển/thực thi lượt đã yêu cầu, không tạo trigger nghiệp vụ mới.
 
 ```mermaid
-flowchart TB
-    subgraph PRODUCT[Luồng AI tự động trong dự án]
-      direction TB
-    PSTART([Nhận sự kiện dự án]) --> TRIGGER{Điều gì vừa xảy ra?}
-    TRIGGER -->|Tài liệu yêu cầu mới được tải lên| DOC[Nhận tài liệu]
-    TRIGGER -->|Yêu cầu, ca kiểm thử, kế hoạch kiểm thử, kết quả chạy, lỗi, đầu việc hoặc bản phát hành thay đổi| CHANGE[Nhận sự kiện thay đổi]
-    TRIGGER -->|Sự kiện không được hỗ trợ| NOAI([Kết thúc: không tạo lượt chạy AI])
-
-    DOC --> ENQUEUE
-    CHANGE --> ENQUEUE
-    ENQUEUE[Ghi sự kiện chờ xử lý] --> ALLOWED{Sự kiện hợp lệ, đúng dự án, người gọi đủ quyền và chưa chạy trùng?}
-    ALLOWED -->|Không| DENIED([Từ chối, ghi lý do và nhật ký])
-    ALLOWED -->|Có| QUEUE[Đưa lượt chạy AI vào hàng đợi]
-    QUEUE --> QOK{Hàng đợi nhận được?}
-    QOK -->|Không| QFAIL([Ghi lỗi hàng đợi; không báo đã xử lý thành công])
-    QOK -->|Có| READ[Đọc đúng dữ liệu và nguồn được phép trong dự án]
-    READ --> PLAN[AI lập kế hoạch theo sự kiện, quyền người gọi và bằng chứng]
-    PLAN --> PLANOK{Kế hoạch và từng công cụ có hợp đồng, quyền, phạm vi hợp lệ?}
-    PLANOK -->|Không| PLANFAIL([Kết thúc: từ chối kế hoạch hoặc đánh dấu cần xử lý])
-    PLANOK --> TASK{Tác vụ của sự kiện là gì?}
-
-    TASK -->|Tài liệu mới| FACTS[Trích xuất thông tin; chỉ giữ câu trích dẫn khớp nguồn và phiên bản]
-    FACTS --> BLUEPRINT[Biên dịch Bản thiết kế kiểm thử:\nnghĩa vụ, nguồn dẫn và câu hỏi cần làm rõ]
-    BLUEPRINT --> BLUEOK{Nghĩa vụ và câu hỏi đều có trích dẫn hợp lệ?}
-    BLUEOK -->|Không| BLUEFAIL([Dừng ghi dữ liệu; lưu lỗi Bản thiết kế và kết thúc một phần])
-    BLUEOK -->|Có| HASQUESTION{Bản thiết kế có điểm cần làm rõ?}
-    HASQUESTION -->|Có| RECORDQUESTION[Ghi câu hỏi vào phần chưa xử lý của lượt chạy]
-    HASQUESTION -->|Không| ENOUGH{Còn đủ bằng chứng để tiếp tục?}
-    RECORDQUESTION --> ENOUGH
-    ENOUGH -->|Không| NEEDINFO[Ghi thiếu nguồn, mơ hồ hoặc mâu thuẫn; không tự bịa]
-    NEEDINFO --> STOPINFO([Kết thúc lượt: cần bổ sung hoặc làm rõ; không đổi dữ liệu nghiệp vụ])
-    ENOUGH -->|Có| TEMPLATE[Tổng hợp mẫu cấu trúc yêu cầu\ntừ thông tin có nguồn và bản thiết kế]
-    TEMPLATE --> IMPORT[Phân tích tài liệu và đối chiếu nội dung trùng, đổi, mới hoặc mâu thuẫn]
-    IMPORT --> CLASSIFY{Mẫu tổng hợp có mâu thuẫn nguồn chưa giải quyết?}
-    CLASSIFY -->|Có| CLARIFY[Ghi mâu thuẫn vào kết quả; không tự chọn nguồn]
-    CLARIFY --> STOPINFO
-    CLASSIFY -->|Không| REQCONT{Đối chiếu với yêu cầu hiện có}
-    REQCONT -->|Trùng chính xác| LINK[Nối nguồn vào yêu cầu hiện có]
-    REQCONT -->|Cùng yêu cầu, nội dung thay đổi| VERSION[Tạo phiên bản mới, giữ lịch sử]
-    REQCONT -->|Yêu cầu mới có căn cứ| NEWREQ[Tạo yêu cầu mới có nguồn dẫn]
-    REQCONT -->|Không phân định được| UNCLEAR[Giữ trường hợp chưa rõ trong kết quả; không tự chọn]
-    LINK --> IMPACT
-    VERSION --> IMPACT
-    NEWREQ --> IMPACT
-    UNCLEAR --> UNRESOLVED[Đánh dấu còn mục đối chiếu cần xử lý]
-    UNRESOLVED --> IMPACT
-    IMPACT[Phân tích ảnh hưởng theo liên kết truy vết]
-    IMPACT --> MAPOBL[Ánh xạ nghĩa vụ bản thiết kế sang phiên bản yêu cầu\nchỉ khi nguồn và câu trích dẫn khớp]
-    MAPOBL --> MAPOK{Có nghĩa vụ không được phiên bản yêu cầu hỗ trợ?}
-    MAPOK -->|Có| MAPFAIL[Ghi các nghĩa vụ chưa liên kết vào phần chưa xử lý]
-    MAPOK -->|Không| GEN[Sinh bản nháp ca kiểm thử từ tiêu chí chấp nhận\nvà nghĩa vụ có căn cứ]
-    MAPFAIL --> GEN
-    GEN --> DEDUP[Kiểm tra trùng lặp, trích dẫn, liên kết yêu cầu và khả năng kiểm chứng]
-    DEDUP --> GENOK{Đề xuất hợp lệ, mới và đủ căn cứ?}
-    GENOK -->|Không| RETRY{Còn tiêu chí hoặc nghĩa vụ chưa được bao phủ?}
-    RETRY -->|Có| FOCUSED[Sinh bổ sung có mục tiêu cho phần còn thiếu]
-    FOCUSED --> DEDUP
-    RETRY -->|Không| SKIP[Bỏ đề xuất trùng hoặc thiếu căn cứ; ghi cảnh báo/phần chưa xử lý]
-    GENOK -->|Có| WRITE[Ghi bản nháp ca kiểm thử và kiểm tra chất lượng]
-    WRITE --> PUBGATE{Đã có Requirement chuẩn, nguồn/lint hợp lệ và quyền công bố theo lượt chạy?}
-    PUBGATE -->|Không| PUBBLOCK[Ghi rõ ca còn là bản nháp hoặc chưa đủ điều kiện công bố]
-    PUBGATE -->|Có| AUTOPUBLISH[Gọi API Testing hiện có để duyệt và công bố bằng quyền QA giới hạn của lượt chạy]
-    SKIP --> READBACK
-    PUBBLOCK --> READBACK
-    AUTOPUBLISH --> READBACK[Đọc lại dữ liệu; xác minh mã, dự án, phiên bản, liên kết và điều kiện sau ghi]
-    READBACK --> VERIFIED{Dữ liệu sau ghi có đúng như dự kiến?}
-    VERIFIED -->|Không| WRITEFAIL([Ghi lỗi và điểm khôi phục; không báo hoàn tất])
-    VERIFIED -->|Có| RECEIPT[Lưu thông tin trích xuất, nguồn, kết quả, phần chưa xử lý và nhật ký]
-    RECEIPT --> MORE{Còn tác vụ độc lập trong kế hoạch?}
-    MORE -->|Có| TASK
-    MORE -->|Không| RESULT{Kết quả cả lượt}
-    RESULT -->|Mọi kiểm tra đều đạt| DONE([Hoàn tất lượt AI, có dấu vết])
-    RESULT -->|Còn lỗi hoặc phần chưa xử lý| PARTIAL([Hoàn tất một phần; nêu phần còn lại])
-
-    TASK -->|Sự kiện nghiệp vụ khác| DOMAIN[Chọn quy trình cho yêu cầu, ca kiểm thử, kế hoạch, kết quả chạy, lỗi, đầu việc hoặc bản phát hành]
-    DOMAIN --> IMPACTDOMAIN[Đọc đúng dữ liệu liên quan, phân tích ảnh hưởng và giới hạn theo quyền]
-    IMPACTDOMAIN --> DOMAINWRITE[Gọi công cụ phù hợp; mô phỏng thì chỉ đọc, không ghi dữ liệu]
-    DOMAINWRITE --> READBACK
-
-    end
-    subgraph EVAL[Đánh giá đối chứng (benchmark) trên bộ tình huống chuẩn]
-      direction TB
-      BSTART([Bắt đầu lượt đánh giá đối chứng]) --> DATASET[Nạp tình huống và đáp án chuẩn đã gán nhãn]
-      DATASET --> BFACT[Trích xuất và kiểm chứng thông tin từ nguồn]
-      BFACT --> COMPILER[Chạy bộ biên dịch Bản thiết kế kiểm thử trên tình huống chuẩn]
-      DATASET --> BASE1[Đối chứng A: hỏi làm rõ trực tiếp, không lập nghĩa vụ trước]
-      DATASET --> BASE2[Đối chứng B: sinh ca kiểm thử trực tiếp từ tài liệu]
-      COMPILER --> SCORE
-      BASE1 --> SCORE
-      BASE2 --> SCORE[So sánh ba cách với đáp án chuẩn]
-      SCORE --> REPORT[Đo nghĩa vụ đúng, trích dẫn đúng, thứ tự ưu tiên và số câu hỏi; lưu báo cáo]
-      REPORT --> BEND([Kết thúc đánh giá; không tự sửa dữ liệu dự án])
-    end
-
-    BLUEPRINT -. Bản thiết kế thực tế định hướng yêu cầu và ca kiểm thử .-> TEMPLATE
-    BLUEPRINT -. Ánh xạ các nghĩa vụ có căn cứ .-> MAPOBL
-    BLUEPRINT -. Cùng bộ biên dịch; bộ tình huống đánh giá độc lập .-> COMPILER
+flowchart TD
+    U([Người dùng chọn thao tác AI]) --> AUTH{Phiên, membership, capability và mục tiêu hợp lệ?}
+    AUTH -->|Không| DENY([Từ chối; không tạo lượt])
+    AUTH -->|Có| RUN[Tạo lượt Agent gắn người khởi tạo, dự án và mục tiêu]
+    RUN --> SCOPE[Chốt phạm vi nguồn và phiên bản được phép]
+    SCOPE --> PLAN[Agent lập kế hoạch có cấu trúc]
+    PLAN --> TOOLS{Công cụ có trong hợp đồng và được cấp quyền?}
+    TOOLS -->|Không| STOP([Dừng; ghi lý do, không ghi nghiệp vụ])
+    TOOLS -->|Có| EXEC[Đọc dữ liệu hoặc tạo đề xuất/bản nháp]
+    EXEC --> VERIFY[Kiểm tra nguồn, quyền, revision và điều kiện sau thao tác]
+    VERIFY --> VALID{Kết quả còn hợp lệ và có căn cứ?}
+    VALID -->|Không| CONFLICT([Báo thiếu căn cứ, mất quyền hoặc xung đột; không áp dụng])
+    VALID -->|Có| PREVIEW[Trả đề xuất/bản nháp cho người dùng xem]
+    PREVIEW --> DECISION{Người dùng chọn hành động tiếp theo?}
+    DECISION -->|Bỏ qua hoặc chỉnh sửa| END([Kết thúc lượt])
+    DECISION -->|Áp dụng/lưu/gửi duyệt| WRITEAUTH{Kiểm tra lại capability, revision và trạng thái?}
+    WRITEAUTH -->|Không| DENYWRITE([Từ chối ghi; giữ dữ liệu nguồn])
+    WRITEAUTH -->|Có| WRITE[Thực hiện đúng hành động người dùng chọn]
+    WRITE --> READBACK[Đọc lại và xác minh dữ liệu đã ghi]
+    READBACK --> END
 ```
 
-**Đối chiếu mã nguồn hiện tại:** `process_ingested_requirement_document` chỉ nhận thông tin trích xuất từ tài liệu được cấp quyền và kiểm chứng câu trích dẫn trước khi gọi `compile_testability_blueprint`. Bản thiết kế được đưa vào chỉ dẫn tổng hợp yêu cầu; nghĩa vụ chỉ được gắn sang phiên bản yêu cầu khi nguồn và câu trích dẫn khớp, sau đó được chuyển vào chỉ dẫn sinh ca kiểm thử. Nếu biên dịch lỗi, nghĩa vụ không ánh xạ được hoặc đầu ra không hợp lệ, lượt chạy ghi phần chưa hoàn tất thay vì tuyên bố thành công. `TestabilityBenchmarkService.run_dataset` là lượt đánh giá riêng dùng chung bộ biên dịch trên bộ tình huống có đáp án chuẩn; nó không chạy sau mỗi lần tải tài liệu và không ghi vào dữ liệu dự án. Benchmark nằm trong cùng sơ đồ để cho thấy nó đánh giá cách tiếp cận dùng Bản thiết kế kiểm thử, chứ không phải bước nghiệp vụ ở cuối mỗi lượt tải tài liệu.
+### Đánh giá đối chứng
 
-Trong nhánh nhập tài liệu, mã hiện tại **không chờ người dùng bấm duyệt từng đầu ra**: nếu câu hỏi làm rõ còn chặn, Requirement chưa đủ điều kiện hoặc Test Case không đạt lint/grounding thì giữ lại và ghi phần chưa hoàn tất; nếu đạt gate, AI gọi endpoint chốt chuẩn/duyệt hiện có bằng token giới hạn theo project và thao tác, rồi đọc lại trạng thái. Đây là tự động hóa có kiểm soát quyền và kiểm chứng sau ghi, không phải AI được bỏ qua quy trình phân quyền.
+Benchmark là thao tác đánh giá có chủ đích trên bộ tình huống và đáp án chuẩn; chỉ người có quyền mới khởi chạy. Benchmark so sánh các cấu hình truy xuất/sinh trên dữ liệu đánh giá, lưu kết quả riêng và không sửa dữ liệu dự án. Nó không phải bước chạy nền sau mỗi lần nhập tài liệu.
 
-Các sự kiện hiện được phát ra khi tài liệu, yêu cầu, ca kiểm thử, kế hoạch kiểm thử, kết quả thực thi, lỗi, đầu việc hoặc bản phát hành thay đổi
-Sự kiện do chính lượt chạy AI tạo ra được bỏ qua để tránh tự kích hoạt lặp
-Agent tự thực hiện các hành động mà người khởi tạo có quyền và không dừng để xin xác nhận từng thao tác
-Kiểm soát quyền, kiểm tra nghiệp vụ và kiểm tra phiên bản vẫn bắt buộc  Với sự kiện cần thao tác QA, người thực thi là QA được gán trong dự án; người khởi tạo và người thực thi được lưu riêng trên lượt chạy tự động, không dùng quyền Admin hay quyền nền tảng để thay thế
+Bản thiết kế kiểm thử là danh sách nghĩa vụ cần kiểm thử có dẫn nguồn và câu hỏi cần làm rõ. Agent có thể đề xuất bản thiết kế từ tài liệu/Requirement trong thao tác riêng. Người dùng xem và quyết định; chỉ nghĩa vụ khớp đúng nguồn và phiên bản mới được nối sang Requirement/Scenario/Test Case.
 
 ## 9  Chi tiết kỹ thuật thực thi một lượt AI Agent
 
-Sơ đồ dưới đây mô tả cơ chế chung để nhận sự kiện, kiểm tra quyền, lập tác vụ, gọi công cụ và xác minh kết quả. Đây là phần kỹ thuật bên trong các bước của sơ đồ tổng thể ở mục 8, không phải một luồng nghiệp vụ khác thay thế luồng tài liệu, Bản thiết kế kiểm thử và đánh giá đối chứng.
+Sơ đồ dưới đây mô tả một lượt do người dùng khởi tạo: xác thực, lập tác vụ, gọi công cụ trong phạm vi cho phép và xác minh kết quả. Đây là cơ chế kỹ thuật bên trong thao tác AI ở mục 8.
 
 ```mermaid
 flowchart TD
@@ -594,8 +512,7 @@ flowchart TD
     W --> X3([Kết thúc hoàn tất hoặc một phần])
 ```
 
-Một lượt AI có thể xử lý nhiều tác vụ lần lượt trong giới hạn thời gian; hiện không có nhiều Agent phối hợp song song trong cùng lượt
-AI không dừng để xin người dùng xác nhận từng thao tác; quyền truy cập, kiểm tra nghiệp vụ, xung đột phiên bản và xác minh sau khi ghi vẫn là các ranh giới bắt buộc
+Một lượt AI có thể xử lý nhiều tác vụ lần lượt trong giới hạn thời gian; hiện không có nhiều Agent phối hợp song song trong cùng lượt. AI trả đề xuất/bản nháp để người dùng xem; thao tác ghi nghiệp vụ, duyệt, phân công hoặc phát hành tiếp theo phải được người dùng chủ động gọi riêng và qua kiểm tra quyền.
 
 ## 10  Evidence  fallback và compensation
 

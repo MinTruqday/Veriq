@@ -102,9 +102,9 @@ export default function RunExecutionWorkspace({
       );
     const assignmentDecisionSource =
       proposalWasAccepted && !proposalWasAdjusted
-        ? "QA_APPROVED_RECOMMENDATION"
+        ? "HUMAN_APPROVED_RECOMMENDATION"
         : assignmentProposal
-          ? "QA_ADJUSTED_RECOMMENDATION"
+          ? "HUMAN_ADJUSTED_RECOMMENDATION"
           : "MANUAL";
     const assignedProfileRevisions = Object.fromEntries(
       Object.entries(assignmentProposal?.skill_profile_revisions || {}).filter(([userId]) =>

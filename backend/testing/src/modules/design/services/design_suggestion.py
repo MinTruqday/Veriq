@@ -74,12 +74,27 @@ def performance_targets_match(scenarios, payload):
 
 
 def approved_performance_configuration_inputs(plan):
-    workload_sections = ("baseline", "load", "stress", "spike", "soak")
+    workload_configuration = plan.get("workload_configuration")
+    if not isinstance(workload_configuration, dict):
+        workload_configuration = plan.get("workload_model")
+    workload_configuration = {
+        str(workload_type).strip(): configuration
+        for workload_type, configuration in workload_configuration.items()
+        if str(workload_type).strip()
+    } if isinstance(workload_configuration, dict) else {}
     workload_types = [
-        field
-        for field in workload_sections
-        if isinstance(plan.get(field), dict) and bool(plan[field])
+        str(workload_type).strip()
+        for workload_type, configuration in workload_configuration.items()
+        if str(workload_type).strip() and isinstance(configuration, dict) and configuration
     ]
+    if not workload_types:
+        legacy_workload_fields = ("baseline", "load", "stress", "spike", "soak")
+        workload_configuration = {
+            key: plan[key]
+            for key in legacy_workload_fields
+            if isinstance(plan.get(key), dict) and plan[key]
+        }
+        workload_types = list(workload_configuration)
     concurrency = plan.get("concurrency")
     target_virtual_users = (
         concurrency if type(concurrency) is int and concurrency > 0 else None
@@ -90,7 +105,7 @@ def approved_performance_configuration_inputs(plan):
     requirement_refs = list(dict.fromkeys(plan.get("requirement_refs") or []))
     missing = []
     if not workload_types:
-        missing.append("phần tải được cấu hình (baseline, load, stress, spike hoặc soak)")
+        missing.append("phần tải được cấu hình")
     if target_virtual_users is None:
         missing.append("concurrency dạng số nguyên dương")
     if duration_minutes is None:
@@ -111,7 +126,7 @@ def approved_performance_configuration_inputs(plan):
         "requirement_version_ids": requirement_refs,
         "target_requests_per_second": throughput_target,
         "workload_configuration": {
-            field: plan[field] for field in workload_types
+            field: workload_configuration[field] for field in workload_types
         },
     }, missing
 
@@ -206,9 +221,7 @@ class DesignSuggestionService:
         requested_categories_match = (
             {item["category"] for item in candidates} == set(payload.categories)
             if payload.categories
-            else all(item["category"] in {
-                "authorization", "authentication", "input_validation", "session", "data_protection"
-            } for item in candidates)
+            else all(item["category"].strip() for item in candidates)
         )
         if not requested_categories_match or any(
             not item["requirement_version_ids"]

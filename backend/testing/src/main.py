@@ -40,12 +40,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await connect_database()
     await project_access_repository.migrate_legacy()
-    await project_access_repository.correct_project_settings_role()
-    await project_access_repository.correct_member_management_role()
     await project_access_repository.ensure_reporting_capabilities()
     await project_access_repository.ensure_read_only_comment_capabilities()
-    await project_access_repository.ensure_business_policy()
-    await project_access_repository.ensure_requirement_role_grants()
     await project_access_repository.ensure_private_defect_capability()
     from src.repositories.reporting import reporting_repository
     await reporting_repository.initialize()

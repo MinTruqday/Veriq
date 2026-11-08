@@ -31,6 +31,14 @@ def _retry_delay(error: Exception, attempt: int) -> float:
     return min(2**attempt, 4)
 
 
+def _is_retryable_model_error(error: Exception) -> bool:
+    if isinstance(error, httpx.TransportError):
+        return True
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code == 429 or error.response.status_code >= 500
+    return False
+
+
 class ModelProviderUnavailable(RuntimeError):
     pass
 
@@ -67,13 +75,6 @@ class HostedModelClient:
             settings.FALLBACK_MODEL_TOKEN or settings.HF_TOKEN,
             settings.FALLBACK_LLM_MODEL,
         )
-
-    def _can_retry(self, error: Exception) -> bool:
-        if isinstance(error, httpx.TransportError):
-            return True
-        if isinstance(error, httpx.HTTPStatusError):
-            return error.response.status_code == 429 or error.response.status_code >= 500
-        return False
 
     def _payload(
         self,
@@ -126,7 +127,7 @@ class HostedModelClient:
                 response.raise_for_status()
                 break
             except Exception as provider_error:
-                if attempt == maximum_attempts - 1 or not self._can_retry(provider_error):
+                if attempt == maximum_attempts - 1 or not _is_retryable_model_error(provider_error):
                     raise
                 logger.warning(
                     "Hosted model request retry attempt={} error_type={}",
@@ -177,7 +178,7 @@ class HostedModelClient:
             )
         except Exception as provider_error:
             fallback = self._fallback(effective_model)
-            if fallback and self._can_retry(provider_error):
+            if fallback and _is_retryable_model_error(provider_error):
                 endpoint, token, fallback_model = fallback
                 try:
                     response = await self._completion(
@@ -290,7 +291,7 @@ class HostedModelClient:
                     break
                 except Exception as provider_error:
                     last_error = provider_error
-                    if emitted or not self._can_retry(provider_error):
+                    if emitted or not _is_retryable_model_error(provider_error):
                         break
                     if attempt < maximum_attempts - 1:
                         logger.warning(
@@ -311,7 +312,7 @@ class HostedModelClient:
                         active_model,
                     )
                 break
-            if emitted or not self._can_retry(last_error):
+            if emitted or not _is_retryable_model_error(last_error):
                 break
         if last_error is not None:
             self._runtime_status = "unavailable"
@@ -352,7 +353,7 @@ class HostedModelClient:
                     checks["model"] = "ready"
                     break
             except Exception as error:
-                if index == 0 and fallback and not self._can_retry(error):
+                if index == 0 and fallback and not _is_retryable_model_error(error):
                     break
                 continue
         if checks["model"] != "ready":
@@ -370,14 +371,6 @@ class HostedAuxiliaryClient:
     def _endpoint(self, model: str) -> str:
         return f"{settings.HF_INFERENCE_URL.rstrip('/')}/{model}"
 
-    @staticmethod
-    def _can_retry(error: Exception) -> bool:
-        if isinstance(error, httpx.TransportError):
-            return True
-        if isinstance(error, httpx.HTTPStatusError):
-            return error.response.status_code == 429 or error.response.status_code >= 500
-        return False
-
     async def _post(self, model: str, payload: dict[str, Any]) -> Any:
         maximum_attempts = 3
         for attempt in range(maximum_attempts):
@@ -392,7 +385,7 @@ class HostedAuxiliaryClient:
                     raise ModelProviderUnavailable("hosted_auxiliary_model_error")
                 return body
             except Exception as provider_error:
-                if attempt == maximum_attempts - 1 or not self._can_retry(provider_error):
+                if attempt == maximum_attempts - 1 or not _is_retryable_model_error(provider_error):
                     raise ModelProviderUnavailable(
                         "hosted_auxiliary_model_unavailable"
                     ) from provider_error

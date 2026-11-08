@@ -1,4 +1,3 @@
-from src.prompts.work_reporting import WORK_REPORT_NARRATIVE_CONTRACT
 import hashlib
 import json
 from typing import get_args
@@ -22,6 +21,7 @@ from src.prompts.testability_benchmark import CLARIFICATION_BASELINE
 from src.prompts.testability_blueprint import TESTABILITY_BLUEPRINT_COMPILATION
 from src.prompts.testability_blueprint_review import build_testability_blueprint_grounding_prompt
 from src.prompts.testing_contract import STRUCTURED_TESTING_TEMPLATE
+from src.prompts.work_reporting import WORK_REPORT_NARRATIVE_CONTRACT
 from src.schemas.inference_requirements import TestabilityBlueprintGroundingReview
 
 
@@ -122,18 +122,6 @@ def prompt_messages_fingerprint(messages):
         separators=(",", ":"),
     )
     return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
-
-
-def prompt_execution_fingerprint(prompt, schema):
-    schema_value = schema.model_json_schema() if hasattr(schema, "model_json_schema") else schema
-    messages = [
-        {
-            "role": "system",
-            "content": f"{prompt}\n{schema_instruction(schema_value)}",
-        },
-        {"role": "user", "content": "Produce the required output"},
-    ]
-    return prompt_messages_fingerprint(messages)
 
 
 def build_testing_prompt(

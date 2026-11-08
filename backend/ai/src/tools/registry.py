@@ -14,7 +14,6 @@ from src.schemas.agent import (
     ToolExecutionStatus,
 )
 from src.services.agent_metrics import agentops
-from src.services.token_accounting import add_tool_usage
 
 
 def with_tool_access(
@@ -276,8 +275,9 @@ async def invoke_tool(
     started = time.monotonic()
     try:
         if automation_run_id:
-            from src.core.infrastructure.configuration import settings
             import jwt
+
+            from src.core.infrastructure.configuration import settings
             from src.repositories.automation import automation_repository
             from src.schemas.automation import AutomationStatus
 
@@ -409,5 +409,4 @@ async def invoke_tool(
         outcome["status"] == ToolExecutionStatus.COMPLETED,
     )
     outcome["duration_ms"] = duration_ms
-    add_tool_usage(max(1, len(json.dumps(outcome, ensure_ascii=False, default=str)) // 4))
     return outcome

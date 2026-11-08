@@ -307,7 +307,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
         "\n".join(str(item.get("text", ""))[:4000] for item in evidence)
     )
     if not inspected.get("is_safe", False):
-        raise HTTPException(status_code=422, detail={"code": "qa_evidence_unsafe"})
+        raise HTTPException(status_code=422, detail={"code": "AI_EVIDENCE_UNSAFE"})
     allowed_evidence_refs = evidence_reference_ids(evidence)
     schema = output_schema(req.capability)
     prompt = build_testing_prompt(
@@ -597,7 +597,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
             answer=answer,
         )
     if result.capability != req.capability:
-        raise HTTPException(status_code=502, detail={"code": "qa_capability_mismatch"})
+        raise HTTPException(status_code=502, detail={"code": "AI_CAPABILITY_MISMATCH"})
     if not result.reason_codes:
         result.reason_codes = (
             nested_values(result.model_dump(), "reason_codes")[:100]
@@ -607,7 +607,7 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
             ][:100]
         )
     result.workflow = {
-        "request_id": f"qa-{datetime.now(timezone.utc).timestamp()}",
+        "request_id": f"agent-{datetime.now(timezone.utc).timestamp()}",
         "project_id": req.project_id,
         "intent": req.capability,
         "phases": [

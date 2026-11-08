@@ -3,7 +3,6 @@ from fastapi import HTTPException
 from src.core.auth import (
     access_policy,
     archive_read_permissions,
-    business_role_allows,
     permissions_for_membership,
     roles_for_membership,
 )
@@ -25,9 +24,7 @@ def explain_project_access(project, membership, user_id):
     for permission in sorted(values.get("project_permissions", [])):
         responsibility = responsibility_permissions.get(permission)
         reason = None
-        if not business_role_allows(permission, roles):
-            reason = "ROLE_NOT_ALLOWED"
-        elif responsibility and responsibilities.get(responsibility) != user_id:
+        if responsibility and responsibilities.get(responsibility) != user_id:
             reason = "RESPONSIBILITY_NOT_ASSIGNED"
         elif permission not in permissions:
             reason = "PERMISSION_NOT_GRANTED"

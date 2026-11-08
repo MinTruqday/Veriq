@@ -1,13 +1,18 @@
-import hashlib
-import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.ai_automation import emit_test_completion_report_created
+from src.core.auth import sign_off_has_permission
 from src.core.common import audit, get_project, new_id, now
+from src.core.common import idempotency_request_hash as _create_request_hash
+from src.core.common import verify_idempotency_replay as _verify_create_replay
 from src.core.database import database
-from src.core.human_decisions import content_authorship_changes, require_automation_publication_authority, require_independent_review
+from src.core.human_decisions import (
+    content_authorship_changes,
+    require_automation_publication_authority,
+    require_independent_review,
+)
 from src.modules.execution.services.exit_criteria import quality_gate_status
 from src.modules.execution.services.test_completion_automation import completion_ai_result
 from src.modules.execution.services.test_completion_query import (
@@ -44,34 +49,8 @@ from src.schemas.test_completion import completion_hash, completion_snapshot
 OPEN_DEFECT_STATUSES = set(["NEW", "CONFIRMED", "IN_PROGRESS", "READY_FOR_RETEST", "REOPENED"])
 
 
-def _create_request_hash(payload):
-    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    canonical = json.dumps(
-        request,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _verify_create_replay(existing, payload, user):
-    created_by = existing.get("created_by")
-    if not created_by:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
-        )
-    if created_by != user.id:
-        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
-    request_hash = existing.get("idempotency_request_hash")
-    if not request_hash:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
-        )
-    if request_hash != _create_request_hash(payload):
-        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
 
 __all__ = [
     "add_completion_lesson",
@@ -586,15 +565,12 @@ async def transition_completion(report_id, payload, user, transition_action):
     if target == "APPROVED":
         await validate_completion_readiness(report)
         reviewer_approved = any(
-            (
-                item.get("permission") == "testcompletion.review"
-                or item.get("role") == "QA"
-            )
+            sign_off_has_permission(item, "testcompletion.review")
             and item.get("decision") == "APPROVE"
             for item in report.get("sign_offs", [])
         )
         if not reviewer_approved:
-            raise HTTPException(status_code=409, detail={"code": "QA_SIGN_OFF_REQUIRED"})
+            raise HTTPException(status_code=409, detail={"code": "INDEPENDENT_REVIEW_SIGNOFF_REQUIRED"})
         if any(
             item.get("treatment", item.get("acceptance")) == "PENDING"
             for item in report.get("residual_risks", [])

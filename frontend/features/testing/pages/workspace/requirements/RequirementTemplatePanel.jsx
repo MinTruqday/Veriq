@@ -4,7 +4,7 @@ import { testingApi } from "../../../services/testing.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { docText, messageOf, textDoc, valueLabel } from "../../../lib/testing";
 import DocumentEditor from "../../../editor/DocumentEditor";
-import { REQUIREMENT_LEVELS, REQUIREMENT_TYPES } from "./requirements.model";
+import { REQUIREMENT_LEVELS } from "./requirements.model";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
 import { StatusPill } from "../../../components/WorkspacePrimitives";
 
@@ -49,7 +49,7 @@ function templateError(reason) {
 function emptyRequirement() {
   return {
     title: "",
-    type: "functional",
+    type: "",
     requirement_key: "",
     priority: "medium",
     risk: "medium",
@@ -188,7 +188,9 @@ export default function RequirementTemplatePanel({
   const [selectedDocumentIds, setSelectedDocumentIds] = useState([]);
   const [active, setActive] = useState(null);
   const [name, setName] = useState("");
-  const [productTypes, setProductTypes] = useState([project.project_type || "web"]);
+  const [productTypes, setProductTypes] = useState(
+    project.project_type ? [project.project_type] : [],
+  );
   const [context, setContext] = useState({
     objectives: "",
     in_scope: "",
@@ -204,7 +206,7 @@ export default function RequirementTemplatePanel({
   const [publicName, setPublicName] = useState("");
   const [publicContext, setPublicContext] = useState("");
   const [publicRequirements, setPublicRequirements] = useState([
-    { title: "", type: "functional", content: "", acceptance: "" },
+    { title: "", type: "", content: "", acceptance: "" },
   ]);
   const [busy, setBusy] = useState(false);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -318,7 +320,7 @@ export default function RequirementTemplatePanel({
   const loadTemplate = (template) => {
     setActive(template);
     setName(template.name);
-    setProductTypes(template.product_types || [project.project_type || "web"]);
+    setProductTypes(template.product_types || (project.project_type ? [project.project_type] : []));
     setContext(template.context || {});
     setRequirements(
       template.requirements?.length ? template.requirements.map(fromStored) : [emptyRequirement()],
@@ -646,17 +648,14 @@ export default function RequirementTemplatePanel({
         </label>
         <label className="field-label">
           Loại sản phẩm
-          <select
+          <input
             className="apple-input mt-2"
-            value={productTypes[0] || "web"}
+            required
+            maxLength={100}
+            value={productTypes[0] || ""}
             onChange={(event) => setProductTypes([event.target.value])}
-          >
-            {["web", "mobile", "api", "desktop", "embedded", "other"].map((value) => (
-              <option key={value} value={value}>
-                {valueLabel(value)}
-              </option>
-            ))}
-          </select>
+            placeholder="Nhập loại sản phẩm"
+          />
         </label>
         <button
           className="secondary-button"
@@ -664,7 +663,7 @@ export default function RequirementTemplatePanel({
           onClick={() =>
             loadTemplate({
               name: "",
-              product_types: [project.project_type || "web"],
+              product_types: project.project_type ? [project.project_type] : [],
               context: {},
               requirements: [],
               status: "NEW",
@@ -775,17 +774,14 @@ export default function RequirementTemplatePanel({
               </label>
               <label className="field-label">
                 Loại yêu cầu
-                <select
+                <input
                   className="apple-input mt-2"
+                  required
+                  maxLength={100}
                   value={item.type}
                   onChange={(event) => updateRequirement(index, { type: event.target.value })}
-                >
-                  {REQUIREMENT_TYPES.map((value) => (
-                    <option key={value} value={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Nhập loại yêu cầu"
+                />
               </label>
               <label className="field-label">
                 Mã yêu cầu
@@ -1150,8 +1146,10 @@ export default function RequirementTemplatePanel({
                 </label>
                 <label className="field-label block">
                   Loại yêu cầu
-                  <select
+                  <input
                     className="apple-input mt-2"
+                    required
+                    maxLength={100}
                     value={item.type}
                     onChange={(event) =>
                       setPublicRequirements((items) =>
@@ -1160,13 +1158,8 @@ export default function RequirementTemplatePanel({
                         ),
                       )
                     }
-                  >
-                    {REQUIREMENT_TYPES.map((value) => (
-                      <option key={value} value={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Nhập loại yêu cầu"
+                  />
                 </label>
                 <label className="field-label block">
                   Nội dung khái quát
@@ -1204,7 +1197,7 @@ export default function RequirementTemplatePanel({
               onClick={() =>
                 setPublicRequirements((items) => [
                   ...items,
-                  { title: "", type: "functional", content: "", acceptance: "" },
+                  { title: "", type: "", content: "", acceptance: "" },
                 ])
               }
             >

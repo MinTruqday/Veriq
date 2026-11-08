@@ -14,9 +14,7 @@ class EvidenceQuoteOutput(BaseModel):
 class SecuritySuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    category: Literal[
-        "authorization", "authentication", "input_validation", "session", "data_protection"
-    ]
+    category: str = Field(min_length=1, max_length=200)
     title: str = Field(min_length=2, max_length=300)
     preconditions: List[str] = Field(min_length=1, max_length=30)
     action: str = Field(min_length=2, max_length=5000)
@@ -40,7 +38,7 @@ class SecuritySuggestionsOutput(BaseModel):
 class PerformanceSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    workload_type: Literal["baseline", "load", "stress", "spike", "soak"]
+    workload_type: str = Field(min_length=1, max_length=200)
     title: str = Field(min_length=2, max_length=300)
     virtual_users: int | None = Field(default=None, ge=1, le=1000000)
     requests_per_second: float | None = Field(default=None, gt=0)
@@ -85,20 +83,7 @@ class AutomationScriptOutput(BaseModel):
 class CausalHypothesisSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    root_cause_category: Literal[
-        "REQUIREMENT",
-        "DESIGN",
-        "IMPLEMENTATION",
-        "CONFIGURATION",
-        "TEST_DATA",
-        "TEST_CASE_GAP",
-        "ENVIRONMENT",
-        "INTEGRATION",
-        "DEPLOYMENT",
-        "PROCESS",
-        "THIRD_PARTY",
-        "UNKNOWN",
-    ]
+    root_cause_category: str = Field(min_length=1, max_length=200)
     hypothesis: str = Field(min_length=2, max_length=5000)
     contributing_factors: List[str] = Field(default_factory=list, max_length=50)
     five_whys: List[str] = Field(default_factory=list, max_length=5)
@@ -271,7 +256,7 @@ class LessonsLearnedClusterSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     theme: str = Field(min_length=2, max_length=500)
-    category: Literal["WORKED", "FAILED", "BLOCKER", "IMPROVEMENT"]
+    category: str = Field(min_length=1, max_length=200)
     summary: str = Field(min_length=2, max_length=5000)
     source_indices: List[int] = Field(min_length=1, max_length=500)
     improvement_candidates: List[str] = Field(default_factory=list, max_length=100)
@@ -292,20 +277,7 @@ class LessonsLearnedClustersOutput(BaseModel):
 class ProjectComplexityDimensionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    dimension_id: Literal[
-        "SCOPE",
-        "BUSINESS_RULES",
-        "REQUIREMENT_TESTABILITY",
-        "INTEGRATIONS",
-        "DATA_LIFECYCLE",
-        "SECURITY_COMPLIANCE",
-        "NON_FUNCTIONAL",
-        "ARCHITECTURE_ENVIRONMENT",
-        "TEST_COMBINATORICS",
-        "AUTOMATION_OBSERVABILITY",
-        "BUSINESS_RISK",
-        "UNCERTAINTY_CHANGE",
-    ]
+    dimension_id: str = Field(min_length=1, max_length=100)
     level: Literal["LOW", "MEDIUM", "HIGH", "INSUFFICIENT_EVIDENCE"]
     explanation: str = Field(min_length=2, max_length=4000)
     evidence_quotes: List[EvidenceQuoteOutput] = Field(default_factory=list, max_length=30)
@@ -317,7 +289,7 @@ class ProjectComplexityDimensionOutput(BaseModel):
 class ProjectComplexityAssessmentSuggestionOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    dimensions: List[ProjectComplexityDimensionOutput] = Field(min_length=12, max_length=12)
+    dimensions: List[ProjectComplexityDimensionOutput] = Field(min_length=1, max_length=100)
     readiness_summary: str = Field(min_length=2, max_length=5000)
     unresolved_questions: List[str] = Field(default_factory=list, max_length=100)
     source_gaps: List[str] = Field(default_factory=list, max_length=100)
@@ -334,23 +306,9 @@ class ProjectComplexityAssessmentSuggestionOutput(BaseModel):
 
     @model_validator(mode="after")
     def validate_dimension_coverage(self):
-        expected = {
-            "SCOPE",
-            "BUSINESS_RULES",
-            "REQUIREMENT_TESTABILITY",
-            "INTEGRATIONS",
-            "DATA_LIFECYCLE",
-            "SECURITY_COMPLIANCE",
-            "NON_FUNCTIONAL",
-            "ARCHITECTURE_ENVIRONMENT",
-            "TEST_COMBINATORICS",
-            "AUTOMATION_OBSERVABILITY",
-            "BUSINESS_RISK",
-            "UNCERTAINTY_CHANGE",
-        }
         received = [item.dimension_id for item in self.dimensions]
-        if len(set(received)) != len(expected) or set(received) != expected:
-            raise ValueError("project_complexity_dimensions_must_cover_all_dimensions_once")
+        if len(set(received)) != len(received):
+            raise ValueError("project_complexity_dimension_ids_must_be_unique")
         return self
 
 

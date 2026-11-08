@@ -477,34 +477,6 @@ async def inspect_chunk_stream(chunks, quarantined):
                 )
 
 
-async def inspect_and_quarantine_chunks(chunks: list[dict]) -> tuple[list[dict], list[dict]]:
-    batch_size = settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE
-    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
-        raise ValueError("document_chunk_inspection_batch_size_invalid")
-
-    quarantined = []
-    accepted_count = 0
-    for batch_start in range(0, len(chunks), batch_size):
-        batch = chunks[batch_start : batch_start + batch_size]
-        accepted_indexes = await inspect_chunks(
-            [chunk["text"] for chunk in batch]
-        )
-        for local_index, chunk in enumerate(batch):
-            if local_index in accepted_indexes:
-                chunks[accepted_count] = chunk
-                accepted_count += 1
-            else:
-                quarantined.append(
-                    {
-                        "chunk_id": chunk.get("metadata", {}).get("chunk_id")
-                        or chunk.get("id"),
-                        "flags": ["ai_safety_rejection"],
-                    }
-                )
-    del chunks[accepted_count:]
-    return chunks, quarantined
-
-
 class IngestionPipelineService:
     async def ingest_document(
         self,

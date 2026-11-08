@@ -1,4 +1,4 @@
-export function isSafeAuthReturnPath(requested) {
+function isSafeAuthReturnPath(requested) {
   if (
     typeof requested !== "string" ||
     !requested.startsWith("/") ||

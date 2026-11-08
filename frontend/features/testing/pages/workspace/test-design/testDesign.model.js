@@ -1,44 +1,14 @@
 import { docText, emptyDoc, textDoc } from "../../../lib/testing.logic.mjs";
 
-export const TEST_CASE_TYPES = [
-  "happy_path",
-  "negative",
-  "boundary",
-  "validation",
-  "permission",
-  "state_transition",
-  "integration",
-  "error_handling",
-  "data_persistence",
-  "concurrency",
-  "api",
-  "ui",
-  "custom",
-];
-
-export const TEST_SCENARIO_CATEGORIES = TEST_CASE_TYPES.filter(
-  (value) => !["api", "ui", "custom"].includes(value),
-);
-
 export const TEST_LEVELS = ["critical", "high", "medium", "low"];
 export const TEST_CASE_ASSESSMENT_LEVELS = ["unassessed", ...TEST_LEVELS];
-export const TESTING_LEVELS = ["UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"];
-export const TEST_KINDS = [
-  "functional",
-  "performance",
-  "security",
-  "usability",
-  "compatibility",
-  "reliability",
-  "accessibility",
-];
 export const EXPECTED_IMPACTS = ["unassessed", "low", "medium", "high", "critical"];
 
 export function createTestCaseForm() {
   const emptyDataEntries = () => [{ id: crypto.randomUUID(), name: "", value: "" }];
   return {
     title: "",
-    type: "happy_path",
+    type: "",
     priority: "unassessed",
     risk: "unassessed",
     testLevel: "",
@@ -103,7 +73,7 @@ export function createScenarioForm() {
   return {
     title: "",
     objective: "",
-    category: "happy_path",
+    category: "",
     testConditionIds: [],
     requirementVersionIds: [],
     acceptanceCriterionIds: [],

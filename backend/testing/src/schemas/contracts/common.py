@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Literal, TypeAlias
+from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, Field, PrivateAttr
 
@@ -28,6 +28,16 @@ class CurrentUser(BaseModel):
 
 def empty_doc():
     return {"type": "doc", "content": []}
+
+
+def validate_tiptap_document(value: Any):
+    if value is not None and (
+        not isinstance(value, dict)
+        or value.get("type") != "doc"
+        or not isinstance(value.get("content", []), list)
+    ):
+        raise ValueError("Tiptap JSON không hợp lệ")
+    return value
 
 
 KnowledgeSourceType = Literal[

@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.schemas.contracts.common import (
     CompletionRecommendation,
@@ -67,13 +67,21 @@ class TestwareHandoverItem(BaseModel):
 
 class LessonsLearnedItem(BaseModel):
     lesson_id: str | None = Field(default=None, max_length=200)
-    category: Literal["WORKED", "FAILED", "BLOCKER", "IMPROVEMENT", "OTHER"] = "OTHER"
+    category: str = Field(default="OTHER", min_length=1, max_length=200)
     observation: str = Field(min_length=2, max_length=5000)
     impact: str = Field(default="", max_length=5000)
     recommendation: str = Field(default="", max_length=5000)
     evidence_refs: list[str] = Field(default_factory=list, max_length=500)
     owner_id: str | None = Field(default=None, max_length=200)
     convert_to_improvement: bool = False
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("lesson_category_required")
+        return value
 
     @model_validator(mode="before")
     @classmethod

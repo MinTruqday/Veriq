@@ -11,7 +11,7 @@ export function hasNavigationPermission(item, permissions) {
   );
 }
 
-export function hasNavigationRole(item, user) {
+function hasNavigationRole(item, user) {
   return (
     (!item?.requireAdmin || user?.system_role === "ADMIN") && (!item?.requireAuth || Boolean(user))
   );
@@ -40,11 +40,6 @@ export function navigationItemForPath(groups, pathname, additionalItems = []) {
 
   if (item?.id === "project" && pathname !== item.href) return null;
   return item;
-}
-
-export function canOpenNavigationPath(groups, pathname, permissions, additionalItems = []) {
-  const item = navigationItemForPath(groups, pathname, additionalItems);
-  return { item, allowed: item ? hasNavigationPermission(item, permissions) : false };
 }
 
 export function canOpenRoleRestrictedPath(groups, pathname, user) {

@@ -1,5 +1,4 @@
 import asyncio
-import re
 from dataclasses import dataclass, field
 from typing import List, Literal
 
@@ -171,6 +170,18 @@ class SecurityHarness:
         anomaly = self._anomaly_score(text)
         risk_score = 1.0 if blocked else min(anomaly * 0.2, 1.0)
 
+        if blocked or violations:
+            from src.services.agent_metrics import agentops
+
+            active_session_id = session_id or agentops.current_session_id()
+            if active_session_id:
+                agentops.record_security_event(
+                    active_session_id,
+                    "INPUT_SCAN",
+                    risk_score,
+                    violations,
+                )
+
         if blocked:
             logger.warning("Unsafe content blocked")
             return ScanResult(
@@ -240,25 +251,5 @@ class SecurityHarness:
             status="SAFE",
             sanitized_text=sanitized,
         )
-
-    async def ascan_output(self, text: str, session_id: str = "") -> str:
-        if not text:
-            return text
-        baseline = guardrails_engine.inspect_output(text)
-        text = baseline.get("sanitized_text", text)
-        if not baseline.get("is_safe", True):
-            raise PermissionError("output_credential_leak_blocked")
-        sanitized, _, blocked = await self._adetect_security_issues(text, allow_ai_review=False)
-        sanitized = re.sub(
-            r"<(think|thought)>.*?</\1>",
-            "",
-            sanitized,
-            flags=re.IGNORECASE | re.DOTALL,
-        ).strip()
-        if blocked:
-            logger.error("System proactively blocked and neutralized credential leak risk")
-            raise PermissionError("output_credential_leak_blocked")
-        return sanitized
-
 
 security = SecurityHarness()

@@ -8,20 +8,6 @@ import ContentOriginBadge from "../../../shared/components/common/ContentOriginB
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 
-const ROOT_CAUSE_CATEGORIES = [
-  "REQUIREMENT",
-  "DESIGN",
-  "IMPLEMENTATION",
-  "CONFIGURATION",
-  "TEST_DATA",
-  "TEST_CASE_GAP",
-  "ENVIRONMENT",
-  "INTEGRATION",
-  "DEPLOYMENT",
-  "PROCESS",
-  "THIRD_PARTY",
-  "UNKNOWN",
-];
 const lines = (value) =>
   String(value || "")
     .split("\n")
@@ -268,8 +254,8 @@ export default function CausalAnalysisPanel({ project }) {
         {
           name: "category",
           label: "Nhóm nguyên nhân",
-          options: ROOT_CAUSE_CATEGORIES.map((value) => ({ value, label: value })),
-          initialValue: rootCause.category || "UNKNOWN",
+          required: true,
+          initialValue: rootCause.category || "",
         },
         {
           name: "detail",

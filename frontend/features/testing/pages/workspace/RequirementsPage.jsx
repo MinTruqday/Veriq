@@ -1279,17 +1279,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
           name: "type",
           label: "Loại yêu cầu",
           initialValue: sources[0].current_version.type,
-          options: [
-            { value: "functional", label: "Chức năng" },
-            { value: "non_functional", label: "Phi chức năng" },
-            { value: "business_rule", label: "Quy tắc nghiệp vụ" },
-            { value: "api", label: "API" },
-            { value: "ui", label: "Giao diện" },
-            { value: "data", label: "Dữ liệu" },
-            { value: "permission", label: "Phân quyền" },
-            { value: "integration", label: "Tích hợp" },
-            { value: "constraint", label: "Ràng buộc" },
-          ],
+          required: true,
         },
         {
           name: "reason",

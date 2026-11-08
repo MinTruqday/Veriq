@@ -103,6 +103,12 @@ function memberDisplayName(member) {
   );
 }
 
+function responsibilityLabel(value) {
+  return `Người phụ trách · ${String(value)
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase())}`;
+}
+
 function analyticsValue(value, suffix = "", sampleCount) {
   if (value === null || value === undefined || value === "" || sampleCount === 0)
     return "Chưa có dữ liệu";
@@ -115,15 +121,6 @@ function analyticsValue(value, suffix = "", sampleCount) {
   }
   return suffix ? `${numericValue} ${suffix}` : String(numericValue);
 }
-
-const projectTypeLabels = {
-  web: "Ứng dụng web",
-  mobile: "Ứng dụng di động",
-  api: "API",
-  desktop: "Ứng dụng máy tính",
-  embedded: "Hệ thống nhúng",
-  other: "Loại khác",
-};
 
 const settingValueLabels = {
   ALLOW_READ: "Cho phép đọc",
@@ -152,15 +149,11 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   const [name, setName] = useState(project.name);
   const [projectLeadUserId, setProjectLeadUserId] = useState(project.project_lead_user_id || "");
   const [description, setDescription] = useState(project.description || "");
-  const [projectType, setProjectType] = useState(project.project_type || "web");
+  const [projectType, setProjectType] = useState(project.project_type || "");
   const [locale, setLocale] = useState(project.locale || "");
   const [timezone, setTimezone] = useState(project.timezone || "");
   const projectTimeZoneOptions = useMemo(() => timeZoneOptions(timezone), [timezone]);
   const timezoneIsValid = isSupportedTimeZone(timezone);
-  const [automationFramework, setAutomationFramework] = useState(
-    project.automation_framework || "",
-  );
-  const [automationLanguage, setAutomationLanguage] = useState(project.automation_language || "");
   const [plannedStartAt, setPlannedStartAt] = useState(
     project.planned_start_at ? String(project.planned_start_at).slice(0, 10) : "",
   );
@@ -180,16 +173,12 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       project.planned_start_at ? String(project.planned_start_at).slice(0, 10) : "",
     );
     setPlannedEndAt(project.planned_end_at ? String(project.planned_end_at).slice(0, 10) : "");
-    setAutomationFramework(project.automation_framework || "");
-    setAutomationLanguage(project.automation_language || "");
   }, [
     project._id,
     project.revision,
     project.project_lead_user_id,
     project.planned_end_at,
     project.planned_start_at,
-    project.automation_framework,
-    project.automation_language,
     project.locale,
     project.timezone,
   ]);
@@ -215,6 +204,16 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   });
   const [responsibilities, setResponsibilities] = useState(
     project.settings?.responsibilities || {},
+  );
+  const responsibilityOptions = useMemo(
+    () =>
+      [
+        ...new Set([
+          ...members.flatMap((member) => member.assignable_responsibilities || []),
+          ...Object.keys(responsibilities),
+        ]),
+      ].sort((left, right) => left.localeCompare(right)),
+    [members, responsibilities],
   );
   useEffect(() => {
     setResponsibilities(project.settings?.responsibilities || {});
@@ -526,8 +525,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                           },
                         }
                       : {}),
-                    automation_framework: automationFramework || null,
-                    automation_language: automationLanguage || null,
                   };
                   if (canManageSettings && !canUpdateProject) {
                     await testingApi.updateProjectSettings(project._id, payload);
@@ -595,18 +592,16 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="field-label">
                     Loại dự án
-                    <select
+                    <input
                       className="apple-input mt-2"
                       disabled={!can("project.update")}
+                      required
+                      minLength={1}
+                      maxLength={100}
                       value={projectType}
                       onChange={(event) => setProjectType(event.target.value)}
-                    >
-                      {["web", "mobile", "api", "desktop", "embedded", "other"].map((value) => (
-                        <option value={value} key={value}>
-                          {projectTypeLabels[value]}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Nhập loại dự án"
+                    />
                   </label>
                   <label className="field-label">
                     Ngôn ngữ và vùng
@@ -655,88 +650,45 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                 <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-ink">Trách nhiệm quyết định</h3>
                   {loadErrors.members && <ErrorState message={loadErrors.members} />}
-                  <label className="field-label block max-w-xl">
-                    Người quyết định phát hành
-                    <select
-                      className="apple-input mt-2"
-                      value={responsibilities.release_decision || ""}
-                      disabled={dataLoading || Boolean(loadErrors.members)}
-                      onChange={(event) =>
-                        setResponsibilities((current) => ({
-                          ...current,
-                          release_decision: event.target.value || null,
-                        }))
-                      }
-                    >
-                      <option value="">Chưa phân công</option>
-                      {members
-                        .filter(
-                          (member) =>
-                            member.status === "ACTIVE" &&
-                            member.assignable_responsibilities?.includes("release_decision"),
-                        )
-                        .map((member) => (
-                          <option key={member.user_id} value={member.user_id}>
-                            {memberDisplayName(member)}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
+                  {responsibilityOptions.length ? (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {responsibilityOptions.map((responsibility) => (
+                        <label className="field-label" key={responsibility}>
+                          {responsibilityLabel(responsibility)}
+                          <select
+                            className="apple-input mt-2"
+                            value={responsibilities[responsibility] || ""}
+                            disabled={dataLoading || Boolean(loadErrors.members)}
+                            onChange={(event) =>
+                              setResponsibilities((current) => ({
+                                ...current,
+                                [responsibility]: event.target.value || null,
+                              }))
+                            }
+                          >
+                            <option value="">Chưa phân công</option>
+                            {members
+                              .filter(
+                                (member) =>
+                                  member.status === "ACTIVE" &&
+                                  member.assignable_responsibilities?.includes(responsibility),
+                              )
+                              .map((member) => (
+                                <option key={member.user_id} value={member.user_id}>
+                                  {memberDisplayName(member)}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-ink-muted">
+                      Chưa có trách nhiệm nào được gắn với quyền trong cấu hình dự án.
+                    </p>
+                  )}
                 </section>
               )}
-              <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
-                <div>
-                  <h3 className="text-sm font-semibold text-ink">Tự động hóa kiểm thử</h3>
-                  <p className="mt-1 text-sm text-ink-muted">
-                    Chọn công cụ và ngôn ngữ dùng cho các ca kiểm thử tự động của dự án.
-                  </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="field-label">
-                    Công cụ
-                    <select
-                      className="apple-input mt-2"
-                      disabled={!can("project.update") && !can("project.settings.manage")}
-                      value={automationFramework}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setAutomationFramework(value);
-                        if (!value) setAutomationLanguage("");
-                        else if (value === "selenium") setAutomationLanguage("python");
-                        else if (automationLanguage === "python") setAutomationLanguage("");
-                      }}
-                    >
-                      <option value="">Chưa cấu hình</option>
-                      <option value="playwright">Playwright</option>
-                      <option value="cypress">Cypress</option>
-                      <option value="selenium">Selenium</option>
-                    </select>
-                  </label>
-                  <label className="field-label">
-                    Ngôn ngữ
-                    <select
-                      className="apple-input mt-2"
-                      disabled={
-                        (!can("project.update") && !can("project.settings.manage")) ||
-                        !automationFramework ||
-                        automationFramework === "selenium"
-                      }
-                      value={automationLanguage}
-                      onChange={(event) => setAutomationLanguage(event.target.value)}
-                    >
-                      <option value="">Chưa cấu hình</option>
-                      {automationFramework === "selenium" ? (
-                        <option value="python">Python</option>
-                      ) : (
-                        <>
-                          <option value="typescript">TypeScript</option>
-                          <option value="javascript">JavaScript</option>
-                        </>
-                      )}
-                    </select>
-                  </label>
-                </div>
-              </section>
               {can("project.update") && (
                 <section className="space-y-3 rounded-xl border border-border bg-white p-4 sm:p-5">
                   <h3 className="text-sm font-semibold text-ink">Thời gian dự án</h3>

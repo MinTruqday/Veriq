@@ -449,6 +449,7 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
             detail={"code": "PROJECT_OUTPUT_LANGUAGE_REQUIRED"},
         )
     context = {
+        "assessment_dimensions": sorted(DIMENSION_IDS),
         "source_coverage": {
             "current_ai_readable_documents": scope["document_count"],
             "baselined_requirements": scope["requirement_count"],
@@ -495,7 +496,8 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
             raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_RESPONSE_INVALID"})
         suggestion = suggestions[0]
         dimensions = suggestion.get("dimensions") or []
-        if len(dimensions) != 12 or {item.get("dimension_id") for item in dimensions} != DIMENSION_IDS:
+        dimension_ids = [item.get("dimension_id") for item in dimensions]
+        if len(dimension_ids) != len(DIMENSION_IDS) or set(dimension_ids) != DIMENSION_IDS:
             raise HTTPException(status_code=502, detail={"code": "PROJECT_COMPLEXITY_DIMENSIONS_INVALID"})
         sources = {item["artifact_version_id"]: item for item in evidence}
         locale = locale.lower()
@@ -536,12 +538,12 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
         if grounded_dimension_count < len(dimensions):
             if locale.startswith("vi"):
                 suggestion["readiness_summary"] = (
-                    f"Có đủ dẫn chứng đã xác minh cho {grounded_dimension_count} trên 12 chiều đánh giá; "
+                    f"Có đủ dẫn chứng đã xác minh cho {grounded_dimension_count} trên {len(dimensions)} chiều đánh giá; "
                     f"{len(dimensions) - grounded_dimension_count} chiều chưa đủ căn cứ."
                 )
             else:
                 suggestion["readiness_summary"] = (
-                    f"Verified evidence supports {grounded_dimension_count} of 12 assessment dimensions; "
+                    f"Verified evidence supports {grounded_dimension_count} of {len(dimensions)} assessment dimensions; "
                     f"{len(dimensions) - grounded_dimension_count} dimensions lack sufficient evidence."
                 )
         result["evidence_refs"] = list(

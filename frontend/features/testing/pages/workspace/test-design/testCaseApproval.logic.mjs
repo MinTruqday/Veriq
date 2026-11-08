@@ -2,7 +2,7 @@ export function requiresAiComparison(draft) {
   return draft?.origin === "ai_generated" || Boolean(draft?.ai_proposal_snapshot);
 }
 
-export function isAiComparisonCurrent(draft, comparedRevisions = {}) {
+function isAiComparisonCurrent(draft, comparedRevisions = {}) {
   return !requiresAiComparison(draft) || comparedRevisions[draft?._id] === draft?.revision;
 }
 

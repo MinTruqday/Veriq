@@ -69,9 +69,7 @@ import {
   scenarioPayload,
   createTestCaseForm,
   testDataEntriesToObject,
-  TEST_CASE_TYPES,
   TEST_CASE_ASSESSMENT_LEVELS,
-  TEST_SCENARIO_CATEGORIES,
   buildTestCaseDraftChanges,
 } from "./test-design/testDesign.model";
 
@@ -192,9 +190,11 @@ export default function TestDesignPage({ project, workspaceView }) {
   const assignedScenarios = scenarios.filter(
     (scenario) => scenario.owner_id === currentUserId && scenario.status !== "archived",
   );
-  const canCreateCase =
-    can("testcase.create") ||
-    assignedScenarios.some((scenario) => canDraft("testscenario.update", scenario));
+  const canCreateUnassignedCase = can("testcase.create");
+  const availableScenarios = canCreateUnassignedCase
+    ? scenarios
+    : assignedScenarios.filter((scenario) => canDraft("testscenario.update", scenario));
+  const canCreateCase = canCreateUnassignedCase || availableScenarios.length > 0;
   const canManageTestCaseFields = can("testcase.template.manage");
   const designSectionItems = useMemo(() => testDesignSectionItems(project._id), [project._id]);
   const permissions = useMemo(
@@ -2129,18 +2129,15 @@ export default function TestDesignPage({ project, workspaceView }) {
                   />
                 </label>
                 <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
-                  <select
+                  <input
                     aria-label="Loại bản nháp ca kiểm thử"
                     className="apple-input"
+                    required
+                    maxLength={100}
                     value={draftEdit.type}
                     onChange={(event) => changeDraftEdit({ type: event.target.value })}
-                  >
-                    {TEST_CASE_TYPES.map((value) => (
-                      <option key={value} value={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Nhập loại ca kiểm thử"
+                  />
                   <select
                     aria-label="Ưu tiên bản nháp ca kiểm thử"
                     className="apple-input"
@@ -2169,43 +2166,23 @@ export default function TestDesignPage({ project, workspaceView }) {
                 <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
                   <label className="field-label">
                     Cấp kiểm thử
-                    <select
+                    <input
                       aria-label="Cấp kiểm thử bản nháp"
                       className="apple-input mt-2"
+                      maxLength={100}
                       value={draftEdit.test_level}
                       onChange={(event) => changeDraftEdit({ test_level: event.target.value })}
-                    >
-                      <option value="">Chưa phân loại</option>
-                      {["UNIT", "INTEGRATION", "SYSTEM", "ACCEPTANCE"].map((value) => (
-                        <option value={value} key={value}>
-                          {valueLabel(value)}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </label>
                   <label className="field-label">
                     Loại kiểm thử
-                    <select
+                    <input
                       aria-label="Loại kiểm thử bản nháp"
                       className="apple-input mt-2"
+                      maxLength={100}
                       value={draftEdit.test_kind}
                       onChange={(event) => changeDraftEdit({ test_kind: event.target.value })}
-                    >
-                      <option value="">Chưa phân loại</option>
-                      {[
-                        "functional",
-                        "performance",
-                        "security",
-                        "usability",
-                        "compatibility",
-                        "reliability",
-                        "accessibility",
-                      ].map((value) => (
-                        <option value={value} key={value}>
-                          {valueLabel(value)}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </label>
                   <label className="field-label">
                     Ảnh hưởng dự kiến
@@ -2567,7 +2544,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                 <div>
                   <label className="field-label">
                     Người phụ trách ca kiểm thử
-                    {!isTester && permissions.includes("project.members.read") ? (
+                    {permissions.includes("project.members.read") ? (
                       <>
                         <select
                           aria-label="Người phụ trách ca kiểm thử"
@@ -2608,7 +2585,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       </p>
                     )}
                   </label>
-                  {!isTester && permissions.includes("project.members.read") && (
+                  {permissions.includes("project.members.read") && (
                     <TestCaseOwnerRecommendation
                       projectId={project._id}
                       draftId={selectedDraft._id}
@@ -2819,10 +2796,10 @@ export default function TestDesignPage({ project, workspaceView }) {
           reusableSteps={reusableSteps}
           customFields={testCaseCustomFields}
           requirements={requirements}
-          scenarios={isTester ? assignedScenarios : scenarios}
-          scenarioRequired={isTester}
+          scenarios={availableScenarios}
+          scenarioRequired={!canCreateUnassignedCase}
           members={projectMembers}
-          canReadMembers={!isTester && permissions.includes("project.members.read")}
+          canReadMembers={permissions.includes("project.members.read")}
           membersUnavailable={projectMembersUnavailable}
           onSubmit={create}
         />

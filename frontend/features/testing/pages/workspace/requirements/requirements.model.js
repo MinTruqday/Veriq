@@ -1,17 +1,5 @@
 import { docText, emptyDoc, textDoc } from "../../../lib/testing";
 
-export const REQUIREMENT_TYPES = [
-  "functional",
-  "non_functional",
-  "business_rule",
-  "api",
-  "ui",
-  "data",
-  "permission",
-  "integration",
-  "constraint",
-];
-
 export const REQUIREMENT_LEVELS = ["critical", "high", "medium", "low"];
 
 export const REQUIREMENT_IMPORT_FORMATS = ["md", "txt", "csv", "openapi", "postman"];
@@ -83,7 +71,7 @@ export function createInitialRequirementForm() {
   return {
     customValues: {},
     title: "",
-    type: "functional",
+    type: "",
     priority: "medium",
     risk: "medium",
     content_doc: emptyDoc(),

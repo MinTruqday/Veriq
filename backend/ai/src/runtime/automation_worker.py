@@ -753,7 +753,7 @@ class AutomationWorker:
             )
             if handoff_blocked and terminal_status == AutomationStatus.COMPLETED:
                 terminal_status = AutomationStatus.DEGRADED
-                completed.error_code = "QA_TEST_DESIGN_HANDOFF_PENDING"
+                completed.error_code = "TEST_DESIGN_HANDOFF_PENDING"
             raw_source_facts = [
                 item
                 for item in result.get("source_facts", [])
@@ -1294,7 +1294,7 @@ class AutomationWorker:
                     {
                         "requirement_version_id": version_id,
                         "status": "EVIDENCE_MISSING",
-                        "reason_code": "QA_TEST_DESIGN_SOURCE_EVIDENCE_MISSING",
+                        "reason_code": "TEST_DESIGN_SOURCE_EVIDENCE_MISSING",
                     }
                 )
                 continue
@@ -1330,7 +1330,7 @@ class AutomationWorker:
                     {
                         "requirement_version_id": version_id,
                         "status": "DISPATCH_FAILED",
-                        "reason_code": "QA_TEST_DESIGN_HANDOFF_DISPATCH_FAILED",
+                        "reason_code": "TEST_DESIGN_HANDOFF_DISPATCH_FAILED",
                     }
                 )
                 continue

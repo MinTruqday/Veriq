@@ -1,9 +1,9 @@
 import asyncio
-from hashlib import sha256
-from itertools import islice
 import json
 import math
 import re
+from hashlib import sha256
+from itertools import islice
 from typing import Any, AsyncIterator, Dict, Iterable, Iterator, List, Optional, Sequence
 from uuid import NAMESPACE_URL, uuid5
 
@@ -39,29 +39,6 @@ class ChunkingService:
         self.semantic_threshold = semantic_threshold
         self.soft_threshold = soft_threshold
         logger.info("Initializing unified document ChunkingService")
-
-    async def chunk_document(
-        self, markdown: str, metadata: Dict, structure: Optional[Sequence[Any]] = None
-    ) -> List[Dict]:
-        units = self._structure_units(markdown, structure or [])
-        if not units:
-            return []
-
-        try:
-            return await self._collect_semantic_chunks(
-                units, metadata, "docling_structure_semantic"
-            )
-        except Exception as error:
-            logger.warning(
-                "Semantic refinement failed; preserving Docling boundaries ({})",
-                type(error).__name__,
-            )
-        structural_groups = self._iter_structural_groups(units)
-        return self._serialize_groups(
-            self._iter_size_guard(structural_groups),
-            metadata,
-            "docling_structure_fallback",
-        )
 
     async def iter_chunk_document(
         self,
@@ -112,191 +89,6 @@ class ChunkingService:
                 ):
                     chunk_index += 1
                     yield chunk
-
-    def _structure_units(self, markdown: str, structure: Sequence[Any]) -> List[Dict]:
-        units = []
-        image_only_units = []
-        seen_blocks = set()
-        section_path = []
-        block_parent_by_id = {}
-        for index, item in enumerate(structure):
-            if not isinstance(item, dict):
-                dump = getattr(item, "model_dump", None)
-                if not callable(dump):
-                    raise ValueError("source_structure_block_invalid")
-                item = dump(exclude_none=True)
-            raw_text = str(item.get("text") or "")
-            text = raw_text.strip()
-            trim_start = len(raw_text) - len(raw_text.lstrip())
-            block_id = item.get("block_id")
-            item_type = str(item.get("type") or "text").casefold()
-            if isinstance(block_id, str) and block_id.strip() and block_id not in block_parent_by_id:
-                parent_id = item.get("parent_block_id")
-                block_parent_by_id[block_id.strip()] = (
-                    parent_id.strip()
-                    if isinstance(parent_id, str) and parent_id.strip()
-                    else None
-                )
-            if block_id and block_id in seen_blocks:
-                continue
-            if block_id:
-                seen_blocks.add(block_id)
-            level = item.get("level")
-            if item_type in {"title", "section_header", "chapter", "heading"}:
-                if level is None:
-                    section_path = [(None, text)]
-                else:
-                    while section_path and (
-                        section_path[-1][0] is None
-                        or section_path[-1][0] >= level
-                    ):
-                        section_path.pop()
-                    section_path.append((level, text))
-            table_metadata = item.get("table_metadata")
-            if item_type == "table":
-                table_metadata = self._table_metadata(
-                    text, block_id, table_metadata, trim_start
-                )
-            if not text:
-                if item_type in {"picture", "image"} and item.get("image_metadata"):
-                    image_only_units.append(
-                        {
-                            "block_id": block_id,
-                            "parent_block_id": item.get("parent_block_id"),
-                            "ancestor_block_ids": [],
-                            "ancestor_chain_status": "ROOT",
-                            "block_index": index,
-                            "level": item.get("level"),
-                            "type": item_type,
-                            "page_no": item.get("page_no"),
-                            "extraction_status": item.get("extraction_status"),
-                            "section_path": [heading for _, heading in section_path],
-                            "locations": item.get("locations")
-                            or (
-                                [{"page_no": item["page_no"], "bbox": None}]
-                                if item.get("page_no") is not None
-                                else []
-                            ),
-                            "image_metadata": item.get("image_metadata"),
-                        }
-                    )
-                continue
-            units.append(
-                {
-                    "text": text,
-                    "type": item_type,
-                    "level": item.get("level"),
-                    "page_no": item.get("page_no"),
-                    "block_id": block_id,
-                    "parent_block_id": item.get("parent_block_id"),
-                    "ancestor_block_ids": [],
-                    "ancestor_chain_status": "ROOT",
-                    "block_index": index,
-                    "extraction_status": item.get("extraction_status"),
-                    "ocr_page_confidence": item.get("ocr_page_confidence"),
-                    "section_path": [heading for _, heading in section_path],
-                    "locations": item.get("locations")
-                    or (
-                        [{"page_no": item["page_no"], "bbox": None}]
-                        if item.get("page_no") is not None
-                        else []
-                    ),
-                    "table_metadata": table_metadata,
-                    "image_metadata": item.get("image_metadata"),
-                    "source_start": 0,
-                    "source_end": len(text),
-                    "hard_boundary": item_type in {"title", "section_header", "chapter", "heading"},
-                }
-            )
-        for unit in units:
-            unit["ancestor_block_ids"], unit["ancestor_chain_status"] = (
-                self._ancestor_block_chain(unit.get("block_id"), block_parent_by_id)
-            )
-        for unit in image_only_units:
-            unit["ancestor_block_ids"], unit["ancestor_chain_status"] = (
-                self._ancestor_block_chain(unit.get("block_id"), block_parent_by_id)
-            )
-        if units:
-            units_by_page = {}
-            units_by_parent_page = {}
-            units_without_page_by_parent = {}
-            unit_pages_by_index = {}
-            for unit_position, unit in enumerate(units):
-                unit_pages = {
-                    location.get("page_no")
-                    for location in unit.get("locations", [])
-                    if isinstance(location, dict)
-                    and isinstance(location.get("page_no"), int)
-                    and not isinstance(location.get("page_no"), bool)
-                }
-                if not unit_pages:
-                    unit_page = unit.get("page_no")
-                    if isinstance(unit_page, int) and not isinstance(unit_page, bool):
-                        unit_pages.add(unit_page)
-                unit_pages_by_index[unit_position] = unit_pages
-                for page_no in unit_pages:
-                    units_by_page.setdefault(page_no, []).append(unit_position)
-                    parent_id = unit.get("parent_block_id")
-                    if parent_id:
-                        units_by_parent_page.setdefault((parent_id, page_no), []).append(
-                            unit_position
-                        )
-                if not unit_pages and unit.get("parent_block_id"):
-                    units_without_page_by_parent.setdefault(
-                        unit["parent_block_id"], []
-                    ).append(unit_position)
-
-            for image_unit in image_only_units:
-                image_pages = {
-                    location.get("page_no")
-                    for location in image_unit.get("locations", [])
-                    if isinstance(location, dict)
-                    and isinstance(location.get("page_no"), int)
-                    and not isinstance(location.get("page_no"), bool)
-                }
-                if not image_pages:
-                    image_page = image_unit.get("page_no")
-                    if isinstance(image_page, int) and not isinstance(image_page, bool):
-                        image_pages.add(image_page)
-                parent_id = image_unit.get("parent_block_id")
-                candidate_units = set()
-                if image_pages:
-                    for page_no in image_pages:
-                        candidate_units.update(units_by_page.get(page_no, []))
-                        if parent_id:
-                            candidate_units.update(
-                                units_by_parent_page.get((parent_id, page_no), [])
-                            )
-                elif parent_id:
-                    candidate_units.update(units_without_page_by_parent.get(parent_id, []))
-
-                candidates = []
-                for unit_position in sorted(
-                    candidate_units,
-                    key=lambda position: units[position]["block_index"],
-                ):
-                    unit = units[unit_position]
-                    same_page = bool(image_pages.intersection(
-                        unit_pages_by_index[unit_position]
-                    ))
-                    same_parent = bool(
-                        parent_id
-                        and parent_id == unit.get("parent_block_id")
-                        and (same_page or not image_pages)
-                    )
-                    candidates.append(
-                        (
-                            0 if same_parent else 1,
-                            abs(unit["block_index"] - image_unit["block_index"]),
-                            unit,
-                        )
-                    )
-                if candidates:
-                    nearest_unit = min(candidates, key=lambda item: (item[0], item[1]))[2]
-                    nearest_unit.setdefault("related_images", []).append(image_unit)
-            return units
-
-        return list(self._iter_markdown_unit_records(markdown))
 
     @staticmethod
     def _ancestor_block_chain(block_id, block_parent_by_id):
@@ -567,16 +359,6 @@ class ChunkingService:
                 unit["related_images"] = related_images
             yield unit
 
-    def _markdown_units(self, markdown: str) -> List[tuple[str, str]]:
-        units = []
-        for part in re.split(r"\n\s*\n+", markdown):
-            text = part.strip()
-            if not text:
-                continue
-            item_type = "section_header" if re.match(r"^#{1,6}\s+", text) else "text"
-            units.append((text, item_type))
-        return units
-
     def _iter_markdown_unit_records(self, markdown: str) -> Iterator[Dict]:
         cursor = 0
         block_index = 0
@@ -622,31 +404,6 @@ class ChunkingService:
         if left_norm == 0 or right_norm == 0:
             return 0.0
         return dot_product / (left_norm * right_norm)
-
-    def _semantic_refinement(
-        self, units: List[Dict], embeddings: List[List[float]]
-    ) -> List[List[Dict]]:
-        groups: List[List[Dict]] = []
-        current = [units[0]]
-        current_length = len(units[0]["text"])
-
-        for index, unit in enumerate(units[1:], start=1):
-            similarity = self._cosine_similarity(embeddings[index - 1], embeddings[index])
-            topic_changed = similarity < self.semantic_threshold
-            soft_boundary = current_length >= self.target_chars and similarity < self.soft_threshold
-            structure_boundary = unit["hard_boundary"]
-            should_split = current_length >= self.min_chars and (
-                structure_boundary or topic_changed or soft_boundary
-            )
-            if should_split:
-                groups.append(current)
-                current = [unit]
-                current_length = len(unit["text"])
-            else:
-                current.append(unit)
-                current_length += len(unit["text"]) + 2
-        groups.append(current)
-        return groups
 
     async def _iter_semantic_refinement_batched(
         self, units: Iterable[Dict]
@@ -699,33 +456,6 @@ class ChunkingService:
         if current:
             yield current
 
-    async def _semantic_refinement_batched(
-        self, units: List[Dict]
-    ) -> List[List[Dict]]:
-        return [group async for group in self._iter_semantic_refinement_batched(units)]
-
-    async def _collect_semantic_chunks(
-        self, units: List[Dict], metadata: Dict, chunk_type: str
-    ) -> List[Dict]:
-        chunks = []
-        chunk_index = 0
-        async for group in self._iter_semantic_refinement_batched(units):
-            guarded_groups = self._iter_size_guard((group,))
-            for guarded_group in guarded_groups:
-                chunks.extend(
-                    self._iter_serialize_groups(
-                        (guarded_group,),
-                        metadata,
-                        chunk_type,
-                        chunk_index_start=chunk_index,
-                    )
-                )
-                chunk_index += 1
-        return chunks
-
-    def _structural_groups(self, units: List[Dict]) -> List[List[Dict]]:
-        return list(self._iter_structural_groups(units))
-
     def _iter_structural_groups(self, units: Iterable[Dict]) -> Iterator[List[Dict]]:
         current: List[Dict] = []
         current_length = 0
@@ -738,9 +468,6 @@ class ChunkingService:
             current_length += len(unit["text"]) + (2 if current_length else 0)
         if current:
             yield current
-
-    def _size_guard(self, groups: List[List[Dict]]) -> List[List[Dict]]:
-        return list(self._iter_size_guard(groups))
 
     def _iter_size_guard(
         self, groups: Iterable[List[Dict]]
@@ -916,12 +643,6 @@ class ChunkingService:
                 }
             )
         return result
-
-    @staticmethod
-    def _serialize_groups(
-        groups: Iterable[List[Dict]], metadata: Dict, chunk_type: str
-    ) -> List[Dict]:
-        return list(ChunkingService._iter_serialize_groups(groups, metadata, chunk_type))
 
     @staticmethod
     def _iter_serialize_groups(

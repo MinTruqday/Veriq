@@ -46,28 +46,6 @@ class ContentClient:
         return document
 
     @classmethod
-    async def authorize_read(cls, document_id: str, requester_id: str, is_admin: bool):
-        document = await cls.exchange(
-            "get_accessible_document",
-            document_id=document_id,
-            user_id=requester_id,
-            is_admin=is_admin,
-            edit=False,
-        )
-        if not document:
-            raise ValueError("Document not found")
-        return document
-
-    @classmethod
-    async def authorize_read_many(
-        cls, document_ids: list[str], requester_id: str | None, is_admin: bool
-    ) -> list[str]:
-        records = await cls._read_accessible_documents_many(
-            document_ids, requester_id, is_admin
-        )
-        return [str(item["_id"]) for item in records]
-
-    @classmethod
     async def active_index_generations_many(
         cls, document_ids: list[str], requester_id: str | None, is_admin: bool
     ) -> dict[str, str | None]:

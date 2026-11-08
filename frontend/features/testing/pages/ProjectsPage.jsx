@@ -33,15 +33,6 @@ function projectSchedule(project) {
   return null;
 }
 
-const projectTypeLabels = {
-  web: "Ứng dụng web",
-  mobile: "Ứng dụng di động",
-  api: "API",
-  desktop: "Ứng dụng máy tính",
-  embedded: "Thiết bị nhúng",
-  other: "Khác",
-};
-
 function projectIncludesDate(project, day) {
   if (!day) return true;
   if (!project.planned_start_at && !project.planned_end_at) return false;
@@ -89,7 +80,7 @@ export default function ProjectsPage() {
     key: "",
     name: "",
     description: "",
-    project_type: "web",
+    project_type: "",
     planning_method: "SCRUM",
     planned_start_at: "",
     planned_end_at: "",
@@ -207,7 +198,7 @@ export default function ProjectsPage() {
         key: "",
         name: "",
         description: "",
-        project_type: "web",
+        project_type: "",
         planning_method: "SCRUM",
         planned_start_at: "",
         planned_end_at: "",
@@ -307,18 +298,15 @@ export default function ProjectsPage() {
           </label>
           <label className="field-label block min-w-0">
             Loại dự án
-            <select
+            <input
               className="apple-input mt-2 w-full"
+              required
+              minLength={1}
+              maxLength={100}
               value={form.project_type}
               onChange={(event) => setForm({ ...form, project_type: event.target.value })}
-            >
-              <option value="web">Ứng dụng web</option>
-              <option value="mobile">Ứng dụng di động</option>
-              <option value="api">API</option>
-              <option value="desktop">Ứng dụng máy tính</option>
-              <option value="embedded">Thiết bị nhúng</option>
-              <option value="other">Khác</option>
-            </select>
+              placeholder="Nhập loại dự án"
+            />
           </label>
           <label className="field-label block min-w-0">
             Phương thức làm việc
@@ -573,7 +561,7 @@ export default function ProjectsPage() {
                       )}
                       {item.project_type && (
                         <small className="mt-1 block text-[12px] text-ink-muted">
-                          {projectTypeLabels[item.project_type] || valueLabel(item.project_type)}
+                          {valueLabel(item.project_type)}
                         </small>
                       )}
                       <small className="mt-1 block text-[12px] text-ink-muted">

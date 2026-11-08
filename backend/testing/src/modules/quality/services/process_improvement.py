@@ -1,12 +1,11 @@
-import hashlib
-import json
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.common import idempotency_request_hash as _create_request_hash
+from src.core.common import verify_idempotency_replay as _verify_create_replay
 from src.core.database import database
-from src.repositories.process_improvement import process_improvement_repository
 from src.modules.quality.services.statistical_quality import (
     annotate_special_cause,
     compare_statistical_analyses,
@@ -15,25 +14,7 @@ from src.modules.quality.services.statistical_quality import (
     list_statistical_analyses,
     round_measurement,
 )
-
-
-def _create_request_hash(payload):
-    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
-    canonical = json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _verify_create_replay(existing, payload, user):
-    created_by = existing.get("created_by")
-    if not created_by:
-        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
-    if created_by != user.id:
-        raise HTTPException(status_code=403, detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"})
-    request_hash = existing.get("idempotency_request_hash")
-    if not request_hash:
-        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"})
-    if request_hash != _create_request_hash(payload):
-        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+from src.repositories.process_improvement import process_improvement_repository
 
 
 async def require_member(project_id, user_id, code):

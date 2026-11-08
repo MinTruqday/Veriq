@@ -1,25 +1,9 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.schemas.contracts.common import PreventionActionStatus
-
-RootCauseCategory = Literal[
-    "REQUIREMENT",
-    "DESIGN",
-    "IMPLEMENTATION",
-    "CONFIGURATION",
-    "TEST_DATA",
-    "TEST_CASE_GAP",
-    "ENVIRONMENT",
-    "INTEGRATION",
-    "DEPLOYMENT",
-    "PROCESS",
-    "THIRD_PARTY",
-    "UNKNOWN",
-]
-
 
 class CausalAnalysisCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
@@ -67,10 +51,18 @@ class CausalFiveWhyInput(BaseModel):
 
 class CausalRootCauseInput(BaseModel):
     expected_revision: int = Field(ge=1)
-    category: RootCauseCategory
+    category: str = Field(min_length=1, max_length=200)
     detail: str = Field(min_length=2, max_length=5000)
     contributing_factors: list[str] = Field(default_factory=list, max_length=500)
     evidence_refs: list[str] = Field(min_length=1, max_length=500)
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("causal_root_cause_category_required")
+        return value
 
 
 class PreventionActionCreate(BaseModel):

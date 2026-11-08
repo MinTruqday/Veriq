@@ -136,7 +136,7 @@ def candidate_quality_issues(candidate):
         else False
         for item in acceptance_criteria
     )
-    if candidate.get("type") in ("functional", "api", "permission", "integration") and not has_acceptance_criteria:
+    if not has_acceptance_criteria:
         issues.append("ACCEPTANCE_CRITERIA_MISSING_FOR_BASELINE")
     if "missing" in (candidate.get("section_states") or {}).values():
         issues.append("APPLICABLE_SECTION_MISSING_FOR_BASELINE")

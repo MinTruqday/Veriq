@@ -286,24 +286,6 @@ async def carry_forward_unchanged_requirement_tests(
             unresolved.append({"test_case_id": case.get("_id"), "reason": str(error)})
     return carried, unresolved
 
-def requirement_source_text(version):
-    values = [version.get("plain_text_projection"), version.get("business_rules")]
-    for field in ("content_doc", "acceptance_criteria"):
-        values.append(version.get(field))
-
-    def collect(value):
-        if isinstance(value, str):
-            return [value]
-        if isinstance(value, list):
-            return [text for item in value for text in collect(item)]
-        if isinstance(value, dict):
-            if isinstance(value.get("text"), str):
-                return [value["text"]]
-            return [text for item in value.values() for text in collect(item)]
-        return []
-
-    return " ".join(collect(values)).casefold()
-
 async def resolve_answered_clarifications(version, config):
     clarifications = await require_operation(
         "GET", f"/phien-ban-yeu-cau/{version['_id']}/phieu-lam-ro", config

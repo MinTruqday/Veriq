@@ -97,15 +97,15 @@ async def update_defect_record(defect_id, payload, project_id, user):
     if project_id is not None and defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": "PROJECT_MISMATCH"})
     permissions = await require_defect_editor_assignment(defect, user)
-    developer_fields = {
+    resolution_fields = {
         "root_cause_category",
         "root_cause_detail",
         "injected_phase",
         "escape_reason",
         "prevention_candidate",
     }
-    if "defect.transition.developer" not in permissions and developer_fields.intersection(payload):
-        raise HTTPException(status_code=403, detail={"code": "DEFECT_DEVELOPER_FIELDS_REQUIRED"})
+    if "defect.transition.resolve" not in permissions and resolution_fields.intersection(payload):
+        raise HTTPException(status_code=403, detail={"code": "DEFECT_RESOLUTION_FIELDS_REQUIRED"})
     if "defect.triage" not in permissions and {"assignee", "severity", "priority"}.intersection(payload):
         raise HTTPException(status_code=403, detail={"code": "DEFECT_TRIAGE_AUTHORITY_REQUIRED"})
     expected_revision = payload.get("expected_revision")
@@ -280,9 +280,9 @@ async def transition_defect_record(defect_id, payload, user):
         "CONFIRMED": "defect.triage",
         "REJECTED": "defect.triage",
         "DUPLICATE": "defect.triage",
-        "IN_PROGRESS": "defect.transition.developer",
-        "RESOLVED": "defect.transition.developer",
-        "READY_FOR_RETEST": "defect.transition.developer",
+        "IN_PROGRESS": "defect.transition.resolve",
+        "RESOLVED": "defect.transition.resolve",
+        "READY_FOR_RETEST": "defect.transition.resolve",
         "REOPENED": "defect.triage",
         "CLOSED": "defect.close",
     }.get(payload.to_status, "defect.update")
@@ -291,7 +291,7 @@ async def transition_defect_record(defect_id, payload, user):
         defect_id,
         user,
         permission,
-        assigned_user_field="assignee" if permission == "defect.transition.developer" else None,
+        assigned_user_field="assignee" if permission == "defect.transition.resolve" else None,
     )
     await require_defect_editor_assignment(defect, user)
     allowed = defect_transitions().get(defect["status"], set())

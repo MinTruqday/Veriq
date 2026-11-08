@@ -4,7 +4,7 @@ import Link from "next/link";
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
-import { REQUIREMENT_LEVELS, REQUIREMENT_TYPES } from "./requirements.model";
+import { REQUIREMENT_LEVELS } from "./requirements.model";
 
 export default function RequirementCurrentVersionPanel({
   projectId,
@@ -402,18 +402,13 @@ export default function RequirementCurrentVersionPanel({
               onChange={(event) => onDraftChange({ title: event.target.value })}
             />
             <div className="grid gap-3 sm:grid-cols-3">
-              <select
+              <input
                 aria-label="Loại yêu cầu"
                 className="apple-input"
+                maxLength={100}
                 value={draft.type}
                 onChange={(event) => onDraftChange({ type: event.target.value })}
-              >
-                {REQUIREMENT_TYPES.map((value) => (
-                  <option key={value} value={value}>
-                    {valueLabel(value)}
-                  </option>
-                ))}
-              </select>
+              />
               <select
                 aria-label="Ưu tiên yêu cầu"
                 className="apple-input"

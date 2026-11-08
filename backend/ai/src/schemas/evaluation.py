@@ -12,6 +12,12 @@ def validate_unique_benchmark_case_ids(cases):
         raise ValueError("benchmark_case_ids_must_be_unique")
 
 
+def validate_testability_cases_for_scoring(cases):
+    validate_unique_benchmark_case_ids(cases)
+    for case in cases:
+        case.validate_for_scoring()
+
+
 def benchmark_quote_occurs_in_source(source_text, quote):
     normalized_source = unicodedata.normalize("NFC", source_text)
     normalized_quote = unicodedata.normalize("NFC", quote)
@@ -400,9 +406,7 @@ class TestabilityBenchmarkRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_cases_for_scoring(self):
-        validate_unique_benchmark_case_ids(self.cases)
-        for case in self.cases:
-            case.validate_for_scoring()
+        validate_testability_cases_for_scoring(self.cases)
         return self
 
 
@@ -519,9 +523,7 @@ class TestabilityBenchmarkDatasetCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_cases_for_scoring(self):
-        validate_unique_benchmark_case_ids(self.cases)
-        for case in self.cases:
-            case.validate_for_scoring()
+        validate_testability_cases_for_scoring(self.cases)
         return self
 
 

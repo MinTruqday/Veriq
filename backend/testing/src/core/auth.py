@@ -1,7 +1,6 @@
 import hmac
 import json
 from contextvars import ContextVar
-from enum import Enum
 from functools import lru_cache
 
 import jwt
@@ -12,18 +11,10 @@ from pymongo import MongoClient
 from src.clients.authentication import session_is_valid
 from src.core.configuration import settings
 from src.schemas.contracts.common import CurrentUser, SystemRole
-from src.schemas.project_access import ProjectAccessControl
+from src.schemas.project_access import ProjectAccessControl, canonical_permission
 
 ai_automation_context = ContextVar("ai_automation_context", default=None)
 _access_policy_context = ContextVar("project_access_policy", default=None)
-
-
-class ProjectRole(str, Enum):
-    QA = "QA"
-    TESTER = "TESTER"
-    BA = "BA"
-    DEVELOPER = "DEVELOPER"
-    VIEWER = "VIEWER"
 
 
 ROLE_NEUTRAL_PERMISSIONS = {
@@ -92,30 +83,19 @@ ASSIGNED_DRAFT_PERMISSIONS = frozenset({
 })
 ASSIGNED_OWNER_PERMISSIONS = ASSIGNED_DRAFT_PERMISSIONS | frozenset({
     "attachment.manage", "defect.update", "defect.trace.manage",
-    "defect.transition.developer", "testmonitor.control.update",
+    "defect.transition.resolve", "testmonitor.control.update",
 })
 
 
-def required_business_role(permission: str) -> set[str]:
-    return {
-        str(role).strip().upper()
-        for role in access_policy().get("business_role_permissions", {}).get(permission, [])
-        if str(role).strip()
-    }
-
-
-def business_role_allows(permission: str, roles: set[str]) -> bool:
-    required = required_business_role(permission)
-    normalized_roles = {str(role).strip().upper() for role in roles if str(role).strip()}
-    return not required or bool(required.intersection(normalized_roles))
-
-
-def permissions_for_role(role: ProjectRole | str, settings_value: dict | None = None):
+def permissions_for_role(role: str, settings_value: dict | None = None):
     normalized = str(getattr(role, "value", role) or "").strip().upper()
     if not normalized:
         return set()
     values = access_policy()
-    permissions = set(values.get("role_permissions", {}).get(normalized, []))
+    permissions = {
+        canonical_permission(permission)
+        for permission in values.get("role_permissions", {}).get(normalized, [])
+    }
     project_settings = settings_value or {}
     for key, rule in values.get("policy_permissions", {}).items():
         if (
@@ -123,14 +103,14 @@ def permissions_for_role(role: ProjectRole | str, settings_value: dict | None = 
             and rule.get("role") == normalized
             and project_settings.get(key) is True
         ):
-            permissions.update(rule.get("permissions", []))
+            permissions.update(canonical_permission(item) for item in rule.get("permissions", []))
     for rule in values.get("conditional_permissions", []):
         if (
             isinstance(rule, dict)
             and rule.get("role") == normalized
             and project_settings.get(rule.get("setting")) is rule.get("enabled")
         ):
-            permissions.update(rule.get("permissions", []))
+            permissions.update(canonical_permission(item) for item in rule.get("permissions", []))
     denied = set()
     for rule in values.get("conditional_denials", []):
         if (
@@ -138,12 +118,22 @@ def permissions_for_role(role: ProjectRole | str, settings_value: dict | None = 
             and rule.get("role") == normalized
             and project_settings.get(rule.get("setting")) is rule.get("enabled")
         ):
-            denied.update(rule.get("permissions", []))
+            denied.update(canonical_permission(item) for item in rule.get("permissions", []))
     overrides = project_settings.get("permission_overrides", {}).get(normalized, {})
     known_permissions = project_permissions()
-    permissions.update(item for item in overrides.get("allow", []) if item in known_permissions)
-    permissions.difference_update(denied | set(overrides.get("deny", [])))
-    return {item for item in permissions if business_role_allows(item, {normalized})}
+    allowed_overrides = {canonical_permission(item) for item in overrides.get("allow", [])}
+    denied_overrides = {canonical_permission(item) for item in overrides.get("deny", [])}
+    permissions.update(item for item in allowed_overrides if item in known_permissions)
+    permissions.difference_update(denied | denied_overrides)
+    return permissions
+
+
+def sign_off_has_permission(sign_off: dict, permission: str) -> bool:
+    if canonical_permission(sign_off.get("permission")) == canonical_permission(permission):
+        return True
+    role = str(sign_off.get("role") or "").strip().upper()
+    canonical = canonical_permission(permission)
+    return bool(role and canonical in permissions_for_role(role))
 
 
 def roles_for_membership(membership: dict | None) -> set[str]:
@@ -161,12 +151,18 @@ def roles_for_membership(membership: dict | None) -> set[str]:
 
 
 def permission_explicitly_denied(permission, roles, settings_value=None):
+    permission = canonical_permission(permission)
     project_settings = settings_value or {}
     for role in roles:
-        if permission in project_settings.get("permission_overrides", {}).get(role, {}).get("deny", []):
+        denied_permissions = {
+            canonical_permission(item)
+            for item in project_settings.get("permission_overrides", {}).get(role, {}).get("deny", [])
+        }
+        if permission in denied_permissions:
             return True
         for rule in access_policy().get("conditional_denials", []):
-            if rule.get("role") == role and project_settings.get(rule.get("setting")) is rule.get("enabled") and permission in rule.get("permissions", []):
+            denied = {canonical_permission(item) for item in rule.get("permissions", [])}
+            if rule.get("role") == role and project_settings.get(rule.get("setting")) is rule.get("enabled") and permission in denied:
                 return True
     return False
 
@@ -358,7 +354,3 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail={"code": "TOKEN_INVALID"}
         )
-
-
-def require_authenticated(user: CurrentUser = Depends(get_current_user)):
-    return user

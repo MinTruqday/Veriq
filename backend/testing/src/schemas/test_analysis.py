@@ -4,7 +4,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from src.schemas.contracts.common import AnalysisFindingStatus, TestabilityStatus
+from src.schemas.contracts.common import (
+    AnalysisFindingStatus,
+    TestabilityStatus,
+    validate_tiptap_document,
+)
 
 
 def normalize_testability_status(value):
@@ -40,11 +44,11 @@ class SecurityCandidate(BaseModel):
 
     @field_validator("category")
     @classmethod
-    def validate_category(cls, value):
-        if value not in ['authorization', 'authentication', 'input_validation', 'session', 'data_protection']:
-            raise ValueError('INVALID_GENERATION_CATEGORIES')
+    def normalize_category(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("security_category_required")
         return value
-
 
 class PerformanceScenario(BaseModel):
     workload_type: str
@@ -58,15 +62,15 @@ class PerformanceScenario(BaseModel):
 
     @field_validator("workload_type")
     @classmethod
-    def validate_workload_type(cls, value):
-        if value not in ['baseline', 'load', 'stress', 'spike', 'soak']:
-            raise ValueError('INVALID_GENERATION_CATEGORIES')
+    def normalize_workload_type(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("workload_type_required")
         return value
-
 
 class GeneratedCase(BaseModel):
     title: str = Field(min_length=2, max_length=300)
-    category: str
+    category: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=2, max_length=5000)
     preconditions: str = Field(default="", max_length=5000)
     steps: list[GeneratedStep] = Field(min_length=1, max_length=50)
@@ -79,6 +83,14 @@ class GeneratedCase(BaseModel):
     obligation_evidence: list[GeneratedObligationEvidence] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     evidence_quotes: list[GeneratedEvidenceQuote] = Field(min_length=1, max_length=20)
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("test_case_category_required")
+        return value
 
     @field_validator("required_skills")
     @classmethod
@@ -189,9 +201,7 @@ class TestConditionCreate(BaseModel):
     @field_validator("description_doc")
     @classmethod
     def validate_description_doc(cls, value):
-        if value.get("type") != "doc" or not isinstance(value.get("content", []), list):
-            raise ValueError("Tiptap JSON không hợp lệ")
-        return value
+        return validate_tiptap_document(value)
 
     @field_validator("testability_status", mode="before")
     @classmethod

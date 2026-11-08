@@ -13,7 +13,7 @@ export function defectActionAccess(project, defect) {
     ),
     canAssign: Boolean(active && can("defect.assign")),
     canTriage: Boolean(active && can("defect.triage")),
-    canRepair: Boolean(active && owned && can("defect.transition.developer")),
+    canRepair: Boolean(active && owned && can("defect.transition.resolve")),
     canRetest: Boolean(active && can("defect.retest") && can("testrun.execute")),
   };
 }

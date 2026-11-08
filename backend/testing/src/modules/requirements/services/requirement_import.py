@@ -327,7 +327,7 @@ def parse_requirement_import(content, format):
             {
                 "requirement_key": row.get("requirement_key") or None,
                 "title": row.get("title") or f"Requirement nhập dòng {index + 1}",
-                "type": row.get("type") or "functional",
+                "type": row.get("type") or "Chưa phân loại",
                 "priority": row.get("priority") or "medium",
                 "risk": row.get("risk") or "medium",
                 "content_doc": text_doc(row.get("content") or row.get("description") or ""),
@@ -395,25 +395,6 @@ def _requirement_table_list(value):
 def _requirement_table_enum(field, value):
     normalized = _normalized_requirement_table_label(value)
     allowed = {
-        "type": {
-            "functional": "functional",
-            "chuc nang": "functional",
-            "non functional": "non_functional",
-            "phi chuc nang": "non_functional",
-            "business rule": "business_rule",
-            "quy tac nghiep vu": "business_rule",
-            "api": "api",
-            "ui": "ui",
-            "giao dien": "ui",
-            "data": "data",
-            "du lieu": "data",
-            "permission": "permission",
-            "phan quyen": "permission",
-            "integration": "integration",
-            "tich hop": "integration",
-            "constraint": "constraint",
-            "rang buoc": "constraint",
-        },
         "priority": {
             "critical": "critical",
             "nghiem trong": "critical",
@@ -462,7 +443,7 @@ def _build_requirement_table_candidate(document, text, source_start, source_end,
     candidate = {
         "requirement_key": str(values.get("requirement_key") or "").strip() or None,
         "title": title[:300],
-        "type": _requirement_table_enum("type", values.get("type")) or "functional",
+        "type": str(values.get("type") or "").strip() or "Chưa phân loại",
         "priority": _requirement_table_enum("priority", values.get("priority")) or "medium",
         "risk": _requirement_table_enum("risk", values.get("risk")) or "medium",
         "content_doc": text_doc(description),

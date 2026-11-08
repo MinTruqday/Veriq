@@ -9,7 +9,25 @@ from src.schemas.contracts.common import (
     KnowledgeSourceType,
     RequirementCandidateStatus,
     empty_doc,
+    validate_tiptap_document,
 )
+
+
+def normalize_product_types(values):
+    normalized = [str(value).strip() for value in values]
+    if any(not value or len(value) > 100 for value in normalized):
+        raise ValueError("Product type values must contain 1 to 100 characters")
+    if len(normalized) != len(set(normalized)):
+        raise ValueError("Product type values must be unique")
+    return normalized
+
+
+def validate_requirement_document_access(visibility, shared_with):
+    if visibility == "shared" and not shared_with:
+        raise ValueError("Tài liệu chia sẻ phải có ít nhất một thành viên")
+    if visibility != "shared" and shared_with:
+        raise ValueError("Chỉ tài liệu chia sẻ mới có danh sách thành viên")
+
 
 class AcceptanceCriterionInput(BaseModel):
     key: str = Field(min_length=1, max_length=80)
@@ -21,17 +39,7 @@ class AcceptanceCriterionInput(BaseModel):
 class RequirementCreate(BaseModel):
     requirement_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
-    type: Literal[
-        "functional",
-        "non_functional",
-        "business_rule",
-        "api",
-        "ui",
-        "data",
-        "permission",
-        "integration",
-        "constraint",
-    ] = "functional"
+    type: str = Field(min_length=1, max_length=100)
     priority: Literal["critical", "high", "medium", "low"] = "medium"
     risk: Literal["critical", "high", "medium", "low"] = "medium"
     content_doc: dict[str, Any] = Field(default_factory=empty_doc)
@@ -47,6 +55,14 @@ class RequirementCreate(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
     section_states: dict[str, Literal["provided", "missing", "not_applicable"]] = Field(default_factory=dict)
     custom_values: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Requirement type must not be empty")
+        return normalized
 
     @model_validator(mode="after")
     def validate_section_states(self):
@@ -127,11 +143,16 @@ class RequirementTemplateContext(BaseModel):
 class RequirementTemplateCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     description: str = Field(default="", max_length=2000)
-    product_types: list[Literal["web", "mobile", "api", "desktop", "embedded", "other"]] = Field(min_length=1, max_length=6)
+    product_types: list[str] = Field(min_length=1, max_length=100)
     context: RequirementTemplateContext = Field(default_factory=RequirementTemplateContext)
     requirements: list[RequirementCreate] = Field(default_factory=list, max_length=100)
     source_document_ids: list[str] = Field(default_factory=list, max_length=100)
     source_template_ids: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("product_types")
+    @classmethod
+    def validate_product_types(cls, values):
+        return normalize_product_types(values)
 
 
 class RequirementTemplateUpdate(RequirementTemplateCreate):
@@ -141,11 +162,16 @@ class RequirementTemplateUpdate(RequirementTemplateCreate):
 
 class RequirementTemplateSynthesis(BaseModel):
     name: str = Field(min_length=2, max_length=200)
-    product_types: list[Literal["web", "mobile", "api", "desktop", "embedded", "other"]] = Field(min_length=1, max_length=6)
+    product_types: list[str] = Field(min_length=1, max_length=100)
     source_document_ids: list[str] = Field(default_factory=list, max_length=100)
     source_template_ids: list[str] = Field(default_factory=list, max_length=20)
     instruction: str = Field(default="", max_length=5000)
     output_language: str = Field(default="auto", min_length=2, max_length=80)
+
+    @field_validator("product_types")
+    @classmethod
+    def validate_product_types(cls, values):
+        return normalize_product_types(values)
 
     @model_validator(mode="after")
     def require_source(self):
@@ -253,10 +279,7 @@ class ImportCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_access(self):
-        if self.visibility == "shared" and not self.shared_with:
-            raise ValueError("Tài liệu chia sẻ phải có ít nhất một thành viên")
-        if self.visibility != "shared" and self.shared_with:
-            raise ValueError("Chỉ tài liệu chia sẻ mới có danh sách thành viên")
+        validate_requirement_document_access(self.visibility, self.shared_with)
         return self
 
 
@@ -295,10 +318,7 @@ class RequirementDocumentAccessPatch(BaseModel):
 
     @model_validator(mode="after")
     def validate_access(self):
-        if self.visibility == "shared" and not self.shared_with:
-            raise ValueError("Tài liệu chia sẻ phải có ít nhất một thành viên")
-        if self.visibility != "shared" and self.shared_with:
-            raise ValueError("Chỉ tài liệu chia sẻ mới có danh sách thành viên")
+        validate_requirement_document_access(self.visibility, self.shared_with)
         return self
 
 
@@ -398,9 +418,7 @@ class ReviewCommentPatch(BaseModel):
     @field_validator("body_doc")
     @classmethod
     def validate_body(cls, value):
-        if value.get("type") != "doc" or not isinstance(value.get("content", []), list):
-            raise ValueError("Tiptap JSON không hợp lệ")
-        return value
+        return validate_tiptap_document(value)
 
 
 class ImportConfirm(BaseModel):

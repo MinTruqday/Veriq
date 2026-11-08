@@ -147,7 +147,11 @@ class TestRunAssignmentInput(BaseModel):
     assignee_id: str = Field(min_length=1, max_length=200)
     test_case_assignments: dict[str, str] = Field(default_factory=dict)
     expected_skill_profile_revisions: dict[str, int] = Field(default_factory=dict)
-    decision_source: Literal["MANUAL", "QA_APPROVED_RECOMMENDATION", "QA_ADJUSTED_RECOMMENDATION"] = "MANUAL"
+    decision_source: Literal[
+        "MANUAL",
+        "HUMAN_APPROVED_RECOMMENDATION",
+        "HUMAN_ADJUSTED_RECOMMENDATION",
+    ] = "MANUAL"
 
 
 class TestRunResumeInput(BaseModel):

@@ -221,9 +221,10 @@ async def generate_requirement_drafts(
             },
         )
     technique_mode = bool(payload.techniques) and not scenario
-    categories = payload.categories
-    allowed = (ScenarioCreate.model_fields["category"] if scenario else TestCaseDraftCreate.model_fields["type"]).annotation.__args__
-    if len(set(categories)) != len(categories) or any(item not in allowed for item in categories):
+    categories = [str(item).strip() for item in payload.categories]
+    if any(not item for item in categories) or len(
+        {item.casefold() for item in categories}
+    ) != len(categories):
         raise HTTPException(422, detail={"code": 'INVALID_GENERATION_CATEGORIES'})
     if len(payload.techniques) != len(set(payload.techniques)):
         raise HTTPException(422, detail={"code": "DUPLICATE_DESIGN_TECHNIQUE"})
@@ -341,8 +342,8 @@ async def generate_requirement_drafts(
         if technique_mode:
             if not 1 <= len(generated) <= (payload.max_cases or len(payload.techniques)):
                 raise ValueError("case count outside selected limit")
-            if any(item.category not in allowed for item in generated):
-                raise ValueError("unknown test category")
+            if any(not item.category.strip() for item in generated):
+                raise ValueError("empty test category")
         elif scenario and categories:
             requested_counts = Counter(
                 {category: payload.count_per_category for category in categories}
@@ -356,7 +357,7 @@ async def generate_requirement_drafts(
                 raise ValueError("scenario category count mismatch")
         elif scenario:
             if len(generated) > (payload.max_cases or len(criteria)) or any(
-                item.category not in allowed for item in generated
+                not item.category.strip() for item in generated
             ):
                 raise ValueError("automatic scenario count or category is invalid")
         elif categories:
@@ -371,7 +372,7 @@ async def generate_requirement_drafts(
             ):
                 raise ValueError("test case category count mismatch")
         elif len(generated) > (payload.max_cases or len(criteria)) or any(
-            item.category not in allowed for item in generated
+            not item.category.strip() for item in generated
         ):
             raise ValueError("automatic test case count or category is invalid")
         criterion_ids = {item["_id"] for item in criteria}

@@ -8,13 +8,7 @@ import { docText, emptyDoc, messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
-import {
-  TEST_CASE_TYPES,
-  TEST_CASE_ASSESSMENT_LEVELS,
-  TESTING_LEVELS,
-  TEST_KINDS,
-  EXPECTED_IMPACTS,
-} from "./testDesign.model";
+import { TEST_CASE_ASSESSMENT_LEVELS, EXPECTED_IMPACTS } from "./testDesign.model";
 import {
   chooseFields,
   chooseStep,
@@ -29,17 +23,15 @@ import {
 const fields = [
   { key: "title", label: "Tên ca kiểm thử", kind: "text" },
   { key: "objective_doc", label: "Mục tiêu", kind: "document" },
-  { key: "type", label: "Loại tình huống", kind: "select", options: TEST_CASE_TYPES },
+  { key: "type", label: "Loại tình huống", kind: "text" },
   { key: "priority", label: "Mức ưu tiên", kind: "select", options: TEST_CASE_ASSESSMENT_LEVELS },
   { key: "risk", label: "Rủi ro", kind: "select", options: TEST_CASE_ASSESSMENT_LEVELS },
   {
     key: "test_level",
     label: "Cấp kiểm thử",
-    kind: "select",
-    options: TESTING_LEVELS,
-    optional: true,
+    kind: "text",
   },
-  { key: "test_kind", label: "Loại kiểm thử", kind: "select", options: TEST_KINDS, optional: true },
+  { key: "test_kind", label: "Loại kiểm thử", kind: "text" },
   { key: "expected_impact", label: "Ảnh hưởng dự kiến", kind: "select", options: EXPECTED_IMPACTS },
   { key: "assessment_reason", label: "Lý do đánh giá", kind: "text" },
   { key: "bdd", label: "Kịch bản BDD", kind: "bdd" },

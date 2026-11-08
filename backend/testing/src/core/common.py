@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import datetime, timezone
 from math import ceil
 from uuid import uuid4
@@ -11,7 +13,6 @@ from src.core.auth import (
     access_policy,
     ai_automation_context,
     archive_read_permissions,
-    business_role_allows,
     permission_explicitly_denied,
     permissions_for_membership,
     project_permissions,
@@ -57,6 +58,46 @@ def now():
     return datetime.now(timezone.utc)
 
 
+def idempotency_request_hash(payload, additional_fields=None):
+    request = payload.model_dump(mode="json", exclude={"idempotency_key"})
+    request.update(additional_fields or {})
+    canonical = json.dumps(
+        request,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def verify_idempotency_replay(
+    existing,
+    payload,
+    user,
+    actor_field="created_by",
+    additional_fields=None,
+):
+    actor_id = existing.get(actor_field)
+    if not actor_id:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    if actor_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "IDEMPOTENCY_REPLAY_ACTOR_MISMATCH"},
+        )
+    request_hash = existing.get("idempotency_request_hash")
+    if not request_hash:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "IDEMPOTENCY_REPLAY_UNVERIFIABLE"},
+        )
+    if request_hash != idempotency_request_hash(payload, additional_fields):
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+
+
 async def get_project_roles(project_id, user_id):
     membership = await common_repository.find_membership(
         project_id,
@@ -97,12 +138,10 @@ async def get_project_permissions(project_id, user_id):
     )
     if grant:
         grant_permissions = set(grant.get("permissions", [])) & project_permissions()
-        roles = roles_for_membership(membership)
         permissions.update(
             permission
             for permission in grant_permissions
-            if business_role_allows(permission, roles)
-            and responsibility_allows(permission, user_id, settings_value)
+            if responsibility_allows(permission, user_id, settings_value)
         )
     if project.get("status", "active").lower() == "archived":
         permissions.intersection_update(archive_read_permissions() | {"project.restore"})
@@ -293,8 +332,11 @@ async def get_project(
     }:
         if not automation_publication_allowed:
             require_automation_publication_authority(user, permission)
-    memberships_roles = roles_for_membership(membership)
-    active_roles = memberships_roles if membership and membership.get("status") == 'ACTIVE' else set()
+    active_roles = (
+        roles_for_membership(membership)
+        if membership and membership.get("status") == 'ACTIVE'
+        else set()
+    )
     if permission_explicitly_denied(permission, active_roles, project.get("settings")):
         raise HTTPException(status_code=403, detail={"code": "PROJECT_PERMISSION_DENIED", "permission": permission})
     assigned_owner_access = (
@@ -305,9 +347,6 @@ async def get_project(
         designated = (project.get("settings") or {}).get("responsibilities") or {}
         if designated.get(responsibility) != user.id:
             raise HTTPException(status_code=403, detail={"code": "PROJECT_RESPONSIBILITY_REQUIRED", "responsibility": responsibility})
-    if not automation_publication_allowed and not assigned_owner_access and not business_role_allows(permission, active_roles):
-        await audit(user.id, 'project_business_role_denied', 'Project', project_id, project_id, {"permission": permission})
-        raise HTTPException(status_code=403, detail={"code": 'PROJECT_PERMISSION_DENIED', "permission": permission})
     permissions = permissions_for_membership(membership, project.get("settings")) if (
         membership and membership.get("status") == 'ACTIVE'
     ) else set()

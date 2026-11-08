@@ -9,7 +9,7 @@ class ProjectCreate(BaseModel):
     key: str = Field(min_length=2, max_length=30, pattern=r"^[A-Z][A-Z0-9_-]+$")
     name: str = Field(min_length=2, max_length=200)
     description: str = Field(default="", max_length=5000)
-    project_type: Literal["web", "mobile", "api", "desktop", "embedded", "other"] = "web"
+    project_type: str = Field(min_length=1, max_length=100)
     locale: str | None = Field(
         default=None, min_length=2, max_length=35, pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
     )
@@ -18,20 +18,14 @@ class ProjectCreate(BaseModel):
     planning_method: Literal["SCRUM", "KANBAN"] = "SCRUM"
     planned_start_at: datetime | None = None
     planned_end_at: datetime | None = None
-    automation_framework: Literal["playwright", "cypress", "selenium"] | None = None
-    automation_language: Literal["typescript", "javascript", "python"] | None = None
 
-    @model_validator(mode="after")
-    def validate_automation_runtime(self):
-        framework = self.automation_framework
-        language = self.automation_language
-        if (framework is None) != (language is None):
-            raise ValueError("Phải cấu hình đồng thời công cụ và ngôn ngữ tự động hóa")
-        if framework == "selenium" and language != "python":
-            raise ValueError("Selenium yêu cầu Python")
-        if framework in {"playwright", "cypress"} and language == "python":
-            raise ValueError("Playwright và Cypress yêu cầu TypeScript hoặc JavaScript")
-        return self
+    @field_validator("project_type")
+    @classmethod
+    def normalize_project_type(cls, value):
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Project type is required")
+        return normalized
 
 
 class ProjectCapabilities(BaseModel):
@@ -73,32 +67,21 @@ class ProjectPatch(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=200)
     project_lead_user_id: str | None = Field(default=None, min_length=1, max_length=320)
     description: str | None = Field(default=None, max_length=5000)
-    project_type: Literal["web", "mobile", "api", "desktop", "embedded", "other"] | None = None
+    project_type: str | None = Field(default=None, min_length=1, max_length=100)
     locale: str | None = Field(default=None, min_length=2, max_length=20)
     timezone: str | None = Field(default=None, min_length=2, max_length=80)
     settings: dict[str, Any] | None = None
     planned_start_at: datetime | None = None
     planned_end_at: datetime | None = None
-    automation_framework: Literal["playwright", "cypress", "selenium"] | None = None
-    automation_language: Literal["typescript", "javascript", "python"] | None = None
-
-    @model_validator(mode="after")
-    def validate_automation_runtime(self):
-        fields_set = self.model_fields_set
-        if not ({"automation_framework", "automation_language"} & fields_set):
-            return self
-        if not {"automation_framework", "automation_language"}.issubset(fields_set):
-            raise ValueError("Phải cập nhật đồng thời công cụ và ngôn ngữ tự động hóa")
-        framework = self.automation_framework
-        language = self.automation_language
-        if (framework is None) != (language is None):
-            raise ValueError("Phải cấu hình đồng thời công cụ và ngôn ngữ tự động hóa")
-        if framework == "selenium" and language != "python":
-            raise ValueError("Selenium yêu cầu Python")
-        if framework in {"playwright", "cypress"} and language == "python":
-            raise ValueError("Playwright và Cypress yêu cầu TypeScript hoặc JavaScript")
-        return self
-
+    @field_validator("project_type")
+    @classmethod
+    def normalize_project_type(cls, value):
+        if value is None:
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Project type cannot be empty")
+        return normalized
 
 class WorkItemType(str, Enum):
     INITIATIVE = "INITIATIVE"

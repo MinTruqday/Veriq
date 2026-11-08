@@ -1,9 +1,7 @@
 from fastapi import HTTPException
-from pymongo.errors import OperationFailure
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
-from src.core.auth import CurrentUser
-from pymongo.errors import DuplicateKeyError
-
+from src.core.auth import CurrentUser, sign_off_has_permission
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.core.database import database
 from src.repositories.execution_context import execution_context_repository
@@ -88,11 +86,11 @@ async def recheck_release_gates_for_defect(project_id, release_ids, defect, user
 async def ensure_release_completion_gate(
     project_id: str, release_id: str, session=None, automation_run_id=None
 ):
-    from src.schemas.test_completion import completion_hash, completion_snapshot
     from src.modules.execution.services.test_completion_readiness import (
         validate_completion_outcome,
         validate_completion_readiness,
     )
+    from src.schemas.test_completion import completion_hash, completion_snapshot
 
     if automation_run_id:
         plans = await execution_context_repository.list_approved_test_plan_scopes(
@@ -138,10 +136,7 @@ async def ensure_release_completion_gate(
         reports_to_validate = list(latest_by_plan.values())
         for report in reports_to_validate:
             reviewer_signed = any(
-                (
-                    item.get("permission") == "testcompletion.review"
-                    or item.get("role") == "QA"
-                )
+                sign_off_has_permission(item, "testcompletion.review")
                 and item.get("decision") == "APPROVE"
                 for item in report.get("sign_offs", [])
             )
