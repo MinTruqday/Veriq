@@ -1016,18 +1016,3 @@ async def discover_project_tools_with_diagnostics(
             issues = result.get("issues") or []
             span.set_attribute("mcp.status", "degraded" if issues else "completed")
         return result
-
-
-async def discover_project_tools(
-    project_id: str,
-    permissions: list[str],
-    token: str | None = None,
-    automation_run_id: str | None = None,
-):
-    result = await discover_project_tools_with_diagnostics(
-        project_id,
-        permissions,
-        token=token,
-        automation_run_id=automation_run_id,
-    )
-    return result["tools"]

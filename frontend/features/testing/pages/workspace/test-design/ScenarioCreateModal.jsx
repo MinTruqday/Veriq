@@ -1,7 +1,6 @@
 import { valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
-import { TEST_LEVELS } from "./testDesign.model";
 
 export default function ScenarioCreateModal({
   isOpen,
@@ -153,8 +152,8 @@ export default function ScenarioCreateModal({
               </label>
             ))}
             {[
-              ["risk", "Rủi ro", TEST_LEVELS],
-              ["priority", "Ưu tiên", TEST_LEVELS],
+              ["risk", "Mức rủi ro theo quy ước dự án"],
+              ["priority", "Mức ưu tiên theo quy ước dự án"],
               ["test_level", "Cấp kiểm thử"],
               ["test_kind", "Loại kiểm thử"],
             ].map(([key, label]) => (
@@ -163,6 +162,7 @@ export default function ScenarioCreateModal({
                 <input
                   className="apple-input mt-2"
                   maxLength={100}
+                  required={key === "risk" || key === "priority"}
                   value={form[key]}
                   onChange={(event) => update({ [key]: event.target.value })}
                 />

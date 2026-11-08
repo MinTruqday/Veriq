@@ -33,6 +33,14 @@ export default function RiskModelEditor({ value, onChange }) {
           required
         />
       </label>
+      <label className="field-label">
+        Thang ưu tiên mỗi mức một dòng
+        <textarea
+          className="apple-input mt-2 min-h-28 w-full min-w-0"
+          value={(value.priority_scale || []).map((item) => item.label).join("\n")}
+          onChange={(event) => updateScale(value, onChange, "priority_scale", event.target.value)}
+        />
+      </label>
       <label className="field-label md:col-span-2">
         Công thức tính mức phơi nhiễm rủi ro
         <input

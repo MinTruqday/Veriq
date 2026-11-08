@@ -1,19 +1,17 @@
 import { docText, emptyDoc, textDoc } from "../../../lib/testing.logic.mjs";
 
-export const TEST_LEVELS = ["critical", "high", "medium", "low"];
-export const TEST_CASE_ASSESSMENT_LEVELS = ["unassessed", ...TEST_LEVELS];
-export const EXPECTED_IMPACTS = ["unassessed", "low", "medium", "high", "critical"];
+export const UNASSESSED_VALUE = "unassessed";
 
 export function createTestCaseForm() {
   const emptyDataEntries = () => [{ id: crypto.randomUUID(), name: "", value: "" }];
   return {
     title: "",
     type: "",
-    priority: "unassessed",
-    risk: "unassessed",
+    priority: UNASSESSED_VALUE,
+    risk: UNASSESSED_VALUE,
     testLevel: "",
     testKind: "",
-    expectedImpact: "unassessed",
+    expectedImpact: UNASSESSED_VALUE,
     assessmentReason: "",
     requiredSkills: "",
     ownerId: "",
@@ -77,8 +75,8 @@ export function createScenarioForm() {
     testConditionIds: [],
     requirementVersionIds: [],
     acceptanceCriterionIds: [],
-    risk: "medium",
-    priority: "medium",
+    risk: "",
+    priority: "",
     description: "",
     actors: "",
     preconditions: "",

@@ -2,7 +2,6 @@ import {
   API_URL,
   authenticatedFetch,
   fetchWithNetworkError,
-  getAuthHeaders,
   getToken,
 } from "@/shared/services/api-client";
 export { getToken };

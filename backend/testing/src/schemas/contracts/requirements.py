@@ -40,8 +40,8 @@ class RequirementCreate(BaseModel):
     requirement_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
     type: str = Field(min_length=1, max_length=100)
-    priority: Literal["critical", "high", "medium", "low"] = "medium"
-    risk: Literal["critical", "high", "medium", "low"] = "medium"
+    priority: str = Field(default="", max_length=100)
+    risk: str = Field(default="", max_length=100)
     content_doc: dict[str, Any] = Field(default_factory=empty_doc)
     acceptance_criteria: list[AcceptanceCriterionInput] = Field(
         default_factory=list, max_length=200
@@ -63,6 +63,11 @@ class RequirementCreate(BaseModel):
         if not normalized:
             raise ValueError("Requirement type must not be empty")
         return normalized
+
+    @field_validator("priority", "risk")
+    @classmethod
+    def normalize_assessment_labels(cls, value):
+        return " ".join(value.split())
 
     @model_validator(mode="after")
     def validate_section_states(self):
@@ -86,8 +91,8 @@ class RequirementDraftPatch(BaseModel):
     requirement_key: str | None = Field(default=None, max_length=80)
     title: str | None = Field(default=None, min_length=2, max_length=300)
     type: str | None = None
-    priority: str | None = None
-    risk: str | None = None
+    priority: str | None = Field(default=None, max_length=100)
+    risk: str | None = Field(default=None, max_length=100)
     content_doc: dict[str, Any] | None = None
     acceptance_criteria: list[AcceptanceCriterionInput] | None = Field(default=None, max_length=200)
     business_rules: list[str] | None = Field(default=None, max_length=200)
@@ -99,6 +104,13 @@ class RequirementDraftPatch(BaseModel):
     details: dict[str, Any] | None = None
     section_states: dict[str, Literal["provided", "missing", "not_applicable"]] | None = None
     custom_values: dict[str, Any] | None = None
+
+    @field_validator("priority", "risk")
+    @classmethod
+    def normalize_assessment_labels(cls, value):
+        if value is None:
+            return value
+        return " ".join(value.split())
 
 
 class RequirementCustomFieldCreate(BaseModel):
@@ -193,12 +205,6 @@ class RequirementTemplateConsent(BaseModel):
 class RequirementAIAnalysisInput(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=200)
     instruction: str = Field(default="", max_length=5000)
-
-
-class RequirementAISuggestionApply(BaseModel):
-    expected_revision: int = Field(ge=1)
-    ai_result_id: str = Field(min_length=1, max_length=200)
-    suggestion_id: str = Field(min_length=1, max_length=200)
 
 
 class RequirementVersionCreate(RequirementCreate):

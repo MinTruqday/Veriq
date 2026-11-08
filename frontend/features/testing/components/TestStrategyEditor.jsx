@@ -6,6 +6,7 @@ import { messageOf } from "../lib/testing";
 const emptyRisk = {
   probability_scale: [],
   impact_scale: [],
+  priority_scale: [],
   risk_exposure_formula: "",
   thresholds: [],
   mandatory_test_depth: {},

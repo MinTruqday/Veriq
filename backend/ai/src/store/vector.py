@@ -320,12 +320,6 @@ class VectorStore:
             logger.exception("Search query parsing and processing error")
             raise
 
-    async def scroll_all(self, batch_size: int = 256) -> List[Dict]:
-        documents: List[Dict] = []
-        async for batch in self.iter_scroll_batches(batch_size):
-            documents.extend(batch)
-        return documents
-
     async def iter_scroll_batches(self, batch_size: int = 256):
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
             raise ValueError("vector_scroll_batch_size_invalid")
@@ -416,34 +410,6 @@ class VectorStore:
                     )
                 ],
             ),
-            wait=True,
-        )
-
-    async def ids_by_document(self, document_id: str) -> List[str]:
-        point_ids = []
-        offset = None
-        while True:
-            points, next_offset = await self.client.scroll(
-                collection_name=self.collection_name,
-                scroll_filter=Filter(
-                    must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]
-                ),
-                limit=256,
-                offset=offset,
-                with_payload=False,
-                with_vectors=False,
-            )
-            point_ids.extend(str(point.id) for point in points)
-            if next_offset is None:
-                return point_ids
-            offset = next_offset
-
-    async def delete_ids(self, point_ids: List[str]):
-        if not point_ids:
-            return
-        await self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=PointIdsList(points=point_ids),
             wait=True,
         )
 
@@ -636,69 +602,6 @@ class VectorStore:
             points=PointIdsList(points=point_ids),
             wait=True,
         )
-
-    async def ids_by_artifact_version(self, project_id: str, artifact_version_id: str) -> List[str]:
-        point_ids = []
-        offset = None
-        query_filter = Filter(
-            must=[
-                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
-                FieldCondition(
-                    key="artifact_version_id", match=MatchValue(value=artifact_version_id)
-                ),
-            ]
-        )
-        while True:
-            points, next_offset = await self.client.scroll(
-                collection_name=self.collection_name,
-                scroll_filter=query_filter,
-                limit=256,
-                offset=offset,
-                with_payload=["document_id", "artifact_type"],
-                with_vectors=False,
-            )
-            point_ids.extend(
-                str(point.id)
-                for point in points
-                if self._is_project_artifact_payload(point.payload or {})
-            )
-            if next_offset is None:
-                return point_ids
-            offset = next_offset
-
-    async def list_artifact_version_points(
-        self, project_id: str, artifact_version_id: str
-    ) -> List[Dict]:
-        documents = []
-        offset = None
-        query_filter = Filter(
-            must=[
-                FieldCondition(key="project_id", match=MatchValue(value=project_id)),
-                FieldCondition(
-                    key="artifact_version_id", match=MatchValue(value=artifact_version_id)
-                ),
-            ]
-        )
-        while True:
-            points, next_offset = await self.client.scroll(
-                collection_name=self.collection_name,
-                scroll_filter=query_filter,
-                limit=256,
-                offset=offset,
-                with_payload=["index_generation", "indexed_at", "document_id", "artifact_type"],
-                with_vectors=False,
-            )
-            documents.extend(
-                {
-                    "id": str(point.id),
-                    "metadata": dict(point.payload or {}),
-                }
-                for point in points
-                if self._is_project_artifact_payload(point.payload or {})
-            )
-            if next_offset is None:
-                return documents
-            offset = next_offset
 
     async def iter_artifact_version_summaries(
         self, project_id: str, artifact_version_id: str

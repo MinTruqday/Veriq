@@ -132,11 +132,6 @@ async def search_project_with_status(project_id, query, artifact_types, limit, u
         }
 
 
-async def search_project(project_id, query, artifact_types, limit, user) -> list:
-    result = await search_project_with_status(project_id, query, artifact_types, limit, user)
-    return result.get("items", [])
-
-
 async def list_project_artifact_chunks(
     project_id: str,
     artifact_version_id: str,

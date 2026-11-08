@@ -4,7 +4,6 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 import httpx
-import jwt
 from loguru import logger
 
 from src.core.infrastructure.configuration import settings
@@ -90,12 +89,3 @@ async def make_api_request(method: str, url: str, **kwargs) -> httpx.Response:
             raise
         await asyncio.sleep(2**attempt)
     raise RuntimeError("Internal API request ended without a response")
-
-
-def check_system_access(token: str) -> bool:
-    try:
-        raw_token = token.removeprefix("Bearer ").strip()
-        payload = jwt.decode(raw_token, settings.SECRET_KEY, algorithms=["HS256"])
-        return str(payload.get("system_role", "")).upper() == "ADMIN"
-    except Exception:
-        return False

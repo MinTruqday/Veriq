@@ -328,8 +328,8 @@ def parse_requirement_import(content, format):
                 "requirement_key": row.get("requirement_key") or None,
                 "title": row.get("title") or f"Requirement nhập dòng {index + 1}",
                 "type": row.get("type") or "Chưa phân loại",
-                "priority": row.get("priority") or "medium",
-                "risk": row.get("risk") or "medium",
+                "priority": " ".join(str(row.get("priority") or "").split()),
+                "risk": " ".join(str(row.get("risk") or "").split()),
                 "content_doc": text_doc(row.get("content") or row.get("description") or ""),
                 "acceptance_criteria": [],
             }
@@ -392,33 +392,6 @@ def _requirement_table_list(value):
     ]
 
 
-def _requirement_table_enum(field, value):
-    normalized = _normalized_requirement_table_label(value)
-    allowed = {
-        "priority": {
-            "critical": "critical",
-            "nghiem trong": "critical",
-            "high": "high",
-            "cao": "high",
-            "medium": "medium",
-            "trung binh": "medium",
-            "low": "low",
-            "thap": "low",
-        },
-        "risk": {
-            "critical": "critical",
-            "nghiem trong": "critical",
-            "high": "high",
-            "cao": "high",
-            "medium": "medium",
-            "trung binh": "medium",
-            "low": "low",
-            "thap": "low",
-        },
-    }
-    return allowed.get(field, {}).get(normalized)
-
-
 def _build_requirement_table_candidate(document, text, source_start, source_end, values):
     title = str(values.get("title") or "").strip()
     if len(title) < 2:
@@ -444,8 +417,8 @@ def _build_requirement_table_candidate(document, text, source_start, source_end,
         "requirement_key": str(values.get("requirement_key") or "").strip() or None,
         "title": title[:300],
         "type": str(values.get("type") or "").strip() or "Chưa phân loại",
-        "priority": _requirement_table_enum("priority", values.get("priority")) or "medium",
-        "risk": _requirement_table_enum("risk", values.get("risk")) or "medium",
+        "priority": " ".join(str(values.get("priority") or "").split()),
+        "risk": " ".join(str(values.get("risk") or "").split()),
         "content_doc": text_doc(description),
         "acceptance_criteria": [],
         "business_rules": _requirement_table_list(values.get("business_rules")),

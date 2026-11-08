@@ -188,9 +188,6 @@ class SystemUpdateRegistry:
     def get_recent(self, limit: int = 50) -> List[SystemUpdate]:
         return list(reversed(list(self._updates)[-limit:]))
 
-    def get_by_event(self, event_id: str) -> List[SystemUpdate]:
-        return [u for u in self._updates if u.event_id == event_id]
-
     def get_stats(self) -> Dict[str, Any]:
         total = len(self._updates)
         successful = sum(1 for u in self._updates if u.success)

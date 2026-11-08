@@ -232,7 +232,8 @@ export async function testingStreamRequest(path, options = {}) {
       throw error;
     }
   };
-  while (true) {
+  let streamDone = false;
+  while (!streamDone) {
     const { done, value } = await reader.read();
     buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
     buffer = buffer.replaceAll("\r\n", "\n");
@@ -255,7 +256,7 @@ export async function testingStreamRequest(path, options = {}) {
           throw error;
         }
       }
-      break;
+      streamDone = true;
     }
   }
   if (!result) {

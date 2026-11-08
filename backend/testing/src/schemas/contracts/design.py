@@ -7,10 +7,6 @@ from src.core.sensitive_data import secret_pattern
 from src.schemas.contracts.common import empty_doc, validate_tiptap_document
 from src.schemas.contracts.utility import TestDesignChallengeInput
 
-RiskLevel: TypeAlias = Literal["critical", "high", "medium", "low"]
-TestCaseAssessmentLevel: TypeAlias = Literal[
-    "unassessed", "critical", "high", "medium", "low"
-]
 TestScenarioCategory: TypeAlias = str
 TestCaseType: TypeAlias = str
 AutomationStatus: TypeAlias = Literal["manual", "candidate", "automated"]
@@ -19,8 +15,8 @@ class ScenarioCreate(BaseModel):
     scenario_key: str | None = Field(default=None, max_length=80)
     title: str = Field(min_length=2, max_length=300)
     objective: str = Field(default="", max_length=5000)
-    risk: RiskLevel = "medium"
-    priority: RiskLevel = "medium"
+    risk: str = Field(min_length=1, max_length=100)
+    priority: str = Field(min_length=1, max_length=100)
     requirement_version_ids: list[str] = Field(default_factory=list, max_length=200)
     acceptance_criterion_ids: list[str] = Field(default_factory=list, max_length=500)
     test_condition_ids: list[str] = Field(default_factory=list, max_length=500)
@@ -46,13 +42,21 @@ class ScenarioCreate(BaseModel):
             raise ValueError("Scenario category must not be empty")
         return normalized
 
+    @field_validator("risk", "priority")
+    @classmethod
+    def normalize_assessment_label(cls, value):
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Mức rủi ro và ưu tiên không được để trống")
+        return normalized
+
 
 class ScenarioPatch(BaseModel):
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=2, max_length=300)
     objective: str | None = Field(default=None, max_length=5000)
-    risk: RiskLevel | None = None
-    priority: RiskLevel | None = None
+    risk: str | None = Field(default=None, min_length=1, max_length=100)
+    priority: str | None = Field(default=None, min_length=1, max_length=100)
     requirement_version_ids: list[str] | None = Field(default=None, max_length=200)
     acceptance_criterion_ids: list[str] | None = Field(default=None, max_length=500)
     test_condition_ids: list[str] | None = Field(default=None, max_length=500)
@@ -76,6 +80,16 @@ class ScenarioPatch(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Scenario category must not be empty")
+        return normalized
+
+    @field_validator("risk", "priority")
+    @classmethod
+    def normalize_assessment_label(cls, value):
+        if value is None:
+            return value
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Mức rủi ro và ưu tiên không được để trống")
         return normalized
 
 
@@ -210,10 +224,10 @@ class TestCaseDraftCreate(BaseModel):
     type: TestCaseType = Field(min_length=1, max_length=100)
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
-    expected_impact: Literal["unassessed", "low", "medium", "high", "critical"] = "unassessed"
+    expected_impact: str = Field(default="unassessed", min_length=1, max_length=100)
     assessment_reason: str = Field(default="", max_length=2000)
-    priority: TestCaseAssessmentLevel = "unassessed"
-    risk: TestCaseAssessmentLevel = "unassessed"
+    priority: str = Field(default="unassessed", min_length=1, max_length=100)
+    risk: str = Field(default="unassessed", min_length=1, max_length=100)
     objective_doc: dict[str, Any] = Field(default_factory=empty_doc)
     preconditions_doc: dict[str, Any] = Field(default_factory=empty_doc)
     steps: list[TestStep] = Field(default_factory=list, max_length=500)
@@ -254,6 +268,14 @@ class TestCaseDraftCreate(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Test case type must not be empty")
+        return normalized
+
+    @field_validator("expected_impact", "priority", "risk")
+    @classmethod
+    def normalize_assessment_labels(cls, value):
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Mức đánh giá không được để trống")
         return normalized
 
     @field_validator(
@@ -328,10 +350,10 @@ class TestCaseDraftPatch(BaseModel):
     type: TestCaseType | None = None
     test_level: str | None = Field(default=None, max_length=100)
     test_kind: str | None = Field(default=None, max_length=100)
-    expected_impact: Literal["unassessed", "low", "medium", "high", "critical"] | None = None
+    expected_impact: str | None = Field(default=None, min_length=1, max_length=100)
     assessment_reason: str | None = Field(default=None, max_length=2000)
-    priority: TestCaseAssessmentLevel | None = None
-    risk: TestCaseAssessmentLevel | None = None
+    priority: str | None = Field(default=None, min_length=1, max_length=100)
+    risk: str | None = Field(default=None, min_length=1, max_length=100)
     objective_doc: dict[str, Any] | None = None
     preconditions_doc: dict[str, Any] | None = None
     steps: list[TestStep] | None = None
@@ -363,6 +385,16 @@ class TestCaseDraftPatch(BaseModel):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Test case type must not be empty")
+        return normalized
+
+    @field_validator("expected_impact", "priority", "risk")
+    @classmethod
+    def normalize_assessment_labels(cls, value):
+        if value is None:
+            return value
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Mức đánh giá không được để trống")
         return normalized
 
     @field_validator(

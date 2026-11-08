@@ -5,7 +5,7 @@ import { Panel, StatusPill } from "../../../components/WorkspacePrimitives";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 import ScenarioCreateModal from "./ScenarioCreateModal";
-import { TEST_LEVELS, scenarioPayload, scenarioFormFromRecord } from "./testDesign.model";
+import { scenarioPayload, scenarioFormFromRecord } from "./testDesign.model";
 
 export default function ScenariosPanel({
   can,
@@ -248,19 +248,13 @@ export default function ScenariosPanel({
             onChange={(event) => setFilters({ ...filters, category: event.target.value })}
             placeholder="Lọc theo nhóm kịch bản"
           />
-          <select
+          <input
             aria-label="Lọc rủi ro kịch bản"
             className="apple-input"
             value={filters.risk}
             onChange={(event) => setFilters({ ...filters, risk: event.target.value })}
-          >
-            <option value="">Mọi rủi ro</option>
-            {TEST_LEVELS.map((value) => (
-              <option value={value} key={value}>
-                {valueLabel(value)}
-              </option>
-            ))}
-          </select>
+            placeholder="Lọc theo mức rủi ro"
+          />
           <select
             aria-label="Lọc trạng thái kịch bản"
             className="apple-input"

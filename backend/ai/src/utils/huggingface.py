@@ -29,15 +29,6 @@ from src.utils.structured_output import (
 )
 
 
-def resolve_model_revision(model_id: str, token: Optional[str] = None) -> str:
-    from huggingface_hub import HfApi
-
-    info = HfApi(token=token).model_info(model_id)
-    if not info.sha:
-        raise RuntimeError(f"Unable to resolve an immutable revision for model {model_id}")
-    return info.sha
-
-
 def create_chat_model(model: Optional[str] = None):
     from src.utils.model_provider import model_client
 

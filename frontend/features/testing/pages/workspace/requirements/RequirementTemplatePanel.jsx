@@ -4,7 +4,6 @@ import { testingApi } from "../../../services/testing.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { docText, messageOf, textDoc, valueLabel } from "../../../lib/testing";
 import DocumentEditor from "../../../editor/DocumentEditor";
-import { REQUIREMENT_LEVELS } from "./requirements.model";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
 import { StatusPill } from "../../../components/WorkspacePrimitives";
 
@@ -51,8 +50,8 @@ function emptyRequirement() {
     title: "",
     type: "",
     requirement_key: "",
-    priority: "medium",
-    risk: "medium",
+    priority: "",
+    risk: "",
     owner_id: "",
     source_status: "",
     actors: "",
@@ -823,31 +822,23 @@ export default function RequirementTemplatePanel({
               </label>
               <label className="field-label">
                 Ưu tiên
-                <select
+                <input
                   className="apple-input mt-2"
                   value={item.priority}
+                  maxLength={100}
+                  placeholder="Mức ưu tiên theo quy ước dự án"
                   onChange={(event) => updateRequirement(index, { priority: event.target.value })}
-                >
-                  {REQUIREMENT_LEVELS.map((value) => (
-                    <option key={value} value={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
               <label className="field-label">
                 Rủi ro
-                <select
+                <input
                   className="apple-input mt-2"
                   value={item.risk}
+                  maxLength={100}
+                  placeholder="Mức rủi ro theo quy ước dự án"
                   onChange={(event) => updateRequirement(index, { risk: event.target.value })}
-                >
-                  {REQUIREMENT_LEVELS.map((value) => (
-                    <option key={value} value={value}>
-                      {valueLabel(value)}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
             </div>
             <DocumentEditor

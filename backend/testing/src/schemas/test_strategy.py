@@ -1,7 +1,6 @@
 import ast
 import hashlib
 import json
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -9,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 class RiskModel(BaseModel):
     probability_scale: list[dict[str, Any]] = Field(min_length=1, max_length=20)
     impact_scale: list[dict[str, Any]] = Field(min_length=1, max_length=20)
+    priority_scale: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     risk_exposure_formula: str = Field(min_length=1, max_length=1000)
     thresholds: list[dict[str, Any]] = Field(min_length=1, max_length=50)
     mandatory_test_depth: dict[str, Any] = Field(default_factory=dict)
@@ -57,12 +57,15 @@ class RiskModel(BaseModel):
             for node in ast.walk(tree)
         ):
             raise ValueError("INVALID_RISK_MODEL")
-        for scale in (self.probability_scale, self.impact_scale):
+        for scale in (self.probability_scale, self.impact_scale, self.priority_scale):
             values = [item.get("value") for item in scale]
             if any(
                 not isinstance(value, (int, float)) or isinstance(value, bool) for value in values
             ) or len(set(values)) != len(values):
                 raise ValueError("INVALID_RISK_MODEL")
+        priority_labels = [str(item.get("label", "")).strip().casefold() for item in self.priority_scale]
+        if any(not label for label in priority_labels) or len(set(priority_labels)) != len(priority_labels):
+            raise ValueError("INVALID_RISK_MODEL")
         if any(
             not item.get("level")
             or not any(
@@ -216,7 +219,3 @@ def strategy_hash(strategy):
         default=str,
     )
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def iso_value(value):
-    return value.isoformat() if isinstance(value, datetime) else value

@@ -8,7 +8,6 @@ import { docText, emptyDoc, messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
-import { TEST_CASE_ASSESSMENT_LEVELS, EXPECTED_IMPACTS } from "./testDesign.model";
 import {
   chooseFields,
   chooseStep,
@@ -24,15 +23,15 @@ const fields = [
   { key: "title", label: "Tên ca kiểm thử", kind: "text" },
   { key: "objective_doc", label: "Mục tiêu", kind: "document" },
   { key: "type", label: "Loại tình huống", kind: "text" },
-  { key: "priority", label: "Mức ưu tiên", kind: "select", options: TEST_CASE_ASSESSMENT_LEVELS },
-  { key: "risk", label: "Rủi ro", kind: "select", options: TEST_CASE_ASSESSMENT_LEVELS },
+  { key: "priority", label: "Mức ưu tiên", kind: "text", maxLength: 100 },
+  { key: "risk", label: "Rủi ro", kind: "text", maxLength: 100 },
   {
     key: "test_level",
     label: "Cấp kiểm thử",
     kind: "text",
   },
   { key: "test_kind", label: "Loại kiểm thử", kind: "text" },
-  { key: "expected_impact", label: "Ảnh hưởng dự kiến", kind: "select", options: EXPECTED_IMPACTS },
+  { key: "expected_impact", label: "Ảnh hưởng dự kiến", kind: "text", maxLength: 100 },
   { key: "assessment_reason", label: "Lý do đánh giá", kind: "text" },
   { key: "bdd", label: "Kịch bản BDD", kind: "bdd" },
   { key: "preconditions_doc", label: "Điều kiện trước", kind: "document" },
@@ -656,6 +655,7 @@ function FieldEditor({
     <input
       aria-label={`Bản kết quả: ${field.label}`}
       className="apple-input"
+      maxLength={field.maxLength}
       value={field.kind === "list" ? (value || []).join(", ") : (value ?? "")}
       onChange={(event) =>
         onChange(

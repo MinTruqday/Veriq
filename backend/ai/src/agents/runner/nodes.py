@@ -343,10 +343,6 @@ async def load_context(state):
     }
 
 
-def route_after_context(state):
-    return "plan"
-
-
 async def plan(state):
     run = state_run(state)
     constraints = state.get("constraints") or {}
@@ -1003,10 +999,6 @@ async def finalize(state):
         "run": run.model_dump(mode="python"),
         "success_criteria": state.get("success_criteria", []),
     }
-
-
-def route_after_finalize(state):
-    return "aggregate"
 
 
 async def aggregate(state):

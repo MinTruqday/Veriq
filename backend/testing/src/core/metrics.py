@@ -6,9 +6,6 @@ from starlette.responses import Response
 
 REQUESTS = Counter("qa_http_requests_total", "QA HTTP requests", ["method", "path", "status"])
 LATENCY = Histogram("qa_http_request_duration_seconds", "QA HTTP latency", ["path"])
-KNOWLEDGE_LATENCY = Histogram(
-    "knowledge_latency", "Project knowledge operation latency", ["operation"]
-)
 AI_GENERATION_LATENCY = Histogram(
     "ai_generation_latency", "AI generation operation latency", ["operation"]
 )

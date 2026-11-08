@@ -1,8 +1,6 @@
 import DocumentEditor from "../../../editor/DocumentEditor";
-import { valueLabel } from "../../../lib/testing";
 import { ErrorState } from "../../../components/WorkspacePrimitives";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
-import { REQUIREMENT_LEVELS } from "./requirements.model";
 
 export default function RequirementCreateModal({
   isOpen,
@@ -59,31 +57,23 @@ export default function RequirementCreateModal({
           </label>
           <label className="field-label">
             Ưu tiên
-            <select
+            <input
               className="apple-input mt-2"
               value={form.priority}
+              maxLength={100}
+              placeholder="Nhập mức ưu tiên theo quy ước dự án"
               onChange={(event) => updateForm({ priority: event.target.value })}
-            >
-              {REQUIREMENT_LEVELS.map((value) => (
-                <option key={value} value={value}>
-                  {valueLabel(value)}
-                </option>
-              ))}
-            </select>
+            />
           </label>
           <label className="field-label">
             Rủi ro
-            <select
+            <input
               className="apple-input mt-2"
               value={form.risk}
+              maxLength={100}
+              placeholder="Nhập mức rủi ro theo quy ước dự án"
               onChange={(event) => updateForm({ risk: event.target.value })}
-            >
-              {REQUIREMENT_LEVELS.map((value) => (
-                <option key={value} value={value}>
-                  {valueLabel(value)}
-                </option>
-              ))}
-            </select>
+            />
           </label>
         </div>
         <div>

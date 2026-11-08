@@ -69,7 +69,7 @@ import {
   scenarioPayload,
   createTestCaseForm,
   testDataEntriesToObject,
-  TEST_CASE_ASSESSMENT_LEVELS,
+  UNASSESSED_VALUE,
   buildTestCaseDraftChanges,
 } from "./test-design/testDesign.model";
 
@@ -493,7 +493,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       risk: selectedDraft.risk,
       test_level: selectedDraft.test_level || "",
       test_kind: selectedDraft.test_kind || "",
-      expected_impact: selectedDraft.expected_impact || "unassessed",
+      expected_impact: selectedDraft.expected_impact || UNASSESSED_VALUE,
       assessment_reason: selectedDraft.assessment_reason || "",
       requirementVersionIds: selectedDraft.requirement_version_ids || [],
       acceptanceCriterionIds: selectedDraft.acceptance_criterion_ids || [],
@@ -2138,30 +2138,22 @@ export default function TestDesignPage({ project, workspaceView }) {
                     onChange={(event) => changeDraftEdit({ type: event.target.value })}
                     placeholder="Nhập loại ca kiểm thử"
                   />
-                  <select
+                  <input
                     aria-label="Ưu tiên bản nháp ca kiểm thử"
                     className="apple-input"
+                    maxLength={100}
+                    placeholder="Mức ưu tiên theo quy ước dự án"
                     value={draftEdit.priority}
                     onChange={(event) => changeDraftEdit({ priority: event.target.value })}
-                  >
-                    {TEST_CASE_ASSESSMENT_LEVELS.map((value) => (
-                      <option key={value} value={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
-                  <select
+                  />
+                  <input
                     aria-label="Rủi ro bản nháp ca kiểm thử"
                     className="apple-input"
+                    maxLength={100}
+                    placeholder="Mức rủi ro theo quy ước dự án"
                     value={draftEdit.risk}
                     onChange={(event) => changeDraftEdit({ risk: event.target.value })}
-                  >
-                    {TEST_CASE_ASSESSMENT_LEVELS.map((value) => (
-                      <option key={value} value={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
                   <label className="field-label">
@@ -2186,18 +2178,13 @@ export default function TestDesignPage({ project, workspaceView }) {
                   </label>
                   <label className="field-label">
                     Ảnh hưởng dự kiến
-                    <select
+                    <input
                       aria-label="Ảnh hưởng dự kiến bản nháp"
                       className="apple-input mt-2"
+                      maxLength={100}
                       value={draftEdit.expected_impact}
                       onChange={(event) => changeDraftEdit({ expected_impact: event.target.value })}
-                    >
-                      {["unassessed", "low", "medium", "high", "critical"].map((value) => (
-                        <option value={value} key={value}>
-                          {valueLabel(value)}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </label>
                 </div>
                 <label className="field-label lg:col-span-2">

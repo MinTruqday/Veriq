@@ -4,7 +4,6 @@ import Link from "next/link";
 import DocumentEditor from "../../../editor/DocumentEditor";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { testingApi } from "../../../services/testing.service";
-import { REQUIREMENT_LEVELS } from "./requirements.model";
 
 export default function RequirementCurrentVersionPanel({
   projectId,
@@ -409,30 +408,22 @@ export default function RequirementCurrentVersionPanel({
                 value={draft.type}
                 onChange={(event) => onDraftChange({ type: event.target.value })}
               />
-              <select
+              <input
                 aria-label="Ưu tiên yêu cầu"
                 className="apple-input"
                 value={draft.priority}
+                maxLength={100}
+                placeholder="Mức ưu tiên theo quy ước dự án"
                 onChange={(event) => onDraftChange({ priority: event.target.value })}
-              >
-                {REQUIREMENT_LEVELS.map((value) => (
-                  <option key={value} value={value}>
-                    {valueLabel(value)}
-                  </option>
-                ))}
-              </select>
-              <select
+              />
+              <input
                 aria-label="Rủi ro yêu cầu"
                 className="apple-input"
                 value={draft.risk}
+                maxLength={100}
+                placeholder="Mức rủi ro theo quy ước dự án"
                 onChange={(event) => onDraftChange({ risk: event.target.value })}
-              >
-                {REQUIREMENT_LEVELS.map((value) => (
-                  <option key={value} value={value}>
-                    {valueLabel(value)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <p className="field-label mb-2">Nội dung yêu cầu</p>

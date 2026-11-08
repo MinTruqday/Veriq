@@ -243,43 +243,6 @@ class BM25Store:
                         if is_target(document):
                             staged.pop(point_id, None)
 
-    async def ids_by_document(self, document_id: str) -> List[str]:
-        async with self._lock:
-            return [
-                point_id
-                for point_id, document in self._documents.items()
-                if str(document.get("metadata", {}).get("document_id")) == str(document_id)
-            ]
-
-    async def ids_by_artifact_version(
-        self, project_id: str, artifact_version_id: str
-    ) -> List[str]:
-        async with self._lock:
-            return [
-                point_id
-                for point_id, document in self._documents.items()
-                if str(document.get("metadata", {}).get("project_id")) == str(project_id)
-                and str(document.get("metadata", {}).get("artifact_version_id"))
-                == str(artifact_version_id)
-                and self._is_project_artifact_metadata(document.get("metadata", {}))
-            ]
-
-    async def list_artifact_version_points(
-        self, project_id: str, artifact_version_id: str
-    ) -> List[Dict]:
-        async with self._lock:
-            return [
-                {
-                    "id": point_id,
-                    "metadata": dict(document.get("metadata", {})),
-                }
-                for point_id, document in self._documents.items()
-                if str(document.get("metadata", {}).get("project_id")) == str(project_id)
-                and str(document.get("metadata", {}).get("artifact_version_id"))
-                == str(artifact_version_id)
-                and self._is_project_artifact_metadata(document.get("metadata", {}))
-            ]
-
     async def iter_artifact_version_summaries(
         self, project_id: str, artifact_version_id: str
     ):
@@ -310,24 +273,6 @@ class BM25Store:
             artifact_version_id,
             legacy_generation,
         )
-
-    async def delete_ids(self, point_ids: List[str]) -> None:
-        if not point_ids:
-            return
-        remove = set(map(str, point_ids))
-        async with self._lock:
-            replacement = {
-                point_id: document
-                for point_id, document in self._documents.items()
-                if point_id not in remove
-            }
-            ordered_ids, index = self._build_index(replacement)
-            self._documents = replacement
-            self._ordered_ids = ordered_ids
-            self._index = index
-            for staged in self._staged_documents.values():
-                for point_id in remove:
-                    staged.pop(point_id, None)
 
     async def delete_artifact_generation(
         self,

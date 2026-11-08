@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from src.core.auth import CurrentUser
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.repositories.analysis import analysis_repository
+from src.repositories.test_strategy import test_strategy_repository
 from src.schemas.contracts.design import (
     RiskRankingApproval,
     RiskRankingGenerate,
@@ -118,12 +119,35 @@ class RiskRankingService:
         return updated
 
     @staticmethod
-    def _score(test_case: dict, version: dict, failure_count: int):
-        
-        
-        
-        risk = {'critical': 1.0, 'high': 0.8, 'medium': 0.5, 'low': 0.25}.get(str(version.get("risk", "medium")).lower(), 0.5)
-        priority = {'critical': 1.0, 'high': 0.8, 'medium': 0.5, 'low': 0.25}.get(str(version.get("priority", "medium")).lower(), 0.5)
+    def _configured_scale(scale: list[dict], label_key: str, order_key: str):
+        ordered = sorted(
+            (
+                item
+                for item in scale
+                if str(item.get(label_key, "")).strip()
+                and any(
+                    isinstance(item.get(key), (int, float))
+                    and not isinstance(item.get(key), bool)
+                    for key in (order_key, "max")
+                )
+            ),
+            key=lambda item: item[order_key]
+            if isinstance(item.get(order_key), (int, float))
+            and not isinstance(item.get(order_key), bool)
+            else item["max"],
+        )
+        count = len(ordered)
+        return {
+            str(item[label_key]).strip().casefold(): (index / (count - 1) if count > 1 else 0.5)
+            for index, item in enumerate(ordered)
+        }
+
+    @staticmethod
+    def _score(test_case: dict, version: dict, failure_count: int, assessment_scores: dict):
+        risk = assessment_scores["risk"].get(str(version.get("risk", "")).strip().casefold(), 0.5)
+        priority = assessment_scores["priority"].get(
+            str(version.get("priority", "")).strip().casefold(), 0.5
+        )
         stale = (
             0.2
             if test_case.get("status") == 'NEEDS_UPDATE'
@@ -146,8 +170,16 @@ class RiskRankingService:
 
     @staticmethod
     async def _build_items(project_id: str):
-        
-        
+        strategy = await test_strategy_repository.active_approved(project_id, "APPROVED")
+        risk_model = (strategy or {}).get("risk_model") or {}
+        assessment_scores = {
+            "risk": RiskRankingService._configured_scale(
+                risk_model.get("thresholds") or [], "level", "min"
+            ),
+            "priority": RiskRankingService._configured_scale(
+                risk_model.get("priority_scale") or [], "label", "value"
+            ),
+        }
         cases = await analysis_repository.list_current_test_cases(
             project_id,
             'OBSOLETE',
@@ -174,10 +206,12 @@ class RiskRankingService:
                     "test_case_version_id": version["_id"],
                     "test_case_key": case.get("test_case_key"),
                     "title": version.get("title"),
-                    "risk": version.get("risk", "medium"),
-                    "priority": version.get("priority", "medium"),
+                    "risk": version.get("risk", ""),
+                    "priority": version.get("priority", ""),
                     "failure_count": failure_count,
-                    "score": RiskRankingService._score(case, version, failure_count),
+                    "score": RiskRankingService._score(
+                        case, version, failure_count, assessment_scores
+                    ),
                     "included": True,
                     "reason_codes": list(['RISK', 'PRIORITY'])
                     + (['RECENT_FAILURE'] if failure_count else [])

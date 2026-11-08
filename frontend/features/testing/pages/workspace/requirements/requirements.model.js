@@ -1,7 +1,5 @@
 import { docText, emptyDoc, textDoc } from "../../../lib/testing";
 
-export const REQUIREMENT_LEVELS = ["critical", "high", "medium", "low"];
-
 export const REQUIREMENT_IMPORT_FORMATS = ["md", "txt", "csv", "openapi", "postman"];
 
 export const REQUIREMENT_SOURCE_TYPE_OPTIONS = [
@@ -72,8 +70,8 @@ export function createInitialRequirementForm() {
     customValues: {},
     title: "",
     type: "",
-    priority: "medium",
-    risk: "medium",
+    priority: "",
+    risk: "",
     content_doc: emptyDoc(),
     acceptance: "",
     businessRules: "",

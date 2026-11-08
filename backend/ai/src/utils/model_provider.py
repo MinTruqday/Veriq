@@ -445,17 +445,4 @@ class HostedAuxiliaryClient:
             scores.append(max(values))
         return scores
 
-    async def entailment(self, premise: str, hypothesis: str) -> float:
-        body = await self._post(
-            settings.NLI_MODEL_NAME,
-            {
-                "inputs": premise[:8000],
-                "parameters": {"candidate_labels": [hypothesis[:4000]], "multi_label": True},
-            },
-        )
-        if not isinstance(body, list) or not body or not isinstance(body[0], dict):
-            raise ModelProviderUnavailable("hosted_nli_shape_invalid")
-        return float(body[0].get("score", 0.0))
-
-
 auxiliary_client = HostedAuxiliaryClient()

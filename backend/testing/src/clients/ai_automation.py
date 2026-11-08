@@ -169,24 +169,6 @@ class AIAutomationClient:
 ai_automation_client = AIAutomationClient()
 
 
-async def emit_requirement_changed(version: dict, user) -> bool:
-    if user._ai_automation_run_id or not _requirement_version_is_baselined(version):
-        return True
-    return await emit_event(
-        "REQUIREMENT_CHANGED",
-        f"requirement-version:{version['_id']}:{version.get('revision', 1)}:{version.get('status', 'DRAFT')}",
-        version["project_id"],
-        "requirement_version",
-        version["requirement_id"],
-        version["_id"],
-        "requirement",
-        _requirement_event_text(version),
-        user.id,
-        artifact_revision=version.get("revision", 1),
-        artifact_status=str(version.get("status") or "DRAFT"),
-    )
-
-
 async def queue_requirement_changed(version: dict, user, session) -> str | None:
     """Persist a Requirement automation event in the caller's Mongo transaction."""
     if user._ai_automation_run_id or not _requirement_version_is_baselined(version):
@@ -711,17 +693,6 @@ async def emit_test_case_changed(
         *event,
         artifact_revision=revision,
         artifact_status=str(case.get("status") or "DRAFT"),
-    )
-
-
-async def emit_test_case_approved(version: dict, user) -> bool:
-    return await emit_artifact_event(
-        "TEST_CASE_APPROVED",
-        "test-case-version",
-        version,
-        user,
-        "test_case_version",
-        ("title", "description", "test_steps", "expected_result"),
     )
 
 
