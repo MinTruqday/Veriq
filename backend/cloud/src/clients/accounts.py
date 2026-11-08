@@ -23,10 +23,6 @@ class AccountClient:
             return False
 
     @staticmethod
-    async def get_by_id(user_id: str) -> Optional[dict]:
-        return await AccountClient._get(f"/xac-thuc/noi-bo/tai-khoan/{quote(user_id, safe='')}")
-
-    @staticmethod
     async def get_by_email(email: str) -> Optional[dict]:
         return await AccountClient._get(
             f"/xac-thuc/noi-bo/tai-khoan/thu-dien-tu/{quote(email, safe='')}"

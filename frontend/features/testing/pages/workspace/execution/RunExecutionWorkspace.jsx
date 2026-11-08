@@ -506,7 +506,7 @@ export default function RunExecutionWorkspace({
                             ) : item.status === "EXISTING_ASSIGNMENT_PRESERVED" ? (
                               "Giữ nguyên phân công hiện tại"
                             ) : item.status === "MAX_CONCURRENT_PROJECTS_REACHED" ? (
-                              "Ứng viên đủ kỹ năng đã chạm mức dự án tối đa được Admin khai báo. Hãy xem lại giới hạn trước khi phân công thủ công."
+                              "Ứng viên đủ kỹ năng đã chạm mức dự án tối đa được cấu hình. Hãy xem lại giới hạn trước khi phân công thủ công."
                             ) : (
                               "Chưa có người khớp điều kiện; hãy chọn thủ công nếu cần."
                             )}

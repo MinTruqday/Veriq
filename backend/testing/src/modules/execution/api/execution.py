@@ -55,6 +55,7 @@ from src.modules.quality.services.defect_lifecycle import (
 from src.modules.quality.services.defect_records import (
     build_defect_export,
     create_defect_record,
+    defect_classification_options,
     get_defect_record,
     list_defect_records,
 )
@@ -457,6 +458,13 @@ async def create_defect(
 ):
     defect = await create_defect_record(project_id, payload, user)
     return envelope(defect, revision=defect.get("revision", 1))
+
+
+@router.get("/du-an/{project_id}/phan-loai-loi")
+async def get_defect_classification_options(
+    project_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return envelope(await defect_classification_options(project_id, user))
 
 
 @router.get("/du-an/{project_id}/loi")

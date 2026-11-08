@@ -83,9 +83,13 @@ class ExecutionContextRepository:
                             "REOPENED",
                         ]
                     },
-                    "severity": {
-                        "$in": ["blocker", "critical", "BLOCKER", "CRITICAL"]
-                    },
+                    "$or": [
+                        {"severity_blocks_release": True},
+                        {
+                            "severity_blocks_release": {"$exists": False},
+                            "severity": {"$in": ["blocker", "critical", "BLOCKER", "CRITICAL"]},
+                        },
+                    ],
                 }
             },
             {

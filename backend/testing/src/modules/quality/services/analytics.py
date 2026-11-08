@@ -93,13 +93,12 @@ class AnalyticsService:
             "defects",
             {"project_id": project_id, "status": {"$nin": ["CLOSED", "REJECTED", "DUPLICATE"]}},
             "severity",
-            20,
+            None,
         )
         open_defects_by_severity = {
-            severity: next(
-                (item["count"] for item in defect_severity_rows if item["_id"] == severity), 0
-            )
-            for severity in ["blocker", "critical", "major", "minor", "trivial"]
+            str(item["_id"]): item["count"]
+            for item in defect_severity_rows
+            if item.get("_id") is not None
         }
         latest_run = await analytics_repository.find_latest("test_runs", {"project_id": project_id})
         latest_run_summary = None

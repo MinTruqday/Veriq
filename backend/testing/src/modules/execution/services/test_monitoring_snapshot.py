@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 
+from src.modules.quality.services.defect_classification import (
+    defect_is_blocking,
+    defect_is_critical,
+)
 from src.repositories.test_monitoring import test_monitoring_repository
-
 
 TERMINAL_RESULT_STATUSES = set(['PASS', 'FAIL', 'BLOCKED', 'SKIPPED', 'NOT_APPLICABLE'])
 OPEN_DEFECT_STATUSES = set(['NEW', 'CONFIRMED', 'IN_PROGRESS', 'READY_FOR_RETEST', 'REOPENED'])
@@ -232,14 +235,8 @@ def build_metrics(plan, sources, snapshot_at):
         "nfr_coverage": percent(len(covered_nfr_plans), len(sources["nfr_plans"]))
         if sources["nfr_plans"]
         else None,
-        "open_blocker": sum(
-            str(item.get("severity", "")).upper() == 'BLOCKER'
-            for item in open_defects
-        ),
-        "open_critical": sum(
-            str(item.get("severity", "")).upper() == 'CRITICAL'
-            for item in open_defects
-        ),
+        "open_blocker": sum(defect_is_blocking(item) for item in open_defects),
+        "open_critical": sum(defect_is_critical(item) for item in open_defects),
         "new_defects": new_defects,
         "resolved": resolved,
         "reopened": reopened,
@@ -260,7 +257,7 @@ def build_metrics(plan, sources, snapshot_at):
         else None,
         "open_environment_incidents": len(sources["environment_incidents"]),
         "blocker_environment_incidents": sum(
-            item.get("severity") in ['BLOCKER', 'CRITICAL']
+            defect_is_blocking(item)
             for item in sources["environment_incidents"]
         ),
         "environment_downtime_seconds": sum(

@@ -108,7 +108,7 @@ export default function CausalAnalysisPanel({ project }) {
   }, [hypothesisResult?._id, selected?._id]);
   const create = async () => {
     const eligible = defects.filter(
-      (item) => ["blocker", "critical"].includes(item.severity) || item.status === "REOPENED",
+      (item) => item.severity_blocks_release || item.status === "REOPENED",
     );
     const answer = await ask({
       title: "Tạo phân tích nguyên nhân",

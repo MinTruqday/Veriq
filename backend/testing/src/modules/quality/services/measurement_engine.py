@@ -4,7 +4,6 @@ import math
 from src.core.common import now
 from src.repositories.measurement import measurement_repository
 
-
 SAFE_EXPRESSION_NODES = (
     ast.Expression,
     ast.BinOp,
@@ -302,7 +301,13 @@ async def compute_metric(project_id, release_id, key):
         rows = await measurement_repository.list_defect_dates(
             {
                 **defects,
-                "severity": {"$in": ['blocker', 'critical', 'BLOCKER', 'CRITICAL']},
+                "$or": [
+                    {"severity_is_critical": True},
+                    {
+                        "severity_is_critical": {"$exists": False},
+                        "severity": {"$in": ["critical", "CRITICAL"]},
+                    },
+                ],
                 "status": {"$nin": ['CLOSED', 'REJECTED']},
             },
             {"created_at": 1},

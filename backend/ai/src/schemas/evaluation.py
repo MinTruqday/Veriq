@@ -153,25 +153,6 @@ class HallucinationGrade(BaseModel):
     )
 
 
-class JudgeScores(BaseModel):
-    accuracy: int = Field(
-        ge=0,
-        le=10,
-    )
-    completeness: int = Field(
-        ge=0,
-        le=10,
-    )
-    relevance: int = Field(
-        ge=0,
-        le=10,
-    )
-    explanation: str = Field(
-        min_length=1,
-        max_length=2000,
-    )
-
-
 class TestabilityBenchmarkCitation(BaseModel):
     quote: str = Field(min_length=1, max_length=2000)
     source_ref: str = Field(min_length=1, max_length=200)

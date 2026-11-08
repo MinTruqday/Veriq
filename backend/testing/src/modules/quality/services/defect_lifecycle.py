@@ -5,14 +5,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.ai_automation import emit_defect_changed
-from src.core.common import (
-    audit,
-    get_project,
-    get_project_entity,
-    new_id,
-    now,
-    optimistic_patch,
-)
+from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.core.database import database
 from src.modules.execution.services.execution_context import (
     defect_blocks_release,
@@ -21,9 +14,13 @@ from src.modules.execution.services.execution_context import (
     serialize_release_gate,
 )
 from src.modules.execution.services.execution_state import defect_transitions
+from src.modules.quality.services.defect_authorization import require_defect_editor_assignment
+from src.modules.quality.services.defect_classification import (
+    resolve_priority_classification,
+    resolve_severity_classification,
+)
 from src.repositories.defect import defect_repository
 from src.repositories.defect_search_index import defect_search_index_repository
-from src.modules.quality.services.defect_authorization import require_defect_editor_assignment
 
 
 def _retest_request_fingerprint(payload):
@@ -190,6 +187,12 @@ async def update_defect_record(defect_id, payload, project_id, user):
             "prevention_candidate",
         ]
     }
+    if "severity" in changes:
+        changes.update(await resolve_severity_classification(defect["project_id"], changes["severity"]))
+    elif "priority" in changes:
+        changes.update(
+            await resolve_priority_classification(defect["project_id"], changes["priority"])
+        )
     if linked_run:
         for field in ("release_id", "build_id", "environment_id"):
             supplied = changes.get(field, defect.get(field))
@@ -356,8 +359,8 @@ async def retest_defect_record(project_id, defect_id, payload, user):
     result = await defect_repository.find_test_result(payload.test_result_id, project_id)
     if not result:
         raise HTTPException(status_code=422, detail={"code": "INVALID_RETEST_RESULT"})
-    from src.repositories.test_run import test_run_repository
     from src.modules.execution.services.execution_state import require_case_execution_assignment
+    from src.repositories.test_run import test_run_repository
 
     run = await test_run_repository.find_run(result.get("test_run_id"), project_id)
     if not run:

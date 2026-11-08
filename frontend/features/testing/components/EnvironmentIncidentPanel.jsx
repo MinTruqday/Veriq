@@ -5,10 +5,6 @@ import { messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 
 const incidentLabels = {
-  BLOCKER: "Chặn phát hành",
-  CRITICAL: "Nghiêm trọng",
-  MAJOR: "Lớn",
-  MINOR: "Nhỏ",
   UNAVAILABLE: "Không khả dụng",
   DEPLOYMENT_FAILURE: "Triển khai thất bại",
   TEST_DATA_FAILURE: "Dữ liệu kiểm thử lỗi",
@@ -36,13 +32,21 @@ export default function EnvironmentIncidentPanel({ project }) {
   const [builds, setBuilds] = useState([]);
   const [runs, setRuns] = useState([]);
   const [members, setMembers] = useState([]);
+  const [severityOptions, setSeverityOptions] = useState([]);
   const [error, setError] = useState("");
   const { ask, dialog } = useActionDialog();
   const can = (permission) => project.current_permissions?.includes(permission);
   const load = useCallback(async () => {
     try {
       const permissions = new Set(project.current_permissions || []);
-      const [result, environmentValues, buildValues, runValues, memberValues] = await Promise.all([
+      const [
+        result,
+        environmentValues,
+        buildValues,
+        runValues,
+        memberValues,
+        classificationPolicy,
+      ] = await Promise.all([
         testingApi.listEnvironmentIncidents(project._id),
         permissions.has("environment.read")
           ? testingApi.listEnvironments(project._id)
@@ -52,12 +56,20 @@ export default function EnvironmentIncidentPanel({ project }) {
         permissions.has("project.members.read")
           ? testingApi.listMembers(project._id)
           : Promise.resolve([]),
+        permissions.has("environmentincident.create")
+          ? testingApi.getDefectClassificationOptions(project._id)
+          : Promise.resolve({}),
       ]);
       setItems(result.items || []);
       setEnvironments(environmentValues);
       setBuilds(buildValues);
       setRuns(runValues);
       setMembers(memberValues.filter((item) => item.status === "ACTIVE"));
+      setSeverityOptions(
+        (classificationPolicy.severity || [])
+          .map((item) => String(item || "").trim())
+          .filter(Boolean),
+      );
       setError("");
     } catch (reason) {
       setError(messageOf(reason));
@@ -67,6 +79,12 @@ export default function EnvironmentIncidentPanel({ project }) {
     void load();
   }, [load]);
   const create = async () => {
+    if (!severityOptions.length) {
+      setError(
+        "Hãy cấu hình và phê duyệt thang mức độ trong chiến lược kiểm thử trước khi ghi nhận sự cố.",
+      );
+      return;
+    }
     const answer = await ask({
       title: "Ghi nhận sự cố môi trường",
       confirmLabel: "Ghi nhận",
@@ -98,10 +116,11 @@ export default function EnvironmentIncidentPanel({ project }) {
         {
           name: "severity",
           label: "Mức độ",
-          options: ["BLOCKER", "CRITICAL", "MAJOR", "MINOR"].map((value) => ({
-            value,
-            label: incidentLabel(value),
-          })),
+          required: true,
+          options: [
+            { value: "", label: "Chọn mức độ" },
+            ...severityOptions.map((value) => ({ value, label: value })),
+          ],
         },
         {
           name: "type",
@@ -237,7 +256,7 @@ export default function EnvironmentIncidentPanel({ project }) {
                       {item.incident_key}
                     </span>
                     <span className="inline-flex rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand">
-                      {incidentLabel(item.severity)}
+                      {item.severity}
                     </span>
                     <span className="inline-flex rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand">
                       {incidentStatusLabels[item.status] || valueLabel(item.status)}

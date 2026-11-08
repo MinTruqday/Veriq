@@ -27,6 +27,12 @@ from src.modules.execution.services.execution_context import (
     resolve_execution_context,
     serialize_release_gate,
 )
+from src.modules.quality.services.defect_classification import (
+    defect_is_blocking,
+    defect_is_critical,
+    resolve_defect_classification,
+)
+from src.repositories.test_strategy import test_strategy_repository
 from src.repositories.defect import defect_repository
 from src.repositories.defect_search_index import defect_search_index_repository
 
@@ -45,10 +51,38 @@ def _defect_request_fingerprint(payload):
 
 
 def _public_defect(defect):
-    return {
+    public = {
         key: value
         for key, value in defect.items()
         if key not in {"idempotency_key", "idempotency_request_hash"}
+    }
+    public.setdefault("severity_blocks_release", defect_is_blocking(defect))
+    public.setdefault("severity_is_critical", defect_is_critical(defect))
+    return public
+
+
+async def defect_classification_options(project_id, user):
+    permissions = await get_project_permissions(project_id, user.id)
+    allowed = False
+    for permission in ("defect.create", "environmentincident.create"):
+        if permission not in permissions:
+            continue
+        try:
+            await get_project(project_id, user, permission)
+            allowed = True
+            break
+        except HTTPException as error:
+            if error.status_code != 403:
+                raise
+    if not allowed:
+        raise HTTPException(status_code=403, detail={"code": "PROJECT_PERMISSION_DENIED"})
+    strategy = await test_strategy_repository.active_approved(project_id, "APPROVED")
+    risk_model = (strategy or {}).get("risk_model") or {}
+    return {
+        "strategy_id": (strategy or {}).get("_id"),
+        "strategy_version": (strategy or {}).get("version"),
+        "severity": [item.get("label") for item in risk_model.get("severity_scale") or []],
+        "priority": [item.get("label") for item in risk_model.get("priority_scale") or []],
     }
 
 
@@ -87,6 +121,9 @@ async def create_defect_record(project_id, payload, user):
 
 
 async def _create_defect_record(project_id, payload, user):
+    classification = await resolve_defect_classification(
+        project_id, payload.severity, payload.priority
+    )
     linked_result = None
     linked_run = None
     requirement_version_ids = list(payload.linked_requirement_version_ids)
@@ -175,6 +212,7 @@ async def _create_defect_record(project_id, payload, user):
     defect = {
         "_id": new_id('DEF'),
         **payload.model_dump(),
+        **classification,
         "idempotency_request_hash": (
             _defect_request_fingerprint(payload) if payload.idempotency_key else None
         ),

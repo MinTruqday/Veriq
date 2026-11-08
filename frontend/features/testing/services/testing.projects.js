@@ -230,6 +230,8 @@ export const projectTestingApi = {
   restoreProject: (id, payload) =>
     testingRequest(`/du-an/${id}/khoi-phuc`, { method: "POST", body: JSON.stringify(payload) }),
   dashboard: (id) => testingRequest(`/du-an/${id}/tong-quan`),
+  getDefectClassificationOptions: (projectId) =>
+    testingRequest(`/du-an/${projectId}/phan-loai-loi`),
   listTestStrategies: (projectId, filters = {}) => {
     const query = listQuery(filters);
     return testingRequest(`/du-an/${projectId}/chien-luoc${query ? `?${query}` : ""}`);

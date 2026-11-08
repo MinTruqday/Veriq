@@ -97,12 +97,18 @@ class EnvironmentIncidentRepository:
             return_document=ReturnDocument.AFTER,
         )
 
-    async def count_other_active_blocking(self, project_id, environment_id, incident_id, severities, statuses):
+    async def count_other_active_blocking(self, project_id, environment_id, incident_id, statuses):
         return await database.value.environment_incidents.count_documents(
             {
                 "project_id": project_id,
                 "environment_id": environment_id,
-                "severity": {"$in": severities},
+                "$or": [
+                    {"severity_blocks_release": True},
+                    {
+                        "severity_blocks_release": {"$exists": False},
+                        "severity": {"$in": ["BLOCKER", "CRITICAL", "blocker", "critical"]},
+                    },
+                ],
                 "status": {"$in": statuses},
                 "_id": {"$ne": incident_id},
             }

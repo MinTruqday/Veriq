@@ -1721,21 +1721,16 @@ export default function TestDesignPage({ project, workspaceView }) {
                   <option value="NEEDS_UPDATE">Cần cập nhật</option>
                   <option value="OBSOLETE">Không còn hiệu lực</option>
                 </select>
-                <select
+                <input
                   aria-label="Lọc ưu tiên ca kiểm thử"
                   className="apple-input"
                   value={testFilters.priority}
+                  placeholder="Mọi ưu tiên"
                   onChange={(event) => {
                     setTestFilters({ ...testFilters, priority: event.target.value });
                     setTestPage(1);
                   }}
-                >
-                  <option value="">Mọi ưu tiên</option>
-                  <option value="critical">Nghiêm trọng</option>
-                  <option value="high">Cao</option>
-                  <option value="medium">Trung bình</option>
-                  <option value="low">Thấp</option>
-                </select>
+                />
                 <select
                   aria-label="Lọc độ mới ca kiểm thử"
                   className="apple-input"

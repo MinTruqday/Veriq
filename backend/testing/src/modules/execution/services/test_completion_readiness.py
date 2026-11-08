@@ -1,16 +1,17 @@
 from fastapi import HTTPException
 
-from src.repositories.test_completion import find_project_settings, list_monitoring_overrides
 from src.modules.execution.services.exit_criteria import evaluate_exit_criteria
-
-
-
+from src.modules.quality.services.defect_classification import (
+    defect_is_blocking,
+    defect_is_critical,
+)
+from src.repositories.test_completion import find_project_settings, list_monitoring_overrides
 
 
 def default_completion_recommendation(gate, unresolved_items, residual_risks):
     
     if gate == 'FAIL' or any(
-        item.get("severity") in set(['blocker', 'critical', 'BLOCKER', 'CRITICAL'])
+        defect_is_blocking(item)
         for item in unresolved_items
         if isinstance(item, dict)
     ):
@@ -140,7 +141,7 @@ async def validate_completion_readiness(report):
     ownerless_critical = [
         item.get("risk_id")
         for item in report.get("residual_risks", [])
-        if item.get("severity") == 'CRITICAL'
+        if defect_is_critical(item)
         and not item.get("owner_id")
     ]
     if ownerless_critical:

@@ -65,6 +65,10 @@ function displayEnvironment(value) {
 export default function DefectsPage({ project }) {
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
+  const [classificationOptions, setClassificationOptions] = useState({
+    severity: [],
+    priority: [],
+  });
   const [members, setMembers] = useState([]);
   const [releases, setReleases] = useState([]);
   const [builds, setBuilds] = useState([]);
@@ -102,8 +106,8 @@ export default function DefectsPage({ project }) {
   const defectCreateOperation = useRef(null);
   const [form, setForm] = useState({
     title: "",
-    severity: "major",
-    priority: "medium",
+    severity: "",
+    priority: "",
     environment: "",
     environmentId: "",
     releaseId: "",
@@ -137,6 +141,8 @@ export default function DefectsPage({ project }) {
       loadedProjectId.current = project._id;
       initialDataLoaded.current = false;
       setItems([]);
+      setClassificationOptions({ severity: [], priority: [] });
+      setForm((current) => ({ ...current, severity: "", priority: "" }));
       setResults([]);
       setReleases([]);
       setBuilds([]);
@@ -161,6 +167,7 @@ export default function DefectsPage({ project }) {
         buildValues,
         environmentValues,
         memberValues,
+        classificationPolicy,
       ] = await Promise.all([
         testingApi.listDefectPage(project._id, { ...filters, page, page_size: 50 }),
         projectPermissions.has("testrun.read")
@@ -178,6 +185,9 @@ export default function DefectsPage({ project }) {
         project.current_permissions?.includes("project.members.read")
           ? testingApi.listMembers(project._id)
           : Promise.resolve([]),
+        projectPermissions.has("defect.create")
+          ? testingApi.getDefectClassificationOptions(project._id)
+          : Promise.resolve({}),
       ]);
       const traceSuggestionValues = projectPermissions.has("ai.suggest_bug_trace")
         ? await testingApi.listAutomatedDefectTraceSuggestions(
@@ -186,6 +196,14 @@ export default function DefectsPage({ project }) {
           )
         : [];
       if (requestGeneration !== loadGeneration.current) return;
+      const configuredSeverities = (classificationPolicy.severity || [])
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+      const configuredPriorities = (classificationPolicy.priority || [])
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+      const severityOptions = [...new Set(configuredSeverities)];
+      const priorityOptions = [...new Set(configuredPriorities)];
       const visibleResultIds = new Set(resultValues.map((item) => item._id));
       const originalResultIds = projectPermissions.has("testrun.read")
         ? [
@@ -201,6 +219,12 @@ export default function DefectsPage({ project }) {
       );
       if (requestGeneration !== loadGeneration.current) return;
       setItems(defectValues.items);
+      setClassificationOptions({ severity: severityOptions, priority: priorityOptions });
+      setForm((current) => ({
+        ...current,
+        severity: current.severity || severityOptions[0] || "",
+        priority: current.priority || priorityOptions[0] || "",
+      }));
       setTraceSuggestions(
         Object.fromEntries(traceSuggestionValues.map((item) => [item.subject_id, item])),
       );
@@ -278,8 +302,8 @@ export default function DefectsPage({ project }) {
       setSuccess("Đã tạo lỗi. Danh sách đang được làm mới.");
       setForm({
         title: "",
-        severity: "major",
-        priority: "medium",
+        severity: classificationOptions.severity[0] || "",
+        priority: classificationOptions.priority[0] || "",
         environment: "",
         environmentId: "",
         release: "",
@@ -372,7 +396,7 @@ export default function DefectsPage({ project }) {
     ];
     await ask({
       title: "Cập nhật phân tích lỗi",
-      description: `${item.defect_key} · Mức độ: ${valueLabel(item.severity)} · Ưu tiên: ${valueLabel(item.priority)}`,
+      description: `${item.defect_key} · Mức độ: ${item.severity} · Ưu tiên: ${item.priority}`,
       confirmLabel: "Lưu phân tích",
       fields: fields.map((field) => ({ ...field, initialValue: item[field.name] || "" })),
       onConfirm: async (answer) => {
@@ -600,6 +624,12 @@ export default function DefectsPage({ project }) {
             <ModalTitle>Tạo lỗi</ModalTitle>
           </ModalHeader>
           <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={create}>
+            {(!classificationOptions.severity.length || !classificationOptions.priority.length) && (
+              <p className="rounded-control bg-warning-soft p-3 text-sm text-warning md:col-span-2">
+                Hãy cấu hình và phê duyệt thang mức độ cùng thang ưu tiên trong chiến lược kiểm thử
+                trước khi tạo lỗi.
+              </p>
+            )}
             <label className="field-label md:col-span-2">
               Tên
               <input
@@ -612,28 +642,28 @@ export default function DefectsPage({ project }) {
             <label className="field-label">
               Mức độ nghiêm trọng
               <select
+                required
                 className="apple-input mt-2"
                 value={form.severity}
                 onChange={(event) => setForm({ ...form, severity: event.target.value })}
               >
-                {["blocker", "critical", "major", "minor", "trivial"].map((value) => (
-                  <option key={value} value={value}>
-                    {valueLabel(value)}
-                  </option>
+                <option value="">Chọn mức độ</option>
+                {classificationOptions.severity.map((value) => (
+                  <option key={value} value={value} />
                 ))}
               </select>
             </label>
             <label className="field-label">
               Mức ưu tiên
               <select
+                required
                 className="apple-input mt-2"
                 value={form.priority}
                 onChange={(event) => setForm({ ...form, priority: event.target.value })}
               >
-                {["critical", "high", "medium", "low"].map((value) => (
-                  <option key={value} value={value}>
-                    {valueLabel(value)}
-                  </option>
+                <option value="">Chọn mức ưu tiên</option>
+                {classificationOptions.priority.map((value) => (
+                  <option key={value} value={value} />
                 ))}
               </select>
             </label>
@@ -960,22 +990,22 @@ export default function DefectsPage({ project }) {
                 </option>
               ))}
             </select>
-            <select
+            <input
               aria-label="Lọc mức độ lỗi"
               className="apple-input"
+              list="defect-severity-filter-options"
+              placeholder="Mọi mức độ"
               value={filters.severity}
               onChange={(event) => {
                 setFilters({ ...filters, severity: event.target.value });
                 setPage(1);
               }}
-            >
-              <option value="">Mọi mức độ</option>
-              {["blocker", "critical", "major", "minor", "trivial"].map((value) => (
-                <option key={value} value={value}>
-                  {valueLabel(value)}
-                </option>
+            />
+            <datalist id="defect-severity-filter-options">
+              {classificationOptions.severity.map((value) => (
+                <option key={value} value={value} />
               ))}
-            </select>
+            </datalist>
             <select
               aria-label="Lọc người xử lý lỗi"
               className="apple-input"
@@ -1037,10 +1067,10 @@ export default function DefectsPage({ project }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusPill value={item.status} />
                       <span className="rounded-control border border-border px-2.5 py-1 text-xs text-ink">
-                        {valueLabel(item.severity)}
+                        {item.severity}
                       </span>
                       <span className="rounded-control border border-border px-2.5 py-1 text-xs text-ink-muted">
-                        Ưu tiên {valueLabel(item.priority)}
+                        Ưu tiên {item.priority}
                       </span>
                     </div>
                   </div>

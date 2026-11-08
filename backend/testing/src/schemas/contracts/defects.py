@@ -14,8 +14,8 @@ class DefectCreate(BaseModel):
     steps_to_reproduce: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
     actual_result_doc: dict[str, Any] = Field(default_factory=empty_doc)
     expected_result_doc: dict[str, Any] = Field(default_factory=empty_doc)
-    severity: Literal["blocker", "critical", "major", "minor", "trivial"] = "major"
-    priority: Literal["critical", "high", "medium", "low"] = "medium"
+    severity: str = Field(min_length=1, max_length=100)
+    priority: str = Field(min_length=1, max_length=100)
     environment: str = Field(default="", max_length=500)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str = Field(default="", max_length=200)
@@ -44,6 +44,14 @@ class DefectCreate(BaseModel):
             raise ValueError("root_cause_category_required")
         return value
 
+    @field_validator("severity", "priority")
+    @classmethod
+    def normalize_classification(cls, value):
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("defect_classification_required")
+        return value
+
 
 class DefectPatch(BaseModel):
     expected_revision: int = Field(ge=1)
@@ -52,8 +60,8 @@ class DefectPatch(BaseModel):
     steps_to_reproduce: list[dict[str, Any]] | None = Field(default=None, max_length=500)
     actual_result_doc: dict[str, Any] | None = None
     expected_result_doc: dict[str, Any] | None = None
-    severity: Literal["blocker", "critical", "major", "minor", "trivial"] | None = None
-    priority: Literal["critical", "high", "medium", "low"] | None = None
+    severity: str | None = Field(default=None, min_length=1, max_length=100)
+    priority: str | None = Field(default=None, min_length=1, max_length=100)
     environment: str | None = Field(default=None, max_length=500)
     environment_id: str | None = Field(default=None, max_length=200)
     release: str | None = Field(default=None, max_length=200)
@@ -80,6 +88,16 @@ class DefectPatch(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("root_cause_category_required")
+        return value
+
+    @field_validator("severity", "priority")
+    @classmethod
+    def normalize_classification(cls, value):
+        if value is None:
+            return None
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("defect_classification_required")
         return value
 
     @model_validator(mode="after")

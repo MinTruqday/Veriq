@@ -13,13 +13,6 @@ def service_url(service_name: str, path: str = "") -> str:
     return base_url.rstrip("/")
 
 
-def health_targets(service_names: tuple[str, ...]) -> dict[str, str]:
-    return {
-        service_name: service_url(service_name, "/san-sang")
-        for service_name in service_names
-    }
-
-
 async def internal_request(
     method: str,
     service_name: str,

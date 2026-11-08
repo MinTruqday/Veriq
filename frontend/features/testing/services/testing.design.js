@@ -9,6 +9,7 @@ import {
 } from "./testing.transport";
 
 export const designTestingApi = {
+  listTestStrategies: (projectId, query = "") => listPage(`/du-an/${projectId}/chien-luoc`, query),
   listTestCaseCustomFields: (projectId) => testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu`),
   listManagedTestCaseCustomFields: (projectId) =>
     testingRequest(`/du-an/${projectId}/truong-ca-kiem-thu/quan-ly`),

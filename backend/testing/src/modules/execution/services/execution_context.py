@@ -4,6 +4,7 @@ from pymongo.errors import DuplicateKeyError, OperationFailure
 from src.core.auth import CurrentUser, sign_off_has_permission
 from src.core.common import audit, get_project, get_project_entity, new_id, now, optimistic_patch
 from src.core.database import database
+from src.modules.quality.services.defect_classification import defect_is_blocking
 from src.repositories.execution_context import execution_context_repository
 from src.schemas.contracts.execution import ReleaseReadiness, ReleaseReadinessCheck
 
@@ -48,18 +49,16 @@ def raise_release_gate_conflict(error):
         ) from error
 
 
-def defect_blocks_release(defect, *, status=None, severity=None):
+def defect_blocks_release(defect, *, status=None):
     current_status = str(status if status is not None else defect.get("status") or "")
-    current_severity = str(
-        severity if severity is not None else defect.get("severity") or ""
-    )
+    current_defect = {**defect, "status": current_status}
     return current_status.upper() in {
         "NEW",
         "CONFIRMED",
         "IN_PROGRESS",
         "READY_FOR_RETEST",
         "REOPENED",
-    } and current_severity.lower() in {"blocker", "critical"}
+    } and defect_is_blocking(current_defect)
 
 
 

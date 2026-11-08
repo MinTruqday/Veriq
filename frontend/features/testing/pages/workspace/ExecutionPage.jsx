@@ -457,7 +457,13 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       .map((step) => docText(step.expected_doc))
       .filter(Boolean)
       .join("\n");
-    const knownPriorities = ["critical", "high", "medium", "low"];
+    const activeStrategy = strategies.find((item) => item.active_approved);
+    const defectSeverities = (activeStrategy?.risk_model?.severity_scale || [])
+      .map((item) => String(item.label || "").trim())
+      .filter(Boolean);
+    const defectPriorities = (activeStrategy?.risk_model?.priority_scale || [])
+      .map((item) => String(item.label || "").trim())
+      .filter(Boolean);
     const initialPriority = String(version.priority || "").toLowerCase();
     await ask({
       title: aiDraft ? "Rà soát bản nháp lỗi từ AI" : "Tạo lỗi từ kết quả kiểm thử",
@@ -505,24 +511,20 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           required: true,
           options: [
             { value: "", label: "Chọn mức độ" },
-            { value: "blocker", label: "Chặn toàn bộ" },
-            { value: "critical", label: "Nghiêm trọng" },
-            { value: "major", label: "Lớn" },
-            { value: "minor", label: "Nhỏ" },
-            { value: "trivial", label: "Không đáng kể" },
+            ...defectSeverities.map((value) => ({ value, label: value })),
           ],
         },
         {
           name: "priority",
           label: "Ưu tiên xử lý",
           required: true,
-          initialValue: knownPriorities.includes(initialPriority) ? initialPriority : "",
+          initialValue:
+            defectPriorities.find((value) => value.toLowerCase() === initialPriority) ||
+            defectPriorities[0] ||
+            "",
           options: [
             { value: "", label: "Chọn mức ưu tiên" },
-            { value: "critical", label: "Khẩn cấp" },
-            { value: "high", label: "Cao" },
-            { value: "medium", label: "Trung bình" },
-            { value: "low", label: "Thấp" },
+            ...defectPriorities.map((value) => ({ value, label: value })),
           ],
         },
       ],

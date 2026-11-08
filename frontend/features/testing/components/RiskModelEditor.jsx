@@ -34,6 +34,14 @@ export default function RiskModelEditor({ value, onChange }) {
         />
       </label>
       <label className="field-label">
+        Mức độ lỗi mỗi mức một dòng
+        <textarea
+          className="apple-input mt-2 min-h-28 w-full min-w-0"
+          value={(value.severity_scale || []).map((item) => item.label).join("\n")}
+          onChange={(event) => updateScale(value, onChange, "severity_scale", event.target.value)}
+        />
+      </label>
+      <label className="field-label">
         Thang ưu tiên mỗi mức một dòng
         <textarea
           className="apple-input mt-2 min-h-28 w-full min-w-0"
@@ -41,6 +49,42 @@ export default function RiskModelEditor({ value, onChange }) {
           onChange={(event) => updateScale(value, onChange, "priority_scale", event.target.value)}
         />
       </label>
+      {[
+        ["blocking_severities", "Mức độ lỗi chặn phát hành"],
+        ["critical_severities", "Mức độ lỗi nghiêm trọng cần chủ sở hữu rủi ro"],
+      ].map(([key, label]) => (
+        <fieldset key={key} className="min-w-0 space-y-2 rounded-xl border border-border p-3">
+          <legend className="px-1 text-sm font-medium">{label}</legend>
+          {(value.severity_scale || []).map((item) => {
+            const labelValue = String(item.label || "");
+            const selected = (value[key] || []).some(
+              (entry) => String(entry).toLocaleLowerCase() === labelValue.toLocaleLowerCase(),
+            );
+            return (
+              <label key={item.label} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={(event) => {
+                    const current = value[key] || [];
+                    const next = event.target.checked
+                      ? [...current, labelValue]
+                      : current.filter(
+                          (entry) =>
+                            String(entry).toLocaleLowerCase() !== labelValue.toLocaleLowerCase(),
+                        );
+                    onChange({ ...value, [key]: next });
+                  }}
+                />
+                {item.label}
+              </label>
+            );
+          })}
+          {!value.severity_scale?.length && (
+            <p className="text-sm text-muted">Hãy khai báo thang mức độ lỗi trước.</p>
+          )}
+        </fieldset>
+      ))}
       <label className="field-label md:col-span-2">
         Công thức tính mức phơi nhiễm rủi ro
         <input

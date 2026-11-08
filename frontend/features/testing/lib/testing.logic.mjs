@@ -596,6 +596,15 @@ export function formatCalendarDate(value) {
 }
 
 export function messageOf(reason) {
+  const defectClassificationMessages = {
+    DEFECT_CLASSIFICATION_POLICY_REQUIRED:
+      "Hãy cấu hình và phê duyệt thang mức độ cùng thang ưu tiên trong chiến lược kiểm thử trước khi ghi nhận lỗi.",
+    DEFECT_CLASSIFICATION_NOT_CONFIGURED:
+      "Mức độ hoặc mức ưu tiên đã chọn không thuộc chiến lược kiểm thử đang có hiệu lực. Hãy tải lại danh sách lựa chọn.",
+  };
+  if (defectClassificationMessages[reason?.code]) {
+    return defectClassificationMessages[reason.code];
+  }
   if (reason?.code === "AI_UNGROUNDED_OUTPUT") {
     const claims = Array.isArray(reason.details?.unsupported_claims)
       ? reason.details.unsupported_claims.filter((item) => typeof item === "string" && item.trim())

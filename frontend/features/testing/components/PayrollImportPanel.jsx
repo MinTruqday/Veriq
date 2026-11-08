@@ -1186,9 +1186,9 @@ export default function PayrollImportPanel() {
         <Panel title="Công suất và giới hạn phân công">
           <form className="space-y-4 p-4" onSubmit={saveCapacity}>
             <p className="text-sm text-ink-muted">
-              Chỉ Admin được quản lý. Mức tối đa để trống nghĩa là chưa cấu hình giới hạn cho nhân
-              viên. AI chỉ áp dụng giới hạn khi các kỳ công suất liền nhau bao phủ toàn bộ lịch Test
-              Plan; kỳ giao nhau bị từ chối để tránh dùng hai mức trần cùng lúc.
+              Người có quyền quản lý có thể cấu hình. Mức tối đa để trống nghĩa là chưa cấu hình
+              giới hạn cho nhân viên. AI chỉ áp dụng giới hạn khi các kỳ công suất liền nhau bao phủ
+              toàn bộ lịch Test Plan; kỳ giao nhau bị từ chối để tránh dùng hai mức trần cùng lúc.
             </p>
             {capacityError && <ErrorState message={capacityError} />}
             {capacitySaved && (

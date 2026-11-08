@@ -1,5 +1,3 @@
-from loguru import logger
-
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import database
 from src.core.infrastructure.mongo import mongo
@@ -58,22 +56,3 @@ class AgentRepository:
     @classmethod
     def query(cls, *args, **kwargs):
         return mongo.query("agent_traces", *args, **kwargs)
-
-    @classmethod
-    async def get_traces_since(cls, since_datetime, limit: int = 500) -> list:
-        try:
-            cutoff = since_datetime
-            results = []
-            cursor = mongo.find("agent_traces", {"started_at": {"$gte": cutoff}})
-            async for doc in cursor:
-                doc.pop("_id", None)
-                results.append(doc)
-                if len(results) >= limit:
-                    break
-            return results
-        except Exception as error:
-            logger.warning(
-                "Unable to load agent traces error_type={}",
-                type(error).__name__,
-            )
-            return []

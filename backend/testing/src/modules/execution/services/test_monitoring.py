@@ -4,6 +4,21 @@ from pymongo.errors import DuplicateKeyError
 from src.core.auth import permissions_for_membership
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
+from src.modules.execution.services.exit_criteria import evaluate_exit_criteria, quality_gate_status
+from src.modules.execution.services.test_monitoring_snapshot import (
+    OPEN_DEFECT_STATUSES,
+    build_deviations,
+    build_metrics,
+    monitoring_sources,
+)
+from src.modules.quality.services.defect_classification import defect_is_blocking
+from src.modules.quality.services.quality_gate import (
+    create_quality_decision,
+    export_quality_gate,
+    get_quality_gate,
+    list_quality_decisions,
+)
+from src.repositories.test_monitoring import test_monitoring_repository
 from src.schemas.test_monitoring import (
     ControlActionCreate,
     ControlActionPatch,
@@ -11,22 +26,6 @@ from src.schemas.test_monitoring import (
     MonitoringSnapshotCreate,
     source_fingerprint,
 )
-from src.repositories.test_monitoring import test_monitoring_repository
-from src.modules.execution.services.exit_criteria import evaluate_exit_criteria, quality_gate_status
-from src.modules.quality.services.quality_gate import (
-    create_quality_decision,
-    export_quality_gate,
-    get_quality_gate,
-    list_quality_decisions,
-)
-from src.modules.execution.services.test_monitoring_snapshot import (
-    OPEN_DEFECT_STATUSES,
-    build_deviations,
-    build_metrics,
-    monitoring_sources,
-)
-
-
 
 __all__ = [
     "create_quality_decision",
@@ -105,7 +104,7 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
     blocker_incidents = [
         item
         for item in sources["environment_incidents"]
-        if item.get("severity") in ['BLOCKER', 'CRITICAL']
+        if defect_is_blocking(item)
     ]
     if blocker_incidents:
         evaluations.append(
@@ -260,8 +259,7 @@ async def create_monitoring_snapshot(project_id, payload: MonitoringSnapshotCrea
                 }
                 for item in sources["defects"]
                 if item.get("status") in OPEN_DEFECT_STATUSES
-                and str(item.get("severity", "")).upper()
-                == 'BLOCKER'
+                and defect_is_blocking(item)
             ],
             *[
                 {

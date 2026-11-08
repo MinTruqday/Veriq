@@ -150,8 +150,8 @@ export default function TestCaseOwnerRecommendation({
         <div className="space-y-2 rounded-control border border-border p-3">
           <p className="text-sm text-ink-muted">
             Đề xuất dựa trên kỹ năng, kinh nghiệm đã xác nhận, mức sẵn sàng và tải kiểm thử. Số dự
-            án chỉ tính nơi đang có lượt kiểm thử mở; giới hạn theo nhân viên chỉ áp dụng khi Admin
-            đã khai báo. Bảng lương chỉ dùng dự báo chi phí kế hoạch. Đề xuất không tự gán người.
+            án chỉ tính nơi đang có lượt kiểm thử mở; giới hạn theo nhân viên chỉ áp dụng khi đã
+            được khai báo. Bảng lương chỉ dùng dự báo chi phí kế hoạch. Đề xuất không tự gán người.
           </p>
           {result.project_capacity_status === "CAPACITY_PERIOD_NOT_COVERING_SCHEDULE" && (
             <p role="status" className="text-sm text-amber-800">
@@ -161,8 +161,8 @@ export default function TestCaseOwnerRecommendation({
           )}
           {result.project_capacity_status === "AMBIGUOUS_CAPACITY_PERIOD" && (
             <p role="status" className="text-sm text-amber-800">
-              Có nhiều kỳ công suất cùng áp dụng; chưa dùng mức trần cho đến khi Admin xử lý kỳ bị
-              trùng.
+              Có nhiều kỳ công suất cùng áp dụng; chưa dùng mức trần cho đến khi kỳ bị trùng được xử
+              lý.
             </p>
           )}
           {result.project_capacity_status === "PROJECT_LIMITS_PARTIALLY_DECLARED" && (
@@ -200,7 +200,7 @@ export default function TestCaseOwnerRecommendation({
           ) : (
             <p role="status" className="text-sm text-ink-muted">
               {result.status === "PROJECT_LIMIT_REACHED"
-                ? "Các ứng viên đạt kỹ năng đã chạm giới hạn dự án được Admin khai báo cho kỳ này. Hãy điều chỉnh giới hạn hoặc chọn người có quyền và xem lại tải trước khi phân công."
+                ? "Các ứng viên đạt kỹ năng đã chạm giới hạn dự án được cấu hình cho kỳ này. Hãy điều chỉnh giới hạn hoặc chọn người phù hợp và xem lại tải trước khi phân công."
                 : result.status === "NO_ELIGIBLE_MEMBER"
                   ? "Dự án chưa có thành viên đang hoạt động được cấp quyền thực hiện kiểm thử để đề xuất."
                   : "Chưa có người phù hợp với kỹ năng đã xác nhận và mức sẵn sàng. Có thể chọn thủ công ở danh sách người phụ trách."}

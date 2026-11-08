@@ -50,7 +50,6 @@ Các prompt nghiệp vụ chỉ được gọi trong một lượt Agent do ngư
 | `tool_selection.py` | `tool_selection_instruction`, `tool_selection_correction_instruction` | `utils/huggingface.py` | Chọn một công cụ đã đăng ký theo schema |
 | `security.py` | `prompt_injection_detector`, `security_scan` | `core/security/guardrails.py`, `core/security/scanning.py` | Phân loại chỉ dẫn không tin cậy và rà nội dung an toàn |
 | `retrieval.py` | `cross_document_query`, `document_global_summary` | `services/inference.py` | Tách truy vấn đa tài liệu và tóm tắt tài liệu tri thức |
-| `evaluation.py` | `eval_judge`, `evaluation_harness_prompt` | `services/evaluation.py` | Chấm đầu ra trong harness đánh giá |
 
 ## Định dạng dùng chung
 

@@ -707,7 +707,7 @@ export default function ReportsPage({ project }) {
                             {
                               key: "severity",
                               label: "Mức độ",
-                              render: (item) => valueLabel(item.severity),
+                              render: (item) => item.severity,
                             },
                             { key: "count", label: "Số lượng" },
                           ]}

@@ -665,14 +665,6 @@ class AutomationRepository:
         ).sort([("version", DESCENDING), ("created_at", DESCENDING)]).to_list(length=limit)
         return [self._parse_project_blueprint(value) for value in values]
 
-    async def clear_provenance(self, automation_run_id: str) -> None:
-        await self._database.automation_source_facts.delete_many(
-            {"automation_run_id": automation_run_id}
-        )
-        await self._database.automation_derivation_receipts.delete_many(
-            {"automation_run_id": automation_run_id}
-        )
-
     async def save_receipt(self, receipt: DerivationReceipt) -> None:
         payload = receipt.model_dump(mode="python")
         payload["_id"] = payload.pop("receipt_id")
@@ -681,22 +673,6 @@ class AutomationRepository:
             {"automation_run_id": receipt.automation_run_id},
             {"$set": payload, "$setOnInsert": {"_id": receipt_id}},
             upsert=True,
-        )
-
-    async def complete_receipt(
-        self,
-        automation_run_id: str,
-        outcome: str,
-        output_evidence_refs: list[str],
-    ) -> None:
-        await self._database.automation_derivation_receipts.update_one(
-            {"automation_run_id": automation_run_id},
-            {
-                "$set": {
-                    "outcome": outcome,
-                    "output_evidence_refs": output_evidence_refs,
-                }
-            },
         )
 
     async def get_receipt(self, automation_run_id: str) -> DerivationReceipt | None:

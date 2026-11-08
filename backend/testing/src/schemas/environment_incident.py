@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.schemas.contracts.common import EnvironmentIncidentStatus
 
@@ -11,7 +11,7 @@ class EnvironmentIncidentCreate(BaseModel):
     environment_id: str = Field(min_length=1, max_length=200)
     build_id: str | None = Field(default=None, max_length=200)
     observed_at: datetime
-    severity: Literal["BLOCKER", "CRITICAL", "MAJOR", "MINOR"]
+    severity: str = Field(min_length=1, max_length=100)
     type: Literal[
         "UNAVAILABLE",
         "DEPLOYMENT_FAILURE",
@@ -29,6 +29,14 @@ class EnvironmentIncidentCreate(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list, max_length=1000)
     owner_id: str = Field(min_length=1, max_length=200)
 
+    @field_validator("severity")
+    @classmethod
+    def normalize_severity(cls, value):
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("incident_severity_required")
+        return value
+
     @model_validator(mode="after")
     def validate_observed_at(self):
         if self.observed_at.tzinfo is None:
@@ -38,11 +46,21 @@ class EnvironmentIncidentCreate(BaseModel):
 
 class EnvironmentIncidentPatch(BaseModel):
     expected_revision: int = Field(ge=1)
-    severity: Literal["BLOCKER", "CRITICAL", "MAJOR", "MINOR"] | None = None
+    severity: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, min_length=2, max_length=10000)
     affected_run_ids: list[str] | None = Field(default=None, max_length=1000)
     evidence_refs: list[str] | None = Field(default=None, max_length=1000)
     owner_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("severity")
+    @classmethod
+    def normalize_severity(cls, value):
+        if value is None:
+            return value
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("incident_severity_required")
+        return value
 
 
 class EnvironmentIncidentTransition(BaseModel):

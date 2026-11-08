@@ -767,7 +767,7 @@ export default function CompletionPage({ project }) {
                       {
                         key: "severity",
                         label: "Mức độ",
-                        render: (item) => valueLabel(item.severity),
+                        render: (item) => item.severity,
                       },
                     ]}
                   />

@@ -7,8 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from src.api.automation import router as automation_router
 from src.api.agents import router as agents_router
+from src.api.automation import router as automation_router
 from src.api.cache import router as cache_router
 from src.api.embedding import router as embedding_router
 from src.api.events import router as events
@@ -25,7 +25,6 @@ from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 from src.core.middleware import add_trace_id_header, trace_id_filter
 from src.schemas.agent import AgentRunStatus
 from src.services.agent_metrics import agentops
-from src.services.evaluation import evaluation
 from src.services.retrieval import initialize_retrieval
 
 logger.remove()
@@ -180,7 +179,6 @@ async def agent_status():
                 ]
             ),
         },
-        "evaluation": evaluation.get_dashboard_metrics(),
     }
 
 

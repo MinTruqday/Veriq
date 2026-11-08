@@ -5,9 +5,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+
 class RiskModel(BaseModel):
     probability_scale: list[dict[str, Any]] = Field(min_length=1, max_length=20)
     impact_scale: list[dict[str, Any]] = Field(min_length=1, max_length=20)
+    severity_scale: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
+    blocking_severities: list[str] = Field(default_factory=list, max_length=20)
+    critical_severities: list[str] = Field(default_factory=list, max_length=20)
     priority_scale: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     risk_exposure_formula: str = Field(min_length=1, max_length=1000)
     thresholds: list[dict[str, Any]] = Field(min_length=1, max_length=50)
@@ -57,15 +61,51 @@ class RiskModel(BaseModel):
             for node in ast.walk(tree)
         ):
             raise ValueError("INVALID_RISK_MODEL")
-        for scale in (self.probability_scale, self.impact_scale, self.priority_scale):
+        for scale in (
+            self.probability_scale,
+            self.impact_scale,
+            self.severity_scale,
+            self.priority_scale,
+        ):
             values = [item.get("value") for item in scale]
             if any(
                 not isinstance(value, (int, float)) or isinstance(value, bool) for value in values
             ) or len(set(values)) != len(values):
                 raise ValueError("INVALID_RISK_MODEL")
-        priority_labels = [str(item.get("label", "")).strip().casefold() for item in self.priority_scale]
+        priority_labels = [
+            " ".join(str(item.get("label", "")).split()).casefold()
+            for item in self.priority_scale
+        ]
         if any(not label for label in priority_labels) or len(set(priority_labels)) != len(priority_labels):
             raise ValueError("INVALID_RISK_MODEL")
+        severity_labels = [
+            " ".join(str(item.get("label", "")).split()) for item in self.severity_scale
+        ]
+        normalized_severity_labels = [label.casefold() for label in severity_labels]
+        if (
+            any(not label for label in severity_labels)
+            or len(set(normalized_severity_labels)) != len(normalized_severity_labels)
+        ):
+            raise ValueError("INVALID_RISK_MODEL")
+        if self.blocking_severities or self.critical_severities:
+            if not self.severity_scale:
+                raise ValueError("INVALID_RISK_MODEL")
+            normalized_blocking = [
+                " ".join(label.split()).casefold() for label in self.blocking_severities
+            ]
+            normalized_critical = [
+                " ".join(label.split()).casefold() for label in self.critical_severities
+            ]
+            configured_blocking = set(normalized_blocking)
+            configured_critical = set(normalized_critical)
+            if (
+                any(not label for label in normalized_blocking + normalized_critical)
+                or len(configured_blocking) != len(self.blocking_severities)
+                or len(configured_critical) != len(self.critical_severities)
+                or not configured_blocking.issubset(set(normalized_severity_labels))
+                or not configured_critical.issubset(set(normalized_severity_labels))
+            ):
+                raise ValueError("INVALID_RISK_MODEL")
         if any(
             not item.get("level")
             or not any(
@@ -162,6 +202,11 @@ def strategy_completeness(strategy):
         ("STRATEGY_TEST_LEVEL_MISSING", bool(strategy.get("test_levels"))),
         ("STRATEGY_TEST_TYPE_MISSING", bool(strategy.get("test_types"))),
         ("STRATEGY_RISK_MODEL_MISSING", bool(strategy.get("risk_model"))),
+        (
+            "STRATEGY_DEFECT_CLASSIFICATION_MISSING",
+            bool((strategy.get("risk_model") or {}).get("severity_scale"))
+            and bool((strategy.get("risk_model") or {}).get("priority_scale")),
+        ),
         ("STRATEGY_ENTRY_CRITERIA_MISSING", bool(strategy.get("entry_criteria_defaults"))),
         ("STRATEGY_EXIT_CRITERIA_MISSING", bool(strategy.get("exit_criteria_defaults"))),
         ("STRATEGY_SUSPENSION_CRITERIA_MISSING", bool(strategy.get("suspension_criteria"))),

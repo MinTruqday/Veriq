@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from src.core.common import get_project
+from src.modules.quality.services.defect_classification import defect_is_blocking
 from src.repositories.causal_analysis import causal_analysis_repository
 
 
@@ -97,7 +98,7 @@ async def suggest_candidates(project_id, user):
         if defect["_id"] in linked:
             continue
         reason_codes = []
-        if str(defect.get("severity", "")).upper() in set(['BLOCKER', 'CRITICAL']):
+        if defect_is_blocking(defect):
             reason_codes.append('SEVERITY_TRIGGER')
         if (
             int(defect.get("reopen_count", 0) or 0) >= reopen_threshold
