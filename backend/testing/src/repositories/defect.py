@@ -4,6 +4,56 @@ from src.core.database import database
 
 
 class DefectRepository:
+    async def migrate_legacy_severity_flags(self):
+        from datetime import datetime, timezone
+
+        severity = {
+            "$toLower": {
+                "$trim": {"input": {"$ifNull": ["$severity", ""]}}
+            }
+        }
+        blocking = {"$in": [severity, ["blocker", "critical"]]}
+        critical = {"$eq": [severity, "critical"]}
+        defects = await database.value.defects.update_many(
+            {
+                "$or": [
+                    {"severity_blocks_release": {"$exists": False}},
+                    {"severity_is_critical": {"$exists": False}},
+                ]
+            },
+            [{"$set": {
+                "severity_blocks_release": {
+                    "$ifNull": ["$severity_blocks_release", blocking]
+                },
+                "severity_is_critical": {
+                    "$ifNull": ["$severity_is_critical", critical]
+                },
+            }}],
+        )
+        incidents = await database.value.environment_incidents.update_many(
+            {"severity_blocks_release": {"$exists": False}},
+            [{"$set": {"severity_blocks_release": blocking}}],
+        )
+        migrated_count = defects.modified_count + incidents.modified_count
+        if migrated_count:
+            await database.value.audit_events.update_one(
+                {"_id": "MIG-configurable-severity-flags-v1"},
+                {"$setOnInsert": {
+                    "actor_id": "SYSTEM_MIGRATION",
+                    "action": "legacy_severity_flags_migrated",
+                    "entity_type": "DefectClassification",
+                    "entity_id": "*",
+                    "project_id": None,
+                    "created_at": datetime.now(timezone.utc),
+                    "details": {
+                        "defects": defects.modified_count,
+                        "environment_incidents": incidents.modified_count,
+                    },
+                }},
+                upsert=True,
+            )
+        return migrated_count
+
     async def find_test_result(self, result_id, project_id, status=None, session=None):
         query = {"_id": result_id, "project_id": project_id}
         if status is not None:

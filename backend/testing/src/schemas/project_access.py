@@ -6,12 +6,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 ProjectRoleId = str
-PERMISSION_ALIASES = {"defect.transition.developer": "defect.transition.resolve"}
 
 
 def canonical_permission(value):
-    permission = str(value or "").strip()
-    return PERMISSION_ALIASES.get(permission, permission)
+    return str(value or "").strip()
 
 
 def _normalize_role(value):

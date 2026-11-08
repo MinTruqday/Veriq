@@ -165,24 +165,23 @@ export default function FormalReviewPanel({
         {
           name: "severity",
           label: "Mức độ",
-          options: ["MAJOR", "MINOR", "QUESTION", "IMPROVEMENT"].map((value) => ({
-            value,
-            label: valueLabel(value),
-          })),
+          required: true,
+          placeholder: "Nhập mức độ theo quy ước dự án",
         },
         {
           name: "category",
           label: "Nhóm",
+          required: true,
+          placeholder: "Nhập nhóm phát hiện",
+        },
+        {
+          name: "blocks_acceptance",
+          label: "Chặn chấp thuận phiên rà soát",
+          initialValue: "false",
           options: [
-            "CORRECTNESS",
-            "COMPLETENESS",
-            "CONSISTENCY",
-            "TESTABILITY",
-            "TRACEABILITY",
-            "SECURITY",
-            "PERFORMANCE",
-            "MAINTAINABILITY",
-          ].map((value) => ({ value, label: valueLabel(value) })),
+            { value: "false", label: "Không" },
+            { value: "true", label: "Có" },
+          ],
         },
         { name: "description", label: "Nội dung", required: true, multiline: true },
         {
@@ -197,6 +196,7 @@ export default function FormalReviewPanel({
     try {
       await testingApi.createReviewFinding(selected._id, {
         ...answer,
+        blocks_acceptance: answer.blocks_acceptance === "true",
         owner_id: answer.owner_id || null,
         due_at: answer.due_at ? new Date(answer.due_at).toISOString() : null,
         anchor: {},
@@ -559,9 +559,9 @@ export default function FormalReviewPanel({
                 {selected.metrics.finding_count || 0}
               </p>
               <p>
-                <span className="field-label">Phát hiện nghiêm trọng</span>
+                <span className="field-label">Phát hiện chặn chấp thuận</span>
                 <br />
-                {selected.metrics.major_count || 0}
+                {selected.metrics.blocking_count ?? selected.metrics.major_count ?? 0}
               </p>
               <p>
                 <span className="field-label">Chưa xử lý</span>

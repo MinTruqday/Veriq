@@ -102,13 +102,7 @@ class EnvironmentIncidentRepository:
             {
                 "project_id": project_id,
                 "environment_id": environment_id,
-                "$or": [
-                    {"severity_blocks_release": True},
-                    {
-                        "severity_blocks_release": {"$exists": False},
-                        "severity": {"$in": ["BLOCKER", "CRITICAL", "blocker", "critical"]},
-                    },
-                ],
+                "severity_blocks_release": True,
                 "status": {"$in": statuses},
                 "_id": {"$ne": incident_id},
             }

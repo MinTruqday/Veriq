@@ -73,12 +73,8 @@ async def resolve_priority_classification(project_id, priority):
 
 
 def defect_is_blocking(defect):
-    if "severity_blocks_release" in defect:
-        return bool(defect.get("severity_blocks_release"))
-    return str(defect.get("severity") or "").casefold() in {"blocker", "critical"}
+    return bool(defect.get("severity_blocks_release"))
 
 
 def defect_is_critical(defect):
-    if "severity_is_critical" in defect:
-        return bool(defect.get("severity_is_critical"))
-    return str(defect.get("severity") or "").casefold() == "critical"
+    return bool(defect.get("severity_is_critical"))

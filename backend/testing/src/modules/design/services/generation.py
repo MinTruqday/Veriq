@@ -449,8 +449,8 @@ async def generate_requirement_drafts(
                 drafts.append(
                     ScenarioCreate(
                         **common,
-                        priority=version.get("priority") or "medium",
-                        risk=version.get("risk") or "medium",
+                        priority=version.get("priority") or "unassessed",
+                        risk=version.get("risk") or "unassessed",
                         category=item.category,
                         objective=item.objective,
                     )

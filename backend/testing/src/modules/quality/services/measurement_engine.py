@@ -301,13 +301,7 @@ async def compute_metric(project_id, release_id, key):
         rows = await measurement_repository.list_defect_dates(
             {
                 **defects,
-                "$or": [
-                    {"severity_is_critical": True},
-                    {
-                        "severity_is_critical": {"$exists": False},
-                        "severity": {"$in": ["critical", "CRITICAL"]},
-                    },
-                ],
+                "severity_is_critical": True,
                 "status": {"$nin": ['CLOSED', 'REJECTED']},
             },
             {"created_at": 1},

@@ -1,9 +1,33 @@
+from datetime import datetime, timezone
+
 from pymongo import ReturnDocument
 
 from src.core.database import database
 
 
 class ReviewRepository:
+    async def migrate_legacy_finding_blocking(self):
+        timestamp = datetime.now(timezone.utc)
+        result = await database.value.review_findings.update_many(
+            {"blocks_acceptance": {"$exists": False}},
+            [{"$set": {"blocks_acceptance": {"$eq": ["$severity", "MAJOR"]}}}],
+        )
+        if result.modified_count:
+            await database.value.audit_events.update_one(
+                {"_id": "MIG-review-finding-blocking-v1"},
+                {"$setOnInsert": {
+                    "actor_id": "SYSTEM_MIGRATION",
+                    "action": "review_finding_blocking_policy_migrated",
+                    "entity_type": "ReviewFinding",
+                    "entity_id": "*",
+                    "project_id": None,
+                    "created_at": timestamp,
+                    "details": {"migrated_count": result.modified_count},
+                }},
+                upsert=True,
+            )
+        return result.modified_count
+
     @property
     def comments(self):
         return database.value.review_comments

@@ -4,7 +4,106 @@ from src.core.database import database
 from src.schemas.project_access import ProjectAccessControl
 
 
+LEGACY_PERMISSION_RENAMES = {
+    "defect.transition.developer": "defect.transition.resolve"
+}
+
+
+def _canonicalize_legacy_permissions(access):
+    capabilities = []
+    capability_names = set()
+    renamed_capabilities = 0
+    for item in sorted(
+        access.capabilities,
+        key=lambda value: value.name in LEGACY_PERMISSION_RENAMES,
+    ):
+        target = LEGACY_PERMISSION_RENAMES.get(item.name, item.name)
+        renamed_capabilities += target != item.name
+        if target in capability_names:
+            continue
+        capability_names.add(target)
+        capabilities.append(
+            item.model_copy(update={"name": target}) if target != item.name else item
+        )
+    role_grants = [
+        grant.model_copy(update={
+            "permissions": sorted({
+                LEGACY_PERMISSION_RENAMES.get(value, value)
+                for value in grant.permissions
+            })
+        })
+        for grant in access.role_grants
+    ]
+    setting_grants = [
+        grant.model_copy(update={
+            "permissions": sorted({
+                LEGACY_PERMISSION_RENAMES.get(value, value)
+                for value in grant.permissions
+            })
+        })
+        for grant in access.setting_grants
+    ]
+    changed = bool(
+        renamed_capabilities
+        or any(
+            grant.permissions != original.permissions
+            for grant, original in zip(role_grants, access.role_grants)
+        )
+        or any(
+            grant.permissions != original.permissions
+            for grant, original in zip(setting_grants, access.setting_grants)
+        )
+    )
+    return access.model_copy(update={
+        "capabilities": capabilities,
+        "role_grants": role_grants,
+        "setting_grants": setting_grants,
+    }), renamed_capabilities, changed
+
+
 class ProjectAccessRepository:
+    async def migrate_legacy_permission_names(self):
+        from src.core.auth import access_policy
+
+        while True:
+            document = await database.value.project_access_control.find_one({"_id": "active"})
+            access = ProjectAccessControl.model_validate(document)
+            canonical, renamed_capabilities, changed = _canonicalize_legacy_permissions(access)
+            if not changed:
+                access_policy.cache_clear()
+                return
+            updated = canonical.model_copy(update={
+                "revision": access.revision + 1,
+            })
+            timestamp = datetime.now(timezone.utc)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    result = await database.value.project_access_control.replace_one(
+                        {"_id": "active", "revision": access.revision},
+                        {**document, **updated.model_dump(), "updated_at": timestamp},
+                        session=session,
+                    )
+                    if result.modified_count:
+                        await database.value.audit_events.update_one(
+                            {"_id": f"MIG-canonical-project-permissions-{updated.revision}"},
+                            {"$setOnInsert": {
+                                "actor_id": "SYSTEM_MIGRATION",
+                                "action": "project_permission_names_canonicalized",
+                                "entity_type": "ProjectAccessControl",
+                                "entity_id": "active",
+                                "project_id": None,
+                                "created_at": timestamp,
+                                "details": {
+                                    "revision": updated.revision,
+                                    "legacy_capabilities_renamed": renamed_capabilities,
+                                },
+                            }},
+                            upsert=True,
+                            session=session,
+                        )
+                        access_policy.cache_clear()
+                        return
+
     async def ensure_private_defect_capability(self):
         from src.core.auth import ROLE_NEUTRAL_PERMISSIONS, access_policy
         from src.schemas.project_access import ProjectCapability

@@ -217,7 +217,7 @@ def strategy_completeness(strategy):
         ),
         ("STRATEGY_QUALITY_OBJECTIVE_MISSING", bool(strategy.get("quality_objectives"))),
     )
-    findings = [{"code": code, "severity": "MAJOR"} for code, passed in checks if not passed]
+    findings = [{"code": code, "blocks_review": True} for code, passed in checks if not passed]
     return {"ready_for_review": not findings, "findings": findings}
 
 

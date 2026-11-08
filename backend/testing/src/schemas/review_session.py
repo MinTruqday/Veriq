@@ -26,19 +26,6 @@ ReviewType = Literal[
     "IMPACT_REVIEW",
     "COMPLETION_REVIEW",
 ]
-FindingSeverity = Literal["MAJOR", "MINOR", "QUESTION", "IMPROVEMENT"]
-FindingCategory = Literal[
-    "CORRECTNESS",
-    "COMPLETENESS",
-    "CONSISTENCY",
-    "TESTABILITY",
-    "TRACEABILITY",
-    "SECURITY",
-    "PERFORMANCE",
-    "MAINTAINABILITY",
-]
-
-
 class ReviewSessionCreate(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
     review_type: ReviewType
@@ -98,13 +85,22 @@ class ReviewSessionPatch(BaseModel):
 
 
 class ReviewFindingCreate(BaseModel):
-    category: FindingCategory
-    severity: FindingSeverity
+    category: str = Field(min_length=1, max_length=80)
+    severity: str = Field(min_length=1, max_length=80)
+    blocks_acceptance: bool = False
     anchor: dict[str, Any] = Field(default_factory=dict)
     description: str = Field(min_length=2, max_length=5000)
     suggested_action: str = Field(default="", max_length=5000)
     owner_id: str | None = Field(default=None, max_length=200)
     due_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def normalize_taxonomy_labels(self):
+        self.category = " ".join(self.category.split())
+        self.severity = " ".join(self.severity.split())
+        if not self.category or not self.severity:
+            raise ValueError("REVIEW_FINDING_LABEL_REQUIRED")
+        return self
 
 
 class ReviewFindingPatch(BaseModel):

@@ -230,16 +230,22 @@ async def review_metrics(review):
         review["_id"], 1000
     )
     timestamp = now()
+    open_statuses = {"RESOLVED", "VERIFIED"}
     return {
         "finding_count": len(findings),
-        "major_count": sum(
-            1 for item in findings if item["severity"] == 'MAJOR'
+        "blocking_count": sum(
+            1 for item in findings if item.get("blocks_acceptance") is True
+        ),
+        "open_blocking_count": sum(
+            1
+            for item in findings
+            if item.get("blocks_acceptance") is True
+            and item["status"] not in open_statuses
         ),
         "open_count": sum(
             1
             for item in findings
-            if item["status"]
-            not in {'RESOLVED', 'VERIFIED'}
+            if item["status"] not in open_statuses
         ),
         "verified_count": sum(
             1 for item in findings if item["status"] == 'VERIFIED'
@@ -263,26 +269,12 @@ async def record_review_decision(review_id, payload, user):
     metrics = await review_metrics(review)
     if (
         payload.decision in ['ACCEPTED', 'ACCEPTED_WITH_ACTIONS']
-        and metrics["major_count"]
-        and metrics["open_count"]
+        and metrics["open_blocking_count"]
     ):
-        open_major = await review_repository.count_findings(
-            {
-                "review_session_id": review_id,
-                "severity": 'MAJOR',
-                "status": {
-                    "$nin": [
-                        'RESOLVED',
-                        'VERIFIED',
-                    ]
-                },
-            }
+        raise HTTPException(
+            status_code=409,
+            detail={"code": 'OPEN_BLOCKING_REVIEW_FINDINGS'},
         )
-        if open_major:
-            raise HTTPException(
-                status_code=409,
-                detail={"code": 'OPEN_MAJOR_REVIEW_FINDINGS'},
-            )
     timestamp = now()
     value = await review_repository.update_review(
         {

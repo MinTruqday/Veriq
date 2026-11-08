@@ -32,6 +32,8 @@ from src.modules.requirements.services.requirement_document_worker import (
     stop_requirement_document_parse_worker,
 )
 from src.repositories.project_access import project_access_repository
+from src.repositories.defect import defect_repository
+from src.repositories.review import review_repository
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await connect_database()
     await project_access_repository.migrate_legacy()
+    await project_access_repository.migrate_legacy_permission_names()
+    await defect_repository.migrate_legacy_severity_flags()
+    await review_repository.migrate_legacy_finding_blocking()
     await project_access_repository.ensure_reporting_capabilities()
     await project_access_repository.ensure_read_only_comment_capabilities()
     await project_access_repository.ensure_private_defect_capability()

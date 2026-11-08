@@ -23,6 +23,12 @@ export default function ReviewFindingsTable({
           minWidth: 128,
           render: (item) => <StatusPill value={item.severity} />,
         },
+        {
+          key: "blocks_acceptance",
+          label: "Ảnh hưởng quyết định",
+          minWidth: 150,
+          render: (item) => (item.blocks_acceptance ? "Chặn chấp thuận" : "Không chặn chấp thuận"),
+        },
         { key: "category", label: "Nhóm", render: (item) => valueLabel(item.category) },
         { key: "description", label: "Nội dung", minWidth: 280 },
         {
