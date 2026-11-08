@@ -30,6 +30,7 @@ RUN groupadd --gid 10001 appuser && useradd --uid 10001 --gid appuser -m -s /bin
 RUN mkdir -p /home/appuser/.cache/huggingface /home/appuser/.cache/tmp && chown -R appuser:appuser /home/appuser/.cache
 
 COPY --chown=appuser:appuser ai/src/ ./src/
+COPY --chown=appuser:appuser shared/ ./shared/
 
 USER 10001:10001
 HEALTHCHECK --interval=30s --timeout=20s --start-period=90s --retries=3 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/san-sang', timeout=15)"]

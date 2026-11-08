@@ -1,7 +1,4 @@
-import json
 from copy import deepcopy
-from functools import lru_cache
-from pathlib import Path
 
 from fastapi import HTTPException
 from pymongo import ReturnDocument, UpdateOne
@@ -17,14 +14,13 @@ from src.core.common import (
     resolve_user_reference,
 )
 from src.core.database import database
+from src.core.project_settings import default_project_settings
 from src.repositories.project import project_repository
 from src.repositories.work_item import work_item_repository
 
 
-@lru_cache(maxsize=1)
 def _default_planning_settings():
-    path = Path(__file__).resolve().parents[3] / "config" / "default_work_item_planning.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    return default_project_settings()["work_item_planning"]
 
 
 def _default_completed_statuses():

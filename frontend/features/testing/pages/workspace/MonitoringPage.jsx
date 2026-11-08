@@ -10,7 +10,6 @@ import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
   ErrorState,
   InitialLoadState,
-  Metric,
   Panel,
   ProjectCrumb,
   WorkspacePage,

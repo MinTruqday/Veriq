@@ -3,6 +3,7 @@ import json
 from datetime import timedelta
 
 from fastapi import HTTPException
+from shared.completeness import COMPLETENESS_AREAS
 
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.common import audit, get_project, now
@@ -14,17 +15,9 @@ from src.modules.projects.services.project_complexity import (
     get_project_complexity_scope,
 )
 
-
 RESULT_TYPE = "PROJECT_COMPLETENESS_REVIEW"
 BATCH_SIZE = 60
 MAXIMUM_CHUNKS = 1200
-AREAS = {
-    "SCOPE", "ACTORS_PERMISSIONS", "FLOWS_EXCEPTIONS", "BUSINESS_RULES",
-    "ACCEPTANCE_CRITERIA", "DATA", "INTEGRATIONS", "NON_FUNCTIONAL",
-    "ENVIRONMENT", "TEST_READINESS", "CHANGE_RELEASE", "SOURCE_QUALITY",
-}
-
-
 def _fail(code, status=409, **details):
     raise HTTPException(status_code=status, detail={"code": code, **details})
 
@@ -63,7 +56,9 @@ def _validated_batch(result, evidence):
         _fail("PROJECT_COMPLETENESS_OUTPUT_INVALID", 502)
     suggestion = suggestions[0]
     coverage = suggestion.get("coverage") or []
-    if len(coverage) != len(AREAS) or {item.get("area") for item in coverage} != AREAS:
+    if len(coverage) != len(COMPLETENESS_AREAS) or {
+        item.get("area") for item in coverage
+    } != set(COMPLETENESS_AREAS):
         _fail("PROJECT_COMPLETENESS_COVERAGE_INVALID", 502)
     sources = {item["artifact_version_id"]: item for item in evidence}
     citations = []

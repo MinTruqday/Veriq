@@ -7,14 +7,14 @@ class SkillProfileSourceBlock(BaseModel):
 
     block_id: str = Field(min_length=1, max_length=300)
     page_no: int | None = Field(default=None, ge=1)
-    text: str = Field(min_length=1, max_length=3000)
+    text: str = Field(min_length=1)
 
 
 class SkillProfileExtractionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     project_id: str = Field(min_length=1, max_length=128)
-    source_blocks: list[SkillProfileSourceBlock] = Field(min_length=1, max_length=500)
+    source_blocks: list[SkillProfileSourceBlock] = Field(min_length=1)
 
     @model_validator(mode="after")
     def require_unique_source_block_ids(self):

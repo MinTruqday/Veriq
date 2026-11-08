@@ -40,7 +40,6 @@ import {
 } from "@/shared/components/layout/navigation";
 import { testingApi } from "../../services/testing.service";
 import { docText, messageOf, valueLabel } from "../../lib/testing";
-import DocumentEditor from "../../editor/DocumentEditor";
 import ApiArtifactsPanel from "./test-design/ApiArtifactsPanel";
 import DataSetsPanel from "./test-design/DataSetsPanel";
 import ScenariosPanel from "./test-design/ScenariosPanel";
@@ -465,7 +464,6 @@ export default function TestDesignPage({ project, workspaceView }) {
         `${item.requirement_key} · ${item.current_version?.title || "Yêu cầu"}`,
       ]),
   );
-  const selectedRequirementVersion = selectedRequirementRecord?.current_version;
   const requirementAgentRun = selectedRequirement
     ? agentRuns.find(
         (run) => run.trigger === "MANUAL" && run.target_artifact_ids?.includes(selectedRequirement),

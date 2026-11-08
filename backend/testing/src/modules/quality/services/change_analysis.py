@@ -101,7 +101,7 @@ def semantic_changes(before, after):
     ]
 
 
-def classify_test_impact(test_version, changes, direct_trace):
+def classify_test_impact(test_version, direct_trace):
     
     classification = (
         'POTENTIALLY_AFFECTED'

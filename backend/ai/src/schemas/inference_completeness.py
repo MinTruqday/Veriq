@@ -1,13 +1,7 @@
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-
-COMPLETENESS_AREAS = (
-    "SCOPE", "ACTORS_PERMISSIONS", "FLOWS_EXCEPTIONS", "BUSINESS_RULES",
-    "ACCEPTANCE_CRITERIA", "DATA", "INTEGRATIONS", "NON_FUNCTIONAL",
-    "ENVIRONMENT", "TEST_READINESS", "CHANGE_RELEASE", "SOURCE_QUALITY",
-)
+from shared.completeness import COMPLETENESS_AREA, COMPLETENESS_AREAS
 
 
 class CompletenessQuoteOutput(BaseModel):
@@ -20,11 +14,7 @@ class CompletenessQuoteOutput(BaseModel):
 class CompletenessFindingOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    area: Literal[
-        "SCOPE", "ACTORS_PERMISSIONS", "FLOWS_EXCEPTIONS", "BUSINESS_RULES",
-        "ACCEPTANCE_CRITERIA", "DATA", "INTEGRATIONS", "NON_FUNCTIONAL",
-        "ENVIRONMENT", "TEST_READINESS", "CHANGE_RELEASE", "SOURCE_QUALITY",
-    ]
+    area: COMPLETENESS_AREA
     kind: Literal["NEEDS_DETAIL", "NEEDS_SOURCE", "POTENTIAL_CONFLICT", "QUESTION"]
     title: str = Field(min_length=2, max_length=300)
     rationale: str = Field(min_length=2, max_length=1500)
@@ -37,11 +27,7 @@ class CompletenessFindingOutput(BaseModel):
 class CompletenessCoverageOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    area: Literal[
-        "SCOPE", "ACTORS_PERMISSIONS", "FLOWS_EXCEPTIONS", "BUSINESS_RULES",
-        "ACCEPTANCE_CRITERIA", "DATA", "INTEGRATIONS", "NON_FUNCTIONAL",
-        "ENVIRONMENT", "TEST_READINESS", "CHANGE_RELEASE", "SOURCE_QUALITY",
-    ]
+    area: COMPLETENESS_AREA
     status: Literal["EVIDENCE_FOUND", "NEEDS_CONFIRMATION", "NOT_APPLICABLE"]
     explanation: str = Field(min_length=2, max_length=1200)
     evidence_quotes: list[CompletenessQuoteOutput] = Field(default_factory=list, max_length=4)
@@ -52,7 +38,9 @@ class ProjectCompletenessSuggestionOutput(BaseModel):
 
     summary: str = Field(min_length=2, max_length=2500)
     findings: list[CompletenessFindingOutput] = Field(default_factory=list, max_length=30)
-    coverage: list[CompletenessCoverageOutput] = Field(min_length=12, max_length=12)
+    coverage: list[CompletenessCoverageOutput] = Field(
+        min_length=len(COMPLETENESS_AREAS), max_length=len(COMPLETENESS_AREAS)
+    )
 
     @model_validator(mode="after")
     def validate_area_coverage(self):

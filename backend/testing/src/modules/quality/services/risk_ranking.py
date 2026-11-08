@@ -1,7 +1,3 @@
-import json
-from functools import lru_cache
-from pathlib import Path
-
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
@@ -16,21 +12,6 @@ from src.schemas.contracts.design import (
 
 
 
-
-
-@lru_cache(maxsize=1)
-def _default_ranking_weights():
-    path = Path(__file__).resolve().parents[3] / "config" / "risk_ranking_weights.json"
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _resolve_ranking_weights(risk_model):
-    defaults = _default_ranking_weights()
-    configured = risk_model.get("ranking_weights") or {}
-    return {
-        key: configured.get(key) if configured.get(key) is not None else default
-        for key, default in defaults.items()
-    }
 
 
 class RiskRankingService:
@@ -162,35 +143,25 @@ class RiskRankingService:
         }
 
     @staticmethod
-    def _score(
-        test_case: dict,
-        version: dict,
-        failure_count: int,
-        assessment_scores: dict,
-        ranking_weights: dict,
-    ):
-        risk = assessment_scores["risk"].get(
-            str(version.get("risk", "")).strip().casefold(),
-            ranking_weights["unassessed_score"],
-        )
+    def _score(test_case: dict, version: dict, failure_count: int, assessment_scores: dict):
+        risk = assessment_scores["risk"].get(str(version.get("risk", "")).strip().casefold(), 0.5)
         priority = assessment_scores["priority"].get(
-            str(version.get("priority", "")).strip().casefold(),
-            ranking_weights["unassessed_score"],
+            str(version.get("priority", "")).strip().casefold(), 0.5
         )
         stale = (
-            ranking_weights["staleness_penalty"]
+            0.2
             if test_case.get("status") == 'NEEDS_UPDATE'
             else 0
         )
         failures = min(
-            ranking_weights["failure_penalty_cap"],
-            failure_count * ranking_weights["failure_penalty_per_occurrence"],
+            0.4,
+            failure_count * 0.1,
         )
         return round(
             min(
-                ranking_weights["maximum_score"],
-                risk * ranking_weights["risk_weight"]
-                + priority * ranking_weights["priority_weight"]
+                1,
+                risk * 0.45
+                + priority * 0.25
                 + stale
                 + failures,
             ),
@@ -209,7 +180,6 @@ class RiskRankingService:
                 risk_model.get("priority_scale") or [], "label", "value"
             ),
         }
-        ranking_weights = _resolve_ranking_weights(risk_model)
         cases = await analysis_repository.list_current_test_cases(
             project_id,
             'OBSOLETE',
@@ -240,7 +210,7 @@ class RiskRankingService:
                     "priority": version.get("priority", ""),
                     "failure_count": failure_count,
                     "score": RiskRankingService._score(
-                        case, version, failure_count, assessment_scores, ranking_weights
+                        case, version, failure_count, assessment_scores
                     ),
                     "included": True,
                     "reason_codes": list(['RISK', 'PRIORITY'])

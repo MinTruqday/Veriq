@@ -579,7 +579,7 @@ export default function FormalReviewPanel({
           <ReviewFindingsTable
             findings={selected.findings}
             canAssign={() => !readOnly && can("reviewsession.finding.manage")}
-            canResolve={(item) => !readOnly && can("reviewsession.finding.manage")}
+            canResolve={() => !readOnly && can("reviewsession.finding.manage")}
             canVerify={(item) =>
               !readOnly &&
               can("reviewsession.finding.manage") &&

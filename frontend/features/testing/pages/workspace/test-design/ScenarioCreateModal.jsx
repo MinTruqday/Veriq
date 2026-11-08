@@ -1,4 +1,3 @@
-import { valueLabel } from "../../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 

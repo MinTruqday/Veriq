@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Archive, ClipboardCheck, Copy, Eye, Pencil, Send, Check } from "lucide-react";
+import { Archive, ClipboardCheck, Copy, Pencil, Send, Check } from "lucide-react";
 import DeviceMatricesPanel from "../../components/DeviceMatricesPanel";
 import AutomationExecutionPanel from "../../components/AutomationExecutionPanel";
 import AgentRunPanel from "../../components/AgentRunPanel";

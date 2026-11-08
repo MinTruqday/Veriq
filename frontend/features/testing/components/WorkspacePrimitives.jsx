@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { hasNavigationPermission } from "@/shared/components/layout/navigation";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
-import { messageOf, statusLabel, valueLabel } from "../lib/testing";
+import { messageOf, valueLabel } from "../lib/testing";
 
 export function useActionDialog() {
   const titleId = useId();

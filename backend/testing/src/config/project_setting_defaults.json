@@ -1,9 +1,0 @@
-{
-  "impact_confidence_threshold": 0.75,
-  "testcase_duplicate_threshold": 0.72,
-  "trace_recovery_minimum_confidence": 0.18,
-  "completion_open_blocker_threshold": 0,
-  "rca_reopen_threshold": 2,
-  "rca_duplicate_threshold": 3,
-  "read_after_archive_policy": "ALLOW_READ"
-}

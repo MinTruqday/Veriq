@@ -333,7 +333,7 @@ async def create_impact_analysis_record(
         semantic_score = semantic_candidate_score(
             requirement_text, str(version.get("plain_text_projection", ""))
         )
-        item = classify_test_impact(version, change_set["changes"], direct_trace)
+        item = classify_test_impact(version, direct_trace)
         if not direct_trace and semantic_score >= 0.2:
             item["classification"] = 'POTENTIALLY_AFFECTED'
             item["confidence"] = max(

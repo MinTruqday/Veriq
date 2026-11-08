@@ -84,10 +84,6 @@ const aiCapabilityLabels = {
   lessons_learned_clustering: "Nhóm bài học kinh nghiệm",
 };
 
-function aiCapabilityLabel(value) {
-  return aiCapabilityLabels[value] || valueLabel(value);
-}
-
 function reportActivityActionLabel(value) {
   const rawValue = String(value || "");
   const label = valueLabel(value);

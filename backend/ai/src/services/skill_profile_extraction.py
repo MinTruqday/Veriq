@@ -3,8 +3,9 @@ import unicodedata
 
 from fastapi import HTTPException
 
-from src.core.text_matching import source_quote_spans
+from src.core.infrastructure.configuration import settings
 from src.core.security.guardrails import guardrails_engine
+from src.core.text_matching import source_quote_spans
 from src.prompts.skill_profile import build_skill_profile_extraction_prompt
 from src.schemas.inference_skill_profile import (
     ExtractedSkillCandidate,
@@ -27,8 +28,15 @@ async def extract_skill_profile_candidates(
     request: SkillProfileExtractionRequest,
 ) -> SkillProfileExtractionOutput:
     source_blocks = [item.model_dump() for item in request.source_blocks]
+    if len(source_blocks) > settings.CV_MAX_SOURCE_BLOCKS:
+        raise HTTPException(status_code=413, detail={"code": "CV_SOURCE_BLOCKS_LIMIT_EXCEEDED"})
+    if any(
+        len(item["text"]) > settings.CV_SOURCE_BLOCK_CHARACTERS
+        for item in source_blocks
+    ):
+        raise HTTPException(status_code=413, detail={"code": "CV_SOURCE_BLOCK_LIMIT_EXCEEDED"})
     total_characters = sum(len(item["text"]) for item in source_blocks)
-    if total_characters > 100_000:
+    if total_characters > settings.CV_MAX_EXTRACTED_CHARACTERS:
         raise HTTPException(status_code=413, detail={"code": "CV_TEXT_LIMIT_EXCEEDED"})
 
     inspection = await guardrails_engine.async_inspect_input(

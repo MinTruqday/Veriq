@@ -49,43 +49,6 @@ export default function RiskModelEditor({ value, onChange }) {
           onChange={(event) => updateScale(value, onChange, "priority_scale", event.target.value)}
         />
       </label>
-      <fieldset className="grid min-w-0 gap-3 rounded-control border border-border p-3 md:col-span-2 md:grid-cols-3">
-        <legend className="px-2 text-sm font-semibold">Trọng số xếp hạng hồi quy</legend>
-        {[
-          ["risk_weight", "Trọng số rủi ro"],
-          ["priority_weight", "Trọng số ưu tiên"],
-          ["unassessed_score", "Điểm khi chưa có mức đánh giá"],
-          ["staleness_penalty", "Điểm cộng khi ca cần cập nhật"],
-          ["failure_penalty_per_occurrence", "Điểm cộng mỗi lần thất bại"],
-          ["failure_penalty_cap", "Giới hạn điểm do thất bại"],
-          ["maximum_score", "Điểm tối đa"],
-        ].map(([key, label]) => (
-          <label className="field-label" key={key}>
-            {label}
-            <input
-              className="apple-input mt-2 w-full min-w-0"
-              type="number"
-              min={key === "maximum_score" ? "0.000001" : "0"}
-              max="1"
-              step="0.01"
-              value={value.ranking_weights?.[key] ?? ""}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                onChange({
-                  ...value,
-                  ranking_weights: {
-                    ...(value.ranking_weights || {}),
-                    [key]: nextValue === "" ? null : Number(nextValue),
-                  },
-                });
-              }}
-            />
-          </label>
-        ))}
-        <p className="text-sm text-ink-muted md:col-span-3">
-          Để trống để dùng cấu hình mặc định của hệ thống. Có thể chỉnh riêng cho chiến lược này.
-        </p>
-      </fieldset>
       {[
         ["blocking_severities", "Mức độ lỗi chặn phát hành"],
         ["critical_severities", "Mức độ lỗi nghiêm trọng cần chủ sở hữu rủi ro"],

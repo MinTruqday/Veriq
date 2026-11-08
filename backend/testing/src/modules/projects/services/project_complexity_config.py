@@ -1,17 +1,12 @@
-import json
 import re
-from functools import lru_cache
-from pathlib import Path
 
 from fastapi import HTTPException
 
-from src.core.project_settings import validate_project_settings
+from src.core.project_settings import default_project_settings, validate_project_settings
 
 
-@lru_cache(maxsize=1)
 def _default_dimensions():
-    path = Path(__file__).resolve().parents[3] / "config" / "project_complexity_dimensions.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    return default_project_settings()["complexity_dimensions"]
 
 
 def resolve_project_complexity_dimensions(settings):

@@ -4,12 +4,14 @@ from typing import Any
 
 from loguru import logger
 
+from src.core.infrastructure.configuration import settings
+
 
 class SemanticCache:
     def __init__(self):
-        self.similarity_minimum = 0.9
-        self.ttl_seconds = 86400
-        self.maximum_entries = 512
+        self.similarity_minimum = settings.SEMANTIC_CACHE_SIMILARITY_THRESHOLD
+        self.ttl_seconds = settings.SEMANTIC_CACHE_TTL_SECONDS
+        self.maximum_entries = settings.SEMANTIC_CACHE_MAXIMUM_ENTRIES
         self._entries: dict[str, dict[str, Any]] = {}
 
     @staticmethod

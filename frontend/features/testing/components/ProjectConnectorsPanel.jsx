@@ -18,7 +18,7 @@ import {
   ModalHeader,
   ModalTitle,
 } from "@/shared/components/ui/Modal";
-import StructuredValueEditor, { StructuredValueView } from "./StructuredValueEditor";
+import StructuredValueEditor from "./StructuredValueEditor";
 
 const providers = [
   ["jira", "Jira"],
