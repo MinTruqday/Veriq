@@ -70,6 +70,24 @@ def plan_snapshot_hash(plan):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+async def _validate_assignment_capacity(plan, plan_id, session):
+    from src.modules.projects.services.skill_profiles import (
+        _check_test_plan_assignment_capacity,
+    )
+
+    await _check_test_plan_assignment_capacity(
+        plan["project_id"],
+        plan.get("schedule") or {},
+        {
+            item.get("user_id")
+            for item in (plan.get("estimation") or {}).get("effort_allocations") or []
+            if item.get("user_id")
+        },
+        session=session,
+        exclude_plan_id=plan_id,
+    )
+
+
 def _legacy_plan_snapshot_hash(snapshot):
     canonical_snapshot = {
         field: snapshot.get(field) for field in LEGACY_PLAN_SNAPSHOT_FIELDS
@@ -528,21 +546,7 @@ async def submit_test_plan_record(plan_id, payload, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
-            from src.modules.projects.services.skill_profiles import (
-                _check_test_plan_assignment_capacity,
-            )
-
-            await _check_test_plan_assignment_capacity(
-                plan["project_id"],
-                plan.get("schedule") or {},
-                {
-                    item.get("user_id")
-                    for item in (plan.get("estimation") or {}).get("effort_allocations") or []
-                    if item.get("user_id")
-                },
-                session=session,
-                exclude_plan_id=plan_id,
-            )
+            await _validate_assignment_capacity(plan, plan_id, session)
             updated = await optimistic_patch(
                 "test_plans",
                 plan_id,
@@ -615,21 +619,7 @@ async def approve_test_plan_record(plan_id, payload, user):
 
     async with await database.client.start_session() as session:
         async with session.start_transaction():
-            from src.modules.projects.services.skill_profiles import (
-                _check_test_plan_assignment_capacity,
-            )
-
-            await _check_test_plan_assignment_capacity(
-                plan["project_id"],
-                plan.get("schedule") or {},
-                {
-                    item.get("user_id")
-                    for item in (plan.get("estimation") or {}).get("effort_allocations") or []
-                    if item.get("user_id")
-                },
-                session=session,
-                exclude_plan_id=plan_id,
-            )
+            await _validate_assignment_capacity(plan, plan_id, session)
             updated = await optimistic_patch(
                 "test_plans",
                 plan_id,

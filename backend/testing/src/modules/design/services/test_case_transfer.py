@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from src.core.auth import CurrentUser
 from src.core.common import audit, envelope, get_project, get_project_entity, new_id, now, plain_text
+from src.core.project_settings import resolve_project_settings
 from src.core.database import database
 from src.repositories.test_design import test_design_repository
 from src.repositories.analysis import analysis_repository
@@ -96,7 +97,10 @@ async def store_test_import_preview(
 
 async def recover_trace_links(project_id: str, user: CurrentUser):
     
-    await get_project(project_id, user, "trace.recover")
+    project = await get_project(project_id, user, "trace.recover")
+    minimum_confidence = resolve_project_settings(project.get("settings"))[
+        "trace_recovery_minimum_confidence"
+    ]
     requirements = await test_design_repository.list_requirement_versions(
         {"project_id": project_id, "status": 'BASELINED'},
         5000,
@@ -125,7 +129,7 @@ async def recover_trace_links(project_id: str, user: CurrentUser):
         )
         for score, requirement in ranked[: 3]:
             if (
-                score < 0.18
+                score < minimum_confidence
                 or (requirement["_id"], test["_id"]) in pairs
             ):
                 continue

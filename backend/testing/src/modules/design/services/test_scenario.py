@@ -91,6 +91,8 @@ async def create_test_scenario_record(project_id, payload, user):
     await get_project(project_id, user, "testscenario.create")
     if payload.status != 'draft':
         raise HTTPException(422, detail={"code": "SCENARIO_DRAFT_REQUIRED"})
+    if payload.owner_id and payload.owner_id != user.id:
+        await get_project(project_id, user, "project.members.read")
     await validate_test_case_owner(project_id, payload.owner_id)
     await validate_design_sources(
         project_id,
@@ -129,6 +131,8 @@ async def create_test_scenario_draft_batch(project_id, payloads, user):
     await get_project(project_id, user, "testscenario.create")
     if not payloads or len(payloads) > 100:
         raise HTTPException(422, detail={"code": "SCENARIO_BATCH_SIZE_INVALID"})
+    if any(payload.owner_id and payload.owner_id != user.id for payload in payloads):
+        await get_project(project_id, user, "project.members.read")
     scenarios = []
     for payload in payloads:
         if payload.status != "draft":

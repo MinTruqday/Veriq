@@ -22,9 +22,9 @@ from src.repositories.skill_profile import skill_profile_repository
 from src.repositories.test_run import test_run_repository
 
 CV_SUPPORTED_SUFFIXES = frozenset({".pdf", ".docx", ".txt"})
-CV_MAX_EXTRACTED_CHARACTERS = 100_000
-CV_MAX_SOURCE_BLOCKS = 500
-CV_SOURCE_BLOCK_CHARACTERS = 3_000
+CV_MAX_EXTRACTED_CHARACTERS = settings.CV_MAX_EXTRACTED_CHARACTERS
+CV_MAX_SOURCE_BLOCKS = settings.CV_MAX_SOURCE_BLOCKS
+CV_SOURCE_BLOCK_CHARACTERS = settings.CV_SOURCE_BLOCK_CHARACTERS
 logger = logging.getLogger(__name__)
 
 

@@ -2814,7 +2814,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           members={projectMembers}
           canReview={can("testscenario.update")}
           canEdit={(scenario) => canDraft("testscenario.update", scenario)}
-          canAssignOwner={can("project.members.manage")}
+          canAssignOwner={can("project.members.read")}
           canReadTestConditions={permissions.includes("testcondition.read")}
           ask={ask}
           reload={load}

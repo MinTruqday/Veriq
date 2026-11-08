@@ -76,10 +76,7 @@ async def request_grounded_test_generation(project_id, instruction, evidence):
     result = await request_ai_automation(
         "test_generation", project_id, instruction, evidence
     )
-    if (
-        result.get("status") == "SUCCESS"
-        and not result.get("degraded_mode")
-    ) or "AI_UNGROUNDED_OUTPUT" not in (result.get("reason_codes") or []):
+    if "AI_UNGROUNDED_OUTPUT" not in (result.get("reason_codes") or []):
         return result
     return await request_ai_automation(
         "test_generation",

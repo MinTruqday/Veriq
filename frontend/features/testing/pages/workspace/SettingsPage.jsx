@@ -66,6 +66,14 @@ const numberSettings = [
   ["impact_confidence_threshold", "Ngưỡng tin cậy phân tích ảnh hưởng", 0, 1, 0.01, null],
   ["testcase_duplicate_threshold", "Ngưỡng phát hiện ca kiểm thử trùng", 0, 1, 0.01, null],
   [
+    "trace_recovery_minimum_confidence",
+    "Ngưỡng tin cậy tối thiểu khi đề xuất liên kết truy vết",
+    0,
+    1,
+    0.01,
+    null,
+  ],
+  [
     "completion_open_blocker_threshold",
     "Số lỗi chặn toàn bộ đang mở tối đa khi phê duyệt hoàn tất",
     0,

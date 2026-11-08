@@ -21,6 +21,7 @@ def validate_project_settings(settings):
     numeric_ranges = {
         "impact_confidence_threshold": (0, 1, False),
         "testcase_duplicate_threshold": (0, 1, False),
+        "trace_recovery_minimum_confidence": (0, 1, False),
         "completion_open_blocker_threshold": (0, 1000, True),
         "rca_reopen_threshold": (1, 100, True),
         "rca_duplicate_threshold": (2, 100, True),
