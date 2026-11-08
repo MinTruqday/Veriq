@@ -36,7 +36,6 @@ function auditActionLabel(action) {
 }
 
 const toggleSettings = [
-  ["trace_before_baseline", "Bắt buộc truy vết trước khi đặt phiên bản chuẩn cho yêu cầu"],
   ["testcase_lint_blocking", "Chặn duyệt ca kiểm thử khi còn lỗi kiểm tra"],
   ["trace_before_testcase_approve", "Bắt buộc truy vết trước khi duyệt ca kiểm thử"],
   ["strict_test_plan_approval", "Chỉ phê duyệt kế hoạch kiểm thử khi đã đủ thông tin quản trị"],
@@ -44,16 +43,12 @@ const toggleSettings = [
   ["require_environment_for_test_plan", "Yêu cầu chọn môi trường trước khi phê duyệt kế hoạch"],
   ["partial_complete_allowed", "Cho phép hoàn tất một phần lần chạy kiểm thử"],
   ["allow_not_applicable_results", "Cho phép kết quả Không áp dụng khi có lý do"],
-  [
-    "require_completion_report_before_release_close",
-    "Yêu cầu báo cáo hoàn tất đã phê duyệt trước khi đóng bản phát hành",
-  ],
 ];
 
 const toggleSettingGroups = [
   {
     label: "Yêu cầu và ca kiểm thử",
-    keys: ["trace_before_baseline", "testcase_lint_blocking", "trace_before_testcase_approve"],
+    keys: ["testcase_lint_blocking", "trace_before_testcase_approve"],
   },
   {
     label: "Lần chạy kiểm thử",
@@ -64,10 +59,6 @@ const toggleSettingGroups = [
       "partial_complete_allowed",
       "allow_not_applicable_results",
     ],
-  },
-  {
-    label: "Báo cáo và phát hành",
-    keys: ["require_completion_report_before_release_close"],
   },
 ];
 

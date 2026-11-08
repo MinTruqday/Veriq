@@ -18,6 +18,19 @@ from src.modules.design.services.test_case_records import (
 from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
 
 
+def trace_is_missing_for_approval(draft, project_settings):
+    trace_sources = (
+        "requirement_version_ids",
+        "acceptance_criterion_ids",
+        "coverage_item_ids",
+        "test_condition_ids",
+        "scenario_id",
+    )
+    return project_settings.get("trace_before_testcase_approve", False) and not any(
+        draft.get(field) for field in trace_sources
+    )
+
+
 
 
 async def lint_test_case_draft_record(draft_id, user, project_id=None):
@@ -196,6 +209,11 @@ async def approve_test_case_draft_record(draft_id, payload, user):
     )
     findings = lint_test_case(draft)
     project_settings = await test_design_repository.find_project_settings(draft["project_id"])
+    if trace_is_missing_for_approval(draft, project_settings):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TEST_CASE_TRACE_REQUIRED"},
+        )
     lint_blocking = project_settings.get(
         'testcase_lint_blocking', True
     )
