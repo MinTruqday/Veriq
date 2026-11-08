@@ -10,7 +10,7 @@ from src.core.common import plain_text
 from src.core.rich_text import text_document
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases
-from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
+from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.test_design import test_design_repository
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import ScenarioCreate, TestCaseDraftCreate

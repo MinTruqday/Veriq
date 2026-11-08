@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 
 from src.core.common import get_project
+from src.core.project_settings import resolve_project_settings
 from src.modules.quality.services.defect_classification import defect_is_blocking
 from src.repositories.causal_analysis import causal_analysis_repository
 
@@ -57,24 +58,10 @@ async def latest_hypothesis_result(analysis_id, user):
 
 async def suggest_candidates(project_id, user):
     project = await get_project(project_id, user, "causalanalysis.read")
-    project_settings = project.get("settings") or {}
+    project_settings = resolve_project_settings(project.get("settings"))
     
-    reopen_threshold = max(
-        int(
-            project_settings.get(
-                "rca_reopen_threshold", 2
-            )
-        ),
-        1,
-    )
-    duplicate_threshold = max(
-        int(
-            project_settings.get(
-                "rca_duplicate_threshold", 3
-            )
-        ),
-        2,
-    )
+    reopen_threshold = project_settings["rca_reopen_threshold"]
+    duplicate_threshold = project_settings["rca_duplicate_threshold"]
     defects = await causal_analysis_repository.list_defects(
         {"project_id": project_id}, 2000
     )

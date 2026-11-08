@@ -21,6 +21,7 @@ from src.core.auth import (
     roles_for_membership,
 )
 from src.core.human_decisions import require_automation_publication_authority
+from src.core.project_settings import resolve_project_settings
 from src.repositories.common import common_repository
 
 RETRYABLE_ERROR_CODES = frozenset(['WORKER_UNAVAILABLE',
@@ -306,6 +307,7 @@ async def get_project(
     project = await common_repository.find_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail={"code": 'ENTITY_NOT_FOUND'})
+    project = {**project, "settings": resolve_project_settings(project.get("settings"))}
     membership = await common_repository.find_membership(project_id, user.id)
     grant = await common_repository.find_active_grant(
         project_id, user.id, 'ACTIVE', now()
@@ -381,8 +383,7 @@ async def get_project(
         project.get("status", 'active').lower() == 'archived'
         and permission in archive_read_permissions()
         and permission != 'project.read'
-        and (project.get("settings") or {}).get("read_after_archive_policy", 'ALLOW_READ')
-        == 'DENY_READ'
+        and project["settings"]["read_after_archive_policy"] == 'DENY_READ'
     ):
         raise HTTPException(status_code=403, detail={"code": 'PROJECT_ARCHIVED_READ_DENIED'})
     if permission in grant_permissions and permission not in permissions:

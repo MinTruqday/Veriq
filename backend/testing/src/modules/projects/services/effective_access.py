@@ -7,12 +7,13 @@ from src.core.auth import (
     roles_for_membership,
 )
 from src.core.common import get_project
+from src.core.project_settings import resolve_project_settings
 from src.repositories.common import common_repository
 
 
 def explain_project_access(project, membership, user_id):
     values = access_policy()
-    settings = project.get("settings") or {}
+    settings = resolve_project_settings(project.get("settings"))
     responsibilities = settings.get("responsibilities") or {}
     responsibility_permissions = values.get("responsibility_permissions", {})
     roles = roles_for_membership(membership)
@@ -34,7 +35,7 @@ def explain_project_access(project, membership, user_id):
             archived
             and permission in archived_permissions
             and permission != "project.read"
-            and settings.get("read_after_archive_policy", "ALLOW_READ") == "DENY_READ"
+            and settings["read_after_archive_policy"] == "DENY_READ"
         ):
             reason = "PROJECT_ARCHIVED_READ_DENIED"
         if reason is None:

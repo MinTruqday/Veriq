@@ -3,7 +3,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.common import get_project, new_id, now
 from src.core.database import database
-from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
+from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.core.human_decisions import require_automation_publication_authority
 from src.core.human_decisions import require_independent_review
 from src.clients.ai_automation import queue_test_case_approved

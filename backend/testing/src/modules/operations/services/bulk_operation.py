@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.core.common import audit, get_project, new_id, now
+from src.core.project_settings import resolve_project_settings
 from src.core.database import database
 from src.schemas.contracts.design import ProposalAction
 from src.repositories.bulk_operation import bulk_operation_repository
@@ -477,9 +478,9 @@ class BulkOperationService:
         if replay:
             return replay
         threshold = float(
-            project.get("settings", {}).get(
-                "impact_confidence_threshold", 0.75
-            )
+            resolve_project_settings(project.get("settings"))[
+                "impact_confidence_threshold"
+            ]
         )
         succeeded = []
         failed = []

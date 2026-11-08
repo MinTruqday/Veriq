@@ -1,5 +1,6 @@
 from fastapi import HTTPException
 
+from src.core.project_settings import resolve_project_settings
 from src.modules.execution.services.exit_criteria import evaluate_exit_criteria
 from src.modules.quality.services.defect_classification import (
     defect_is_blocking,
@@ -105,7 +106,7 @@ async def validate_completion_readiness(report):
     
     
     project = await find_project_settings(report["project_id"]) or {}
-    settings = project.get("settings") or {}
+    settings = resolve_project_settings(project.get("settings"))
     mandatory_incomplete = [
         item.get("run_id")
         for item in (report.get("scope_snapshot") or {}).get("runs", [])
@@ -120,13 +121,7 @@ async def validate_completion_readiness(report):
                 "run_ids": mandatory_incomplete,
             },
         )
-    blocker_threshold = int(
-        settings.get(
-            'completion_open_blocker_threshold',
-            0,
-        )
-        or 0
-    )
+    blocker_threshold = settings["completion_open_blocker_threshold"]
     open_blockers = int((report.get("defect_summary") or {}).get("open_blocker", 0) or 0)
     if open_blockers > blocker_threshold:
         raise HTTPException(

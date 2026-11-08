@@ -2,7 +2,7 @@ from fastapi import HTTPException
 
 from src.core.common import get_project, get_project_entity, plain_text
 from src.core.rich_text import text_document
-from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
+from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.analysis import analysis_repository
 from src.repositories.test_design import test_design_repository
 from src.core.ai_automation import (

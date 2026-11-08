@@ -14,7 +14,7 @@ from src.core.common import (
     plain_text,
 )
 from src.core.database import database
-from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
+from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.test_design import test_design_repository
 from src.repositories.analysis import (
     ActiveTestCaseVersionIntegrityError,

@@ -10,7 +10,7 @@ from src.core.database import database
 from src.core.human_decisions import require_automation_publication_authority
 from src.modules.design.services.linters import duplicate_score, lint_test_case
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
-from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
+from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.analysis import analysis_repository
 from src.repositories.analysis import ActiveTestCaseVersionIntegrityError
 from src.repositories.common import common_repository

@@ -26,7 +26,7 @@ from src.modules.projects.services.project_complexity_config import (
     normalize_project_settings,
     resolve_project_complexity_dimensions,
 )
-from src.modules.projects.services.project_setting_defaults import resolve_project_settings
+from src.core.project_settings import resolve_project_settings
 from src.modules.projects.services.project_responsibilities import (
     assignable_responsibilities,
     validate_project_responsibilities,
@@ -102,7 +102,7 @@ def project_access(project, membership, grant):
     }
     if project.get("status", "active").lower() == "archived":
         allowed = archive_read_permissions() | {"project.restore"}
-        if (project.get("settings") or {}).get("read_after_archive_policy", "ALLOW_READ") == "DENY_READ":
+        if resolve_project_settings(project.get("settings"))["read_after_archive_policy"] == "DENY_READ":
             allowed = {"project.read", "project.restore"}
         role_permissions &= allowed
         grant_permissions &= allowed

@@ -63,7 +63,7 @@ const toggleSettingGroups = [
 ];
 
 const numberSettings = [
-  ["impact_confidence_threshold", "Ngưỡng tin cậy phân tích ảnh hưởng", 0, 1, 0.01, 0.75],
+  ["impact_confidence_threshold", "Ngưỡng tin cậy phân tích ảnh hưởng", 0, 1, 0.01, null],
   ["testcase_duplicate_threshold", "Ngưỡng phát hiện ca kiểm thử trùng", 0, 1, 0.01, null],
   [
     "completion_open_blocker_threshold",
@@ -71,10 +71,24 @@ const numberSettings = [
     0,
     1000,
     1,
-    0,
+    null,
   ],
-  ["rca_reopen_threshold", "Số lần mở lại lỗi để đề xuất phân tích nguyên nhân gốc", 1, 100, 1, 2],
-  ["rca_duplicate_threshold", "Số lỗi cùng cụm để đề xuất phân tích nguyên nhân gốc", 2, 100, 1, 3],
+  [
+    "rca_reopen_threshold",
+    "Số lần mở lại lỗi để đề xuất phân tích nguyên nhân gốc",
+    1,
+    100,
+    1,
+    null,
+  ],
+  [
+    "rca_duplicate_threshold",
+    "Số lỗi cùng cụm để đề xuất phân tích nguyên nhân gốc",
+    2,
+    100,
+    1,
+    null,
+  ],
 ];
 
 const selectSettings = [

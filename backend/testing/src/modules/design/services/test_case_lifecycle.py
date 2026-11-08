@@ -16,7 +16,7 @@ from src.modules.design.services.test_case_records import (
     project_test_text,
 )
 from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
-from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
+from src.core.project_settings import resolve_testcase_duplicate_threshold
 
 
 def trace_is_missing_for_approval(draft, project_settings):
