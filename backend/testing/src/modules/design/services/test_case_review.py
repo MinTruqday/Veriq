@@ -10,6 +10,7 @@ from src.core.database import database
 from src.core.human_decisions import require_automation_publication_authority
 from src.modules.design.services.linters import duplicate_score, lint_test_case
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
+from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
 from src.repositories.analysis import analysis_repository
 from src.repositories.analysis import ActiveTestCaseVersionIntegrityError
 from src.repositories.common import common_repository
@@ -269,9 +270,7 @@ async def validate_test_case_publication_uniqueness(draft, threshold, session):
     )
     if not project:
         raise HTTPException(404, detail={"code": "PROJECT_NOT_FOUND"})
-    threshold = (project.get("settings") or {}).get(
-        "testcase_duplicate_threshold", threshold
-    )
+    threshold = resolve_testcase_duplicate_threshold(project.get("settings"))
 
     parent_case_id = None
     parent_version_id = draft.get("parent_version_id")
@@ -395,7 +394,7 @@ async def review_context(draft_id, user, permission="testcase.read"):
     custom_fields = await test_design_repository.list_all_test_case_custom_fields(
         draft["project_id"]
     )
-    threshold = settings.get("testcase_duplicate_threshold", 0.72)
+    threshold = resolve_testcase_duplicate_threshold(settings)
     duplicates = []
     parent_case_id = (sources["parent"] or {}).get("test_case_id")
     try:

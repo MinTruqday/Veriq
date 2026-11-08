@@ -14,6 +14,7 @@ from src.core.common import (
     plain_text,
 )
 from src.core.database import database
+from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
 from src.repositories.test_design import test_design_repository
 from src.repositories.analysis import (
     ActiveTestCaseVersionIntegrityError,
@@ -155,7 +156,7 @@ async def comparison_cases(project_id):
     ):
         drafts.extend(page)
     settings = await test_design_repository.find_project_settings(project_id)
-    return versions + drafts, settings.get("testcase_duplicate_threshold", 0.72)
+    return versions + drafts, resolve_testcase_duplicate_threshold(settings)
 
 
 async def validate_design_sources(
@@ -594,7 +595,7 @@ async def create_generated_test_case_draft_batch(
             },
         )
     settings = await test_design_repository.find_project_settings(project_id)
-    threshold = settings.get("testcase_duplicate_threshold", 0.72)
+    threshold = resolve_testcase_duplicate_threshold(settings)
     for index, item in enumerate(payloads):
         if any(
             duplicate_score(

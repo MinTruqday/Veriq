@@ -10,6 +10,8 @@ from src.core.common import plain_text
 from src.core.rich_text import text_document
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases
+from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
+from src.repositories.test_design import test_design_repository
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import ScenarioCreate, TestCaseDraftCreate
 from src.schemas.test_analysis import GeneratedCase
@@ -87,7 +89,7 @@ async def request_grounded_test_generation(project_id, instruction, evidence):
     )
 
 
-def merge_duplicate_generated_cases(drafts, suggestions, threshold=0.72):
+def merge_duplicate_generated_cases(drafts, suggestions, threshold):
     kept_drafts = []
     kept_suggestions = []
     merged_count = 0
@@ -522,8 +524,11 @@ async def generate_requirement_drafts(
             detail={"code": 'AI_GENERATION_INVALID', "message": "AI chưa tạo được bản nháp hợp lệ", "retryable": True},
         ) from error
     if not scenario:
+        duplicate_threshold = resolve_testcase_duplicate_threshold(
+            await test_design_repository.find_project_settings(version["project_id"])
+        )
         drafts, generated, merged_duplicates = merge_duplicate_generated_cases(
-            drafts, generated
+            drafts, generated, duplicate_threshold
         )
         result["suggestions"] = [item.model_dump() for item in generated]
         if merged_duplicates:

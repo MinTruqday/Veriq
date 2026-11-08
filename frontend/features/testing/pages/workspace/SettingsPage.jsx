@@ -64,7 +64,7 @@ const toggleSettingGroups = [
 
 const numberSettings = [
   ["impact_confidence_threshold", "Ngưỡng tin cậy phân tích ảnh hưởng", 0, 1, 0.01, 0.75],
-  ["testcase_duplicate_threshold", "Ngưỡng phát hiện ca kiểm thử trùng", 0, 1, 0.01, 0.72],
+  ["testcase_duplicate_threshold", "Ngưỡng phát hiện ca kiểm thử trùng", 0, 1, 0.01, null],
   [
     "completion_open_blocker_threshold",
     "Số lỗi chặn toàn bộ đang mở tối đa khi phê duyệt hoàn tất",

@@ -26,6 +26,7 @@ from src.modules.projects.services.project_complexity_config import (
     normalize_project_settings,
     resolve_project_complexity_dimensions,
 )
+from src.modules.projects.services.project_setting_defaults import resolve_project_settings
 from src.modules.projects.services.project_responsibilities import (
     assignable_responsibilities,
     validate_project_responsibilities,
@@ -107,6 +108,7 @@ def project_access(project, membership, grant):
         grant_permissions &= allowed
     return {
         **project,
+        "settings": resolve_project_settings(project.get("settings")),
         "complexity_dimensions": resolve_project_complexity_dimensions(
             project.get("settings")
         ),
@@ -139,7 +141,7 @@ def project_settings(project):
         "project_type": project.get("project_type"),
         "locale": project.get("locale"),
         "timezone": project.get("timezone"),
-        "settings": project.get("settings", {}),
+        "settings": resolve_project_settings(project.get("settings")),
     }
 
 

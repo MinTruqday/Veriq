@@ -5,6 +5,11 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from src.modules.projects.services.project_setting_defaults import (
+    resolve_project_settings,
+    resolve_testcase_duplicate_threshold,
+)
+
 
 @lru_cache(maxsize=1)
 def _default_dimensions():
@@ -50,6 +55,7 @@ def resolve_project_complexity_dimensions(settings):
 
 
 def normalize_project_settings(settings):
-    values = dict(settings or {})
+    values = resolve_project_settings(settings)
+    resolve_testcase_duplicate_threshold(values)
     values["complexity_dimensions"] = resolve_project_complexity_dimensions(values)
     return values

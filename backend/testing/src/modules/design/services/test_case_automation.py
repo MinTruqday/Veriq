@@ -2,6 +2,7 @@ from fastapi import HTTPException
 
 from src.core.common import get_project, get_project_entity, plain_text
 from src.core.rich_text import text_document
+from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
 from src.repositories.analysis import analysis_repository
 from src.repositories.test_design import test_design_repository
 from src.core.ai_automation import (
@@ -232,9 +233,9 @@ async def recommend_test_design_techniques(version_id, payload, user):
         if item["artifact_type"] in {"requirement_version", "acceptance_criterion"}
     }
     case_by_ref = {item["_id"]: item for item in cases}
-    similarity_threshold = (
+    similarity_threshold = resolve_testcase_duplicate_threshold(
         await test_design_repository.find_project_settings(version["project_id"])
-    ).get("testcase_duplicate_threshold", 0.72)
+    )
     suggestions = result.get("suggestions") or []
     challenge_warnings = []
     if not suggestions or len({item.get("technique") for item in suggestions}) != len(suggestions):
@@ -326,7 +327,7 @@ async def find_duplicate_test_case_records(
             project_id, 'ACTIVE'
         )
         settings = await test_design_repository.find_project_settings(project_id)
-        threshold = settings.get("testcase_duplicate_threshold", 0.72)
+        threshold = resolve_testcase_duplicate_threshold(settings)
         parent_version_id = str(draft.get("parent_version_id") or "")
         for candidate in versions:
             if (
@@ -354,7 +355,7 @@ async def find_duplicate_test_case_records(
         project_id, 'ACTIVE'
     )
     settings = await test_design_repository.find_project_settings(project_id)
-    threshold = settings.get("testcase_duplicate_threshold", 0.72)
+    threshold = resolve_testcase_duplicate_threshold(settings)
     for index, left in enumerate(versions):
         for right in versions[index + 1 :]:
             score, reasons = duplicate_score(left, right, threshold)

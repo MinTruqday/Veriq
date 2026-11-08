@@ -3,6 +3,7 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.common import get_project, new_id, now
 from src.core.database import database
+from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
 from src.core.human_decisions import require_automation_publication_authority
 from src.core.human_decisions import require_independent_review
 from src.clients.ai_automation import queue_test_case_approved
@@ -34,7 +35,7 @@ async def accept_test_case_group(project_id, payload, user):
         return await _retry_batch_derived_state(result, project_id, user)
     settings = await test_design_repository.find_project_settings(project_id)
     drafts = []
-    duplicate_threshold = settings.get("testcase_duplicate_threshold", 0.72)
+    duplicate_threshold = resolve_testcase_duplicate_threshold(settings)
     for item in payload.items:
         context = await review_context(item.draft_id, user, "testcase.approve")
         draft = context["draft"]

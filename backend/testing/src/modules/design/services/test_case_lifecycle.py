@@ -16,6 +16,7 @@ from src.modules.design.services.test_case_records import (
     project_test_text,
 )
 from src.modules.design.services.test_case_custom_fields import validate_test_case_custom_values
+from src.modules.projects.services.project_setting_defaults import resolve_testcase_duplicate_threshold
 
 
 def trace_is_missing_for_approval(draft, project_settings):
@@ -267,7 +268,7 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         )
         await validate_test_case_publication_uniqueness(
             current_draft,
-            project_settings.get("testcase_duplicate_threshold", 0.72),
+            resolve_testcase_duplicate_threshold(project_settings),
             session,
         )
         existing = await database.value.test_cases.find_one(
