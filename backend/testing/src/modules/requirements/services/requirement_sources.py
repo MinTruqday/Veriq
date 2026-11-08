@@ -4,14 +4,7 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException
 
-from src.core.common import (
-    audit,
-    get_project,
-    get_project_entity,
-    new_id,
-    now,
-    require_action_policy,
-)
+from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.repositories.requirement_document import requirement_document_repository
 
 
@@ -158,9 +151,7 @@ async def create_requirement_source(project_id, payload, user):
         "updated_at": timestamp,
     }
     await requirement_document_repository.insert(document)
-    from src.modules.requirements.services.requirement_documents import (
-        index_requirement_document,
-    )
+    from src.modules.requirements.services.requirement_documents import index_requirement_document
 
     indexed = await index_requirement_document(document)
     document = await requirement_document_repository.find(
@@ -181,7 +172,9 @@ async def create_requirement_source(project_id, payload, user):
 
 
 async def list_requirement_sources(project_id, include_archived, user):
-    from src.modules.requirements.services.requirement_documents import list_requirement_document_records
+    from src.modules.requirements.services.requirement_documents import (
+        list_requirement_document_records,
+    )
 
     documents = await list_requirement_document_records(project_id, "", "", 1000, user)
     if not include_archived:
@@ -266,12 +259,6 @@ async def archive_requirement_source(document_id, payload, user):
         'requirement_documents', document_id, user, 'knowledge.manage'
     )
     await require_document_access(document, user, 'knowledge.manage')
-    await require_action_policy(
-        document["project_id"],
-        user,
-        'knowledge.archive',
-        set(['QA', 'BA']),
-    )
     timestamp = now()
     archived, newly_archived = await begin_requirement_document_archive_cleanup(
         document,

@@ -39,32 +39,11 @@ const toggleSettings = [
   ["trace_before_baseline", "Bắt buộc truy vết trước khi đặt phiên bản chuẩn cho yêu cầu"],
   ["testcase_lint_blocking", "Chặn duyệt ca kiểm thử khi còn lỗi kiểm tra"],
   ["trace_before_testcase_approve", "Bắt buộc truy vết trước khi duyệt ca kiểm thử"],
-  ["tester_can_create_run", "Cho phép kiểm thử viên tạo lần chạy kiểm thử"],
-  ["tester_can_manage_runs", "Cho phép kiểm thử viên quản lý lần chạy kiểm thử"],
-  ["tester_can_assign_runs", "Cho phép kiểm thử viên phân công lần chạy và ca kiểm thử"],
-  ["tester_can_start_runs", "Cho phép kiểm thử viên bắt đầu lần chạy kiểm thử"],
-  ["tester_can_complete_runs", "Cho phép kiểm thử viên hoàn tất lần chạy kiểm thử"],
-  ["tester_can_abort_runs", "Cho phép kiểm thử viên hủy lần chạy kiểm thử"],
-  ["tester_can_correct_results", "Cho phép kiểm thử viên hiệu chỉnh kết quả"],
-  ["tester_can_assign_testplans", "Cho phép kiểm thử viên phân công kế hoạch kiểm thử"],
   ["strict_test_plan_approval", "Chỉ phê duyệt kế hoạch kiểm thử khi đã đủ thông tin quản trị"],
   ["require_release_for_test_plan", "Yêu cầu chọn bản phát hành trước khi phê duyệt kế hoạch"],
   ["require_environment_for_test_plan", "Yêu cầu chọn môi trường trước khi phê duyệt kế hoạch"],
   ["partial_complete_allowed", "Cho phép hoàn tất một phần lần chạy kiểm thử"],
   ["allow_not_applicable_results", "Cho phép kết quả Không áp dụng khi có lý do"],
-  ["tester_can_close_defect", "Cho phép kiểm thử viên đóng lỗi"],
-  ["ba_can_create_defect", "Cho phép chuyên viên phân tích tạo lỗi"],
-  ["developer_can_create_defect", "Cho phép lập trình viên tạo lỗi"],
-  ["ba_can_update_defect", "Cho phép chuyên viên phân tích cập nhật lỗi"],
-  ["tester_can_confirm_trace", "Cho phép kiểm thử viên xác nhận liên kết truy vết"],
-  ["tester_can_revoke_trace", "Cho phép kiểm thử viên thu hồi liên kết truy vết"],
-  ["ba_can_confirm_trace", "Cho phép chuyên viên phân tích xác nhận liên kết truy vết"],
-  ["ba_can_revoke_trace", "Cho phép chuyên viên phân tích thu hồi liên kết truy vết"],
-  ["tester_can_override_impact", "Cho phép kiểm thử viên điều chỉnh phân tích ảnh hưởng"],
-  ["tester_can_close_impact", "Cho phép kiểm thử viên đóng phân tích ảnh hưởng"],
-  ["tester_can_manage_knowledge", "Cho phép kiểm thử viên quản lý tài liệu tham chiếu"],
-  ["viewer_can_export", "Cho phép người xem xuất báo cáo"],
-  ["developer_can_export", "Cho phép lập trình viên xuất báo cáo"],
   [
     "require_completion_report_before_release_close",
     "Yêu cầu báo cáo hoàn tất đã phê duyệt trước khi đóng bản phát hành",
@@ -79,14 +58,6 @@ const toggleSettingGroups = [
   {
     label: "Lần chạy kiểm thử",
     keys: [
-      "tester_can_create_run",
-      "tester_can_manage_runs",
-      "tester_can_assign_runs",
-      "tester_can_start_runs",
-      "tester_can_complete_runs",
-      "tester_can_abort_runs",
-      "tester_can_correct_results",
-      "tester_can_assign_testplans",
       "strict_test_plan_approval",
       "require_release_for_test_plan",
       "require_environment_for_test_plan",
@@ -95,33 +66,8 @@ const toggleSettingGroups = [
     ],
   },
   {
-    label: "Xử lý lỗi",
-    keys: [
-      "tester_can_close_defect",
-      "ba_can_create_defect",
-      "developer_can_create_defect",
-      "ba_can_update_defect",
-    ],
-  },
-  {
-    label: "Truy vết và tài liệu",
-    keys: [
-      "tester_can_confirm_trace",
-      "tester_can_revoke_trace",
-      "ba_can_confirm_trace",
-      "ba_can_revoke_trace",
-      "tester_can_override_impact",
-      "tester_can_close_impact",
-      "tester_can_manage_knowledge",
-    ],
-  },
-  {
     label: "Báo cáo và phát hành",
-    keys: [
-      "viewer_can_export",
-      "developer_can_export",
-      "require_completion_report_before_release_close",
-    ],
+    keys: ["require_completion_report_before_release_close"],
   },
 ];
 
@@ -141,7 +87,6 @@ const numberSettings = [
 ];
 
 const selectSettings = [
-  ["default_invite_role", "Vai trò mời mặc định", ["TESTER", "BA", "DEVELOPER", "VIEWER"]],
   ["read_after_archive_policy", "Quyền đọc sau khi lưu trữ", ["ALLOW_READ", "DENY_READ"]],
   ["default_environment", "Môi trường mặc định", ["development", "staging", "production"]],
 ];
@@ -181,10 +126,6 @@ const projectTypeLabels = {
 };
 
 const settingValueLabels = {
-  TESTER: "Kiểm thử viên",
-  BA: "Chuyên viên phân tích nghiệp vụ",
-  DEVELOPER: "Lập trình viên",
-  VIEWER: "Người xem",
   ALLOW_READ: "Cho phép đọc",
   DENY_READ: "Không cho phép đọc",
   development: "Phát triển",
@@ -254,11 +195,12 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
   ]);
   const [settings, setSettings] = useState({
     impact_confidence_threshold: project.settings?.impact_confidence_threshold ?? 0.75,
+    ...Object.fromEntries(toggleSettings.map(([key]) => [key, project.settings?.[key] ?? false])),
     ...Object.fromEntries(
-      toggleSettings.map(([key]) => [
+      (project.configurable_role_settings || []).map(({ key, rules }) => [
         key,
         project.settings?.[key] ??
-          ["ba_can_create_defect", "developer_can_create_defect"].includes(key),
+          !rules.some((rule) => rule.effect === "DENY" && rule.enabled === false),
       ]),
     ),
     ...Object.fromEntries(
@@ -580,15 +522,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                             ...(project.settings || {}),
                             ...settings,
                             responsibilities,
-                            action_policies: {
-                              ...actionPolicies,
-                              "testplan.assignments": settings.tester_can_assign_testplans
-                                ? ["QA", "TESTER"]
-                                : ["QA"],
-                              "testresult.correct": settings.tester_can_correct_results
-                                ? ["TESTER"]
-                                : [],
-                            },
+                            action_policies: actionPolicies,
                           },
                         }
                       : {}),
@@ -879,6 +813,45 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         </fieldset>
                       ))}
                     </div>
+                    {(project.configurable_role_settings || []).length > 0 && (
+                      <fieldset className="space-y-3 rounded-lg border border-border p-3">
+                        <legend className="px-1 text-sm font-semibold text-ink">
+                          Quyền theo vai trò
+                        </legend>
+                        {(project.configurable_role_settings || []).map(({ key, rules }) => (
+                          <label
+                            className="flex items-start gap-3 border-b border-border py-2 text-[13px] leading-5 last:border-b-0"
+                            key={key}
+                          >
+                            <input
+                              className="mt-1"
+                              type="checkbox"
+                              checked={Boolean(settings[key])}
+                              onChange={(event) =>
+                                setSettings((current) => ({
+                                  ...current,
+                                  [key]: event.target.checked,
+                                }))
+                              }
+                            />
+                            <span className="min-w-0">
+                              <span className="block font-medium">{valueLabel(key)}</span>
+                              <span className="block text-ink-muted">
+                                {rules
+                                  .map((rule) => {
+                                    const action =
+                                      rule.effect === "ALLOW" ? "được cấp" : "bị giới hạn";
+                                    const condition = rule.enabled ? "khi bật" : "khi tắt";
+                                    const permissions = rule.permissions.map(valueLabel).join(", ");
+                                    return `${valueLabel(rule.role)} ${action}: ${permissions} ${condition}`;
+                                  })
+                                  .join(" · ")}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
                     <section className="grid gap-3 border-t border-border pt-4">
                       <h4 className="text-sm font-semibold text-ink">Ngưỡng kiểm soát</h4>
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1053,11 +1026,11 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                         name="project_role"
                         aria-label="Vai trò dự án"
                       >
-                        <option value="TESTER">Kiểm thử viên</option>
-                        <option value="BA">Phân tích nghiệp vụ</option>
-                        <option value="DEVELOPER">Lập trình viên</option>
-                        <option value="VIEWER">Người xem</option>
-                        <option value="QA">QA</option>
+                        {(project.available_project_roles || []).map((role) => (
+                          <option key={role} value={role}>
+                            {valueLabel(role)}
+                          </option>
+                        ))}
                       </select>
                       <button className="secondary-button" type="submit">
                         Gửi lời mời
@@ -1090,16 +1063,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                           label: "Vai trò",
                           render: (item) => {
                             const roles = memberRoles(item);
-                            const roleLabels = roles.map(
-                              (role) =>
-                                ({
-                                  QA: "QA",
-                                  TESTER: "Kiểm thử viên",
-                                  BA: "Phân tích nghiệp vụ",
-                                  DEVELOPER: "Lập trình viên",
-                                  VIEWER: "Người xem",
-                                })[role] || role,
-                            );
+                            const roleLabels = roles.map(valueLabel);
                             return can("project.members.manage") ? (
                               <span className="flex min-w-36 flex-col gap-1">
                                 <select
@@ -1119,17 +1083,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                                     }
                                   }}
                                 >
-                                  {["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"].map((role) => (
+                                  {(project.available_project_roles || []).map((role) => (
                                     <option key={role} value={role}>
-                                      {
-                                        {
-                                          QA: "QA",
-                                          TESTER: "Kiểm thử viên",
-                                          BA: "Phân tích nghiệp vụ",
-                                          DEVELOPER: "Lập trình viên",
-                                          VIEWER: "Người xem",
-                                        }[role]
-                                      }
+                                      {valueLabel(role)}
                                     </option>
                                   ))}
                                 </select>

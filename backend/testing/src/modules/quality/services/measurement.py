@@ -4,16 +4,17 @@ import json
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.core.auth import access_policy
 from src.core.common import audit, get_project, new_id, now
 from src.core.database import database
-from src.schemas.measurement import validate_threshold_order
-from src.repositories.measurement import measurement_repository
 from src.modules.quality.services.measurement_engine import (
     compute_custom_metric,
     compute_metric,
     validate_formula_source,
 )
 from src.modules.quality.services.measurement_export import export_metric_csv
+from src.repositories.measurement import measurement_repository
+from src.schemas.measurement import validate_threshold_order
 
 
 def _create_request_hash(payload):
@@ -66,6 +67,8 @@ async def list_definitions(project_id, user):
 async def create_definition(project_id, payload, user):
     
     await get_project(project_id, user, 'measurement.manage')
+    if payload.owner_role not in access_policy().get("role_permissions", {}):
+        raise HTTPException(status_code=422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
     if payload.idempotency_key:
         existing = await measurement_repository.find_definition_idempotency(
             project_id, payload.idempotency_key
@@ -134,6 +137,8 @@ async def update_definition(definition_id, payload, user):
         )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
+    if changes.get("owner_role") not in {None, *access_policy().get("role_permissions", {})}:
+        raise HTTPException(status_code=422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
     try:
         validate_threshold_order(
             value["key"],

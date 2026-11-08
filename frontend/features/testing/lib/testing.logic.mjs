@@ -646,8 +646,6 @@ export function messageOf(reason) {
       "Phiên ủy quyền của lượt chạy đã hết hạn; hãy kiểm tra quyền hiện tại rồi tiếp tục.",
     PROJECT_AUTHORIZATION_CHECK_FAILED:
       "Chưa xác minh được quyền truy cập dự án. Hãy thử lại khi dịch vụ phân quyền sẵn sàng.",
-    PROJECT_BA_EXECUTOR_UNAVAILABLE: "Thành viên khởi chạy không còn quyền cần thiết.",
-    PROJECT_QA_EXECUTOR_UNAVAILABLE: "Thành viên khởi chạy không còn quyền cần thiết.",
     AUTOMATION_RETRY_REQUIRES_RECONCILIATION:
       "Chưa thể tiếp tục an toàn. Hãy đối soát kết quả thao tác trước.",
     AUTOMATION_RETRY_NOT_ALLOWED: "Lượt chạy hiện không ở trạng thái có thể tiếp tục.",

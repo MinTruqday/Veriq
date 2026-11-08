@@ -98,13 +98,6 @@ const METRICS = {
   ],
 };
 
-const METRIC_OWNER_ROLES = [
-  ["QA", "QA"],
-  ["TESTER", "Kiểm thử viên"],
-  ["BA", "Phân tích nghiệp vụ"],
-  ["DEVELOPER", "Lập trình viên"],
-];
-
 const metricLabel = (key) => METRICS[key]?.[0] || "Chỉ số khác";
 
 function measurementValue(value, key, unit) {
@@ -162,7 +155,10 @@ export default function MetricDefinitionPanel({ project }) {
           name: "owner_role",
           label: "Vai trò chịu trách nhiệm",
           required: true,
-          options: METRIC_OWNER_ROLES.map(([value, label]) => ({ value, label })),
+          options: (project.available_project_roles || []).map((value) => ({
+            value,
+            label: valueLabel(value),
+          })),
         },
       ],
     });

@@ -336,13 +336,7 @@ export default function ProjectNotificationsPanel({ project }) {
             </fieldset>
             <fieldset className="space-y-2">
               <legend className="field-label">Vai trò nhận thông báo</legend>
-              {[
-                ["QA", "QA"],
-                ["TESTER", "Kiểm thử viên"],
-                ["BA", "Phân tích nghiệp vụ"],
-                ["DEVELOPER", "Lập trình viên"],
-                ["VIEWER", "Người xem"],
-              ].map(([role, label]) => (
+              {(project.available_project_roles || []).map((role) => (
                 <label className="flex items-center gap-2 text-sm" key={role}>
                   <input
                     type="checkbox"
@@ -358,7 +352,7 @@ export default function ProjectNotificationsPanel({ project }) {
                       }))
                     }
                   />
-                  {label}
+                  {valueLabel(role)}
                 </label>
               ))}
             </fieldset>

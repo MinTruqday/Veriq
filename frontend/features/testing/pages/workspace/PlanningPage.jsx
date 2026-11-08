@@ -1470,7 +1470,7 @@ function PlanningConfigurationModal({
                       </select>
                       <MultiSelect
                         label={`Vai trò được phép chuyển trạng thái ${index + 1}`}
-                        options={["BA", "QA", "TESTER", "DEVELOPER"].map((role) => ({
+                        options={(project.available_project_roles || []).map((role) => ({
                           value: role,
                           label: valueLabel(role),
                         }))}

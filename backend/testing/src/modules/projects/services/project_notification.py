@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.core.auth import access_policy
 from src.core.common import audit, get_project, new_id, now, optimistic_patch
 from src.repositories.project_notification import project_notification_repository
 
@@ -120,6 +121,12 @@ class ProjectNotificationService:
     @staticmethod
     async def update_rules(project_id, payload, user):
         await get_project(project_id, user, "notification.project_rule.manage")
+        available_roles = set(access_policy().get("role_permissions", {}))
+        if not set(payload.target_roles).issubset(available_roles):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "PROJECT_ROLE_UNAVAILABLE"},
+            )
         current = await project_notification_repository.find_rules(project_id)
         changes = payload.model_dump(exclude={"expected_revision"})
         if current:

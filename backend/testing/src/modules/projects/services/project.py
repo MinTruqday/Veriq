@@ -2,7 +2,16 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
 from src.clients.authentication import get_project_creation_policy
-from src.core.auth import access_policy, archive_read_permissions, business_role_allows, permissions_for_membership, permissions_for_role, project_permissions, roles_for_membership, responsibility_allows
+from src.core.auth import (
+    access_policy,
+    archive_read_permissions,
+    business_role_allows,
+    permissions_for_membership,
+    permissions_for_role,
+    project_permissions,
+    responsibility_allows,
+    roles_for_membership,
+)
 from src.core.common import (
     audit,
     build_audit_event,
@@ -13,15 +22,12 @@ from src.core.common import (
     optimistic_patch,
     resolve_user_reference,
 )
-from src.repositories.project import project_repository
 from src.modules.projects.services.project_progress import task_summaries
 from src.modules.projects.services.project_responsibilities import (
     assignable_responsibilities,
     validate_project_responsibilities,
 )
-
-
-
+from src.repositories.project import project_repository
 
 
 def _validate_project_dates(planned_start_at, planned_end_at):
@@ -40,7 +46,35 @@ def _validate_project_dates(planned_start_at, planned_end_at):
 
 
 def project_access(project, membership, grant):
-    
+    policy = access_policy()
+    available_project_roles = sorted(policy.get("role_permissions", {}))
+    configurable_role_settings = {}
+    setting_rules = [
+        *(
+            {"setting": setting, "enabled": True, "effect": "ALLOW", **rule}
+            for setting, rule in policy.get("policy_permissions", {}).items()
+        ),
+        *(
+            {**rule, "effect": "ALLOW"}
+            for rule in policy.get("conditional_permissions", [])
+        ),
+        *(
+            {**rule, "effect": "DENY"}
+            for rule in policy.get("conditional_denials", [])
+        ),
+    ]
+    for rule in setting_rules:
+        setting = str(rule.get("setting") or "").strip()
+        role = str(rule.get("role") or "").strip().upper()
+        permissions = sorted(set(rule.get("permissions", [])) & project_permissions())
+        if not setting or role not in available_project_roles or not permissions:
+            continue
+        configurable_role_settings.setdefault(setting, []).append({
+            "role": role,
+            "enabled": bool(rule.get("enabled")),
+            "effect": rule["effect"],
+            "permissions": permissions,
+        })
     role_permissions = permissions_for_membership(membership, project.get("settings"))
     grant_permissions = set(grant.get("permissions", [])) & project_permissions() if grant else set()
     active_roles = roles_for_membership(membership) if membership and membership.get("status") == "ACTIVE" else set()
@@ -63,6 +97,11 @@ def project_access(project, membership, grant):
         grant_permissions &= allowed
     return {
         **project,
+        "available_project_roles": available_project_roles,
+        "configurable_role_settings": [
+            {"key": key, "rules": rules}
+            for key, rules in sorted(configurable_role_settings.items())
+        ],
         "current_membership": public_membership,
         "current_permissions": sorted(role_permissions | grant_permissions),
         "access_context": (
@@ -453,9 +492,9 @@ class ProjectService:
 
     @staticmethod
     async def add_member(project_id, payload, user, invited=False):
-        
-        
         await get_project(project_id, user, 'project.members.manage')
+        if payload.project_role not in access_policy().get("role_permissions", {}):
+            raise HTTPException(422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
         member_user_id = await resolve_user_reference(payload.user_id)
         timestamp = now()
         membership = {
@@ -644,10 +683,12 @@ class ProjectService:
 
     @staticmethod
     async def update_member(project_id, member_user_id, payload, user):
-        
-        
-        
         await get_project(project_id, user, 'project.members.manage')
+        if (
+            payload.project_role is not None
+            and payload.project_role not in access_policy().get("role_permissions", {})
+        ):
+            raise HTTPException(422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
         previous = await project_repository.find_member(project_id, member_user_id)
         if not previous:
             raise HTTPException(

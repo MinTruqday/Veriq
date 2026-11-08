@@ -5,6 +5,7 @@ import re
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.core.common import (
     audit,
     get_project,
@@ -13,19 +14,20 @@ from src.core.common import (
     now,
     optimistic_patch,
     plain_text,
-    require_action_policy,
     sort_spec,
 )
 from src.core.database import database
+from src.core.human_decisions import (
+    content_authorship_changes,
+    require_automation_publication_authority,
+    require_independent_review,
+)
 from src.core.source_evidence import split_source_evidence
-from src.core.human_decisions import content_authorship_changes, require_automation_publication_authority, require_independent_review
-from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
-from src.repositories.test_plan import test_plan_repository
-from src.repositories.project import project_repository
-from src.modules.execution.services.execution_context import resolve_execution_context
-from src.core.ai_automation import ai_contract_metadata, request_ai_automation
 from src.modules.design.services.test_case_records import require_current_baselined_version
-
+from src.modules.execution.services.execution_context import resolve_execution_context
+from src.repositories.project import project_repository
+from src.repositories.test_plan import test_plan_repository
+from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
 
 LEGACY_PLAN_SNAPSHOT_FIELDS = (
     'project_id', 'name', 'objective', 'scope_in', 'scope_out',
@@ -305,13 +307,6 @@ async def create_test_plan_record(payload, project_id, user):
         build=payload.build,
         environment=payload.environment,
     )
-    if payload.members:
-        await require_action_policy(
-            payload.project_id,
-            user,
-            "testplan.assignments",
-            set(['QA']),
-        )
     await validate_effort_allocation_members(payload.project_id, payload.estimation)
     await validate_plan_data_owner(payload.project_id, payload.test_data_plan)
     strategy_binding = await resolve_strategy_binding(
@@ -423,13 +418,6 @@ async def update_test_plan_record(plan_id, payload, user):
     plan = await get_test_plan_record(plan_id, user, "testplan.update")
     if plan.get("status") != 'DRAFT':
         raise HTTPException(status_code=409, detail={"code": 'TEST_PLAN_NOT_DRAFT'})
-    if payload.members is not None:
-        await require_action_policy(
-            plan["project_id"],
-            user,
-            "testplan.assignments",
-            set(['QA']),
-        )
     changes = payload.model_dump(exclude_unset=True)
     changes.pop("expected_revision", None)
     if 'test_data_plan' in changes:

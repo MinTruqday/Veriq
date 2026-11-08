@@ -6,12 +6,18 @@ import json
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now, visible_defect
+from src.core.common import (
+    audit,
+    get_project,
+    get_project_entity,
+    get_project_permissions,
+    new_id,
+    now,
+    visible_defect,
+)
 from src.core.database import database
 from src.core.metrics import STALE, TRACE_ACCEPTANCE_RATE, UNCOVERED
 from src.repositories.traceability import traceability_repository
-
-
 
 
 def _snapshot_request_hash(payload):
@@ -226,7 +232,7 @@ class TraceabilityService:
     @staticmethod
     async def matrix(project_id, user, requirement_version_id=None, requirement_version_ids=None):
         await get_project(project_id, user, "trace.read")
-        roles = await get_project_roles(project_id, user.id)
+        permissions = await get_project_permissions(project_id, user.id)
         scoped_version_ids = list(
             dict.fromkeys(
                 str(value)
@@ -298,7 +304,7 @@ class TraceabilityService:
             },
             20000,
         )
-        defects = [visible_defect(item, roles) for item in defects]
+        defects = [visible_defect(item, permissions) for item in defects]
         trace_query = {"project_id": project_id}
         trace_limit = 50000
         if scoped_version_ids:

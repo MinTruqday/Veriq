@@ -1,12 +1,16 @@
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
-from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now
-from src.repositories.test_design import test_design_repository
-from src.schemas.contracts.requirements import (
-    AttachmentCreate,
-    AttachmentModeration,
+from src.core.common import (
+    audit,
+    get_project,
+    get_project_entity,
+    get_project_permissions,
+    new_id,
+    now,
 )
+from src.repositories.test_design import test_design_repository
+from src.schemas.contracts.requirements import AttachmentCreate, AttachmentModeration
 
 
 class AttachmentService:
@@ -47,11 +51,15 @@ class AttachmentService:
                     detail={"code": 'ATTACHMENT_ARTIFACT_TYPE_INVALID'},
                 )
             if collection == "requirement_documents":
-                from src.modules.requirements.services.requirement_documents import get_requirement_document_record
+                from src.modules.requirements.services.requirement_documents import (
+                    get_requirement_document_record,
+                )
 
                 await get_requirement_document_record(payload.artifact_id, user)
             elif collection == "test_results":
-                from src.modules.execution.services.execution_state import require_case_execution_assignment
+                from src.modules.execution.services.execution_state import (
+                    require_case_execution_assignment,
+                )
                 from src.repositories.test_run import test_run_repository
 
                 result = await test_run_repository.find_result(payload.artifact_id)
@@ -122,10 +130,11 @@ class AttachmentService:
     ):
         await get_project(project_id, user, "attachment.read")
         query = {"project_id": project_id, "status": 'ACTIVE'}
-        roles = await get_project_roles(project_id, user.id)
-        if 'VIEWER' in roles and artifact_type == "defect":
+        permissions = await get_project_permissions(project_id, user.id)
+        can_read_defect_details = "defect.private.read" in permissions
+        if not can_read_defect_details and artifact_type == "defect":
             return []
-        if 'VIEWER' in roles:
+        if not can_read_defect_details:
             query["artifact_type"] = {"$ne": "defect"}
         if artifact_type:
             query["artifact_type"] = artifact_type

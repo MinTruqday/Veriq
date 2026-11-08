@@ -2,7 +2,15 @@ from fastapi import HTTPException
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
-from src.core.common import audit, get_project, get_project_roles, new_id, now, resolve_user_reference
+from src.core.auth import access_policy, permissions_for_role
+from src.core.common import (
+    audit,
+    get_project,
+    get_project_roles,
+    new_id,
+    now,
+    resolve_user_reference,
+)
 from src.core.database import database
 from src.repositories.project import project_repository
 from src.repositories.work_item import work_item_repository
@@ -122,8 +130,13 @@ async def _workflow(project_id):
             }
         return workflow
     statuses = ("BACKLOG", "TODO", "IN_PROGRESS", "BLOCKED", "DONE", "CANCELLED")
+    transition_roles = sorted(
+        role
+        for role in access_policy().get("role_permissions", {})
+        if "project.update" in permissions_for_role(role)
+    )
     transitions = [
-        {"from_status": source, "to_status": target, "allowed_roles": ["BA", "DEVELOPER"]}
+        {"from_status": source, "to_status": target, "allowed_roles": transition_roles}
         for source in statuses
         for target in statuses
         if source != target
@@ -623,6 +636,7 @@ class WorkItemService:
     async def update_workflow(project_id, payload, user):
         await _require_project_editor(project_id, user)
         transitions = [value.model_dump() for value in payload.transitions]
+        available_roles = set(access_policy().get("role_permissions", {}))
         statuses = [value.model_dump() for value in payload.statuses]
         status_keys = {value["key"] for value in statuses}
         if len(status_keys) != len(statuses):
@@ -632,6 +646,11 @@ class WorkItemService:
         identities = {(value.from_status, value.to_status) for value in payload.transitions}
         if len(identities) != len(transitions):
             raise HTTPException(status_code=422, detail={"code": "WORKFLOW_TRANSITION_DUPLICATE"})
+        if any(
+            not set(value["allowed_roles"]).issubset(available_roles)
+            for value in transitions
+        ):
+            raise HTTPException(status_code=422, detail={"code": "PROJECT_ROLE_UNAVAILABLE"})
         workflow = await _workflow(project_id)
         removed_statuses = {
             value["key"] for value in workflow.get("statuses", [])

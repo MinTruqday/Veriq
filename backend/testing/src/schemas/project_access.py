@@ -2,30 +2,53 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+ProjectRoleValue = str
 
 
-ProjectRoleValue = Literal["BA", "QA", "TESTER", "DEVELOPER", "VIEWER"]
+def _normalize_role(value):
+    return str(value or "").strip().upper()
 
 
 class ProjectCapability(BaseModel):
     name: str = Field(min_length=1)
     read_only: bool = False
-    business_roles: list[ProjectRoleValue] = Field(default_factory=list)
+    business_roles: list[ProjectRoleValue] = Field(default_factory=list, max_length=100)
     responsibility: Literal["business_confirmation", "release_decision"] | None = None
+
+    @field_validator("business_roles")
+    @classmethod
+    def normalize_business_roles(cls, values):
+        normalized = [_normalize_role(value) for value in values]
+        if any(not value or len(value) > 80 for value in normalized):
+            raise ValueError("PROJECT_ROLE_INVALID")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("DUPLICATE_PROJECT_BUSINESS_ROLE")
+        return normalized
 
 
 class ProjectRoleGrant(BaseModel):
-    role: ProjectRoleValue
+    role: ProjectRoleValue = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
     permissions: list[str]
+
+    @field_validator("role")
+    @classmethod
+    def normalize_role(cls, value):
+        return _normalize_role(value)
 
 
 class ProjectSettingGrant(BaseModel):
-    role: ProjectRoleValue
+    role: ProjectRoleValue = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
     setting: str = Field(min_length=1)
     enabled: bool
     effect: Literal["ALLOW", "DENY"]
     permissions: list[str]
+
+    @field_validator("role")
+    @classmethod
+    def normalize_role(cls, value):
+        return _normalize_role(value)
 
 
 class ProjectAccessControl(BaseModel):
@@ -43,6 +66,17 @@ class ProjectAccessControl(BaseModel):
         roles = [item.role for item in self.role_grants]
         if len(roles) != len(set(roles)):
             raise ValueError("DUPLICATE_PROJECT_ROLE_GRANT")
+        role_names = set(roles)
+        if any(
+            not set(capability.business_roles).issubset(role_names)
+            for capability in self.capabilities
+        ):
+            raise ValueError("UNKNOWN_PROJECT_BUSINESS_ROLE")
+        if any(
+            grant.role not in role_names
+            for grant in self.setting_grants
+        ):
+            raise ValueError("UNKNOWN_PROJECT_SETTING_ROLE")
         known = set(names)
         for grant in [*self.role_grants, *self.setting_grants]:
             if not set(grant.permissions) <= known:

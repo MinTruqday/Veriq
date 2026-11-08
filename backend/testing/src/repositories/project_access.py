@@ -5,6 +5,80 @@ from src.schemas.project_access import ProjectAccessControl, ProjectRoleGrant
 
 
 class ProjectAccessRepository:
+    async def ensure_private_defect_capability(self):
+        from src.core.auth import ROLE_NEUTRAL_PERMISSIONS, access_policy
+        from src.schemas.project_access import ProjectCapability
+
+        while True:
+            document = await database.value.project_access_control.find_one({"_id": "active"})
+            access = ProjectAccessControl.model_validate(document)
+            capability_names = {item.name for item in access.capabilities}
+            grants = {grant.role: set(grant.permissions) for grant in access.role_grants}
+            writable_permissions = {
+                item.name
+                for item in access.capabilities
+                if not item.read_only and item.name not in ROLE_NEUTRAL_PERMISSIONS
+            }
+            private_read_roles = {
+                role
+                for role, permissions in grants.items()
+                if "defect.read" in permissions and permissions & writable_permissions
+            }
+            updated_grants = {
+                role: permissions | {"defect.private.read"}
+                if role in private_read_roles
+                else permissions
+                for role, permissions in grants.items()
+            }
+            changed = (
+                "defect.private.read" not in capability_names
+                or any(updated_grants[role] != grants[role] for role in grants)
+            )
+            if not changed:
+                access_policy.cache_clear()
+                return
+            updated = access.model_copy(update={
+                "revision": access.revision + 1,
+                "capabilities": access.capabilities + (
+                    [ProjectCapability(name="defect.private.read", read_only=True)]
+                    if "defect.private.read" not in capability_names
+                    else []
+                ),
+                "role_grants": [
+                    grant.model_copy(update={"permissions": sorted(updated_grants[grant.role])})
+                    for grant in access.role_grants
+                ],
+            })
+            timestamp = datetime.now(timezone.utc)
+            async with await database.client.start_session() as session:
+                async with session.start_transaction():
+                    result = await database.value.project_access_control.replace_one(
+                        {"_id": "active", "revision": access.revision},
+                        {**document, **updated.model_dump(), "updated_at": timestamp},
+                        session=session,
+                    )
+                    if result.modified_count:
+                        await database.value.audit_events.update_one(
+                            {"_id": f"MIG-defect-private-read-{updated.revision}"},
+                            {"$setOnInsert": {
+                                "actor_id": "SYSTEM_MIGRATION",
+                                "action": "defect_private_read_capability_added",
+                                "entity_type": "ProjectAccessControl",
+                                "entity_id": "active",
+                                "project_id": None,
+                                "created_at": timestamp,
+                                "details": {
+                                    "permission": "defect.private.read",
+                                    "granted_roles": sorted(private_read_roles),
+                                    "previous_revision": access.revision,
+                                },
+                            }},
+                            upsert=True,
+                            session=session,
+                        )
+                        access_policy.cache_clear()
+                        return
+
     @staticmethod
     def project_settings_role_policy_preview(document):
         access = ProjectAccessControl.model_validate(document)
@@ -189,8 +263,8 @@ class ProjectAccessRepository:
                         return
 
     async def ensure_reporting_capabilities(self):
-        from src.schemas.project_access import ProjectCapability
         from src.core.auth import access_policy
+        from src.schemas.project_access import ProjectCapability
 
         allowed = {
             "workreport.read": {"BA", "QA", "TESTER", "DEVELOPER", "VIEWER"},
@@ -229,8 +303,8 @@ class ProjectAccessRepository:
                         access_policy.cache_clear()
                         return
 
-    async def ensure_viewer_comment_capability(self):
-        from src.core.auth import access_policy
+    async def ensure_read_only_comment_capabilities(self):
+        from src.core.auth import ROLE_NEUTRAL_PERMISSIONS, access_policy
         from src.schemas.project_access import ProjectCapability
 
         permissions = {"comment.read", "comment.create"}
@@ -240,14 +314,30 @@ class ProjectAccessRepository:
             known = {item.name for item in access.capabilities}
             missing = permissions - known
             grants = {grant.role: set(grant.permissions) for grant in access.role_grants}
-            roles = {grant.role for grant in access.role_grants}
-            current_viewer = grants.get("VIEWER", set())
-            updated_viewer = current_viewer | permissions
-            changed = bool(missing or updated_viewer != current_viewer or "VIEWER" not in roles)
+            read_only = {
+                item.name for item in access.capabilities if item.read_only
+            }
+            writable = {
+                item.name for item in access.capabilities if not item.read_only
+            } - ROLE_NEUTRAL_PERMISSIONS
+            comment_roles = {
+                role
+                for role, role_permissions in grants.items()
+                if role_permissions & read_only and not role_permissions & writable
+            }
+            updated_grants = {
+                role: role_permissions | permissions
+                if role in comment_roles
+                else role_permissions
+                for role, role_permissions in grants.items()
+            }
+            changed = bool(
+                missing
+                or any(updated_grants[role] != grants[role] for role in grants)
+            )
             if not changed:
                 access_policy.cache_clear()
                 return
-            grants["VIEWER"] = updated_viewer
             updated = access.model_copy(update={
                 "revision": access.revision + 1,
                 "capabilities": access.capabilities + [
@@ -255,9 +345,9 @@ class ProjectAccessRepository:
                     for name in sorted(missing)
                 ],
                 "role_grants": [
-                    grant.model_copy(update={"permissions": sorted(grants[grant.role])})
+                    grant.model_copy(update={"permissions": sorted(updated_grants[grant.role])})
                     for grant in access.role_grants
-                ] + ([ProjectRoleGrant(role="VIEWER", permissions=sorted(grants["VIEWER"]))] if "VIEWER" not in roles else []),
+                ],
             })
             timestamp = datetime.now(timezone.utc)
             async with await database.client.start_session() as session:
@@ -269,15 +359,19 @@ class ProjectAccessRepository:
                     )
                     if result.modified_count:
                         await database.value.audit_events.update_one(
-                            {"_id": f"MIG-viewer-comments-{updated.revision}"},
+                            {"_id": f"MIG-read-only-comments-{updated.revision}"},
                             {"$setOnInsert": {
                                 "actor_id": "SYSTEM_MIGRATION",
-                                "action": "viewer_comment_capability_added",
+                                "action": "read_only_comment_capability_added",
                                 "entity_type": "ProjectAccessControl",
                                 "entity_id": "active",
                                 "project_id": None,
                                 "created_at": timestamp,
-                                "details": {"permissions": sorted(permissions), "previous_revision": access.revision},
+                                "details": {
+                                    "permissions": sorted(permissions),
+                                    "roles": sorted(comment_roles),
+                                    "previous_revision": access.revision,
+                                },
                             }},
                             upsert=True,
                             session=session,
@@ -287,7 +381,7 @@ class ProjectAccessRepository:
 
     @staticmethod
     def business_policy_preview(document):
-        from src.core.auth import ProjectRole, ROLE_NEUTRAL_PERMISSIONS
+        from src.core.auth import ROLE_NEUTRAL_PERMISSIONS, ProjectRole
         from src.repositories.legacy_business_roles import legacy_required_business_role
 
         access = ProjectAccessControl.model_validate(document)

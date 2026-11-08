@@ -207,7 +207,17 @@ class PlanningBoardUpdate(BaseModel):
 class WorkflowTransitionInput(BaseModel):
     from_status: str = Field(min_length=1, max_length=100)
     to_status: str = Field(min_length=1, max_length=100)
-    allowed_roles: list[Literal["BA", "DEVELOPER"]] = Field(min_length=1, max_length=2)
+    allowed_roles: list[str] = Field(min_length=1, max_length=100)
+
+    @field_validator("allowed_roles")
+    @classmethod
+    def normalize_allowed_roles(cls, values):
+        normalized = [" ".join(value.split()).upper() for value in values]
+        if any(not value or len(value) > 80 for value in normalized):
+            raise ValueError("WORKFLOW_ROLE_INVALID")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("WORKFLOW_ROLE_DUPLICATE")
+        return normalized
 
 
 class WorkflowStatusInput(BaseModel):
@@ -303,10 +313,20 @@ class ProjectArchiveInput(BaseModel):
 
 class ProjectMemberCreate(BaseModel):
     user_id: str = Field(min_length=1, max_length=200)
-    project_role: Literal["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"]
+    project_role: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+    @field_validator("project_role")
+    @classmethod
+    def normalize_project_role(cls, value):
+        return value.strip().upper()
 
 
 class ProjectMemberPatch(BaseModel):
     expected_revision: int = Field(ge=1)
-    project_role: Literal["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"] | None = None
+    project_role: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
     status: Literal["ACTIVE", "INACTIVE"] | None = None
+
+    @field_validator("project_role")
+    @classmethod
+    def normalize_project_role(cls, value):
+        return value.strip().upper() if value else value

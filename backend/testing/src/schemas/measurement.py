@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 MetricKey = Literal[
     "REQUIREMENT_COVERAGE",
@@ -58,7 +58,12 @@ class MeasurementDefinitionCreate(BaseModel):
     target: float | None = None
     warning_threshold: float | None = None
     critical_threshold: float | None = None
-    owner_role: Literal["QA", "TESTER", "BA", "DEVELOPER"]
+    owner_role: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+    @field_validator("owner_role")
+    @classmethod
+    def normalize_owner_role(cls, value):
+        return value.strip().upper()
 
     @model_validator(mode="after")
     def validate_thresholds(self):
@@ -88,7 +93,12 @@ class MeasurementDefinitionPatch(BaseModel):
     target: float | None = None
     warning_threshold: float | None = None
     critical_threshold: float | None = None
-    owner_role: Literal["QA", "TESTER", "BA", "DEVELOPER"] | None = None
+    owner_role: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+    @field_validator("owner_role")
+    @classmethod
+    def normalize_owner_role(cls, value):
+        return value.strip().upper() if value else value
 
 
 class MeasurementTransition(BaseModel):

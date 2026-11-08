@@ -7,11 +7,12 @@ import re
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
+from src.clients.ai_automation import emit_defect_recorded
 from src.core.common import (
     audit,
     get_project,
     get_project_entity,
-    get_project_roles,
+    get_project_permissions,
     new_id,
     next_key,
     now,
@@ -20,14 +21,13 @@ from src.core.common import (
     visible_defect,
 )
 from src.core.database import database
-from src.repositories.defect import defect_repository
 from src.modules.execution.services.execution_context import (
     defect_blocks_release,
     recheck_release_gates_for_defect,
     resolve_execution_context,
     serialize_release_gate,
 )
-from src.clients.ai_automation import emit_defect_recorded
+from src.repositories.defect import defect_repository
 from src.repositories.defect_search_index import defect_search_index_repository
 
 
@@ -383,8 +383,8 @@ async def list_defect_records(
     items = await defect_repository.list_defects(
         query, sort_field, direction, (page - 1) * page_size, page_size
     )
-    roles = await get_project_roles(project_id, user.id)
-    return page_payload([visible_defect(item, roles) for item in items], page, page_size, total)
+    permissions = await get_project_permissions(project_id, user.id)
+    return page_payload([visible_defect(item, permissions) for item in items], page, page_size, total)
 
 
 async def build_defect_export(project_id, user):
@@ -405,7 +405,7 @@ async def get_defect_record(defect_id, project_id, user):
     defect = await get_project_entity("defects", defect_id, user, "defect.read")
     if project_id is not None and defect["project_id"] != project_id:
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
-    roles = await get_project_roles(defect["project_id"], user.id)
+    permissions = await get_project_permissions(defect["project_id"], user.id)
     trace_links = await defect_repository.list_trace_links(
         defect["project_id"],
         defect_id,
@@ -414,7 +414,7 @@ async def get_defect_record(defect_id, project_id, user):
     )
     comments = (
         []
-        if 'VIEWER' in roles
+        if "defect.private.read" not in permissions
         else await defect_repository.list_comments(
             defect["project_id"],
             defect_id,
@@ -424,7 +424,7 @@ async def get_defect_record(defect_id, project_id, user):
     )
     attachments = (
         []
-        if 'VIEWER' in roles
+        if "defect.private.read" not in permissions
         else await defect_repository.list_attachments(
             defect["project_id"],
             defect_id,
@@ -434,7 +434,7 @@ async def get_defect_record(defect_id, project_id, user):
         )
     )
     return {
-        **visible_defect(defect, roles),
+        **visible_defect(defect, permissions),
         "trace_links": trace_links,
         "comments": comments,
         "attachments": attachments,

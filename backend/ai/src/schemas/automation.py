@@ -58,23 +58,33 @@ class AutomationEventConditions(BaseModel):
     required_artifact_types: list[str] = Field(default_factory=list, max_length=30)
     required_authorities: list[str] = Field(default_factory=list, max_length=30)
     workflow_states_any_of: list[str] = Field(default_factory=list, max_length=30)
-    requester_roles: list[
-        Literal["BA", "QA", "TESTER", "DEVELOPER", "VIEWER", "ADMIN"]
-    ] = Field(
-        default_factory=list, max_length=6
-    )
+    requester_roles: list[str] = Field(default_factory=list, max_length=100)
     minimum_evidence_score: float | None = Field(default=None, ge=0, le=1)
     require_versioned_evidence: bool = False
     require_trace_link: bool = False
 
     @field_validator(
-        "required_artifact_types", "required_authorities", "workflow_states_any_of"
+        "required_artifact_types",
+        "required_authorities",
+        "workflow_states_any_of",
     )
     @classmethod
     def normalize_condition_values(cls, values):
         normalized = [str(value).strip() for value in values]
         if any(not value for value in normalized) or len(set(normalized)) != len(normalized):
             raise ValueError("automation_condition_values_must_be_nonblank_and_unique")
+        if any(len(value) > 80 for value in normalized):
+            raise ValueError("automation_condition_value_too_long")
+        return normalized
+
+    @field_validator("requester_roles")
+    @classmethod
+    def normalize_requester_roles(cls, values):
+        normalized = [str(value).strip().upper() for value in values]
+        if any(not value or len(value) > 80 for value in normalized):
+            raise ValueError("automation_condition_roles_invalid")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("automation_condition_roles_duplicate")
         return normalized
 
 

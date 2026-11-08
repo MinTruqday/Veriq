@@ -1,16 +1,13 @@
 from fastapi import HTTPException
 
 from src.core.auth import CurrentUser
-from src.core.common import audit, get_project, get_project_entity, get_project_roles, new_id, now
+from src.core.common import audit, get_project, get_project_entity, new_id, now
 from src.repositories.review import review_repository
 from src.schemas.contracts.requirements import (
     ReviewCommentAction,
     ReviewCommentCreate,
     ReviewCommentPatch,
 )
-
-
-
 
 
 class ReviewCommentService:
@@ -79,8 +76,8 @@ class ReviewCommentService:
             await ReviewCommentService._require_artifact_read(
                 project_id, artifact_type, artifact_id, user
             )
-        elif "VIEWER" in await get_project_roles(project_id, user.id):
-            raise HTTPException(status_code=403, detail={"code": "COMMENT_ARTIFACT_SCOPE_REQUIRED"})
+        else:
+            await get_project(project_id, user, "comment.moderate")
         query = {"project_id": project_id}
         if artifact_type:
             query["artifact_type"] = artifact_type

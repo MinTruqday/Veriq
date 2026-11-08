@@ -5,11 +5,22 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from src.clients.authentication import load_accounts, resolve_account
-from src.core.auth import CurrentUser, ai_automation_context, archive_read_permissions, permissions_for_membership, project_permissions, roles_for_membership
-from src.core.auth import ASSIGNED_OWNER_PERMISSIONS, access_policy, business_role_allows, permission_explicitly_denied, refresh_access_policy
+from src.core.auth import (
+    ASSIGNED_OWNER_PERMISSIONS,
+    CurrentUser,
+    access_policy,
+    ai_automation_context,
+    archive_read_permissions,
+    business_role_allows,
+    permission_explicitly_denied,
+    permissions_for_membership,
+    project_permissions,
+    refresh_access_policy,
+    responsibility_allows,
+    roles_for_membership,
+)
 from src.core.human_decisions import require_automation_publication_authority
 from src.repositories.common import common_repository
-
 
 RETRYABLE_ERROR_CODES = frozenset(['WORKER_UNAVAILABLE',
  'KNOWLEDGE_UNAVAILABLE',
@@ -17,7 +28,7 @@ RETRYABLE_ERROR_CODES = frozenset(['WORKER_UNAVAILABLE',
  'AI_PROVIDER_UNAVAILABLE',
  'PROPOSAL_APPLY_PARTIAL',
  'WORKER_JOB_FAILED'])
-VIEWER_DEFECT_FIELDS = frozenset(['_id',
+PUBLIC_DEFECT_FIELDS = frozenset(['_id',
  'project_id',
  'defect_key',
  'title',
@@ -46,17 +57,6 @@ def now():
     return datetime.now(timezone.utc)
 
 
-async def get_project_role(project_id, user_id):
-    
-    membership = await common_repository.find_membership(
-        project_id,
-        user_id,
-        status='ACTIVE',
-        projection={"project_role": 1, "project_roles": 1},
-    )
-    return (membership or {}).get("project_role")
-
-
 async def get_project_roles(project_id, user_id):
     membership = await common_repository.find_membership(
         project_id,
@@ -67,20 +67,46 @@ async def get_project_roles(project_id, user_id):
     return roles_for_membership(membership)
 
 
-def visible_defect(defect, role):
+def visible_defect(defect, permissions):
     public_defect = {
         key: value
         for key, value in defect.items()
         if key not in {"idempotency_key", "idempotency_request_hash"}
     }
-    roles = {role} if isinstance(role, str) else set(role or [])
-    if 'VIEWER' not in roles:
+    if "defect.private.read" in set(permissions or []):
         return public_defect
     return {
         key: value
         for key, value in public_defect.items()
-        if key in VIEWER_DEFECT_FIELDS
+        if key in PUBLIC_DEFECT_FIELDS
     }
+
+
+async def get_project_permissions(project_id, user_id):
+    refresh_access_policy()
+    project = await common_repository.find_project(project_id)
+    membership = await common_repository.find_membership(
+        project_id, user_id, status="ACTIVE"
+    )
+    if not project or not membership:
+        return set()
+    settings_value = project.get("settings") or {}
+    permissions = permissions_for_membership(membership, settings_value)
+    grant = await common_repository.find_active_grant(
+        project_id, user_id, "ACTIVE", now()
+    )
+    if grant:
+        grant_permissions = set(grant.get("permissions", [])) & project_permissions()
+        roles = roles_for_membership(membership)
+        permissions.update(
+            permission
+            for permission in grant_permissions
+            if business_role_allows(permission, roles)
+            and responsibility_allows(permission, user_id, settings_value)
+        )
+    if project.get("status", "active").lower() == "archived":
+        permissions.intersection_update(archive_read_permissions() | {"project.restore"})
+    return permissions
 
 
 async def load_user_identities(user_ids):
@@ -331,35 +357,6 @@ async def get_project(
                 "reason": grant.get("reason"),
             },
         }
-    return project
-
-
-async def require_action_policy(
-    project_id: str, user: CurrentUser, action: str, default_roles: set[str]
-):
-    
-    project = await common_repository.find_project(project_id, {"settings": 1})
-    membership = await common_repository.find_membership(
-        project_id,
-        user.id,
-        status='ACTIVE',
-        projection={"project_role": 1, "project_roles": 1},
-    )
-    if not project or not membership:
-        raise HTTPException(
-            status_code=403, detail={"code": 'PROJECT_MEMBERSHIP_REQUIRED'}
-        )
-    configured = (project.get("settings") or {}).get("action_policies", {}).get(action)
-    allowed_roles = (
-        set(configured).intersection(default_roles)
-        if isinstance(configured, list)
-        else set(default_roles)
-    )
-    if not roles_for_membership(membership).intersection(allowed_roles):
-        raise HTTPException(
-            status_code=403,
-            detail={"code": 'PROJECT_ACTION_POLICY_DENIED', "action": action},
-        )
     return project
 
 

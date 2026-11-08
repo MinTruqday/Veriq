@@ -10,8 +10,8 @@ from fastapi.responses import JSONResponse
 
 from src.clients.ai_automation import start_event_dispatcher, stop_event_dispatcher
 from src.core.ai_streaming import AIStreamingMiddleware
-from src.core.common import failure_metadata, new_id
 from src.core.auth import refresh_access_policy
+from src.core.common import failure_metadata, new_id
 from src.core.configuration import settings
 from src.core.database import close_database, connect_database, database
 from src.core.metrics import PrometheusMiddleware, metrics_endpoint
@@ -43,9 +43,10 @@ async def lifespan(app: FastAPI):
     await project_access_repository.correct_project_settings_role()
     await project_access_repository.correct_member_management_role()
     await project_access_repository.ensure_reporting_capabilities()
-    await project_access_repository.ensure_viewer_comment_capability()
+    await project_access_repository.ensure_read_only_comment_capabilities()
     await project_access_repository.ensure_business_policy()
     await project_access_repository.ensure_requirement_role_grants()
+    await project_access_repository.ensure_private_defect_capability()
     from src.repositories.reporting import reporting_repository
     await reporting_repository.initialize()
     from src.modules.execution.services.report_jobs import start_reporting_background

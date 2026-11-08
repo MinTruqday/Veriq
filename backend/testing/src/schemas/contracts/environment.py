@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from src.schemas.contracts.common import WebhookDeliveryStatus
 
+
 class ReleaseCreate(BaseModel):
     key: str = Field(min_length=2, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]+$")
     name: str = Field(min_length=2, max_length=300)
@@ -154,10 +155,18 @@ class ProjectNotificationRulePatch(BaseModel):
     channels: list[Literal["in_app", "email", "webhook"]] = Field(
         default_factory=lambda: ["in_app"], max_length=3
     )
-    target_roles: list[Literal["QA", "TESTER", "BA", "DEVELOPER", "VIEWER"]] = Field(
-        default_factory=list, max_length=5
-    )
+    target_roles: list[str] = Field(default_factory=list, max_length=100)
     escalation_minutes: int | None = Field(default=None, ge=1, le=10080)
+
+    @field_validator("target_roles")
+    @classmethod
+    def normalize_target_roles(cls, values):
+        normalized = [" ".join(value.split()).upper() for value in values]
+        if any(not value or len(value) > 80 for value in normalized):
+            raise ValueError("PROJECT_ROLE_INVALID")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("PROJECT_ROLE_DUPLICATE")
+        return normalized
 
 
 class ProjectNotificationPreferencePatch(BaseModel):

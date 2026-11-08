@@ -96,37 +96,38 @@ ASSIGNED_OWNER_PERMISSIONS = ASSIGNED_DRAFT_PERMISSIONS | frozenset({
 })
 
 
-def required_business_role(permission: str) -> set[ProjectRole]:
-    roles = access_policy().get("business_role_permissions", {}).get(permission, [])
-    return {ProjectRole(role) for role in roles}
+def required_business_role(permission: str) -> set[str]:
+    return {
+        str(role).strip().upper()
+        for role in access_policy().get("business_role_permissions", {}).get(permission, [])
+        if str(role).strip()
+    }
 
 
 def business_role_allows(permission: str, roles: set[str]) -> bool:
-    if not roles:
-        return False
     required = required_business_role(permission)
-    return bool({role.value for role in required}.intersection(roles))
+    normalized_roles = {str(role).strip().upper() for role in roles if str(role).strip()}
+    return not required or bool(required.intersection(normalized_roles))
 
 
 def permissions_for_role(role: ProjectRole | str, settings_value: dict | None = None):
-    try:
-        normalized = role if isinstance(role, ProjectRole) else ProjectRole(str(role).upper())
-    except ValueError:
+    normalized = str(getattr(role, "value", role) or "").strip().upper()
+    if not normalized:
         return set()
     values = access_policy()
-    permissions = set(values.get("role_permissions", {}).get(normalized.value, []))
+    permissions = set(values.get("role_permissions", {}).get(normalized, []))
     project_settings = settings_value or {}
     for key, rule in values.get("policy_permissions", {}).items():
         if (
             isinstance(rule, dict)
-            and rule.get("role") == normalized.value
+            and rule.get("role") == normalized
             and project_settings.get(key) is True
         ):
             permissions.update(rule.get("permissions", []))
     for rule in values.get("conditional_permissions", []):
         if (
             isinstance(rule, dict)
-            and rule.get("role") == normalized.value
+            and rule.get("role") == normalized
             and project_settings.get(rule.get("setting")) is rule.get("enabled")
         ):
             permissions.update(rule.get("permissions", []))
@@ -134,15 +135,15 @@ def permissions_for_role(role: ProjectRole | str, settings_value: dict | None = 
     for rule in values.get("conditional_denials", []):
         if (
             isinstance(rule, dict)
-            and rule.get("role") == normalized.value
+            and rule.get("role") == normalized
             and project_settings.get(rule.get("setting")) is rule.get("enabled")
         ):
             denied.update(rule.get("permissions", []))
-    overrides = project_settings.get("permission_overrides", {}).get(normalized.value, {})
+    overrides = project_settings.get("permission_overrides", {}).get(normalized, {})
     known_permissions = project_permissions()
     permissions.update(item for item in overrides.get("allow", []) if item in known_permissions)
     permissions.difference_update(denied | set(overrides.get("deny", [])))
-    return {item for item in permissions if business_role_allows(item, {normalized.value})}
+    return {item for item in permissions if business_role_allows(item, {normalized})}
 
 
 def roles_for_membership(membership: dict | None) -> set[str]:
@@ -150,11 +151,12 @@ def roles_for_membership(membership: dict | None) -> set[str]:
         return set()
     primary = membership.get("project_role")
     if primary:
-        return {str(primary).upper()}
+        normalized = str(primary).strip().upper()
+        return {normalized} if normalized else set()
     roles = membership.get("project_roles")
     if not isinstance(roles, list):
         roles = []
-    legacy_roles = {str(role).upper() for role in roles if role}
+    legacy_roles = {str(role).strip().upper() for role in roles if str(role).strip()}
     return legacy_roles if len(legacy_roles) == 1 else set()
 
 

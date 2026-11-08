@@ -14,17 +14,17 @@ from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.mq import mq
 from src.prompts.automation_events import document_ingested_objective, generic_event_objective
 from src.repositories.automation import automation_repository
-from src.runtime.queue_names import AUTOMATION_QUEUE
 from src.runtime.limits import limits
+from src.runtime.queue_names import AUTOMATION_QUEUE
 from src.schemas.automation import (
     AutomationCheckpointPhase,
     AutomationClarificationResponseRequest,
     AutomationEventRequest,
-    EvidenceItem,
     AutomationKind,
     AutomationRun,
     AutomationStatus,
     AutomationTrigger,
+    EvidenceItem,
 )
 from src.services.project_access import project_access
 from src.tools.registry import registered_tools, requires_human_decision, tool_access
@@ -447,10 +447,10 @@ class AutomationService:
                 status_code=409, detail={"code": "AUTOMATION_RETRY_REQUIRES_RECONCILIATION"}
             )
         retry_values = {"status": AutomationStatus.QUEUED, "error_code": None}
-        if run.error_code in {
-            "PROJECT_QA_EXECUTOR_UNAVAILABLE",
-            "PROJECT_BA_EXECUTOR_UNAVAILABLE",
-        }:
+        if run.error_code == "AUTOMATION_EXECUTOR_UNAVAILABLE" or (
+            str(run.error_code or "").startswith("PROJECT_")
+            and str(run.error_code).endswith("_EXECUTOR_UNAVAILABLE")
+        ):
             token = self._token_for_user(run.requester_user_id)
             role, permissions = await project_access(run.project_id, token)
             required_permission = (

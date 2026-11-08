@@ -23,8 +23,7 @@ const checkpointReasonLabels = {
   AUTOMATION_WORKER_CLAIMED: "Hệ thống đã tiếp nhận lượt chạy",
   AUTOMATION_WORKER_FAILED: "Hệ thống gặp lỗi khi xử lý lượt chạy",
   AUTOMATION_ACTION_OUTCOME_UNCERTAIN: "Chưa xác định được kết quả thao tác",
-  PROJECT_QA_EXECUTOR_UNAVAILABLE: "Không có thành viên đủ quyền thực hiện lượt chạy",
-  PROJECT_BA_EXECUTOR_UNAVAILABLE: "Không có thành viên đủ quyền thực hiện lượt chạy",
+  AUTOMATION_EXECUTOR_UNAVAILABLE: "Không có thành viên đủ quyền thực hiện lượt chạy",
   AI_READ_PERMISSION_REVOKED: "Quyền đọc nguồn AI đã bị thu hồi",
   AUTOMATION_CANCELLED: "Lượt chạy đã được dừng",
   QA_TEST_DESIGN_SOURCE_EVIDENCE_MISSING: "Không đủ bằng chứng nguồn để bàn giao thiết kế kiểm thử",
@@ -44,10 +43,8 @@ const agentRunErrorMessages = {
     "Hệ thống chưa thể tiếp nhận lượt chạy. Lượt này được giữ lại và sẽ được thử lại khi có thể.",
   AUTOMATION_WORKER_FAILED:
     "Hệ thống gặp lỗi khi xử lý lượt AI. Hãy xem bước gần nhất và trạng thái tiếp tục trước khi thử lại.",
-  PROJECT_BA_EXECUTOR_UNAVAILABLE:
-    "Dự án chưa có người phụ trách nghiệp vụ đang hoạt động để tiếp tục lượt chạy này.",
-  PROJECT_QA_EXECUTOR_UNAVAILABLE:
-    "Dự án chưa có người phụ trách kiểm thử đang hoạt động để tiếp tục lượt chạy này.",
+  AUTOMATION_EXECUTOR_UNAVAILABLE:
+    "Không xác minh được người thực hiện có quyền cần thiết để tiếp tục lượt chạy này.",
   PROJECT_AUTHORIZATION_CHECK_FAILED:
     "Chưa xác minh được quyền dự án. Lượt chạy đang chờ kiểm tra quyền.",
   AUTHORIZATION_EXPIRED: "Phiên quyền của lượt chạy đã hết hạn; cần xác minh lại quyền hiện tại.",
@@ -112,19 +109,14 @@ export function agentCheckpointView(checkpoint) {
 }
 
 export function agentAuthorizationGuidance(run) {
+  if (run?.error_code?.endsWith("_EXECUTOR_UNAVAILABLE")) {
+    return {
+      message:
+        "Không xác minh được người thực hiện có quyền cần thiết. Hãy kiểm tra quyền dự án rồi thử lại.",
+      action: "Kiểm tra quyền và thử lại",
+    };
+  }
   switch (run?.error_code) {
-    case "PROJECT_QA_EXECUTOR_UNAVAILABLE":
-      return {
-        message:
-          "Thành viên khởi chạy không còn quyền cần thiết. Hãy kiểm tra quyền dự án rồi thử lại.",
-        action: "Kiểm tra quyền và thử lại",
-      };
-    case "PROJECT_BA_EXECUTOR_UNAVAILABLE":
-      return {
-        message:
-          "Thành viên khởi chạy không còn quyền cần thiết. Hãy kiểm tra quyền dự án rồi thử lại.",
-        action: "Kiểm tra quyền và thử lại",
-      };
     case "AUTOMATION_PRINCIPAL_ROLE_CHANGED":
       return {
         message:
