@@ -213,6 +213,7 @@ export function useActionDialog() {
                     className="apple-input mt-2 min-h-28"
                     disabled={submitting || Boolean(field.disabled)}
                     required={field.required}
+                    maxLength={field.maxLength}
                     value={values[field.name] || ""}
                     placeholder={field.placeholder}
                     onChange={(event) =>
@@ -226,6 +227,7 @@ export function useActionDialog() {
                     disabled={submitting || Boolean(field.disabled)}
                     required={field.required}
                     type={field.type || "text"}
+                    maxLength={field.maxLength}
                     min={field.min}
                     max={field.max}
                     step={field.step}

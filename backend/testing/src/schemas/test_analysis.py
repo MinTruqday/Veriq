@@ -161,7 +161,7 @@ class TestBasisRef(BaseModel):
 class AnalysisFinding(BaseModel):
     finding_id: str = Field(min_length=1, max_length=200)
     finding_type: str = Field(min_length=1, max_length=100)
-    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+    severity: str = Field(min_length=1, max_length=100)
     source_ref: TestBasisRef
     description: str = Field(min_length=2, max_length=5000)
     suggestion: str = Field(default="", max_length=5000)
@@ -179,8 +179,8 @@ class TestConditionCreate(BaseModel):
     coverage_item: str = Field(min_length=1, max_length=500)
     test_level: str = Field(min_length=1, max_length=100)
     test_type: str = Field(min_length=1, max_length=100)
-    risk: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-    priority: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+    risk: str = Field(min_length=1, max_length=100)
+    priority: str = Field(min_length=1, max_length=100)
     technique_candidates: list[str] = Field(default_factory=list, max_length=100)
     testability_status: TestabilityStatus = TestabilityStatus.TESTABLE
     analysis_findings: list[AnalysisFinding] = Field(default_factory=list, max_length=200)
@@ -203,6 +203,14 @@ class TestConditionCreate(BaseModel):
         normalized = " ".join(value.split()) if value else ""
         return normalized or None
 
+    @field_validator("risk", "priority")
+    @classmethod
+    def normalize_assessment_label(cls, value):
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Mức rủi ro và ưu tiên không được để trống")
+        return normalized
+
 
 class TestConditionPatch(BaseModel):
     expected_revision: int = Field(ge=1)
@@ -213,8 +221,8 @@ class TestConditionPatch(BaseModel):
     coverage_item: str | None = Field(default=None, min_length=1, max_length=500)
     test_level: str | None = Field(default=None, min_length=1, max_length=100)
     test_type: str | None = Field(default=None, min_length=1, max_length=100)
-    risk: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] | None = None
-    priority: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] | None = None
+    risk: str | None = Field(default=None, min_length=1, max_length=100)
+    priority: str | None = Field(default=None, min_length=1, max_length=100)
     technique_candidates: list[str] | None = Field(default=None, max_length=100)
     testability_status: TestabilityStatus | None = None
     analysis_findings: list[AnalysisFinding] | None = Field(default=None, max_length=200)
@@ -229,6 +237,16 @@ class TestConditionPatch(BaseModel):
     def normalize_category(cls, value):
         normalized = " ".join(value.split()) if value else ""
         return normalized or None
+
+    @field_validator("risk", "priority")
+    @classmethod
+    def normalize_assessment_label(cls, value):
+        if value is None:
+            return value
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Mức rủi ro và ưu tiên không được để trống")
+        return normalized
 
 
 class TestConditionTransition(BaseModel):
@@ -260,7 +278,7 @@ class AnalysisFindingCreate(BaseModel):
     artifact_id: str = Field(min_length=1, max_length=200)
     artifact_version_id: str | None = Field(default=None, max_length=200)
     category: str = Field(min_length=1, max_length=100)
-    severity: Literal["BLOCKER", "MAJOR", "MINOR", "INFO"]
+    severity: str = Field(min_length=1, max_length=100)
     title: str = Field(min_length=2, max_length=300)
     description: str = Field(min_length=2, max_length=5000)
     source_span: dict[str, Any] | None = None
@@ -285,11 +303,11 @@ class TestConditionBulkPriorityInput(BaseModel):
     @field_validator("items")
     @classmethod
     def validate_items(cls, values):
-        allowed = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
         for value in values:
             if (
                 not value.get("condition_id")
-                or value.get("priority") not in allowed
+                or not str(value.get("priority") or "").strip()
+                or len(str(value.get("priority") or "").strip()) > 100
                 or int(value.get("expected_revision", 0)) < 1
             ):
                 raise ValueError("Mục ưu tiên TestCondition không hợp lệ")

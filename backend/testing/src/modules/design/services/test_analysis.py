@@ -232,13 +232,12 @@ async def transition_condition(condition_id, payload, user, action):
             {"submitted_by": user.id, "submitted_at": now(), "review_note": payload.note}
         )
     elif action == "approve":
-        open_blockers = [
+        open_findings = [
             finding
             for finding in condition.get("analysis_findings", [])
             if finding.get("status") == 'OPEN'
-            and finding.get("severity") in set(['CRITICAL', 'HIGH'])
         ]
-        if open_blockers:
+        if open_findings:
             raise HTTPException(
                 status_code=409, detail={"code": 'OPEN_TESTABILITY_FINDINGS'}
             )

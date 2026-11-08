@@ -3,8 +3,6 @@
 import { valueLabel } from "../lib/testing";
 import { Trash2 } from "lucide-react";
 
-const severityValues = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-
 export default function ResidualRiskPanel({
   items = [],
   members = [],
@@ -28,7 +26,7 @@ export default function ResidualRiskPanel({
         risk_id: `RISK-${crypto.randomUUID()}`,
         title: "",
         description: "",
-        severity: "MEDIUM",
+        severity: "",
         owner_id: members[0]?.user_id || "",
         acceptance: "PENDING",
         acceptance_reason: "",
@@ -64,18 +62,14 @@ export default function ResidualRiskPanel({
                   />
                 </label>
                 <label className="field-label">
-                  Mức độ
-                  <select
+                  Mức độ theo quy ước dự án
+                  <input
                     className="apple-input mt-2"
-                    value={item.severity || "MEDIUM"}
+                    required
+                    maxLength={100}
+                    value={item.severity || ""}
                     onChange={(event) => update(index, "severity", event.target.value)}
-                  >
-                    {severityValues.map((value) => (
-                      <option key={value} value={value}>
-                        {valueLabel(value)}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <label className="field-label">
                   Người phụ trách

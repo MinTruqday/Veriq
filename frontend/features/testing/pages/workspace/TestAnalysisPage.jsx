@@ -50,7 +50,7 @@ const techniqueLabels = {
 
 const findingTypeLabel = (value) => findingTypeLabels[value] || valueLabel(value);
 const techniqueLabel = (value) => techniqueLabels[value] || valueLabel(value);
-const severityLabel = (value) => (value === "CRITICAL" ? "Nghiêm trọng" : valueLabel(value));
+const severityLabel = (value) => valueLabel(value);
 
 export default function TestAnalysisPage({ project }) {
   const router = useRouter();

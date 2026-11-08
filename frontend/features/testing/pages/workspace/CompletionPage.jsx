@@ -244,33 +244,21 @@ export default function CompletionPage({ project }) {
         { name: "description", label: "Mô tả", multiline: true },
         {
           name: "severity",
-          label: "Mức độ",
+          label: "Mức độ theo quy ước dự án",
           required: true,
-          options: ["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((value) => ({
-            value,
-            label: valueLabel(value),
-          })),
-          initialValue: "MEDIUM",
+          maxLength: 100,
         },
         {
           name: "probability",
-          label: "Xác suất",
+          label: "Xác suất theo quy ước dự án",
           required: true,
-          options: ["VERY_HIGH", "HIGH", "MEDIUM", "LOW", "VERY_LOW"].map((value) => ({
-            value,
-            label: valueLabel(value),
-          })),
-          initialValue: "MEDIUM",
+          maxLength: 100,
         },
         {
           name: "impact",
-          label: "Tác động",
+          label: "Tác động theo quy ước dự án",
           required: true,
-          options: ["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((value) => ({
-            value,
-            label: valueLabel(value),
-          })),
-          initialValue: "MEDIUM",
+          maxLength: 100,
         },
         {
           name: "owner_id",

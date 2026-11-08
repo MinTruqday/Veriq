@@ -143,10 +143,10 @@ def build_metrics(plan, sources, snapshot_at):
         or set(item.get("test_condition_ids", [])) & covered_conditions
     }
     condition_ids = {item["_id"] for item in sources["conditions"]}
-    high_risk_ids = {
+    assessed_risk_ids = {
         item["_id"]
         for item in sources["conditions"]
-        if item.get("risk") in ['CRITICAL', 'HIGH']
+        if str(item.get("risk") or "").strip()
     }
     defects = sources["defects"]
     open_defects = [item for item in defects if item.get("status") in OPEN_DEFECT_STATUSES]
@@ -221,7 +221,9 @@ def build_metrics(plan, sources, snapshot_at):
         "test_condition_coverage": percent(
             len(covered_conditions & condition_ids), len(condition_ids)
         ),
-        "risk_coverage": percent(len(covered_conditions & high_risk_ids), len(high_risk_ids)),
+        "risk_coverage": percent(
+            len(covered_conditions & assessed_risk_ids), len(assessed_risk_ids)
+        ),
         "api_coverage": percent(
             len(covered_api_operations & api_operation_ids), len(api_operation_ids)
         )

@@ -36,7 +36,7 @@ class ControlActionCreate(BaseModel):
     description: str = Field(default="", max_length=5000)
     owner_id: str = Field(min_length=1, max_length=200)
     due_at: datetime
-    priority: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = "MEDIUM"
+    priority: str = Field(min_length=1, max_length=100)
     decision_reason: str = Field(min_length=2, max_length=5000)
     evidence_refs: list[str] = Field(default_factory=list, max_length=500)
 
@@ -47,7 +47,7 @@ class ControlActionPatch(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     owner_id: str | None = Field(default=None, min_length=1, max_length=200)
     due_at: datetime | None = None
-    priority: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] | None = None
+    priority: str | None = Field(default=None, min_length=1, max_length=100)
     status: ControlActionStatus | None = None
     decision_reason: str | None = Field(default=None, min_length=2, max_length=5000)
     evidence_refs: list[str] | None = Field(default=None, max_length=500)

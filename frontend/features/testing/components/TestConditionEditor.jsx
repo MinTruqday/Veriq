@@ -11,8 +11,8 @@ const defaults = {
   coverage_item: "",
   test_level: "",
   test_type: "",
-  risk: "MEDIUM",
-  priority: "MEDIUM",
+  risk: "",
+  priority: "",
   technique_candidates: [],
   testability_status: "TESTABLE",
   analysis_findings: [],
@@ -158,32 +158,24 @@ export default function TestConditionEditor({
           </datalist>
         </label>
         <label className="field-label">
-          Rủi ro
-          <select
+          Mức rủi ro theo quy ước dự án
+          <input
             className="apple-input mt-2"
             value={value.risk}
             onChange={(event) => setField("risk", event.target.value)}
-          >
-            {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((item) => (
-              <option key={item} value={item}>
-                {valueLabel(item.toLowerCase())}
-              </option>
-            ))}
-          </select>
+            maxLength={100}
+            required
+          />
         </label>
         <label className="field-label">
-          Ưu tiên
-          <select
+          Mức ưu tiên theo quy ước dự án
+          <input
             className="apple-input mt-2"
             value={value.priority}
             onChange={(event) => setField("priority", event.target.value)}
-          >
-            {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((item) => (
-              <option key={item} value={item}>
-                {valueLabel(item.toLowerCase())}
-              </option>
-            ))}
-          </select>
+            maxLength={100}
+            required
+          />
         </label>
         <label className="field-label">
           Khả năng kiểm thử

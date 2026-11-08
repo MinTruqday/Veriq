@@ -18,9 +18,9 @@ class ResidualRisk(BaseModel):
     risk_id: str = Field(min_length=1, max_length=200)
     title: str = Field(min_length=2, max_length=500)
     description: str = Field(default="", max_length=5000)
-    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-    probability: Literal["VERY_HIGH", "HIGH", "MEDIUM", "LOW", "VERY_LOW"] = "MEDIUM"
-    impact: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = "MEDIUM"
+    severity: str = Field(min_length=1, max_length=100)
+    probability: str = Field(min_length=1, max_length=100)
+    impact: str = Field(min_length=1, max_length=100)
     source_refs: list[str] = Field(default_factory=list, max_length=500)
     owner_id: str = Field(min_length=1, max_length=200)
     treatment: ResidualRiskTreatment = ResidualRiskTreatment.PENDING

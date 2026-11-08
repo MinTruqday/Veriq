@@ -4,22 +4,10 @@ import StructuredValueEditor from "./StructuredValueEditor";
 import { messageOf } from "../lib/testing";
 
 const emptyRisk = {
-  probability_scale: [
-    { value: 1, label: "Thấp" },
-    { value: 2, label: "Trung bình" },
-    { value: 3, label: "Cao" },
-  ],
-  impact_scale: [
-    { value: 1, label: "Thấp" },
-    { value: 2, label: "Trung bình" },
-    { value: 3, label: "Cao" },
-  ],
-  risk_exposure_formula: "probability * impact",
-  thresholds: [
-    { level: "HIGH", min: 6 },
-    { level: "MEDIUM", min: 3 },
-    { level: "LOW", min: 1 },
-  ],
+  probability_scale: [],
+  impact_scale: [],
+  risk_exposure_formula: "",
+  thresholds: [],
   mandatory_test_depth: {},
   regression_priority_rules: [],
 };
@@ -43,8 +31,8 @@ const emptyValue = {
   suspension_criteria: [],
   resumption_criteria: [],
   deliverables: [],
-  reporting_policy: { cadence: "WEEKLY" },
-  quality_objectives: [{ key: "PASS_RATE", target: 95 }],
+  reporting_policy: {},
+  quality_objectives: [],
   standards_refs: [],
   tailoring_rationale: "",
   reviewer_ids: [],

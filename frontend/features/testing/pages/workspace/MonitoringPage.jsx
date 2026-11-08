@@ -215,12 +215,9 @@ export default function MonitoringPage({ project }) {
         { name: "due_at", label: "Hạn xử lý", required: true, type: "datetime-local" },
         {
           name: "priority",
-          label: "Ưu tiên",
+          label: "Ưu tiên theo quy ước dự án",
           required: true,
-          options: ["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((value) => ({
-            value,
-            label: valueLabel(value.toLowerCase()),
-          })),
+          maxLength: 100,
         },
         { name: "decision_reason", label: "Lý do quyết định", required: true, multiline: true },
       ],

@@ -178,8 +178,8 @@ class TestConditionSuggestionOutput(BaseModel):
     coverage_item: str = Field(min_length=1, max_length=500)
     test_level: str = Field(min_length=1, max_length=100)
     test_type: str = Field(min_length=1, max_length=100)
-    risk: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-    priority: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+    risk: str = Field(min_length=1, max_length=100)
+    priority: str = Field(min_length=1, max_length=100)
     technique_candidates: List[str] = Field(default_factory=list, max_length=100)
     testability_status: Literal["TESTABLE", "CONDITIONALLY_TESTABLE", "UNTESTABLE"]
     evidence_quotes: List[GeneratedEvidenceQuoteOutput] = Field(min_length=1, max_length=20)
