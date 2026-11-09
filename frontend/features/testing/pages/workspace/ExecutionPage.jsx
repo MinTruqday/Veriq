@@ -579,6 +579,26 @@ export default function ExecutionPage({ project, section, workspaceView }) {
     setEditingPlan(item);
   };
   const transitionPlan = async (item, action) => {
+    if (action === "approve" && can("testplan.review")) {
+      try {
+        const validation = await testingApi.validatePlan(item._id);
+        setPlanValidation({ ...validation, planId: item._id, revision: item.revision });
+        if (!validation.ready_for_approval) {
+          setError(
+            validation.findings
+              .map(
+                (finding) =>
+                  testPlanFindingLabels[finding.code] || "Cần bổ sung thông tin kế hoạch",
+              )
+              .join(" "),
+          );
+          return;
+        }
+      } catch (reason) {
+        setError(messageOf(reason));
+        return;
+      }
+    }
     await ask({
       title:
         action === "revise"
@@ -1339,22 +1359,23 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                           </div>
                         )}
                       </dl>
-                      {planValidation?.planId === item._id && (
-                        <p
-                          className={`mt-3 rounded-control px-3 py-2 text-xs ${planValidation.ready_for_approval ? "bg-success-soft text-success" : "bg-warning-soft text-warning"}`}
-                          role="status"
-                        >
-                          {planValidation.ready_for_approval
-                            ? "Đã đủ điều kiện phê duyệt"
-                            : planValidation.findings
-                                .map(
-                                  (finding) =>
-                                    testPlanFindingLabels[finding.code] ||
-                                    "Cần bổ sung thông tin kế hoạch",
-                                )
-                                .join(" · ")}
-                        </p>
-                      )}
+                      {planValidation?.planId === item._id &&
+                        planValidation?.revision === item.revision && (
+                          <p
+                            className={`mt-3 rounded-control px-3 py-2 text-xs ${planValidation.ready_for_approval ? "bg-success-soft text-success" : "bg-warning-soft text-warning"}`}
+                            role="status"
+                          >
+                            {planValidation.ready_for_approval
+                              ? "Đã đủ điều kiện phê duyệt"
+                              : planValidation.findings
+                                  .map(
+                                    (finding) =>
+                                      testPlanFindingLabels[finding.code] ||
+                                      "Cần bổ sung thông tin kế hoạch",
+                                  )
+                                  .join(" · ")}
+                          </p>
+                        )}
                       <div
                         className="mt-3 flex flex-wrap items-center justify-between gap-3"
                         aria-label={`Thao tác kế hoạch ${item.name}`}

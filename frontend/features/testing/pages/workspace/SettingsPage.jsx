@@ -38,7 +38,6 @@ function auditActionLabel(action) {
 const toggleSettings = [
   ["testcase_lint_blocking", "Chặn duyệt ca kiểm thử khi còn lỗi kiểm tra"],
   ["trace_before_testcase_approve", "Bắt buộc truy vết trước khi duyệt ca kiểm thử"],
-  ["strict_test_plan_approval", "Chỉ phê duyệt kế hoạch kiểm thử khi đã đủ thông tin quản trị"],
   ["require_release_for_test_plan", "Yêu cầu chọn bản phát hành trước khi phê duyệt kế hoạch"],
   ["require_environment_for_test_plan", "Yêu cầu chọn môi trường trước khi phê duyệt kế hoạch"],
   ["partial_complete_allowed", "Cho phép hoàn tất một phần lần chạy kiểm thử"],
@@ -53,7 +52,6 @@ const toggleSettingGroups = [
   {
     label: "Lần chạy kiểm thử",
     keys: [
-      "strict_test_plan_approval",
       "require_release_for_test_plan",
       "require_environment_for_test_plan",
       "partial_complete_allowed",

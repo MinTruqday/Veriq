@@ -596,17 +596,11 @@ async def approve_test_plan_record(plan_id, payload, user):
     plan = {**plan, **scope}
     settings = await test_plan_repository.find_project_settings(plan["project_id"])
     completeness = plan_completeness(plan, settings)
-    scope_findings = [
-        finding
-        for finding in completeness["findings"]
-        if finding["code"] == "TEST_PLAN_REQUIREMENT_SCOPE_REQUIRED"
-    ]
-    if scope_findings or settings.get("strict_test_plan_approval", False):
-        if not completeness["ready_for_approval"]:
-            raise HTTPException(
-                status_code=409,
-                detail={"code": 'TEST_PLAN_INCOMPLETE', **completeness},
-            )
+    if not completeness["ready_for_approval"]:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": 'TEST_PLAN_INCOMPLETE', **completeness},
+        )
     timestamp = now()
     approved_hash = plan_snapshot_hash(plan)
     approval = {

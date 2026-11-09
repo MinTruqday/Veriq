@@ -1,15 +1,8 @@
 import StructuredValueEditor from "./StructuredValueEditor";
-
-function updateScale(value, onChange, key, text) {
-  const items = text
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item, index) => ({ value: index + 1, label: item }));
-  onChange({ ...value, [key]: items });
-}
+import { normalizeRiskModel, updateRiskScale } from "./riskModel.helpers";
 
 export default function RiskModelEditor({ value, onChange }) {
+  const riskModel = normalizeRiskModel(value);
   return (
     <fieldset className="grid min-w-0 gap-4 rounded-2xl border border-border p-4 md:grid-cols-2">
       <legend className="px-2 text-sm font-semibold">Mô hình rủi ro</legend>
@@ -17,9 +10,9 @@ export default function RiskModelEditor({ value, onChange }) {
         Thang xác suất mỗi mức một dòng
         <textarea
           className="apple-input mt-2 min-h-28 w-full min-w-0"
-          value={(value.probability_scale || []).map((item) => item.label).join("\n")}
+          value={(riskModel.probability_scale || []).map((item) => item.label).join("\n")}
           onChange={(event) =>
-            updateScale(value, onChange, "probability_scale", event.target.value)
+            onChange(updateRiskScale(riskModel, "probability_scale", event.target.value))
           }
           required
         />
@@ -28,8 +21,10 @@ export default function RiskModelEditor({ value, onChange }) {
         Thang ảnh hưởng mỗi mức một dòng
         <textarea
           className="apple-input mt-2 min-h-28 w-full min-w-0"
-          value={(value.impact_scale || []).map((item) => item.label).join("\n")}
-          onChange={(event) => updateScale(value, onChange, "impact_scale", event.target.value)}
+          value={(riskModel.impact_scale || []).map((item) => item.label).join("\n")}
+          onChange={(event) =>
+            onChange(updateRiskScale(riskModel, "impact_scale", event.target.value))
+          }
           required
         />
       </label>
@@ -37,16 +32,20 @@ export default function RiskModelEditor({ value, onChange }) {
         Mức độ lỗi mỗi mức một dòng
         <textarea
           className="apple-input mt-2 min-h-28 w-full min-w-0"
-          value={(value.severity_scale || []).map((item) => item.label).join("\n")}
-          onChange={(event) => updateScale(value, onChange, "severity_scale", event.target.value)}
+          value={(riskModel.severity_scale || []).map((item) => item.label).join("\n")}
+          onChange={(event) =>
+            onChange(updateRiskScale(riskModel, "severity_scale", event.target.value))
+          }
         />
       </label>
       <label className="field-label">
         Thang ưu tiên mỗi mức một dòng
         <textarea
           className="apple-input mt-2 min-h-28 w-full min-w-0"
-          value={(value.priority_scale || []).map((item) => item.label).join("\n")}
-          onChange={(event) => updateScale(value, onChange, "priority_scale", event.target.value)}
+          value={(riskModel.priority_scale || []).map((item) => item.label).join("\n")}
+          onChange={(event) =>
+            onChange(updateRiskScale(riskModel, "priority_scale", event.target.value))
+          }
         />
       </label>
       {[
@@ -55,9 +54,9 @@ export default function RiskModelEditor({ value, onChange }) {
       ].map(([key, label]) => (
         <fieldset key={key} className="min-w-0 space-y-2 rounded-xl border border-border p-3">
           <legend className="px-1 text-sm font-medium">{label}</legend>
-          {(value.severity_scale || []).map((item) => {
+          {(riskModel.severity_scale || []).map((item) => {
             const labelValue = String(item.label || "");
-            const selected = (value[key] || []).some(
+            const selected = (riskModel[key] || []).some(
               (entry) => String(entry).toLocaleLowerCase() === labelValue.toLocaleLowerCase(),
             );
             return (
@@ -66,21 +65,21 @@ export default function RiskModelEditor({ value, onChange }) {
                   type="checkbox"
                   checked={selected}
                   onChange={(event) => {
-                    const current = value[key] || [];
+                    const current = riskModel[key] || [];
                     const next = event.target.checked
                       ? [...current, labelValue]
                       : current.filter(
                           (entry) =>
                             String(entry).toLocaleLowerCase() !== labelValue.toLocaleLowerCase(),
                         );
-                    onChange({ ...value, [key]: next });
+                    onChange(normalizeRiskModel({ ...riskModel, [key]: next }));
                   }}
                 />
                 {item.label}
               </label>
             );
           })}
-          {!value.severity_scale?.length && (
+          {!riskModel.severity_scale?.length && (
             <p className="text-sm text-muted">Hãy khai báo thang mức độ lỗi trước.</p>
           )}
         </fieldset>
@@ -89,8 +88,10 @@ export default function RiskModelEditor({ value, onChange }) {
         Công thức tính mức phơi nhiễm rủi ro
         <input
           className="apple-input mt-2 w-full min-w-0"
-          value={value.risk_exposure_formula || ""}
-          onChange={(event) => onChange({ ...value, risk_exposure_formula: event.target.value })}
+          value={riskModel.risk_exposure_formula || ""}
+          onChange={(event) =>
+            onChange({ ...riskModel, risk_exposure_formula: event.target.value })
+          }
           required
         />
       </label>
@@ -98,29 +99,29 @@ export default function RiskModelEditor({ value, onChange }) {
         <span className="field-label">Ngưỡng rủi ro</span>
         <StructuredValueEditor
           label="Danh sách ngưỡng"
-          value={value.thresholds || []}
+          value={riskModel.thresholds || []}
           allowedTypes={["array"]}
           itemTypes={["object"]}
-          onChange={(thresholds) => onChange({ ...value, thresholds })}
+          onChange={(thresholds) => onChange({ ...riskModel, thresholds })}
         />
       </div>
       <div className="min-w-0 space-y-2">
         <span className="field-label">Độ sâu kiểm thử bắt buộc</span>
         <StructuredValueEditor
           label="Theo mức rủi ro"
-          value={value.mandatory_test_depth || {}}
+          value={riskModel.mandatory_test_depth || {}}
           fixedType="object"
-          onChange={(mandatory_test_depth) => onChange({ ...value, mandatory_test_depth })}
+          onChange={(mandatory_test_depth) => onChange({ ...riskModel, mandatory_test_depth })}
         />
       </div>
       <label className="field-label md:col-span-2">
         Quy tắc ưu tiên hồi quy mỗi dòng một quy tắc
         <textarea
           className="apple-input mt-2 min-h-24 w-full min-w-0"
-          value={(value.regression_priority_rules || []).join("\n")}
+          value={(riskModel.regression_priority_rules || []).join("\n")}
           onChange={(event) =>
             onChange({
-              ...value,
+              ...riskModel,
               regression_priority_rules: event.target.value
                 .split("\n")
                 .map((item) => item.trim())

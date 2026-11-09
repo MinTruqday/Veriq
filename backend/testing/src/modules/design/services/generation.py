@@ -12,6 +12,7 @@ from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.test_design import test_design_repository
+from src.repositories.test_strategy import test_strategy_repository
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import ScenarioCreate, TestCaseDraftCreate
 from src.schemas.test_analysis import GeneratedCase
@@ -84,6 +85,55 @@ async def request_grounded_test_generation(project_id, instruction, evidence):
         grounded_retry_instruction(instruction, result),
         evidence,
     )
+
+
+async def project_risk_assessment_policy(project_id):
+    strategy = await test_strategy_repository.active_approved(project_id, "APPROVED")
+    risk_model = (strategy or {}).get("risk_model") or {}
+    risk_levels = list(dict.fromkeys(
+        str(item.get("level") or "").strip()
+        for item in risk_model.get("thresholds") or []
+        if str(item.get("level") or "").strip()
+    ))
+    priority_levels = list(dict.fromkeys(
+        str(item.get("label") or "").strip()
+        for item in risk_model.get("priority_scale") or []
+        if str(item.get("label") or "").strip()
+    ))
+    if not risk_levels or not priority_levels:
+        return None
+    return {
+        "risk_levels": risk_levels,
+        "priority_levels": priority_levels,
+        "risk_exposure_formula": risk_model.get("risk_exposure_formula") or "",
+        "thresholds": risk_model.get("thresholds") or [],
+        "probability_scale": risk_model.get("probability_scale") or [],
+        "impact_scale": risk_model.get("impact_scale") or [],
+    }
+
+
+def validate_generated_assessments(items, policy):
+    if not policy:
+        if any(
+            item.risk.casefold() != "unassessed"
+            or item.priority.casefold() != "unassessed"
+            for item in items
+        ):
+            raise ValueError("generated assessment requires active project scales")
+        return
+    risk_by_normalized = {value.casefold(): value for value in policy["risk_levels"]}
+    priority_by_normalized = {
+        value.casefold(): value for value in policy["priority_levels"]
+    }
+    for item in items:
+        risk = item.risk.casefold()
+        priority = item.priority.casefold()
+        if risk != "unassessed" and risk not in risk_by_normalized:
+            raise ValueError("generated risk outside active project scale")
+        if priority != "unassessed" and priority not in priority_by_normalized:
+            raise ValueError("generated priority outside active project scale")
+        item.risk = risk_by_normalized.get(risk, "unassessed")
+        item.priority = priority_by_normalized.get(priority, "unassessed")
 
 
 def merge_duplicate_generated_cases(drafts, suggestions, threshold):
@@ -280,6 +330,7 @@ async def generate_requirement_drafts(
         )
     ):
         raise HTTPException(422, detail={"code": "TEST_DESIGN_CHALLENGE_SOURCE_CHANGED", "message": "Giả thuyết lỗi không còn khớp với nguồn hoặc kỹ thuật đã chọn  Hãy nhận gợi ý mới trước khi tạo ca"})
+    risk_policy = await project_risk_assessment_policy(version["project_id"])
     instruction = json.dumps(
         {
             "categories": categories,
@@ -288,6 +339,7 @@ async def generate_requirement_drafts(
             "selected_design_techniques": payload.techniques if not scenario else [],
             "allowed_acceptance_criterion_ids": [item["_id"] for item in criteria],
             "challenge_hypotheses": [item.model_dump() for item in payload.challenge_hypotheses],
+            "project_risk_assessment_policy": risk_policy,
             "user_instruction": payload.instruction,
         },
         ensure_ascii=False,
@@ -328,6 +380,7 @@ async def generate_requirement_drafts(
         )
     try:
         generated = [GeneratedCase.model_validate(item) for item in result.get("suggestions", [])]
+        validate_generated_assessments(generated, risk_policy)
         if not generated:
             raise HTTPException(
                 422,
@@ -448,8 +501,16 @@ async def generate_requirement_drafts(
                 drafts.append(
                     ScenarioCreate(
                         **common,
-                        priority=version.get("priority") or "unassessed",
-                        risk=version.get("risk") or "unassessed",
+                        priority=(
+                            item.priority
+                            if item.priority != "unassessed"
+                            else version.get("priority") or "unassessed"
+                        ),
+                        risk=(
+                            item.risk
+                            if item.risk != "unassessed"
+                            else version.get("risk") or "unassessed"
+                        ),
                         category=item.category,
                         objective=item.objective,
                     )
@@ -468,8 +529,8 @@ async def generate_requirement_drafts(
                 drafts.append(
                     TestCaseDraftCreate(
                         **common,
-                        priority="unassessed",
-                        risk="unassessed",
+                        priority=item.priority,
+                        risk=item.risk,
                         type=item.category,
                         objective_doc=text_document(item.objective),
                         preconditions_doc=text_document(item.preconditions),

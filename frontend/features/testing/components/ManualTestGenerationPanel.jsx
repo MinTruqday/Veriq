@@ -5,6 +5,10 @@ import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { testingApi } from "../services/testing.service";
 import { docText, messageOf } from "../lib/testing";
 
+function assessmentLabel(value) {
+  return value && value !== "unassessed" ? value : "Chưa đánh giá";
+}
+
 export default function ManualTestGenerationPanel({ projectId, requirements, mode, onSaved }) {
   const [versionId, setVersionId] = useState("");
   const [instruction, setInstruction] = useState("");
@@ -190,6 +194,26 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
                 <p className="text-sm">
                   {mode === "scenarios" ? item.draft.objective : docText(item.draft.objective_doc)}
                 </p>
+                <dl className="grid gap-x-6 gap-y-2 text-xs text-ink-muted sm:grid-cols-3">
+                  <div>
+                    <dt>Nhóm kiểm thử</dt>
+                    <dd className="mt-0.5 font-medium text-ink">
+                      {item.draft.category || item.draft.type || "Chưa phân loại"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Mức rủi ro</dt>
+                    <dd className="mt-0.5 font-medium text-ink">
+                      {assessmentLabel(item.draft.risk)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Ưu tiên</dt>
+                    <dd className="mt-0.5 font-medium text-ink">
+                      {assessmentLabel(item.draft.priority)}
+                    </dd>
+                  </div>
+                </dl>
                 {item.similar_cases?.length > 0 && (
                   <p className="text-sm text-ink-muted">
                     Cần đối chiếu với:{" "}

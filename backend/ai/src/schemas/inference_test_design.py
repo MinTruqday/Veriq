@@ -38,6 +38,8 @@ class GeneratedCaseOutput(BaseModel):
 
     title: str = Field(min_length=2, max_length=300)
     category: str = Field(min_length=1, max_length=100)
+    risk: str = Field(default="unassessed", min_length=1, max_length=100)
+    priority: str = Field(default="unassessed", min_length=1, max_length=100)
     objective: str = Field(min_length=2, max_length=5000)
     preconditions: str = Field(default="", max_length=5000)
     steps: List[GeneratedStepOutput] = Field(min_length=1, max_length=50)

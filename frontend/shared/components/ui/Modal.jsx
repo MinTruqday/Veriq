@@ -112,7 +112,7 @@ export function Modal({
         aria-label={ariaLabel}
         tabIndex={-1}
         className={cn(
-          "modal-dialog hide-scrollbar relative max-h-[90dvh] w-full max-w-md overflow-x-hidden overflow-y-auto overscroll-contain rounded-panel bg-surface p-0 shadow-[0_24px_80px_rgba(32,32,30,0.18)] outline-none animate-in zoom-in-95",
+          "modal-dialog relative max-h-[90dvh] w-full max-w-md overflow-x-hidden overflow-y-auto overscroll-contain rounded-panel bg-surface p-0 shadow-[0_24px_80px_rgba(32,32,30,0.18)] outline-none animate-in zoom-in-95",
           className,
         )}
       >
