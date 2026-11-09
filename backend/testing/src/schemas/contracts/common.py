@@ -184,11 +184,6 @@ class TestPlanRiskStatus(str, Enum):
     CLOSED = "CLOSED"
 
 
-class WebhookDeliveryStatus(str, Enum):
-    DELIVERED = "DELIVERED"
-    FAILED = "FAILED"
-
-
 class RequirementCandidateStatus(str, Enum):
     ACTIVE = "ACTIVE"
     REJECTED = "REJECTED"

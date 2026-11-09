@@ -11,7 +11,6 @@ from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import close_db, database, init_db
 from src.core.infrastructure.mq import mq
 from src.core.infrastructure.redis import redis
-from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 
 
 @asynccontextmanager
@@ -29,8 +28,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Veriq Content", version=settings.VERSION, lifespan=lifespan)
-app.add_middleware(PrometheusMiddleware, service_name="content")
-app.add_route("/so-lieu", metrics_endpoint("content"))
 
 app.add_middleware(
     CORSMiddleware,

@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import close_db, database, init_db
 from src.core.infrastructure.mq import mq
-from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 from src.jobs.task import worker_runner
 from src.schemas import DiscardJobRequest, TestingJobRequest
 from src.services import WorkerJobService
@@ -35,8 +34,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Veriq Worker", version=settings.VERSION, lifespan=lifespan)
-app.add_middleware(PrometheusMiddleware, service_name="worker")
-app.add_route("/so-lieu", metrics_endpoint("worker"))
 
 
 @app.get("/suc-khoe", include_in_schema=False)

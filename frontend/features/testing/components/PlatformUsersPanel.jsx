@@ -469,21 +469,6 @@ export default function PlatformUsersPanel() {
                 <button
                   className="secondary-button"
                   type="button"
-                  disabled={accountActionInFlight}
-                  onClick={() =>
-                    mutate(
-                      "Đặt lại passkey",
-                      "Toàn bộ passkey và phiên đăng nhập của tài khoản sẽ bị thu hồi",
-                      "Đặt lại",
-                      (reason) => platformApi.resetPasskeys(detail._id, reason),
-                    )
-                  }
-                >
-                  Đặt lại passkey
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
                   onClick={() =>
                     mutate(
                       detail.system_role === "ADMIN" ? "Hạ quyền quản trị" : "Cấp quyền quản trị",

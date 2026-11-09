@@ -1302,6 +1302,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       {showTemplates && can("testcase.template.read") && (
         <TestCaseTemplatesPanel project={project} />
       )}
+      {showAutomation && <AutomationScriptsPanel project={project} />}
       {showScenarios && <SpecializedDesignPanel project={project} />}
       {((showScenarios && can("ai.generate_scenario") && can("testscenario.create")) ||
         (showCases && can("ai.generate_testcase") && can("testcase.create"))) && (
@@ -1313,7 +1314,6 @@ export default function TestDesignPage({ project, workspaceView }) {
           onSaved={load}
         />
       )}
-      {showAutomation && <AutomationScriptsPanel project={project} />}
       {showCases && (
         <div className="grid gap-5">
           {actionableDrafts.length > 0 && (

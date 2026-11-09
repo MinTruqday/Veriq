@@ -22,7 +22,6 @@ from src.api.version import router as version
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import close_db, database, init_db
 from src.core.infrastructure.redis import redis
-from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 from src.core.storage import close_storage_client, get_storage_client, initialize_bucket
 
 logger.remove()
@@ -40,8 +39,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Veriq Cloud", version=settings.VERSION, lifespan=lifespan)
-app.add_middleware(PrometheusMiddleware, service_name="cloud")
-app.add_route("/so-lieu", metrics_endpoint("cloud"))
 
 app.add_middleware(
     CORSMiddleware,

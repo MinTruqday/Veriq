@@ -20,8 +20,6 @@ QUALITY_PROCESS_COLLECTIONS = (
     "causal_analyses",
     "preventive_actions",
     "environment_incidents",
-    "process_improvement_proposals",
-    "process_control_baselines",
 )
 
 
@@ -129,9 +127,6 @@ async def create_indexes():
     await db.project_members.create_index([("user_id", 1), ("status", 1)])
     await db.member_skill_profiles.create_index([("project_id", 1), ("user_id", 1)], unique=True)
     await db.member_skill_profiles.create_index([("user_id", 1), ("updated_at", -1)])
-    await db.payroll_rates.create_index([("user_id", 1), ("currency", 1), ("valid_from", -1)])
-    await db.payroll_rate_locks.create_index([("user_id", 1), ("currency", 1)], unique=True)
-    await db.payroll_import_previews.create_index([("status", 1), ("expires_at", 1)])
     await db.resource_capacity_periods.create_index([("period_start", 1), ("period_end", 1)], unique=True)
     await db.project_tasks.create_index([("project_id", 1), ("updated_at", -1)])
     await db.project_tasks.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
@@ -471,25 +466,6 @@ async def create_indexes():
     await db.non_functional_test_evidence.create_index(
         [("project_id", 1), ("idempotency_key", 1)], unique=True
     )
-    await db.process_improvement_proposals.create_index(
-        [("project_id", 1), ("status", 1), ("updated_at", -1)]
-    )
-    await db.process_improvement_proposals.create_index(
-        [("project_id", 1), ("owner_id", 1), ("status", 1)]
-    )
-    await ensure_partial_unique_index(
-        db.process_improvement_proposals,
-        [("project_id", 1), ("idempotency_key", 1)],
-        {"idempotency_key": {"$type": "string"}},
-    )
-    await db.process_control_baselines.create_index(
-        [("project_id", 1), ("measurement_definition_id", 1), ("created_at", -1)]
-    )
-    await ensure_partial_unique_index(
-        db.process_control_baselines,
-        [("project_id", 1), ("idempotency_key", 1)],
-        {"idempotency_key": {"$type": "string"}},
-    )
     await db.test_suites.create_index([("project_id", 1), ("updated_at", -1)])
     await db.test_runs.create_index([("project_id", 1), ("status", 1), ("updated_at", -1)])
     await ensure_partial_unique_index(
@@ -517,41 +493,11 @@ async def create_indexes():
         [("project_id", 1), ("idempotency_key", 1)], unique=True
     )
     await db.performance_plan_drafts.create_index([("project_id", 1), ("created_at", -1)])
-    await db.webhook_subscriptions.create_index([("project_id", 1), ("name", 1)], unique=True)
-    await db.webhook_subscriptions.create_index(
-        [("project_id", 1), ("enabled", 1), ("updated_at", -1)]
-    )
-    await db.webhook_deliveries.create_index([("project_id", 1), ("created_at", -1)])
-    await db.webhook_deliveries.create_index(
-        [("project_id", 1), ("subscription_id", 1), ("status", 1)]
-    )
-    await db.webhook_replay_jobs.create_index(
-        [("project_id", 1), ("idempotency_key", 1)], unique=True
-    )
-    await db.automation_script_drafts.create_index(
-        [("project_id", 1), ("idempotency_key", 1)], unique=True
-    )
-    await db.automation_script_drafts.create_index(
-        [("project_id", 1), ("status", 1), ("updated_at", -1)]
-    )
-    await db.project_connectors.create_index([("project_id", 1), ("provider", 1)], unique=True)
-    await db.connector_sync_jobs.create_index(
-        [("project_id", 1), ("idempotency_key", 1)], unique=True
-    )
-    await db.connector_sync_jobs.create_index([("project_id", 1), ("created_at", -1)])
-    await db.connector_sync_conflicts.create_index(
-        [("project_id", 1), ("status", 1), ("created_at", -1)]
-    )
     await db.automation_executions.create_index(
         [("project_id", 1), ("idempotency_key", 1)], unique=True
     )
     await db.automation_executions.create_index(
         [("project_id", 1), ("status", 1), ("created_at", -1)]
-    )
-    await db.cicd_bindings.create_index([("project_id", 1), ("pipeline_reference", 1)], unique=True)
-    await db.pipeline_runs.create_index([("project_id", 1), ("idempotency_key", 1)], unique=True)
-    await db.cicd_reconciliation_jobs.create_index(
-        [("project_id", 1), ("idempotency_key", 1)], unique=True
     )
     await db.junit_result_imports.create_index([("project_id", 1), ("test_run_id", 1), ("created_at", -1)])
     await ensure_partial_unique_index(

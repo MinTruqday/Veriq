@@ -9,7 +9,6 @@ torch==2.13.0+cpu
 langgraph
 langchain-core
 qdrant-client @ https://github.com/qdrant/qdrant-client/archive/refs/tags/v1.20.0.tar.gz#sha256=96f62fca4d8910f9406da2037f4a70f0e8eadb2742f2d07207617f21faea5047
-neo4j==5.28.1
 python-multipart==0.0.9
 huggingface-hub>=1.5.0,<2.0.0
 motor>=3.4.0
@@ -22,13 +21,7 @@ aio-pika==9.4.1
 PyJWT>=2.10.1,<3.0.0
 redis==5.2.1
 tenacity>=8.0.0
-presidio-analyzer
-presidio-anonymizer
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 protobuf>=6.33.5,<7.0.0
-mcp>=2.0,<3.0
-opentelemetry-sdk>=1.30,<2.0
-opentelemetry-exporter-otlp-proto-http>=1.30,<2.0
 pymupdf==1.24.2
 pypdfium2>=4.30.0
 beautifulsoup4>=4.12.0

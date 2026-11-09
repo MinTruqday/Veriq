@@ -2,11 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import ProjectNotificationsPanel from "../../components/ProjectNotificationsPanel";
-import WebhookPanel from "../../components/WebhookPanel";
-import ProjectConnectorsPanel from "../../components/ProjectConnectorsPanel";
 import MemberSkillProfilePanel from "../../components/MemberSkillProfilePanel";
 import ProjectAccessPanel from "../../components/ProjectAccessPanel";
-import CicdPanel from "../../components/CicdPanel";
 import EnvironmentManagementPanel from "../../components/EnvironmentManagementPanel";
 import {
   ErrorState,
@@ -258,11 +255,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
         "notification.preferences.manage",
         "notification.project_rule.manage",
       ],
-    },
-    {
-      id: "integrations",
-      label: "Tích hợp",
-      permissions: ["project.connector.read", "cicd.read", "webhook.project.read"],
     },
     {
       id: "environments",
@@ -1363,13 +1355,6 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       </div>
       {visibleSettingsSection === "notifications" && (
         <ProjectNotificationsPanel project={project} />
-      )}
-      {visibleSettingsSection === "integrations" && (
-        <div className="grid min-w-0 gap-5">
-          <ProjectConnectorsPanel project={project} />
-          <CicdPanel project={project} />
-          <WebhookPanel project={project} />
-        </div>
       )}
       {visibleSettingsSection === "environments" && (
         <EnvironmentManagementPanel project={project} />

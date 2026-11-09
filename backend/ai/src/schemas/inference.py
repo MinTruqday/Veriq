@@ -41,7 +41,6 @@ from src.schemas.inference_quality import (
 )
 from src.schemas.inference_requests import (
     CrossDocumentExpansionRequest,
-    KnowledgeChunkSafetyRequest,
     KnowledgeDocumentSummaryRequest,
     TestingAutomationDegradedMode,
     TestingAutomationRequest,
@@ -105,7 +104,6 @@ __all__ = [
     "GeneratedStepOutput",
     "ImpactClassificationOutput",
     "ImpactClassificationSuggestionOutput",
-    "KnowledgeChunkSafetyRequest",
     "KnowledgeDocumentSummaryRequest",
     "LessonsLearnedClusterSuggestionOutput",
     "LessonsLearnedClustersOutput",

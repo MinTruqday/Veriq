@@ -20,7 +20,6 @@ class AccountService:
         result = dict(account)
         result["_id"] = str(account["_id"])
         result.pop("password_hash", None)
-        passkeys = account.get("passkeys", [])
         result.pop("passkeys", None)
         result.update(
             {
@@ -33,7 +32,6 @@ class AccountService:
                 "system_role": account.get("system_role", SystemRole.USER.value),
                 "permissions": account.get("permissions") or [],
                 "created_at": account.get("created_at") or datetime.now(timezone.utc),
-                "has_passkey": bool(passkeys),
             }
         )
         return result

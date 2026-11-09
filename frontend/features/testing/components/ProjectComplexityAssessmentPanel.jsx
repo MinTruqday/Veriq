@@ -21,14 +21,13 @@ const followUps = {
   TEST_PLAN_DRAFT: ["Kế hoạch kiểm thử", "ke-hoach-kiem-thu"],
   SCENARIO_OR_TEST_CASE_DRAFT: ["Thiết kế kiểm thử", "ca-kiem-thu"],
   CHANGE_IMPACT_REVIEW: ["Phân tích thay đổi", "thay-doi"],
-  STAFFING_AND_COST_COMPARISON: ["Nhân sự và dự toán", "ke-hoach-kiem-thu"],
+  STAFFING_REVIEW: ["Rà soát nhân sự", "ke-hoach-kiem-thu"],
 };
 
 function AssessmentResult({ projectId, result }) {
   const suggestion = result?.suggestions?.[0];
   const citations = result?.citations || [];
   const gaps = result?.scope_summary || {};
-  const commercial = result?.commercial_feasibility;
   if (!suggestion && !result?.stale) return null;
   return (
     <div className="space-y-4 border-t border-border p-5">
@@ -140,61 +139,8 @@ function AssessmentResult({ projectId, result }) {
           )}
           <p className="text-[12px] text-ink-muted">
             Đã xét {gaps.current_ai_readable_documents || 0} tài liệu được phép dùng AI và{" "}
-            {gaps.baselined_requirements || 0} yêu cầu đã duyệt. Giá khách hàng và bảng lương không
-            được gửi vào AI; khả thi ngân sách cần được đối chiếu riêng bằng dữ liệu tài chính có
-            quyền.
+            {gaps.baselined_requirements || 0} yêu cầu đã duyệt.
           </p>
-          {commercial && (
-            <div className="rounded-control border border-border p-4">
-              <h3 className="text-[13px] font-semibold">Áp lực ngân sách và nhân công</h3>
-              {commercial.status === "FORECAST_ONLY" ? (
-                <>
-                  <p className="mt-2 text-[12px] leading-5 text-ink-muted">
-                    {commercial.comparison === "BELOW_LABOR_COST"
-                      ? "Giá khách hàng thấp hơn chi phí nhân công dự kiến. Đây là rủi ro triển khai cần người có quyền xem xét."
-                      : "Giá khách hàng đang đủ bù chi phí nhân công dự kiến trước các chi phí khác."}
-                  </p>
-                  <dl className="mt-3 grid gap-3 text-[12px] sm:grid-cols-3">
-                    <div>
-                      <dt className="text-ink-muted">Giá khách hàng</dt>
-                      <dd className="mt-1 font-medium">
-                        {commercial.customer_price} {commercial.currency}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-ink-muted">Nhân công dự kiến</dt>
-                      <dd className="mt-1 font-medium">
-                        {commercial.estimated_labor_cost} {commercial.currency}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-ink-muted">Chênh lệch trước chi phí khác</dt>
-                      <dd className="mt-1 font-medium">
-                        {commercial.variance_before_other_costs} {commercial.currency}
-                      </dd>
-                    </div>
-                  </dl>
-                  <p className="mt-2 text-[11px] text-ink-muted">
-                    Dựa trên Test Plan đã duyệt; chưa tính chi phí khác, thuế hoặc lợi nhuận thực
-                    tế.
-                  </p>
-                </>
-              ) : (
-                <p className="mt-2 text-[12px] leading-5 text-ink-muted">
-                  {{
-                    MISSING_CUSTOMER_PRICE: "Chưa có giá khách hàng.",
-                    MISSING_APPROVED_TEST_PLAN:
-                      "Chưa có Test Plan được duyệt để làm căn cứ ước lượng.",
-                    APPROVED_PLAN_EFFORT_INCOMPLETE:
-                      "Test Plan đã duyệt chưa có ước lượng giờ công đầy đủ.",
-                    APPROVED_PLAN_START_DATE_MISSING:
-                      "Test Plan chưa có ngày bắt đầu để đối chiếu bảng đơn giá.",
-                    MISSING_LABOR_RATES:
-                      "Chưa có đơn giá còn hiệu lực cho một số phân bổ nhân lực.",
-                    FINANCIAL_DATA_INVALID: "Dữ liệu tài chính chưa hợp lệ để tính đối chiếu.",
-                  }[commercial.status] || "Chưa đủ dữ liệu tài chính để đối chiếu."}
-                </p>
-              )}
             </div>
           )}
           {Object.values(gaps.excluded_sources || {}).some((count) => Number(count) > 0) && (

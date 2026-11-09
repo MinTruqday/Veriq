@@ -270,7 +270,6 @@ export default function PlatformControlsPanel() {
                       required: true,
                       options: [
                         { value: "RATE_LIMITS", label: "Giới hạn truy cập" },
-                        { value: "PASSKEY_CHALLENGES", label: "Thử thách passkey" },
                         { value: "PROJECT_METADATA", label: "Siêu dữ liệu dự án" },
                         { value: "SAFE_ALL", label: "Toàn bộ phạm vi an toàn" },
                       ],

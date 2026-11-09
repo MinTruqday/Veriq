@@ -87,20 +87,6 @@ class AIAutomationClient:
             raise RuntimeError("DOCUMENT_CONVERSION_RESPONSE_INVALID")
         return value
 
-    async def extract_skill_profile(self, project_id: str, source_blocks: list[dict]) -> dict:
-        async with httpx.AsyncClient(timeout=300) as client:
-            response = await client.post(
-                f"{settings.AI_URL.rstrip('/')}/tri-thuc/ho-so-nang-luc/trich-xuat-cv",
-                headers={"X-Internal-Token": settings.SECRET_KEY},
-                json={"project_id": project_id, "source_blocks": source_blocks},
-            )
-            response.raise_for_status()
-        payload = response.json()
-        value = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(value, dict):
-            raise RuntimeError("AI_CV_EXTRACTION_RESPONSE_INVALID")
-        return value
-
     async def recommend_test_case_owners(
         self,
         project_id: str,

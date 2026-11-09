@@ -300,7 +300,7 @@ class ProjectComplexityAssessmentSuggestionOutput(BaseModel):
             "TEST_PLAN_DRAFT",
             "SCENARIO_OR_TEST_CASE_DRAFT",
             "CHANGE_IMPACT_REVIEW",
-            "STAFFING_AND_COST_COMPARISON",
+            "STAFFING_REVIEW",
         ]
     ] = Field(default_factory=list, max_length=30)
 

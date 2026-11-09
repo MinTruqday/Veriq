@@ -11,9 +11,6 @@ class Settings:
     REDIS_URI: str = os.environ["REDIS_URI"]
     RABBITMQ_URI: str = os.environ["RABBITMQ_URI"]
     QDRANT_URL: str = os.environ["QDRANT_URL"]
-    NEO4J_URI: str = os.environ["NEO4J_URI"]
-    NEO4J_USER: str = os.environ["NEO4J_USER"]
-    NEO4J_PASSWORD: str = os.environ["NEO4J_PASSWORD"]
     EMBEDDING_MODEL: str = os.environ["EMBEDDING_MODEL"]
     OBJECT_STORAGE_ENDPOINT: str = os.environ["OBJECT_STORAGE_ENDPOINT"]
     OBJECT_STORAGE_ACCESS_KEY: str = os.environ["OBJECT_STORAGE_ACCESS_KEY"]
@@ -36,13 +33,6 @@ class Settings:
     AI_DB_NAME: str = os.environ["AI_DB_NAME"]
     AUTHENTICATION_URL: str = os.environ["AUTHENTICATION_URL"]
     CONTENT_URL: str = os.environ["CONTENT_URL"]
-    CV_MAX_EXTRACTED_CHARACTERS: int = int(
-        os.getenv("CV_MAX_EXTRACTED_CHARACTERS", "100000")
-    )
-    CV_MAX_SOURCE_BLOCKS: int = int(os.getenv("CV_MAX_SOURCE_BLOCKS", "500"))
-    CV_SOURCE_BLOCK_CHARACTERS: int = int(
-        os.getenv("CV_SOURCE_BLOCK_CHARACTERS", "3000")
-    )
     DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS: int = int(
         os.getenv("DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS", "7")
     )
@@ -51,9 +41,6 @@ class Settings:
     )
     DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT: int = int(
         os.getenv("DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT", "15000")
-    )
-    DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE: int = int(
-        os.getenv("DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE", "4")
     )
     DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS: int = int(
         os.getenv("DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS", "100")
@@ -105,20 +92,9 @@ class Settings:
     AI_DEAD_LETTER_MAX_REDRIVES: int = int(
         os.getenv("AI_DEAD_LETTER_MAX_REDRIVES", "3")
     )
-    AI_TRACE_ENABLED: bool = os.getenv("AI_TRACE_ENABLED", "true").strip().lower() == "true"
-    AI_TRACE_ENDPOINT: str = os.getenv(
-        "AI_TRACE_ENDPOINT", "http://phoenix:6006/v1/traces"
-    ).strip()
-    AI_TRACE_PROJECT: str = os.getenv("AI_TRACE_PROJECT", "veriq-ai").strip()
 
 
 settings = Settings()
-if min(
-    settings.CV_MAX_EXTRACTED_CHARACTERS,
-    settings.CV_MAX_SOURCE_BLOCKS,
-    settings.CV_SOURCE_BLOCK_CHARACTERS,
-) < 1:
-    raise ValueError("CV extraction limits must be positive")
 fallback_configuration = (
     bool(settings.FALLBACK_MODEL_URL),
     bool(settings.FALLBACK_MODEL_HEALTH_URL),
@@ -134,8 +110,6 @@ if settings.DOCUMENT_INGESTION_MAX_DELIVERY_ATTEMPTS < 1:
     raise ValueError("DOCUMENT_INGESTION_MAX_DELIVERY_ATTEMPTS must be positive")
 if settings.DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT < 2000:
     raise ValueError("DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT must be at least 2000")
-if not 1 <= settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE <= 32:
-    raise ValueError("DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE must be between 1 and 32")
 if not 1 <= settings.DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS <= 10000:
     raise ValueError("DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS must be between 1 and 10000")
 if not settings.DOCUMENT_OCR_LANGUAGE:
@@ -182,8 +156,3 @@ if not 1 <= settings.AI_AUTOMATION_RECOVERY_BATCH_SIZE <= 1000:
     raise ValueError("AI_AUTOMATION_RECOVERY_BATCH_SIZE must be between 1 and 1000")
 if settings.AI_DEAD_LETTER_MAX_REDRIVES < 1:
     raise ValueError("AI_DEAD_LETTER_MAX_REDRIVES must be positive")
-if settings.AI_TRACE_ENABLED and (
-    not settings.AI_TRACE_ENDPOINT.startswith(("http://", "https://"))
-    or not settings.AI_TRACE_PROJECT
-):
-    raise ValueError("AI trace endpoint and project must be valid when tracing is enabled")

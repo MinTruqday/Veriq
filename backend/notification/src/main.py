@@ -10,7 +10,6 @@ from src.api.announcement import router as announcement_router
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import close_db, database, init_db
 from src.core.infrastructure.redis import redis
-from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 from src.core.middleware import add_trace_id_header, trace_id_filter
 
 logger.remove()
@@ -35,8 +34,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Veriq Notification", version=settings.VERSION, lifespan=lifespan)
-app.add_middleware(PrometheusMiddleware, service_name="notification")
-app.add_route("/so-lieu", metrics_endpoint("notification"))
 app.middleware("http")(add_trace_id_header)
 origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(

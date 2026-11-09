@@ -66,7 +66,6 @@ from src.services.change_simulation import (
     validate_change_simulation_report,
 )
 from src.services.inference import structured
-from src.tools.mcp_gateway import discover_project_tools_with_diagnostics
 from src.tools.registry import registered_tools, tool_access
 
 
@@ -87,7 +86,6 @@ def automation_action_limits(actions):
             {"PROPOSE", "MUTATE"},
         ),
         AutomationAction.CREATE_FINDINGS: ({"analysis"}, {"PROPOSE"}),
-        AutomationAction.READ_PROJECT_MCP: ({"analysis"}, {"READ"}),
         AutomationAction.REQUEST_CLARIFICATION: ({"requirement"}, {"MUTATE"}),
         AutomationAction.PROPOSE_ASSIGNMENT: ({"execution"}, {"PROPOSE"}),
         AutomationAction.PROPOSE_TRANSITION: ({"execution"}, {"PROPOSE"}),
@@ -185,38 +183,6 @@ def evidence_for_references(evidence, references):
             seen.add(identity)
             selected.append(item)
     return selected
-
-
-def planned_mcp_tool_pairs(tasks):
-    pairs = set()
-    for task in tasks or []:
-        calls = (
-            task.get("tool_calls", [])
-            if isinstance(task, dict)
-            else getattr(task, "tool_calls", [])
-        )
-        for call in calls or []:
-            tool_name = (
-                call.get("tool_name")
-                if isinstance(call, dict)
-                else getattr(call, "tool_name", None)
-            )
-            if tool_name != "call_mcp_read_tool":
-                continue
-            arguments = (
-                call.get("arguments")
-                if isinstance(call, dict)
-                else getattr(call, "arguments", {})
-            )
-            if not isinstance(arguments, dict):
-                continue
-            pairs.add(
-                (
-                    str(arguments.get("connection_id") or ""),
-                    str(arguments.get("tool_name") or ""),
-                )
-            )
-    return pairs
 
 
 def test_case_change_context(run, evidence):
@@ -476,32 +442,6 @@ async def plan(state):
                 "summary": str(result.get("summary") or "")[:1200],
             }
         )
-    mcp_discovery = await discover_project_tools_with_diagnostics(
-        run.project_id,
-        run.permissions,
-        token=state.get("token"),
-        automation_run_id=run.run_id,
-    )
-    mcp_read_tools = mcp_discovery["tools"]
-    known_mcp_issues = {
-        (
-            item.get("reason_code"),
-            item.get("connection_id"),
-            item.get("tool_name"),
-        )
-        for item in run.observations
-        if item.get("phase") == "MCP_DISCOVERY"
-    }
-    for issue in mcp_discovery["issues"]:
-        identity = (
-            issue.get("reason_code"),
-            issue.get("connection_id"),
-            issue.get("tool_name"),
-        )
-        if identity in known_mcp_issues:
-            continue
-        run.observations.append({"phase": "MCP_DISCOVERY", **issue})
-        known_mcp_issues.add(identity)
     allowed_tool_actions = action_types
     if simulation:
         allowed_tool_actions = (
@@ -552,11 +492,6 @@ async def plan(state):
                     if item.get(key) is not None
                 }
                 for item in run.observations[-limits.agent_steps :]
-            ],
-            "mcp_read_tools": mcp_read_tools,
-            "mcp_discovery_issues": [
-                {key: value for key, value in issue.items() if key != "connection_id"}
-                for issue in mcp_discovery["issues"]
             ],
         },
     )
@@ -612,11 +547,6 @@ async def plan(state):
         known_draft_identifiers=observed_draft_identifiers(
             [state.get("evidence", []), run.observations]
         ),
-        authorized_mcp_tools={
-            (str(item.get("connection_id") or ""), str(item.get("tool_name") or ""))
-            for item in mcp_read_tools
-            if item.get("connection_id") and item.get("tool_name")
-        },
     )
     rejected_automation_action = action_domains is not None and any(
         task.domain not in action_domains
@@ -640,22 +570,7 @@ async def plan(state):
                 reason_codes=["AUTOMATION_ACTION_OUTSIDE_DEFINITION"],
             ).model_dump(mode="python")
         )
-    planned_mcp_pairs = planned_mcp_tool_pairs(generated.tasks)
-    accepted_mcp_pairs = planned_mcp_tool_pairs(tasks)
-    rejected_mcp_plan = bool(planned_mcp_pairs - accepted_mcp_pairs)
-    if rejected_mcp_plan:
-        tasks = []
-        results.append(
-            AgentResult(
-                task_id=f"MCP-PLAN-{run.run_id}",
-                status=AgentTaskStatus.INSUFFICIENT_EVIDENCE,
-                summary="Đề xuất dùng công cụ MCP không vượt qua kiểm tra quyền, phạm vi hoặc hợp đồng tham số; hệ thống không gọi công cụ đó",
-                evidence_refs=evidence_refs,
-                reason_codes=["MCP_TOOL_PLAN_REJECTED"],
-                warnings=["MCP_TOOL_PLAN_REJECTED"],
-            ).model_dump(mode="python")
-        )
-    if not tasks and not rejected_mcp_plan and not rejected_automation_action:
+    if not tasks and not rejected_automation_action:
         prior_results = [AgentResult(**item) for item in results]
         observed_automatic_event = (
             bool(state.get("automatic"))

@@ -17,7 +17,7 @@ from src.runtime.queue_names import (
     RECOVERABLE_QUEUES,
 )
 from src.schemas.automation import AutomationStatus
-from src.schemas.events import DeadLetterRecoveryAudit
+from src.schemas.queue_recovery import DeadLetterRecoveryAudit
 
 
 def _header(headers, name):

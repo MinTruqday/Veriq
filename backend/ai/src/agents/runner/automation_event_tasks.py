@@ -21,7 +21,6 @@ from src.prompts.automation_events import (
 )
 from src.runtime.limits import limits
 from src.schemas.agent import PlannedTask, ToolCall, ToolExecutionStatus
-from src.schemas.automation import AutomationAction
 from src.tools.registry import registered_tools, tool_access
 
 
@@ -51,19 +50,7 @@ def direct_capability_task(run, evidence_refs):
         ],
         run,
         evidence_refs,
-        known_identifiers=[
-            *evidence_refs,
-            *(
-                [str(value) for key, value in arguments.items() if key.endswith("_id") and value]
-                if access.name == "call_mcp_read_tool"
-                else []
-            ),
-        ],
-        authorized_mcp_tools=(
-            {(str(arguments.get("connection_id") or ""), str(arguments.get("tool_name") or ""))}
-            if access.name == "call_mcp_read_tool"
-            else None
-        ),
+        known_identifiers=evidence_refs,
     )
     return tasks[0] if tasks and tasks[0].tool_calls else None
 
@@ -391,16 +378,6 @@ def direct_document_ingestion_task(run, state, evidence_refs):
         or constraints.get("trigger") != "DOCUMENT_INGESTED"
     ):
         return None
-    mcp_read_enabled = AutomationAction.READ_PROJECT_MCP.value in set(
-        constraints.get("automation_actions") or []
-    )
-    if mcp_read_enabled and any(
-        item.get("tool_name") == "process_ingested_requirement_document"
-        and item.get("status") == ToolExecutionStatus.COMPLETED
-        and (item.get("verification") or {}).get("status") == ToolExecutionStatus.COMPLETED
-        for item in getattr(run, "observations", []) or []
-    ):
-        return None
     tool_name = "process_ingested_requirement_document"
     tool = registered_tools().get(tool_name)
     access = tool_access(tool)
@@ -474,7 +451,7 @@ def direct_document_ingestion_task(run, state, evidence_refs):
                 objective=document_ingested_objective(),
                 evidence_refs=evidence_refs,
                 constraints={
-                    "workflow_terminal": not mcp_read_enabled,
+                    "workflow_terminal": True,
                     "resume_after_clarification": bool(clarification_responses),
                     **(
                         {"output_language": constraints["output_language"]}

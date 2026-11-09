@@ -9,7 +9,6 @@ from loguru import logger
 
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.mq import mq
-from src.core.infrastructure.observability import trace_span
 from src.runtime.limits import limits
 from src.runtime.queue_names import DOCUMENT_INGESTION_QUEUE
 from src.services.ingestion import index_document, remove_document
@@ -77,15 +76,9 @@ class DocumentIngestionWorker:
     async def _process(self, message: dict):
         payload = message.get("payload") if isinstance(message, Mapping) else {}
         payload = payload if isinstance(payload, Mapping) else {}
-        with trace_span(
-            "document.ingestion.delivery",
-            {
-                "event.status": "received",
-            },
-        ) as span:
-            await self._process_delivery(message, span)
+        await self._process_delivery(message)
 
-    async def _process_delivery(self, message: dict, delivery_span=None):
+    async def _process_delivery(self, message: dict):
         message = message if isinstance(message, Mapping) else {}
         raw_payload = message.get("payload")
         payload = raw_payload if isinstance(raw_payload, Mapping) else {}
@@ -117,19 +110,9 @@ class DocumentIngestionWorker:
         is_admin = not bool(user_id)
         try:
             superseded_document_id = str(payload.get("superseded_document_id") or "")
-            with trace_span(
-                "document.ingestion.dispatch",
-                {
-                    "event.status": "dispatching",
-                },
-            ):
-                result = await index_document(
-                    document_id, requester_id, is_admin, event_id
-                )
-            if delivery_span is not None:
-                delivery_span.set_attribute(
-                    "document.ingestion.status", str(result.get("status") or "unknown")
-                )
+            result = await index_document(
+                document_id, requester_id, is_admin, event_id
+            )
             if result.get("status") not in {"indexed", "degraded", "superseded", "busy"}:
                 raise RuntimeError("document_indexing_status_invalid")
             if result.get("status") == "busy":

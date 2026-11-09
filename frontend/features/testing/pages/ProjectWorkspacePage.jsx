@@ -174,7 +174,6 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
           "testcompletion.read",
           "qualityevaluation.read",
           "measurement.read",
-          "processimprovement.read",
         ]
       : area === "changes"
         ? ["changeset.read"]

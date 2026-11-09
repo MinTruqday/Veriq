@@ -22,11 +22,6 @@ class CrossDocumentExpansionRequest(BaseModel):
         min_length=2, max_length=100, description="Ordered document identifiers to retrieve"
     )
 
-class KnowledgeChunkSafetyRequest(BaseModel):
-    texts: List[Annotated[str, Field(min_length=1, max_length=4000)]] = Field(
-        min_length=1, max_length=500, description="Retrieved chunks to assess for safety"
-    )
-
 class KnowledgeDocumentSummaryRequest(BaseModel):
     text: str = Field(
         min_length=1, max_length=15000, description="Document content to summarize for knowledge retrieval"

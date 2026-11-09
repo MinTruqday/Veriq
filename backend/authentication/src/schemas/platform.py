@@ -156,7 +156,7 @@ class RagReindexRequest(BaseModel):
 
 
 class CacheClearRequest(BaseModel):
-    scope: Literal["RATE_LIMITS", "PASSKEY_CHALLENGES", "PROJECT_METADATA", "SAFE_ALL"]
+    scope: Literal["RATE_LIMITS", "PROJECT_METADATA", "SAFE_ALL"]
     confirmation: Literal["CLEAR_SAFE_CACHE"]
     reason: str = Field(min_length=3, max_length=1000)
 

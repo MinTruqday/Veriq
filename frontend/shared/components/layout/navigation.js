@@ -51,9 +51,6 @@ export const PROJECT_SETTINGS_PERMISSIONS = [
   "notification.watch.manage",
   "notification.preferences.manage",
   "notification.project_rule.manage",
-  "project.connector.read",
-  "cicd.read",
-  "webhook.project.read",
 ];
 
 export function testCaseSubsectionItems(projectId) {
@@ -91,7 +88,7 @@ export function testCaseSubsectionItems(projectId) {
       id: "automation",
       label: "Mã kiểm thử tự động",
       href: `${root}/tu-dong-hoa`,
-      permission: "automation.script.export",
+      anyPermission: ["automation.read", "proposal.read"],
       permissions: ["testcase.read"],
     },
     {
@@ -338,7 +335,6 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
               "testcompletion.read",
               "qualityevaluation.read",
               "measurement.read",
-              "processimprovement.read",
             ],
           },
           {

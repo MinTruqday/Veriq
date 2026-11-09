@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from loguru import logger
+from uuid6 import uuid7
 
 from src.core.dependency import (
     CurrentUser,
@@ -8,10 +9,6 @@ from src.core.dependency import (
     get_current_user,
     get_current_user_optional,
     verify_internal_token,
-)
-from src.schemas.inference_skill_profile import (
-    SkillProfileExtractionOutput,
-    SkillProfileExtractionRequest,
 )
 from src.schemas.inference_staffing import StaffingRecommendationRequest
 from src.schemas.ingestion import (
@@ -26,11 +23,41 @@ from src.services.ingestion import extract_document as extract_document_text
 from src.services.ingestion import index_document as index_document_data
 from src.services.ingestion import remove_document as remove_document_data
 from src.services.conversion import document_parser
-from src.services.skill_profile_extraction import extract_skill_profile_candidates
 from src.services.staffing_recommendation import recommend_staffing
+from src.core.infrastructure.mq import mq
+from src.runtime.queue_names import DOCUMENT_INGESTION_QUEUE
 
 router = APIRouter(prefix="/tiep-nap")
 indexing_router = APIRouter(dependencies=[Depends(verify_internal_token)])
+
+
+@indexing_router.post("/tiep-nap/tai-lieu-dang-tai")
+async def queue_uploaded_document(
+    document_id: str,
+    user_id: str = "",
+    superseded_document_id: str = "",
+    event_id: str = "",
+):
+    document_id = document_id.strip()
+    if not document_id:
+        raise HTTPException(status_code=422, detail={"code": "DOCUMENT_ID_REQUIRED"})
+    resolved_event_id = event_id.strip() or str(uuid7())
+    published = await mq.publish(
+        DOCUMENT_INGESTION_QUEUE,
+        {
+            "event_id": resolved_event_id,
+            "document_id": document_id,
+            "user_id": user_id,
+            "superseded_document_id": superseded_document_id,
+            "attempt": 0,
+        },
+    )
+    if not published:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "DOCUMENT_INGESTION_QUEUE_UNAVAILABLE"},
+        )
+    return {"status": "accepted", "event_id": resolved_event_id}
 
 
 @router.post("")
@@ -114,7 +141,6 @@ async def ingest_document(
             status=status,
             chunks_count=result.get("chunks_count", 0),
             extraction_method=result.get("extraction_method", "local"),
-            quarantined_chunks=result.get("quarantined_chunks", []),
             failed_chunks=result.get("failed_chunks", []),
             unprocessed_blocks=result.get("unprocessed_blocks", []),
             extraction_warnings=result.get("extraction_warnings", []),
@@ -217,18 +243,8 @@ async def read_document_picture_asset(
 
 
 @indexing_router.post(
-    "/ho-so-nang-luc/trich-xuat-cv",
-    response_model=APIResponse[SkillProfileExtractionOutput],
-    description="Trích xuất ứng viên kỹ năng từ nội dung CV tạm thời; không lưu CV hoặc lập chỉ mục",
-)
-async def extract_skill_profile(req: SkillProfileExtractionRequest):
-    result = await extract_skill_profile_candidates(req)
-    return APIResponse(data=result, message="Đã trích xuất ứng viên hồ sơ năng lực")
-
-
-@indexing_router.post(
     "/kiem-thu/goi-y-phan-cong",
-    description="Xếp hạng người thực hiện từ dữ liệu năng lực, tải việc và chi phí đã xác thực",
+    description="Xếp hạng người thực hiện từ dữ liệu năng lực, khả dụng và tải công việc",
 )
 async def staffing_recommendation(req: StaffingRecommendationRequest):
     result = await recommend_staffing(req)

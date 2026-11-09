@@ -174,16 +174,6 @@ async def revoke_all_user_sessions(
     )
 
 
-@router.delete("/quan-tri/tai-khoan/{user_id}/khoa-bao-mat", response_model=APIResponse[Any])
-async def reset_user_passkeys(
-    user_id: str, payload: ActionReason, current_user: CurrentUser = Depends(get_current_user)
-):
-    return APIResponse(
-        data=await PlatformAccountService.reset_passkeys(user_id, payload, current_user),
-        message="Đặt lại passkey hoàn tất",
-    )
-
-
 @router.patch("/quan-tri/tai-khoan/{user_id}/vai-tro-he-thong", response_model=APIResponse[Any])
 async def update_system_role(
     user_id: str, payload: SystemRoleUpdate, current_user: CurrentUser = Depends(get_current_user)

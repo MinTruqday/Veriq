@@ -7,7 +7,6 @@ from .api.device_matrices import router as device_matrices_router
 from .api.environment_incidents import router as environment_incidents_router
 from .api.measurements import router as measurements_router
 from .api.non_functional_testing import router as non_functional_testing_router
-from .api.process_improvement import router as process_improvement_router
 from .api.quality_evaluations import router as quality_evaluations_router
 from .api.review_sessions import router as review_sessions_router
 from .api.reviews import router as reviews_router
@@ -23,7 +22,6 @@ router.include_router(quality_evaluations_router)
 router.include_router(defect_prevention_router)
 router.include_router(environment_incidents_router)
 router.include_router(non_functional_testing_router)
-router.include_router(process_improvement_router)
 router.include_router(device_matrices_router)
 router.include_router(traceability_router)
 router.include_router(changes_router)

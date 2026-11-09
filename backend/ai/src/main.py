@@ -2,7 +2,7 @@ import hmac
 import sys
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -10,20 +10,15 @@ from loguru import logger
 from src.api.agents import router as agents_router
 from src.api.automation import router as automation_router
 from src.api.embedding import router as embedding_router
-from src.api.events import router as events
 from src.api.indexing import indexing_router
 from src.api.indexing import router as ingest
 from src.api.inference import router as inference
-from src.api.mcp import router as mcp_router
 from src.api.projects import router as projects_router
+from src.api.queue_recovery import router as queue_recovery_router
 from src.api.retrieval import router as retrieval_router
-from src.core.dependency import require_system_admin
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import database
-from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 from src.core.middleware import add_trace_id_header, trace_id_filter
-from src.schemas.agent import AgentRunStatus
-from src.services.agent_metrics import agentops
 from src.services.retrieval import initialize_retrieval
 
 logger.remove()
@@ -48,8 +43,6 @@ logger.add(
 retrieval_ready = False
 
 app = FastAPI(title="Veriq AI", version=settings.VERSION)
-app.add_middleware(PrometheusMiddleware, service_name="ai")
-app.add_route("/so-lieu", metrics_endpoint("ai"))
 
 
 @app.middleware("http")
@@ -81,13 +74,12 @@ app.add_middleware(
 app.include_router(inference)
 app.include_router(agents_router)
 app.include_router(automation_router)
-app.include_router(mcp_router)
 app.include_router(ingest)
-app.include_router(events)
 app.include_router(retrieval_router, prefix="/tri-thuc")
 app.include_router(embedding_router, prefix="/tri-thuc/bieu-dien-vector")
 app.include_router(indexing_router, prefix="/tri-thuc")
 app.include_router(projects_router, prefix="/tri-thuc")
+app.include_router(queue_recovery_router)
 
 
 @app.get("/suc-khoe")
@@ -123,12 +115,6 @@ async def readiness_check():
         checks["qdrant"] = "ready" if response.status_code == 200 else "unavailable"
     except Exception:
         checks["qdrant"] = "unavailable"
-    try:
-        from src.knowledge.graph.client import graph_client
-
-        checks["neo4j"] = "ready" if await graph_client.ready() else "unavailable"
-    except Exception:
-        checks["neo4j"] = "unavailable"
     checks["knowledge"] = "ready" if retrieval_ready else "unavailable"
     try:
         from src.services.conversion import document_parser
@@ -154,40 +140,8 @@ async def readiness_check():
     )
 
 
-@app.get("/danh-gia/so-lieu")
-async def agent_metrics():
-    from fastapi.responses import PlainTextResponse
-
-    return PlainTextResponse(
-        content=agentops.get_prometheus_metrics(), media_type="text/plain; version=0.0.4"
-    )
-
-
-@app.get("/danh-gia/trang-thai", dependencies=[Depends(require_system_admin)])
-async def agent_status():
-    from src.repositories.memory import memory_repository
-
-    return {
-        "orchestration": {
-            "active_runs": await memory_repository.count_runs(
-                [
-                    AgentRunStatus.PLANNING,
-                    AgentRunStatus.RUNNING,
-                    AgentRunStatus.VERIFYING,
-                ]
-            ),
-        },
-    }
-
-
 async def startup_event():
     logger.info("AI system initialized")
-    try:
-        from src.core.infrastructure.observability import initialize_tracing
-
-        initialize_tracing()
-    except Exception as error:
-        logger.warning("AI trace initialization unavailable: {}", type(error).__name__)
     from src.prompts.testing import validate_prompt_contract_registry
 
     validate_prompt_contract_registry()
@@ -205,14 +159,6 @@ async def startup_event():
         create_background_task(initialize_ai_runtime_background(), "ai-runtime-warmup")
     except Exception:
         logger.exception("AI retrieval capability startup error")
-    try:
-        from src.runtime.events import cron_scheduler, event_processor
-
-        await event_processor.start_worker()
-        await cron_scheduler.start()
-        logger.info("Event processor started")
-    except Exception:
-        logger.exception("Event processor startup error")
     try:
         from src.runtime.automation_worker import automation_worker
 
@@ -242,13 +188,6 @@ async def initialize_retrieval_background():
 
 async def initialize_ai_runtime_background():
     try:
-        from src.knowledge.graph.repository import graph_repository
-
-        await graph_repository.ensure_schema()
-        logger.info("Graph schema initialized")
-    except Exception:
-        logger.exception("Graph schema initialization error")
-    try:
         from src.utils.model_provider import model_client
 
         if await model_client.warm_primary():
@@ -275,19 +214,6 @@ async def shutdown_event():
         await drain_background_tasks()
     except Exception:
         logger.exception("Background task shutdown failed")
-    try:
-        from src.knowledge.graph.client import graph_client
-
-        await graph_client.close()
-    except Exception:
-        logger.exception("Graph shutdown failed")
-    try:
-        from src.runtime.events import cron_scheduler, event_processor
-
-        await cron_scheduler.stop()
-        await event_processor.stop_worker()
-    except Exception:
-        logger.exception("Event processor shutdown failed")
     try:
         from src.runtime.automation_worker import automation_worker
 
@@ -318,12 +244,6 @@ async def shutdown_event():
         await vector_store.close()
     except Exception:
         logger.exception("Vector store shutdown failed")
-    try:
-        from src.core.infrastructure.observability import shutdown_tracing
-
-        shutdown_tracing()
-    except Exception as error:
-        logger.warning("AI trace shutdown issue: {}", type(error).__name__)
 
 
 @asynccontextmanager

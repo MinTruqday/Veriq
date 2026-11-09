@@ -54,7 +54,6 @@ class SessionService:
             "is_verified": False,
             "email_verified": False,
             "password_hash": get_password_hash(user_in.password),
-            "passkeys": [],
             "created_at": created_at,
             "updated_at": created_at,
         }
@@ -208,7 +207,6 @@ class SessionService:
             "_refresh_token": refresh_token,
             "user": {
                 "email": auth_cred["email"],
-                "has_passkey": len(auth_cred.get("passkeys", [])) > 0,
             },
         }
 
@@ -311,13 +309,11 @@ class SessionService:
         await IdentityRepository.register_session(user_id_str, session_id, client_ip, refresh_token)
         await IdentityRepository.cache_session(user_id_str, session_id)
         access_token = SessionService.access_token_for_user(user_doc, session_id)
-        auth_cred = await IdentityRepository.get_auth_credential_by_id(str(user_doc["_id"]))
-        has_passkey = len(auth_cred.get("passkeys", [])) > 0 if auth_cred else False
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "_refresh_token": refresh_token,
-            "user": {"email": user_doc["email"], "has_passkey": has_passkey},
+            "user": {"email": user_doc["email"]},
         }
 
     @staticmethod

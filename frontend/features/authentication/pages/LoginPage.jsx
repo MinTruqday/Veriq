@@ -10,7 +10,7 @@ import { useLogin } from "../hooks/useLogin";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { submitting, error, passwordLogin, passkeyLogin } = useLogin();
+  const { submitting, error, passwordLogin } = useLogin();
   const submit = (event) => {
     event.preventDefault();
     passwordLogin(email, password);
@@ -57,17 +57,6 @@ export default function LoginPage() {
           {submitting ? "Đang xử lý" : "Đăng nhập"}
         </Button>
       </form>
-      <div className="mt-4">
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full"
-          disabled={submitting}
-          onClick={() => passkeyLogin(email)}
-        >
-          Đăng nhập bằng khóa truy cập
-        </Button>
-      </div>
     </AuthFrame>
   );
 }

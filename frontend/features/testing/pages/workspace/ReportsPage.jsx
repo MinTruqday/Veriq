@@ -6,7 +6,6 @@ import TestStatusReportPanel from "../../components/TestStatusReportPanel";
 import CompletionPage from "./CompletionPage";
 import MetricDefinitionPanel from "../../components/MetricDefinitionPanel";
 import ReleaseQualityPanel from "../../components/ReleaseQualityPanel";
-import ProcessImprovementPanel from "../../components/ProcessImprovementPanel";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
   ErrorState,
@@ -203,7 +202,7 @@ export default function ReportsPage({ project }) {
     ...(can("teststatusreport.read") || can("testcompletion.read")
       ? [{ id: "reports", label: "Báo cáo" }]
       : []),
-    ...(can("qualityevaluation.read") || can("measurement.read") || can("processimprovement.read")
+    ...(can("qualityevaluation.read") || can("measurement.read")
       ? [{ id: "quality", label: "Chất lượng và cải tiến" }]
       : []),
   ];
@@ -220,7 +219,6 @@ export default function ReportsPage({ project }) {
       ? [{ id: "evaluation", label: "Đánh giá bản phát hành" }]
       : []),
     ...(can("measurement.read") ? [{ id: "measurement", label: "Đo lường" }] : []),
-    ...(can("processimprovement.read") ? [{ id: "improvement", label: "Cải tiến quy trình" }] : []),
   ];
   const visibleQualityTab = qualityTabs.some((tab) => tab.id === activeQualityTab)
     ? activeQualityTab
@@ -391,7 +389,6 @@ export default function ReportsPage({ project }) {
           )}
           {visibleQualityTab === "evaluation" && <ReleaseQualityPanel project={project} />}
           {visibleQualityTab === "measurement" && <MetricDefinitionPanel project={project} />}
-          {visibleQualityTab === "improvement" && <ProcessImprovementPanel project={project} />}
         </div>
       )}
       {visibleTab === "summary" && (

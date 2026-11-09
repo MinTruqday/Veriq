@@ -176,40 +176,6 @@ export function latestAgentUncertainties(checkpoints) {
   return Array.isArray(uncertainties) ? uncertainties : [];
 }
 
-const MCP_DISCOVERY_MESSAGES = {
-  MCP_PROJECT_AUTHORIZATION_UNAVAILABLE:
-    "Chưa xác minh được quyền đọc dự án nên hệ thống chưa thể dùng nguồn kết nối này.",
-  MCP_PROJECT_ACCESS_REVOKED:
-    "Quyền đọc dự án đã bị thu hồi nên hệ thống không dùng nguồn kết nối này.",
-  MCP_CONNECTION_DISCOVERY_UNAVAILABLE: "Chưa đọc được cấu hình nguồn kết nối của dự án.",
-  MCP_CREDENTIAL_UNAVAILABLE: "Nguồn kết nối chưa được cấu hình đầy đủ trên máy chủ.",
-  MCP_DISCOVERY_TIMEOUT: "Nguồn kết nối không phản hồi đúng hạn.",
-  MCP_DISCOVERY_FAILED: "Không thể đọc danh sách nội dung từ nguồn kết nối.",
-  MCP_TOOL_SCHEMA_UNSUPPORTED:
-    "Một thao tác của nguồn kết nối chưa được hỗ trợ nên không được sử dụng.",
-  MCP_ALLOWED_TOOLS_NOT_ADVERTISED:
-    "Nguồn kết nối chưa cung cấp nội dung được phép đọc trong dự án.",
-};
-
-export function agentMcpDiscoveryIssues(run) {
-  const observations = Array.isArray(run?.result?.observations)
-    ? run.result.observations
-    : Array.isArray(run?.observations)
-      ? run.observations
-      : [];
-  const issues = new Map();
-  for (const item of observations) {
-    if (item?.phase !== "MCP_DISCOVERY" || !MCP_DISCOVERY_MESSAGES[item.reason_code]) continue;
-    const key = [item.reason_code, item.connection_id, item.tool_name].join(":");
-    issues.set(key, {
-      reason_code: item.reason_code,
-      message: MCP_DISCOVERY_MESSAGES[item.reason_code],
-      tool_name: typeof item.tool_name === "string" ? item.tool_name : "",
-    });
-  }
-  return [...issues.values()];
-}
-
 export function agentSourceExtractionGaps(run) {
   const observations = Array.isArray(run?.result?.observations)
     ? run.result.observations

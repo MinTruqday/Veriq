@@ -6,14 +6,12 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from src.api.internal import router as internal_router
-from src.api.passkey import router as passkey_router
 from src.api.platform import router as platform_router
 from src.api.platform_controls import router as platform_controls_router
 from src.api.session import router as session_router
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import close_db, database, init_db
 from src.core.infrastructure.redis import redis
-from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 
 
 @asynccontextmanager
@@ -29,8 +27,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Veriq Authentication", version=settings.VERSION, lifespan=lifespan)
-app.add_middleware(PrometheusMiddleware, service_name="authentication")
-app.add_route("/so-lieu", metrics_endpoint("authentication"))
 origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
@@ -40,7 +36,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(session_router)
-app.include_router(passkey_router)
 app.include_router(internal_router)
 app.include_router(platform_router)
 app.include_router(platform_controls_router)

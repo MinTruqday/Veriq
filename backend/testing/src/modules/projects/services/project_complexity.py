@@ -1,7 +1,6 @@
 import hashlib
 import json
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from pymongo import ReturnDocument
@@ -21,83 +20,6 @@ from src.modules.projects.services.project_complexity_config import (
 def _fingerprint(manifest):
     serialized = json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-
-
-async def _commercial_feasibility(project_id, user):
-    if not user.is_system_admin:
-        return None
-    project = await database.value.projects.find_one(
-        {"_id": project_id}, {"commercial_terms": 1}
-    )
-    terms = (project or {}).get("commercial_terms") or {}
-    if not terms.get("contract_price"):
-        return {"status": "MISSING_CUSTOMER_PRICE"}
-    plan = await database.value.test_plans.find_one(
-        {"project_id": project_id, "status": "APPROVED"},
-        sort=[("updated_at", -1)],
-    )
-    if not plan:
-        return {"status": "MISSING_APPROVED_TEST_PLAN"}
-    plan_source = plan.get("approved_snapshot") or plan
-    estimation = plan_source.get("estimation") or {}
-    allocations = estimation.get("effort_allocations") or []
-    try:
-        planned_hours = Decimal(str(estimation.get("planned_effort_hours") or 0))
-        allocated_hours = sum(
-            (Decimal(str(item.get("planned_hours") or 0)) for item in allocations),
-            Decimal(0),
-        )
-    except (InvalidOperation, TypeError, ValueError):
-        return {"status": "FINANCIAL_DATA_INVALID", "currency": terms.get("currency")}
-    if planned_hours <= 0 or allocated_hours != planned_hours or not allocations:
-        return {"status": "APPROVED_PLAN_EFFORT_INCOMPLETE", "currency": terms.get("currency")}
-    try:
-        effective_date = date.fromisoformat(str((plan_source.get("schedule") or {}).get("planned_start_at"))[:10])
-    except ValueError:
-        return {"status": "APPROVED_PLAN_START_DATE_MISSING", "currency": terms.get("currency")}
-    labor_cost = Decimal(0)
-    missing_rates = 0
-    for allocation in allocations:
-        rate = await database.value.payroll_rates.find_one(
-            {
-                "user_id": allocation.get("user_id"),
-                "currency": terms.get("currency"),
-                "valid_from": {"$lte": effective_date.isoformat()},
-                "$or": [{"valid_until": None}, {"valid_until": {"$gte": effective_date.isoformat()}}],
-            },
-            sort=[("valid_from", -1)],
-            projection={"hourly_cost": 1},
-        )
-        if not rate:
-            missing_rates += 1
-            continue
-        try:
-            labor_cost += Decimal(str(rate["hourly_cost"])) * Decimal(str(allocation["planned_hours"]))
-        except (InvalidOperation, KeyError, ValueError):
-            missing_rates += 1
-    if missing_rates:
-        return {
-            "status": "MISSING_LABOR_RATES",
-            "currency": terms.get("currency"),
-            "planned_hours": str(planned_hours),
-            "missing_rate_count": missing_rates,
-        }
-    try:
-        customer_price = Decimal(str(terms["contract_price"]))
-    except (InvalidOperation, KeyError, ValueError):
-        return {"status": "FINANCIAL_DATA_INVALID", "currency": terms.get("currency")}
-    variance = customer_price - labor_cost
-    return {
-        "status": "FORECAST_ONLY",
-        "customer_price": str(customer_price),
-        "estimated_labor_cost": str(labor_cost),
-        "variance_before_other_costs": str(variance),
-        "currency": terms.get("currency"),
-        "planned_hours": str(planned_hours),
-        "comparison": "BELOW_LABOR_COST" if variance < 0 else "COVERS_LABOR_COST",
-        "actual_cost_available": False,
-        "scope_note": terms.get("scope_note") or "",
-    }
 
 
 async def _source_scope(
@@ -483,7 +405,6 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
         labels = {item["id"]: item["label"] for item in dimensions_config}
         for item in (response.get("suggestions") or [{}])[0].get("dimensions") or []:
             item.setdefault("label", labels.get(item.get("dimension_id"), item.get("dimension_id")))
-        response["commercial_feasibility"] = await _commercial_feasibility(project_id, user)
         return response
     try:
         result = await request_ai_automation(
@@ -623,7 +544,6 @@ async def assess_project_complexity(project_id, user, payload, *, output_languag
     response.pop("source_manifest", None)
     response.pop("claim_token", None)
     response.pop("lease_expires_at", None)
-    response["commercial_feasibility"] = await _commercial_feasibility(project_id, user)
     return response
 
 
@@ -679,5 +599,4 @@ async def get_latest_project_complexity(project_id, user):
     record.pop("source_manifest", None)
     record.pop("evidence_refs", None)
     record["stale"] = stale
-    record["commercial_feasibility"] = await _commercial_feasibility(project_id, user)
     return record

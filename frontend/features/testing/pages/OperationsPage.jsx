@@ -4,7 +4,7 @@ import { RotateCcw } from "lucide-react";
 import DataTable from "../components/DataTable";
 import PlatformOperationsPanel from "../components/PlatformOperationsPanel";
 import PlatformUsersPanel from "../components/PlatformUsersPanel";
-import PayrollImportPanel from "../components/PayrollImportPanel";
+import ResourceCapacityPanel from "../components/ResourceCapacityPanel";
 import TestabilityBenchmarkPanel from "../components/TestabilityBenchmarkPanel";
 import {
   ErrorState,
@@ -162,7 +162,7 @@ export default function OperationsPage() {
         tabs={[
           { id: "overview", label: "Tổng quan" },
           { id: "users", label: "Tài khoản" },
-          { id: "payroll", label: "Bảng lương" },
+          { id: "capacity", label: "Công suất" },
           { id: "platform", label: "Cấu hình nền tảng" },
           { id: "benchmark", label: "Đánh giá AI" },
         ]}
@@ -170,8 +170,8 @@ export default function OperationsPage() {
       {error && <ErrorState message={error} />}
       {section === "users" ? (
         <PlatformUsersPanel />
-      ) : section === "payroll" ? (
-        <PayrollImportPanel />
+      ) : section === "capacity" ? (
+        <ResourceCapacityPanel />
       ) : section === "platform" ? (
         <PlatformOperationsPanel />
       ) : section === "benchmark" ? (

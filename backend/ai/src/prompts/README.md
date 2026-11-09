@@ -17,7 +17,6 @@
 | `testability_benchmark.py` | `clarification_baseline_instruction`, `direct_generation_baseline_instruction`, `CLARIFICATION_BASELINE` | `services/testability_benchmark.py` qua `services/ai_automation.py` | Baseline hỏi làm rõ và sinh Test Case trực tiếp để so sánh; không lập nghĩa vụ trước |
 | `change_simulation.py` | `change_simulation_report_instruction`, `IMPACT_ANALYSIS_CONTRACT` | `agents/runner/nodes.py`, `prompts/testing.py` qua `services/ai_automation.py` | Phân loại từng Test Case version liên kết bằng trích dẫn; bản vá xem trước chỉ nhận các trường Test Case có kiểu, không áp dụng trong lượt mô phỏng |
 | `project_assistance.py` | `PROJECT_QUESTION_CONTRACT` | `prompts/testing.py` qua `services/ai_automation.py` | Trả lời câu hỏi dự án bằng chứng cứ đã truy xuất, nêu giới hạn khi nguồn không đủ |
-| `skill_profile.py` | `build_skill_profile_extraction_prompt` | `services/skill_profile_extraction.py` | Trích kỹ năng/kinh nghiệm CV có dẫn chứng; giữ thời gian đúng nguyên văn khi có, không suy ra mức thành thạo hay số năm |
 | `staffing_recommendation.py` | `build_staffing_recommendation_prompt` | `services/staffing_recommendation.py` | Xếp thứ tự ứng viên đủ điều kiện từ vai trò, kỹ năng, kinh nghiệm, khả dụng và tải việc; lương/đơn giá chỉ được tính riêng ở backend tài chính, không gửi cho mô hình |
 | `defect_analysis.py` | `causal_hypothesis_instruction` | `tools/execution_workflows.py` | Tạo giả thuyết defect, không khẳng định nguyên nhân đã xác nhận |
 | `requirement_analysis.py` | `requirement_quality_analysis_instruction` | `testing/modules/requirements/services/requirement_ai.py` qua `tools/requirement_change_workflow.py` | Rà chất lượng Requirement trong workflow được khởi chạy bởi Agent; sự kiện độc lập không tự khởi chạy lượt AI |
@@ -47,8 +46,8 @@ Các prompt nghiệp vụ chỉ được gọi trong một lượt Agent do ngư
 | Module | Prompt/hàm sở hữu | Nơi gọi | Mục đích |
 | --- | --- | --- | --- |
 | `model_output.py` | `schema_instruction`, `correction_instruction` | `services/inference.py`, `utils/huggingface.py` | Chỉ dẫn tạo và sửa đầu ra theo schema |
+| `security.py` | `prompt_injection_detector` | `core/security/guardrails.py` | Nhận diện chỉ dẫn không tin cậy trước khi chuyển nội dung nguồn cho Agent |
 | `tool_selection.py` | `tool_selection_instruction`, `tool_selection_correction_instruction` | `utils/huggingface.py` | Chọn một công cụ đã đăng ký theo schema |
-| `security.py` | `prompt_injection_detector`, `security_scan` | `core/security/guardrails.py`, `core/security/scanning.py` | Phân loại chỉ dẫn không tin cậy và rà nội dung an toàn |
 | `retrieval.py` | `cross_document_query`, `document_global_summary` | `services/inference.py` | Tách truy vấn đa tài liệu và tóm tắt tài liệu tri thức |
 
 ## Định dạng dùng chung
@@ -56,7 +55,7 @@ Các prompt nghiệp vụ chỉ được gọi trong một lượt Agent do ngư
 Chỉ dẫn tĩnh gửi cho model viết bằng tiếng Anh thống nhất; đây là ngôn ngữ của prompt, không phải ngôn ngữ đầu ra. Ngôn ngữ đầu ra phải lấy từ locale của người dùng được truyền vào capability, không mặc định tiếng Việt; trích dẫn nguồn, mã định danh, tên kỹ thuật và giá trị giao thức giữ nguyên như nguồn. Prompt độc lập dùng thứ tự có nhãn thống nhất, không ghép chỉ dẫn và dữ liệu vào một đoạn văn tự do:
 
 1. `<system_identity>` rồi `<objective>` nêu vai trò và việc cần làm.
-2. `<trust_boundary>` phân biệt chỉ dẫn đáng tin với tài liệu, CV, câu trích dẫn và dữ liệu MCP không đáng tin.
+2. `<trust_boundary>` phân biệt chỉ dẫn đáng tin với tài liệu, câu trích dẫn và dữ liệu các nguồn ngoài không đáng tin.
 3. `<output_language>` quy định ngôn ngữ trường nội dung hướng người dùng theo locale đã truyền; không gán ngôn ngữ mặc định. Không dùng tên thay thế như `<language_policy>`.
 4. `<evidence_rules>` / `<workflow_rules>` ghi căn cứ, quyền và hành vi được phép.
 5. `<output_contract>` nêu schema/định dạng trả về.
@@ -74,11 +73,9 @@ Sự kiện tài liệu mới đi qua trích xuất fact đã xác minh trước
 
 Blueprint được xác minh được lưu thành lịch sử phiên bản theo dự án trong `automation_project_blueprints`; cùng nguồn và cùng nội dung biên dịch được gộp idempotent, còn khi nguồn hoặc blueprint đổi thì tạo phiên bản mới. API đọc lịch sử là `/tu-dong-hoa-ai/du-an/{project_id}/ho-so-kha-nang-kiem-thu`; ngoài membership, API yêu cầu quyền `requirement.read` vì blueprint chứa nội dung và nguồn Requirement.
 
-MCP chỉ là cổng công cụ ngoài theo kết nối dự án, danh sách tool đọc được cấp rõ ràng và quyền đọc của project. Output MCP được kiểm tra an toàn trước khi trở lại agent. Service Veriq tiếp tục sở hữu dữ liệu, quyền, workflow, version và audit nghiệp vụ.
 
 ## Ranh giới
 
 - Prompt không cấp quyền. Quyền cuối cùng do service nghiệp vụ và registry công cụ kiểm tra.
-- Nội dung tài liệu và kết quả MCP là dữ liệu không tin cậy, không phải chỉ dẫn cho agent.
 - Không lưu prompt nghiệp vụ trong JSON hay tệp policy tổng hợp.
 - Khi sửa prompt, cập nhật đúng module sở hữu và chạy kiểm tra đầu ra của capability tương ứng.

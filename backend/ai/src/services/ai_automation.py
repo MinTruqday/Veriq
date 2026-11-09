@@ -7,7 +7,6 @@ from fastapi import HTTPException
 from loguru import logger
 
 from src.core.infrastructure.configuration import settings
-from src.core.infrastructure.observability import trace_span
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
 from src.prompts.testability_blueprint_review import build_testability_blueprint_grounding_prompt
@@ -283,18 +282,7 @@ def grounded_requirement_recommendations(recommendations, evidence):
 
 
 async def generate_ai_automation(req: TestingAutomationRequest):
-    with trace_span(
-        "ai.testing_automation",
-        {
-            "project.id": req.project_id,
-            "ai.capability": req.capability,
-            "ai.evidence_count": len(req.evidence),
-        },
-    ) as span:
-        result = await _generate_ai_automation(req)
-        if span is not None:
-            span.set_attribute("ai.result.status", str(result.status))
-        return result
+    return await _generate_ai_automation(req)
 
 
 async def _generate_ai_automation(req: TestingAutomationRequest):
@@ -341,18 +329,14 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
 
     unsupported_details = []
     try:
-        with trace_span(
-            "ai.model_generation",
-            {"ai.capability": req.capability},
-        ):
-            generated = await structured(
-                prompt,
-                schema,
-                max_tokens=4096,
-                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                provider_schema=False,
-                prompt_attempt_observer=observe_prompt_attempt("generation"),
-            )
+        generated = await structured(
+            prompt,
+            schema,
+            max_tokens=4096,
+            timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+            provider_schema=False,
+            prompt_attempt_observer=observe_prompt_attempt("generation"),
+        )
         generated_data = normalize_narrative_payload(generated.model_dump())
         generated_data["capability"] = req.capability
         generated_data.setdefault("confidence", 0)
@@ -386,18 +370,14 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
             if not generated_cases_have_grounded_citations(cases, evidence):
                 raise ValueError("AI_TEST_CASE_CITATION_INVALID")
             grounding_prompt = build_generated_cases_grounding_prompt(evidence, cases)
-            with trace_span(
-                "ai.grounding_review",
-                {"ai.review_type": "test_case", "ai.candidate_count": len(cases)},
-            ):
-                review = await structured(
-                    grounding_prompt,
-                    GeneratedCasesGroundingReview,
-                    max_tokens=4096,
-                    timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                    provider_schema=False,
-                    prompt_attempt_observer=observe_prompt_attempt("grounding"),
-                )
+            review = await structured(
+                grounding_prompt,
+                GeneratedCasesGroundingReview,
+                max_tokens=4096,
+                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                provider_schema=False,
+                prompt_attempt_observer=observe_prompt_attempt("grounding"),
+            )
             if [item.index for item in review.cases] != list(range(len(cases))):
                 raise ValueError("AI_GROUNDING_REVIEW_INVALID")
             unsupported = [item for item in review.cases if item.unsupported_claims]
@@ -433,22 +413,14 @@ async def _generate_ai_automation(req: TestingAutomationRequest):
                 generated_data.get("obligations", []),
                 generated_data.get("clarifications", []),
             )
-            with trace_span(
-                "ai.grounding_review",
-                {
-                    "ai.review_type": "testability_blueprint",
-                    "ai.obligation_count": len(generated_data.get("obligations", [])),
-                    "ai.clarification_count": len(generated_data.get("clarifications", [])),
-                },
-            ):
-                review = await structured(
-                    review_prompt,
-                    TestabilityBlueprintGroundingReview,
-                    max_tokens=4096,
-                    timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
-                    provider_schema=False,
-                    prompt_attempt_observer=observe_prompt_attempt("blueprint_grounding"),
-                )
+            review = await structured(
+                review_prompt,
+                TestabilityBlueprintGroundingReview,
+                max_tokens=4096,
+                timeout_seconds=settings.MODEL_TIMEOUT_SECONDS,
+                provider_schema=False,
+                prompt_attempt_observer=observe_prompt_attempt("blueprint_grounding"),
+            )
             expected_obligation_indexes = list(range(len(generated_data.get("obligations", []))))
             expected_clarification_indexes = list(range(len(generated_data.get("clarifications", []))))
             if (

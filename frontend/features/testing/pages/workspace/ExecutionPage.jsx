@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Archive, ClipboardCheck, Copy, Pencil, Send, Check } from "lucide-react";
 import DeviceMatricesPanel from "../../components/DeviceMatricesPanel";
-import AutomationExecutionPanel from "../../components/AutomationExecutionPanel";
 import AgentRunPanel from "../../components/AgentRunPanel";
 import TestPlanEditor from "../../components/TestPlanEditor";
 import EnvironmentIncidentPanel from "../../components/EnvironmentIncidentPanel";
@@ -1155,10 +1154,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               ...(can("automation.read")
                 ? [{ id: "results", label: "Kết quả kiểm thử tự động" }]
                 : []),
-              ...(can("automation.read") || can("device_matrix.read")
-                ? [{ id: "integrations", label: "Kịch bản và thiết bị" }]
-                : []),
-              ...(canReadAiRuns ? [{ id: "ai", label: "AI Agent" }] : []),
+              ...(canReadAiRuns ? [{ id: "ai", label: "Hoạt động AI" }] : []),
             ]}
           />
           {automationSubsection === "results" && can("automation.read") && (
@@ -1170,36 +1166,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
               onError={setError}
             />
           )}
-          {automationSubsection === "integrations" && (
-            <div
-              className={
-                can("device_matrix.read") && can("automation.read")
-                  ? "grid gap-5 xl:grid-cols-2"
-                  : "grid gap-5"
-              }
-            >
-              {can("device_matrix.read") && (
-                <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
-              )}
-              {can("automation.read") && <AutomationExecutionPanel project={project} />}
-            </div>
-          )}
           {automationSubsection === "ai" && canReadAiRuns && <AgentRunPanel project={project} />}
         </div>
       )}
-      {workspaceView === "" && (can("device_matrix.read") || can("automation.read")) && (
-        <div
-          className={
-            can("device_matrix.read") && can("automation.read")
-              ? "grid gap-5 xl:grid-cols-2"
-              : "grid gap-5"
-          }
-        >
-          {can("device_matrix.read") && (
-            <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
-          )}
-          {can("automation.read") && <AutomationExecutionPanel project={project} />}
-        </div>
+      {workspaceView === "" && can("device_matrix.read") && (
+        <DeviceMatricesPanel project={project} plans={plans} runs={runs} onChanged={load} />
       )}
       {can("testplan.read") && (workspaceView === "" || workspaceView === "test-plans") && (
         <div className="w-full">

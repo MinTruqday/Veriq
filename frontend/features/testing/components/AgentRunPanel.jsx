@@ -10,7 +10,6 @@ import {
   agentCheckpointView,
   agentRunErrorMessage,
   latestAgentUncertainties,
-  agentMcpDiscoveryIssues,
   agentSourceExtractionGaps,
   workflowForSelectedAgentRun,
 } from "../lib/agentRun.logic.mjs";
@@ -583,7 +582,6 @@ export default function AgentRunPanel({
   const canResumeRun = canControlRun && canResumeAgentRun(run, checkpoints, currentUserId);
   const canShowRunControls = (busyRun && canControlRun) || canResumeRun;
   const uncertainties = latestAgentUncertainties(checkpoints);
-  const mcpDiscoveryIssues = agentMcpDiscoveryIssues(run);
   const sourceExtractionGaps = agentSourceExtractionGaps(run);
   const authorizationGuidance = agentAuthorizationGuidance(run);
   const showCompactEmptyState = compact && !loading && !error && visibleRuns.length === 0;
@@ -948,34 +946,6 @@ export default function AgentRunPanel({
                           <p className="text-xs text-warning">
                             Danh sách vị trí đã được rút gọn; tổng số phần chưa đọc vẫn được giữ
                             nguyên.
-                          </p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-              {mcpDiscoveryIssues.length > 0 && (
-                <section
-                  aria-label="Nguồn kết nối cần kiểm tra"
-                  className="grid gap-2 rounded-control border border-warning/40 bg-warning/5 p-4"
-                  role="status"
-                >
-                  <h3 className="font-semibold text-ink">Nguồn kết nối chưa sẵn sàng</h3>
-                  <p className="text-ink-muted">
-                    Hệ thống không dùng nguồn gặp vấn đề làm căn cứ. Các phần việc độc lập vẫn có
-                    thể tiếp tục; phần phụ thuộc nguồn này được giữ lại để xử lý an toàn.
-                  </p>
-                  <ul className="grid gap-2">
-                    {mcpDiscoveryIssues.map((item) => (
-                      <li
-                        className="rounded-control border border-border bg-surface p-3 text-ink-muted"
-                        key={`${item.reason_code}-${item.tool_name}`}
-                      >
-                        <p>{item.message}</p>
-                        {item.tool_name && (
-                          <p className="mt-1 text-xs">
-                            Phần việc liên quan: {valueLabel(item.tool_name)}
                           </p>
                         )}
                       </li>

@@ -2,7 +2,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from src.schemas.contracts.common import WebhookDeliveryStatus
 
 
 class ReleaseCreate(BaseModel):
@@ -148,7 +147,7 @@ class NotificationWatchInput(BaseModel):
 class ProjectNotificationRulePatch(BaseModel):
     expected_revision: int = Field(ge=0)
     enabled_events: list[str] = Field(default_factory=list, max_length=200)
-    channels: list[Literal["in_app", "email", "webhook"]] = Field(
+    channels: list[Literal["in_app", "email"]] = Field(
         default_factory=lambda: ["in_app"], max_length=3
     )
     target_roles: list[str] = Field(default_factory=list, max_length=100)
@@ -220,56 +219,3 @@ class PerformancePlanDraftInput(BaseModel):
         if len({value.casefold() for value in normalized}) != len(normalized):
             raise ValueError("workload_types_must_be_unique")
         return normalized
-
-
-class WebhookSubscriptionCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=200)
-    endpoint_reference: str = Field(min_length=12, max_length=500)
-    secret_reference: str = Field(min_length=10, max_length=500)
-    events: list[str] = Field(min_length=1, max_length=200)
-    enabled: bool = True
-
-    @model_validator(mode="after")
-    def validate_references(self):
-        if not self.endpoint_reference.startswith("endpoint://"):
-            raise ValueError("Điểm cuối phải dùng endpoint reference của nền tảng")
-        if not self.secret_reference.startswith("secret://"):
-            raise ValueError("Bí mật phải dùng secret reference của nền tảng")
-        return self
-
-
-class WebhookSubscriptionPatch(BaseModel):
-    expected_revision: int = Field(ge=1)
-    name: str | None = Field(default=None, min_length=2, max_length=200)
-    endpoint_reference: str | None = Field(default=None, min_length=12, max_length=500)
-    secret_reference: str | None = Field(default=None, min_length=10, max_length=500)
-    events: list[str] | None = Field(default=None, min_length=1, max_length=200)
-    enabled: bool | None = None
-
-    @model_validator(mode="after")
-    def validate_references(self):
-        if self.endpoint_reference is not None and not self.endpoint_reference.startswith(
-            "endpoint://"
-        ):
-            raise ValueError("Điểm cuối phải dùng endpoint reference của nền tảng")
-        if self.secret_reference is not None and not self.secret_reference.startswith("secret://"):
-            raise ValueError("Bí mật phải dùng secret reference của nền tảng")
-        return self
-
-
-class WebhookReplayInput(BaseModel):
-    idempotency_key: str = Field(min_length=8, max_length=200)
-    reason: str = Field(min_length=2, max_length=2000)
-
-
-class WebhookDeliveryRecordInput(BaseModel):
-    delivery_id: str = Field(min_length=1, max_length=200)
-    project_id: str = Field(min_length=1, max_length=200)
-    subscription_id: str = Field(min_length=1, max_length=200)
-    event_type: str = Field(min_length=1, max_length=200)
-    status: WebhookDeliveryStatus
-    attempt: int = Field(default=1, ge=1, le=1000)
-    response_status: int | None = Field(default=None, ge=100, le=599)
-    error_code: str | None = Field(default=None, max_length=200)
-    payload_hash: str = Field(min_length=16, max_length=200)
-    duration_ms: float | None = Field(default=None, ge=0, le=3600000)

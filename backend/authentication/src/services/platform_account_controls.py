@@ -52,7 +52,6 @@ class PlatformAccountControlService:
                     "account_status": "DELETED",
                     "system_role": "USER",
                     "permissions": [],
-                    "passkeys": [],
                     "deleted_at": timestamp,
                     "deleted_by": current_user.id,
                     "updated_at": timestamp,

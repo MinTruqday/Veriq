@@ -27,7 +27,6 @@ class SessionMetrics:
     llm_latencies_ms: list = field(default_factory=list)
 
 
-PROMETHEUS_PREFIX = "veriq_agent"
 _current_session: ContextVar[str | None] = ContextVar("agent_session", default=None)
 
 
@@ -155,43 +154,6 @@ class AgentMetrics:
             logger.info("Saved session history")
         except Exception:
             logger.exception("Error saving session history")
-
-    def get_prometheus_metrics(self) -> str:
-        active_count = len(self._sessions)
-        running_sessions = [m for m in self._sessions.values() if m.status == "running"]
-
-        total_tool_calls = sum(m.total_tool_calls for m in running_sessions)
-        total_llm_calls = sum(m.total_llm_calls for m in running_sessions)
-        total_tokens = sum(m.total_tokens_in + m.total_tokens_out for m in running_sessions)
-        security_events = sum(m.security_violations for m in running_sessions)
-
-        lines = [
-            f"# HELP {PROMETHEUS_PREFIX}_active_sessions Number of active agent session",
-            f"# TYPE {PROMETHEUS_PREFIX}_active_sessions gauge",
-            f"{PROMETHEUS_PREFIX}_active_sessions {active_count}",
-            f"# HELP {PROMETHEUS_PREFIX}_tool_calls_total Tool calls in active session",
-            f"# TYPE {PROMETHEUS_PREFIX}_tool_calls_total counter",
-            f"{PROMETHEUS_PREFIX}_tool_calls_total {total_tool_calls}",
-            f"# HELP {PROMETHEUS_PREFIX}_llm_calls_total LLM calls in active session",
-            f"# TYPE {PROMETHEUS_PREFIX}_llm_calls_total counter",
-            f"{PROMETHEUS_PREFIX}_llm_calls_total {total_llm_calls}",
-            f"# HELP {PROMETHEUS_PREFIX}_tokens_total Total tokens (in+out) in active session",
-            f"# TYPE {PROMETHEUS_PREFIX}_tokens_total counter",
-            f"{PROMETHEUS_PREFIX}_tokens_total {total_tokens}",
-            f"# HELP {PROMETHEUS_PREFIX}_security_violations_total Security violations in active session",
-            f"# TYPE {PROMETHEUS_PREFIX}_security_violations_total counter",
-            f"{PROMETHEUS_PREFIX}_security_violations_total {security_events}",
-        ]
-
-        for session in running_sessions:
-            for tool_name, breakdown in session.tool_call_breakdown.items():
-                avg_ms = breakdown["total_ms"] // max(breakdown["count"], 1)
-                safe_tool = tool_name.lower().replace(" ", "_")
-                lines.append(
-                    f'{PROMETHEUS_PREFIX}_tool_avg_latency_ms{{tool="{safe_tool}"}} {avg_ms}'
-                )
-
-        return "\n".join(lines) + "\n"
 
 
 agentops = AgentMetrics()

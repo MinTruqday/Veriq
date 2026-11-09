@@ -313,7 +313,6 @@ export default function ProjectNotificationsPanel({ project }) {
               {[
                 ["in_app", "Trong ứng dụng"],
                 ["email", "Thư điện tử"],
-                ["webhook", "Webhook"],
               ].map(([channel, label]) => (
                 <label className="flex items-center gap-2 text-sm" key={channel}>
                   <input

@@ -151,7 +151,7 @@ export default function TestCaseOwnerRecommendation({
           <p className="text-sm text-ink-muted">
             Đề xuất dựa trên kỹ năng, kinh nghiệm đã xác nhận, mức sẵn sàng và tải kiểm thử. Số dự
             án chỉ tính nơi đang có lượt kiểm thử mở; giới hạn theo nhân viên chỉ áp dụng khi đã
-            được khai báo. Bảng lương chỉ dùng dự báo chi phí kế hoạch. Đề xuất không tự gán người.
+            được khai báo. Đề xuất không tự gán người.
           </p>
           {result.project_capacity_status === "CAPACITY_PERIOD_NOT_COVERING_SCHEDULE" && (
             <p role="status" className="text-sm text-amber-800">

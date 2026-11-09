@@ -21,7 +21,7 @@ class KnowledgeClient:
             timeout=20
         ) as client:
             response = await client.post(
-                f"{settings.AI_URL}/su-kien/moc-goi/tai-lieu-dang-tai",
+                f"{settings.AI_URL}/tri-thuc/tiep-nap/tai-lieu-dang-tai",
                 params=params,
                 headers={"X-Internal-Token": settings.SECRET_KEY},
             )

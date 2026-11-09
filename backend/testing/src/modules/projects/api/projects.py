@@ -1,6 +1,6 @@
 import re
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, Query, Request
 
 from src.core.auth import CurrentUser, get_current_user
 from src.core.common import envelope
@@ -25,7 +25,6 @@ from src.schemas.contracts.skill_profile import (
 from src.modules.projects.services.project import ProjectService
 from src.modules.projects.services.project_progress import ProjectProgressService
 from src.modules.projects.services.skill_profiles import (
-    extract_own_skill_profile_from_cv,
     get_own_skill_profile,
     recommend_test_case_owner,
     recommend_test_run_assignments,
@@ -88,16 +87,6 @@ async def save_own_skill_profile(
 ):
     value = await update_own_skill_profile(project_id, payload, user)
     return envelope(value, revision=value["revision"])
-
-
-@router.post("/du-an/{project_id}/ho-so-nang-luc/cua-toi/trich-xuat-cv")
-async def extract_own_skill_profile_cv(
-    project_id: str,
-    file: UploadFile = File(),
-    user: CurrentUser = Depends(get_current_user),
-):
-    result = await extract_own_skill_profile_from_cv(project_id, file, user)
-    return envelope(result)
 
 
 @router.post("/du-an/{project_id}/lan-chay-kiem-thu/{run_id}/goi-y-phan-cong")

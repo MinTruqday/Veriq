@@ -171,7 +171,6 @@ def validated_tasks(
     maximum=None,
     known_identifiers=None,
     known_draft_identifiers=None,
-    authorized_mcp_tools=None,
 ):
     tool_values = registered_tools()
     validated = []
@@ -230,20 +229,9 @@ def validated_tasks(
             properties = schema.get("properties", {})
             if "project_id" in properties:
                 arguments["project_id"] = run.project_id
-            if call.tool_name == "call_mcp_read_tool":
-                mcp_tool = (
-                    str(arguments.get("connection_id") or ""),
-                    str(arguments.get("tool_name") or ""),
-                )
-                if mcp_tool not in set(authorized_mcp_tools or ()):
-                    continue
             if any(
                 key.endswith("_id")
                 and key not in {"project_id", "source_event_id"}
-                and not (
-                    call.tool_name == "call_mcp_read_tool"
-                    and key == "connection_id"
-                )
                 and (not isinstance(value, str) or not value.strip())
                 for key, value in arguments.items()
             ):
@@ -255,10 +243,6 @@ def validated_tasks(
                 and key.endswith("_id")
                 and key != "source_event_id"
                 and value
-                and not (
-                    call.tool_name == "call_mcp_read_tool"
-                    and key == "connection_id"
-                )
             }
             if identifiers.difference(set(known_identifiers or evidence_refs)):
                 continue

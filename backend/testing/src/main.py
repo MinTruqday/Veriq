@@ -14,10 +14,9 @@ from src.core.auth import refresh_access_policy
 from src.core.common import failure_metadata, new_id
 from src.core.configuration import settings
 from src.core.database import close_database, connect_database, database
-from src.core.metrics import PrometheusMiddleware, metrics_endpoint
 from src.modules.design.router import router as design_router
 from src.modules.execution.router import router as execution_router
-from src.modules.finance import router as finance_router
+from src.modules.resource_capacity import router as resource_capacity_router
 from src.modules.integrations.router import router as integrations_router
 from src.modules.operations.router import router as operations_router
 from src.modules.projects.router import router as projects_router
@@ -66,8 +65,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Veriq", version=settings.VERSION, lifespan=lifespan)
 app.add_middleware(AIStreamingMiddleware)
-app.add_middleware(PrometheusMiddleware)
-app.add_route("/so-lieu", metrics_endpoint)
 origins = [origin.strip() for origin in settings.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
@@ -168,7 +165,7 @@ async def release_ai_automation_access_lease(request: Request, call_next):
 app.include_router(projects_router)
 app.include_router(requirements_router)
 app.include_router(execution_router)
-app.include_router(finance_router)
+app.include_router(resource_capacity_router)
 app.include_router(design_router)
 app.include_router(quality_router)
 app.include_router(integrations_router)

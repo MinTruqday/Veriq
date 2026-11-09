@@ -17,7 +17,6 @@ from src.agents.runner.nodes import (
     verify,
 )
 from src.core.infrastructure.configuration import settings
-from src.core.infrastructure.observability import trace_span
 from src.core.security.guardrails import guardrails_engine
 from src.prompts.automation import automation_fact_extraction_prompt
 from src.repositories.automation import automation_repository
@@ -653,44 +652,17 @@ async def verify_automation(state: AutomationGraphState):
     }
 
 
-def traced_node(name, node):
-    async def invoke(state):
-        run = state.get("run") or {}
-        with trace_span(
-            f"automation.node.{name}",
-            {
-                "automation.run_id": run.get("run_id"),
-                "automation.node": name,
-            },
-        ) as span:
-            try:
-                result = await node(state)
-            except asyncio.CancelledError:
-                if span is not None:
-                    span.set_attribute("event.status", "cancelled")
-                raise
-            except Exception:
-                if span is not None:
-                    span.set_attribute("event.status", "failed")
-                raise
-            if span is not None:
-                span.set_attribute("event.status", "completed")
-            return result
-
-    return invoke
-
-
 workflow = StateGraph(AutomationGraphState)
-workflow.add_node("resume_dispatch", traced_node("resume_dispatch", resume_dispatch))
-workflow.add_node("observe_sources", traced_node("observe_sources", observe_sources))
-workflow.add_node("extract_source_facts", traced_node("extract_source_facts", extract_source_facts))
-workflow.add_node("assess_uncertainty", traced_node("assess_uncertainty", assess_uncertainty))
-workflow.add_node("create_action_plan", traced_node("create_action_plan", create_action_plan))
-workflow.add_node("replan_after_observation", traced_node("replan_after_observation", replan_after_observation))
-workflow.add_node("execute_action", traced_node("execute_action", execute_action))
-workflow.add_node("finalize_automation", traced_node("finalize_automation", finalize_automation))
-workflow.add_node("aggregate", traced_node("aggregate", aggregate))
-workflow.add_node("verify_automation", traced_node("verify_automation", verify_automation))
+workflow.add_node("resume_dispatch", resume_dispatch)
+workflow.add_node("observe_sources", observe_sources)
+workflow.add_node("extract_source_facts", extract_source_facts)
+workflow.add_node("assess_uncertainty", assess_uncertainty)
+workflow.add_node("create_action_plan", create_action_plan)
+workflow.add_node("replan_after_observation", replan_after_observation)
+workflow.add_node("execute_action", execute_action)
+workflow.add_node("finalize_automation", finalize_automation)
+workflow.add_node("aggregate", aggregate)
+workflow.add_node("verify_automation", verify_automation)
 workflow.set_entry_point("resume_dispatch")
 workflow.add_conditional_edges(
     "resume_dispatch",

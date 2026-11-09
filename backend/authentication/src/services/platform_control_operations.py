@@ -61,7 +61,7 @@ class PlatformControlOperationsService:
     @staticmethod
     async def inspect_caches():
         counts = {}
-        for name, patterns in (("RATE_LIMITS", ["rate_limit:*"]), ("PASSKEY_CHALLENGES", ["passkey_challenge:*"]), ("PROJECT_METADATA", ["project_metadata:*"])):
+        for name, patterns in (("RATE_LIMITS", ["rate_limit:*"]), ("PROJECT_METADATA", ["project_metadata:*"])):
             counts[name] = await CacheRepository.count_patterns(patterns)
         return counts
 
@@ -69,12 +69,10 @@ class PlatformControlOperationsService:
     async def clear_caches(payload: CacheClearRequest, current_user: CurrentUser):
         if payload.scope == "RATE_LIMITS":
             deleted = await CacheRepository.delete_patterns(["rate_limit:*"])
-        elif payload.scope == "PASSKEY_CHALLENGES":
-            deleted = await CacheRepository.delete_patterns(["passkey_challenge:*"])
         elif payload.scope == "PROJECT_METADATA":
             deleted = await CacheRepository.delete_patterns(["project_metadata:*"])
         elif payload.scope == "SAFE_ALL":
-            deleted = await CacheRepository.delete_patterns(["rate_limit:*", "passkey_challenge:*", "project_metadata:*"])
+            deleted = await CacheRepository.delete_patterns(["rate_limit:*", "project_metadata:*"])
         else:
             raise HTTPException(status_code=422, detail="Phạm vi bộ nhớ đệm không hợp lệ")
         await record_audit(

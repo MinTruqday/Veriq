@@ -221,30 +221,6 @@ services:
     networks:
       - veriq_network
 
-  phoenix:
-    image: arizephoenix/phoenix:version-20.26.1
-    container_name: veriq_phoenix
-    restart: unless-stopped
-    logging: *container-logging
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:6006/', timeout=5)"]
-      interval: 30s
-      timeout: 10s
-      start_period: 60s
-      retries: 5
-    environment:
-      PHOENIX_HOST: 0.0.0.0
-      PHOENIX_PORT: 6006
-      PHOENIX_WORKING_DIR: /phoenix_data
-      PHOENIX_TELEMETRY_ENABLED: "false"
-      PHOENIX_ALLOW_EXTERNAL_RESOURCES: "false"
-    ports:
-      - 127.0.0.1:${PHOENIX_PORT:-6006}:6006
-    volumes:
-      - phoenix_data:/phoenix_data
-    networks:
-      - veriq_network
-
   ai:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/san-sang', timeout=15)"]
@@ -263,7 +239,7 @@ services:
       - 38470-38479:38470-38479
     labels:
       - traefik.enable=true
-      - traefik.http.routers.ai.rule=PathPrefix(`/suy-luan`) || PathPrefix(`/su-kien`) || PathPrefix(`/tiep-nap`) || PathPrefix(`/tri-thuc`) || PathPrefix(`/danh-gia`) || PathPrefix(`/tac-tu`) || PathPrefix(`/tu-dong-hoa-ai`) || PathPrefix(`/mcp`)
+      - traefik.http.routers.ai.rule=PathPrefix(`/suy-luan`) || PathPrefix(`/su-kien`) || PathPrefix(`/tiep-nap`) || PathPrefix(`/tri-thuc`) || PathPrefix(`/danh-gia`) || PathPrefix(`/tac-tu`) || PathPrefix(`/tu-dong-hoa-ai`)
       - traefik.http.services.ai.loadbalancer.server.port=8000
     environment:
       <<: [*service-environment, *object-storage-environment]
@@ -284,19 +260,7 @@ services:
       FALLBACK_LLM_MODEL: ${FALLBACK_LLM_MODEL:-}
       FALLBACK_MODEL_TOKEN: ${FALLBACK_MODEL_TOKEN:-}
       RERANKER_MODEL: ${RERANKER_MODEL:?RERANKER_MODEL is required}
-      CV_MAX_EXTRACTED_CHARACTERS: ${CV_MAX_EXTRACTED_CHARACTERS:-100000}
-      CV_MAX_SOURCE_BLOCKS: ${CV_MAX_SOURCE_BLOCKS:-500}
-      CV_SOURCE_BLOCK_CHARACTERS: ${CV_SOURCE_BLOCK_CHARACTERS:-3000}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:?EMBEDDING_MODEL is required}
-      NEO4J_URI: ${NEO4J_URI:?NEO4J_URI is required}
-      NEO4J_USER: ${NEO4J_USER:?NEO4J_USER is required}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
-      AI_TRACE_ENABLED: ${AI_TRACE_ENABLED:-true}
-      AI_TRACE_ENDPOINT: ${AI_TRACE_ENDPOINT:-http://phoenix:6006/v1/traces}
-      AI_TRACE_PROJECT: ${AI_TRACE_PROJECT:-veriq-ai}
-      MCP_GITHUB_TOKEN: ${MCP_GITHUB_TOKEN:-}
-      MCP_POSTMAN_API_KEY: ${MCP_POSTMAN_API_KEY:-}
-      MCP_PLAYWRIGHT_TOKEN: ${MCP_PLAYWRIGHT_TOKEN:-}
       DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS: ${DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS:-7}
       DOCUMENT_INGESTION_MAX_DELIVERY_ATTEMPTS: ${DOCUMENT_INGESTION_MAX_DELIVERY_ATTEMPTS:-3}
       AI_AGENT_MAX_STEPS: ${AI_AGENT_MAX_STEPS:-8}
@@ -312,7 +276,6 @@ services:
       AI_QUEUE_RETRY_SCAN_SECONDS: ${AI_QUEUE_RETRY_SCAN_SECONDS:-5}
       AI_AUTOMATION_RECOVERY_BATCH_SIZE: ${AI_AUTOMATION_RECOVERY_BATCH_SIZE:-100}
       AI_DEAD_LETTER_MAX_REDRIVES: ${AI_DEAD_LETTER_MAX_REDRIVES:-3}
-      DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE: ${DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE:-4}
       DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS: ${DOCUMENT_MAX_INGESTION_DIAGNOSTIC_DETAILS:-100}
       DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT: ${DOCUMENT_SUMMARY_INPUT_CHAR_LIMIT:-15000}
       DOCUMENT_OCR_LANGUAGE: ${DOCUMENT_OCR_LANGUAGE:-iso:vi}
@@ -327,14 +290,6 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
-      phoenix:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
-    volumes:
-      - hf_cache:/home/appuser/.cache/huggingface
-    networks:
-      - veriq_network
 
   testing:
     healthcheck: *app-healthcheck
@@ -360,9 +315,6 @@ services:
       CONTENT_URL: ${CONTENT_URL:?CONTENT_URL is required}
       CLOUD_URL: ${CLOUD_URL:?CLOUD_URL is required}
       NOTIFICATION_URL: ${NOTIFICATION_URL:?NOTIFICATION_URL is required}
-      CV_MAX_EXTRACTED_CHARACTERS: ${CV_MAX_EXTRACTED_CHARACTERS:-100000}
-      CV_MAX_SOURCE_BLOCKS: ${CV_MAX_SOURCE_BLOCKS:-500}
-      CV_SOURCE_BLOCK_CHARACTERS: ${CV_SOURCE_BLOCK_CHARACTERS:-3000}
       DOCUMENT_PARSE_LEASE_SECONDS: ${DOCUMENT_PARSE_LEASE_SECONDS:-900}
       DOCUMENT_PARSE_TIMEOUT_SECONDS: ${DOCUMENT_PARSE_TIMEOUT_SECONDS:-1800}
       DOCUMENT_ARCHIVE_CLEANUP_LEASE_SECONDS: ${DOCUMENT_ARCHIVE_CLEANUP_LEASE_SECONDS:-300}
@@ -396,84 +348,6 @@ services:
       - qdrant_data:/qdrant/storage
     networks:
       - veriq_network
-
-  neo4j:
-    image: neo4j:5.26.12-community
-    container_name: veriq_neo4j
-    restart: always
-    logging: *container-logging
-    environment:
-      NEO4J_AUTH: ${NEO4J_USER:?NEO4J_USER is required}/${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
-      NEO4J_server_memory_heap_initial__size: 256m
-      NEO4J_server_memory_heap_max__size: 512m
-      NEO4J_server_memory_pagecache_size: 256m
-    ports:
-      - 7474:7474
-      - 7687:7687
-    volumes:
-      - neo4j_data:/data
-    networks:
-      - veriq_network
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "cypher-shell -u ${NEO4J_USER:?NEO4J_USER is required} -p ${NEO4J_PASSWORD:?NEO4J_PASSWORD is required} 'RETURN 1'",
-        ]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-
-  prometheus:
-    image: prom/prometheus:v3.13.0@sha256:c6b27ea434f8389bfe233fbc7be381cf50587c286e871bc842008f5a1b1908a7
-    container_name: veriq_prometheus
-    restart: always
-    logging: *container-logging
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:?PROMETHEUS_RETENTION_TIME is required}
-      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:?PROMETHEUS_RETENTION_SIZE is required}
-    ports:
-      - 127.0.0.1:9090:9090
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    networks:
-      - veriq_network
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/healthy"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-
-  grafana:
-    image: grafana/grafana:13.1.0@sha256:121a7a9ece6dc10b969f1f96eed64b4f07dfac0d0b8abc070f7cb83bbde86f63
-    container_name: veriq_grafana
-    restart: always
-    logging: *container-logging
-    ports:
-      - 127.0.0.1:3001:3000
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
-      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=false
-      - GF_SECURITY_DISABLE_GRAVATAR=true
-      - GF_ANALYTICS_REPORTING_ENABLED=false
-      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana_provisioning:/etc/grafana/provisioning
-    depends_on:
-      - prometheus
-    networks:
-      - veriq_network
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
 
   authentication:
     healthcheck: *app-healthcheck
@@ -623,8 +497,4 @@ volumes:
   redis_data: null
   rabbitmq_data: null
   qdrant_data: null
-  neo4j_data: null
-  prometheus_data: null
-  grafana_data: null
   hf_cache:
-  phoenix_data:

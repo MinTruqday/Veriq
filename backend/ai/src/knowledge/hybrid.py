@@ -103,31 +103,6 @@ async def hybrid_evidence(
     except Exception:
         degraded.append("KNOWLEDGE_UNAVAILABLE")
     try:
-        from src.knowledge.graph.repository import graph_repository
-
-        for match in await graph_repository.search(project_id, query, maximum):
-            reference = (
-                match.get("artifact_type"),
-                match.get("artifact_version_id") or match.get("artifact_id"),
-            )
-            if reference not in authoritative_refs:
-                continue
-            items.append(
-                EvidenceItem(
-                    artifact_type=str(match.get("artifact_type") or "Artifact"),
-                    artifact_id=str(match.get("artifact_id") or ""),
-                    artifact_version_id=match.get("artifact_version_id"),
-                    source="graph",
-                    authority=str(match.get("authority") or "graph"),
-                    score=1 / (1 + int(match.get("distance") or 0)),
-                    text=str(match.get("text") or ""),
-                    relationship_path=list(match.get("relationship_path") or []),
-                    project_id=project_id,
-                )
-            )
-    except Exception:
-        degraded.append("GRAPH_UNAVAILABLE")
-    try:
         for memory in await long_term_memory.list(project_id, requester_id, maximum):
             text = str(memory.get("proposal") or memory.get("objective") or "")
             if query.lower() in text.lower():

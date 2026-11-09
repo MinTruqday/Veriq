@@ -90,17 +90,6 @@ async def _rollback_project_artifact_generation(
         raise RuntimeError("project_artifact_index_rollback_incomplete") from rollback_error
 
 
-def graph_metadata(metadata):
-    primitive = (str, int, float, bool)
-    return {
-        key: value
-        for key, value in metadata.items()
-        if value is None
-        or isinstance(value, primitive)
-        or (isinstance(value, list) and all(isinstance(item, primitive) for item in value))
-    }
-
-
 def project_artifact_metadata(project_id: str, req: ProjectArtifactIndexRequest):
     source_metadata = dict(req.metadata)
     extraction = source_metadata.pop("extraction", {})
@@ -429,25 +418,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
             req.artifact_version_id,
             cleanup_pending,
         )
-    graph_status = {"status": "UNAVAILABLE", "reason_code": "GRAPH_UNAVAILABLE"}
-    try:
-        from src.knowledge.graph.sync import sync_indexed_artifact
-
-        graph_status = await sync_indexed_artifact(
-            project_id,
-            req.artifact_type,
-            req.artifact_id,
-            req.artifact_version_id,
-            {
-                **graph_metadata(req.metadata),
-                "artifact_version_id": req.artifact_version_id,
-                "title": req.title,
-                "status": req.status,
-                "authority": req.authority,
-            },
-        )
-    except Exception:
-        graph_status = {"status": "UNAVAILABLE", "reason_code": "GRAPH_UNAVAILABLE"}
     _invalidate_project_search_cache(project_id)
     return {
         "status": "degraded" if cleanup_pending else "indexed",
@@ -456,7 +426,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
         "chunks_count": chunk_count,
         "index_generation": index_generation,
         "index_cleanup_pending": cleanup_pending,
-        "graph": graph_status,
     }
 
 
@@ -490,15 +459,9 @@ async def remove_project_artifact(project_id: str, artifact_version_id: str):
             raise RuntimeError("project_artifact_removal_incomplete") from delete_error
         if not await project_artifact_generation_repository.finish_removal(manifest):
             raise RuntimeError("project_artifact_removal_manifest_conflict")
-        from src.knowledge.graph.repository import graph_repository
-
-        graph_result = await graph_repository.delete_artifact_version(
-            project_id, artifact_version_id
-        )
         return {
             "status": "removed",
             "artifact_version_id": artifact_version_id,
-            "graph_removed": graph_result[0]["removed"] if graph_result else 0,
         }
 
 

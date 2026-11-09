@@ -121,7 +121,6 @@ class PlatformAccountService:
                 else "DISABLED",
             ),
             "active_session_count": session_count,
-            "passkey_count": len(account.get("passkeys", [])),
             "is_verified": account.get("is_verified", False),
             "last_password_change": account.get("last_password_change"),
         }
@@ -244,21 +243,6 @@ class PlatformAccountService:
             current_user, "ADMIN_USER_SESSIONS_REVOKED", user_id, "security action"
         )
         return {"revoked": True}
-
-    @staticmethod
-    async def reset_passkeys(
-        user_id: str, payload: ActionReason, current_user: CurrentUser
-    ):
-        await account_or_404(user_id)
-        await IdentityRepository.update_auth_credential(
-            {"_id": user_id},
-            {"$set": {"passkeys": [], "updated_at": datetime.now(timezone.utc)}},
-        )
-        await IdentityRepository.revoke_all_sessions(user_id)
-        await record_audit(
-            current_user, "ADMIN_USER_PASSKEYS_RESET", user_id, payload.reason
-        )
-        return {"reset": True}
 
     @staticmethod
     async def update_system_role(

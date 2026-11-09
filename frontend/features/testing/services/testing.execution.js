@@ -188,70 +188,6 @@ export const executionTestingApi = {
     }),
   exportAutomationScriptDraft: (draftId, filename) =>
     downloadTestingFile(`/ban-nhap-kich-ban-tu-dong/${draftId}/xuat`, filename),
-  listProjectConnectors: (projectId) => testingRequest(`/du-an/${projectId}/ket-noi`),
-  bindProjectConnector: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/ket-noi`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updateProjectConnector: (projectId, connectorId, payload) =>
-    testingRequest(`/du-an/${projectId}/ket-noi/${connectorId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  unbindProjectConnector: (projectId, connectorId, payload) =>
-    testingRequest(`/du-an/${projectId}/ket-noi/${connectorId}/ngat`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  startProjectConnectorSync: (projectId, connectorId, payload) =>
-    testingRequest(`/du-an/${projectId}/ket-noi/${connectorId}/dong-bo`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  listProjectConnectorSyncLog: (projectId) => testingRequest(`/du-an/${projectId}/ket-noi/nhat-ky`),
-  listProjectConnectorConflicts: (projectId) =>
-    testingRequest(`/du-an/${projectId}/ket-noi/xung-dot`),
-  resolveProjectConnectorConflict: (projectId, conflictId, payload) =>
-    testingRequest(`/du-an/${projectId}/ket-noi/xung-dot/${conflictId}/giai-quyet`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  listAutomationExecutions: (projectId) => testingRequest(`/du-an/${projectId}/thuc-thi-tu-dong`),
-  getAutomationExecution: (executionId) => testingRequest(`/thuc-thi-tu-dong/${executionId}`),
-  createAutomationExecution: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/thuc-thi-tu-dong`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  startAutomationExecution: (executionId, payload) =>
-    testingRequest(`/thuc-thi-tu-dong/${executionId}/bat-dau`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  cancelAutomationExecution: (executionId, payload) =>
-    testingRequest(`/thuc-thi-tu-dong/${executionId}/huy`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  getAutomationEvidence: (executionId) =>
-    testingRequest(`/thuc-thi-tu-dong/${executionId}/bang-chung`),
-  getCicdState: (projectId) => testingRequest(`/du-an/${projectId}/tich-hop-trien-khai-lien-tuc`),
-  createCicdBinding: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/tich-hop-trien-khai-lien-tuc`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updateCicdBinding: (projectId, bindingId, payload) =>
-    testingRequest(`/du-an/${projectId}/tich-hop-trien-khai-lien-tuc/${bindingId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  retryCicdRun: (projectId, runId, payload) =>
-    testingRequest(`/du-an/${projectId}/tich-hop-trien-khai-lien-tuc/lan-chay/${runId}/thu-lai`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
   updateCollaborationPresence: (projectId, payload) =>
     testingRequest(`/du-an/${projectId}/cong-tac/phien`, {
       method: "PUT",
@@ -275,27 +211,6 @@ export const executionTestingApi = {
     testingRequest(`/du-an/${projectId}/cong-tac/xung-dot`),
   resolveCollaborationConflict: (projectId, conflictId, payload) =>
     testingRequest(`/du-an/${projectId}/cong-tac/xung-dot/${conflictId}/giai-quyet`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  listWebhookSubscriptions: (projectId, includeDisabled = true) =>
-    testingRequest(`/du-an/${projectId}/moc-goi?include_disabled=${includeDisabled}`),
-  createWebhookSubscription: (projectId, payload) =>
-    testingRequest(`/du-an/${projectId}/moc-goi`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updateWebhookSubscription: (projectId, subscriptionId, payload) =>
-    testingRequest(`/du-an/${projectId}/moc-goi/${subscriptionId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  listWebhookDeliveries: (projectId, status = "") =>
-    testingRequest(
-      `/du-an/${projectId}/moc-goi/giao-hang${status ? `?status=${encodeURIComponent(status)}` : ""}`,
-    ),
-  replayWebhookDelivery: (projectId, deliveryId, payload) =>
-    testingRequest(`/du-an/${projectId}/moc-goi/giao-hang/${deliveryId}/phat-lai`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

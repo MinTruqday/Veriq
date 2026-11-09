@@ -21,7 +21,6 @@ from src.schemas.evaluation import (
 )
 from src.schemas.inference_requests import (
     CrossDocumentExpansionRequest,
-    KnowledgeChunkSafetyRequest,
     KnowledgeDocumentSummaryRequest,
     TestingAutomationRequest,
     TestingAutomationResult,
@@ -29,7 +28,6 @@ from src.schemas.inference_requests import (
 from src.services.ai_automation import generate_ai_automation
 from src.services.inference import (
     decompose_retrieval,
-    inspect_chunks,
     stream_sink,
     summarize_document,
 )
@@ -310,15 +308,6 @@ async def decompose_cross_document_query(req: CrossDocumentExpansionRequest):
             status_code=502, detail={"code": "cross_document_query_unavailable"}
         ) from error
     return {"queries": queries}
-
-
-@router.post(
-    "/noi-bo/kiem-tra-doan-tri-thuc",
-    dependencies=[Depends(verify_internal_token)],
-    description="Kiểm tra prompt injection và độ an toàn của các đoạn knowledge",
-)
-async def inspect_knowledge_chunks(req: KnowledgeChunkSafetyRequest):
-    return {"safe_indices": sorted(await inspect_chunks(req.texts))}
 
 
 @router.post(

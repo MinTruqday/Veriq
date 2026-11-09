@@ -5,7 +5,6 @@ from typing import Awaitable, Callable, List
 from src.core.infrastructure.configuration import settings
 from src.core.model_runtime import run_chat_completion
 from src.core.security.guardrails import guardrails_engine
-from src.core.security.scanning import security
 from src.prompts.model_output import correction_instruction, schema_instruction
 from src.prompts.retrieval import cross_document_query, document_global_summary
 from src.schemas.routing import CrossDocumentQueries
@@ -120,25 +119,6 @@ async def decompose_retrieval(question: str, document_ids: list[str]) -> list[st
     if len(queries) != len(document_ids):
         raise ValueError("cross_document_decomposition_invalid")
     return queries
-
-
-async def inspect_chunks(texts: list[str]) -> set[int]:
-    async def inspect(index, text):
-        result = await security.ascan_input(text)
-        return index if result.passed else None
-
-    batch_size = settings.DOCUMENT_CHUNK_INSPECTION_BATCH_SIZE
-    accepted = set()
-    for batch_start in range(0, len(texts), batch_size):
-        batch = texts[batch_start : batch_start + batch_size]
-        values = await asyncio.gather(
-            *(
-                inspect(batch_start + offset, text)
-                for offset, text in enumerate(batch)
-            )
-        )
-        accepted.update(value for value in values if value is not None)
-    return accepted
 
 
 async def summarize_document(text: str, output_language: str | None = None) -> str:

@@ -12,22 +12,18 @@ from src.core.infrastructure.mq import mq
 from src.memory.long_term import long_term_memory
 from src.memory.short_term import run_store
 from src.repositories.automation import automation_repository
-from src.repositories.mcp import mcp_repository
 from src.runtime.limits import limits
 from src.runtime.queue_names import AUTOMATION_QUEUE
 from src.schemas.agent import AgentRunStatus, VeriqRunState
 from src.schemas.automation import (
     AutomationCheckpointPhase,
-    AutomationEventRequest,
     AutomationGraphSnapshot,
     AutomationKind,
     AutomationRun,
     AutomationStatus,
     AutomationTrigger,
-    ChangeSimulationInput,
     DerivationReceipt,
     DerivationStep,
-    EvidenceItem,
     SourceFact,
 )
 from src.services.agent_metrics import agentops
@@ -258,12 +254,6 @@ class AutomationWorker:
         if loop_now - self._last_queue_retry_scan < limits.queue_retry_scan_seconds:
             return
         self._last_queue_retry_scan = loop_now
-        try:
-            await mcp_repository.recover_interrupted_call_audits()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("AI automation worker could not recover interrupted MCP audit records")
         now = datetime.now(timezone.utc)
         await self._dispatch_stale_queued_runs(now)
         base_delay = max(1, limits.queue_retry_base_seconds)
@@ -635,56 +625,35 @@ class AutomationWorker:
         recovery_snapshot.worker_revision = running.revision
         agentops.record_session_start(agent_run.run_id, running.requester_user_id)
         try:
-            from src.core.infrastructure.observability import trace_span
-
-            with trace_span(
-                "automation.run",
-                {
-                    "automation.run_id": running.automation_run_id,
-                    "automation.kind": running.kind.value,
-                    "automation.trigger": running.trigger.value if running.trigger else "ON_DEMAND",
-                },
-            ) as automation_span:
-                try:
-                    result = await asyncio.wait_for(
-                        automation_workflow.ainvoke(
-                            graph_state,
-                            config={
-                                "run_id": UUID(trace_id),
-                                "run_name": "veriq-ai-automation",
-                                "tags": ["veriq", "automation", running.kind.value],
-                                "metadata": {
-                                    "automation_kind": running.kind.value,
-                                    "trigger": running.trigger.value if running.trigger else "ON_DEMAND",
-                                },
-                            },
-                        ),
-                        timeout=limits.run_timeout_seconds,
-                    )
-                except asyncio.CancelledError:
-                    if automation_span is not None:
-                        automation_span.set_attribute("event.status", "cancelled")
-                    raise
-                except Exception:
-                    if automation_span is not None:
-                        automation_span.set_attribute("event.status", "failed")
-                    raise
-                graph_status = str(
-                    ((result.get("run") or {}).get("status") or "")
-                ).strip().lower()
-                if graph_status not in {
-                    "queued",
-                    "running",
-                    "awaiting_authorization",
-                    "awaiting_input",
-                    "completed",
-                    "degraded",
-                    "failed",
-                    "cancelled",
-                }:
-                    graph_status = "failed"
-                if automation_span is not None:
-                    automation_span.set_attribute("event.status", graph_status)
+            result = await asyncio.wait_for(
+                automation_workflow.ainvoke(
+                    graph_state,
+                    config={
+                        "run_id": UUID(trace_id),
+                        "run_name": "veriq-ai-automation",
+                        "tags": ["veriq", "automation", running.kind.value],
+                        "metadata": {
+                            "automation_kind": running.kind.value,
+                            "trigger": running.trigger.value if running.trigger else "ON_DEMAND",
+                        },
+                    },
+                ),
+                timeout=limits.run_timeout_seconds,
+            )
+            graph_status = str(
+                ((result.get("run") or {}).get("status") or "")
+            ).strip().lower()
+            if graph_status not in {
+                "queued",
+                "running",
+                "awaiting_authorization",
+                "awaiting_input",
+                "completed",
+                "degraded",
+                "failed",
+                "cancelled",
+            }:
+                graph_status = "failed"
             completed = VeriqRunState(**result["run"])
             terminal_status = terminal_status_for_agent_run(completed)
             authorization_error = None
@@ -735,17 +704,7 @@ class AutomationWorker:
                     for item in (observation.get("result") or {}).get("source_evidence", [])
                     if isinstance(item, dict)
                 )
-            downstream_handoffs = (
-                await self._enqueue_requirement_test_design_handoffs(running, completed)
-                if not authorization_error
-                else []
-            )
-            if not authorization_error:
-                downstream_handoffs.extend(
-                    await self._enqueue_requirement_change_simulation(
-                        running, execution_token
-                    )
-                )
+            downstream_handoffs = []
             handoff_blocked = any(
                 item.get("workflow_type") != "CHANGE_SIMULATION"
                 and item.get("status") not in {"QUEUED", "RUNNING", "COMPLETED"}
@@ -1258,334 +1217,6 @@ class AutomationWorker:
             state_snapshot=resume_snapshot,
             require_live_worker_lease=require_live_worker_lease,
         )
-
-    async def _enqueue_requirement_test_design_handoffs(self, running, completed):
-        if running.trigger != AutomationTrigger.DOCUMENT_INGESTED:
-            return []
-        ingestion = next(
-            (
-                item
-                for item in completed.observations
-                if item.get("tool_name") == "process_ingested_requirement_document"
-                and item.get("status") == "COMPLETED"
-                and (item.get("verification") or {}).get("status") == "COMPLETED"
-            ),
-            None,
-        )
-        if not ingestion:
-            return []
-        result = ingestion.get("result") or {}
-        if result.get("status") != "COMPLETED":
-            return []
-        evidence_by_version = {
-            str(item.get("artifact_version_id")): item
-            for item in result.get("qa_test_design_handoff_evidence", [])
-            if isinstance(item, dict) and item.get("artifact_version_id")
-        }
-        workflows = []
-        for version_id in dict.fromkeys(
-            str(value)
-            for value in result.get("qa_test_design_handoff_version_ids", [])
-            if value
-        ):
-            source = evidence_by_version.get(version_id)
-            if not source or not str(source.get("text") or "").strip():
-                workflows.append(
-                    {
-                        "requirement_version_id": version_id,
-                        "status": "EVIDENCE_MISSING",
-                        "reason_code": "TEST_DESIGN_SOURCE_EVIDENCE_MISSING",
-                    }
-                )
-                continue
-            evidence = [
-                EvidenceItem(
-                    artifact_type=str(source.get("artifact_type") or "requirement_version"),
-                    artifact_id=str(source.get("artifact_id") or version_id),
-                    artifact_version_id=str(source.get("artifact_version_id") or version_id),
-                    source="database",
-                    authority=str(source.get("authority") or "PROJECT_REQUIREMENT"),
-                    text=str(source["text"]),
-                    project_id=running.project_id,
-                )
-            ]
-            event = AutomationEventRequest(
-                event_id=f"requirement-version:{version_id}:INGESTED_TEST_DESIGN",
-                project_id=running.project_id,
-                requester_user_id=running.requester_user_id,
-                trigger=AutomationTrigger.REQUIREMENT_CHANGED,
-                parent_automation_run_id=running.automation_run_id,
-                target_artifact_ids=[version_id],
-                evidence=evidence,
-            )
-            try:
-                child_runs = await automation_service.enqueue_event(event)
-            except Exception:
-                logger.exception(
-                    "Could not enqueue authorized test-design handoff parent_run={} requirement_version={}",
-                    running.automation_run_id,
-                    version_id,
-                )
-                workflows.append(
-                    {
-                        "requirement_version_id": version_id,
-                        "status": "DISPATCH_FAILED",
-                        "reason_code": "TEST_DESIGN_HANDOFF_DISPATCH_FAILED",
-                    }
-                )
-                continue
-            workflows.extend(
-                {
-                    "requirement_version_id": version_id,
-                    "automation_run_id": child.automation_run_id,
-                    "status": child.status.value,
-                    "reason_code": child.error_code,
-                }
-                for child in child_runs
-            )
-        return workflows
-
-    async def _enqueue_requirement_change_simulation(self, running, execution_token):
-        if (
-            running.trigger != AutomationTrigger.REQUIREMENT_CHANGED
-            or getattr(running, "kind", None) == AutomationKind.CHANGE_SIMULATION
-            or getattr(running, "change_simulation", None) is not None
-        ):
-            return []
-        constraints = running.constraints if isinstance(running.constraints, dict) else {}
-        current_version_id = next(
-            (
-                str(item.artifact_version_id or item.artifact_id)
-                for item in running.evidence
-                if item.artifact_type == "requirement_version"
-                and (item.artifact_version_id or item.artifact_id)
-                in running.target_artifact_ids
-            ),
-            "",
-        )
-        prior_version_id = str(constraints.get("prior_baseline_version_id") or "")
-        blocked_reason = str(constraints.get("change_simulation_blocked_reason") or "")
-        workflow = {
-            "workflow_type": "CHANGE_SIMULATION",
-            "requirement_version_id": current_version_id or None,
-        }
-        if blocked_reason or not prior_version_id:
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": blocked_reason or "PRIOR_BASELINE_REFERENCE_MISSING",
-                }
-            ]
-        if not current_version_id or current_version_id == prior_version_id:
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": "REQUIREMENT_VERSION_PAIR_INVALID",
-                }
-            ]
-
-        config = {
-            "configurable": {
-                "token": f"Bearer {execution_token}",
-                "project_id": running.project_id,
-                "automation_run_id": running.automation_run_id,
-            }
-        }
-        try:
-            prior = await require_operation(
-                "GET", f"/phien-ban-yeu-cau/{prior_version_id}", config
-            )
-            current = await require_operation(
-                "GET", f"/phien-ban-yeu-cau/{current_version_id}", config
-            )
-            requirement_id = str(current.get("requirement_id") or "")
-            if not requirement_id:
-                raise AutomationOperationError("REQUIREMENT_ID_MISSING")
-            requirement = await require_operation(
-                "GET", f"/yeu-cau/{requirement_id}", config
-            )
-            versions = await require_operation(
-                "GET", f"/yeu-cau/{requirement_id}/phien-ban", config
-            )
-        except Exception:
-            logger.exception(
-                "Requirement change simulation pair could not be reread under project authorization"
-            )
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": "REQUIREMENT_VERSION_PAIR_READBACK_FAILED",
-                }
-            ]
-
-        if (
-            not isinstance(prior, dict)
-            or not isinstance(current, dict)
-            or not isinstance(requirement, dict)
-            or not isinstance(versions, list)
-            or len(versions) >= 500
-            or prior.get("_id") != prior_version_id
-            or current.get("_id") != current_version_id
-            or prior.get("project_id") != running.project_id
-            or current.get("project_id") != running.project_id
-            or prior.get("requirement_id") != requirement_id
-            or current.get("requirement_id") != requirement_id
-            or requirement.get("_id") != requirement_id
-            or requirement.get("project_id") != running.project_id
-            or not isinstance(requirement.get("current_version"), dict)
-            or requirement["current_version"].get("_id") != current_version_id
-            or prior.get("status") != "BASELINED"
-            or current.get("status") != "BASELINED"
-            or type(prior.get("version")) is not int
-            or type(current.get("version")) is not int
-            or prior.get("version") >= current.get("version")
-        ):
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": "REQUIREMENT_VERSION_PAIR_NOT_CURRENT_OR_INVALID",
-                }
-            ]
-
-        prior_baselines = [
-            item
-            for item in versions
-            if isinstance(item, dict)
-            and item.get("status") == "BASELINED"
-            and type(item.get("version")) is int
-            and item["version"] < current["version"]
-        ]
-        if not prior_baselines:
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": "PRIOR_BASELINE_NOT_FOUND_IN_HISTORY",
-                }
-            ]
-        latest_prior_number = max(item["version"] for item in prior_baselines)
-        latest_prior = [
-            item for item in prior_baselines if item["version"] == latest_prior_number
-        ]
-        if len(latest_prior) != 1 or latest_prior[0].get("_id") != prior_version_id:
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": "PRIOR_BASELINE_IS_NOT_UNIQUE_LATEST",
-                }
-            ]
-
-        prior_text = self._requirement_version_source_text(prior)
-        current_text = self._requirement_version_source_text(current)
-        if not prior_text or not current_text:
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": "REQUIREMENT_VERSION_SOURCE_TEXT_MISSING",
-                }
-            ]
-        event_id = (
-            f"change-simulation:{running.automation_run_id}:"
-            f"{prior_version_id}:{current_version_id}"
-        )
-        event = AutomationEventRequest(
-            event_id=event_id,
-            project_id=running.project_id,
-            requester_user_id=running.requester_user_id,
-            trigger=AutomationTrigger.REQUIREMENT_CHANGED,
-            parent_automation_run_id=running.automation_run_id,
-            target_artifact_ids=[prior_version_id, current_version_id],
-            evidence=[
-                EvidenceItem(
-                    artifact_type="requirement_version",
-                    artifact_id=requirement_id,
-                    artifact_version_id=prior_version_id,
-                    source="database",
-                    authority="requirement",
-                    text=prior_text,
-                    project_id=running.project_id,
-                    artifact_status=prior.get("status"),
-                ),
-                EvidenceItem(
-                    artifact_type="requirement_version",
-                    artifact_id=requirement_id,
-                    artifact_version_id=current_version_id,
-                    source="database",
-                    authority="requirement",
-                    text=current_text,
-                    project_id=running.project_id,
-                    artifact_status=current.get("status"),
-                ),
-            ],
-            change_simulation=ChangeSimulationInput(
-                base_requirement_version_id=prior_version_id,
-                proposed_source_text=current_text,
-            ),
-        )
-        try:
-            runs = await automation_service.enqueue_event(event)
-        except Exception:
-            logger.exception(
-                "Requirement change simulation child event could not be enqueued parent_run={}",
-                running.automation_run_id,
-            )
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": "CHANGE_SIMULATION_CHILD_ENQUEUE_FAILED",
-                }
-            ]
-        if not runs:
-            return [
-                {
-                    **workflow,
-                    "status": "WAITING",
-                    "reason_code": "CHANGE_SIMULATION_CHILD_SUPPRESSED",
-                }
-            ]
-        child = runs[0]
-        return [
-            {
-                **workflow,
-                "automation_run_id": child.automation_run_id,
-                "status": child.status.value,
-                "reason_code": child.error_code,
-                "prior_baseline_version_id": prior_version_id,
-                "current_requirement_version_id": current_version_id,
-            }
-        ]
-
-    @staticmethod
-    def _requirement_version_source_text(version):
-        parts = []
-        projection = str(version.get("plain_text_projection") or "").strip()
-        if projection:
-            parts.append(projection)
-        for item in version.get("acceptance_criteria") or []:
-            if isinstance(item, dict):
-                text = str(item.get("plain_text") or "").strip()
-                if text:
-                    parts.append(text)
-
-        def collect(value):
-            if isinstance(value, str):
-                return [value.strip()] if value.strip() else []
-            if isinstance(value, dict):
-                return [text for child in value.values() for text in collect(child)]
-            if isinstance(value, (list, tuple)):
-                return [text for child in value for text in collect(child)]
-            return []
-
-        for field in ("business_rules", "actors", "dependencies", "details", "custom_values"):
-            parts.extend(collect(version.get(field)))
-        return "\n".join(parts)
 
     @staticmethod
     def _verified_output_refs(run) -> list[str]:

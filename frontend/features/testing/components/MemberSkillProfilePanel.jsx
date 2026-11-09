@@ -6,7 +6,6 @@ import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
 import { messageOf } from "../lib/testing";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
-import FilePicker from "./FilePicker";
 
 const emptySkill = () => ({
   name: "",
@@ -30,16 +29,6 @@ const emptyExperience = () => ({
   confirmed: false,
 });
 
-const cvWarningMessage = (warning) => {
-  if (warning === "CV_HAS_UNPROCESSED_SOURCE_BLOCKS") {
-    return "Một số phần của CV chưa đọc được; hãy kiểm tra lại trang và trích dẫn trước khi lưu.";
-  }
-  if (warning === "CV_EXTRACTION_INPUT_LIMIT_REACHED") {
-    return "CV vượt giới hạn phân tích; kết quả chỉ bao phủ một phần tài liệu.";
-  }
-  return "Có thông tin trong CV chưa thể xác minh; hãy đối chiếu từng trích dẫn trước khi lưu.";
-};
-
 export default function MemberSkillProfilePanel({ projectId }) {
   const [profile, setProfile] = useState(null);
   const [skills, setSkills] = useState([]);
@@ -49,17 +38,11 @@ export default function MemberSkillProfilePanel({ projectId }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-  const [cvFile, setCvFile] = useState(null);
-  const [cvPreview, setCvPreview] = useState(null);
-  const [extractingCv, setExtractingCv] = useState(false);
-  const cvInputRef = useRef(null);
   const currentProjectId = useRef(projectId);
-  const cvExtractionGeneration = useRef(0);
   currentProjectId.current = projectId;
 
   useEffect(() => {
     let active = true;
-    cvExtractionGeneration.current += 1;
     setProfile(null);
     setSkills([]);
     setExperiences([]);
@@ -67,10 +50,6 @@ export default function MemberSkillProfilePanel({ projectId }) {
     setError("");
     setSaved(false);
     setSaving(false);
-    setCvFile(null);
-    setCvPreview(null);
-    setExtractingCv(false);
-    if (cvInputRef.current) cvInputRef.current.value = "";
     setLoading(true);
     testingApi
       .getMySkillProfile(projectId)
@@ -126,168 +105,12 @@ export default function MemberSkillProfilePanel({ projectId }) {
     }
   };
 
-  const extractCv = async () => {
-    if (!cvFile) return;
-    const extractionProjectId = projectId;
-    const extractionGeneration = ++cvExtractionGeneration.current;
-    setExtractingCv(true);
-    setError("");
-    setCvPreview(null);
-    try {
-      const preview = await testingApi.extractMySkillProfileFromCV(extractionProjectId, cvFile);
-      if (
-        currentProjectId.current === extractionProjectId &&
-        cvExtractionGeneration.current === extractionGeneration
-      ) {
-        setCvPreview(preview);
-      }
-    } catch (reason) {
-      if (
-        currentProjectId.current === extractionProjectId &&
-        cvExtractionGeneration.current === extractionGeneration
-      ) {
-        setError(messageOf(reason));
-      }
-    } finally {
-      if (
-        currentProjectId.current === extractionProjectId &&
-        cvExtractionGeneration.current === extractionGeneration
-      ) {
-        setExtractingCv(false);
-      }
-    }
-  };
-
-  const addCvPreviewToDraft = () => {
-    if (!cvPreview) return;
-    const candidateSkills = (cvPreview.skills || []).map((item) => ({
-      name: item.name,
-      level: "",
-      evidence: item.evidence_quote,
-      source_block_id: item.source_block_id,
-      source_page_no: item.page_no,
-      source_sha256: cvPreview.source_sha256,
-      confirmed: false,
-    }));
-    const candidateExperiences = (cvPreview.experiences || []).map((item) => ({
-      title: item.title,
-      period: item.period || "",
-      domain: item.domain,
-      technologies: item.technologies || [],
-      responsibilities: item.responsibilities || "",
-      evidence: item.evidence_quote,
-      source_block_id: item.source_block_id,
-      source_page_no: item.page_no,
-      source_sha256: cvPreview.source_sha256,
-      confirmed: false,
-    }));
-    setSkills((current) => {
-      const names = new Set(current.map((item) => item.name.trim().toLocaleLowerCase()));
-      const additions = candidateSkills.filter((item) => {
-        const name = item.name.trim().toLocaleLowerCase();
-        if (names.has(name)) return false;
-        names.add(name);
-        return true;
-      });
-      return [...current, ...additions];
-    });
-    setExperiences((current) => {
-      const keys = new Set(
-        current.map((item) => `${item.title.trim().toLocaleLowerCase()}|${item.evidence || ""}`),
-      );
-      const additions = candidateExperiences.filter((item) => {
-        const key = `${item.title.trim().toLocaleLowerCase()}|${item.evidence}`;
-        if (keys.has(key)) return false;
-        keys.add(key);
-        return true;
-      });
-      return [...current, ...additions];
-    });
-    setCvPreview(null);
-    setCvFile(null);
-    if (cvInputRef.current) cvInputRef.current.value = "";
-  };
-
   if (loading) return <LoadingState label="Đang tải hồ sơ năng lực của bạn" />;
 
   return (
     <Panel title="Hồ sơ năng lực của tôi">
       {error && <ErrorState message={error} />}
       <form className="space-y-5 p-5" onSubmit={save}>
-        <header className="space-y-2 border-b border-border pb-4">
-          <p className="text-sm text-ink-muted">
-            CV được đọc tạm để tìm thông tin có dẫn chứng. Tệp gốc không được lưu vào hồ sơ hoặc kho
-            tri thức. Chỉ mục bạn chọn mới vào bản nháp; mỗi mục cần bạn tự rà soát và xác nhận.
-          </p>
-        </header>
-        <section
-          aria-labelledby="cv-extraction-heading"
-          className="space-y-3 border-b border-border pb-5"
-        >
-          <h3 className="font-semibold" id="cv-extraction-heading">
-            Trích xuất từ CV
-          </h3>
-          <p className="text-sm text-ink-muted">
-            Xem trích dẫn và trang nguồn trước khi thêm thông tin vào hồ sơ.
-          </p>
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <FilePicker
-              ariaLabel="Chọn CV PDF DOCX hoặc TXT"
-              className="min-w-0 flex-1"
-              fileName={cvFile?.name || ""}
-              inputRef={cvInputRef}
-              accept=".pdf,.docx,.txt"
-              onChange={(event) => {
-                cvExtractionGeneration.current += 1;
-                setCvPreview(null);
-                setExtractingCv(false);
-                setCvFile(event.target.files?.[0] || null);
-              }}
-            />
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={!cvFile || extractingCv}
-              onClick={extractCv}
-            >
-              {extractingCv ? "Đang trích xuất…" : "Trích xuất để xem trước"}
-            </button>
-          </div>
-          {cvPreview && (
-            <div className="space-y-3 rounded-lg bg-surface-raised p-3">
-              <ContentOriginBadge origin="ai_generated" aiLabel="AI trích xuất · cần rà soát" />
-              <p className="text-sm">
-                Xem trước: {cvPreview.skills?.length || 0} kỹ năng,{" "}
-                {cvPreview.experiences?.length || 0} kinh nghiệm. Tệp chưa được lưu; các ứng viên
-                thêm vào bản nháp vẫn ở trạng thái chưa xác nhận.
-              </p>
-              {!!cvPreview.warnings?.length && (
-                <ul role="status" className="list-disc space-y-1 pl-5 text-sm text-amber-800">
-                  {[...new Set(cvPreview.warnings)].map((warning, index) => (
-                    <li key={`${warning}-${index}`}>{cvWarningMessage(warning)}</li>
-                  ))}
-                </ul>
-              )}
-              <ul className="space-y-2 text-sm">
-                {[...(cvPreview.skills || []), ...(cvPreview.experiences || [])].map(
-                  (item, index) => (
-                    <li className="break-words" key={`${item.source_block_id}-${index}`}>
-                      <span className="font-medium">{item.name || item.title}</span>
-                      {item.period ? ` · ${item.period}` : ""}
-                      {" — “"}
-                      {item.evidence_quote}
-                      {"” · "}
-                      {item.page_no ? ` · Trang ${item.page_no} trong CV` : ""}
-                    </li>
-                  ),
-                )}
-              </ul>
-              <button className="secondary-button" type="button" onClick={addCvPreviewToDraft}>
-                Đưa ứng viên vào bản nháp để rà soát
-              </button>
-            </div>
-          )}
-        </section>
         <label className="field-label block max-w-sm">
           Khả dụng trong dự án
           <select
@@ -328,7 +151,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
               <div className="flex flex-wrap items-center gap-2 md:col-span-2">
                 <ContentOriginBadge
                   origin={skill.source_block_id ? "ai_generated" : "manual"}
-                  aiLabel="AI trích từ CV"
+                  aiLabel="Có nguồn dẫn chứng"
                   humanLabel="Người dùng nhập"
                 />
                 <span className="text-xs text-ink-muted">
@@ -368,7 +191,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 />
                 {(skill.source_block_id || skill.source_page_no) && (
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    Trích từ CV{skill.source_page_no ? `, trang ${skill.source_page_no}` : ""}
+                    Có dẫn chứng nguồn{skill.source_page_no ? `, trang ${skill.source_page_no}` : ""}
                   </span>
                 )}
               </label>
@@ -421,7 +244,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
               <div className="flex flex-wrap items-center gap-2 md:col-span-2">
                 <ContentOriginBadge
                   origin={experience.source_block_id ? "ai_generated" : "manual"}
-                  aiLabel="AI trích từ CV"
+                  aiLabel="Có nguồn dẫn chứng"
                   humanLabel="Người dùng nhập"
                 />
                 <span className="text-xs text-ink-muted">
@@ -451,7 +274,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 />
               </label>
               <label className="field-label">
-                Thời gian theo CV
+                Thời gian
                 <input
                   className="apple-input mt-2"
                   value={experience.period || ""}
@@ -459,7 +282,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
                     patchEvidenceAt(setExperiences, index, { period: event.target.value })
                   }
                   maxLength={120}
-                  placeholder="Ví dụ: 2022–2024 (nếu CV ghi rõ)"
+                  placeholder="Ví dụ: 2022–2024"
                 />
               </label>
               <label className="field-label md:col-span-2">
@@ -502,7 +325,7 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 />
                 {(experience.source_block_id || experience.source_page_no) && (
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    Trích từ CV
+                    Có dẫn chứng nguồn
                     {experience.source_page_no ? `, trang ${experience.source_page_no}` : ""}
                   </span>
                 )}

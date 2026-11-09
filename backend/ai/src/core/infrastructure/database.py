@@ -130,28 +130,6 @@ async def setup_indexes():
                     name="automation_run_checkpoint_sequence",
                 ),
             ],
-            "mcp_tool_call_audits": [
-                IndexModel(
-                    [("status", ASCENDING), ("started_at", ASCENDING)],
-                    name="mcp_call_audit_interruption_recovery",
-                ),
-                IndexModel(
-                    [("project_id", ASCENDING), ("completed_at", DESCENDING)],
-                    name="project_mcp_call_audit_history",
-                ),
-                IndexModel(
-                    [("automation_run_id", ASCENDING), ("completed_at", ASCENDING)],
-                    name="automation_run_mcp_call_audit_history",
-                ),
-                IndexModel(
-                    [
-                        ("automation_run_id", ASCENDING),
-                        ("task_id", ASCENDING),
-                        ("completed_at", ASCENDING),
-                    ],
-                    name="automation_task_mcp_call_audit_history",
-                ),
-            ],
             "automation_source_facts": [
                 IndexModel([("automation_run_id", ASCENDING), ("created_at", ASCENDING)]),
                 IndexModel([("project_id", ASCENDING), ("artifact_version_id", ASCENDING)]),

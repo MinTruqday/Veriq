@@ -7,45 +7,12 @@ import {
 } from "./testing.transport";
 
 export const projectTestingApi = {
-  downloadPayrollTemplate: () =>
-    downloadTestingFile("/quan-tri/tai-chinh/bang-luong/mau.csv", "veriq-payroll-template.csv"),
-  readPayrollHeaders: (file) => {
-    const body = new FormData();
-    body.append("file", file);
-    return testingRequest("/quan-tri/tai-chinh/bang-luong/cot", { method: "POST", body }).then(
-      (result) => result.headers || [],
-    );
-  },
-  previewPayrollImport: (file, mapping) => {
-    const body = new FormData();
-    body.append("file", file);
-    body.append("mapping", JSON.stringify(mapping));
-    return testingRequest("/quan-tri/tai-chinh/bang-luong/xem-truoc", { method: "POST", body });
-  },
-  applyPayrollImport: (previewId, payload) =>
-    testingRequest(`/quan-tri/tai-chinh/bang-luong/${previewId}/ap-dung`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  listPayrollRates: () => testingRequest("/quan-tri/tai-chinh/bang-luong"),
-  listCapacityPeriods: () => testingRequest("/quan-tri/tai-chinh/cong-suat"),
+  listCapacityPeriods: () => testingRequest("/quan-tri/cong-suat"),
   updateCapacityPeriod: (payload) =>
-    testingRequest("/quan-tri/tai-chinh/cong-suat", {
+    testingRequest("/quan-tri/cong-suat", {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
-  listFinancialProjects: () => testingRequest("/quan-tri/tai-chinh/du-an"),
-  getProjectCommercialTerms: (projectId) =>
-    testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/dieu-khoan`),
-  setProjectCommercialTerms: (projectId, payload) =>
-    testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/dieu-khoan`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    }),
-  listFinancialTestPlans: (projectId) =>
-    testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/ke-hoach`),
-  forecastPlanLaborCost: (projectId, testPlanId) =>
-    testingRequest(`/quan-tri/tai-chinh/du-an/${projectId}/ke-hoach/${testPlanId}/du-toan`),
   getProjectCapabilities: () => testingRequest("/du-an/kha-nang"),
   listEffectiveAccess: (projectId) =>
     testingRequest(`/du-an/${encodeURIComponent(projectId)}/quyen-hieu-luc`),
@@ -108,14 +75,6 @@ export const projectTestingApi = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
-  extractMySkillProfileFromCV: (id, file) => {
-    const body = new FormData();
-    body.append("file", file);
-    return testingRequest(`/du-an/${id}/ho-so-nang-luc/cua-toi/trich-xuat-cv`, {
-      method: "POST",
-      body,
-    });
-  },
   listInvitations: () => testingRequest("/loi-moi-du-an"),
   addMember: (id, payload) =>
     testingRequest(`/du-an/${id}/thanh-vien`, { method: "POST", body: JSON.stringify(payload) }),

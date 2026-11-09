@@ -71,11 +71,6 @@ export const platformApi = {
   revokeSession: (id, sessionId) =>
     platformRequest(`/tai-khoan/${id}/phien/${sessionId}`, { method: "DELETE" }),
   revokeAllSessions: (id) => platformRequest(`/tai-khoan/${id}/phien`, { method: "DELETE" }),
-  resetPasskeys: (id, reason) =>
-    platformRequest(`/tai-khoan/${id}/khoa-bao-mat`, {
-      method: "DELETE",
-      body: JSON.stringify({ reason }),
-    }),
   resendVerification: (id, reason) =>
     platformRequest(`/tai-khoan/${id}/gui-lai-xac-minh`, {
       method: "POST",

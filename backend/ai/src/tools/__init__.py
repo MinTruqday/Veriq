@@ -33,7 +33,6 @@ from src.tools.knowledge_tools import (
     retrieve_project_evidence,
     search_project_knowledge,
 )
-from src.tools.mcp_gateway import call_mcp_read_tool
 from src.tools.requirement_change_workflow import process_changed_requirement_version
 from src.tools.requirement_document_workflow import process_ingested_requirement_document
 from src.tools.requirement_tools import (
@@ -143,5 +142,4 @@ tools = [
     get_bug_history,
     link_bug_candidates,
     *agent_capabilities,
-    call_mcp_read_tool,
 ]

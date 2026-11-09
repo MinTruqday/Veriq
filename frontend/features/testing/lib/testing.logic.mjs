@@ -273,7 +273,6 @@ const valueLabels = {
   CREATE_REQUIREMENT_CANDIDATES: "Đề xuất yêu cầu",
   CREATE_TEST_CASE_CANDIDATES: "Đề xuất ca kiểm thử",
   CREATE_FINDINGS: "Phát hiện điểm thiếu hoặc mâu thuẫn",
-  READ_PROJECT_MCP: "Đọc dữ liệu dự án qua kết nối MCP",
   REQUEST_CLARIFICATION: "Tạo câu hỏi làm rõ",
   PROPOSE_ASSIGNMENT: "Đề xuất người thực hiện",
   PROPOSE_TRANSITION: "Đề xuất chuyển trạng thái",
@@ -621,20 +620,6 @@ export function messageOf(reason) {
     DOCUMENT_NOT_FOUND: "Không tìm thấy tài liệu hoặc quyền xem đã thay đổi.",
   };
   if (documentMessages[reason?.code]) return documentMessages[reason.code];
-  const profileMessages = {
-    CV_AI_EXTRACTION_UNAVAILABLE:
-      "Dịch vụ trích xuất CV đang tạm thời không phản hồi. Hồ sơ chưa được cập nhật; hãy thử lại sau.",
-    CV_AI_EVIDENCE_INVALID:
-      "AI trả về thông tin CV chưa khớp với trích dẫn nguồn. Hồ sơ chưa được cập nhật; hãy thử lại sau.",
-    CV_CONTENT_UNSAFE: "Không thể xử lý CV này vì nội dung không vượt qua kiểm tra an toàn.",
-    CV_TEXT_LIMIT_EXCEEDED:
-      "CV có quá nhiều nội dung để trích xuất trong một lần. Hãy dùng bản CV ngắn hơn.",
-    CV_CONVERSION_FAILED:
-      "Không đọc được tệp CV. Hãy kiểm tra định dạng hoặc lưu lại tệp rồi thử lại.",
-    CV_TEXT_NOT_EXTRACTED:
-      "Không tìm thấy nội dung văn bản trong CV. Hãy dùng bản PDF có thể chọn văn bản hoặc tệp DOCX/TXT.",
-  };
-  if (profileMessages[reason?.code]) return profileMessages[reason.code];
   if (reason?.code === "PROJECT_COMPLEXITY_SOURCE_SCOPE_TOO_LARGE") {
     return "Tài liệu và yêu cầu đã chọn có quá nhiều nội dung để đánh giá trong một lượt. Hãy chọn phạm vi nhỏ hơn rồi thử lại; kết quả chưa được tạo.";
   }
@@ -736,44 +721,12 @@ export function messageOf(reason) {
     TEST_CASE_DRAFT_REVISION_STALE:
       "Bản nháp đã thay đổi trong lúc xử lý. Tải lại và đối chiếu trước khi tiếp tục.",
     SYSTEM_ADMIN_REQUIRED: "Thao tác này chỉ dành cho Admin hệ thống.",
-    PAYROLL_FILE_EMPTY: "Tệp không có dữ liệu. Hãy chọn một tệp khác.",
-    PAYROLL_FILE_TOO_LARGE: "Tệp vượt quá dung lượng cho phép. Hãy giảm dung lượng rồi thử lại.",
-    PAYROLL_FILE_FORMAT_UNSUPPORTED: "Chỉ hỗ trợ tệp CSV hoặc XLSX.",
-    PAYROLL_DOCLING_CONVERSION_FAILED:
-      "Không đọc được bảng lương. Kiểm tra lại tệp hoặc lưu thành CSV/XLSX rồi thử lại.",
-    PAYROLL_DOCUMENT_HAS_UNPROCESSED_BLOCKS:
-      "Một phần bảng lương chưa đọc được. Hãy kiểm tra tệp và thử nhập lại.",
-    PAYROLL_SHEET_EMPTY: "Không tìm thấy bảng có tiêu đề và dữ liệu trong tệp.",
-    PAYROLL_HEADERS_MUST_BE_NONEMPTY_AND_UNIQUE:
-      "Các cột cần có tên riêng biệt. Hãy sửa hàng tiêu đề trong tệp rồi nhập lại.",
-    PAYROLL_COLUMN_MAPPING_INVALID:
-      "Cách ghép cột không hợp lệ. Chọn lại các cột trong bản xem trước.",
-    PAYROLL_COLUMN_NOT_FOUND:
-      "Một cột đã chọn không còn trong tệp. Đọc lại tiêu đề rồi chọn cột lại.",
-    PAYROLL_PREVIEW_NOT_FOUND: "Không tìm thấy bản xem trước. Hãy tạo bản xem trước mới.",
-    PAYROLL_PREVIEW_REVISION_CONFLICT:
-      "Bản xem trước đã thay đổi. Tải lại và kiểm tra các dòng trước khi áp dụng.",
-    PAYROLL_PREVIEW_EXPIRED: "Bản xem trước đã hết hạn. Hãy tạo bản xem trước mới.",
-    PAYROLL_ROWS_REQUIRE_RESOLUTION:
-      "Hãy đánh dấu bỏ qua các dòng lỗi hoặc xung đột trước khi áp dụng những dòng hợp lệ.",
-    PAYROLL_CONFLICT_MUST_BE_REIMPORTED_WITH_NON_OVERLAPPING_DATES:
-      "Các thời hạn đang bị chồng lấn. Sửa ngày hiệu lực trong tệp rồi nhập lại các dòng đó.",
-    PAYROLL_RATE_CHANGED_REPREVIEW_REQUIRED:
-      "Đơn giá đã thay đổi sau khi xem trước. Tạo bản xem trước mới để kiểm tra trước khi áp dụng.",
-    PAYROLL_EMPLOYEE_REQUIRED: "Nhập mã nhân viên hoặc email ở dòng này.",
-    PAYROLL_EMPLOYEE_NOT_FOUND: "Không tìm thấy tài khoản khớp với mã nhân viên hoặc email này.",
-    HOURLY_COST_INVALID: "Đơn giá phải lớn hơn 0 và có tối đa 4 chữ số thập phân.",
-    PAYROLL_CURRENCY_INVALID: "Mã tiền tệ cần có 3 chữ cái, ví dụ VND hoặc USD.",
-    PAYROLL_DATE_INVALID: "Ngày hiệu lực không hợp lệ. Dùng định dạng YYYY-MM-DD.",
-    PAYROLL_PERIOD_INVALID: "Ngày kết thúc phải bằng hoặc sau ngày bắt đầu.",
     CAPACITY_PERIOD_OVERLAP:
       "Khoảng thời gian này trùng với kỳ công suất đã khai báo. Chọn một kỳ không chồng lấn.",
     CAPACITY_REVISION_CONFLICT:
       "Kỳ công suất đã được cập nhật ở nơi khác. Tải lại dữ liệu rồi lưu lại thay đổi.",
     CAPACITY_USER_NOT_FOUND:
       "Có tài khoản trong danh sách công suất không còn hợp lệ. Tải lại danh sách nhân sự.",
-    PROJECT_FINANCIAL_REVISION_CONFLICT:
-      "Giá và điều khoản dự án đã thay đổi ở nơi khác. Tải lại dự án rồi lưu lại.",
     PROJECT_NOT_FOUND: "Không tìm thấy dự án hoặc bạn không còn quyền truy cập.",
     TEST_PLAN_NOT_FOUND: "Không tìm thấy kế hoạch kiểm thử. Tải lại danh sách rồi thử lại.",
     IMPORT_CANDIDATE_COUNT_INVALID:
