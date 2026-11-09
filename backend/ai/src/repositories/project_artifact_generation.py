@@ -5,7 +5,6 @@ from pymongo.errors import DuplicateKeyError
 
 from src.core.infrastructure.configuration import settings
 from src.core.infrastructure.database import database
-from src.store.bm25 import bm25_store
 from src.store.vector import vector_store
 
 
@@ -32,43 +31,25 @@ class ProjectArtifactGenerationRepository:
         return database.mongodb[settings.AI_DB_NAME][self.collection_name]
 
     async def _legacy_manifest(self, project_id: str, artifact_version_id: str) -> dict:
-        bm25_snapshot = await bm25_store.artifact_version_summary_snapshot(
-            project_id, artifact_version_id, self.legacy_generation
-        )
-
         vector_by_generation = {}
         async for point in vector_store.iter_artifact_version_summaries(
             project_id, artifact_version_id
         ):
-            point_id = str(point["id"])
             generation = str(point.get("index_generation") or self.legacy_generation)
             summary = vector_by_generation.setdefault(
                 generation,
-                {"count": 0, "all_ids_in_bm25": True, "latest": ""},
+                {"count": 0, "latest": ""},
             )
             summary["count"] += 1
-            if not bm25_snapshot.contains(point_id, generation):
-                summary["all_ids_in_bm25"] = False
             summary["latest"] = max(
                 summary["latest"], str(point.get("indexed_at") or "")
             )
 
-        coherent = []
-        for generation, vector_summary in vector_by_generation.items():
-            bm25_count = bm25_snapshot.generation_counts.get(generation, 0)
-            if (
-                bm25_count > 0
-                and vector_summary["count"] > 0
-                and vector_summary["all_ids_in_bm25"]
-                and vector_summary["count"] == bm25_count
-            ):
-                coherent.append(
-                    (
-                        vector_summary["latest"],
-                        generation,
-                        vector_summary["count"],
-                    )
-                )
+        coherent = [
+            (summary["latest"], generation, summary["count"])
+            for generation, summary in vector_by_generation.items()
+            if summary["count"] > 0
+        ]
 
         if coherent:
             _, generation, point_count = max(coherent)

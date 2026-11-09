@@ -103,6 +103,26 @@ export const executionTestingApi = {
     return testingRequest(`/du-an/${id}/ban-dung${value ? `?${value}` : ""}`);
   },
   listEnvironments: (id) => testingRequest(`/du-an/${id}/moi-truong`),
+  createEnvironment: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/moi-truong`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateEnvironment: (environmentId, payload) =>
+    testingRequest(`/moi-truong/${environmentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  updateEnvironmentSecretRefs: (environmentId, payload) =>
+    testingRequest(`/moi-truong/${environmentId}/bi-mat`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  archiveEnvironment: (environmentId, payload) =>
+    testingRequest(`/moi-truong/${environmentId}/luu-tru`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   listDeviceMatrices: (id, includeArchived = false) =>
     testingRequest(`/du-an/${id}/ma-tran-thiet-bi?include_archived=${includeArchived}`),
   getDeviceMatrix: (id) => testingRequest(`/ma-tran-thiet-bi/${id}`),

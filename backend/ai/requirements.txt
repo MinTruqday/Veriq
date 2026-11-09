@@ -8,7 +8,7 @@ loguru==0.7.2
 torch==2.13.0+cpu
 langgraph
 langchain-core
-qdrant-client==1.9.2
+qdrant-client @ https://github.com/qdrant/qdrant-client/archive/refs/tags/v1.20.0.tar.gz#sha256=96f62fca4d8910f9406da2037f4a70f0e8eadb2742f2d07207617f21faea5047
 neo4j==5.28.1
 python-multipart==0.0.9
 huggingface-hub>=1.5.0,<2.0.0
@@ -26,7 +26,6 @@ presidio-analyzer
 presidio-anonymizer
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 protobuf>=6.33.5,<7.0.0
-rank_bm25==0.2.2
 mcp>=2.0,<3.0
 opentelemetry-sdk>=1.30,<2.0
 opentelemetry-exporter-otlp-proto-http>=1.30,<2.0

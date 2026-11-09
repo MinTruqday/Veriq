@@ -596,7 +596,7 @@ export default function TestPlanEditor({
               />
             </label>
             <label className="field-label">
-              Phiên bản chiến lược đã phê duyệt
+              Phiên bản chiến lược được tham chiếu (không bắt buộc)
               <select
                 className="apple-input mt-2"
                 value={value.strategy_version_id}
@@ -622,7 +622,7 @@ export default function TestPlanEditor({
                   }));
                 }}
               >
-                <option value="">Mặc định theo chiến lược đang áp dụng</option>
+                <option value="">Không gắn phiên bản cụ thể</option>
                 {strategies
                   .filter((item) => item.status === "APPROVED")
                   .map((item) => (

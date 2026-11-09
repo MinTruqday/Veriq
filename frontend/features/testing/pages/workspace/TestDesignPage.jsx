@@ -1222,6 +1222,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           onRequirementChange={setSelectedRequirement}
           members={projectMembers}
           canDecide={can("testcase.review")}
+          canReadResults={can("testrun.read")}
           canCreateClarification={can("requirement.review")}
           canApprove={can("testcase.review")}
           canSubmit={can("testcase.submit_review")}

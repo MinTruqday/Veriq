@@ -331,7 +331,7 @@ async def create_test_plan_record(payload, project_id, user):
     strategy_binding = await resolve_strategy_binding(
         payload.project_id,
         payload.strategy_version_id,
-        auto_bind=True,
+        auto_bind=False,
     )
     strategy = (
         await test_plan_repository.find_strategy(

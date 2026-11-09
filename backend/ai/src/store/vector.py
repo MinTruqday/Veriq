@@ -12,8 +12,16 @@ from qdrant_client.http.models import (
     MatchValue,
     PayloadField,
     PayloadSchemaType,
+    Prefetch,
     PointIdsList,
     PointStruct,
+    Rrf,
+    RrfQuery,
+    TextIndexParams,
+    TextIndexType,
+    TextQuery,
+    TextScoringType,
+    TokenizerType,
     VectorParams,
 )
 
@@ -60,6 +68,53 @@ class VectorStore:
         )
         self.collection_name = "veriq"
         self.upsert_batch_size = self.UPSERT_BATCH_SIZE
+
+    @staticmethod
+    def _has_bm25_text_index(schema) -> bool:
+        if schema is None or schema.data_type != PayloadSchemaType.TEXT:
+            return False
+        params = schema.params
+        scoring = getattr(params, "scoring", None)
+        if scoring is True:
+            return True
+        return getattr(scoring, "type", None) == TextScoringType.BM25
+
+    async def _ensure_text_scoring_index(self):
+        collection = await self.client.get_collection(self.collection_name)
+        schema = (collection.payload_schema or {}).get("text")
+        if schema is None:
+            await self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="text",
+                field_schema=TextIndexParams(
+                    type=TextIndexType.TEXT,
+                    tokenizer=TokenizerType.WORD,
+                    lowercase=True,
+                    min_token_len=1,
+                    scoring=True,
+                ),
+                wait=True,
+            )
+            return
+        if not self._has_bm25_text_index(schema):
+            raise RuntimeError("qdrant_text_scoring_index_schema_mismatch")
+
+    @staticmethod
+    def _point_results(points) -> List[Dict]:
+        return [
+            {
+                "id": str(point.id),
+                "text": (point.payload or {}).get("text", ""),
+                "metadata": {
+                    key: value for key, value in (point.payload or {}).items() if key != "text"
+                },
+                "score": point.score,
+            }
+            for point in points
+        ]
+
+    async def close(self):
+        await self.client.close()
 
     async def ensure_collection(self):
         try:
@@ -112,6 +167,7 @@ class VectorStore:
                         raise RuntimeError(
                             f"qdrant_payload_index_schema_mismatch:{field}"
                         )
+            await self._ensure_text_scoring_index()
         except Exception:
             logger.exception("System search index structure initialization error")
             raise
@@ -158,9 +214,6 @@ class VectorStore:
                 )
             await self.client.upsert(collection_name=self.collection_name, points=points, wait=True)
 
-    async def wait_upsert(self):
-        return None
-
     async def query(
         self,
         query_vector: List[float],
@@ -170,6 +223,80 @@ class VectorStore:
         is_admin: bool = False,
         metadata_filters: Optional[Dict] = None,
     ) -> List[Dict]:
+        query_filter = self._query_filter(
+            document_ids=document_ids,
+            requester_id=requester_id,
+            is_admin=is_admin,
+            metadata_filters=metadata_filters,
+        )
+        if limit < 1 or limit > 100:
+            raise ValueError("Vector query limit must be between 1 and 100")
+        try:
+            response = await self.client.query_points(
+                collection_name=self.collection_name,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+            )
+            return self._point_results(response.points)
+        except Exception:
+            logger.exception("Search query parsing and processing error")
+            raise
+
+    async def hybrid_query(
+        self,
+        query_text: str,
+        query_vector: List[float],
+        document_ids: Optional[List[str]] = None,
+        limit: int = 20,
+        requester_id: Optional[str] = None,
+        is_admin: bool = False,
+        metadata_filters: Optional[Dict] = None,
+    ) -> List[Dict]:
+        query_text = str(query_text or "").strip()
+        if not query_text:
+            return await self.query(
+                query_vector=query_vector,
+                document_ids=document_ids,
+                limit=limit,
+                requester_id=requester_id,
+                is_admin=is_admin,
+                metadata_filters=metadata_filters,
+            )
+        if limit < 1 or limit > 100:
+            raise ValueError("Vector query limit must be between 1 and 100")
+        query_filter = self._query_filter(
+            document_ids=document_ids,
+            requester_id=requester_id,
+            is_admin=is_admin,
+            metadata_filters=metadata_filters,
+        ).model_dump(mode="json", exclude_none=True)
+        response = await self.client.query_points(
+            collection_name=self.collection_name,
+            prefetch=[
+                Prefetch(query=query_vector, filter=query_filter, limit=limit),
+                Prefetch(
+                    query=TextQuery(text=query_text),
+                    using="text",
+                    filter=query_filter,
+                    limit=limit,
+                ),
+            ],
+            query=RrfQuery(rrf=Rrf(k=60)),
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=True,
+        )
+        return self._point_results(response.points)
+
+    def _query_filter(
+        self,
+        document_ids: Optional[List[str]],
+        requester_id: Optional[str],
+        is_admin: bool,
+        metadata_filters: Optional[Dict],
+    ) -> Filter:
         must = [
             FieldCondition(
                 key="embedding_model",
@@ -297,28 +424,7 @@ class VectorStore:
             must.append(Filter(should=access_conditions))
         query_filter = Filter(must=must) if must else None
 
-        if limit < 1 or limit > 100:
-            raise ValueError("Vector query limit must be between 1 and 100")
-        try:
-            results = await self.client.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-            )
-            return [
-                {
-                    "id": str(hit.id),
-                    "text": hit.payload.get("text", ""),
-                    "metadata": {k: v for k, v in hit.payload.items() if k != "text"},
-                    "score": hit.score,
-                }
-                for hit in results
-            ]
-        except Exception:
-            logger.exception("Search query parsing and processing error")
-            raise
+        return Filter(must=must) if must else Filter()
 
     async def iter_scroll_batches(self, batch_size: int = 256):
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:

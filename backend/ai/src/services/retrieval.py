@@ -18,7 +18,6 @@ from src.schemas.project import (
 )
 from src.services.embedding import embedder
 from src.services.inference import decompose_retrieval
-from src.store.bm25 import bm25_store
 from src.store.vector import vector_store
 from src.utils.model_provider import auxiliary_client
 
@@ -39,7 +38,7 @@ async def initialize_retrieval():
         raise RuntimeError("Embedding model dimension does not match the retrieval index")
     await vector_store.ensure_collection()
 
-    async def current_documents():
+    async def migrate_current_vectors():
         legacy_count = 0
         migrated_count = 0
         skipped_legacy_embedding_count = 0
@@ -133,8 +132,6 @@ async def initialize_retrieval():
                 ):
                     skipped_document_contract_count += 1
                     continue
-                yield document
-
         if legacy_count:
             logger.info(
                 "Removed legacy object-storage URLs from {} vector payloads",
@@ -149,11 +146,11 @@ async def initialize_retrieval():
             )
         if skipped_document_contract_count:
             logger.warning(
-                "Skipped {} document vectors with an outdated index contract during sparse index initialization",
+                "Skipped {} document vectors with an outdated index contract during retrieval initialization",
                 skipped_document_contract_count,
             )
 
-    await bm25_store.initialize_stream(current_documents())
+    await migrate_current_vectors()
     await retriever.initialize()
     logger.info("AI retrieval capability initialized and ready")
 
@@ -456,40 +453,6 @@ class RetrievalService:
             ]
         )
 
-    def _rrf_fuse(
-        self,
-        dense_documents: List[Dict],
-        sparse_documents: List[Dict],
-        rank_constant: Optional[int] = None,
-    ) -> List[Dict]:
-        if rank_constant is None:
-            rank_constant = 60
-        fused: Dict[str, Dict] = {}
-        for source, documents in (("dense", dense_documents), ("bm25", sparse_documents)):
-            for rank, document in enumerate(documents, start=1):
-                key = self._result_key(document)
-                metadata = document.get("metadata") or {}
-                public_document = {
-                    **document,
-                    "metadata": public_retrieval_metadata(metadata),
-                }
-                entry = fused.setdefault(
-                    key, {**public_document, "rrf_score": 0.0, "retrieval_sources": []}
-                )
-                entry["rrf_score"] += 1.0 / (rank_constant + rank)
-                if source not in entry["retrieval_sources"]:
-                    entry["retrieval_sources"].append(source)
-                if source == "dense":
-                    entry["dense_score"] = float(document.get("score", 0.0))
-                else:
-                    entry["bm25_score"] = float(
-                        document.get("bm25_score", document.get("score", 0.0))
-                    )
-        results = sorted(fused.values(), key=lambda item: item["rrf_score"], reverse=True)
-        for result in results:
-            result["score"] = result["rrf_score"]
-        return results
-
     async def retrieve(
         self,
         query: str,
@@ -511,14 +474,15 @@ class RetrievalService:
         fetch_limit = result_count
         query_embedding_task = None
 
-        async def dense_search(limit):
+        async def hybrid_search(limit):
             nonlocal query_embedding_task
             query_vector = query_vector_override
             if query_vector is None:
                 if query_embedding_task is None:
                     query_embedding_task = asyncio.create_task(embedder.embed_query(query))
                 query_vector = await query_embedding_task
-            return await vector_store.query(
+            return await vector_store.hybrid_query(
+                query_text=query,
                 query_vector=query_vector,
                 document_ids=document_ids,
                 limit=limit,
@@ -528,36 +492,16 @@ class RetrievalService:
             )
 
         while True:
-            dense_result, sparse_result = await asyncio.gather(
-                asyncio.wait_for(
-                    dense_search(fetch_limit), timeout=settings.MODEL_TIMEOUT_SECONDS
-                ),
-                bm25_store.search(
-                    query=query,
-                    document_ids=document_ids,
-                    limit=fetch_limit,
-                    requester_id=requester_id,
-                    is_admin=is_admin,
-                    metadata_filters=metadata_filters,
-                ),
-                return_exceptions=True,
-            )
-            if isinstance(dense_result, (Exception, asyncio.CancelledError)):
-                logger.error("Dense retrieval failed: {}", type(dense_result).__name__)
-                dense_documents = []
-            else:
-                dense_documents = dense_result
-            if isinstance(sparse_result, (Exception, asyncio.CancelledError)):
-                logger.error("BM25 retrieval failed: {}", type(sparse_result).__name__)
-                sparse_documents = []
-            else:
-                sparse_documents = sparse_result
-            if isinstance(dense_result, (Exception, asyncio.CancelledError)) and isinstance(
-                sparse_result, (Exception, asyncio.CancelledError)
-            ):
-                raise RetrievalUnavailableError("dense_and_sparse_retrieval_unavailable")
-
-            candidates = [*dense_documents, *sparse_documents]
+            try:
+                candidates = await asyncio.wait_for(
+                    hybrid_search(fetch_limit), timeout=settings.MODEL_TIMEOUT_SECONDS
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.error("Hybrid retrieval failed: {}", type(error).__name__)
+                raise RetrievalUnavailableError("hybrid_retrieval_unavailable") from error
+            fetched_count = len(candidates)
             if candidates:
                 candidates = self._filter_document_index_contract(candidates)
             if candidates:
@@ -567,25 +511,7 @@ class RetrievalService:
                     candidates, requester_id, is_admin
                 )
 
-            if candidates:
-                current_candidate_keys = {
-                    self._result_key(document) for document in candidates
-                }
-                current_dense_documents = [
-                    document
-                    for document in dense_documents
-                    if self._result_key(document) in current_candidate_keys
-                ]
-                current_sparse_documents = [
-                    document
-                    for document in sparse_documents
-                    if self._result_key(document) in current_candidate_keys
-                ]
-                documents = self._rrf_fuse(
-                    current_dense_documents, current_sparse_documents
-                )
-            else:
-                documents = []
+            documents = candidates
 
             if not documents:
                 ranked_documents = []
@@ -629,11 +555,7 @@ class RetrievalService:
             if len(ranked_documents) >= result_count:
                 return ranked_documents[:result_count]
 
-            source_exhausted_at_limit = (
-                len(dense_documents) < fetch_limit
-                and len(sparse_documents) < fetch_limit
-            )
-            if fetch_limit >= 100 or source_exhausted_at_limit:
+            if fetch_limit >= 100 or fetched_count < fetch_limit:
                 return ranked_documents[:result_count]
             fetch_limit = min(100, max(fetch_limit * 2, fetch_limit + result_count))
 

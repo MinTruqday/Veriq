@@ -315,6 +315,12 @@ async def shutdown_event():
     except Exception:
         logger.exception("Database shutdown failed")
     try:
+        from src.store.vector import vector_store
+
+        await vector_store.close()
+    except Exception:
+        logger.exception("Vector store shutdown failed")
+    try:
         from src.core.infrastructure.observability import shutdown_tracing
 
         shutdown_tracing()

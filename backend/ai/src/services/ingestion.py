@@ -19,7 +19,6 @@ from src.services.chunking import SemanticChunkingError, chunker
 from src.services.conversion import IndexingAttemptSupersededError, document_parser
 from src.services.embedding import embedder
 from src.services.inference import inspect_chunks, summarize_document
-from src.store.bm25 import bm25_store
 from src.store.vector import vector_store
 
 
@@ -232,36 +231,22 @@ async def embed_and_index_chunks(
                 documents=[chunk["text"] for chunk in batch],
                 metadatas=metadatas,
             )
-            indexed_batch = [
-                {
-                    **chunk,
-                    "metadata": metadata,
-                }
-                for chunk, metadata in zip(batch, metadatas)
-            ]
-            await bm25_store.stage_upsert(indexed_batch, stage_id)
-            indexed_chunk_count += len(indexed_batch)
+            indexed_chunk_count += len(batch)
 
         if not indexed_chunk_count:
             raise RuntimeError("No chunks could be embedded")
 
-        await vector_store.wait_upsert()
-        await bm25_store.publish_staged(stage_id)
         await verify_source_snapshot()
     except BaseException as index_error:
-        rollback_results = await asyncio.gather(
-            vector_store.delete_document_generation(document_id, stage_id),
-            bm25_store.delete_document_generation(document_id, stage_id),
-            bm25_store.discard_staged(stage_id),
-            return_exceptions=True,
-        )
-        if any(isinstance(result, BaseException) for result in rollback_results):
+        try:
+            await vector_store.delete_document_generation(document_id, stage_id)
+        except BaseException as rollback_error:
             logger.exception(
                 "Batched document index rollback is incomplete document_id={} generation={}",
                 document_id,
                 stage_id,
             )
-            raise RuntimeError("index_generation_rollback_incomplete") from index_error
+            raise RuntimeError("index_generation_rollback_incomplete") from rollback_error
         raise
 
     return indexed_chunk_count, failed_chunks
@@ -890,25 +875,20 @@ class IngestionPipelineService:
                     "index_generation_published_but_attempt_state_changed"
                 ) from error
             await self._rollback_generation(
-                document_id, str(metadata["index_generation"]), error
+                document_id, str(metadata["index_generation"])
             )
             raise error
 
         await verify_source_snapshot()
-        cleanup_results = await asyncio.gather(
-            vector_store.delete_stale_document_generations(
+        try:
+            await vector_store.delete_stale_document_generations(
                 document_id, str(metadata["index_generation"])
-            ),
-            bm25_store.delete_stale_document_generations(
-                document_id, str(metadata["index_generation"])
-            ),
-            return_exceptions=True,
-        )
-        cleanup_pending = [
-            store_name
-            for store_name, result in zip(("qdrant", "bm25"), cleanup_results)
-            if isinstance(result, (Exception, asyncio.CancelledError))
-        ]
+            )
+            cleanup_pending = []
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            cleanup_pending = ["qdrant"]
         if cleanup_pending:
             logger.warning(
                 "Stale index generation cleanup pending document_id={} stores={}",
@@ -972,20 +952,15 @@ class IngestionPipelineService:
         }
 
     @staticmethod
-    async def _rollback_generation(
-        document_id: str, index_generation: str, cause: Exception
-    ):
-        results = await asyncio.gather(
-            vector_store.delete_document_generation(document_id, index_generation),
-            bm25_store.delete_document_generation(document_id, index_generation),
-            return_exceptions=True,
-        )
-        if any(isinstance(result, BaseException) for result in results):
+    async def _rollback_generation(document_id: str, index_generation: str):
+        try:
+            await vector_store.delete_document_generation(document_id, index_generation)
+        except BaseException as rollback_error:
             logger.exception(
                 "Rejected index generation cleanup is incomplete document_id={}",
                 document_id,
             )
-            raise RuntimeError("stale_index_generation_cleanup_incomplete") from cause
+            raise RuntimeError("stale_index_generation_cleanup_incomplete") from rollback_error
 
 
 ingestion_pipeline = IngestionPipelineService()
@@ -1165,20 +1140,12 @@ async def remove_document(document_id: str, requester_id: str, is_admin: bool) -
     document = await ContentClient.authorize_document(
         document_id, requester_id, is_admin, True
     )
-    cleanup_results = await asyncio.gather(
-        vector_store.delete_by_document(document_id),
-        bm25_store.delete_by_document(document_id),
-        return_exceptions=True,
-    )
-    cleanup_failures = [result for result in cleanup_results if isinstance(result, BaseException)]
-    cancellation = next(
-        (error for error in cleanup_failures if isinstance(error, asyncio.CancelledError)),
-        None,
-    )
-    if cancellation is not None:
-        raise cancellation
-    if cleanup_failures:
-        raise RuntimeError("document_index_removal_incomplete") from cleanup_failures[0]
+    try:
+        await vector_store.delete_by_document(document_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception as cleanup_error:
+        raise RuntimeError("document_index_removal_incomplete") from cleanup_error
 
     project_id = str(document.get("project_id") or "")
     if project_id:

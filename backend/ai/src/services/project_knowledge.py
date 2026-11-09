@@ -26,7 +26,6 @@ from src.schemas.project import (
 from src.services.chunking import chunker
 from src.services.embedding import embedder
 from src.services.retrieval import RetrievalUnavailableError, retriever
-from src.store.bm25 import bm25_store
 from src.store.vector import vector_store
 
 SEARCH_CACHE: dict[tuple, tuple[float, dict]] = {}
@@ -52,46 +51,22 @@ async def _cleanup_stale_project_artifact_generations(
     artifact_version_id: str,
     active_generation: str,
 ) -> list[str]:
-    cleanup_operations = {
-        "qdrant": lambda: vector_store.delete_stale_artifact_generations(
-            project_id,
-            artifact_type,
-            artifact_id,
-            artifact_version_id,
-            active_generation,
-        ),
-        "bm25": lambda: bm25_store.delete_stale_artifact_generations(
-            project_id,
-            artifact_type,
-            artifact_id,
-            artifact_version_id,
-            active_generation,
-        ),
-    }
-    cleanup_results = await asyncio.gather(
-        *(operation() for operation in cleanup_operations.values()),
-        return_exceptions=True,
-    )
-    cleanup_pending = []
-    for store_name, result in zip(cleanup_operations, cleanup_results):
-        if isinstance(result, (Exception, asyncio.CancelledError)):
-            cleanup_pending.append(store_name)
-        elif isinstance(result, BaseException):
-            raise result
-    if cleanup_pending:
-        await asyncio.sleep(0)
-        retry_results = await asyncio.gather(
-            *(cleanup_operations[store_name]() for store_name in cleanup_pending),
-            return_exceptions=True,
-        )
-        remaining = []
-        for store_name, result in zip(cleanup_pending, retry_results):
-            if isinstance(result, (Exception, asyncio.CancelledError)):
-                remaining.append(store_name)
-            elif isinstance(result, BaseException):
-                raise result
-        cleanup_pending = remaining
-    return cleanup_pending
+    for attempt in range(2):
+        try:
+            await vector_store.delete_stale_artifact_generations(
+                project_id,
+                artifact_type,
+                artifact_id,
+                artifact_version_id,
+                active_generation,
+            )
+            return []
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            if attempt == 0:
+                await asyncio.sleep(0)
+    return ["qdrant"]
 
 
 async def _rollback_project_artifact_generation(
@@ -100,32 +75,19 @@ async def _rollback_project_artifact_generation(
     artifact_id: str,
     artifact_version_id: str,
     generation: str,
-    cause: Exception,
 ) -> None:
-    rollback_results = await asyncio.gather(
-        vector_store.delete_artifact_generation(
+    try:
+        await vector_store.delete_artifact_generation(
             project_id, artifact_type, artifact_id, artifact_version_id, generation
-        ),
-        bm25_store.delete_artifact_generation(
-            project_id, artifact_type, artifact_id, artifact_version_id, generation
-        ),
-        bm25_store.discard_staged(generation),
-        return_exceptions=True,
-    )
-    rollback_incomplete = [
-        store_name
-        for store_name, result in zip(("qdrant", "bm25", "bm25_staging"), rollback_results)
-        if isinstance(result, BaseException)
-    ]
-    if rollback_incomplete:
+        )
+    except BaseException as rollback_error:
         logger.error(
-            "Project artifact index rollback incomplete project={} artifact_version={} generation={} stores={}",
+            "Project artifact index rollback incomplete project={} artifact_version={} generation={} store=qdrant",
             project_id,
             artifact_version_id,
             generation,
-            rollback_incomplete,
         )
-        raise RuntimeError("project_artifact_index_rollback_incomplete") from cause
+        raise RuntimeError("project_artifact_index_rollback_incomplete") from rollback_error
 
 
 def graph_metadata(metadata):
@@ -306,7 +268,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
     ):
         raise ValueError("project_artifact_index_batch_size_invalid")
     batch_size = min(embedding_batch_size, point_batch_size)
-    stage_id = index_generation
     chunk_count = 0
 
     async def write_batch(batch_chunks, first_chunk_index):
@@ -359,19 +320,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
                 for payload in point_payloads
             ],
         )
-        await bm25_store.stage_upsert(
-            [
-                {
-                    "id": point_id,
-                    "text": text,
-                    "metadata": item_metadata,
-                }
-                for point_id, text, item_metadata in zip(
-                    batch_ids, batch_texts, batch_metadata
-                )
-            ],
-            stage_id=stage_id,
-        )
         return batch_end
 
     try:
@@ -396,7 +344,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
                     req.artifact_id,
                     req.artifact_version_id,
                     index_generation,
-                    chunk_error,
                 )
                 batch_chunks.clear()
                 chunk_count = 0
@@ -413,7 +360,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
             chunk_count = await write_batch(batch_chunks, chunk_count)
         if chunk_count == 0:
             raise HTTPException(status_code=422, detail={"code": "INDEX_CONTENT_EMPTY"})
-        await bm25_store.publish_staged(stage_id)
     except asyncio.CancelledError as index_error:
         await _rollback_project_artifact_generation(
             project_id,
@@ -421,7 +367,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
             req.artifact_id,
             req.artifact_version_id,
             index_generation,
-            index_error,
         )
         raise
     except Exception as index_error:
@@ -431,7 +376,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
             req.artifact_id,
             req.artifact_version_id,
             index_generation,
-            index_error,
         )
         raise
 
@@ -458,7 +402,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
                 req.artifact_id,
                 req.artifact_version_id,
                 index_generation,
-                publish_error,
             )
             raise
     if not published:
@@ -469,7 +412,6 @@ async def _index_project_artifact_locked(project_id: str, req: ProjectArtifactIn
             req.artifact_id,
             req.artifact_version_id,
             index_generation,
-            conflict,
         )
         raise conflict
 
@@ -535,24 +477,17 @@ async def remove_project_artifact(project_id: str, artifact_version_id: str):
             ) from error
         if not await project_artifact_generation_repository.removal_is_current(manifest):
             raise HTTPException(status_code=409, detail={"code": "ARTIFACT_REMOVAL_SUPERSEDED"})
-        delete_results = await asyncio.gather(
-            vector_store.delete_project_artifact_version(project_id, artifact_version_id),
-            bm25_store.delete_project_artifact_version(project_id, artifact_version_id),
-            return_exceptions=True,
-        )
-        failed_stores = [
-            store_name
-            for store_name, result in zip(("qdrant", "bm25"), delete_results)
-            if isinstance(result, (Exception, asyncio.CancelledError))
-        ]
-        if failed_stores:
+        try:
+            await vector_store.delete_project_artifact_version(
+                project_id, artifact_version_id
+            )
+        except Exception as delete_error:
             logger.error(
-                "Project artifact removal incomplete project={} artifact_version={} stores={}",
+                "Project artifact removal incomplete project={} artifact_version={} store=qdrant",
                 project_id,
                 artifact_version_id,
-                failed_stores,
             )
-            raise RuntimeError("project_artifact_removal_incomplete")
+            raise RuntimeError("project_artifact_removal_incomplete") from delete_error
         if not await project_artifact_generation_repository.finish_removal(manifest):
             raise RuntimeError("project_artifact_removal_manifest_conflict")
         from src.knowledge.graph.repository import graph_repository

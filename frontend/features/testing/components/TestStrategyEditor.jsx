@@ -1,21 +1,8 @@
 import { useEffect, useState } from "react";
 import RiskModelEditor from "./RiskModelEditor";
 import StructuredValueEditor from "./StructuredValueEditor";
-import { normalizeRiskModel } from "./riskModel.helpers";
+import { createDefaultRiskModel, normalizeRiskModel } from "./riskModel.helpers";
 import { messageOf } from "../lib/testing";
-
-const emptyRisk = {
-  probability_scale: [],
-  impact_scale: [],
-  severity_scale: [],
-  blocking_severities: [],
-  critical_severities: [],
-  priority_scale: [],
-  risk_exposure_formula: "",
-  thresholds: [],
-  mandatory_test_depth: {},
-  regression_priority_rules: [],
-};
 
 const emptyValue = {
   key: "",
@@ -24,7 +11,7 @@ const emptyValue = {
   test_levels: [],
   test_types: [],
   approach: "",
-  risk_model: emptyRisk,
+  risk_model: createDefaultRiskModel(),
   technique_policy: {},
   automation_policy: {},
   environment_policy: {},
@@ -75,7 +62,7 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
         ? {
             ...emptyValue,
             ...strategy,
-            risk_model: normalizeRiskModel({ ...emptyRisk, ...strategy.risk_model }),
+            risk_model: normalizeRiskModel({ ...createDefaultRiskModel(), ...strategy.risk_model }),
           }
         : emptyValue,
     );

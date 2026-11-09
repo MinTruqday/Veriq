@@ -388,7 +388,7 @@ services:
       - veriq_network
 
   qdrant:
-    image: qdrant/qdrant:v1.18.2@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c
+    image: qdrant/qdrant:v1.20.0@sha256:9bfc89f9914fc14876a88c05270685921a55b8877b254a98bcc2c0f2a424cd2
     container_name: veriq_qdrant
     restart: always
     logging: *container-logging

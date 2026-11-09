@@ -1547,6 +1547,7 @@ export default function RequirementsPage({ project, section, workspaceView }) {
                 }}
                 members={visibleMembers}
                 canDecide={can("testcase.review")}
+                canReadResults={can("testrun.read")}
                 canCreateClarification={can("requirement.review")}
                 canApprove={can("testcase.review")}
                 canSubmit={can("testcase.submit_review")}

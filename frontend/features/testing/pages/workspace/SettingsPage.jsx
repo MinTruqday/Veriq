@@ -7,6 +7,7 @@ import ProjectConnectorsPanel from "../../components/ProjectConnectorsPanel";
 import MemberSkillProfilePanel from "../../components/MemberSkillProfilePanel";
 import ProjectAccessPanel from "../../components/ProjectAccessPanel";
 import CicdPanel from "../../components/CicdPanel";
+import EnvironmentManagementPanel from "../../components/EnvironmentManagementPanel";
 import {
   ErrorState,
   LoadingState,
@@ -262,6 +263,16 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
       id: "integrations",
       label: "Tích hợp",
       permissions: ["project.connector.read", "cicd.read", "webhook.project.read"],
+    },
+    {
+      id: "environments",
+      label: "Môi trường kiểm thử",
+      permissions: [
+        "environment.read",
+        "environment.create",
+        "environment.update",
+        "environment.archive",
+      ],
     },
     {
       id: "analytics",
@@ -1359,6 +1370,9 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
           <CicdPanel project={project} />
           <WebhookPanel project={project} />
         </div>
+      )}
+      {visibleSettingsSection === "environments" && (
+        <EnvironmentManagementPanel project={project} />
       )}
       {dialog}
     </WorkspacePage>

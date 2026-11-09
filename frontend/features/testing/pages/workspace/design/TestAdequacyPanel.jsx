@@ -21,6 +21,13 @@ const assessmentLabels = {
   SUPERSEDED: "Đã thay thế",
 };
 
+const executionOutcomeLabels = {
+  CAUGHT_DEFECT: "Phát hiện lỗi",
+  DID_NOT_DIFFERENTIATE: "Chưa phân biệt được lỗi",
+  NOT_EXECUTED: "Chưa thực thi",
+  NEEDS_TEST_ADDITION: "Cần bổ sung ca kiểm thử",
+};
+
 function sourceReferenceLabel(item) {
   const reference = String(item.source_ref || "");
   if (item.source_type === "business_rule") {
@@ -80,6 +87,7 @@ export default function TestAdequacyPanel({
   onRequirementChange,
   members = [],
   canDecide = false,
+  canReadResults = false,
   canCreateClarification = false,
   canApprove = false,
   canSubmit = false,
@@ -174,6 +182,72 @@ export default function TestAdequacyPanel({
         expected_revision: assessment.revision,
         status,
         ...value,
+      }),
+    );
+  };
+  const recordExecutionFeedback = async (item) => {
+    const cases = item.test_case_versions || [];
+    if (!cases.length) return;
+    let results = [];
+    if (canReadResults) {
+      try {
+        results = await testingApi.listResults(projectId);
+      } catch (reason) {
+        setError(messageOf(reason));
+        return;
+      }
+    }
+    const caseIds = new Set(cases.map((test) => test.id));
+    const linkedResults = results.filter((result) => caseIds.has(result.test_case_version_id));
+    const value = await ask({
+      title: "Ghi nhận kết quả thực thi",
+      description:
+        "Phản hồi được lưu vào nghĩa vụ này và có thể được đối chiếu trong lần rà soát tiếp theo.",
+      confirmLabel: "Ghi nhận kết quả",
+      fields: [
+        {
+          name: "test_case_version_id",
+          label: "Ca kiểm thử",
+          required: true,
+          options: cases.map((test) => ({
+            value: test.id,
+            label: `${test.key || "Ca kiểm thử"} · ${test.title || ""}${test.version ? ` · v${test.version}` : ""}`,
+          })),
+        },
+        {
+          name: "outcome",
+          label: "Kết quả",
+          required: true,
+          options: Object.entries(executionOutcomeLabels).map(([key, label]) => ({
+            value: key,
+            label,
+          })),
+        },
+        {
+          name: "test_result_id",
+          label: "Kết quả chạy đã ghi nhận (không bắt buộc)",
+          options: [
+            { value: "", label: "Chưa liên kết kết quả chạy" },
+            ...linkedResults.map((result) => {
+              const test = cases.find((candidate) => candidate.id === result.test_case_version_id);
+              return {
+                value: result._id,
+                label: `${test?.key || "Ca kiểm thử"} · ${valueLabel(result.status)} · ${new Date(result.updated_at || result.created_at).toLocaleString()}`,
+              };
+            }),
+          ],
+        },
+        { name: "note", label: "Ghi chú", multiline: true },
+      ],
+    });
+    if (!value) return;
+    const selectedResult = linkedResults.find((result) => result._id === value.test_result_id);
+    await update(() =>
+      testingApi.addTestAdequacyExecutionFeedback(assessment._id, item.coverage_item_id, {
+        expected_revision: assessment.revision,
+        ...value,
+        test_result_id: selectedResult?._id || null,
+        test_result_revision: selectedResult?.revision || null,
       }),
     );
   };
@@ -346,6 +420,16 @@ export default function TestAdequacyPanel({
       return null;
     return (
       <div className="mt-3 flex flex-wrap gap-2">
+        {canDecide && item.test_case_versions?.length > 0 && (
+          <button
+            className="secondary-button text-xs"
+            disabled={busy}
+            type="button"
+            onClick={() => recordExecutionFeedback(item)}
+          >
+            Ghi nhận kết quả thực thi
+          </button>
+        )}
         {canCreateClarification && (
           <button
             className="secondary-button text-xs"
@@ -556,6 +640,49 @@ export default function TestAdequacyPanel({
                       <div className="mt-1 text-ink-muted">{challenges(item)}</div>
                     </div>
                   </div>
+                  {(item.execution_feedback || []).length > 0 && (
+                    <div className="mt-4 rounded-xl border border-border bg-surface-quiet p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                        Kết quả thực thi đã ghi nhận
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {item.execution_feedback.map((entry, index) => {
+                          const test = item.test_case_versions?.find(
+                            (candidate) => candidate.id === entry.test_case_version_id,
+                          );
+                          return (
+                            <div
+                              className="text-sm"
+                              key={`${entry.recorded_at || "feedback"}:${index}`}
+                            >
+                              <span className="font-medium text-ink">
+                                {test?.key || "Ca kiểm thử"} ·{" "}
+                                {executionOutcomeLabels[entry.outcome] || valueLabel(entry.outcome)}
+                              </span>
+                              {entry.note && (
+                                <p className="mt-1 whitespace-pre-wrap text-ink-muted">
+                                  {entry.note}
+                                </p>
+                              )}
+                              {entry.recorded_at && (
+                                <p className="mt-1 text-xs text-ink-faint">
+                                  {new Date(entry.recorded_at).toLocaleString()}
+                                </p>
+                              )}
+                              {entry.test_result_id && (
+                                <p
+                                  className="mt-1 text-xs text-ink-faint"
+                                  title={entry.test_result_id}
+                                >
+                                  Đã liên kết kết quả chạy
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
