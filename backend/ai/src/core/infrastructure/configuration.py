@@ -43,15 +43,6 @@ class Settings:
     CV_SOURCE_BLOCK_CHARACTERS: int = int(
         os.getenv("CV_SOURCE_BLOCK_CHARACTERS", "3000")
     )
-    SEMANTIC_CACHE_SIMILARITY_THRESHOLD: float = float(
-        os.getenv("SEMANTIC_CACHE_SIMILARITY_THRESHOLD", "0.9")
-    )
-    SEMANTIC_CACHE_TTL_SECONDS: int = int(
-        os.getenv("SEMANTIC_CACHE_TTL_SECONDS", "86400")
-    )
-    SEMANTIC_CACHE_MAXIMUM_ENTRIES: int = int(
-        os.getenv("SEMANTIC_CACHE_MAXIMUM_ENTRIES", "512")
-    )
     DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS: int = int(
         os.getenv("DOCUMENT_INGESTION_CHECKPOINT_TTL_DAYS", "7")
     )
@@ -128,13 +119,6 @@ if min(
     settings.CV_SOURCE_BLOCK_CHARACTERS,
 ) < 1:
     raise ValueError("CV extraction limits must be positive")
-if not 0 <= settings.SEMANTIC_CACHE_SIMILARITY_THRESHOLD <= 1:
-    raise ValueError("Semantic cache similarity threshold must be between 0 and 1")
-if min(
-    settings.SEMANTIC_CACHE_TTL_SECONDS,
-    settings.SEMANTIC_CACHE_MAXIMUM_ENTRIES,
-) < 1:
-    raise ValueError("Semantic cache limits must be positive")
 fallback_configuration = (
     bool(settings.FALLBACK_MODEL_URL),
     bool(settings.FALLBACK_MODEL_HEALTH_URL),

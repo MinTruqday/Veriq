@@ -4,11 +4,9 @@ from langchain_core.runnables import RunnableConfig
 
 from src.knowledge.evidence import package
 from src.memory.long_term import long_term_memory
-from src.repositories.project_artifact_generation import (
-    project_artifact_generation_repository,
-)
 from src.runtime.limits import limits
 from src.schemas.agent import EvidenceItem
+from src.services.retrieval import retriever
 
 
 async def hybrid_evidence(
@@ -17,7 +15,6 @@ async def hybrid_evidence(
     maximum = min(limit or limits.evidence_items, limits.evidence_items)
     items = []
     degraded = []
-    vector_generation_by_item = {}
     if token:
         try:
             from src.tools.knowledge_tools import retrieve_project_evidence
@@ -72,17 +69,12 @@ async def hybrid_evidence(
         if item.source == "database"
     }
     try:
-        from src.services.embedding import embedder
-        from src.store.vector import vector_store
-
-        vector = await embedder.embed_query(query)
-        matches = await vector_store.query(
-            vector,
-            limit=maximum,
+        matches = await retriever.retrieve(
+            query=query,
+            k=maximum,
             requester_id=requester_id,
             metadata_filters={"project_id": project_id},
         )
-        matches = await project_artifact_generation_repository.filter_active(matches)
         for match in matches:
             metadata = match["metadata"]
             reference = (
@@ -108,13 +100,6 @@ async def hybrid_evidence(
                 project_id=project_id,
             )
             items.append(evidence_item)
-            vector_generation_by_item[id(evidence_item)] = {
-                "metadata": {
-                    "project_id": project_id,
-                    "artifact_version_id": metadata.get("artifact_version_id"),
-                    "index_generation": metadata.get("index_generation"),
-                }
-            }
     except Exception:
         degraded.append("KNOWLEDGE_UNAVAILABLE")
     try:
@@ -159,32 +144,4 @@ async def hybrid_evidence(
                 )
     except Exception:
         degraded.append("MEMORY_UNAVAILABLE")
-    if vector_generation_by_item:
-        try:
-            active_vector_generations = await project_artifact_generation_repository.filter_active(
-                list(vector_generation_by_item.values())
-            )
-            active_keys = {
-                (
-                    str(record["metadata"].get("artifact_version_id") or ""),
-                    str(record["metadata"].get("index_generation") or "LEGACY"),
-                )
-                for record in active_vector_generations
-            }
-            items = [
-                item
-                for item in items
-                if item.source != "vector"
-                or (
-                    str(item.artifact_version_id or ""),
-                    str(
-                        vector_generation_by_item[id(item)]["metadata"].get("index_generation")
-                        or "LEGACY"
-                    ),
-                )
-                in active_keys
-            ]
-        except Exception:
-            degraded.append("KNOWLEDGE_UNAVAILABLE")
-            items = [item for item in items if item.source != "vector"]
     return package(project_id, query, items, degraded, maximum)

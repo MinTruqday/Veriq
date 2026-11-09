@@ -8,7 +8,6 @@ from loguru import logger
 
 from src.clients.authentication import AuthenticationClient
 from src.core.infrastructure.configuration import settings
-from src.core.infrastructure.mongo import mongo
 from src.core.infrastructure.redis import redis
 from src.schemas.auth import CurrentUser, SystemRole
 
@@ -95,9 +94,6 @@ class RateLimiting:
             )
         await redis.pipeline_incr_expire(key, self.period)
         return True
-
-async def get_db():
-    return mongo.get_db()
 
 async def verify_internal_token(x_internal_token: str = Header(default="")) -> None:
     if not settings.SECRET_KEY or not hmac.compare_digest(x_internal_token, settings.SECRET_KEY):

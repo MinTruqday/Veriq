@@ -9,7 +9,6 @@ from loguru import logger
 
 from src.api.agents import router as agents_router
 from src.api.automation import router as automation_router
-from src.api.cache import router as cache_router
 from src.api.embedding import router as embedding_router
 from src.api.events import router as events
 from src.api.indexing import indexing_router
@@ -88,7 +87,6 @@ app.include_router(events)
 app.include_router(retrieval_router, prefix="/tri-thuc")
 app.include_router(embedding_router, prefix="/tri-thuc/bieu-dien-vector")
 app.include_router(indexing_router, prefix="/tri-thuc")
-app.include_router(cache_router, prefix="/tri-thuc/bo-nho-dem")
 app.include_router(projects_router, prefix="/tri-thuc")
 
 

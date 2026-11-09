@@ -7,7 +7,6 @@ from typing import Literal, Optional
 from loguru import logger
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from src.repositories.agent import AgentRepository
 from src.utils.background import create_background_task
 
 
@@ -152,7 +151,7 @@ class AgentMetrics:
                     else 0
                 ),
             }
-            await AgentRepository.insert_trace(doc)
+            await db["agent_traces"].insert_one(doc)
             logger.info("Saved session history")
         except Exception:
             logger.exception("Error saving session history")

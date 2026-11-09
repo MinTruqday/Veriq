@@ -13,7 +13,3 @@ class SecurityEvaluation(SecurityOutput):
         max_length=200000,
     )
     reason: str = Field(max_length=2000)
-
-
-class JailbreakCheck(SecurityOutput):
-    is_jailbreak: bool

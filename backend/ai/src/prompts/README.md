@@ -1,6 +1,6 @@
 # Bản đồ prompt của AI
 
-Đây là mục lục sở hữu prompt, không phải nơi chứa prompt dùng chung. Mỗi module chức năng giữ nội dung của nó; các tệp `agents.py`, `catalog.py`, `requirements.py` và `structured.py` chỉ còn xuất lại tên cũ để tránh làm gãy import.
+Đây là mục lục sở hữu prompt, không phải nơi chứa prompt dùng chung. Mỗi module chức năng giữ nội dung của nó; import phải trỏ trực tiếp tới module sở hữu prompt.
 
 ## Luồng AI Agent do người dùng khởi chạy
 
@@ -20,10 +20,10 @@
 | `skill_profile.py` | `build_skill_profile_extraction_prompt` | `services/skill_profile_extraction.py` | Trích kỹ năng/kinh nghiệm CV có dẫn chứng; giữ thời gian đúng nguyên văn khi có, không suy ra mức thành thạo hay số năm |
 | `staffing_recommendation.py` | `build_staffing_recommendation_prompt` | `services/staffing_recommendation.py` | Xếp thứ tự ứng viên đủ điều kiện từ vai trò, kỹ năng, kinh nghiệm, khả dụng và tải việc; lương/đơn giá chỉ được tính riêng ở backend tài chính, không gửi cho mô hình |
 | `defect_analysis.py` | `causal_hypothesis_instruction` | `tools/execution_workflows.py` | Tạo giả thuyết defect, không khẳng định nguyên nhân đã xác nhận |
-| `requirement_analysis.py` | `requirement_quality_analysis_instruction` | `testing/modules/requirements/services/requirement_ai.py` qua `tools/requirement_change_workflow.py` | Đánh giá tự động Requirement khi có sự kiện thay đổi; UI chỉ đọc kết quả |
+| `requirement_analysis.py` | `requirement_quality_analysis_instruction` | `testing/modules/requirements/services/requirement_ai.py` qua `tools/requirement_change_workflow.py` | Rà chất lượng Requirement trong workflow được khởi chạy bởi Agent; sự kiện độc lập không tự khởi chạy lượt AI |
 | `prompt_data.py` | `prompt_json` | Các prompt có đầu vào động | Tuần tự hóa JSON và escape dấu đóng thẻ trước khi nhúng dữ liệu vào prompt |
 
-`automation_events.py` còn giữ các objective cũ, gồm `performance_configuration_approved_objective`, `status_report_created_objective` và `test_completion_report_created_objective`, để tương thích mã/lịch sử. Bộ điều phối hiện tại không khởi chạy các objective này từ sự kiện miền.
+`automation_events.py` chứa objective cho các nhiệm vụ con của lượt Agent có `user_requested=true`. Bản thân sự kiện miền không tự khởi chạy lượt AI.
 
 ## Requirements và kiểm thử
 

@@ -57,46 +57,4 @@ class MongoClient:
     async def count_documents(self, collection: str, filter: dict | None = None):
         return await self.get_db()[collection].count_documents(filter or {})
 
-    def query(self, collection: str):
-        return QueryBuilder(self, collection)
-
-
-class QueryBuilder:
-    def __init__(self, client, collection: str):
-        self.client = client
-        self.collection = collection
-        self._query = {}
-        self._sort = None
-        self._skip = 0
-        self._limit = 0
-
-    def filter(self, query: dict):
-        self._query = query
-        return self
-
-    def sort(self, *args):
-        if len(args) == 2 and isinstance(args[0], str):
-            self._sort = [args]
-        else:
-            self._sort = args[0]
-        return self
-
-    def skip(self, s: int):
-        self._skip = s
-        return self
-
-    def limit(self, limit_value: int):
-        self._limit = limit_value
-        return self
-
-    async def execute(self):
-        cursor = self.client.find(
-            self.collection, self._query, sort=self._sort, skip=self._skip, limit=self._limit
-        )
-        return await cursor.to_list(length=None)
-
-    def __await__(self):
-        return self.execute().__await__()
-
-
 mongo = MongoClient()

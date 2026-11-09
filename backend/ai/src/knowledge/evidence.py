@@ -22,9 +22,19 @@ def deduplicate(items):
 
 def package(project_id, query, items, degraded_flags=None, limit=100):
     scoped = [item for item in items if item.project_id == project_id]
+    ranked_by_source = {}
+    for item in scoped:
+        ranked_by_source.setdefault(item.source, []).append(item)
+    normalized = []
+    for source_items in ranked_by_source.values():
+        source_items.sort(key=lambda item: item.score, reverse=True)
+        normalized.extend(
+            item.model_copy(update={"score": 1 / rank})
+            for rank, item in enumerate(source_items, start=1)
+        )
     return EvidencePackage(
         project_id=project_id,
         query=query,
-        items=deduplicate(scoped)[:limit],
+        items=deduplicate(normalized)[:limit],
         degraded_flags=list(dict.fromkeys(degraded_flags or [])),
     )
