@@ -531,3 +531,28 @@ class TestabilityBenchmarkDataset(BaseModel):
     updated_by: str | None = None
     cases: list[TestabilityBenchmarkGoldCase]
     answer_key_review: TestabilityBenchmarkAnswerKeyReview | None = None
+
+
+class TestabilityPipelineStageRunRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=200)
+    requirement_version_id: str = Field(min_length=1, max_length=200)
+    stage: Literal["TEST_PLAN", "TEST_SCENARIO", "TEST_CASE"]
+    mode: Literal["INDEPENDENT", "END_TO_END"]
+    upstream_context: dict = Field(default_factory=dict)
+    gold_items: list[dict] = Field(min_length=1, max_length=200)
+    candidate_items: list[str] = Field(min_length=1, max_length=200)
+    generation_metadata: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_pipeline_items(self):
+        if any(
+            not isinstance(item, dict)
+            or not str(item.get("label") or "").strip()
+            or not isinstance(item.get("keywords"), list)
+            or not [str(value).strip() for value in item.get("keywords", []) if str(value).strip()]
+            for item in self.gold_items
+        ):
+            raise ValueError("pipeline_benchmark_gold_items_require_label_and_keywords")
+        if any(not str(item).strip() for item in self.candidate_items):
+            raise ValueError("pipeline_benchmark_candidate_items_must_not_be_empty")
+        return self

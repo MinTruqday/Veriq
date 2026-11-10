@@ -5,6 +5,7 @@ import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
+import TestabilityPipelineBenchmarkPanel from "./TestabilityPipelineBenchmarkPanel";
 
 const benchmarkPath = "project:";
 
@@ -319,6 +320,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
 
   return (
     <div className="space-y-5">
+      <TestabilityPipelineBenchmarkPanel project={project} requirements={requirements} />
       {error && <ErrorState message={error} />}
       <Panel title="Đánh giá thực nghiệm trên yêu cầu đã duyệt">
         <div className="space-y-3 p-4 text-sm leading-6 text-ink-muted">

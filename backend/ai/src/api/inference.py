@@ -17,6 +17,7 @@ from src.schemas.evaluation import (
     TestabilityBenchmarkRepeatedReport,
     TestabilityBenchmarkReport,
     TestabilityBenchmarkRequest,
+    TestabilityPipelineStageRunRequest,
     benchmark_answer_key_review_covers_cases,
 )
 from src.schemas.inference_requests import (
@@ -34,6 +35,37 @@ from src.services.inference import (
 from src.services.testability_benchmark import testability_benchmark
 
 router = APIRouter(prefix="/suy-luan")
+
+
+@router.post("/danh-gia/pipeline/lan-chay", status_code=201)
+async def save_testability_pipeline_stage_run(
+    req: TestabilityPipelineStageRunRequest,
+    current_user: CurrentUser = Depends(require_system_admin),
+):
+    return await testability_benchmark_repository.save_pipeline_stage_run(
+        req, str(current_user.id)
+    )
+
+
+@router.get("/danh-gia/pipeline/lan-chay")
+async def list_testability_pipeline_stage_runs(
+    project_id: str = Query(min_length=1, max_length=200),
+    limit: int = Query(default=50, ge=1, le=100),
+    current_user: CurrentUser = Depends(require_system_admin),
+):
+    return await testability_benchmark_repository.list_pipeline_stage_runs(project_id, limit)
+
+
+@router.get("/danh-gia/pipeline/lan-chay/{run_id}")
+async def get_testability_pipeline_stage_run(
+    run_id: str,
+    project_id: str = Query(min_length=1, max_length=200),
+    current_user: CurrentUser = Depends(require_system_admin),
+):
+    report = await testability_benchmark_repository.get_pipeline_stage_run(project_id, run_id)
+    if not report:
+        raise HTTPException(status_code=404, detail={"code": "BENCHMARK_RUN_NOT_FOUND"})
+    return report
 
 
 def _require_scoreable_benchmark_dataset(cases):

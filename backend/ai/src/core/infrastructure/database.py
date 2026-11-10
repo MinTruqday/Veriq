@@ -177,6 +177,12 @@ async def setup_indexes():
                     name="benchmark_run_history",
                 ),
             ],
+            "testability_pipeline_benchmark_runs": [
+                IndexModel(
+                    [("project_id", ASCENDING), ("created_at", DESCENDING), ("_id", ASCENDING)],
+                    name="pipeline_benchmark_project_history",
+                ),
+            ],
             "document_ingestion_page_checkpoints": [
                 IndexModel(
                     [

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
+import unicodedata
 from typing import List
+from uuid import uuid4
 
 from pymongo.errors import DuplicateKeyError
 
@@ -17,6 +20,47 @@ from src.schemas.evaluation import (
 )
 
 
+def calculate_pipeline_stage_scores(gold_items: list[dict], candidate_items: list[str]) -> dict:
+    def normalize(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value.casefold())
+        return " ".join(re.sub(r"[^\w\s]", " ", normalized).split())
+
+    normalized_candidates = [normalize(item) for item in candidate_items]
+    matched_gold = []
+    for item in gold_items:
+        keywords = [normalize(value) for value in item["keywords"]]
+        if any(
+            keyword and any(keyword in candidate for candidate in normalized_candidates)
+            for keyword in keywords
+        ):
+            matched_gold.append(item["label"])
+    matched_candidate_count = sum(
+        any(
+            normalize(keyword) in candidate
+            for item in gold_items
+            for keyword in item["keywords"]
+            if normalize(keyword)
+        )
+        for candidate in normalized_candidates
+    )
+    precision = matched_candidate_count / len(candidate_items) if candidate_items else 0.0
+    recall = len(matched_gold) / len(gold_items) if gold_items else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if precision and recall else 0.0
+    return {
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1, 4),
+        "matched_gold_items": matched_gold,
+        "missed_gold_items": [item["label"] for item in gold_items if item["label"] not in matched_gold],
+        "candidate_count": len(candidate_items),
+        "gold_count": len(gold_items),
+        "matched_candidate_count": matched_candidate_count,
+        "duplicate_rate": round(
+            (len(candidate_items) - len(set(normalized_candidates))) / len(candidate_items), 4
+        ) if candidate_items else 0.0,
+    }
+
+
 class TestabilityBenchmarkRepository:
     @property
     def _collection(self):
@@ -25,6 +69,50 @@ class TestabilityBenchmarkRepository:
     @property
     def _runs(self):
         return database.mongodb[settings.AI_DB_NAME].testability_benchmark_runs
+
+    @property
+    def _pipeline_runs(self):
+        return database.mongodb[settings.AI_DB_NAME].testability_pipeline_benchmark_runs
+
+    async def save_pipeline_stage_run(self, payload, created_by: str) -> dict:
+        gold_items = payload.gold_items
+        candidate_items = payload.candidate_items
+        scores = calculate_pipeline_stage_scores(gold_items, candidate_items)
+        report = {
+            "run_id": str(uuid4()),
+            "project_id": payload.project_id,
+            "requirement_version_id": payload.requirement_version_id,
+            "stage": payload.stage,
+            "mode": payload.mode,
+            "upstream_context": payload.upstream_context,
+            "gold_items": gold_items,
+            "candidate_items": candidate_items,
+            "generation_metadata": payload.generation_metadata,
+            "scores": scores,
+            "created_by": created_by,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "scoring_method": "Human-authored keyword coverage; a keyword match is a lexical baseline, not semantic QA judgment.",
+        }
+        await self._pipeline_runs.insert_one({"_id": report["run_id"], **report})
+        return report
+
+    async def list_pipeline_stage_runs(self, project_id: str, limit: int = 50) -> list[dict]:
+        documents = await self._pipeline_runs.find(
+            {"project_id": project_id},
+            {"_id": 1, "requirement_version_id": 1, "stage": 1, "mode": 1,
+             "scores": 1, "generation_metadata": 1, "created_at": 1},
+        ).sort("created_at", -1).to_list(length=limit)
+        results = []
+        for item in documents:
+            run_id = str(item.pop("_id"))
+            results.append({"run_id": run_id, **item})
+        return results
+
+    async def get_pipeline_stage_run(self, project_id: str, run_id: str) -> dict | None:
+        document = await self._pipeline_runs.find_one(
+            {"_id": run_id, "project_id": project_id}, {"_id": 0}
+        )
+        return document
 
     async def create(
         self, payload: TestabilityBenchmarkDatasetCreate, created_by: str
