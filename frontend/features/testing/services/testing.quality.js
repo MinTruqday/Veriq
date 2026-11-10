@@ -281,5 +281,4 @@ export const qualityTestingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-
 };

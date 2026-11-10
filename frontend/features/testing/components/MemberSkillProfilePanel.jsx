@@ -191,7 +191,8 @@ export default function MemberSkillProfilePanel({ projectId }) {
                 />
                 {(skill.source_block_id || skill.source_page_no) && (
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    Có dẫn chứng nguồn{skill.source_page_no ? `, trang ${skill.source_page_no}` : ""}
+                    Có dẫn chứng nguồn
+                    {skill.source_page_no ? `, trang ${skill.source_page_no}` : ""}
                   </span>
                 )}
               </label>

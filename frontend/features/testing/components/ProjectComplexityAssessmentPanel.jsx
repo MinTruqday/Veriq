@@ -141,8 +141,6 @@ function AssessmentResult({ projectId, result }) {
             Đã xét {gaps.current_ai_readable_documents || 0} tài liệu được phép dùng AI và{" "}
             {gaps.baselined_requirements || 0} yêu cầu đã duyệt.
           </p>
-            </div>
-          )}
           {Object.values(gaps.excluded_sources || {}).some((count) => Number(count) > 0) && (
             <p className="text-[12px] text-ink-muted">
               Nguồn chưa đưa vào đánh giá:{" "}
