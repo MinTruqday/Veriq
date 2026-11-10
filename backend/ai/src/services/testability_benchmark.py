@@ -35,16 +35,6 @@ from src.services.testability_blueprint import compile_testability_blueprint
 class TestabilityBenchmarkService:
     """Score compiler outputs against caller-supplied experimental answer keys."""
 
-    SYNTHETIC_DATASET_ID = "veriq-synthetic-testability-v2"
-    SYNTHETIC_DATASET_IDS = (
-        SYNTHETIC_DATASET_ID,
-        "veriq-synthetic-testability-v1",
-    )
-    SYNTHETIC_PIPELINE_NAMES = (
-        "compiler",
-        "direct_generation",
-        "clarification_without_obligation_planning",
-    )
     PAIRED_BOOTSTRAP_RESAMPLES = 10000
 
     @classmethod
@@ -100,244 +90,6 @@ class TestabilityBenchmarkService:
             "confidence_level": 0.95,
             "resamples": cls.PAIRED_BOOTSTRAP_RESAMPLES,
             "scope": "Biến động khi lấy mẫu lại các ca trong chính bộ dữ liệu này; không đo biến động giữa các lần gọi mô hình và không xác nhận answer key.",
-        }
-
-    @classmethod
-    def synthetic_cases(cls):
-        complete_sources = (
-            "AC-01: Khi email và mật khẩu hợp lệ, hệ thống tạo phiên đăng nhập.",
-            "AC-02: Khi mật khẩu không hợp lệ, hệ thống từ chối đăng nhập.",
-            "AC-03: Khi tài khoản bị khóa, hệ thống không tạo phiên đăng nhập.",
-            "AC-04: Khi liên kết đặt lại mật khẩu đã hết hạn, hệ thống từ chối yêu cầu.",
-            "AC-05: Khi giỏ hàng rỗng, hệ thống không cho tạo đơn hàng.",
-            "AC-06: Khi thanh toán được chấp thuận, đơn hàng chuyển sang trạng thái Đã thanh toán.",
-            "AC-07: Khi thanh toán bị từ chối, đơn hàng giữ trạng thái Chưa thanh toán.",
-            "AC-08: Hệ thống từ chối cập nhật giỏ hàng nếu số lượng sản phẩm bằng 0.",
-            "AC-09: Người dùng không có quyền quản trị không được xem trang quản trị.",
-            "AC-10: Gửi lại cùng mã yêu cầu thanh toán không tạo thêm giao dịch thứ hai.",
-        )
-        missing_sources = (
-            (
-                "Hệ thống xử lý yêu cầu theo cách phù hợp.",
-                ["AMBIGUITY"],
-                ["AMBIGUITY"],
-            ),
-            (
-                "Người dùng có thể cập nhật địa chỉ giao hàng.",
-                ["MISSING_ACCEPTANCE_CRITERIA"],
-                ["MISSING_ACCEPTANCE_CRITERIA"],
-            ),
-            (
-                "Số lần thử đăng nhập không được vượt quá giới hạn; sau khi vượt giới hạn, tài khoản bị xử lý.",
-                ["MISSING_BOUNDARY", "MISSING_STATE_RULE"],
-                ["MISSING_BOUNDARY", "MISSING_STATE_RULE"],
-            ),
-            (
-                "Khi mã thanh toán không hợp lệ, hệ thống xử lý giao dịch và cập nhật đơn hàng.",
-                ["MISSING_ERROR_BEHAVIOR", "MISSING_STATE_RULE"],
-                ["MISSING_ERROR_BEHAVIOR", "MISSING_STATE_RULE"],
-            ),
-            (
-                "Nhân viên có thể xem báo cáo khi được cấp quyền.",
-                ["MISSING_PERMISSION_RULE", "MISSING_ACCEPTANCE_CRITERIA"],
-                ["MISSING_PERMISSION_RULE", "MISSING_ACCEPTANCE_CRITERIA"],
-            ),
-            (
-                "Đơn hàng được cập nhật sau khi thanh toán; nếu thanh toán thất bại thì hệ thống xử lý phù hợp.",
-                ["MISSING_STATE_RULE", "MISSING_ERROR_BEHAVIOR"],
-                ["MISSING_STATE_RULE", "MISSING_ERROR_BEHAVIOR"],
-            ),
-            (
-                "Mã khách hàng phải hợp lệ trước khi lưu hồ sơ; hệ thống phản hồi khi mã không hợp lệ.",
-                ["MISSING_DATA_RULE", "MISSING_ERROR_BEHAVIOR"],
-                ["MISSING_DATA_RULE", "MISSING_ERROR_BEHAVIOR"],
-            ),
-            (
-                "Kết quả tìm kiếm phải được trả về nhanh.",
-                ["MISSING_NON_FUNCTIONAL_CRITERIA"],
-                ["MISSING_NON_FUNCTIONAL_CRITERIA"],
-            ),
-            (
-                "Trải nghiệm sử dụng cần thân thiện.",
-                ["UNTESTABLE"],
-                ["UNTESTABLE"],
-            ),
-            (
-                "Người dùng có thể yêu cầu khôi phục mật khẩu.",
-                ["OMISSION", "MISSING_ACCEPTANCE_CRITERIA"],
-                ["OMISSION", "MISSING_ACCEPTANCE_CRITERIA"],
-            ),
-        )
-        duplicate_sources = (
-            "AC-11: Hệ thống gửi email xác nhận sau khi tạo tài khoản thành công.",
-            "AC-12: Khi người dùng đăng xuất, hệ thống kết thúc phiên hiện tại.",
-            "AC-13: Hệ thống từ chối lưu biểu mẫu khi trường bắt buộc còn trống.",
-            "AC-14: Người dùng chỉ xem được hồ sơ thuộc tài khoản của mình.",
-            "AC-15: Khi mã xác minh còn hiệu lực, hệ thống chấp nhận mã đó.",
-        )
-        conflict_sources = (
-            (
-                "SRS: Mã xác minh có hiệu lực trong 5 phút.",
-                "API Definition: Mã xác minh có hiệu lực trong 10 phút.",
-            ),
-            (
-                "SRS: Hệ thống khóa tài khoản sau 3 lần đăng nhập sai.",
-                "Quy tắc vận hành: Hệ thống khóa tài khoản sau 5 lần đăng nhập sai.",
-            ),
-            (
-                "SRS: Số lượng đặt hàng tối đa là 20 sản phẩm.",
-                "API Definition: Số lượng đặt hàng tối đa là 25 sản phẩm.",
-            ),
-            (
-                "SRS: Phiên đăng nhập hết hạn sau 30 phút không hoạt động.",
-                "Quy tắc vận hành: Phiên đăng nhập hết hạn sau 60 phút không hoạt động.",
-            ),
-            (
-                "SRS: Mã giảm giá được áp dụng một lần cho mỗi đơn hàng.",
-                "API Definition: Mã giảm giá được áp dụng tối đa hai lần cho mỗi đơn hàng.",
-            ),
-        )
-        cases = []
-        instruction = "Phân tích nội dung nguồn, giữ nguyên bằng chứng và không suy đoán dữ liệu còn thiếu."
-
-        for index, quote in enumerate(complete_sources, start=1):
-            case_id = f"SYN-COMPLETE-{index:02d}"
-            source_ref = f"{case_id}-SOURCE-V1"
-            obligation_key = f"{case_id}-OBLIGATION-01"
-            cases.append(TestabilityBenchmarkGoldCase(
-                case_id=case_id,
-                scenario_family="COMPLETE",
-                task_instruction=instruction,
-                sources=[{
-                    "source_id": f"{case_id}-SOURCE",
-                    "artifact_type": "requirement",
-                    "artifact_version_id": source_ref,
-                    "authority": "synthetic_rule_oracle",
-                    "text": quote,
-                }],
-                expected_source_quotes=[quote],
-                expected_source_quote_sources={quote: [source_ref]},
-                expected_obligation_keys=[obligation_key],
-                expected_obligation_sources={obligation_key: quote},
-                expected_obligation_source_refs={obligation_key: source_ref},
-            ))
-
-        for index, (quote, categories, priorities) in enumerate(missing_sources, start=1):
-            case_id = f"SYN-MISSING-{index:02d}"
-            cases.append(TestabilityBenchmarkGoldCase(
-                case_id=case_id,
-                scenario_family="MISSING_OR_AMBIGUOUS",
-                task_instruction=instruction,
-                sources=[{
-                    "source_id": f"{case_id}-SOURCE",
-                    "artifact_type": "requirement",
-                    "artifact_version_id": f"{case_id}-SOURCE-V1",
-                    "authority": "synthetic_rule_oracle",
-                    "text": quote,
-                }],
-                expected_source_quotes=[quote],
-                expected_source_quote_sources={quote: [f"{case_id}-SOURCE-V1"]},
-                expected_clarification_categories=categories,
-                expected_clarification_priorities=priorities,
-            ))
-
-        for index, quote in enumerate(duplicate_sources, start=1):
-            case_id = f"SYN-DUPLICATE-{index:02d}"
-            obligation_key = f"{case_id}-OBLIGATION-01"
-            cases.append(TestabilityBenchmarkGoldCase(
-                case_id=case_id,
-                scenario_family="DUPLICATE_OR_CONFLICT",
-                task_instruction=instruction,
-                sources=[
-                    {
-                        "source_id": f"{case_id}-SRS",
-                        "artifact_type": "requirement",
-                        "artifact_version_id": f"{case_id}-SRS-V1",
-                        "authority": "synthetic_rule_oracle",
-                        "text": quote,
-                    },
-                    {
-                        "source_id": f"{case_id}-API",
-                        "artifact_type": "api_definition",
-                        "artifact_version_id": f"{case_id}-API-V1",
-                        "authority": "synthetic_rule_oracle",
-                        "text": quote,
-                    },
-                ],
-                expected_source_quotes=[quote],
-                expected_source_quote_sources={
-                    quote: [f"{case_id}-SRS-V1", f"{case_id}-API-V1"]
-                },
-                expected_obligation_keys=[obligation_key],
-                expected_obligation_sources={obligation_key: quote},
-            ))
-
-        for index, (first_quote, second_quote) in enumerate(conflict_sources, start=1):
-            case_id = f"SYN-CONFLICT-{index:02d}"
-            cases.append(TestabilityBenchmarkGoldCase(
-                case_id=case_id,
-                scenario_family="DUPLICATE_OR_CONFLICT",
-                task_instruction=instruction,
-                sources=[
-                    {
-                        "source_id": f"{case_id}-SRS",
-                        "artifact_type": "requirement",
-                        "artifact_version_id": f"{case_id}-SRS-V1",
-                        "authority": "synthetic_rule_oracle",
-                        "text": first_quote,
-                    },
-                    {
-                        "source_id": f"{case_id}-API",
-                        "artifact_type": "api_definition",
-                        "artifact_version_id": f"{case_id}-API-V1",
-                        "authority": "synthetic_rule_oracle",
-                        "text": second_quote,
-                    },
-                ],
-                expected_source_quotes=[first_quote, second_quote],
-                expected_source_quote_sources={
-                    first_quote: [f"{case_id}-SRS-V1"],
-                    second_quote: [f"{case_id}-API-V1"],
-                },
-                expected_clarification_categories=["CONTRADICTION"],
-                expected_clarification_priorities=["CONTRADICTION"],
-            ))
-
-        cls.validate_cases_for_scoring(cases)
-        return cases
-
-    @classmethod
-    def synthetic_benchmark_design(cls):
-        return {
-            "dataset_kind": "SYNTHETIC_DETERMINISTIC",
-            "dataset_id": cls.SYNTHETIC_DATASET_ID,
-            "case_count": 30,
-            "scenario_families": {
-                "COMPLETE": 10,
-                "MISSING_OR_AMBIGUOUS": 10,
-                "DUPLICATE_OR_CONFLICT": 10,
-            },
-            "oracle_method": (
-                "Answer keys are generated by fixed scenario construction rules: explicit behavior yields one obligation; "
-                "constructed omissions yield the listed clarification categories and explicit synthetic priority order; "
-                "repeated source text yields one obligation; opposing source statements yield CONTRADICTION. "
-                "Priority order is authored for these synthetic examples, not independently reviewed real-world ground truth."
-            ),
-            "pipelines": list(cls.SYNTHETIC_PIPELINE_NAMES),
-            "requested_repetitions": 3,
-            "metrics": [
-                "source quote validity and quote precision/recall",
-                "exact source-version citation precision/recall when the oracle maps quote sources",
-                "obligation precision/recall with source-version grounding",
-                "clarification-category precision/recall and priority NDCG",
-                "pipeline acceptance, rejection, failure, and latency",
-            ],
-            "limitations": [
-                "Synthetic cases verify execution and compare behavior on these constructed scenarios only.",
-                "Synthetic multi-issue cases exercise ranking metrics, but their priority labels are authored examples rather than independent expert adjudication.",
-                "Three repetitions are descriptive and do not establish statistical significance.",
-                "No result from this dataset establishes production correctness, generalization, or superiority.",
-            ],
         }
 
     @staticmethod
@@ -1572,14 +1324,10 @@ class TestabilityBenchmarkService:
             )
             if any(case.scenario_family == family for case in cases)
         }
-        report.benchmark_design = (
-            self.synthetic_benchmark_design()
-            if dataset_id == self.SYNTHETIC_DATASET_ID
-            else {
-                "answer_key_basis": "caller_supplied_case_answer_key",
-                "interpretation": "Descriptive only; not a correctness or superiority guarantee.",
-            }
-        )
+        report.benchmark_design = {
+            "answer_key_basis": "independently_reviewed_caller_supplied_answer_key",
+            "interpretation": "Mô tả kết quả trên bộ dữ liệu và đáp án tham chiếu đã cung cấp; không tự chứng minh tính đúng tổng quát.",
+        }
         report.pipeline_metadata = {
             "provider": model_metadata().get("provider"),
             "model": model_metadata().get("model"),
@@ -1601,38 +1349,6 @@ class TestabilityBenchmarkService:
             "Live testability benchmark completed run_id={} dataset_id={} cases={} pipeline_failures={}",
             run_id, dataset_id, report.total_cases, len(failures),
         )
-        return report
-
-    async def run_synthetic_benchmark(self, repetitions=3, on_report=None):
-        if repetitions != 3:
-            raise ValueError("SYNTHETIC_BENCHMARK_REQUIRES_THREE_REPETITIONS")
-        cases = self.synthetic_cases()
-        design = self.synthetic_benchmark_design()
-
-        async def annotate_and_save(report):
-            report.benchmark_design = design
-            report.scenario_family_counts = {
-                family: sum(case.scenario_family == family for case in cases)
-                for family in (
-                    "COMPLETE",
-                    "MISSING_OR_AMBIGUOUS",
-                    "DUPLICATE_OR_CONFLICT",
-                )
-            }
-            report.pipeline_metadata = {
-                **report.pipeline_metadata,
-                "benchmark_design": design,
-            }
-            if on_report is not None:
-                await on_report(report)
-
-        report = await self.run_repeated_dataset(
-            self.SYNTHETIC_DATASET_ID,
-            cases,
-            repetitions=repetitions,
-            on_report=annotate_and_save,
-        )
-        report.benchmark_design = design
         return report
 
     async def run_repeated_dataset(

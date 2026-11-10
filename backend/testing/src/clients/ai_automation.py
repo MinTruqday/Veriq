@@ -54,6 +54,21 @@ def _requirement_version_is_baselined(version: dict) -> bool:
 
 
 class AIAutomationClient:
+    async def evaluate_blueprint_against_reference(self, sources: list[dict], blueprint: dict) -> dict:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"{settings.AI_URL.rstrip('/')}/suy-luan/noi-bo/danh-gia/blueprint",
+                headers={"X-Internal-Token": settings.SECRET_KEY},
+                json={"sources": sources, "blueprint": blueprint},
+            )
+            response.raise_for_status()
+        value = response.json()
+        if not isinstance(value, dict) or value.get("assessment_type") not in {
+            "NOT_AVAILABLE", "INDEPENDENT_REFERENCE"
+        }:
+            raise RuntimeError("BLUEPRINT_BENCHMARK_RESPONSE_INVALID")
+        return value
+
     async def summarize_knowledge_text(self, text: str, output_language: str) -> str:
         async with httpx.AsyncClient(timeout=300) as client:
             response = await client.post(

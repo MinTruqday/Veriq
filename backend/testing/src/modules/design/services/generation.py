@@ -7,12 +7,14 @@ from pydantic import ValidationError
 
 from src.core.ai_automation import request_ai_automation
 from src.core.common import plain_text
+from src.core.database import database
 from src.core.rich_text import text_document
 from src.modules.design.services.linters import duplicate_score
 from src.modules.design.services.test_case_records import active_suite_signature, comparison_cases
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.test_design import test_design_repository
 from src.repositories.test_strategy import test_strategy_repository
+from src.repositories.test_analysis import test_analysis_repository
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import ScenarioCreate, TestCaseDraftCreate
 from src.schemas.test_analysis import GeneratedCase
@@ -299,6 +301,88 @@ async def generate_requirement_drafts(
         }
         for item in criteria
     )
+    saved_blueprint = await test_analysis_repository.find_latest_blueprint(
+        version["project_id"], version["_id"]
+    )
+    blueprint_context = None
+    if saved_blueprint:
+        value = saved_blueprint.get("testability_blueprint") or {}
+        blueprint_context = {
+            "requirement_version_id": version["_id"],
+            "created_at": saved_blueprint.get("created_at"),
+            "obligations": [
+                {
+                    "key": str(item.get("key") or ""),
+                    "obligation": str(item.get("obligation") or "")[:180],
+                }
+                for item in value.get("obligations", [])[:6]
+            ],
+            "clarifications": [
+                {
+                    "code": str(item.get("code") or ""),
+                    "question": str(item.get("question") or "")[:150],
+                }
+                for item in value.get("clarifications", [])[:3]
+            ],
+        }
+    related_context = None
+    if scenario:
+        cursor = database.value.test_plans.find(
+            {
+                "project_id": version["project_id"],
+                "status": "APPROVED",
+                "requirement_version_ids": version["_id"],
+            },
+            {
+                "_id": 1,
+                "status": 1,
+                "approved_snapshot": 1,
+                "approved_snapshot_hash": 1,
+                "baseline_hash": 1,
+                "device_matrix_id": 1,
+            },
+        ).sort("updated_at", -1).limit(5)
+        for plan in await cursor.to_list(5):
+            from src.modules.execution.services.test_plan import verified_approved_plan_snapshot
+
+            try:
+                snapshot, digest = verified_approved_plan_snapshot(plan, version["project_id"])
+            except HTTPException:
+                continue
+            related_context = {
+                "type": "approved_test_plan",
+                "plan_id": plan["_id"],
+                "snapshot_hash": digest,
+                "objective": snapshot.get("objective"),
+                "scope_in": snapshot.get("scope_in", [])[:20],
+                "scope_out": snapshot.get("scope_out", [])[:20],
+                "test_approach": snapshot.get("test_approach"),
+                "risks": snapshot.get("risks", [])[:20],
+            }
+            break
+    else:
+        scenarios = await database.value.test_scenarios.find(
+            {
+                "project_id": version["project_id"],
+                "status": "approved",
+                "requirement_version_ids": version["_id"],
+            },
+            {"_id": 1, "title": 1, "category": 1, "objective": 1, "acceptance_criterion_ids": 1},
+        ).sort("updated_at", -1).limit(8).to_list(8)
+        if scenarios:
+            related_context = {
+                "type": "approved_test_scenarios",
+                "items": [
+                    {
+                        "scenario_id": item["_id"],
+                        "title": item.get("title"),
+                        "category": item.get("category"),
+                        "objective": item.get("objective"),
+                        "acceptance_criterion_ids": item.get("acceptance_criterion_ids", []),
+                    }
+                for item in scenarios
+                ],
+            }
     source_text_by_ref = {item["artifact_version_id"]: item["text"] for item in evidence}
     challenge_cases = {}
     challenge_similarity_threshold = None
@@ -340,6 +424,14 @@ async def generate_requirement_drafts(
             "allowed_acceptance_criterion_ids": [item["_id"] for item in criteria],
             "challenge_hypotheses": [item.model_dump() for item in payload.challenge_hypotheses],
             "project_risk_assessment_policy": risk_policy,
+            "saved_testability_blueprint": blueprint_context,
+            "upstream_approved_context": related_context,
+            "consistency_rules": [
+                "Requirement version and its acceptance criteria are authoritative.",
+                "Use saved Blueprint and upstream approved context to check consistency; do not rerun or recreate them.",
+                "If generated content conflicts with an upstream approved source or a Blueprint obligation/clarification, do not silently choose a side. Preserve source-grounded output and report the conflict in warnings for the user to resolve.",
+                "Cite only Requirement and acceptance-criterion evidence references in generated cases.",
+            ],
             "user_instruction": payload.instruction,
         },
         ensure_ascii=False,
@@ -597,4 +689,18 @@ async def generate_requirement_drafts(
     requested_categories = Counter({category: payload.count_per_category for category in categories})
     generated_categories = Counter(item.category for item in generated)
     result["unapplied_categories"] = [category for category, requested_count in requested_categories.items() if generated_categories[category] < requested_count]
+    missing_context_warnings = []
+    if not blueprint_context:
+        missing_context_warnings.append(
+            "Chưa có Blueprint đã lưu cho đúng phiên bản yêu cầu; bản xem trước chỉ dùng nguồn yêu cầu và tiêu chí chấp nhận."
+        )
+    if not related_context:
+        missing_context_warnings.append(
+            "Chưa có tài sản ở bước trước đã duyệt để đối chiếu nhất quán trong lượt tạo này."
+        )
+    if missing_context_warnings:
+        result["warnings"] = list(dict.fromkeys([
+            *(result.get("warnings") or []),
+            *missing_context_warnings,
+        ]))
     return drafts, result

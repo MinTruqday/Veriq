@@ -13,6 +13,7 @@ from src.core.auth import (
     responsibility_allows,
     roles_for_membership,
 )
+from src.clients.ai_automation import ai_automation_client
 from src.core.common import audit, get_project, new_id, next_key, now, page_payload
 from src.core.database import database
 from src.core.ai_automation import ai_contract_metadata, request_ai_automation
@@ -196,49 +197,6 @@ def _automation_instruction(value):
             detail={"code": "BLUEPRINT_INSTRUCTION_LIMIT_EXCEEDED", "retryable": False},
         )
     return serialized
-
-
-async def _run_blueprint_review(project_id, blueprint, evidence, source_text_by_ref):
-    review_result = await request_ai_automation(
-        "testability_blueprint_self_review",
-        project_id,
-        _automation_instruction(
-            {"blueprint": _bounded_blueprint_context(blueprint)},
-        ),
-        evidence,
-    )
-    if review_result.get("status") != "SUCCESS" or review_result.get("degraded_mode"):
-        raise HTTPException(
-            503,
-            detail={"code": "BLUEPRINT_SELF_REVIEW_UNAVAILABLE", "retryable": True},
-        )
-    review = {
-        key: review_result.get(key)
-        for key in ("summary", "findings", "improvement_suggestions", "warnings")
-    }
-    if (
-        not isinstance(review["summary"], str)
-        or not isinstance(review["findings"], list)
-        or not isinstance(review["improvement_suggestions"], list)
-    ):
-        raise HTTPException(502, detail={"code": "BLUEPRINT_SELF_REVIEW_INVALID"})
-    allowed_refs = set(source_text_by_ref)
-    known_items = {
-        str(item.get("key") or "") for item in blueprint.get("obligations", [])
-    } | {str(item.get("code") or "") for item in blueprint.get("clarifications", [])}
-    for finding in review["findings"]:
-        if (
-            not isinstance(finding, dict)
-            or (
-                str(finding.get("item_ref") or "") not in known_items
-                and not str(finding.get("item_ref") or "").startswith("GAP:")
-            )
-            or not isinstance(finding.get("evidence_refs"), list)
-            or not finding["evidence_refs"]
-            or any(str(ref) not in allowed_refs for ref in finding["evidence_refs"])
-        ):
-            raise HTTPException(502, detail={"code": "BLUEPRINT_SELF_REVIEW_INVALID"})
-    return review, review_result
 
 
 async def _compile_user_blueprint(project_id, evidence, source_text_by_ref, instruction=""):
@@ -634,8 +592,6 @@ async def run_ai_analysis(project_id, payload, user):
         for item in basis_snapshots
     ]
     testability_blueprint = None
-    blueprint_before_review = None
-    blueprint_self_review = None
     blueprint_contracts = {}
     if payload.testability_mode != "OFF":
         blueprint_evidence, source_text_by_ref = _blueprint_evidence(basis_snapshots)
@@ -646,45 +602,33 @@ async def run_ai_analysis(project_id, payload, user):
             payload.instruction,
         )
         blueprint_contracts["compilation"] = ai_contract_metadata(compilation_result)
-        if payload.testability_mode == "BLUEPRINT_SELF_REVIEW":
-            blueprint_before_review = testability_blueprint
-            blueprint_self_review, review_result = await _run_blueprint_review(
-                project_id,
-                testability_blueprint,
-                blueprint_evidence,
-                source_text_by_ref,
-            )
-            blueprint_contracts["self_review"] = ai_contract_metadata(review_result)
-            suggestions = list(blueprint_self_review.get("improvement_suggestions") or [])
-            suggestions.extend(
-                str(item.get("suggested_change") or "")
-                for item in blueprint_self_review.get("findings") or []
-                if item.get("suggested_change")
-            )
-            if suggestions:
-                refinement_instruction = _automation_instruction(
-                    {
-                        "task": "Revise the draft blueprint using only these review suggestions and the cited source evidence. Keep supported content, do not invent behavior, and preserve source citations.",
-                        "current_blueprint": _bounded_blueprint_context(testability_blueprint),
-                        "improvement_suggestions": list(dict.fromkeys(suggestions))[:50],
-                    }
+        if payload.testability_mode == "BLUEPRINT_BENCHMARK":
+            try:
+                blueprint_contracts["benchmark"] = await ai_automation_client.evaluate_blueprint_against_reference(
+                    [
+                        {
+                            "source_id": str(item.get("artifact_id") or item.get("resolved_id") or ""),
+                            "artifact_type": str(item.get("artifact_type") or "requirement_version"),
+                            "artifact_version_id": str(item.get("artifact_version_id") or item.get("resolved_id") or ""),
+                            "authority": "APPROVED_SOURCE",
+                            "text": str(item.get("text") or ""),
+                        }
+                        for item in basis_snapshots
+                        if item.get("text")
+                    ],
+                    testability_blueprint,
                 )
-                testability_blueprint, refinement_result = await _compile_user_blueprint(
-                    project_id,
-                    blueprint_evidence,
-                    source_text_by_ref,
-                    refinement_instruction,
-                )
-                blueprint_contracts["refinement"] = ai_contract_metadata(refinement_result)
+            except Exception:
+                blueprint_contracts["benchmark"] = {
+                    "assessment_type": "NOT_AVAILABLE",
+                    "independently_validated": False,
+                    "reason": "Không thể truy cập bộ tham chiếu Benchmark; Blueprint vẫn được lưu và sử dụng.",
+                }
     generation_instruction = {"user_instruction": payload.instruction}
     if testability_blueprint is not None:
         generation_instruction["testability_blueprint"] = _bounded_blueprint_context(
             testability_blueprint
         )
-        if blueprint_self_review is not None:
-            generation_instruction["blueprint_review_type"] = (
-                "AI_SELF_REVIEW_NOT_INDEPENDENT_BENCHMARK"
-            )
     instruction = (
         json.dumps(generation_instruction, ensure_ascii=False)
         if testability_blueprint is None
@@ -789,21 +733,6 @@ async def run_ai_analysis(project_id, payload, user):
         "candidates": candidates,
         "testability_mode": payload.testability_mode,
         "testability_blueprint": testability_blueprint,
-        "testability_blueprint_before_review": blueprint_before_review,
-        "blueprint_self_review": (
-            {
-                "assessment_type": "AI_SELF_REVIEW",
-                "independently_validated": False,
-                "summary": blueprint_self_review.get("summary"),
-                "findings": blueprint_self_review.get("findings", []),
-                "improvement_suggestions": blueprint_self_review.get(
-                    "improvement_suggestions", []
-                ),
-                "warnings": blueprint_self_review.get("warnings", []),
-            }
-            if blueprint_self_review is not None
-            else None
-        ),
         "blueprint_ai_metadata": blueprint_contracts,
         "basis_snapshots": basis_snapshots,
         "requirement_version_id": source_version_id if event_scoped else None,

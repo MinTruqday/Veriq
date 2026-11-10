@@ -19,6 +19,19 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { docText, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
+
+const blueprintMetricLabels = {
+  source_quote_validity: "Tính hợp lệ của trích dẫn",
+  source_quote_precision: "Độ chính xác trích dẫn nguồn (Precision)",
+  source_quote_recall: "Độ bao phủ trích dẫn nguồn (Recall)",
+  source_quote_source_precision: "Độ chính xác phiên bản nguồn (Precision)",
+  source_quote_source_recall: "Độ bao phủ phiên bản nguồn (Recall)",
+  obligation_precision: "Độ chính xác nghĩa vụ kiểm thử (Precision)",
+  obligation_recall: "Độ bao phủ nghĩa vụ kiểm thử (Recall)",
+  clarification_precision: "Độ chính xác câu hỏi làm rõ (Precision)",
+  clarification_recall: "Độ bao phủ câu hỏi làm rõ (Recall)",
+  clarification_priority_ndcg: "Điểm xếp hạng ưu tiên câu hỏi (NDCG)",
+};
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import SearchField from "@/shared/components/ui/SearchField";
 
@@ -589,19 +602,19 @@ export default function TestAnalysisPage({ project }) {
                       {[
                         {
                           value: "OFF",
-                          title: "Không dùng Blueprint hay tự rà soát",
+                          title: "Chỉ tạo đề xuất điều kiện kiểm thử",
                           description: "Chỉ tạo đề xuất điều kiện kiểm thử như hiện tại.",
                         },
                         {
                           value: "BLUEPRINT_ONLY",
-                          title: "Chỉ lập bản đồ kiểm thử",
+                          title: "Lập bản đồ điều kiện kiểm thử",
                           description: "Lập nghĩa vụ kiểm thử và câu hỏi làm rõ từ nguồn.",
                         },
                         {
-                          value: "BLUEPRINT_SELF_REVIEW",
-                          title: "Bản đồ kiểm thử + AI tự rà soát",
+                          value: "BLUEPRINT_BENCHMARK",
+                          title: "Lập bản đồ điều kiện kiểm thử và đánh giá thực nghiệm",
                           description:
-                            "Rà soát bản đồ rồi đề xuất bản cải thiện; không phải đánh giá chuẩn độc lập.",
+                            "Chỉ chấm khi có đáp án chuẩn độc lập khớp đúng nguồn; nếu chưa có, ghi rõ chưa thể đánh giá.",
                         },
                       ].map((option) => (
                         <label
@@ -724,73 +737,40 @@ export default function TestAnalysisPage({ project }) {
                     .filter((result) => result.testability_blueprint)
                     .map((result) => {
                       const blueprint = result.testability_blueprint;
-                      const review = result.blueprint_self_review;
                       return (
                         <details className="rounded-lg border border-border p-3" key={result._id}>
                           <summary className="cursor-pointer text-sm font-medium">
-                            {result.testability_mode === "BLUEPRINT_SELF_REVIEW"
-                              ? "Bản đồ kiểm thử + AI tự rà soát"
-                              : "Bản đồ kiểm thử"}
+                            {result.testability_mode === "BLUEPRINT_BENCHMARK"
+                              ? "Bản đồ điều kiện kiểm thử và đánh giá thực nghiệm"
+                              : "Bản đồ điều kiện kiểm thử"}
                             {result.created_at
                               ? ` · ${new Date(result.created_at).toLocaleString("vi-VN")}`
                               : ""}
                           </summary>
                           <div className="mt-3 space-y-4 text-sm">
-                            {review && (
-                              <section className="space-y-2 rounded-control bg-surface-quiet p-3">
-                                <p className="font-medium">
-                                  AI tự rà soát, không phải đánh giá chuẩn độc lập
+                            {result.blueprint_ai_metadata?.benchmark && (
+                              <section className="rounded-control bg-surface-quiet p-3 text-ink-muted">
+                                <p>
+                                  {result.blueprint_ai_metadata.benchmark.reason ||
+                                    "Đánh giá bằng bộ đáp án chuẩn độc lập."}
                                 </p>
-                                <p>{review.summary}</p>
-                                {review.findings?.length > 0 && (
-                                  <ul className="list-disc space-y-2 pl-5">
-                                    {review.findings.map((finding, index) => (
-                                      <li key={`${finding.item_ref}-${index}`}>
-                                        <strong>{finding.item_ref}:</strong> {finding.observation}
-                                        <span className="block text-ink-muted">
-                                          Đề xuất: {finding.suggested_change}
-                                        </span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                                {review.improvement_suggestions?.length > 0 && (
-                                  <div>
-                                    <p className="font-medium">
-                                      Đề xuất cải thiện đã gửi lại để lập bản đồ lần nữa
-                                    </p>
-                                    <ul className="list-disc pl-5 text-ink-muted">
-                                      {review.improvement_suggestions.map((suggestion, index) => (
-                                        <li key={`${index}-${suggestion}`}>{suggestion}</li>
+                                {result.blueprint_ai_metadata.benchmark.metrics && (
+                                  <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    {Object.entries(result.blueprint_ai_metadata.benchmark.metrics)
+                                      .filter(([, value]) => typeof value === "number")
+                                      .map(([metric, value]) => (
+                                        <div key={metric}>
+                                          <dt>
+                                            {blueprintMetricLabels[metric] || valueLabel(metric)}
+                                          </dt>
+                                          <dd className="font-medium text-ink">
+                                            {`${(value * 100).toFixed(1)}%`}
+                                          </dd>
+                                        </div>
                                       ))}
-                                    </ul>
-                                  </div>
+                                  </dl>
                                 )}
                               </section>
-                            )}
-                            {result.testability_blueprint_before_review && (
-                              <details className="rounded-control border border-border p-3">
-                                <summary className="cursor-pointer font-medium">
-                                  Bản đồ trước khi rà soát
-                                </summary>
-                                <ul className="mt-2 list-disc space-y-2 pl-5">
-                                  {result.testability_blueprint_before_review.obligations?.map(
-                                    (obligation) => (
-                                      <li key={obligation.key}>
-                                        <strong>{obligation.key}:</strong> {obligation.obligation}
-                                      </li>
-                                    ),
-                                  )}
-                                  {result.testability_blueprint_before_review.clarifications?.map(
-                                    (clarification) => (
-                                      <li key={clarification.code}>
-                                        <strong>{clarification.code} · Cần làm rõ:</strong>{" "}
-                                        {clarification.question}
-                                      </li>
-                                    ),
-                                  )}
-                                </ul>
-                              </details>
                             )}
                             <section>
                               <h4 className="font-medium">

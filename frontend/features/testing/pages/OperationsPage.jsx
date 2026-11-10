@@ -5,7 +5,6 @@ import DataTable from "../components/DataTable";
 import PlatformOperationsPanel from "../components/PlatformOperationsPanel";
 import PlatformUsersPanel from "../components/PlatformUsersPanel";
 import ResourceCapacityPanel from "../components/ResourceCapacityPanel";
-import TestabilityBenchmarkPanel from "../components/TestabilityBenchmarkPanel";
 import {
   ErrorState,
   LoadingState,
@@ -164,7 +163,6 @@ export default function OperationsPage() {
           { id: "users", label: "Tài khoản" },
           { id: "capacity", label: "Công suất" },
           { id: "platform", label: "Cấu hình nền tảng" },
-          { id: "benchmark", label: "Kiểm thử kỹ thuật AI" },
         ]}
       />
       {error && <ErrorState message={error} />}
@@ -174,8 +172,6 @@ export default function OperationsPage() {
         <ResourceCapacityPanel />
       ) : section === "platform" ? (
         <PlatformOperationsPanel />
-      ) : section === "benchmark" ? (
-        <TestabilityBenchmarkPanel />
       ) : !value ? (
         loading ? (
           <LoadingState />

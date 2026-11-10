@@ -3,6 +3,7 @@
 
 TEST_CASE_GENERATION_CONTRACT = """<test_case_generation_rules>
 When categories are supplied, return exactly the requested count for each category. When selected techniques are supplied without categories, generate only evidence-supported cases up to the requested maximum and label only techniques each case actually demonstrates.
+When the instruction includes a saved Blueprint or an approved upstream Test Plan/Scenario, use it to check coverage and consistency without rerunning or changing it. Requirement evidence remains authoritative. Report concrete conflicts in warnings, and do not silently resolve a conflict or turn upstream suggestions into new business rules.
 Every case must contain a concrete input, a verifiable outcome, a source reference, and an exact contiguous quotation that directly supports the behavior. Use only acceptance-criterion identifiers present in the supplied evidence.
 When the instruction supplies the active project's risk and priority levels, assign each case only a listed level when the supplied evidence supports the assessment; otherwise use "unassessed". Never invent a level or use defect-severity levels as risk levels. When no project levels are supplied, use "unassessed".
 Set required_skills only when the source explicitly names a skill needed to execute the case. Use the exact skill wording found inside one of that case's cited quotations. Do not infer a skill from the test category, technique, API, or technology. Leave the list empty when no skill is explicitly supported.

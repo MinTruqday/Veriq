@@ -33,27 +33,6 @@ export const qualityTestingApi = {
     inferenceRequest(
       `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/${encodeURIComponent(datasetId)}/lan-chay?limit=${encodeURIComponent(limit)}`,
     ),
-  listSyntheticTestabilityBenchmarkRuns: (limit = 20) =>
-    inferenceRequest(
-      `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/tong-hop/lan-chay?limit=${encodeURIComponent(limit)}`,
-    ),
-  runSyntheticTestabilityBenchmark: () =>
-    inferenceRequest("/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/tong-hop/chay-lap", {
-      method: "POST",
-    }),
-  saveTestabilityPipelineStageRun: (payload) =>
-    inferenceRequest("/danh-gia/pipeline/lan-chay", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  listTestabilityPipelineStageRuns: (projectId, limit = 30) =>
-    inferenceRequest(
-      `/danh-gia/pipeline/lan-chay?project_id=${encodeURIComponent(projectId)}&limit=${encodeURIComponent(limit)}`,
-    ),
-  getTestabilityPipelineStageRun: (projectId, runId) =>
-    inferenceRequest(
-      `/danh-gia/pipeline/lan-chay/${encodeURIComponent(runId)}?project_id=${encodeURIComponent(projectId)}`,
-    ),
   listReviewSessions: (projectId, filters = {}) =>
     testingRequest(`/du-an/${projectId}/phien-ra-soat?${listQuery(filters)}`),
   createReviewSession: (projectId, payload) =>

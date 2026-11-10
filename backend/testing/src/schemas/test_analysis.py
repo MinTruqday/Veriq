@@ -274,7 +274,7 @@ class FindingResolutionInput(BaseModel):
 class TestAnalysisAIInput(BaseModel):
     basis_refs: list[TestBasisRef] = Field(min_length=1, max_length=100)
     instruction: str = Field(default="", max_length=5000)
-    testability_mode: Literal["OFF", "BLUEPRINT_ONLY", "BLUEPRINT_SELF_REVIEW"] = "OFF"
+    testability_mode: Literal["OFF", "BLUEPRINT_ONLY", "BLUEPRINT_BENCHMARK"] = "OFF"
     idempotency_key: str = Field(min_length=8, max_length=200)
     source_event_id: str | None = Field(default=None, min_length=1, max_length=200)
     source_event_revision: int | None = Field(default=None, ge=1)

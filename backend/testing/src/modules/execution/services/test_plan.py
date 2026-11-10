@@ -27,6 +27,7 @@ from src.modules.design.services.test_case_records import require_current_baseli
 from src.modules.execution.services.execution_context import resolve_execution_context
 from src.repositories.project import project_repository
 from src.repositories.test_plan import test_plan_repository
+from src.repositories.test_analysis import test_analysis_repository
 from src.schemas.contracts.planning import TestPlanCreate, TestPlanSuiteSnapshot
 
 LEGACY_PLAN_SNAPSHOT_FIELDS = (
@@ -826,8 +827,38 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
         raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_REQUIRED"})
     if len(evidence) > 100:
         raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_LIMIT_EXCEEDED"})
+    saved_blueprints = []
+    for version in versions:
+        saved = await test_analysis_repository.find_latest_blueprint(project_id, version["_id"])
+        if not saved:
+            continue
+        blueprint = saved.get("testability_blueprint") or {}
+        saved_blueprints.append({
+            "requirement_version_id": version["_id"],
+            "blueprint_result_id": saved.get("_id"),
+            "obligations": [
+                {"key": str(item.get("key") or ""), "obligation": str(item.get("obligation") or "")[:220]}
+                for item in blueprint.get("obligations", [])[:8]
+            ],
+            "clarifications": [
+                {"code": str(item.get("code") or ""), "question": str(item.get("question") or "")[:220]}
+                for item in blueprint.get("clarifications", [])[:4]
+            ],
+        })
+        if len(json.dumps(saved_blueprints, ensure_ascii=False)) > 4500:
+            saved_blueprints.pop()
+            break
+    ai_instruction = json.dumps({
+        "user_instruction": payload.instruction,
+        "saved_testability_blueprints": saved_blueprints,
+        "consistency_rules": [
+            "Baselined Requirements are authoritative; a saved Blueprint is a coverage aid derived from those exact Requirement versions.",
+            "Do not rerun or rewrite a saved Blueprint. Check whether this Test Plan addresses its obligations and unresolved clarifications.",
+            "If a proposed plan conflicts with a Requirement or Blueprint item, report the specific conflict in warnings; do not silently choose a value or invent a resolution.",
+        ],
+    }, ensure_ascii=False)
     result = await request_ai_automation(
-        "test_plan_draft_generation", project_id, payload.instruction, evidence
+        "test_plan_draft_generation", project_id, ai_instruction, evidence
     )
     if result.get("status") != "SUCCESS" or result.get("degraded_mode"):
         raise HTTPException(503, detail={"code": "AI_PROVIDER_UNAVAILABLE", "retryable": True})
@@ -851,6 +882,10 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
             "Một số trường chưa có trích dẫn khớp nguồn nên đã được để trống: "
             + ", ".join(unsupported_fields)
         )
+        proposal["warnings"] = list(dict.fromkeys(warnings))
+    if len(saved_blueprints) < len(requirement_ids):
+        warnings = list(proposal.get("warnings") or [])
+        warnings.append("Một số yêu cầu chưa có Blueprint đã lưu; kế hoạch vẫn được đề xuất từ yêu cầu đã duyệt.")
         proposal["warnings"] = list(dict.fromkeys(warnings))
     if not any(
         any(str(item or "").strip() for item in value)
@@ -896,6 +931,7 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
     return {
         "project_id": project_id,
         "requirement_version_ids": requirement_ids,
+        "saved_blueprint_refs": [item["blueprint_result_id"] for item in saved_blueprints],
         "suggestion": proposal,
         "evidence": [
             {"artifact_type": item["artifact_type"], "artifact_version_id": item["artifact_version_id"]}

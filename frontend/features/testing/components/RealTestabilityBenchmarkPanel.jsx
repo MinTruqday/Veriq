@@ -5,7 +5,6 @@ import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
 import { formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
-import TestabilityPipelineBenchmarkPanel from "./TestabilityPipelineBenchmarkPanel";
 
 const benchmarkPath = "project:";
 
@@ -17,17 +16,18 @@ function requirementCase(requirement) {
   if (!version._id || !criteria.length) return null;
 
   const sourceRef = String(version._id);
-  const sourceQuotes = [...new Set(criteria.map((criterion) => criterion.plain_text.trim()))];
-  const obligationSources = Object.fromEntries(
-    criteria.map((criterion, index) => [
-      String(criterion._id || `${requirement.requirement_key}-AC-${index + 1}`),
-      criterion.plain_text.trim(),
-    ]),
-  );
+  const requirementText =
+    version.plain_text_projection ||
+    version.plain_text ||
+    version.normalized_content ||
+    version.description ||
+    version.title ||
+    "";
+  const normalizedRequirementText = requirementText.slice(0, 4000);
   const sourceText = [
-    version.title,
-    version.plain_text_projection,
+    normalizedRequirementText,
     ...criteria.map((criterion) => criterion.plain_text),
+    ...(Array.isArray(version.business_rules) ? version.business_rules : []),
   ]
     .filter((value) => typeof value === "string" && value.trim())
     .join("\n");
@@ -45,30 +45,53 @@ function requirementCase(requirement) {
         text: sourceText,
       },
     ],
-    expected_source_quotes: sourceQuotes,
+  };
+}
+
+function buildAuthoredAnswerKey(item, draft) {
+  const source = item.sources[0];
+  const obligations = String(draft?.obligations || "")
+    .split("\n")
+    .map((line) => line.split("|", 2).map((part) => part.trim()))
+    .filter(([key, quote]) => key && quote);
+  const categories = String(draft?.clarifications || "")
+    .split("\n")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (
+    !obligations.length ||
+    obligations.some(([, quote]) => !source.text.includes(quote)) ||
+    new Set(obligations.map(([key]) => key)).size !== obligations.length
+  )
+    return null;
+  const expected_source_quotes = [...new Set(obligations.map(([, quote]) => quote))];
+  return {
+    ...item,
+    expected_source_quotes,
     expected_source_quote_sources: Object.fromEntries(
-      sourceQuotes.map((quote) => [quote, [sourceRef]]),
+      expected_source_quotes.map((quote) => [quote, [source.artifact_version_id]]),
     ),
-    expected_obligation_keys: Object.keys(obligationSources),
-    expected_obligation_sources: obligationSources,
+    expected_obligation_keys: obligations.map(([key]) => key),
+    expected_obligation_sources: Object.fromEntries(obligations),
     expected_obligation_source_refs: Object.fromEntries(
-      Object.keys(obligationSources).map((key) => [key, sourceRef]),
+      obligations.map(([key]) => [key, source.artifact_version_id]),
     ),
+    expected_clarification_categories: categories,
   };
 }
 
 function metricLabel(metric) {
   const labels = {
     source_quote_validity: "Tính hợp lệ của trích dẫn",
-    source_quote_precision: "Precision trích dẫn nguồn",
-    source_quote_recall: "Recall trích dẫn nguồn",
-    source_quote_source_precision: "Precision phiên bản nguồn",
-    source_quote_source_recall: "Recall phiên bản nguồn",
-    obligation_precision: "Precision nghĩa vụ kiểm thử",
-    obligation_recall: "Recall nghĩa vụ kiểm thử",
-    clarification_precision: "Precision câu hỏi làm rõ",
-    clarification_recall: "Recall câu hỏi làm rõ",
-    clarification_priority_ndcg: "NDCG ưu tiên câu hỏi",
+    source_quote_precision: "Độ chính xác trích dẫn nguồn (Precision)",
+    source_quote_recall: "Độ bao phủ trích dẫn nguồn (Recall)",
+    source_quote_source_precision: "Độ chính xác phiên bản nguồn (Precision)",
+    source_quote_source_recall: "Độ bao phủ phiên bản nguồn (Recall)",
+    obligation_precision: "Độ chính xác nghĩa vụ kiểm thử (Precision)",
+    obligation_recall: "Độ bao phủ nghĩa vụ kiểm thử (Recall)",
+    clarification_precision: "Độ chính xác câu hỏi làm rõ (Precision)",
+    clarification_recall: "Độ bao phủ câu hỏi làm rõ (Recall)",
+    clarification_priority_ndcg: "Điểm xếp hạng ưu tiên câu hỏi (NDCG)",
   };
   return labels[metric] || valueLabel(metric);
 }
@@ -109,7 +132,7 @@ function benchmarkResultRows(report) {
       _id: `${pipeline}-${metric}`,
       pipeline:
         {
-          compiler: "Bộ biên dịch khả năng kiểm thử",
+          compiler: "Lập bản đồ điều kiện kiểm thử",
           direct_generation: "Sinh ca kiểm thử trực tiếp",
           clarification_without_obligation_planning: "Chỉ hỏi làm rõ",
         }[pipeline] || valueLabel(pipeline),
@@ -130,6 +153,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
   const canManageBenchmark = user?.system_role === "ADMIN";
   const [requirements, setRequirements] = useState([]);
   const [selectedRequirementIds, setSelectedRequirementIds] = useState([]);
+  const [answerKeyDrafts, setAnswerKeyDrafts] = useState({});
   const [datasets, setDatasets] = useState([]);
   const [selectedDataset, setSelectedDataset] = useState(null);
   const [report, setReport] = useState(null);
@@ -149,6 +173,10 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
     const selected = new Set(selectedRequirementIds);
     return eligibleRequirements.filter((item) => selected.has(item.case_id));
   }, [eligibleRequirements, selectedRequirementIds]);
+  const preparedCases = useMemo(
+    () => selectedCases.map((item) => buildAuthoredAnswerKey(item, answerKeyDrafts[item.case_id])),
+    [answerKeyDrafts, selectedCases],
+  );
   const ownedDatasets = useMemo(
     () => datasets.filter((item) => item.dataset_id.startsWith(`${benchmarkPath}${project._id}:`)),
     [datasets, project._id],
@@ -225,14 +253,14 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
   };
 
   const createDataset = async () => {
-    if (!selectedCases.length) return;
+    if (!selectedCases.length || preparedCases.some((item) => !item)) return;
     setSaving(true);
     setError("");
     try {
       const dataset = await testingApi.createTestabilityBenchmarkDataset({
         dataset_id: `${benchmarkPath}${project._id}:${crypto.randomUUID()}`,
-        title: `Requirement đã duyệt · ${project.name || project.key || project._id} · ${new Date().toLocaleDateString("vi-VN")}`,
-        cases: selectedCases,
+        title: `Yêu cầu đã duyệt · ${project.name || project.key || project._id} · ${new Date().toLocaleDateString("vi-VN")}`,
+        cases: preparedCases,
       });
       await loadDatasets();
       setSelectedDataset(dataset);
@@ -320,21 +348,20 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
 
   return (
     <div className="space-y-5">
-      <TestabilityPipelineBenchmarkPanel project={project} requirements={requirements} />
       {error && <ErrorState message={error} />}
       <Panel title="Đánh giá thực nghiệm trên yêu cầu đã duyệt">
         <div className="space-y-3 p-4 text-sm leading-6 text-ink-muted">
           <p>
-            Mỗi ca lấy từ phiên bản yêu cầu đã duyệt và tiêu chí chấp nhận đã lưu trong dự án. Đáp
-            án kỳ vọng là tiêu chí đã duyệt; không lấy đầu ra của AI làm đáp án để tự chấm.
+            Nguồn lấy từ phiên bản yêu cầu đã duyệt. Người tạo tự biên soạn đáp án tham chiếu; hệ
+            thống không biến tiêu chí chấp nhận thành đáp án chuẩn tự động.
           </p>
           <p>
             Chỉ chấm trích dẫn nguồn và độ bao phủ nghĩa vụ kiểm thử. Bộ dữ liệu không có nhãn độc
             lập cho câu hỏi làm rõ nên các chỉ số đó được để trống, không suy đoán.
           </p>
           <p>
-            Bộ đáp án được một quản trị viên khác kiểm tra một lần trước lần chạy đầu. Sau đó có thể
-            chạy lại ba phương pháp và lưu kết quả theo phiên bản bộ dữ liệu.
+            Người khác cần đối chiếu từng nhãn và trích dẫn trước khi chạy. Kết quả chỉ mô tả chất
+            lượng trên bộ dữ liệu đã biên soạn, không tự chứng minh độ đúng ngoài thực tế.
           </p>
         </div>
       </Panel>
@@ -343,13 +370,13 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
         <div className="space-y-3 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-ink-muted">
-              Có {eligibleRequirements.length} yêu cầu đã duyệt kèm tiêu chí chấp nhận để đưa vào bộ
-              đánh giá.
+              Có {eligibleRequirements.length} yêu cầu đã duyệt làm nguồn. Đáp án tham chiếu được
+              nhập thủ công.
             </p>
             <button
               className="apple-button"
               type="button"
-              disabled={saving || !selectedCases.length}
+              disabled={saving || !selectedCases.length || preparedCases.some((item) => !item)}
               onClick={() => void createDataset()}
             >
               {saving ? "Đang lưu bộ dữ liệu…" : `Tạo bộ dữ liệu (${selectedCases.length} ca)`}
@@ -376,8 +403,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
                   <span className="min-w-0">
                     <span className="block font-medium text-ink">{item.case_id}</span>
                     <span className="block text-sm text-ink-muted">
-                      {requirement?.current_version?.title || "Yêu cầu"} ·{" "}
-                      {item.expected_obligation_keys.length} tiêu chí chấp nhận
+                      {requirement?.current_version?.title || "Yêu cầu"} · Nguồn đã duyệt
                     </span>
                   </span>
                 </label>
@@ -390,6 +416,50 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
               </p>
             )}
           </div>
+          {selectedCases.map((item, index) => (
+            <section className="space-y-2 rounded-lg border border-border p-3" key={item.case_id}>
+              <h4 className="font-medium">Đáp án tham chiếu · {item.case_id}</h4>
+              <p className="text-xs text-ink-muted">
+                Mỗi dòng ghi <code>Mã | trích dẫn nguyên văn từ nguồn</code>. Không dùng bản đồ điều
+                kiện kiểm thử đã tạo hoặc đầu ra AI làm đáp án tham chiếu.
+              </p>
+              <label className="field-label block">
+                Nghĩa vụ kiểm thử
+                <textarea
+                  className="apple-input mt-2 min-h-24 w-full"
+                  value={answerKeyDrafts[item.case_id]?.obligations || ""}
+                  onChange={(event) =>
+                    setAnswerKeyDrafts((current) => ({
+                      ...current,
+                      [item.case_id]: { ...current[item.case_id], obligations: event.target.value },
+                    }))
+                  }
+                  placeholder="AUTH-01 | trích dẫn chính xác có trong yêu cầu"
+                />
+              </label>
+              <label className="field-label block">
+                Nhóm vấn đề cần làm rõ (nếu có, mỗi dòng một nhãn)
+                <textarea
+                  className="apple-input mt-2 min-h-16 w-full"
+                  value={answerKeyDrafts[item.case_id]?.clarifications || ""}
+                  onChange={(event) =>
+                    setAnswerKeyDrafts((current) => ({
+                      ...current,
+                      [item.case_id]: {
+                        ...current[item.case_id],
+                        clarifications: event.target.value,
+                      },
+                    }))
+                  }
+                />
+              </label>
+              {!preparedCases[index] && (
+                <p className="text-xs text-warning">
+                  Cần ít nhất một mã nghĩa vụ duy nhất và trích dẫn nguyên văn có trong nguồn.
+                </p>
+              )}
+            </section>
+          ))}
         </div>
       </Panel>
 

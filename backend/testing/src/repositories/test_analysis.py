@@ -15,6 +15,24 @@ class TestAnalysisRepository:
             {"basis_snapshots": 0, "created_by": 0},
         ).sort("created_at", -1).limit(limit).to_list(limit)
 
+    async def find_latest_blueprint(self, project_id, requirement_version_id):
+        results = await database.value.ai_results.find(
+            {
+                "project_id": project_id,
+                "result_type": "TEST_CONDITION_CANDIDATES",
+                "testability_blueprint": {"$ne": None},
+                "basis_snapshots.resolved_id": requirement_version_id,
+            },
+            {"testability_blueprint": 1, "basis_snapshots": 1, "created_at": 1},
+        ).sort("created_at", -1).limit(20).to_list(20)
+        for result in results:
+            if any(
+                item.get("resolved_id") == requirement_version_id
+                for item in result.get("basis_snapshots", [])
+            ):
+                return result
+        return None
+
     async def insert_ai_result(self, value, session=None):
         await database.value.ai_results.insert_one(value, session=session)
         return value
