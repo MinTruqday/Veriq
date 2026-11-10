@@ -487,7 +487,7 @@ async def transition_status_report(report_id, payload, user, transition_action):
         require_automation_publication_authority(user, transition['permission'])
     report = await get_report_for_user(report_id, user, transition["permission"])
     if transition_action in {"approve", "request_changes"}:
-        require_independent_review(report, user, "TEST_STATUS_REPORT_SELF_REVIEW_FORBIDDEN")
+        await require_independent_review(report, user, "TEST_STATUS_REPORT_SELF_REVIEW_FORBIDDEN")
     timestamp = now()
     event = {"actor_id": user.id, "action": target, "note": payload.note, "at": timestamp}
     changes = {"status": target, "updated_at": timestamp}

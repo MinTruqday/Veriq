@@ -11,27 +11,89 @@ class TestAnalysisRepository:
 
     async def list_ai_results(self, project_id, limit):
         return await database.value.ai_results.find(
-            {"project_id": project_id, "result_type": "TEST_CONDITION_CANDIDATES"},
+            {
+                "project_id": project_id,
+                "result_type": {"$in": ["TEST_CONDITION_CANDIDATES", "TESTABILITY_BLUEPRINT"]},
+            },
             {"basis_snapshots": 0, "created_by": 0},
         ).sort("created_at", -1).limit(limit).to_list(limit)
 
-    async def find_latest_blueprint(self, project_id, requirement_version_id):
+    async def find_latest_blueprint(
+        self, project_id, requirement_version_id, source_hash=None
+    ):
+        query = {
+                "project_id": project_id,
+                "result_type": {"$in": ["TEST_CONDITION_CANDIDATES", "TESTABILITY_BLUEPRINT"]},
+                "testability_blueprint": {"$ne": None},
+                "basis_snapshots.resolved_id": requirement_version_id,
+            }
+        if source_hash:
+            query["basis_snapshots.source_hash"] = source_hash
+        results = await database.value.ai_results.find(
+            query,
+            {
+                "testability_blueprint": 1,
+                "testability_blueprint_before_review": 1,
+                "blueprint_self_review": 1,
+                "blueprint_ai_metadata": 1,
+                "basis_snapshots": 1,
+                "created_at": 1,
+            },
+        ).sort("created_at", -1).limit(20).to_list(20)
+        for result in results:
+            snapshot = next(
+                (
+                    item
+                    for item in result.get("basis_snapshots", [])
+                    if item.get("resolved_id") == requirement_version_id
+                ),
+                None,
+            )
+            if (
+                snapshot
+                and source_hash
+                and snapshot.get("source_hash") == source_hash
+            ) or (snapshot and source_hash is None):
+                return result
+        return None
+
+    async def find_blueprint_for_sources(self, project_id, basis_snapshots):
+        def signature(items):
+            return sorted(
+                (
+                    str(item.get("resolved_id") or item.get("artifact_version_id") or item.get("artifact_id") or ""),
+                    str(item.get("source_hash") or ""),
+                    str(item.get("text") or ""),
+                )
+                for item in items
+            )
+
+        expected = signature(basis_snapshots)
+        if not expected:
+            return None
         results = await database.value.ai_results.find(
             {
                 "project_id": project_id,
-                "result_type": "TEST_CONDITION_CANDIDATES",
+                "result_type": {"$in": ["TEST_CONDITION_CANDIDATES", "TESTABILITY_BLUEPRINT"]},
                 "testability_blueprint": {"$ne": None},
-                "basis_snapshots.resolved_id": requirement_version_id,
             },
-            {"testability_blueprint": 1, "basis_snapshots": 1, "created_at": 1},
-        ).sort("created_at", -1).limit(20).to_list(20)
-        for result in results:
-            if any(
-                item.get("resolved_id") == requirement_version_id
-                for item in result.get("basis_snapshots", [])
-            ):
-                return result
-        return None
+            {
+                "testability_blueprint": 1,
+                "testability_blueprint_before_review": 1,
+                "blueprint_self_review": 1,
+                "blueprint_ai_metadata": 1,
+                "basis_snapshots": 1,
+                "created_at": 1,
+            },
+        ).sort("created_at", -1).limit(100).to_list(100)
+        return next(
+            (
+                result
+                for result in results
+                if signature(result.get("basis_snapshots", [])) == expected
+            ),
+            None,
+        )
 
     async def insert_ai_result(self, value, session=None):
         await database.value.ai_results.insert_one(value, session=session)

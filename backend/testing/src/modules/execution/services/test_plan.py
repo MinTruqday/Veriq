@@ -579,7 +579,7 @@ async def approve_test_plan_record(plan_id, payload, user):
     plan = await get_test_plan_record(plan_id, user, "testplan.approve")
     if plan.get("status") != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
-    require_independent_review(plan, user, "TEST_PLAN_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(plan, user, "TEST_PLAN_SELF_REVIEW_FORBIDDEN")
     scope = await validate_plan_scope(
         plan['project_id'],
         plan.get('requirement_version_ids', []),
@@ -649,7 +649,7 @@ async def request_test_plan_revision(plan_id, payload, user):
     plan = await get_test_plan_record(plan_id, user, 'testplan.review')
     if plan.get('status') != 'IN_REVIEW':
         raise HTTPException(409, detail={'code': 'INVALID_STATE_TRANSITION'})
-    require_independent_review(plan, user, 'TEST_PLAN_SELF_REVIEW_FORBIDDEN')
+    await require_independent_review(plan, user, 'TEST_PLAN_SELF_REVIEW_FORBIDDEN')
     if not payload.review_note.strip():
         raise HTTPException(422, detail={'code': 'TEST_PLAN_REVISION_REASON_REQUIRED'})
     async with await database.client.start_session() as session:
@@ -823,38 +823,102 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
         if content:
             evidence.extend(split_source_evidence("acceptance_criterion", criterion["_id"], content))
             source_text[criterion["_id"]] = content
+    current_plan = payload.current_test_plan
+    if len(json.dumps(current_plan, ensure_ascii=False)) > 12000:
+        raise HTTPException(422, detail={"code": "TEST_PLAN_DRAFT_CONTEXT_LIMIT_EXCEEDED"})
+    draft_text = "\n".join(
+        str(value).strip()
+        for value in current_plan.values()
+        if isinstance(value, (str, int, float)) and str(value).strip()
+    )
+    for field_name, value in current_plan.items():
+        if isinstance(value, (dict, list)):
+            serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            if serialized not in draft_text:
+                draft_text = "\n".join(part for part in (draft_text, serialized) if part)
+    if draft_text:
+        evidence.extend(
+            split_source_evidence("user_authored_test_plan_draft", "USER_DRAFT", draft_text)
+        )
+        source_text["USER_DRAFT"] = draft_text
     if not evidence:
         raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_REQUIRED"})
     if len(evidence) > 100:
         raise HTTPException(422, detail={"code": "TEST_PLAN_EVIDENCE_LIMIT_EXCEEDED"})
     saved_blueprints = []
-    for version in versions:
-        saved = await test_analysis_repository.find_latest_blueprint(project_id, version["_id"])
-        if not saved:
-            continue
-        blueprint = saved.get("testability_blueprint") or {}
-        saved_blueprints.append({
-            "requirement_version_id": version["_id"],
-            "blueprint_result_id": saved.get("_id"),
-            "obligations": [
-                {"key": str(item.get("key") or ""), "obligation": str(item.get("obligation") or "")[:220]}
-                for item in blueprint.get("obligations", [])[:8]
-            ],
-            "clarifications": [
-                {"code": str(item.get("code") or ""), "question": str(item.get("question") or "")[:220]}
-                for item in blueprint.get("clarifications", [])[:4]
-            ],
-        })
-        if len(json.dumps(saved_blueprints, ensure_ascii=False)) > 4500:
-            saved_blueprints.pop()
-            break
+    if payload.testability_mode != "OFF":
+        from src.modules.design.services.testability_blueprint_workflow import (
+            blueprint_for_requirement,
+        )
+
+        for version in versions:
+            criteria_for_version = [
+                item for item in criteria
+                if item.get("requirement_version_id") == version["_id"]
+            ]
+            processed = await blueprint_for_requirement(
+                project_id, version, criteria_for_version, payload.testability_mode, user
+            )
+            blueprint = processed["blueprint"] if processed else {}
+            benchmark = (processed or {}).get("benchmark") or {}
+            self_review = (processed or {}).get("self_review") or {}
+            relevant_obligations = blueprint.get("obligations", [])
+            relevant_clarifications = blueprint.get("clarifications", [])
+            saved_blueprints.append({
+                "requirement_version_id": version["_id"],
+                "blueprint_result_id": processed.get("blueprint_result_id"),
+                "obligations": [
+                    {"key": str(item.get("key") or ""), "obligation": str(item.get("obligation") or "")[:220]}
+                    for item in relevant_obligations[:8]
+                ],
+                "clarifications": [
+                    {"code": str(item.get("code") or ""), "question": str(item.get("question") or "")[:220]}
+                    for item in relevant_clarifications[:4]
+                ],
+                "self_review": (
+                    {
+                        "assessment_type": "SELF_REVIEW",
+                        "summary": str(self_review.get("summary") or "")[:300],
+                        "findings": [
+                            {
+                                "finding_type": item.get("finding_type"),
+                                "item_ref": item.get("item_ref"),
+                                "observation": str(item.get("observation") or "")[:160],
+                            }
+                            for item in self_review.get("findings", [])[:3]
+                            if isinstance(item, dict)
+                        ],
+                    }
+                    if payload.testability_mode == "BLUEPRINT_BENCHMARK"
+                    else None
+                ),
+                "benchmark": (
+                    {
+                        "assessment_type": benchmark.get("assessment_type", "NOT_AVAILABLE"),
+                        "independently_validated": bool(
+                            benchmark.get("independently_validated")
+                        ),
+                        "dataset_id": benchmark.get("dataset_id"),
+                        "dataset_revision": benchmark.get("dataset_revision"),
+                        "reason": str(benchmark.get("reason") or "")[:240],
+                    }
+                    if payload.testability_mode == "BLUEPRINT_BENCHMARK"
+                    else None
+                ),
+            })
+            if len(json.dumps(saved_blueprints, ensure_ascii=False)) > 4500:
+                saved_blueprints.pop()
+                break
     ai_instruction = json.dumps({
         "user_instruction": payload.instruction,
+        "testability_mode": payload.testability_mode,
+        "current_test_plan_draft": current_plan,
         "saved_testability_blueprints": saved_blueprints,
         "consistency_rules": [
-            "Baselined Requirements are authoritative; a saved Blueprint is a coverage aid derived from those exact Requirement versions.",
-            "Do not rerun or rewrite a saved Blueprint. Check whether this Test Plan addresses its obligations and unresolved clarifications.",
-            "If a proposed plan conflicts with a Requirement or Blueprint item, report the specific conflict in warnings; do not silently choose a value or invent a resolution.",
+            "Use only the exact source versions and the current user draft supplied in this request. OFF means no saved Blueprint may be used.",
+            "When enabled, a saved Blueprint is a coverage aid tied to the exact Requirement version; do not regenerate it or assume it is certainly correct.",
+            "Use the current Test Plan draft as context for suggestions. Preserve entered values unless the user explicitly applies a field suggestion.",
+            "If sources disagree and none explicitly establishes which value governs, report the conflict and ask for clarification; do not silently choose a side or assume the Test Plan is wrong.",
         ],
     }, ensure_ascii=False)
     result = await request_ai_automation(
@@ -926,6 +990,8 @@ async def generate_test_plan_draft_suggestion(project_id, payload, user):
         content = str(criterion.get("plain_text") or plain_text(criterion.get("content_doc", {}))).strip()
         if content:
             latest_source_text[criterion["_id"]] = content
+    if draft_text:
+        latest_source_text["USER_DRAFT"] = draft_text
     if latest_source_text != source_text:
         raise HTTPException(409, detail={"code": "TEST_PLAN_SOURCE_CHANGED", "retryable": True})
     return {

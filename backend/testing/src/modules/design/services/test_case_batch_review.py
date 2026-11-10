@@ -48,7 +48,7 @@ async def accept_test_case_group(project_id, payload, user):
         if draft.get("status") != "IN_REVIEW":
             raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION", "draft_id": item.draft_id, "message": "Ca không còn ở trạng thái chờ duyệt. Danh sách chưa được thay đổi; hãy tải lại."})
         try:
-            require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
+            await require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
         except HTTPException as error:
             detail = error.detail if isinstance(error.detail, dict) else {}
             raise HTTPException(403, detail={**detail, "draft_id": item.draft_id}) from error

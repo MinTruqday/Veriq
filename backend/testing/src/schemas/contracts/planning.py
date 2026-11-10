@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field, model_validator
 class TestPlanAIDraftInput(BaseModel):
     requirement_version_ids: list[str] = Field(min_length=1, max_length=200)
     instruction: str = Field(default="", max_length=5000)
+    testability_mode: Literal["OFF", "BLUEPRINT_ONLY", "BLUEPRINT_BENCHMARK"] = "OFF"
+    current_test_plan: dict[str, Any] = Field(default_factory=dict)
 
 from src.schemas.contracts.common import TestPlanRiskStatus
 

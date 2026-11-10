@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DataTable from "./DataTable";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
-import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { docText, formatDate, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 
@@ -11,70 +11,113 @@ const benchmarkPath = "project:";
 function requirementCase(requirement) {
   const version = requirement.current_version || {};
   const criteria = (version.acceptance_criteria || []).filter(
-    (criterion) => criterion.status === "approved" && String(criterion.plain_text || "").trim(),
+    (criterion) =>
+      String(criterion.status || "").toUpperCase() === "APPROVED" &&
+      String(criterion.plain_text || docText(criterion.content_doc) || "").trim(),
   );
   if (!version._id || !criteria.length) return null;
 
   const sourceRef = String(version._id);
-  const requirementText =
-    version.plain_text_projection ||
-    version.plain_text ||
-    version.normalized_content ||
-    version.description ||
-    version.title ||
-    "";
-  const normalizedRequirementText = requirementText.slice(0, 4000);
-  const sourceText = [
-    normalizedRequirementText,
-    ...criteria.map((criterion) => criterion.plain_text),
-    ...(Array.isArray(version.business_rules) ? version.business_rules : []),
-  ]
-    .filter((value) => typeof value === "string" && value.trim())
-    .join("\n");
+  const sections = [
+    String(version.plain_text_projection || docText(version.content_doc) || "").trim(),
+  ];
+  for (const [field, label] of [
+    ["actors", "Tác nhân"],
+    ["business_rules", "Quy tắc nghiệp vụ"],
+    ["dependencies", "Phụ thuộc"],
+  ]) {
+    const values = Array.isArray(version[field]) ? version[field] : [];
+    if (values.length) {
+      sections.push(
+        `${label}:\n${values
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+          .join("\n")}`,
+      );
+    }
+  }
+  for (const [field, label] of [
+    ["main_flow", "Luồng chính"],
+    ["exception_flow", "Luồng ngoại lệ"],
+    ["data_rules", "Quy tắc dữ liệu"],
+    ["integration", "Tích hợp"],
+    ["quality_measure", "Thuộc tính chất lượng"],
+  ]) {
+    const value = version.details?.[field];
+    if (typeof value === "string" && value.trim()) sections.push(`${label}:\n${value.trim()}`);
+  }
+  const sources = [
+    {
+      source_id: String(requirement.requirement_key || version._id),
+      artifact_type: "requirement_version",
+      artifact_version_id: sourceRef,
+      authority: "APPROVED_SOURCE",
+      text: sections.filter(Boolean).join("\n\n"),
+    },
+    ...criteria.map((criterion) => ({
+      source_id: String(criterion._id),
+      artifact_type: "acceptance_criterion",
+      artifact_version_id: String(criterion._id),
+      authority: "APPROVED_SOURCE",
+      text: String(criterion.plain_text || docText(criterion.content_doc)).trim(),
+    })),
+  ];
 
   return {
     case_id: String(requirement.requirement_key || version._id),
     task_instruction:
       "Trích xuất nghĩa vụ kiểm thử chỉ từ tiêu chí chấp nhận đã duyệt. Giữ nguyên căn cứ nguồn; không tự bổ sung hành vi hoặc điều kiện chưa được nêu.",
-    sources: [
-      {
-        source_id: String(requirement.requirement_key || version._id),
-        artifact_type: "requirement_version",
-        artifact_version_id: sourceRef,
-        authority: "APPROVED_SOURCE",
-        text: sourceText,
-      },
-    ],
+    sources,
   };
 }
 
 function buildAuthoredAnswerKey(item, draft) {
-  const source = item.sources[0];
+  const sources = item.sources || [];
   const obligations = String(draft?.obligations || "")
     .split("\n")
-    .map((line) => line.split("|", 2).map((part) => part.trim()))
-    .filter(([key, quote]) => key && quote);
+    .map((line) => {
+      const firstSeparator = line.indexOf("|");
+      const secondSeparator = line.indexOf("|", firstSeparator + 1);
+      if (firstSeparator < 0 || secondSeparator < 0) return ["", "", ""];
+      return [
+        line.slice(0, firstSeparator).trim(),
+        line.slice(firstSeparator + 1, secondSeparator).trim(),
+        line.slice(secondSeparator + 1).trim(),
+      ];
+    })
+    .filter(([key, sourceRef, quote]) => key && sourceRef && quote);
   const categories = String(draft?.clarifications || "")
     .split("\n")
     .map((value) => value.trim())
     .filter(Boolean);
   if (
     !obligations.length ||
-    obligations.some(([, quote]) => !source.text.includes(quote)) ||
+    obligations.some(
+      ([, sourceRef, quote]) =>
+        !sources.some(
+          (source) => source.artifact_version_id === sourceRef && source.text.includes(quote),
+        ),
+    ) ||
     new Set(obligations.map(([key]) => key)).size !== obligations.length
   )
     return null;
-  const expected_source_quotes = [...new Set(obligations.map(([, quote]) => quote))];
+  const expected_source_quotes = [...new Set(obligations.map(([, , quote]) => quote))];
+  const expected_source_quote_sources = Object.fromEntries(
+    expected_source_quotes.map((quote) => [
+      quote,
+      [...new Set(obligations.filter(([, , value]) => value === quote).map(([, ref]) => ref))],
+    ]),
+  );
   return {
     ...item,
     expected_source_quotes,
-    expected_source_quote_sources: Object.fromEntries(
-      expected_source_quotes.map((quote) => [quote, [source.artifact_version_id]]),
-    ),
+    expected_source_quote_sources,
     expected_obligation_keys: obligations.map(([key]) => key),
-    expected_obligation_sources: Object.fromEntries(obligations),
+    expected_obligation_sources: Object.fromEntries(
+      obligations.map(([key, , quote]) => [key, quote]),
+    ),
     expected_obligation_source_refs: Object.fromEntries(
-      obligations.map(([key]) => [key, source.artifact_version_id]),
+      obligations.map(([key, sourceRef]) => [key, sourceRef]),
     ),
     expected_clarification_categories: categories,
   };
@@ -101,6 +144,14 @@ function formatMetric(value) {
 }
 
 function datasetReady(dataset) {
+  if (dataset?.reference_provenance === "SELF_PREPARED_REFERENCE") {
+    return Boolean(
+      dataset.project_id &&
+        dataset.creator_identity_verified &&
+        Array.isArray(dataset.cases) &&
+        dataset.cases.length,
+    );
+  }
   const review = dataset?.answer_key_review;
   if (
     !dataset?.creator_identity_verified ||
@@ -159,6 +210,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
   const [report, setReport] = useState(null);
   const [runHistory, setRunHistory] = useState([]);
   const [reviewRationale, setReviewRationale] = useState("");
+  const [referenceProvenance, setReferenceProvenance] = useState("SELF_PREPARED_REFERENCE");
   const [reviewedCaseIds, setReviewedCaseIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -260,6 +312,8 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
       const dataset = await testingApi.createTestabilityBenchmarkDataset({
         dataset_id: `${benchmarkPath}${project._id}:${crypto.randomUUID()}`,
         title: `Yêu cầu đã duyệt · ${project.name || project.key || project._id} · ${new Date().toLocaleDateString("vi-VN")}`,
+        project_id: project._id,
+        reference_provenance: referenceProvenance,
         cases: preparedCases,
       });
       await loadDatasets();
@@ -360,8 +414,9 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
             lập cho câu hỏi làm rõ nên các chỉ số đó được để trống, không suy đoán.
           </p>
           <p>
-            Người khác cần đối chiếu từng nhãn và trích dẫn trước khi chạy. Kết quả chỉ mô tả chất
-            lượng trên bộ dữ liệu đã biên soạn, không tự chứng minh độ đúng ngoài thực tế.
+            Bạn có thể chạy bộ tham chiếu tự chuẩn bị ngay để thử nghiệm cá nhân; kết quả sẽ được
+            ghi rõ là chưa xác thực độc lập. Nếu chọn đánh giá độc lập, một thành viên khác cần rà
+            từng nhãn trước khi chạy. Kết quả không tự chứng minh độ đúng ngoài thực tế.
           </p>
         </div>
       </Panel>
@@ -373,6 +428,22 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
               Có {eligibleRequirements.length} yêu cầu đã duyệt làm nguồn. Đáp án tham chiếu được
               nhập thủ công.
             </p>
+            <label className="field-label min-w-64">
+              Cách sử dụng bộ tham chiếu
+              <select
+                className="apple-input mt-2"
+                value={referenceProvenance}
+                disabled={saving}
+                onChange={(event) => setReferenceProvenance(event.target.value)}
+              >
+                <option value="SELF_PREPARED_REFERENCE">
+                  Thử nghiệm cá nhân · chưa xác thực độc lập
+                </option>
+                <option value="INDEPENDENT_REFERENCE">
+                  Đánh giá độc lập · cần người khác rà soát
+                </option>
+              </select>
+            </label>
             <button
               className="apple-button"
               type="button"
@@ -420,9 +491,19 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
             <section className="space-y-2 rounded-lg border border-border p-3" key={item.case_id}>
               <h4 className="font-medium">Đáp án tham chiếu · {item.case_id}</h4>
               <p className="text-xs text-ink-muted">
-                Mỗi dòng ghi <code>Mã | trích dẫn nguyên văn từ nguồn</code>. Không dùng bản đồ điều
-                kiện kiểm thử đã tạo hoặc đầu ra AI làm đáp án tham chiếu.
+                Mỗi dòng ghi <code>Mã nghĩa vụ | mã phiên bản nguồn | trích dẫn nguyên văn</code>.
+                Chỉ trích dẫn đúng nội dung của phiên bản nguồn được liệt kê bên dưới.
               </p>
+              <div className="flex flex-wrap gap-2">
+                {item.sources.map((source) => (
+                  <code
+                    className="rounded bg-surface-muted px-2 py-1 text-xs"
+                    key={source.artifact_version_id}
+                  >
+                    {source.artifact_type}: {source.artifact_version_id}
+                  </code>
+                ))}
+              </div>
               <label className="field-label block">
                 Nghĩa vụ kiểm thử
                 <textarea
@@ -434,7 +515,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
                       [item.case_id]: { ...current[item.case_id], obligations: event.target.value },
                     }))
                   }
-                  placeholder="AUTH-01 | trích dẫn chính xác có trong yêu cầu"
+                  placeholder="AUTH-01 | mã phiên bản nguồn ở trên | trích dẫn chính xác"
                 />
               </label>
               <label className="field-label block">
@@ -476,7 +557,11 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
               {ownedDatasets.map((dataset) => (
                 <option key={dataset.dataset_id} value={dataset.dataset_id}>
                   {dataset.title} · {dataset.case_count} ca ·{" "}
-                  {dataset.ready_for_run ? "Đã duyệt" : "Chờ duyệt"}
+                  {dataset.reference_provenance === "SELF_PREPARED_REFERENCE"
+                    ? "Tự chuẩn bị · chưa xác thực độc lập"
+                    : dataset.ready_for_run
+                      ? "Đã rà soát độc lập"
+                      : "Chờ rà soát độc lập"}
                 </option>
               ))}
             </select>
@@ -561,7 +646,10 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-quiet p-4">
               <p className="text-sm text-ink-muted">
                 Phiên bản {selectedDataset.revision} · {selectedDataset.cases.length} ca · ba phương
-                pháp · ba lượt mỗi phương pháp.
+                pháp · ba lượt mỗi phương pháp ·{" "}
+                {selectedDataset.reference_provenance === "SELF_PREPARED_REFERENCE"
+                  ? "đáp án tự chuẩn bị, chưa được kiểm chứng độc lập."
+                  : "đáp án đã được rà soát độc lập."}
               </p>
               <button
                 className="apple-button"

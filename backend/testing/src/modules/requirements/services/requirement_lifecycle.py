@@ -163,7 +163,7 @@ async def return_requirement_for_changes(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
         )
-    require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version["revision"] != expected_revision:
         raise HTTPException(
             status_code=409,
@@ -315,7 +315,7 @@ async def technical_review_requirement(
     )
     if version.get("status") != "IN_REVIEW":
         raise HTTPException(409, detail={"code": "INVALID_STATE_TRANSITION"})
-    require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version.get("revision") != expected_revision:
         if (
             version.get("revision") == expected_revision + 1
@@ -373,7 +373,7 @@ async def baseline_requirement(
             status_code=409,
             detail={"code": 'INVALID_STATE_TRANSITION'},
         )
-    require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     if version["revision"] != expected_revision:
         raise HTTPException(
             status_code=409,

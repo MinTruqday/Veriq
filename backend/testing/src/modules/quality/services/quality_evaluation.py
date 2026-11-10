@@ -290,7 +290,7 @@ async def submit_evaluation(evaluation_id, payload, user):
 
 async def review_evaluation(evaluation_id, payload, user):
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.review')
-    require_independent_review(value, user, 'QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN')
+    await require_independent_review(value, user, 'QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN')
     if value["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'QUALITY_EVALUATION_NOT_IN_REVIEW'})
     history = [
@@ -413,7 +413,7 @@ async def decide_waiver(evaluation_id, waiver_id, payload, user):
 
 async def approve_evaluation(evaluation_id, payload, user):
     value = await get_evaluation(evaluation_id, user, 'qualityevaluation.approve')
-    require_independent_review(value, user, 'QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN')
+    await require_independent_review(value, user, 'QUALITY_EVALUATION_SELF_REVIEW_FORBIDDEN')
     if value["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'QUALITY_EVALUATION_NOT_IN_REVIEW'})
     if not any(

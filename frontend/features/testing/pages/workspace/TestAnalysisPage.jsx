@@ -19,6 +19,8 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { docText, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
+import SearchField from "@/shared/components/ui/SearchField";
 
 const blueprintMetricLabels = {
   source_quote_validity: "Tính hợp lệ của trích dẫn",
@@ -32,8 +34,6 @@ const blueprintMetricLabels = {
   clarification_recall: "Độ bao phủ câu hỏi làm rõ (Recall)",
   clarification_priority_ndcg: "Điểm xếp hạng ưu tiên câu hỏi (NDCG)",
 };
-import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
-import SearchField from "@/shared/components/ui/SearchField";
 
 const findingTypeLabels = {
   AMBIGUITY: "Nội dung chưa rõ",
@@ -80,7 +80,7 @@ export default function TestAnalysisPage({ project }) {
   const [aiResults, setAiResults] = useState([]);
   const [selectedRequirementVersions, setSelectedRequirementVersions] = useState([]);
   const [aiInstruction, setAiInstruction] = useState("");
-  const [testabilityMode, setTestabilityMode] = useState("BLUEPRINT_ONLY");
+  const [testabilityMode, setTestabilityMode] = useState("OFF");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenerationError, setAiGenerationError] = useState("");
   const [query, setQuery] = useState("");
@@ -162,6 +162,9 @@ export default function TestAnalysisPage({ project }) {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    setTestabilityMode("OFF");
+  }, [project._id]);
   const tabs = [
     ...(can("testcondition.read") ? [{ id: "conditions", label: "Điều kiện kiểm thử" }] : []),
     ...(can("testanalysis.read") ? [{ id: "ai", label: "Đề xuất AI" }] : []),
@@ -614,7 +617,7 @@ export default function TestAnalysisPage({ project }) {
                           value: "BLUEPRINT_BENCHMARK",
                           title: "Lập bản đồ điều kiện kiểm thử và đánh giá thực nghiệm",
                           description:
-                            "Chỉ chấm khi có đáp án chuẩn độc lập khớp đúng nguồn; nếu chưa có, ghi rõ chưa thể đánh giá.",
+                            "AI tự rà soát và đề xuất cải thiện Blueprint một lượt; Benchmark chỉ chấm khi có bộ tham chiếu phù hợp, nếu không sẽ ghi rõ chưa có căn cứ.",
                         },
                       ].map((option) => (
                         <label
@@ -751,8 +754,14 @@ export default function TestAnalysisPage({ project }) {
                             {result.blueprint_ai_metadata?.benchmark && (
                               <section className="rounded-control bg-surface-quiet p-3 text-ink-muted">
                                 <p>
-                                  {result.blueprint_ai_metadata.benchmark.reason ||
-                                    "Đánh giá bằng bộ đáp án chuẩn độc lập."}
+                                  {result.blueprint_ai_metadata.benchmark.assessment_type ===
+                                  "INDEPENDENT_REFERENCE"
+                                    ? "Đánh giá theo bộ tham chiếu đã được rà soát độc lập."
+                                    : result.blueprint_ai_metadata.benchmark.assessment_type ===
+                                        "SELF_PREPARED_REFERENCE"
+                                      ? "Đánh giá thử theo bộ tham chiếu do người dùng chuẩn bị; chưa được xác thực độc lập."
+                                      : result.blueprint_ai_metadata.benchmark.reason ||
+                                        "Chưa có bộ tham chiếu phù hợp để đánh giá độc lập."}
                                 </p>
                                 {result.blueprint_ai_metadata.benchmark.metrics && (
                                   <dl className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -769,6 +778,30 @@ export default function TestAnalysisPage({ project }) {
                                         </div>
                                       ))}
                                   </dl>
+                                )}
+                              </section>
+                            )}
+                            {result.blueprint_self_review && (
+                              <section className="rounded-control border border-violet-200 p-3">
+                                <h4 className="font-medium">
+                                  AI tự rà soát · không phải Benchmark độc lập
+                                </h4>
+                                <p className="mt-1 text-ink-muted">
+                                  {result.blueprint_self_review.summary}
+                                </p>
+                                {result.testability_blueprint_before_review && (
+                                  <p className="mt-2 text-xs text-ink-muted">
+                                    Đã giữ bản trước rà soát để đối chiếu với Blueprint hiện tại.
+                                  </p>
+                                )}
+                                {result.blueprint_self_review.findings?.length > 0 && (
+                                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                                    {result.blueprint_self_review.findings.map((finding, index) => (
+                                      <li key={`${finding.item_ref}-${index}`}>
+                                        {finding.observation} — {finding.suggested_change}
+                                      </li>
+                                    ))}
+                                  </ul>
                                 )}
                               </section>
                             )}

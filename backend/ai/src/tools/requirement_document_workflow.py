@@ -19,7 +19,7 @@ from src.prompts.test_generation import (
 )
 from src.repositories.automation import automation_repository
 from src.schemas.automation import AutomationFact, AutomationStatus
-from src.services.testability_blueprint import (
+from src.blueprint import (
     compile_testability_blueprint,
     facts_bound_to_authorized_evidence,
     map_blueprint_obligations_to_requirements,

@@ -561,7 +561,7 @@ async def transition_completion(report_id, payload, user, transition_action):
         require_automation_publication_authority(user, transition['permission'])
     report = await get_completion_for_user(report_id, user, transition["permission"])
     if transition_action in {"approve", "request_changes"}:
-        require_independent_review(report, user, "TEST_COMPLETION_SELF_REVIEW_FORBIDDEN")
+        await require_independent_review(report, user, "TEST_COMPLETION_SELF_REVIEW_FORBIDDEN")
     if target == "APPROVED":
         await validate_completion_readiness(report)
         reviewer_approved = any(

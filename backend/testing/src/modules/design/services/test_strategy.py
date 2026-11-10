@@ -177,7 +177,7 @@ async def request_strategy_changes(strategy_id, payload, user):
     strategy = await get_strategy_for_user(
         strategy_id, user, 'teststrategy.review'
     )
-    require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
+    await require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
     if user.id not in strategy.get("reviewer_ids", []):
         raise HTTPException(
             status_code=403, detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'}
@@ -218,7 +218,7 @@ async def approve_strategy(strategy_id, payload, user):
     strategy = await get_strategy_for_user(
         strategy_id, user, 'teststrategy.approve'
     )
-    require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
+    await require_independent_review(strategy, user, 'TEST_STRATEGY_SELF_REVIEW_FORBIDDEN')
     if user.id not in strategy.get("reviewer_ids", []):
         raise HTTPException(status_code=403, detail={"code": 'STRATEGY_REVIEW_ASSIGNMENT_REQUIRED'})
     if strategy["status"] != 'IN_REVIEW':

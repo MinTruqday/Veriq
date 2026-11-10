@@ -343,7 +343,7 @@ async def transition_test_scenario_record(scenario_id, payload, user, action):
     if scenario.get('status') != previous:
         raise HTTPException(409, detail={'code': 'INVALID_STATE_TRANSITION'})
     if action in {'approve', 'revise'}:
-        require_independent_review(scenario, user, 'TEST_SCENARIO_SELF_REVIEW_FORBIDDEN')
+        await require_independent_review(scenario, user, 'TEST_SCENARIO_SELF_REVIEW_FORBIDDEN')
     if action == 'approve':
         require_automation_publication_authority(user, 'testscenario.update')
         if not scenario.get('objective') or not scenario.get('requirement_version_ids'):

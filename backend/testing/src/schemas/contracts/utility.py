@@ -44,6 +44,7 @@ class GenerateInput(BaseModel):
     challenge_hypotheses: list[TestDesignChallengeInput] = Field(default_factory=list, max_length=5)
     challenge_suite_signature: str | None = Field(default=None, max_length=128)
     preview_only: bool = False
+    testability_mode: Literal["OFF", "BLUEPRINT_ONLY", "BLUEPRINT_BENCHMARK"] = "OFF"
 
 
 class TechniqueRecommendationInput(BaseModel):

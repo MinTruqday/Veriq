@@ -40,6 +40,10 @@ const toggleSettings = [
   ["require_environment_for_test_plan", "Yêu cầu chọn môi trường trước khi phê duyệt kế hoạch"],
   ["partial_complete_allowed", "Cho phép hoàn tất một phần lần chạy kiểm thử"],
   ["allow_not_applicable_results", "Cho phép kết quả Không áp dụng khi có lý do"],
+  [
+    "require_independent_review",
+    "Bắt buộc thành viên khác duyệt nội dung do người tạo hoặc người sửa thực hiện",
+  ],
 ];
 
 const toggleSettingGroups = [
@@ -55,6 +59,10 @@ const toggleSettingGroups = [
       "partial_complete_allowed",
       "allow_not_applicable_results",
     ],
+  },
+  {
+    label: "Phê duyệt nội dung",
+    keys: ["require_independent_review"],
   },
 ];
 

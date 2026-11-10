@@ -14,6 +14,7 @@ def default_project_settings():
         "rca_reopen_threshold": 2,
         "rca_duplicate_threshold": 3,
         "read_after_archive_policy": "ALLOW_READ",
+        "require_independent_review": False,
         "work_item_planning": {
             "columns": [
                 {"status": "BACKLOG", "name": "Danh sách chờ", "position": 0, "wip_limit": None},
@@ -74,6 +75,11 @@ def validate_project_settings(settings):
         raise HTTPException(
             status_code=422,
             detail={"code": "PROJECT_SETTING_VALUE_INVALID", "setting": "read_after_archive_policy"},
+        )
+    if not isinstance(values.get("require_independent_review"), bool):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "PROJECT_SETTING_VALUE_INVALID", "setting": "require_independent_review"},
         )
     return values
 

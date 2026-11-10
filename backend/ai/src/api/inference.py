@@ -32,7 +32,7 @@ from src.services.inference import (
     stream_sink,
     summarize_document,
 )
-from src.services.testability_benchmark import testability_benchmark
+from src.benchmark import testability_benchmark
 
 router = APIRouter(prefix="/suy-luan")
 
@@ -72,6 +72,23 @@ def _require_independently_reviewed_benchmark_dataset(dataset):
         )
 
 
+def _apply_reference_provenance(report, dataset):
+    report.reference_provenance = dataset.reference_provenance
+    report.answer_key_review = dataset.answer_key_review
+    report.benchmark_design = {
+        **(report.benchmark_design or {}),
+        "answer_key_basis": (
+            "self_prepared_experimental_answer_key"
+            if dataset.reference_provenance == "SELF_PREPARED_REFERENCE"
+            else "independently_reviewed_answer_key"
+        ),
+        "independently_validated": (
+            dataset.reference_provenance == "INDEPENDENT_REFERENCE"
+            and bool(dataset.answer_key_review)
+        ),
+    }
+
+
 @router.post(
     "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu",
     dependencies=[Depends(verify_internal_token)],
@@ -95,18 +112,22 @@ async def evaluate_blueprint_against_reference(req: TestabilityBlueprintBenchmar
     }
     if len(source_signature) != len(req.sources):
         raise HTTPException(status_code=422, detail={"code": "BLUEPRINT_BENCHMARK_SOURCE_DUPLICATE"})
-    datasets = await testability_benchmark_repository.list_reviewed_datasets_for_matching()
+    datasets = await testability_benchmark_repository.list_reviewed_datasets_for_matching(
+        req.project_id, req.requester_user_id
+    )
     exact_matches = []
     for dataset in datasets:
         review = dataset.answer_key_review
-        if (
-            not review
-            or not dataset.creator_identity_verified
-            or not review.reviewer_identity_verified
-            or review.decision != "APPROVE"
-            or review.reviewer_id == dataset.created_by
-            or not benchmark_answer_key_review_covers_cases(dataset.cases, review)
-        ):
+        independently_reviewed = bool(
+            review
+            and dataset.creator_identity_verified
+            and review.reviewer_identity_verified
+            and review.decision == "APPROVE"
+            and review.reviewer_id != dataset.created_by
+            and benchmark_answer_key_review_covers_cases(dataset.cases, review)
+        )
+        self_prepared = dataset.reference_provenance == "SELF_PREPARED_REFERENCE"
+        if not independently_reviewed and not self_prepared:
             continue
         for gold_case in dataset.cases:
             if not gold_case.sources:
@@ -116,7 +137,7 @@ async def evaluate_blueprint_against_reference(req: TestabilityBlueprintBenchmar
                 for source in gold_case.sources
             }
             if gold_sources == source_signature:
-                exact_matches.append((dataset, gold_case))
+                exact_matches.append((dataset, gold_case, independently_reviewed))
     if len(exact_matches) != 1:
         return {
             "assessment_type": "NOT_AVAILABLE",
@@ -127,7 +148,7 @@ async def evaluate_blueprint_against_reference(req: TestabilityBlueprintBenchmar
                 else "Có nhiều đáp án chuẩn khớp nguồn; cần chọn bộ tham chiếu rõ ràng trước khi chấm."
             ),
         }
-    dataset, gold_case = exact_matches[0]
+    dataset, gold_case, independently_reviewed = exact_matches[0]
     try:
         testability_benchmark.validate_cases_for_scoring([gold_case])
         candidate_quotes = []
@@ -168,8 +189,12 @@ async def evaluate_blueprint_against_reference(req: TestabilityBlueprintBenchmar
     except (ValueError, TypeError) as error:
         raise HTTPException(status_code=422, detail={"code": "BLUEPRINT_BENCHMARK_INPUT_INVALID"}) from error
     return {
-        "assessment_type": "INDEPENDENT_REFERENCE",
-        "independently_validated": True,
+        "assessment_type": (
+            "INDEPENDENT_REFERENCE"
+            if independently_reviewed
+            else "SELF_PREPARED_REFERENCE"
+        ),
+        "independently_validated": independently_reviewed,
         "dataset_id": dataset.dataset_id,
         "dataset_revision": dataset.revision,
         "case_id": gold_case.case_id,
@@ -273,10 +298,16 @@ async def evaluate_testability_benchmark_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
     _require_scoreable_benchmark_dataset(dataset.cases)
-    _require_independently_reviewed_benchmark_dataset(dataset)
+    if dataset.reference_provenance == "INDEPENDENT_REFERENCE":
+        _require_independently_reviewed_benchmark_dataset(dataset)
+    elif not dataset.project_id or not dataset.creator_identity_verified:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "BENCHMARK_SELF_PREPARED_REFERENCE_SCOPE_INVALID"},
+        )
     report = await testability_benchmark.run_dataset(dataset_id, dataset.cases)
     report.dataset_revision = dataset.revision
-    report.answer_key_review = dataset.answer_key_review
+    _apply_reference_provenance(report, dataset)
     serialized = report.model_dump(mode="json")
     await testability_benchmark_repository.save_run(serialized)
     return report
@@ -299,17 +330,23 @@ async def repeat_testability_benchmark_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
     _require_scoreable_benchmark_dataset(dataset.cases)
-    _require_independently_reviewed_benchmark_dataset(dataset)
+    if dataset.reference_provenance == "INDEPENDENT_REFERENCE":
+        _require_independently_reviewed_benchmark_dataset(dataset)
+    elif not dataset.project_id or not dataset.creator_identity_verified:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "BENCHMARK_SELF_PREPARED_REFERENCE_SCOPE_INVALID"},
+        )
     async def save_report(report):
         report.dataset_revision = dataset.revision
-        report.answer_key_review = dataset.answer_key_review
+        _apply_reference_provenance(report, dataset)
         await testability_benchmark_repository.save_run(report.model_dump(mode="json"))
 
     report = await testability_benchmark.run_repeated_dataset(
         dataset_id, dataset.cases, repetitions, on_report=save_report
     )
     report.dataset_revision = dataset.revision
-    report.answer_key_review = dataset.answer_key_review
+    _apply_reference_provenance(report, dataset)
     return report
 
 

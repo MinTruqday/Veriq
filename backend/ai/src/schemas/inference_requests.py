@@ -130,6 +130,8 @@ class TestingAutomationResult(BaseModel):
         max_length=100,
         description="Analysis findings pending acknowledgement",
     )
+    summary: str = Field(default="", max_length=1500)
+    improvement_suggestions: List[str] = Field(default_factory=list, max_length=30)
     obligations: List[dict[str, Any]] = Field(
         default_factory=list,
         max_length=300,
@@ -146,7 +148,12 @@ class TestingAutomationResult(BaseModel):
     evidence_refs: List[str] = Field(
         default_factory=list, max_length=200, description="Evidence identifiers supporting the result"
     )
-    confidence: float = Field(ge=0, le=1, description="Model confidence for reference")
+    confidence: float = Field(
+        default=0.0,
+        ge=0,
+        le=1,
+        description="Optional model confidence; not an independent quality score",
+    )
     warnings: List[str] = Field(
         default_factory=list, max_length=50, description="Evidence limitation and conflict warnings"
     )

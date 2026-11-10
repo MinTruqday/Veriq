@@ -403,7 +403,7 @@ async def submit_review(analysis_id, payload, user):
 
 async def approve_analysis(analysis_id, payload, user):
     value = await get_analysis(analysis_id, user, "causalanalysis.approve")
-    require_independent_review(value, user, "CAUSAL_ANALYSIS_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(value, user, "CAUSAL_ANALYSIS_SELF_REVIEW_FORBIDDEN")
     target = "APPROVED" if payload.decision == "APPROVE" else "DRAFT"
     timestamp = now()
     changes = {

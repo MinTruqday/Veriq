@@ -324,6 +324,8 @@ class TestabilityBenchmarkRequest(BaseModel):
 
 
 class TestabilityBlueprintBenchmarkRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=200)
+    requester_user_id: str = Field(min_length=1, max_length=200)
     sources: list[TestabilityBenchmarkSource] = Field(min_length=1, max_length=20)
     blueprint: dict
 
@@ -337,6 +339,9 @@ class TestabilityBenchmarkReport(BaseModel):
     run_id: str | None = None
     dataset_id: str | None = None
     dataset_revision: int | None = Field(default=None, ge=1)
+    reference_provenance: Literal["INDEPENDENT_REFERENCE", "SELF_PREPARED_REFERENCE"] = (
+        "INDEPENDENT_REFERENCE"
+    )
     answer_key_review: "TestabilityBenchmarkAnswerKeyReview | None" = None
     pipeline_metadata: dict = Field(
         default_factory=dict,
@@ -408,6 +413,9 @@ class TestabilityBenchmarkPipelineRepeatStats(BaseModel):
 class TestabilityBenchmarkRepeatedReport(BaseModel):
     dataset_id: str
     dataset_revision: int | None = Field(default=None, ge=1)
+    reference_provenance: Literal["INDEPENDENT_REFERENCE", "SELF_PREPARED_REFERENCE"] = (
+        "INDEPENDENT_REFERENCE"
+    )
     answer_key_review: "TestabilityBenchmarkAnswerKeyReview | None" = None
     requested_repetitions: int = Field(ge=1, le=5)
     completed_repetitions: int = Field(ge=0)
@@ -437,11 +445,17 @@ class TestabilityBenchmarkRepeatedReport(BaseModel):
 class TestabilityBenchmarkDatasetCreate(BaseModel):
     dataset_id: str = Field(min_length=1, max_length=200)
     title: str = Field(min_length=1, max_length=300)
+    project_id: str | None = Field(default=None, min_length=1, max_length=200)
+    reference_provenance: Literal["INDEPENDENT_REFERENCE", "SELF_PREPARED_REFERENCE"] = (
+        "INDEPENDENT_REFERENCE"
+    )
     cases: list[TestabilityBenchmarkGoldCase] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def validate_cases_for_scoring(self):
         validate_testability_cases_for_scoring(self.cases)
+        if self.reference_provenance == "SELF_PREPARED_REFERENCE" and not self.project_id:
+            raise ValueError("self_prepared_benchmark_requires_project_scope")
         return self
 
 
@@ -528,6 +542,10 @@ class TestabilityBenchmarkDatasetReview(BaseModel):
 class TestabilityBenchmarkDataset(BaseModel):
     dataset_id: str
     title: str
+    project_id: str | None = None
+    reference_provenance: Literal["INDEPENDENT_REFERENCE", "SELF_PREPARED_REFERENCE"] = (
+        "INDEPENDENT_REFERENCE"
+    )
     revision: int = 1
     created_at: str
     created_by: str

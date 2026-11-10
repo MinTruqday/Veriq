@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Panel, ErrorState } from "./WorkspacePrimitives";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
@@ -12,6 +12,7 @@ function assessmentLabel(value) {
 export default function ManualTestGenerationPanel({ projectId, requirements, mode, onSaved }) {
   const [versionId, setVersionId] = useState("");
   const [instruction, setInstruction] = useState("");
+  const [testabilityMode, setTestabilityMode] = useState("OFF");
   const [limit, setLimit] = useState(10);
   const [preview, setPreview] = useState(null);
   const [selected, setSelected] = useState([]);
@@ -20,6 +21,12 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
   const [notice, setNotice] = useState("");
   const inFlight = useRef(false);
   const saveIdempotencyKey = useRef(null);
+  useEffect(() => {
+    setTestabilityMode("OFF");
+    setVersionId("");
+    setPreview(null);
+    setSelected([]);
+  }, [projectId]);
   const source = requirements.find((item) => item.current_version_id === versionId);
   const generate = async () => {
     if (inFlight.current || !versionId) return;
@@ -31,7 +38,12 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
     setSelected([]);
     saveIdempotencyKey.current = null;
     try {
-      const payload = { instruction, max_cases: limit, preview_only: true };
+      const payload = {
+        instruction,
+        max_cases: limit,
+        preview_only: true,
+        testability_mode: testabilityMode,
+      };
       if (mode === "scenarios") {
         const result = await testingApi.generateScenarios(versionId, payload);
         setPreview(result);
@@ -136,6 +148,24 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
             {busy ? "Đang xử lý" : "Tạo đề xuất"}
           </button>
         </div>
+        <label className="field-label block">
+          Chế độ hỗ trợ AI
+          <select
+            className="apple-input mt-2"
+            value={testabilityMode}
+            disabled={busy}
+            onChange={(event) => setTestabilityMode(event.target.value)}
+          >
+            <option value="OFF">Thông thường · không dùng Blueprint</option>
+            <option value="BLUEPRINT_ONLY">Blueprint · dùng phân tích đã lưu</option>
+            <option value="BLUEPRINT_BENCHMARK">
+              Blueprint + Benchmark · rà soát AI, chấm khi có bộ tham chiếu
+            </option>
+          </select>
+          <span className="mt-1 block text-xs text-ink-muted">
+            Bạn vẫn có thể tạo, sửa và lưu nháp thủ công. Bản AI chỉ là đề xuất để xem trước.
+          </span>
+        </label>
         {source && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
             <p className="min-w-0 truncate text-sm text-ink-muted">

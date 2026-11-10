@@ -9,7 +9,7 @@ from pydantic import Field
 from src.core.infrastructure.configuration import settings
 from src.prompts.test_generation import requirement_test_generation_instruction
 from src.schemas.automation import AutomationFact
-from src.services.testability_blueprint import (
+from src.blueprint import (
     compile_testability_blueprint,
     obligations_supported_by_requirement_version,
     requirement_version_source_segments,

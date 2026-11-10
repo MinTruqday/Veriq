@@ -406,7 +406,7 @@ async def transition_report(report_id, payload, user):
     if action == "SUBMIT" and report["reviewer_id"] == user.id:
         fail("REPORT_SELF_REVIEW_FORBIDDEN", 403)
     if action in {"REQUEST_CHANGES", "APPROVE"}:
-        require_independent_review(report, user, "REPORT_SELF_REVIEW_FORBIDDEN")
+        await require_independent_review(report, user, "REPORT_SELF_REVIEW_FORBIDDEN")
     if action in {"SUBMIT", "REQUEST_CHANGES", "APPROVE", "PUBLISH"}:
         from src.schemas.reporting import ReportParticipants
         await participants(

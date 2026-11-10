@@ -54,17 +54,28 @@ def _requirement_version_is_baselined(version: dict) -> bool:
 
 
 class AIAutomationClient:
-    async def evaluate_blueprint_against_reference(self, sources: list[dict], blueprint: dict) -> dict:
+    async def evaluate_blueprint_against_reference(
+        self,
+        project_id: str,
+        requester_user_id: str,
+        sources: list[dict],
+        blueprint: dict,
+    ) -> dict:
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(
                 f"{settings.AI_URL.rstrip('/')}/suy-luan/noi-bo/danh-gia/blueprint",
                 headers={"X-Internal-Token": settings.SECRET_KEY},
-                json={"sources": sources, "blueprint": blueprint},
+                json={
+                    "project_id": project_id,
+                    "requester_user_id": requester_user_id,
+                    "sources": sources,
+                    "blueprint": blueprint,
+                },
             )
             response.raise_for_status()
         value = response.json()
         if not isinstance(value, dict) or value.get("assessment_type") not in {
-            "NOT_AVAILABLE", "INDEPENDENT_REFERENCE"
+            "NOT_AVAILABLE", "INDEPENDENT_REFERENCE", "SELF_PREPARED_REFERENCE"
         }:
             raise RuntimeError("BLUEPRINT_BENCHMARK_RESPONSE_INVALID")
         return value

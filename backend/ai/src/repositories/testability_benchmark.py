@@ -50,9 +50,24 @@ class TestabilityBenchmarkRepository:
         document["dataset_id"] = str(document.pop("_id"))
         return TestabilityBenchmarkDataset.model_validate(document)
 
-    async def list_reviewed_datasets_for_matching(self) -> list[TestabilityBenchmarkDataset]:
+    async def list_reviewed_datasets_for_matching(
+        self, project_id: str, requester_user_id: str
+    ) -> list[TestabilityBenchmarkDataset]:
         documents = await self._collection.find(
-            {"answer_key_review.decision": "APPROVE", "creator_identity_verified": True}
+            {
+                "project_id": project_id,
+                "$or": [
+                    {
+                        "reference_provenance": "SELF_PREPARED_REFERENCE",
+                        "created_by": requester_user_id,
+                        "creator_identity_verified": True,
+                    },
+                    {
+                        "answer_key_review.decision": "APPROVE",
+                        "creator_identity_verified": True,
+                    },
+                ],
+            }
         ).sort([("updated_at", -1), ("created_at", -1)]).limit(500).to_list(500)
         result = []
         for document in documents:

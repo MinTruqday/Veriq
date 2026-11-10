@@ -342,7 +342,7 @@ async def request_clarification_changes(clarification_id, payload, user):
     if version.get("revision") != payload.expected_requirement_revision:
         raise HTTPException(status_code=409, detail={"code": "REVISION_CONFLICT"})
     if version.get("status") == "IN_REVIEW":
-        require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
+        await require_independent_review(version, user, "REQUIREMENT_SELF_REVIEW_FORBIDDEN")
     timestamp = now()
     requirement_revision_after_request = version["revision"] + int(version["status"] == "IN_REVIEW")
 

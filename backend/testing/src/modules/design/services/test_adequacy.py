@@ -501,7 +501,7 @@ async def approve_adequacy_assessment(assessment_id, payload, user):
     assessment = await _reconcile_expired_waivers(assessment)
     if assessment["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
-    require_independent_review(assessment, user, "TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(assessment, user, "TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN")
     timestamp = now()
     if not assessment.get("coverage_items"):
         raise HTTPException(status_code=409, detail={"code": "ADEQUACY_NO_COVERAGE_ITEMS"})
@@ -589,7 +589,7 @@ async def request_adequacy_changes(assessment_id, payload, user):
     assessment = await get_project_entity("test_adequacy_assessments", assessment_id, user, "testcase.review")
     if assessment["status"] != "IN_REVIEW":
         raise HTTPException(status_code=409, detail={"code": "INVALID_STATE_TRANSITION"})
-    require_independent_review(assessment, user, "TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(assessment, user, "TEST_ADEQUACY_SELF_REVIEW_FORBIDDEN")
     value = {"status": "DRAFT", "review_note": payload.note, "changes_requested_by": user.id, "changes_requested_at": now(), "updated_at": now()}
     return await _replace_assessment_with_audit(
         assessment_id, assessment["project_id"], payload.expected_revision, value,

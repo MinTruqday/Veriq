@@ -153,7 +153,7 @@ async def request_test_case_changes_record(project_id, draft_id, payload, user):
         raise HTTPException(status_code=422, detail={"code": 'PROJECT_MISMATCH'})
     if draft["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
-    require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
     if draft["revision"] != payload.expected_revision:
         raise HTTPException(
             status_code=409,
@@ -197,7 +197,7 @@ async def approve_test_case_draft_record(draft_id, payload, user):
         return await approved_test_case_result(draft, user)
     if draft["status"] != 'IN_REVIEW':
         raise HTTPException(status_code=409, detail={"code": 'INVALID_STATE_TRANSITION'})
-    require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
+    await require_independent_review(draft, user, "TEST_CASE_SELF_REVIEW_FORBIDDEN")
     if draft["revision"] != payload.expected_revision:
         raise HTTPException(
             status_code=409,

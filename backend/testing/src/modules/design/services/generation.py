@@ -14,7 +14,6 @@ from src.modules.design.services.test_case_records import active_suite_signature
 from src.core.project_settings import resolve_testcase_duplicate_threshold
 from src.repositories.test_design import test_design_repository
 from src.repositories.test_strategy import test_strategy_repository
-from src.repositories.test_analysis import test_analysis_repository
 from src.modules.design.services.test_evidence import requirement_test_evidence_text
 from src.schemas.contracts.design import ScenarioCreate, TestCaseDraftCreate
 from src.schemas.test_analysis import GeneratedCase
@@ -301,15 +300,22 @@ async def generate_requirement_drafts(
         }
         for item in criteria
     )
-    saved_blueprint = await test_analysis_repository.find_latest_blueprint(
-        version["project_id"], version["_id"]
-    )
     blueprint_context = None
-    if saved_blueprint:
-        value = saved_blueprint.get("testability_blueprint") or {}
+    processed_blueprint = None
+    if payload.testability_mode != "OFF":
+        from src.modules.design.services.testability_blueprint_workflow import (
+            blueprint_for_requirement,
+        )
+
+        processed_blueprint = await blueprint_for_requirement(
+            version["project_id"], version, criteria, payload.testability_mode, user
+        )
+    if processed_blueprint:
+        value = processed_blueprint.get("blueprint") or {}
+        benchmark = processed_blueprint.get("benchmark") or {}
         blueprint_context = {
             "requirement_version_id": version["_id"],
-            "created_at": saved_blueprint.get("created_at"),
+            "blueprint_result_id": processed_blueprint.get("blueprint_result_id"),
             "obligations": [
                 {
                     "key": str(item.get("key") or ""),
@@ -324,6 +330,20 @@ async def generate_requirement_drafts(
                 }
                 for item in value.get("clarifications", [])[:3]
             ],
+            "review_type": (
+                "SELF_REVIEW_NOT_INDEPENDENT_BENCHMARK"
+                if processed_blueprint.get("self_review")
+                else None
+            ),
+            "benchmark": {
+                "assessment_type": benchmark.get("assessment_type", "NOT_AVAILABLE"),
+                "independently_validated": bool(
+                    benchmark.get("independently_validated")
+                ),
+                "dataset_id": benchmark.get("dataset_id"),
+                "dataset_revision": benchmark.get("dataset_revision"),
+                "reason": str(benchmark.get("reason") or "")[:240],
+            },
         }
     related_context = None
     if scenario:
@@ -360,6 +380,28 @@ async def generate_requirement_drafts(
                 "risks": snapshot.get("risks", [])[:20],
             }
             break
+        existing_scenarios = await database.value.test_scenarios.find(
+            {
+                "project_id": version["project_id"],
+                "requirement_version_ids": version["_id"],
+                "status": {"$ne": "archived"},
+            },
+            {"_id": 1, "title": 1, "category": 1, "objective": 1, "status": 1},
+        ).sort("updated_at", -1).limit(50).to_list(50)
+        if existing_scenarios:
+            related_context = {
+                **(related_context or {}),
+                "existing_scenarios_in_project": [
+                    {
+                        "scenario_id": item["_id"],
+                        "title": item.get("title"),
+                        "category": item.get("category"),
+                        "objective": item.get("objective"),
+                        "status": item.get("status"),
+                    }
+                    for item in existing_scenarios
+                ],
+            }
     else:
         scenarios = await database.value.test_scenarios.find(
             {
@@ -382,6 +424,112 @@ async def generate_requirement_drafts(
                     }
                 for item in scenarios
                 ],
+            }
+        existing_case_query = {
+            "project_id": version["project_id"],
+            "requirement_version_ids": version["_id"],
+            "status": {"$nin": ["archived", "ARCHIVED"]},
+        }
+        existing_case_drafts = await database.value.test_case_drafts.find(
+            {
+                **existing_case_query,
+                "status": {"$in": ["DRAFT", "IN_REVIEW", "draft", "in_review"]},
+            },
+            {
+                "_id": 1,
+                "title": 1,
+                "objective_doc": 1,
+                "preconditions_doc": 1,
+                "steps": 1,
+                "expected_result_doc": 1,
+                "status": 1,
+                "revision": 1,
+            },
+        ).sort("updated_at", -1).limit(3).to_list(3)
+        existing_case_versions = await database.value.test_cases.aggregate(
+            [
+                {
+                    "$match": {
+                        "project_id": version["project_id"],
+                        "status": "ACTIVE",
+                        "current_version_id": {"$ne": None},
+                    }
+                },
+                {
+                    "$lookup": {
+                        "from": "test_case_versions",
+                        "localField": "current_version_id",
+                        "foreignField": "_id",
+                        "as": "current_version",
+                    }
+                },
+                {"$unwind": "$current_version"},
+                {
+                    "$match": {
+                        "current_version.project_id": version["project_id"],
+                        "current_version.requirement_version_ids": version["_id"],
+                    }
+                },
+                {"$replaceRoot": {"newRoot": "$current_version"}},
+                {"$sort": {"_id": -1}},
+                {"$limit": 5},
+                {
+                    "$project": {
+                        "_id": 1,
+                        "test_case_id": 1,
+                        "title": 1,
+                        "objective_doc": 1,
+                        "preconditions_doc": 1,
+                        "steps": 1,
+                        "expected_result_doc": 1,
+                        "version": 1,
+                    }
+                },
+            ]
+        ).to_list(5)
+        existing_cases = [
+            {
+                "case_id": str(item.get("_id") or ""),
+                "status": str(item.get("status") or "DRAFT"),
+                "revision": item.get("revision"),
+                "title": str(item.get("title") or "")[:200],
+                "objective": plain_text(item.get("objective_doc") or {})[:180],
+                "preconditions": plain_text(item.get("preconditions_doc") or {})[:120],
+                "steps": [
+                    {
+                        "action": plain_text(step.get("action_doc") or {})[:120],
+                        "expected": plain_text(step.get("expected_doc") or {})[:120],
+                    }
+                    for step in (item.get("steps") or [])[:1]
+                ],
+                "expected_result": plain_text(item.get("expected_result_doc") or {})[:180],
+            }
+            for item in existing_case_drafts
+        ]
+        existing_cases.extend(
+            {
+                "case_id": str(item.get("_id") or item.get("test_case_id") or ""),
+                "status": "VERSIONED",
+                "version": item.get("version"),
+                "title": str(item.get("title") or "")[:200],
+                "objective": plain_text(item.get("objective_doc") or {})[:180],
+                "preconditions": plain_text(item.get("preconditions_doc") or {})[:120],
+                "steps": [
+                    {
+                        "action": plain_text(step.get("action_doc") or {})[:120],
+                        "expected": plain_text(step.get("expected_doc") or {})[:120],
+                    }
+                    for step in (item.get("steps") or [])[:1]
+                ],
+                "expected_result": plain_text(item.get("expected_result_doc") or {})[:180],
+            }
+            for item in existing_case_versions
+        )
+        if existing_cases:
+            related_context = {
+                **(related_context or {}),
+                "existing_test_cases_for_duplicate_and_conflict_detection": existing_cases[:8],
+                "existing_items_are_context_not_authoritative_requirement_evidence": True,
             }
     source_text_by_ref = {item["artifact_version_id"]: item["text"] for item in evidence}
     challenge_cases = {}
@@ -425,11 +573,12 @@ async def generate_requirement_drafts(
             "challenge_hypotheses": [item.model_dump() for item in payload.challenge_hypotheses],
             "project_risk_assessment_policy": risk_policy,
             "saved_testability_blueprint": blueprint_context,
+            "testability_mode": payload.testability_mode,
             "upstream_approved_context": related_context,
             "consistency_rules": [
-                "Requirement version and its acceptance criteria are authoritative.",
-                "Use saved Blueprint and upstream approved context to check consistency; do not rerun or recreate them.",
-                "If generated content conflicts with an upstream approved source or a Blueprint obligation/clarification, do not silently choose a side. Preserve source-grounded output and report the conflict in warnings for the user to resolve.",
+                "Treat the exact Requirement version, acceptance criteria, current related artifacts, and Blueprint as distinct sources. Do not assume one source is always correct when they disagree.",
+                "Use a saved Blueprint only when the user selected a Blueprint mode and it matches this exact Requirement version. Reuse it; do not benchmark again during Scenario or Case generation.",
+                "If generated content conflicts with a source or existing Scenario and none of the supplied sources establishes which value governs, report the conflict in warnings for the user to resolve; never silently choose a side.",
                 "Cite only Requirement and acceptance-criterion evidence references in generated cases.",
             ],
             "user_instruction": payload.instruction,

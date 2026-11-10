@@ -206,11 +206,13 @@ export default function TestPlanEditor({
   const [saving, setSaving] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
+  const [testabilityMode, setTestabilityMode] = useState("OFF");
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [selectedAiFields, setSelectedAiFields] = useState(() => new Set());
   const [appliedAiFields, setAppliedAiFields] = useState(() => new Set());
   const [aiError, setAiError] = useState("");
   const savingRef = useRef(false);
+  useEffect(() => setTestabilityMode("OFF"), [projectId]);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
   const requestAiPlanDraft = async () => {
     if (aiBusy || !value.requirement_version_ids.length) return;
@@ -221,6 +223,23 @@ export default function TestPlanEditor({
       const result = await testingApi.suggestTestPlanDraft(projectId, {
         requirement_version_ids: value.requirement_version_ids,
         instruction: aiInstruction,
+        testability_mode: testabilityMode,
+        current_test_plan: {
+          objective: value.objective,
+          scope_in: value.scope_in,
+          scope_out: value.scope_out,
+          test_approach: value.test_approach,
+          test_level: value.test_level,
+          test_types: value.test_types,
+          environment: value.environment,
+          entry_criteria: value.entry_criteria,
+          exit_criteria: value.exit_criteria,
+          risks: value.risks,
+          assumptions: value.assumptions,
+          constraints: value.constraints,
+          test_data_plan: value.test_data_plan,
+          defect_management: value.defect_management,
+        },
       });
       setAiSuggestion(result);
       const suggestion = result?.suggestion || {};
@@ -369,6 +388,25 @@ export default function TestPlanEditor({
               {aiBusy ? "Đang tạo gợi ý" : "Tạo gợi ý"}
             </button>
           </div>
+          <label className="field-label block">
+            Chế độ hỗ trợ AI
+            <select
+              className="apple-input mt-2"
+              value={testabilityMode}
+              disabled={aiBusy}
+              onChange={(event) => setTestabilityMode(event.target.value)}
+            >
+              <option value="OFF">Thông thường · không dùng Blueprint</option>
+              <option value="BLUEPRINT_ONLY">Blueprint · dùng phân tích đã lưu</option>
+              <option value="BLUEPRINT_BENCHMARK">
+                Blueprint + Benchmark · rà soát AI, chấm khi có bộ tham chiếu
+              </option>
+            </select>
+            <span className="mt-1 block text-xs text-ink-muted">
+              Bạn vẫn có thể nhập và sửa kế hoạch thủ công. AI chỉ trả đề xuất để bạn chọn từng
+              trường.
+            </span>
+          </label>
           <label className="field-label block">
             Hướng dẫn bổ sung
             <textarea
