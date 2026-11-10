@@ -301,11 +301,7 @@ async def validate_coverage_items(project_id, requirement_version_ids, coverage_
 
 
 async def attach_manual_criterion_evidence(project_id, payload):
-    if (
-        payload.origin != "manual"
-        or not payload.acceptance_criterion_ids
-        or payload.evidence_refs
-    ):
+    if payload.origin != "manual" or not payload.requirement_version_ids:
         return payload
     version_ids = list(dict.fromkeys(payload.requirement_version_ids))
     criterion_ids = list(dict.fromkeys(payload.acceptance_criterion_ids))
@@ -318,12 +314,27 @@ async def attach_manual_criterion_evidence(project_id, payload):
     if len(versions) != len(version_ids) or len(criteria) != len(criterion_ids):
         raise HTTPException(
             status_code=409,
-            detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Yêu cầu hoặc tiêu chí chấp nhận đã thay đổi. Hãy tải lại trước khi lưu."},
+            detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Yêu cầu, tiêu chí hoặc quy tắc nghiệp vụ đã thay đổi. Hãy tải lại trước khi lưu."},
         )
+    from src.modules.design.services.test_adequacy import _sources
+
+    selected_coverage_ids = set(payload.coverage_item_ids or [])
+    selected_business_rules = [
+        source
+        for version in versions
+        for source in await _sources(version)
+        if source["source_type"] == "business_rule"
+        and source["coverage_item_id"] in selected_coverage_ids
+    ]
+    if not criterion_ids and not selected_business_rules and not payload.evidence_refs:
+        return payload
+
     source_evidence = []
+    source_text_by_ref = {}
     for version in versions:
         text = requirement_test_evidence_text(version)
         if text:
+            source_text_by_ref[version["_id"]] = text
             source_evidence.append({
                 "artifact_type": "requirement_version",
                 "artifact_version_id": version["_id"],
@@ -338,6 +349,7 @@ async def attach_manual_criterion_evidence(project_id, payload):
                 status_code=409,
                 detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Tiêu chí chấp nhận không còn nội dung để dẫn chứng. Hãy tải lại trước khi lưu."},
             )
+        source_text_by_ref[criterion["_id"]] = quote
         source_evidence.append({
             "artifact_type": "acceptance_criterion",
             "artifact_version_id": criterion["_id"],
@@ -347,10 +359,46 @@ async def attach_manual_criterion_evidence(project_id, payload):
             "evidence_ref": criterion["_id"],
             "quote": quote[:1000].rstrip(),
         })
+    for source in selected_business_rules:
+        evidence_quotes.append({
+            "evidence_ref": source["requirement_version_id"],
+            "quote": source["source_quote"][:1000].rstrip(),
+        })
+    allowed_refs = set(criterion_ids) | {
+        source["requirement_version_id"] for source in selected_business_rules
+    }
+    supplied_refs = list(dict.fromkeys(payload.evidence_refs or []))
+    if not set(supplied_refs) <= allowed_refs:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Dẫn chứng phải thuộc tiêu chí hoặc quy tắc nghiệp vụ đã chọn."},
+        )
+    for citation in payload.evidence_quotes:
+        quote = citation.quote.strip()
+        source_text = source_text_by_ref.get(citation.evidence_ref, "")
+        if citation.evidence_ref not in allowed_refs or not quote or quote not in source_text:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "TEST_CASE_EVIDENCE_CHANGED", "message": "Trích dẫn không khớp nội dung nguồn hiện hành."},
+            )
+        evidence_quotes.append({"evidence_ref": citation.evidence_ref, "quote": quote})
+    evidence_refs = list(dict.fromkeys([
+        *supplied_refs,
+        *criterion_ids,
+        *(source["requirement_version_id"] for source in selected_business_rules),
+    ]))
+    evidence_quotes = list({
+        (item["evidence_ref"], item["quote"]): item for item in evidence_quotes
+    }.values())
+    if len(evidence_quotes) > 20 or len(evidence_refs) > 200 or len(source_evidence) > 200:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "TEST_CASE_EVIDENCE_LIMIT_EXCEEDED", "message": "Số lượng nguồn hoặc trích dẫn vượt giới hạn của một ca kiểm thử."},
+        )
     return type(payload).model_validate({
         **payload.model_dump(),
         "source_evidence": source_evidence,
-        "evidence_refs": [item["_id"] for item in criteria],
+        "evidence_refs": evidence_refs,
         "evidence_quotes": evidence_quotes,
     })
 
@@ -806,10 +854,15 @@ async def update_test_case_draft_record(draft_id, payload, user, project_id=None
         if changes.get("evidence_refs") is not None
         else draft.get("evidence_refs", [])
     )
+    effective_coverage_item_ids = (
+        changes.get("coverage_item_ids")
+        if changes.get("coverage_item_ids") is not None
+        else draft.get("coverage_item_ids", [])
+    )
     if (
         draft.get("origin") == "manual"
-        and effective_acceptance_criterion_ids
         and not effective_evidence_refs
+        and (effective_acceptance_criterion_ids or effective_coverage_item_ids)
     ):
         changes.update({
             "source_evidence": [],
