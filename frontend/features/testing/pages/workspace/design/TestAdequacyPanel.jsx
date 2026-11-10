@@ -210,6 +210,12 @@ export default function TestAdequacyPanel({
     }
     const caseIds = new Set(cases.map((test) => test.id));
     const linkedResults = results.filter((result) => caseIds.has(result.test_case_version_id));
+    const linkedResultIds = new Set(linkedResults.map((result) => result._id));
+    const relatedDefects = defects.filter(
+      (defect) =>
+        caseIds.has(defect.linked_test_case_version_id) ||
+        linkedResultIds.has(defect.linked_test_result_id),
+    );
     const value = await ask({
       title: "Ghi nhận kết quả thực thi",
       description:
@@ -263,7 +269,7 @@ export default function TestAdequacyPanel({
           label: "Lỗi liên quan (không bắt buộc)",
           options: [
             { value: "", label: "Chưa liên kết lỗi" },
-            ...defects.map((defect) => ({
+            ...relatedDefects.map((defect) => ({
               value: defect._id,
               label: `${defect.defect_key || "Lỗi"} · ${defect.title || ""}`,
             })),

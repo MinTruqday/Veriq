@@ -703,7 +703,57 @@ class AnalyticsService:
             {"project_id": project_id, "origin": "ai_generated", "ai_review_feedback": {"$ne": None}},
             10000,
             sort=("created_at", -1),
-            projection={"ai_review_feedback": 1},
+            projection={"_id": 1, "ai_review_feedback": 1},
+        )
+        ai_case_version_ids = {
+            str(item["_id"])
+            for item in await analytics_repository.list_records(
+                "test_case_versions",
+                {"project_id": project_id, "origin": "ai_generated"},
+                10000,
+                projection={"_id": 1},
+            )
+        }
+        assured_adequacy_assessments = await analytics_repository.list_records(
+            "test_adequacy_assessments",
+            {
+                "project_id": project_id,
+                "status": {"$in": ["ASSURED", "CONDITIONAL"]},
+            },
+            10000,
+            sort=("approved_at", -1),
+            projection={"coverage_items": 1, "status": 1},
+        )
+        adequacy_outcomes = {
+            "CAUGHT_DEFECT": 0,
+            "DID_NOT_DIFFERENTIATE": 0,
+            "NOT_EXECUTED": 0,
+        }
+        adequacy_linked_case_ids = set()
+        adequacy_incomplete_evidence_count = 0
+        for assessment in assured_adequacy_assessments:
+            for coverage_item in assessment.get("coverage_items") or []:
+                for entry in coverage_item.get("execution_feedback") or []:
+                    case_version_id = str(entry.get("test_case_version_id") or "")
+                    outcome = entry.get("outcome")
+                    if case_version_id not in ai_case_version_ids or outcome not in adequacy_outcomes:
+                        continue
+                    if outcome == "NOT_EXECUTED":
+                        adequacy_outcomes[outcome] += 1
+                        continue
+                    if not entry.get("test_result_id") or not entry.get("defect_id"):
+                        adequacy_incomplete_evidence_count += 1
+                        continue
+                    adequacy_outcomes[outcome] += 1
+                    adequacy_linked_case_ids.add(case_version_id)
+        adequately_evaluated_count = (
+            adequacy_outcomes["CAUGHT_DEFECT"]
+            + adequacy_outcomes["DID_NOT_DIFFERENTIATE"]
+        )
+        observed_detection_rate = (
+            round(adequacy_outcomes["CAUGHT_DEFECT"] / adequately_evaluated_count, 4)
+            if adequately_evaluated_count
+            else None
         )
         ai_case_decisions = {}
         ai_case_changed_fields = {}
@@ -780,6 +830,16 @@ class AnalyticsService:
                 "changes_requested_reason_counts": ai_case_change_reasons,
                 "changes_requested_sample_truncated": len(ai_test_change_events) == 10000,
                 "approved_version_sample_truncated": len(ai_case_versions) == 10000,
+            },
+            "ai_test_adequacy_feedback": {
+                "approved_assessment_count": len(assured_adequacy_assessments),
+                "approved_assessment_sample_truncated": len(assured_adequacy_assessments) == 10000,
+                "linked_ai_case_count": len(adequacy_linked_case_ids),
+                "outcome_counts": adequacy_outcomes,
+                "outcome_count_with_run_and_defect_evidence": adequately_evaluated_count,
+                "incomplete_evidence_count": adequacy_incomplete_evidence_count,
+                "observed_detection_rate": observed_detection_rate,
+                "source": "INDEPENDENTLY_APPROVED_TEST_ADEQUACY_RECORDS",
             },
             "proposal_feedback_sample_truncated": len(proposal_rows) == 10000,
             "ai_request_metrics": {

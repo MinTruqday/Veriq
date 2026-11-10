@@ -36,6 +36,7 @@ export default function ProjectAIEvaluationPanel({ analytics, loading }) {
   const requests = analytics?.ai_request_metrics || {};
   const results = analytics?.ai_result_metrics || {};
   const feedback = analytics?.ai_test_case_feedback || {};
+  const adequacy = analytics?.ai_test_adequacy_feedback || {};
   const proposalDecisions = analytics?.decision_feedback?.decision_counts || {};
   const generatedCount = Number(feedback.generated_draft_count || 0);
   const evidenceRate = results.record_count
@@ -64,6 +65,39 @@ export default function ProjectAIEvaluationPanel({ analytics, loading }) {
             </p>
           ) : null}
         </div>
+      </Panel>
+
+      <Panel title="Khả năng phát hiện lỗi trong dữ liệu dự án">
+        <div className="space-y-3 p-4 text-sm leading-6 text-ink-muted">
+          <p>
+            Chỉ tính phản hồi thuộc hồ sơ độ đầy đủ đã được duyệt, gắn với phiên bản ca AI, kết quả
+            chạy và lỗi đã ghi nhận. Đây là số liệu quan sát trong dự án, chưa phải phép thử có lỗi
+            cài sẵn và không dùng để kết luận phương pháp AI nào tốt hơn.
+          </p>
+          {adequacy.approved_assessment_sample_truncated && (
+            <p className="text-warning">Số liệu chỉ bao gồm 10.000 hồ sơ đã duyệt gần nhất.</p>
+          )}
+        </div>
+        <dl className="grid gap-3 p-4 pt-0 sm:grid-cols-2 xl:grid-cols-5">
+          <Metric
+            label="Ca AI có kết quả và lỗi liên kết"
+            value={adequacy.linked_ai_case_count ?? 0}
+          />
+          <Metric label="Lượt phát hiện lỗi" value={adequacy.outcome_counts?.CAUGHT_DEFECT ?? 0} />
+          <Metric
+            label="Lượt không phát hiện lỗi"
+            value={adequacy.outcome_counts?.DID_NOT_DIFFERENTIATE ?? 0}
+          />
+          <Metric
+            label="Tỷ lệ phát hiện quan sát được"
+            value={rate(adequacy.observed_detection_rate)}
+            detail={`${adequacy.outcome_count_with_run_and_defect_evidence ?? 0} lượt có đủ bằng chứng`}
+          />
+          <Metric
+            label="Ghi nhận thiếu bằng chứng"
+            value={adequacy.incomplete_evidence_count ?? 0}
+          />
+        </dl>
       </Panel>
 
       <Panel title="Hoạt động và độ tin cậy">

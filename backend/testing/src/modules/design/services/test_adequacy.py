@@ -686,8 +686,22 @@ async def add_execution_feedback(assessment_id, coverage_item_id, payload, user)
                 status_code=409,
                 detail={"code": "TEST_RESULT_EVENT_SUPERSEDED"},
             )
-    if payload.defect_id and not await test_design_repository.find_defect(assessment["project_id"], payload.defect_id):
-        raise HTTPException(status_code=422, detail={"code": "DEFECT_NOT_FOUND"})
+    if payload.defect_id:
+        defect = await test_design_repository.find_defect(
+            assessment["project_id"], payload.defect_id
+        )
+        if not defect:
+            raise HTTPException(status_code=422, detail={"code": "DEFECT_NOT_FOUND"})
+        linked_to_case = defect.get("linked_test_case_version_id") == case["_id"]
+        linked_to_result = bool(
+            payload.test_result_id
+            and defect.get("linked_test_result_id") == payload.test_result_id
+        )
+        if not linked_to_case and not linked_to_result:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "DEFECT_NOT_LINKED_TO_TEST_EXECUTION"},
+            )
     items = []
     found = False
     for item in assessment["coverage_items"]:
