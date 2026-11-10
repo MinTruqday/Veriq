@@ -17,7 +17,10 @@ from src.prompts.requirement_templates import (
 )
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
 from src.prompts.test_design import TEST_DESIGN_CAPABILITY_CONTRACTS
-from src.prompts.testability_benchmark import CLARIFICATION_BASELINE
+from src.prompts.testability_benchmark import (
+    CLARIFICATION_BASELINE,
+    TESTABILITY_BENCHMARK_SEMANTIC_EVALUATION,
+)
 from src.prompts.testability_blueprint import (
     TESTABILITY_BLUEPRINT_COMPILATION,
     TESTABILITY_BLUEPRINT_SELF_REVIEW,
@@ -38,6 +41,7 @@ def _capability_contracts():
         "testability_blueprint_compilation": TESTABILITY_BLUEPRINT_COMPILATION,
         "testability_blueprint_self_review": TESTABILITY_BLUEPRINT_SELF_REVIEW,
         "clarification_baseline": CLARIFICATION_BASELINE,
+        "testability_benchmark_semantic_evaluation": TESTABILITY_BENCHMARK_SEMANTIC_EVALUATION,
         "impact_analysis": IMPACT_ANALYSIS_CONTRACT,
         "change_simulation_report": IMPACT_ANALYSIS_CONTRACT,
         "project_question": PROJECT_QUESTION_CONTRACT,

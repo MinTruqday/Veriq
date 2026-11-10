@@ -17,7 +17,7 @@ from src.blueprint.source_evidence import verified_fact_evidence
 
 
 async def compile_testability_blueprint(
-    project_id, source_facts, evidence_by_ref, allowed_document_ids
+    project_id, source_facts, evidence_by_ref, allowed_document_ids, instruction=""
 ):
     try:
         evidence = verified_fact_evidence(source_facts, evidence_by_ref, allowed_document_ids)
@@ -44,13 +44,13 @@ async def compile_testability_blueprint(
         TESTING_AUTOMATION_MAX_EVIDENCE_ITEMS,
     )
     if len(evidence) <= batch_size:
-        return await _compile_blueprint_evidence(project_id, evidence)
+        return await _compile_blueprint_evidence(project_id, evidence, instruction)
 
     batch_results = []
     for start in range(0, len(evidence), batch_size):
         batch_index = start // batch_size
         result = await _compile_blueprint_evidence(
-            project_id, evidence[start : start + batch_size]
+            project_id, evidence[start : start + batch_size], instruction
         )
         if (
             result.get("status") != "SUCCESS"
@@ -196,7 +196,7 @@ def _namespaced_blueprint_key(prefix, value):
     return f"{prefix}{value[:available]}-{digest}"
 
 
-async def _compile_blueprint_evidence(project_id, evidence):
+async def _compile_blueprint_evidence(project_id, evidence, instruction=""):
     if not evidence:
         return {
             "status": "DEGRADED",
@@ -208,7 +208,10 @@ async def _compile_blueprint_evidence(project_id, evidence):
         }
 
     request = TestingAutomationRequest(
-        capability="testability_blueprint_compilation", project_id=project_id, evidence=evidence
+        capability="testability_blueprint_compilation",
+        project_id=project_id,
+        instruction=instruction,
+        evidence=evidence,
     )
     try:
         result = await generate_ai_automation(request)

@@ -1,3 +1,5 @@
+import json
+
 from loguru import logger
 
 from src.agents.runner.automation_graph import extract_source_facts
@@ -78,6 +80,11 @@ class TestabilityBenchmarkPipelines:
             clarification_codes=[item.get("code", "") for item in clarifications],
             clarification_categories=[item.get("category", "") for item in clarifications],
             obligation_keys=[item.get("key", "") for item in obligations],
+            obligation_texts={
+                str(item.get("key") or ""): str(item.get("obligation") or "")
+                for item in obligations
+                if item.get("key") and item.get("obligation")
+            },
             obligation_evidence=obligation_evidence,
             obligation_citations={
                 str(item.get("key", "")): [{
@@ -248,7 +255,12 @@ class TestabilityBenchmarkPipelines:
 
     async def _run_benchmark_pipeline(self, pipeline, dataset_id, gold_case, source_evidence):
         if pipeline == "compiler":
-            extraction = await extract_source_facts({"evidence": source_evidence})
+            extraction = await extract_source_facts(
+                {
+                    "evidence": source_evidence,
+                    "task_instruction": gold_case.task_instruction,
+                }
+            )
             verified = self._verified_fact_evidence(
                 extraction.get("source_facts", []), source_evidence
             )
@@ -267,8 +279,134 @@ class TestabilityBenchmarkPipelines:
                 source_facts,
                 evidence_by_ref,
                 {str(item["artifact_id"]) for item in source_evidence},
+                gold_case.task_instruction,
             )
             return self._candidate_from_blueprint(output), output, "compiler"
+        if pipeline == "blueprint_self_review":
+            extraction = await extract_source_facts(
+                {
+                    "evidence": source_evidence,
+                    "task_instruction": gold_case.task_instruction,
+                }
+            )
+            verified = self._verified_fact_evidence(
+                extraction.get("source_facts", []), source_evidence
+            )
+            if not verified:
+                raise RuntimeError("NO_VERIFIED_SOURCE_FACTS")
+            evidence_by_ref = {
+                str(item.get("artifact_version_id") or item.get("artifact_id")): item
+                for item in source_evidence
+            }
+            source_facts = [
+                AutomationFact.model_validate(item)
+                for item in extraction.get("source_facts", [])
+            ]
+            allowed_document_ids = {
+                str(item["artifact_id"]) for item in source_evidence
+            }
+            initial = await compile_testability_blueprint(
+                f"benchmark:{dataset_id}",
+                source_facts,
+                evidence_by_ref,
+                allowed_document_ids,
+                gold_case.task_instruction,
+            )
+            if initial.get("status") != "SUCCESS" or initial.get("degraded_mode"):
+                raise RuntimeError(
+                    ";".join(initial.get("reason_codes") or ["BLUEPRINT_COMPILATION_FAILED"])
+                )
+            evidence = [TestingEvidence.model_validate(item) for item in source_evidence]
+            review_request = TestingAutomationRequest(
+                capability="testability_blueprint_self_review",
+                project_id=f"benchmark:{dataset_id}",
+                instruction=json.dumps(
+                    {
+                        "task_instruction": gold_case.task_instruction,
+                        "blueprint": initial,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                evidence=evidence,
+            )
+            review_result = await generate_ai_automation(review_request)
+            if review_result.status != "SUCCESS" or review_result.degraded_mode:
+                raise RuntimeError("BLUEPRINT_SELF_REVIEW_UNAVAILABLE")
+            review = {
+                "summary": review_result.summary,
+                "findings": review_result.findings,
+                "improvement_suggestions": review_result.improvement_suggestions,
+                "warnings": review_result.warnings,
+            }
+            allowed_refs = {
+                str(item.get("artifact_version_id") or item.get("artifact_id"))
+                for item in source_evidence
+            }
+            known_items = {
+                str(item.get("key") or "") for item in initial.get("obligations", [])
+            } | {
+                str(item.get("code") or "") for item in initial.get("clarifications", [])
+            }
+            for finding in review["findings"]:
+                item_ref = str(finding.get("item_ref") or "")
+                refs = finding.get("evidence_refs") or []
+                if (
+                    (item_ref not in known_items and not item_ref.startswith("GAP:"))
+                    or not refs
+                    or any(str(ref) not in allowed_refs for ref in refs)
+                ):
+                    raise RuntimeError("BLUEPRINT_SELF_REVIEW_INVALID")
+            suggestions = list(review.get("improvement_suggestions") or [])
+            suggestions.extend(
+                str(item.get("suggested_change") or "")
+                for item in review["findings"]
+                if item.get("suggested_change")
+            )
+            suggestions = list(
+                dict.fromkeys(
+                    str(item).strip() for item in suggestions if str(item).strip()
+                )
+            )[:50]
+            refined = initial
+            if suggestions:
+                refinement_instruction = json.dumps(
+                    {
+                        "task_instruction": gold_case.task_instruction,
+                        "task": "Refine the Blueprint once using only the cited source evidence and listed review suggestions. Preserve supported behavior and exact citations. Do not invent or resolve conflicting sources.",
+                        "current_blueprint": initial,
+                        "review_findings": review["findings"],
+                        "improvement_suggestions": suggestions,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                refined = await compile_testability_blueprint(
+                    f"benchmark:{dataset_id}",
+                    source_facts,
+                    evidence_by_ref,
+                    allowed_document_ids,
+                    refinement_instruction,
+                )
+                if refined.get("status") != "SUCCESS" or refined.get("degraded_mode"):
+                    raise RuntimeError("BLUEPRINT_REFINEMENT_FAILED")
+            output = {
+                "status": "SUCCESS",
+                "before_self_review": initial,
+                "self_review": review,
+                "after_self_review": refined,
+                "refinement_performed": bool(suggestions),
+                "model": {
+                    "compiler": initial.get("model", {}),
+                    "self_review": review_result.model,
+                    "refinement": refined.get("model", {}) if suggestions else None,
+                },
+            }
+            return (
+                self._candidate_from_blueprint(refined),
+                output,
+                "blueprint_after_self_review",
+            )
         if pipeline == "clarification_without_obligation_planning":
             output = await self._run_pipeline(
                 "clarification_baseline",

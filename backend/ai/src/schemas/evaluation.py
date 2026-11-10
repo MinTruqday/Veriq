@@ -62,6 +62,13 @@ def benchmark_answer_key_review_covers_cases(cases, review):
             item, "obligations_verified"
         ):
             return False
+        has_semantic_labels = bool(
+            case.get("expected_obligation_meanings")
+            if isinstance(case, dict)
+            else case.expected_obligation_meanings
+        )
+        if has_semantic_labels and review_value(item, "obligation_meanings_verified") is not True:
+            return False
         if has_clarification_labels and review_value(item, "clarifications_verified") is not True:
             return False
     return True
@@ -100,6 +107,7 @@ class TestabilityBenchmarkCandidate(BaseModel):
     clarification_codes: list[str] = Field(default_factory=list, max_length=500)
     clarification_categories: list[str] = Field(default_factory=list, max_length=500)
     obligation_keys: list[str] = Field(default_factory=list, max_length=1000)
+    obligation_texts: dict[str, str] = Field(default_factory=dict, max_length=1000)
     obligation_evidence: dict[str, list[str]] = Field(default_factory=dict)
     obligation_citations: dict[str, list[TestabilityBenchmarkCitation]] = Field(
         default_factory=dict
@@ -149,6 +157,10 @@ class TestabilityBenchmarkGoldCase(BaseModel):
         description="Gold clarification categories or codes from highest to lowest priority",
     )
     expected_obligation_keys: list[str] = Field(default_factory=list, max_length=1000)
+    expected_obligation_meanings: dict[str, str] = Field(
+        default_factory=dict,
+        description="Human-authored semantic descriptions for the expected test obligations",
+    )
     expected_obligation_sources: dict[str, str] = Field(
         default_factory=dict,
         description="Human answer key mapping each obligation identifier to its exact source quote",
@@ -279,6 +291,14 @@ class TestabilityBenchmarkGoldCase(BaseModel):
             self.expected_clarification_categories or self.expected_clarification_codes
         )
         obligation_keys = set(self.expected_obligation_keys)
+        if self.expected_obligation_meanings:
+            if set(self.expected_obligation_meanings) != obligation_keys:
+                raise ValueError("benchmark_obligation_meanings_must_match_expected_obligations")
+            if any(
+                not isinstance(meaning, str) or len(meaning.strip()) < 3
+                for meaning in self.expected_obligation_meanings.values()
+            ):
+                raise ValueError("benchmark_obligation_meaning_required")
         if not set(self.expected_clarification_priorities).issubset(clarification_codes):
             raise ValueError("benchmark_priority_must_reference_expected_clarifications")
         if not set(self.expected_clarification_unlocks).issubset(clarification_codes):
@@ -311,6 +331,12 @@ class TestabilityBenchmarkCase(TestabilityBenchmarkGoldCase):
         default_factory=TestabilityBenchmarkCandidate
     )
     compiler: TestabilityBenchmarkCandidate = Field(default_factory=TestabilityBenchmarkCandidate)
+    blueprint_before_self_review: TestabilityBenchmarkCandidate = Field(
+        default_factory=TestabilityBenchmarkCandidate
+    )
+    blueprint_after_self_review: TestabilityBenchmarkCandidate = Field(
+        default_factory=TestabilityBenchmarkCandidate
+    )
     direct_generation: TestabilityBenchmarkCandidate = Field(default_factory=TestabilityBenchmarkCandidate)
 
 
@@ -334,6 +360,8 @@ class TestabilityBenchmarkReport(BaseModel):
     total_cases: int
     clarification_without_obligation_planning: dict
     compiler: dict
+    blueprint_before_self_review: dict = Field(default_factory=dict)
+    blueprint_after_self_review: dict = Field(default_factory=dict)
     direct_generation: dict
     cases: list[dict]
     run_id: str | None = None
@@ -362,6 +390,13 @@ class TestabilityBenchmarkReport(BaseModel):
         description=(
             "Metrics recomputed on the same cases accepted by both pipelines; use these "
             "for fair pipeline comparison instead of comparing independently selected cohorts."
+        ),
+    )
+    semantic_obligation_comparison: dict = Field(
+        default_factory=dict,
+        description=(
+            "AI-judged semantic alignment against human-authored obligation meanings; "
+            "an evaluator estimate, not an independently verified accuracy score."
         ),
     )
     scoring_method: dict = Field(
@@ -431,6 +466,13 @@ class TestabilityBenchmarkRepeatedReport(BaseModel):
             "by both pipelines in each comparison."
         ),
     )
+    semantic_obligation_comparison: dict = Field(
+        default_factory=dict,
+        description=(
+            "Repeated paired AI-judge estimates of semantic obligation alignment before and after "
+            "Self-review; not an independent accuracy measurement."
+        ),
+    )
     clarification_savings_vs_baseline: TestabilityBenchmarkMetricRepeatStats = Field(
         default_factory=TestabilityBenchmarkMetricRepeatStats
     )
@@ -489,6 +531,7 @@ class TestabilityBenchmarkCaseAnswerKeyReview(BaseModel):
     case_id: str = Field(min_length=1, max_length=200)
     source_quotes_verified: bool
     obligations_verified: bool
+    obligation_meanings_verified: bool | None = None
     clarifications_verified: bool | None = None
     rationale: str = Field(min_length=20, max_length=2000)
 

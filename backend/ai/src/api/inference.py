@@ -143,7 +143,7 @@ async def evaluate_blueprint_against_reference(req: TestabilityBlueprintBenchmar
             "assessment_type": "NOT_AVAILABLE",
             "independently_validated": False,
             "reason": (
-                "Không tìm thấy duy nhất một đáp án chuẩn độc lập khớp chính xác với nguồn."
+                "Không tìm thấy duy nhất một bộ tham chiếu phù hợp khớp chính xác với nguồn."
                 if not exact_matches
                 else "Có nhiều đáp án chuẩn khớp nguồn; cần chọn bộ tham chiếu rõ ràng trước khi chấm."
             ),
@@ -199,6 +199,22 @@ async def evaluate_blueprint_against_reference(req: TestabilityBlueprintBenchmar
         "dataset_revision": dataset.revision,
         "case_id": gold_case.case_id,
         "metrics": report.compiler,
+        "semantic_obligation_metrics": await testability_benchmark.evaluate_blueprint_semantics(
+            dataset.dataset_id,
+            gold_case,
+            {},
+            req.blueprint,
+            [
+                {
+                    "artifact_type": source.artifact_type,
+                    "artifact_id": source.source_id,
+                    "artifact_version_id": source.artifact_version_id,
+                    "authority": source.authority,
+                    "text": source.text,
+                }
+                for source in req.sources
+            ],
+        ),
     }
 
 

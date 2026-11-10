@@ -76,16 +76,16 @@ function buildAuthoredAnswerKey(item, draft) {
   const obligations = String(draft?.obligations || "")
     .split("\n")
     .map((line) => {
-      const firstSeparator = line.indexOf("|");
-      const secondSeparator = line.indexOf("|", firstSeparator + 1);
-      if (firstSeparator < 0 || secondSeparator < 0) return ["", "", ""];
+      const separators = [...line.matchAll(/\|/g)].map((item) => item.index);
+      if (separators.length < 3) return ["", "", "", ""];
       return [
-        line.slice(0, firstSeparator).trim(),
-        line.slice(firstSeparator + 1, secondSeparator).trim(),
-        line.slice(secondSeparator + 1).trim(),
+        line.slice(0, separators[0]).trim(),
+        line.slice(separators[0] + 1, separators[1]).trim(),
+        line.slice(separators[1] + 1, separators[2]).trim(),
+        line.slice(separators[2] + 1).trim(),
       ];
     })
-    .filter(([key, sourceRef, quote]) => key && sourceRef && quote);
+    .filter(([key, meaning, sourceRef, quote]) => key && meaning && sourceRef && quote);
   const categories = String(draft?.clarifications || "")
     .split("\n")
     .map((value) => value.trim())
@@ -93,7 +93,8 @@ function buildAuthoredAnswerKey(item, draft) {
   if (
     !obligations.length ||
     obligations.some(
-      ([, sourceRef, quote]) =>
+      ([, meaning, sourceRef, quote]) =>
+        !meaning ||
         !sources.some(
           (source) => source.artifact_version_id === sourceRef && source.text.includes(quote),
         ),
@@ -101,23 +102,29 @@ function buildAuthoredAnswerKey(item, draft) {
     new Set(obligations.map(([key]) => key)).size !== obligations.length
   )
     return null;
-  const expected_source_quotes = [...new Set(obligations.map(([, , quote]) => quote))];
-  const expected_source_quote_sources = Object.fromEntries(
-    expected_source_quotes.map((quote) => [
-      quote,
-      [...new Set(obligations.filter(([, , value]) => value === quote).map(([, ref]) => ref))],
-    ]),
-  );
+  const expected_source_quotes = [...new Set(obligations.map(([, , , quote]) => quote))];
   return {
     ...item,
     expected_source_quotes,
-    expected_source_quote_sources,
     expected_obligation_keys: obligations.map(([key]) => key),
+    expected_obligation_meanings: Object.fromEntries(
+      obligations.map(([key, meaning]) => [key, meaning]),
+    ),
     expected_obligation_sources: Object.fromEntries(
-      obligations.map(([key, , quote]) => [key, quote]),
+      obligations.map(([key, , , quote]) => [key, quote]),
     ),
     expected_obligation_source_refs: Object.fromEntries(
-      obligations.map(([key, sourceRef]) => [key, sourceRef]),
+      obligations.map(([key, , sourceRef]) => [key, sourceRef]),
+    ),
+    expected_source_quote_sources: Object.fromEntries(
+      expected_source_quotes.map((quote) => [
+        quote,
+        [
+          ...new Set(
+            obligations.filter(([, , , value]) => value === quote).map(([, , ref]) => ref),
+          ),
+        ],
+      ]),
     ),
     expected_clarification_categories: categories,
   };
@@ -135,6 +142,9 @@ function metricLabel(metric) {
     clarification_precision: "Độ chính xác câu hỏi làm rõ (Precision)",
     clarification_recall: "Độ bao phủ câu hỏi làm rõ (Recall)",
     clarification_priority_ndcg: "Điểm xếp hạng ưu tiên câu hỏi (NDCG)",
+    obligation_semantic_precision: "Độ chính xác ngữ nghĩa nghĩa vụ (AI judge)",
+    obligation_semantic_recall: "Độ bao phủ ngữ nghĩa nghĩa vụ (AI judge)",
+    obligation_semantic_f1: "F1 ngữ nghĩa nghĩa vụ (AI judge)",
   };
   return labels[metric] || valueLabel(metric);
 }
@@ -170,6 +180,8 @@ function datasetReady(dataset) {
     return Boolean(
       reviewItem?.source_quotes_verified &&
         reviewItem?.obligations_verified &&
+        (!Object.keys(item.expected_obligation_meanings || {}).length ||
+          reviewItem?.obligation_meanings_verified === true) &&
         ((!item.expected_clarification_categories?.length &&
           !item.expected_clarification_codes?.length) ||
           reviewItem.clarifications_verified),
@@ -178,25 +190,54 @@ function datasetReady(dataset) {
 }
 
 function benchmarkResultRows(report) {
-  return Object.entries(report?.pipeline_statistics || {}).flatMap(([pipeline, summary]) =>
-    Object.entries(summary.metrics || {}).map(([metric, value]) => ({
-      _id: `${pipeline}-${metric}`,
-      pipeline:
-        {
-          compiler: "Lập bản đồ điều kiện kiểm thử",
-          direct_generation: "Sinh ca kiểm thử trực tiếp",
-          clarification_without_obligation_planning: "Chỉ hỏi làm rõ",
-        }[pipeline] || valueLabel(pipeline),
-      metric: metricLabel(metric),
-      mean: formatMetric(value.mean),
-      spread:
-        typeof value.minimum === "number" && typeof value.maximum === "number"
-          ? `${formatMetric(value.minimum)} – ${formatMetric(value.maximum)}`
-          : "Chưa đủ dữ liệu",
-      cases: summary.stable_case_count ?? value.paired_case_count ?? "—",
-      runs: `${value.observed_runs || 0}/${report.requested_repetitions || 0}`,
-    })),
+  const pipelineRows = Object.entries(report?.pipeline_statistics || {}).flatMap(
+    ([pipeline, summary]) =>
+      Object.entries(summary.metrics || {}).map(([metric, value]) => ({
+        _id: `${pipeline}-${metric}`,
+        pipeline:
+          {
+            compiler: "Lập bản đồ điều kiện kiểm thử",
+            blueprint_before_self_review: "Blueprint trước Self-review",
+            blueprint_after_self_review: "Blueprint sau Self-review",
+            blueprint_self_review: "Self-review Blueprint",
+            direct_generation: "Sinh ca kiểm thử trực tiếp",
+            clarification_without_obligation_planning: "Chỉ hỏi làm rõ",
+          }[pipeline] || valueLabel(pipeline),
+        metric: metricLabel(metric),
+        mean: formatMetric(value.mean),
+        spread:
+          typeof value.minimum === "number" && typeof value.maximum === "number"
+            ? `${formatMetric(value.minimum)} – ${formatMetric(value.maximum)}`
+            : "Chưa đủ dữ liệu",
+        cases: summary.stable_case_count ?? value.paired_case_count ?? "—",
+        runs: `${value.observed_runs || 0}/${report.requested_repetitions || 0}`,
+      })),
   );
+  const semantic = report?.semantic_obligation_comparison || {};
+  const semanticRows = ["before_self_review", "after_self_review"].flatMap((side) =>
+    ["precision", "recall", "f1"].map((metric) => {
+      const value = semantic[side]?.[metric];
+      return {
+        _id: `semantic-${side}-${metric}`,
+        pipeline:
+          side === "before_self_review"
+            ? "Ngữ nghĩa · trước Self-review (AI judge)"
+            : "Ngữ nghĩa · sau Self-review (AI judge)",
+        metric: metricLabel(`obligation_semantic_${metric}`),
+        mean: formatMetric(typeof value === "number" ? value : value?.mean),
+        spread:
+          typeof value?.minimum === "number" && typeof value?.maximum === "number"
+            ? `${formatMetric(value.minimum)} – ${formatMetric(value.maximum)}`
+            : "Chưa đủ dữ liệu",
+        cases:
+          typeof semantic.scored_case_run_count === "number"
+            ? `${semantic.scored_case_run_count}/${semantic.requested_case_run_count} lượt ca`
+            : (semantic.scored_case_count ?? "—"),
+        runs: `${semantic.observed_runs || 0}/${report?.requested_repetitions || 0}`,
+      };
+    }),
+  );
+  return [...pipelineRows, ...semanticRows];
 }
 
 export default function RealTestabilityBenchmarkPanel({ project }) {
@@ -343,6 +384,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
             case_id: item.case_id,
             source_quotes_verified: true,
             obligations_verified: true,
+            obligation_meanings_verified: item.expected_obligation_meanings ? true : null,
             clarifications_verified: item.expected_clarification_categories?.length ? true : null,
             rationale: reviewRationale.trim().slice(0, 2000),
           })),
@@ -406,12 +448,13 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
       <Panel title="Đánh giá thực nghiệm trên yêu cầu đã duyệt">
         <div className="space-y-3 p-4 text-sm leading-6 text-ink-muted">
           <p>
-            Nguồn lấy từ phiên bản yêu cầu đã duyệt. Người tạo tự biên soạn đáp án tham chiếu; hệ
-            thống không biến tiêu chí chấp nhận thành đáp án chuẩn tự động.
+            Nguồn lấy từ phiên bản yêu cầu đã duyệt. Người tạo tự biên soạn mô tả ý nghĩa và căn cứ;
+            hệ thống không biến tiêu chí chấp nhận thành đáp án chuẩn tự động.
           </p>
           <p>
-            Chỉ chấm trích dẫn nguồn và độ bao phủ nghĩa vụ kiểm thử. Bộ dữ liệu không có nhãn độc
-            lập cho câu hỏi làm rõ nên các chỉ số đó được để trống, không suy đoán.
+            Chấm trích dẫn, phiên bản nguồn và độ bao phủ nghĩa vụ. Đối chiếu ý nghĩa nghĩa vụ dùng
+            AI judge dựa trên mô tả do người biên soạn nhập; đây là ước lượng, không phải xác minh
+            độc lập. Bộ dữ liệu thiếu nhãn câu hỏi làm rõ thì các chỉ số đó được để trống.
           </p>
           <p>
             Bạn có thể chạy bộ tham chiếu tự chuẩn bị ngay để thử nghiệm cá nhân; kết quả sẽ được
@@ -491,8 +534,12 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
             <section className="space-y-2 rounded-lg border border-border p-3" key={item.case_id}>
               <h4 className="font-medium">Đáp án tham chiếu · {item.case_id}</h4>
               <p className="text-xs text-ink-muted">
-                Mỗi dòng ghi <code>Mã nghĩa vụ | mã phiên bản nguồn | trích dẫn nguyên văn</code>.
-                Chỉ trích dẫn đúng nội dung của phiên bản nguồn được liệt kê bên dưới.
+                Mỗi dòng ghi{" "}
+                <code>
+                  Mã nghĩa vụ | ý nghĩa cần kiểm thử | mã phiên bản nguồn | trích dẫn nguyên văn
+                </code>
+                . Ý nghĩa do người biên soạn xác định; chỉ trích dẫn đúng nội dung của phiên bản
+                nguồn bên dưới.
               </p>
               <div className="flex flex-wrap gap-2">
                 {item.sources.map((source) => (
@@ -515,7 +562,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
                       [item.case_id]: { ...current[item.case_id], obligations: event.target.value },
                     }))
                   }
-                  placeholder="AUTH-01 | mã phiên bản nguồn ở trên | trích dẫn chính xác"
+                  placeholder="AUTH-01 | khóa tài khoản sau đủ số lần đăng nhập sai liên tiếp | mã phiên bản nguồn | trích dẫn chính xác"
                 />
               </label>
               <label className="field-label block">
@@ -536,7 +583,8 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
               </label>
               {!preparedCases[index] && (
                 <p className="text-xs text-warning">
-                  Cần ít nhất một mã nghĩa vụ duy nhất và trích dẫn nguyên văn có trong nguồn.
+                  Cần mã nghĩa vụ duy nhất, mô tả ý nghĩa nghiệp vụ và trích dẫn nguyên văn đúng
+                  phiên bản nguồn.
                 </p>
               )}
             </section>
@@ -570,9 +618,9 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
           {selectedDataset && !selectedDatasetReady && isIndependentReviewer && (
             <div className="space-y-3 rounded-xl border border-border bg-surface-quiet p-4">
               <p className="text-sm leading-6 text-ink-muted">
-                Đối chiếu riêng từng ca với phiên bản yêu cầu, tiêu chí chấp nhận và căn cứ nguồn.
-                Chỉ đánh dấu sau khi đã kiểm tra ca đó; đây là bước rà soát nhãn chuẩn, không phải
-                xác nhận đầu ra AI.
+                Đối chiếu riêng từng ca với phiên bản yêu cầu, ý nghĩa của từng nghĩa vụ, tiêu chí
+                chấp nhận và căn cứ nguồn. Chỉ đánh dấu sau khi đã kiểm tra ca đó; đây là bước rà
+                soát nhãn chuẩn, không phải xác nhận đầu ra AI.
               </p>
               <p className="text-xs text-ink-faint">
                 Đã rà soát {reviewedCaseIds.length}/{selectedDataset.cases.length} ca
@@ -605,6 +653,11 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
                         </span>
                         <span className="block whitespace-pre-wrap text-sm text-ink-muted">
                           {item.sources?.[0]?.text || "Không có nội dung nguồn"}
+                        </span>
+                        <span className="block whitespace-pre-wrap text-xs text-ink-muted">
+                          {Object.entries(item.expected_obligation_meanings || {})
+                            .map(([key, meaning]) => `${key}: ${meaning}`)
+                            .join(" · ")}
                         </span>
                         <span className="block text-xs text-ink-faint">
                           {Object.values(item.expected_obligation_sources || {}).join(" · ")}
@@ -645,8 +698,8 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
           {selectedDatasetReady && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-quiet p-4">
               <p className="text-sm text-ink-muted">
-                Phiên bản {selectedDataset.revision} · {selectedDataset.cases.length} ca · ba phương
-                pháp · ba lượt mỗi phương pháp ·{" "}
+                Phiên bản {selectedDataset.revision} · {selectedDataset.cases.length} ca · bốn
+                pipeline (có cặp trước/sau Self-review) · ba lượt mỗi pipeline ·{" "}
                 {selectedDataset.reference_provenance === "SELF_PREPARED_REFERENCE"
                   ? "đáp án tự chuẩn bị, chưa được kiểm chứng độc lập."
                   : "đáp án đã được rà soát độc lập."}
@@ -667,6 +720,10 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
               <p className="text-sm text-ink-muted">
                 {report.completed_repetitions}/{report.requested_repetitions} lượt hoàn tất ·{" "}
                 {report.failed_repetitions} lượt lỗi · {selectedDataset.cases.length} ca.
+              </p>
+              <p className="text-xs text-ink-faint">
+                Điểm ngữ nghĩa là ước lượng của AI judge so với mô tả nghĩa vụ do người biên soạn
+                nhập; không phải xác nhận độc lập.
               </p>
               <DataTable
                 items={benchmarkResultRows(report)}

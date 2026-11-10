@@ -23,6 +23,7 @@ class TestabilityBenchmarkExecution:
             "compiler",
             "clarification_without_obligation_planning",
             "direct_generation",
+            "blueprint_self_review",
         )
         pipeline_order = tuple(pipeline_order or available_pipelines)
         if len(pipeline_order) != len(available_pipelines) or set(pipeline_order) != set(available_pipelines):
@@ -35,6 +36,7 @@ class TestabilityBenchmarkExecution:
         raw_outputs = {}
         pipeline_outcomes = {}
         model_metadata_by_capability = {}
+        semantic_comparisons = {}
 
         def failure_code(error):
             value = str(error)
@@ -85,6 +87,8 @@ class TestabilityBenchmarkExecution:
                 "compiler": compiler_candidate,
                 "clarification_without_obligation_planning": clarification_candidate,
                 "direct_generation": direct_candidate,
+                "blueprint_before_self_review": TestabilityBenchmarkCandidate(),
+                "blueprint_after_self_review": TestabilityBenchmarkCandidate(),
             }
             for pipeline in pipeline_order:
                 try:
@@ -94,6 +98,18 @@ class TestabilityBenchmarkExecution:
                     candidates[pipeline] = candidate
                     raw_outputs[gold_case.case_id][pipeline] = output
                     pipeline_outcomes[gold_case.case_id][pipeline] = outcome_for(output)
+                    if pipeline == "blueprint_self_review":
+                        before_blueprint = output.get("before_self_review") or {}
+                        before_candidate = self._candidate_from_blueprint(before_blueprint)
+                        candidates["blueprint_before_self_review"] = before_candidate
+                        candidates["blueprint_after_self_review"] = candidate
+                        raw_outputs[gold_case.case_id]["blueprint_before_self_review"] = before_blueprint
+                        pipeline_outcomes[gold_case.case_id]["blueprint_before_self_review"] = outcome_for(
+                            before_blueprint
+                        )
+                        pipeline_outcomes[gold_case.case_id]["blueprint_after_self_review"] = outcome_for(
+                            output.get("after_self_review") or {}
+                        )
                     model_metadata_by_capability.setdefault(capability, {})[
                         gold_case.case_id
                     ] = output.get("model", {})
@@ -101,6 +117,13 @@ class TestabilityBenchmarkExecution:
                         record_non_success(gold_case.case_id, pipeline, output)
                 except Exception as error:
                     pipeline_outcomes[gold_case.case_id][pipeline] = "FAILED"
+                    if pipeline == "blueprint_self_review":
+                        pipeline_outcomes[gold_case.case_id][
+                            "blueprint_before_self_review"
+                        ] = "FAILED"
+                        pipeline_outcomes[gold_case.case_id][
+                            "blueprint_after_self_review"
+                        ] = "FAILED"
                     failures.append({
                         "case_id": gold_case.case_id,
                         "pipeline": pipeline,
@@ -109,12 +132,45 @@ class TestabilityBenchmarkExecution:
             compiler_candidate = candidates["compiler"]
             clarification_candidate = candidates["clarification_without_obligation_planning"]
             direct_candidate = candidates["direct_generation"]
+            blueprint_before_self_review = candidates["blueprint_before_self_review"]
+            blueprint_after_self_review = candidates["blueprint_after_self_review"]
+
+            try:
+                if pipeline_outcomes[gold_case.case_id].get("blueprint_self_review") != "ACCEPTED":
+                    semantic_comparisons[gold_case.case_id] = {
+                        "status": "NOT_AVAILABLE",
+                        "reason": "BLUEPRINT_SELF_REVIEW_PIPELINE_NOT_ACCEPTED",
+                        "evaluator": "MODEL_JUDGE",
+                    }
+                else:
+                    semantic_comparisons[gold_case.case_id] = (
+                        await self.evaluate_blueprint_semantics(
+                            dataset_id,
+                            gold_case,
+                            raw_outputs[gold_case.case_id].get(
+                                "blueprint_before_self_review", {}
+                            ),
+                            raw_outputs[gold_case.case_id]
+                            .get("blueprint_self_review", {})
+                            .get("after_self_review", {}),
+                            source_evidence,
+                        )
+                    )
+            except Exception as error:
+                semantic_comparisons[gold_case.case_id] = {
+                    "status": "NOT_AVAILABLE",
+                    "reason": "SEMANTIC_EVALUATOR_FAILED",
+                    "error_code": type(error).__name__,
+                    "evaluator": "MODEL_JUDGE",
+                }
 
             scored_cases.append(TestabilityBenchmarkCase(
                 **gold_case.model_dump(),
                 compiler=compiler_candidate,
                 clarification_without_obligation_planning=clarification_candidate,
                 direct_generation=direct_candidate,
+                blueprint_before_self_review=blueprint_before_self_review,
+                blueprint_after_self_review=blueprint_after_self_review,
             ))
 
         report = await self.evaluate(TestabilityBenchmarkRequest(cases=scored_cases))
@@ -122,6 +178,8 @@ class TestabilityBenchmarkExecution:
             "compiler": "compiler",
             "clarification_without_obligation_planning": "clarification_without_obligation_planning",
             "direct_generation": "direct_generation",
+            "blueprint_before_self_review": "blueprint_before_self_review",
+            "blueprint_after_self_review": "blueprint_after_self_review",
         }
         report.pipeline_case_counts = {}
         for pipeline, report_field in pipeline_fields.items():
@@ -190,6 +248,7 @@ class TestabilityBenchmarkExecution:
             ("compiler", "direct_generation"),
             ("compiler", "clarification_without_obligation_planning"),
             ("direct_generation", "clarification_without_obligation_planning"),
+            ("blueprint_before_self_review", "blueprint_after_self_review"),
         )
         report.paired_pipeline_comparisons = {}
         for left, right in comparison_pairs:
@@ -265,8 +324,14 @@ class TestabilityBenchmarkExecution:
             if any(case.scenario_family == family for case in cases)
         }
         report.benchmark_design = {
-            "answer_key_basis": "independently_reviewed_caller_supplied_answer_key",
+            "answer_key_basis": (
+                "caller_supplied_semantic_answer_key"
+                if all(case.expected_obligation_meanings for case in cases)
+                else "caller_supplied_answer_key_without_complete_semantic_labels"
+            ),
             "interpretation": "Mô tả kết quả trên bộ dữ liệu và đáp án tham chiếu đã cung cấp; không tự chứng minh tính đúng tổng quát.",
+            "self_review_comparison": "Blueprint trước và sau Self-review được tạo từ cùng một lần compile, cùng source facts, task instruction và gold case.",
+            "semantic_obligation_metric": "Đánh giá bởi mô hình giám khảo dựa trên mô tả nghĩa vụ do người biên soạn nhập; không phải xác minh độc lập.",
         }
         report.pipeline_metadata = {
             "provider": model_metadata().get("provider"),
@@ -275,6 +340,7 @@ class TestabilityBenchmarkExecution:
                 "verified_source_fact_extraction_plus_testability_blueprint_compilation",
                 "clarification_baseline_without_obligation_planning",
                 "direct_test_generation_with_grounding_review",
+                "same_blueprint_before_and_after_self_review_and_refinement",
             ],
             "execution_order": list(pipeline_order),
             "candidate_outputs": raw_outputs,
@@ -285,8 +351,59 @@ class TestabilityBenchmarkExecution:
         report.duration_ms = round((time.perf_counter() - started) * 1000)
         report.execution_status = "PARTIAL" if failures else "COMPLETE"
         report.created_at = datetime.now(timezone.utc).isoformat()
+        for case in report.cases:
+            case["semantic_obligation_comparison"] = semantic_comparisons.get(
+                case["case_id"], {"status": "NOT_AVAILABLE"}
+            )
+        report.semantic_obligation_comparison = self._aggregate_semantic_comparisons(
+            semantic_comparisons
+        )
         logger.info(
             "Live testability benchmark completed run_id={} dataset_id={} cases={} pipeline_failures={}",
             run_id, dataset_id, report.total_cases, len(failures),
         )
         return report
+
+    @staticmethod
+    def _aggregate_semantic_comparisons(comparisons):
+        scored = {
+            case_id: item
+            for case_id, item in comparisons.items()
+            if item.get("status") == "SCORED"
+        }
+        output = {
+            "status": "SCORED" if scored else "NOT_AVAILABLE",
+            "evaluator": "MODEL_JUDGE",
+            "scored_case_count": len(scored),
+            "requested_case_count": len(comparisons),
+            "cases": comparisons,
+            "interpretation": (
+                "Mô hình giám khảo ước lượng tương đương ngữ nghĩa với nhãn do người biên soạn nhập; "
+                "không phải đánh giá độc lập và không được diễn giải như độ chính xác tuyệt đối."
+            ),
+        }
+        for side in ("before_self_review", "after_self_review"):
+            for metric in ("precision", "recall", "f1"):
+                values = [
+                    result[side][metric]
+                    for result in scored.values()
+                    if isinstance(result.get(side, {}).get(metric), (int, float))
+                ]
+                output.setdefault(side, {})[metric] = (
+                    round(sum(values) / len(values), 4) if values else None
+                )
+                output[side][f"scored_case_count_{metric}"] = len(values)
+        output["paired_effects"] = {
+            metric: (
+                round(
+                    output["after_self_review"][metric]
+                    - output["before_self_review"][metric],
+                    4,
+                )
+                if output["after_self_review"][metric] is not None
+                and output["before_self_review"][metric] is not None
+                else None
+            )
+            for metric in ("precision", "recall", "f1")
+        }
+        return output

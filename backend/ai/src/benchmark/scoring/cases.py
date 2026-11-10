@@ -196,6 +196,8 @@ class TestabilityBenchmarkCaseScoring:
         clarification_scores = []
         compiler_scores = []
         direct_scores = []
+        self_review_before_scores = []
+        self_reviewed_scores = []
         for case in request.cases:
             clarification = self._candidate_scores(
                 case,
@@ -209,6 +211,14 @@ class TestabilityBenchmarkCaseScoring:
             clarification_scores.append(clarification)
             compiler_scores.append(compiler)
             direct_scores.append(direct)
+            self_review_before = self._candidate_scores(
+                case, case.blueprint_before_self_review, score_clarifications=True
+            )
+            self_reviewed = self._candidate_scores(
+                case, case.blueprint_after_self_review, score_clarifications=True
+            )
+            self_review_before_scores.append(self_review_before)
+            self_reviewed_scores.append(self_reviewed)
             cases.append(
                 {
                     "case_id": case.case_id,
@@ -216,6 +226,8 @@ class TestabilityBenchmarkCaseScoring:
                     "clarification_without_obligation_planning": clarification,
                     "compiler": compiler,
                     "direct_generation": direct,
+                    "blueprint_before_self_review": self_review_before,
+                    "blueprint_after_self_review": self_reviewed,
                 }
             )
 
@@ -307,6 +319,8 @@ class TestabilityBenchmarkCaseScoring:
             clarification_without_obligation_planning=aggregate(clarification_scores),
             compiler=aggregate(compiler_scores),
             direct_generation=aggregate(direct_scores),
+            blueprint_before_self_review=aggregate(self_review_before_scores),
+            blueprint_after_self_review=aggregate(self_reviewed_scores),
             cases=cases,
             scenario_family_counts={
                 family: sum(case.scenario_family == family for case in request.cases)
@@ -334,6 +348,8 @@ class TestabilityBenchmarkCaseScoring:
             "clarification_without_obligation_planning": metric_case_counts(clarification_scores),
             "compiler": metric_case_counts(compiler_scores),
             "direct_generation": metric_case_counts(direct_scores),
+            "blueprint_before_self_review": metric_case_counts(self_review_before_scores),
+            "blueprint_after_self_review": metric_case_counts(self_reviewed_scores),
         }
         report.benchmark_design = {
             "answer_key_basis": "caller_supplied_case_answer_key",

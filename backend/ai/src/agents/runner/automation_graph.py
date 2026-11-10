@@ -56,6 +56,7 @@ class AutomationGraphState(TypedDict, total=False):
     planning_round: int
     resume_after_phase: str
     worker_revision: int
+    task_instruction: str
 
 
 def phase(state: AutomationGraphState, name: str) -> list[str]:
@@ -355,7 +356,9 @@ async def extract_source_facts(state: AutomationGraphState):
         elif inspected is not None:
             if source_evidence:
                 try:
-                    extraction_prompt = automation_fact_extraction_prompt(source_evidence)
+                    extraction_prompt = automation_fact_extraction_prompt(
+                        source_evidence, state.get("task_instruction", "")
+                    )
                     extraction = await structured(
                         extraction_prompt,
                         AutomationFactExtraction,

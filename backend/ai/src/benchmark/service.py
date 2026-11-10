@@ -6,12 +6,14 @@ from src.schemas.evaluation import (
 from src.benchmark.execution import TestabilityBenchmarkExecution
 from src.benchmark.pipelines import TestabilityBenchmarkPipelines
 from src.benchmark.scoring import TestabilityBenchmarkScoring
+from src.benchmark.semantic import TestabilityBenchmarkSemanticScoring
 
 
 class TestabilityBenchmarkService(
     TestabilityBenchmarkExecution,
     TestabilityBenchmarkScoring,
     TestabilityBenchmarkPipelines,
+    TestabilityBenchmarkSemanticScoring,
 ):
     """Coordinate Benchmark runs and summarize repeated measurements."""
 
@@ -32,6 +34,7 @@ class TestabilityBenchmarkService(
             "compiler",
             "clarification_without_obligation_planning",
             "direct_generation",
+            "blueprint_self_review",
         )
         for repetition in range(1, repetitions + 1):
             try:
@@ -148,6 +151,8 @@ class TestabilityBenchmarkService(
             "compiler",
             "clarification_without_obligation_planning",
             "direct_generation",
+            "blueprint_before_self_review",
+            "blueprint_after_self_review",
         ):
             case_maps = accepted_case_maps(pipeline_name)
             stable_case_ids = common_ids(case_maps)
@@ -245,6 +250,53 @@ class TestabilityBenchmarkService(
         clarification_savings_statistics = metric_statistics(
             repeated_savings, stable_savings_case_ids
         )
+
+        semantic_runs = [
+            report.semantic_obligation_comparison
+            for report in reports
+            if report.semantic_obligation_comparison.get("status") == "SCORED"
+        ]
+        semantic_comparison_statistics = {
+            "status": "SCORED" if semantic_runs else "NOT_AVAILABLE",
+            "evaluator": "MODEL_JUDGE",
+            "observed_runs": len(semantic_runs),
+            "requested_runs": repetitions,
+            "scored_case_run_count": sum(
+                int(run.get("scored_case_count") or 0) for run in semantic_runs
+            ),
+            "requested_case_run_count": sum(
+                int(run.get("requested_case_count") or 0)
+                for run in (report.semantic_obligation_comparison for report in reports)
+            ),
+            "interpretation": (
+                "Thống kê mô tả điểm do mô hình giám khảo ước lượng trên nhãn nghĩa vụ do người biên soạn nhập; "
+                "không phải phép đo độc lập."
+            ),
+            "before_self_review": {},
+            "after_self_review": {},
+            "paired_effects": {},
+        }
+        for side in ("before_self_review", "after_self_review"):
+            for metric_name in ("precision", "recall", "f1"):
+                values = [
+                    run.get(side, {}).get(metric_name)
+                    for run in semantic_runs
+                    if isinstance(run.get(side, {}).get(metric_name), (int, float))
+                ]
+                semantic_comparison_statistics[side][metric_name] = metric_statistics(
+                    values
+                ).model_dump(mode="json")
+        for metric_name in ("precision", "recall", "f1"):
+            differences = [
+                run["after_self_review"][metric_name]
+                - run["before_self_review"][metric_name]
+                for run in semantic_runs
+                if isinstance(run.get("before_self_review", {}).get(metric_name), (int, float))
+                and isinstance(run.get("after_self_review", {}).get(metric_name), (int, float))
+            ]
+            semantic_comparison_statistics["paired_effects"][metric_name] = (
+                metric_statistics(differences).model_dump(mode="json")
+            )
 
         paired_pipeline_statistics = {}
         comparison_keys = sorted({
@@ -365,6 +417,7 @@ class TestabilityBenchmarkService(
             repetition_failures=repetition_failures,
             pipeline_statistics=pipeline_statistics,
             paired_pipeline_statistics=paired_pipeline_statistics,
+            semantic_obligation_comparison=semantic_comparison_statistics,
             clarification_savings_vs_baseline=clarification_savings_statistics,
             execution_status=(
                 "COMPLETE"

@@ -293,6 +293,28 @@ class TestabilityBlueprintSelfReviewOutput(BaseModel):
     warnings: List[str] = Field(default_factory=list, max_length=20)
 
 
+class TestabilityBenchmarkSemanticMatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate: Literal["BEFORE_SELF_REVIEW", "AFTER_SELF_REVIEW"]
+    prediction_index: int = Field(ge=0)
+    expected_obligation_key: str | None = Field(default=None, min_length=1, max_length=160)
+    judgment: Literal["MATCH", "NO_MATCH", "UNCERTAIN"]
+    rationale: str = Field(min_length=2, max_length=800)
+
+
+class TestabilityBenchmarkSemanticEvaluationOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capability: Literal["testability_benchmark_semantic_evaluation"] = (
+        "testability_benchmark_semantic_evaluation"
+    )
+    semantic_matches: List[TestabilityBenchmarkSemanticMatch] = Field(
+        default_factory=list, max_length=1000
+    )
+    warnings: List[str] = Field(default_factory=list, max_length=20)
+
+
 class TestabilityBlueprintClaimReviewItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

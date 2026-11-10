@@ -132,6 +132,7 @@ class TestingAutomationResult(BaseModel):
     )
     summary: str = Field(default="", max_length=1500)
     improvement_suggestions: List[str] = Field(default_factory=list, max_length=30)
+    semantic_matches: List[dict[str, Any]] = Field(default_factory=list, max_length=1000)
     obligations: List[dict[str, Any]] = Field(
         default_factory=list,
         max_length=300,
