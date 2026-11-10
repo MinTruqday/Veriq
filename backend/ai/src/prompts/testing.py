@@ -18,7 +18,10 @@ from src.prompts.requirement_templates import (
 from src.prompts.test_case_grounding import build_generated_cases_grounding_prompt
 from src.prompts.test_design import TEST_DESIGN_CAPABILITY_CONTRACTS
 from src.prompts.testability_benchmark import CLARIFICATION_BASELINE
-from src.prompts.testability_blueprint import TESTABILITY_BLUEPRINT_COMPILATION
+from src.prompts.testability_blueprint import (
+    TESTABILITY_BLUEPRINT_COMPILATION,
+    TESTABILITY_BLUEPRINT_SELF_REVIEW,
+)
 from src.prompts.testability_blueprint_review import build_testability_blueprint_grounding_prompt
 from src.prompts.testing_contract import STRUCTURED_TESTING_TEMPLATE
 from src.prompts.work_reporting import WORK_REPORT_NARRATIVE_CONTRACT
@@ -33,6 +36,7 @@ def _capability_contracts():
         "requirement_template_synthesis": REQUIREMENT_TEMPLATE_SYNTHESIS_INSTRUCTIONS,
         "requirement_template_review": REQUIREMENT_TEMPLATE_REVIEW_INSTRUCTIONS,
         "testability_blueprint_compilation": TESTABILITY_BLUEPRINT_COMPILATION,
+        "testability_blueprint_self_review": TESTABILITY_BLUEPRINT_SELF_REVIEW,
         "clarification_baseline": CLARIFICATION_BASELINE,
         "impact_analysis": IMPACT_ANALYSIS_CONTRACT,
         "change_simulation_report": IMPACT_ANALYSIS_CONTRACT,

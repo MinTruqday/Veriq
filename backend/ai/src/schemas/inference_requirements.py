@@ -263,6 +263,36 @@ class TestabilityBlueprintCompilationOutput(BaseModel):
         return self
 
 
+class TestabilityBlueprintReviewFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    finding_type: Literal[
+        "MISSING_COVERAGE",
+        "UNSUPPORTED_CLAIM",
+        "DUPLICATE_ITEM",
+        "BROKEN_LINK",
+        "CLARIFICATION_GAP",
+    ]
+    item_ref: str = Field(min_length=1, max_length=160)
+    observation: str = Field(min_length=2, max_length=1000)
+    suggested_change: str = Field(min_length=2, max_length=1000)
+    evidence_refs: List[str] = Field(min_length=1, max_length=20)
+
+
+class TestabilityBlueprintSelfReviewOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capability: Literal["testability_blueprint_self_review"] = (
+        "testability_blueprint_self_review"
+    )
+    summary: str = Field(min_length=2, max_length=1500)
+    findings: List[TestabilityBlueprintReviewFinding] = Field(
+        default_factory=list, max_length=50
+    )
+    improvement_suggestions: List[str] = Field(default_factory=list, max_length=30)
+    warnings: List[str] = Field(default_factory=list, max_length=20)
+
+
 class TestabilityBlueprintClaimReviewItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

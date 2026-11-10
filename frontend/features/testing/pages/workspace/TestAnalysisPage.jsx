@@ -67,6 +67,7 @@ export default function TestAnalysisPage({ project }) {
   const [aiResults, setAiResults] = useState([]);
   const [selectedRequirementVersions, setSelectedRequirementVersions] = useState([]);
   const [aiInstruction, setAiInstruction] = useState("");
+  const [testabilityMode, setTestabilityMode] = useState("BLUEPRINT_ONLY");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenerationError, setAiGenerationError] = useState("");
   const [query, setQuery] = useState("");
@@ -186,6 +187,7 @@ export default function TestAnalysisPage({ project }) {
           relationship: "DERIVED_FROM",
         })),
         instruction: aiInstruction.trim(),
+        testability_mode: testabilityMode,
         idempotency_key: `manual-test-condition:${crypto.randomUUID()}`,
       });
       setAiResults((current) => [result, ...current.filter((item) => item._id !== result._id)]);
@@ -579,6 +581,54 @@ export default function TestAnalysisPage({ project }) {
               </p>
               {can("testanalysis.run_ai") && (
                 <div className="space-y-3 border-t border-border pt-4">
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-medium">
+                      Chế độ phân tích yêu cầu bằng AI
+                    </legend>
+                    <div className="grid gap-2 lg:grid-cols-3">
+                      {[
+                        {
+                          value: "OFF",
+                          title: "Không dùng Blueprint hay tự rà soát",
+                          description: "Chỉ tạo đề xuất điều kiện kiểm thử như hiện tại.",
+                        },
+                        {
+                          value: "BLUEPRINT_ONLY",
+                          title: "Chỉ lập bản đồ kiểm thử",
+                          description: "Lập nghĩa vụ kiểm thử và câu hỏi làm rõ từ nguồn.",
+                        },
+                        {
+                          value: "BLUEPRINT_SELF_REVIEW",
+                          title: "Bản đồ kiểm thử + AI tự rà soát",
+                          description:
+                            "Rà soát bản đồ rồi đề xuất bản cải thiện; không phải đánh giá chuẩn độc lập.",
+                        },
+                      ].map((option) => (
+                        <label
+                          className={`flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm ${
+                            testabilityMode === option.value
+                              ? "border-accent bg-accent/5"
+                              : "border-border"
+                          }`}
+                          key={option.value}
+                        >
+                          <input
+                            checked={testabilityMode === option.value}
+                            className="mt-1"
+                            name="testability-mode"
+                            onChange={() => setTestabilityMode(option.value)}
+                            type="radio"
+                          />
+                          <span>
+                            <span className="block font-medium">{option.title}</span>
+                            <span className="mt-1 block text-xs text-ink-muted">
+                              {option.description}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-medium">Yêu cầu nguồn</h3>
                     <div className="flex gap-2">
@@ -665,6 +715,128 @@ export default function TestAnalysisPage({ project }) {
                     </span>
                   </div>
                   {aiGenerationError && <ErrorState message={aiGenerationError} />}
+                </div>
+              )}
+              {aiResults.some((result) => result.testability_blueprint) && (
+                <div className="space-y-3 border-t border-border pt-4">
+                  <h3 className="text-sm font-medium">Bản đồ kiểm thử theo từng lần chạy</h3>
+                  {aiResults
+                    .filter((result) => result.testability_blueprint)
+                    .map((result) => {
+                      const blueprint = result.testability_blueprint;
+                      const review = result.blueprint_self_review;
+                      return (
+                        <details className="rounded-lg border border-border p-3" key={result._id}>
+                          <summary className="cursor-pointer text-sm font-medium">
+                            {result.testability_mode === "BLUEPRINT_SELF_REVIEW"
+                              ? "Bản đồ kiểm thử + AI tự rà soát"
+                              : "Bản đồ kiểm thử"}
+                            {result.created_at
+                              ? ` · ${new Date(result.created_at).toLocaleString("vi-VN")}`
+                              : ""}
+                          </summary>
+                          <div className="mt-3 space-y-4 text-sm">
+                            {review && (
+                              <section className="space-y-2 rounded-control bg-surface-quiet p-3">
+                                <p className="font-medium">
+                                  AI tự rà soát, không phải đánh giá chuẩn độc lập
+                                </p>
+                                <p>{review.summary}</p>
+                                {review.findings?.length > 0 && (
+                                  <ul className="list-disc space-y-2 pl-5">
+                                    {review.findings.map((finding, index) => (
+                                      <li key={`${finding.item_ref}-${index}`}>
+                                        <strong>{finding.item_ref}:</strong> {finding.observation}
+                                        <span className="block text-ink-muted">
+                                          Đề xuất: {finding.suggested_change}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {review.improvement_suggestions?.length > 0 && (
+                                  <div>
+                                    <p className="font-medium">
+                                      Đề xuất cải thiện đã gửi lại để lập bản đồ lần nữa
+                                    </p>
+                                    <ul className="list-disc pl-5 text-ink-muted">
+                                      {review.improvement_suggestions.map((suggestion, index) => (
+                                        <li key={`${index}-${suggestion}`}>{suggestion}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </section>
+                            )}
+                            {result.testability_blueprint_before_review && (
+                              <details className="rounded-control border border-border p-3">
+                                <summary className="cursor-pointer font-medium">
+                                  Bản đồ trước khi rà soát
+                                </summary>
+                                <ul className="mt-2 list-disc space-y-2 pl-5">
+                                  {result.testability_blueprint_before_review.obligations?.map(
+                                    (obligation) => (
+                                      <li key={obligation.key}>
+                                        <strong>{obligation.key}:</strong> {obligation.obligation}
+                                      </li>
+                                    ),
+                                  )}
+                                  {result.testability_blueprint_before_review.clarifications?.map(
+                                    (clarification) => (
+                                      <li key={clarification.code}>
+                                        <strong>{clarification.code} · Cần làm rõ:</strong>{" "}
+                                        {clarification.question}
+                                      </li>
+                                    ),
+                                  )}
+                                </ul>
+                              </details>
+                            )}
+                            <section>
+                              <h4 className="font-medium">
+                                Nghĩa vụ kiểm thử ({blueprint.obligations?.length || 0})
+                              </h4>
+                              {blueprint.obligations?.length ? (
+                                <ul className="mt-2 list-disc space-y-2 pl-5">
+                                  {blueprint.obligations.map((obligation) => (
+                                    <li key={obligation.key}>
+                                      <strong>{obligation.key}:</strong> {obligation.obligation}
+                                      <span className="block text-xs text-ink-muted">
+                                        Nguồn {obligation.source_ref}: “{obligation.source_quote}”
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-1 text-ink-muted">
+                                  Không tạo được nghĩa vụ từ nguồn đã chọn.
+                                </p>
+                              )}
+                            </section>
+                            <section>
+                              <h4 className="font-medium">
+                                Câu hỏi làm rõ ({blueprint.clarifications?.length || 0})
+                              </h4>
+                              {blueprint.clarifications?.length ? (
+                                <ul className="mt-2 list-disc space-y-2 pl-5">
+                                  {blueprint.clarifications.map((clarification) => (
+                                    <li key={clarification.code}>
+                                      <strong>{clarification.code}:</strong>{" "}
+                                      {clarification.question}
+                                      <span className="block text-xs text-ink-muted">
+                                        {clarification.reason}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-1 text-ink-muted">Không có câu hỏi làm rõ.</p>
+                              )}
+                            </section>
+                          </div>
+                        </details>
+                      );
+                    })}
                 </div>
               )}
               <DataTable

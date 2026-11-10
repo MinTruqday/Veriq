@@ -65,6 +65,8 @@ from src.schemas.inference_requirements import (
     TestabilityBlueprintClarificationOutput,
     TestabilityBlueprintCompilationOutput,
     TestabilityBlueprintObligationOutput,
+    TestabilityBlueprintReviewFinding,
+    TestabilityBlueprintSelfReviewOutput,
 )
 from src.schemas.inference_shared import ProjectQuestionOutput
 from src.schemas.inference_test_design import (
@@ -140,6 +142,8 @@ __all__ = [
     "TestabilityBlueprintClarificationOutput",
     "TestabilityBlueprintCompilationOutput",
     "TestabilityBlueprintObligationOutput",
+    "TestabilityBlueprintReviewFinding",
+    "TestabilityBlueprintSelfReviewOutput",
     "TestConditionSuggestionOutput",
     "TestConditionSuggestionsOutput",
     "TestDesignChallengeOutput",
