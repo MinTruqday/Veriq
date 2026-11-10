@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -9,18 +9,6 @@ class IngestRequest(BaseModel):
     )
     requester_id: Optional[str] = None
     is_admin: bool = False
-
-
-class IngestResponse(BaseModel):
-    document_id: str
-    status: str
-    chunks_count: int
-    summary_generated: bool = False
-    extraction_method: str = "local"
-    failed_chunks: list[dict[str, Any]] = Field(default_factory=list)
-    unprocessed_blocks: list[dict[str, Any]] = Field(default_factory=list)
-    extraction_warnings: list[dict[str, Any]] = Field(default_factory=list)
-    index_cleanup_pending: list[str] = Field(default_factory=list)
 
 
 class AttachmentConversionRequest(BaseModel):

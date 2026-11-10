@@ -26,7 +26,6 @@ class StaffingCandidateInput(BaseModel):
 class StaffingRecommendationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    project_id: str = Field(min_length=1, max_length=128)
     output_language: str = Field(
         min_length=2,
         max_length=35,

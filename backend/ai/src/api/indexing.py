@@ -15,11 +15,9 @@ from src.schemas.ingestion import (
     AttachmentConversionRequest,
     ConversionCheckpointCleanupRequest,
     IngestRequest,
-    IngestResponse,
 )
 from src.schemas.response import APIResponse
 from src.services.ingestion import convert_attachment as convert_attachment_data
-from src.services.ingestion import extract_document as extract_document_text
 from src.services.ingestion import index_document as index_document_data
 from src.services.ingestion import remove_document as remove_document_data
 from src.services.conversion import document_parser
@@ -102,15 +100,6 @@ async def delete_document_endpoint(
         raise document_error(error) from error
 
 
-def resolve_requester(req: IngestRequest, user: CurrentUser):
-    requester_id = str(user.id) if user else str(req.requester_id or "")
-    if not requester_id and not user and req.is_admin:
-        requester_id = "platform-system"
-    if not requester_id:
-        raise HTTPException(status_code=403, detail="Missing document requester")
-    return requester_id, user.system_role == SystemRole.ADMIN if user else req.is_admin
-
-
 def document_error(error: Exception):
     if isinstance(error, HTTPException):
         return error
@@ -119,60 +108,6 @@ def document_error(error: Exception):
     if isinstance(error, ValueError):
         return HTTPException(status_code=404, detail=str(error))
     return HTTPException(status_code=502, detail={"code": "knowledge_dependency_failed"})
-
-
-@indexing_router.post(
-    "/tiep-nap",
-    response_model=APIResponse[IngestResponse],
-    description="Nạp và chỉ mục hóa tài liệu vào knowledge",
-)
-async def ingest_document(
-    req: IngestRequest, user: CurrentUser = Depends(get_current_user_optional)
-):
-    requester_id, is_admin = resolve_requester(req, user)
-    try:
-        result = await index_document_data(req.document_id, requester_id, is_admin)
-    except Exception as error:
-        raise document_error(error)
-    status = result.get("status", "indexed")
-    return APIResponse(
-        data=IngestResponse(
-            document_id=result.get("document_id", req.document_id),
-            status=status,
-            chunks_count=result.get("chunks_count", 0),
-            extraction_method=result.get("extraction_method", "local"),
-            failed_chunks=result.get("failed_chunks", []),
-            unprocessed_blocks=result.get("unprocessed_blocks", []),
-            extraction_warnings=result.get("extraction_warnings", []),
-            index_cleanup_pending=result.get("index_cleanup_pending", []),
-        ),
-        message=(
-            "Nạp và chỉ mục hóa tài liệu thành công; có cảnh báo trích xuất cần lưu ý"
-            if status == "indexed" and result.get("extraction_warnings")
-            else "Nạp và chỉ mục hóa tài liệu thành công"
-            if status == "indexed"
-            else "Tài liệu đã được lập chỉ mục nhưng còn phần xử lý hoặc dọn chỉ mục cần kiểm tra"
-        ),
-    )
-
-
-@indexing_router.post(
-    "/trich-xuat",
-    response_model=APIResponse[dict],
-    description="Trích xuất nội dung tài liệu cho knowledge",
-)
-async def extract_document(
-    req: IngestRequest, user: CurrentUser = Depends(get_current_user_optional)
-):
-    requester_id, is_admin = resolve_requester(req, user)
-    try:
-        markdown = await extract_document_text(req.document_id, requester_id, is_admin)
-    except Exception as error:
-        raise document_error(error)
-    return APIResponse(
-        data={"document_id": req.document_id, "text": markdown},
-        message="Trích xuất nội dung tài liệu thành công",
-    )
 
 
 @indexing_router.post(

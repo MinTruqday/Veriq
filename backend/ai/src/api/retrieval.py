@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.core.dependency import CurrentUser, get_current_user_optional, verify_internal_token
+from src.core.dependency import CurrentUser, get_current_user, verify_internal_token
 from src.core.metrics import metrics_collector
 from src.knowledge.metadata import public_retrieval_metadata
+from src.schemas.auth import SystemRole
 from src.schemas.response import APIResponse
 from src.schemas.retrieval import (
     CitationItem,
@@ -73,10 +74,10 @@ async def list_retrieval_access_audit(
     description="Truy xuất knowledge bằng dense sparse fusion và rerank",
 )
 async def retrieve_documents(
-    req: RetrieveRequest, user: CurrentUser = Depends(get_current_user_optional)
+    req: RetrieveRequest, user: CurrentUser = Depends(get_current_user)
 ):
-    requester_id = str(user.id) if user else req.requester_id
-    is_admin = user.is_admin() if user else req.is_admin
+    requester_id = str(user.id)
+    is_admin = user.system_role == SystemRole.ADMIN
     try:
         docs = await retriever.retrieve(
             query=req.query,
@@ -100,10 +101,10 @@ async def retrieve_documents(
     description="Truy xuất knowledge liên tài liệu",
 )
 async def cross_document_retrieve(
-    req: CrossDocRetrieveRequest, user: CurrentUser = Depends(get_current_user_optional)
+    req: CrossDocRetrieveRequest, user: CurrentUser = Depends(get_current_user)
 ):
-    requester_id = str(user.id) if user else req.requester_id
-    is_admin = user.is_admin() if user else req.is_admin
+    requester_id = str(user.id)
+    is_admin = user.system_role == SystemRole.ADMIN
     try:
         docs = await retriever.cross_document_retrieve(
             question=req.question,

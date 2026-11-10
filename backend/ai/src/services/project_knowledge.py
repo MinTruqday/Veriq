@@ -11,6 +11,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from src.core.infrastructure.configuration import settings
+from src.schemas.auth import CurrentUser, SystemRole
 from src.knowledge.metadata import public_retrieval_metadata
 from src.repositories.project_artifact_generation import (
     ProjectArtifactGenerationConflict,
@@ -562,20 +563,24 @@ async def list_project_artifact_chunks(
     }
 
 
-async def search_project_knowledge(project_id: str, req: ProjectKnowledgeSearchRequest):
+async def search_project_knowledge(
+    project_id: str, req: ProjectKnowledgeSearchRequest, user: CurrentUser
+):
+    requester_id = str(user.id)
+    is_admin = user.system_role == SystemRole.ADMIN
     cache_key = (
         project_id,
         req.query,
         tuple(sorted(req.artifact_types or [])),
         req.limit,
-        req.requester_id,
-        req.is_admin,
+        requester_id,
+        is_admin,
     )
     cached = SEARCH_CACHE.get(cache_key)
     if cached and time.monotonic() - cached[0] < 30:
         try:
             visible_items = await retriever._filter_currently_accessible_sources(
-                cached[1].get("items", []), req.requester_id, req.is_admin
+                cached[1].get("items", []), requester_id, is_admin
             )
             visible_items = await project_artifact_generation_repository.filter_active(
                 visible_items
@@ -597,8 +602,8 @@ async def search_project_knowledge(project_id: str, req: ProjectKnowledgeSearchR
         documents = await retriever.retrieve(
             query=req.query,
             k=req.limit,
-            requester_id=req.requester_id,
-            is_admin=req.is_admin,
+            requester_id=requester_id,
+            is_admin=is_admin,
             metadata_filters=filters,
         )
     except RetrievalUnavailableError as error:

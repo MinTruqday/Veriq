@@ -471,6 +471,8 @@ class RetrievalService:
             or result_count > 100
         ):
             raise ValueError("retrieval_result_count_invalid")
+        if document_ids is not None and not document_ids:
+            return []
         fetch_limit = result_count
         query_embedding_task = None
 

@@ -1217,7 +1217,7 @@ async def recommend_test_case_owner(project_id, payload, user, *, output_languag
             "active_run_count": candidate["active_run_count"],
         })
     ai_result = await ai_automation_client.recommend_test_case_owners(
-        project_id, output_language, required, ai_candidate_inputs, task_context
+        output_language, required, ai_candidate_inputs, task_context
     ) if ai_candidate_inputs else {"recommendations": [], "warnings": []}
     recommendation_by_user = _map_staffing_recommendations(
         ai_result.get("recommendations") or [], candidate_ref_to_user

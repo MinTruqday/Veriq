@@ -89,7 +89,6 @@ class AIAutomationClient:
 
     async def recommend_test_case_owners(
         self,
-        project_id: str,
         output_language: str,
         required_skills: list[str],
         candidates: list[dict],
@@ -100,7 +99,6 @@ class AIAutomationClient:
                 f"{settings.AI_URL.rstrip('/')}/tri-thuc/kiem-thu/goi-y-phan-cong",
                 headers={"X-Internal-Token": settings.SECRET_KEY},
                 json={
-                    "project_id": project_id,
                     "output_language": output_language,
                     "task_context": task_context,
                     "required_skills": required_skills,

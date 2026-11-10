@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from src.core.dependency import verify_internal_token
+from src.core.dependency import CurrentUser, get_current_user, verify_internal_token
 from src.schemas.project import ProjectArtifactIndexRequest, ProjectKnowledgeSearchRequest
 from src.services.project_knowledge import (
     index_project_artifact,
@@ -41,5 +41,9 @@ async def list_artifact_chunks(
     "/du-an/{project_id}/tim-kiem",
     description="Tìm evidence knowledge theo phạm vi Project",
 )
-async def search_knowledge(project_id: str, req: ProjectKnowledgeSearchRequest):
-    return await search_project_knowledge(project_id, req)
+async def search_knowledge(
+    project_id: str,
+    req: ProjectKnowledgeSearchRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await search_project_knowledge(project_id, req, user)

@@ -113,13 +113,14 @@ async def search_project_with_status(project_id, query, artifact_types, limit, u
         ) as client:
             response = await client.post(
                 f"{settings.AI_URL.rstrip('/')}/tri-thuc/du-an/{project_id}/tim-kiem",
-                headers={"X-Internal-Token": settings.SECRET_KEY},
+                headers={
+                    "X-Internal-Token": settings.SECRET_KEY,
+                    "Authorization": f"Bearer {user._access_token}",
+                },
                 json={
                     "query": query,
                     "artifact_types": artifact_types or [],
                     "limit": limit,
-                    "requester_id": user.id,
-                    "is_admin": user.is_system_admin,
                 },
             )
             response.raise_for_status()

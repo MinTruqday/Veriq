@@ -183,8 +183,6 @@ class ProjectKnowledgeSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=10000)
     artifact_types: list[str] = Field(default_factory=list, max_length=20)
     limit: int = Field(default=20, ge=1, le=100)
-    requester_id: str = Field(min_length=1, max_length=200)
-    is_admin: bool = False
 
 
 class ProjectChunkSourceLocation(BaseModel):

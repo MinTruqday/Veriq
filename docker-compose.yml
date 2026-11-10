@@ -290,6 +290,8 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
+    networks:
+      - veriq_network
 
   testing:
     healthcheck: *app-healthcheck

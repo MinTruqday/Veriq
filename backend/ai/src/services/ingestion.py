@@ -1018,19 +1018,6 @@ async def index_document(
                 pass
 
 
-async def extract_document(document_id: str, requester_id: str, is_admin: bool) -> str:
-    document = await ContentClient.authorize_document(document_id, requester_id, is_admin)
-    file_url = str(document.get("file_url") or "")
-    if not file_url:
-        raise ValueError("Document file not found")
-    markdown = await document_parser.get_markdown(
-        file_url, visibility=document.get("visibility") or "private"
-    )
-    if not markdown:
-        raise ValueError("Document text unavailable")
-    return markdown
-
-
 async def convert_attachment(
     data: str,
     filename: str,

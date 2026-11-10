@@ -1528,10 +1528,6 @@ class ConversionService:
         finally:
             await asyncio.to_thread(temporary_path.unlink, missing_ok=True)
 
-    async def get_markdown(self, file_url: str, visibility: str = "private") -> str:
-        parse_result = await self.parse_document(file_url, visibility=visibility)
-        return parse_result.get("markdown", "")
-
     async def _download_from_object_storage(
         self, file_url: str, visibility: str = "public"
     ) -> tuple[Optional[bytes], str]:

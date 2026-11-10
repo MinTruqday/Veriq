@@ -56,6 +56,7 @@ class VectorStore:
         "document_index_contract_version": PayloadSchemaType.INTEGER,
         "embedding_model": PayloadSchemaType.KEYWORD,
     }
+
     @staticmethod
     def _is_project_artifact_payload(payload: Dict) -> bool:
         return not payload.get("document_id") or payload.get("artifact_type") == "requirement_document"
@@ -74,6 +75,12 @@ class VectorStore:
         if schema is None or schema.data_type != PayloadSchemaType.TEXT:
             return False
         params = schema.params
+        if getattr(params, "tokenizer", None) != TokenizerType.WORD:
+            return False
+        if getattr(params, "lowercase", None) is not True:
+            return False
+        if getattr(params, "min_token_len", None) != 1:
+            return False
         scoring = getattr(params, "scoring", None)
         if scoring is True:
             return True
@@ -223,14 +230,16 @@ class VectorStore:
         is_admin: bool = False,
         metadata_filters: Optional[Dict] = None,
     ) -> List[Dict]:
+        if limit < 1 or limit > 100:
+            raise ValueError("Vector query limit must be between 1 and 100")
+        if document_ids is not None and not document_ids:
+            return []
         query_filter = self._query_filter(
             document_ids=document_ids,
             requester_id=requester_id,
             is_admin=is_admin,
             metadata_filters=metadata_filters,
         )
-        if limit < 1 or limit > 100:
-            raise ValueError("Vector query limit must be between 1 and 100")
         try:
             response = await self.client.query_points(
                 collection_name=self.collection_name,
@@ -266,12 +275,14 @@ class VectorStore:
             )
         if limit < 1 or limit > 100:
             raise ValueError("Vector query limit must be between 1 and 100")
+        if document_ids is not None and not document_ids:
+            return []
         query_filter = self._query_filter(
             document_ids=document_ids,
             requester_id=requester_id,
             is_admin=is_admin,
             metadata_filters=metadata_filters,
-        ).model_dump(mode="json", exclude_none=True)
+        )
         response = await self.client.query_points(
             collection_name=self.collection_name,
             prefetch=[
@@ -303,7 +314,7 @@ class VectorStore:
                 match=MatchValue(value=settings.EMBEDDING_MODEL),
             )
         ]
-        if document_ids:
+        if document_ids is not None:
             must.append(FieldCondition(key="document_id", match=MatchAny(any=document_ids)))
         for key, value in (metadata_filters or {}).items():
             if value is None:
@@ -398,7 +409,7 @@ class VectorStore:
                             ]
                         )
                     )
-            if document_ids:
+            if document_ids is not None:
                 access_conditions.append(
                     Filter(
                         must=[
@@ -422,9 +433,7 @@ class VectorStore:
                     ]
                 )
             must.append(Filter(should=access_conditions))
-        query_filter = Filter(must=must) if must else None
-
-        return Filter(must=must) if must else Filter()
+        return Filter(must=must)
 
     async def iter_scroll_batches(self, batch_size: int = 256):
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
