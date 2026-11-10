@@ -70,6 +70,7 @@ app.add_middleware(
     allow_credentials="*" not in allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_private_network=True,
 )
 app.include_router(inference)
 app.include_router(agents_router)
