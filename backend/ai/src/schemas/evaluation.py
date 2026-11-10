@@ -33,12 +33,38 @@ def benchmark_answer_key_review_covers_cases(cases, review):
         reviews = review.get("case_reviews") if isinstance(review, dict) else review.case_reviews
     if not isinstance(reviews, list):
         return False
-    return benchmark_answer_key_review_has_case_coverage(cases, reviews) and all(
-        (item.get("source_quotes_verified") if isinstance(item, dict) else item.source_quotes_verified)
-        and (item.get("obligations_verified") if isinstance(item, dict) else item.obligations_verified)
-        and (item.get("clarifications_verified") if isinstance(item, dict) else item.clarifications_verified)
+    if not benchmark_answer_key_review_has_case_coverage(cases, reviews):
+        return False
+    reviews_by_case = {
+        str(item.get("case_id") if isinstance(item, dict) else item.case_id): item
         for item in reviews
-    )
+    }
+
+    def review_value(item, key):
+        return item.get(key) if isinstance(item, dict) else getattr(item, key)
+
+    for case in cases:
+        case_id = str(case.get("case_id") if isinstance(case, dict) else case.case_id)
+        item = reviews_by_case[case_id]
+        has_clarification_labels = bool(
+            (
+                case.get("expected_clarification_categories")
+                if isinstance(case, dict)
+                else case.expected_clarification_categories
+            )
+            or (
+                case.get("expected_clarification_codes")
+                if isinstance(case, dict)
+                else case.expected_clarification_codes
+            )
+        )
+        if not review_value(item, "source_quotes_verified") or not review_value(
+            item, "obligations_verified"
+        ):
+            return False
+        if has_clarification_labels and review_value(item, "clarifications_verified") is not True:
+            return False
+    return True
 
 
 def benchmark_answer_key_review_has_case_coverage(cases, reviews):
@@ -444,7 +470,7 @@ class TestabilityBenchmarkCaseAnswerKeyReview(BaseModel):
     case_id: str = Field(min_length=1, max_length=200)
     source_quotes_verified: bool
     obligations_verified: bool
-    clarifications_verified: bool
+    clarifications_verified: bool | None = None
     rationale: str = Field(min_length=20, max_length=2000)
 
     @field_validator("rationale")

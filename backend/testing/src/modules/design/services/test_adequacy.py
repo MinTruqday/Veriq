@@ -697,7 +697,19 @@ async def add_execution_feedback(assessment_id, coverage_item_id, payload, user)
             if case["_id"] not in {entry["id"] for entry in item.get("test_case_versions", [])}:
                 raise HTTPException(status_code=422, detail={"code": "TEST_CASE_NOT_MAPPED_TO_COVERAGE_ITEM"})
             feedback = list(item.get("execution_feedback", []))
-            feedback.append({"test_case_version_id": case["_id"], "outcome": payload.outcome, "test_result_id": payload.test_result_id, "test_result_revision": payload.test_result_revision, "defect_id": payload.defect_id, "note": payload.note, "recorded_by": user.id, "recorded_at": now()})
+            feedback.append(
+                {
+                    "test_case_version_id": case["_id"],
+                    "outcome": payload.outcome,
+                    "follow_up_action": payload.follow_up_action,
+                    "test_result_id": payload.test_result_id,
+                    "test_result_revision": payload.test_result_revision,
+                    "defect_id": payload.defect_id,
+                    "note": payload.note,
+                    "recorded_by": user.id,
+                    "recorded_at": now(),
+                }
+            )
             item["execution_feedback"] = feedback
         items.append(item)
     if not found:
@@ -706,7 +718,13 @@ async def add_execution_feedback(assessment_id, coverage_item_id, payload, user)
     return await _replace_assessment_with_audit(
         assessment_id, assessment["project_id"], payload.expected_revision, value,
         user, "test_adequacy_execution_feedback_recorded", "CoverageItem",
-        coverage_item_id, {"outcome": payload.outcome},
+        coverage_item_id,
+        {
+            "outcome": payload.outcome,
+            "follow_up_action": payload.follow_up_action,
+            "test_result_id": payload.test_result_id,
+            "defect_id": payload.defect_id,
+        },
         expected_status=assessment.get("status"),
     )
 

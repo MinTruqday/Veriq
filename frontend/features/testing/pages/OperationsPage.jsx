@@ -164,7 +164,7 @@ export default function OperationsPage() {
           { id: "users", label: "Tài khoản" },
           { id: "capacity", label: "Công suất" },
           { id: "platform", label: "Cấu hình nền tảng" },
-          { id: "benchmark", label: "Đánh giá AI" },
+          { id: "benchmark", label: "Kiểm thử kỹ thuật AI" },
         ]}
       />
       {error && <ErrorState message={error} />}

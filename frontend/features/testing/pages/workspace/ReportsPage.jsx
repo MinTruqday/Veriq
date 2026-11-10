@@ -6,6 +6,8 @@ import TestStatusReportPanel from "../../components/TestStatusReportPanel";
 import CompletionPage from "./CompletionPage";
 import MetricDefinitionPanel from "../../components/MetricDefinitionPanel";
 import ReleaseQualityPanel from "../../components/ReleaseQualityPanel";
+import ProjectAIEvaluationPanel from "../../components/ProjectAIEvaluationPanel";
+import RealTestabilityBenchmarkPanel from "../../components/RealTestabilityBenchmarkPanel";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import {
   ErrorState,
@@ -205,6 +207,7 @@ export default function ReportsPage({ project }) {
     ...(can("qualityevaluation.read") || can("measurement.read")
       ? [{ id: "quality", label: "Chất lượng và cải tiến" }]
       : []),
+    ...(canReadAiAnalytics ? [{ id: "ai", label: "Đánh giá AI thực tế" }] : []),
   ];
   const visibleTab = reportTabs.some((tab) => tab.id === activeTab) ? activeTab : reportTabs[0]?.id;
   const testReportTabs = [
@@ -389,6 +392,12 @@ export default function ReportsPage({ project }) {
           )}
           {visibleQualityTab === "evaluation" && <ReleaseQualityPanel project={project} />}
           {visibleQualityTab === "measurement" && <MetricDefinitionPanel project={project} />}
+        </div>
+      )}
+      {visibleTab === "ai" && (
+        <div className="space-y-5">
+          <ProjectAIEvaluationPanel analytics={value?.ai} loading={loading} />
+          <RealTestabilityBenchmarkPanel project={project} />
         </div>
       )}
       {visibleTab === "summary" && (

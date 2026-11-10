@@ -95,8 +95,7 @@ async def evaluate_testability_compiler(req: TestabilityBenchmarkRequest):
 
 
 @router.post(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu",
     status_code=201,
 )
 async def create_testability_benchmark_dataset(
@@ -110,19 +109,23 @@ async def create_testability_benchmark_dataset(
 
 
 @router.get(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu",
 )
-async def list_testability_benchmark_datasets(limit: int = 100):
+async def list_testability_benchmark_datasets(
+    limit: int = 100,
+    current_user: CurrentUser = Depends(require_system_admin),
+):
     return await testability_benchmark_repository.list(max(1, min(limit, 100)))
 
 
 @router.get(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}",
     response_model=TestabilityBenchmarkDataset,
 )
-async def get_testability_benchmark_dataset(dataset_id: str):
+async def get_testability_benchmark_dataset(
+    dataset_id: str,
+    current_user: CurrentUser = Depends(require_system_admin),
+):
     dataset = await testability_benchmark_repository.get(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
@@ -130,8 +133,7 @@ async def get_testability_benchmark_dataset(dataset_id: str):
 
 
 @router.put(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}",
     response_model=TestabilityBenchmarkDataset,
     description=(
         "Cập nhật bộ dữ liệu theo revision hiện tại. Mọi thay đổi làm mất rà soát đáp án cũ; "
@@ -154,8 +156,7 @@ async def update_testability_benchmark_dataset(
 
 
 @router.post(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/ra-soat-dap-an",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/ra-soat-dap-an",
     response_model=TestabilityBenchmarkDataset,
     description=(
         "Ghi nhận rà soát đáp án chuẩn bởi Admin đã xác thực, khác người tạo bộ dữ liệu. "
@@ -178,11 +179,13 @@ async def review_testability_benchmark_answer_key(
 
 
 @router.post(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/chay",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/chay",
     response_model=TestabilityBenchmarkReport,
 )
-async def evaluate_testability_benchmark_dataset(dataset_id: str):
+async def evaluate_testability_benchmark_dataset(
+    dataset_id: str,
+    current_user: CurrentUser = Depends(require_system_admin),
+):
     dataset = await testability_benchmark_repository.get(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
@@ -197,8 +200,7 @@ async def evaluate_testability_benchmark_dataset(dataset_id: str):
 
 
 @router.post(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/chay-lap",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/chay-lap",
     response_model=TestabilityBenchmarkRepeatedReport,
     description=(
         "Chạy lại các pipeline AI thật theo thứ tự để đo độ biến thiên mô tả; "
@@ -208,6 +210,7 @@ async def evaluate_testability_benchmark_dataset(dataset_id: str):
 async def repeat_testability_benchmark_dataset(
     dataset_id: str,
     repetitions: int = Query(default=3, ge=1, le=5),
+    current_user: CurrentUser = Depends(require_system_admin),
 ):
     dataset = await testability_benchmark_repository.get(dataset_id)
     if not dataset:
@@ -271,10 +274,13 @@ async def run_synthetic_testability_benchmark_for_admin(
 
 
 @router.get(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/lan-chay",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/lan-chay",
 )
-async def list_testability_benchmark_runs(dataset_id: str, limit: int = 20):
+async def list_testability_benchmark_runs(
+    dataset_id: str,
+    limit: int = 20,
+    current_user: CurrentUser = Depends(require_system_admin),
+):
     dataset = await testability_benchmark_repository.get(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail={"code": "BENCHMARK_DATASET_NOT_FOUND"})
@@ -284,11 +290,14 @@ async def list_testability_benchmark_runs(dataset_id: str, limit: int = 20):
 
 
 @router.get(
-    "/noi-bo/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/lan-chay/{run_id}",
-    dependencies=[Depends(verify_internal_token)],
+    "/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/{dataset_id}/lan-chay/{run_id}",
     response_model=TestabilityBenchmarkReport,
 )
-async def get_testability_benchmark_run(dataset_id: str, run_id: str):
+async def get_testability_benchmark_run(
+    dataset_id: str,
+    run_id: str,
+    current_user: CurrentUser = Depends(require_system_admin),
+):
     report = await testability_benchmark_repository.get_run(dataset_id, run_id)
     if not report:
         raise HTTPException(status_code=404, detail={"code": "BENCHMARK_RUN_NOT_FOUND"})

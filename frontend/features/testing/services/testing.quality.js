@@ -6,6 +6,33 @@ import {
 } from "./testing.transport";
 
 export const qualityTestingApi = {
+  listTestabilityBenchmarkDatasets: (limit = 100) =>
+    inferenceRequest(
+      `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu?limit=${encodeURIComponent(limit)}`,
+    ),
+  getTestabilityBenchmarkDataset: (datasetId) =>
+    inferenceRequest(
+      `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/${encodeURIComponent(datasetId)}`,
+    ),
+  createTestabilityBenchmarkDataset: (payload) =>
+    inferenceRequest("/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  reviewTestabilityBenchmarkDataset: (datasetId, payload) =>
+    inferenceRequest(
+      `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/${encodeURIComponent(datasetId)}/ra-soat-dap-an`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  repeatTestabilityBenchmarkDataset: (datasetId, repetitions = 3) =>
+    inferenceRequest(
+      `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/${encodeURIComponent(datasetId)}/chay-lap?repetitions=${encodeURIComponent(repetitions)}`,
+      { method: "POST" },
+    ),
+  listTestabilityBenchmarkDatasetRuns: (datasetId, limit = 20) =>
+    inferenceRequest(
+      `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/bo-du-lieu/${encodeURIComponent(datasetId)}/lan-chay?limit=${encodeURIComponent(limit)}`,
+    ),
   listSyntheticTestabilityBenchmarkRuns: (limit = 20) =>
     inferenceRequest(
       `/danh-gia/trinh-bien-dich-kha-nang-kiem-thu/tong-hop/lan-chay?limit=${encodeURIComponent(limit)}`,

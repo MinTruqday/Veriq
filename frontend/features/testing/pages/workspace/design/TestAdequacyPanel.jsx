@@ -23,9 +23,15 @@ const assessmentLabels = {
 
 const executionOutcomeLabels = {
   CAUGHT_DEFECT: "Phát hiện lỗi",
-  DID_NOT_DIFFERENTIATE: "Chưa phân biệt được lỗi",
+  DID_NOT_DIFFERENTIATE: "Không phát hiện lỗi trong lượt chạy",
   NOT_EXECUTED: "Chưa thực thi",
   NEEDS_TEST_ADDITION: "Cần bổ sung ca kiểm thử",
+};
+
+const followUpActionLabels = {
+  NONE: "Không cần xử lý thêm",
+  ADD_TEST_CASE: "Bổ sung ca kiểm thử",
+  INVESTIGATE: "Rà soát thêm",
 };
 
 function sourceReferenceLabel(item) {
@@ -189,20 +195,25 @@ export default function TestAdequacyPanel({
     const cases = item.test_case_versions || [];
     if (!cases.length) return;
     let results = [];
+    let defects = [];
     if (canReadResults) {
-      try {
-        results = await testingApi.listResults(projectId);
-      } catch (reason) {
-        setError(messageOf(reason));
+      const [resultResponse, defectResponse] = await Promise.allSettled([
+        testingApi.listResults(projectId),
+        testingApi.listDefects(projectId, { page: 1, page_size: 500 }),
+      ]);
+      if (resultResponse.status === "rejected") {
+        setError(messageOf(resultResponse.reason));
         return;
       }
+      results = resultResponse.value;
+      defects = defectResponse.status === "fulfilled" ? defectResponse.value : [];
     }
     const caseIds = new Set(cases.map((test) => test.id));
     const linkedResults = results.filter((result) => caseIds.has(result.test_case_version_id));
     const value = await ask({
       title: "Ghi nhận kết quả thực thi",
       description:
-        "Phản hồi được lưu vào nghĩa vụ này và có thể được đối chiếu trong lần rà soát tiếp theo.",
+        "Chọn kết quả quan sát được. Việc cần làm tiếp được ghi riêng; hãy liên kết kết quả chạy để có bằng chứng đối chiếu.",
       confirmLabel: "Ghi nhận kết quả",
       fields: [
         {
@@ -216,10 +227,20 @@ export default function TestAdequacyPanel({
         },
         {
           name: "outcome",
-          label: "Kết quả",
+          label: "Kết quả quan sát",
           required: true,
-          options: Object.entries(executionOutcomeLabels).map(([key, label]) => ({
-            value: key,
+          options: Object.entries(executionOutcomeLabels)
+            .filter(([key]) => key !== "NEEDS_TEST_ADDITION")
+            .map(([key, label]) => ({
+              value: key,
+              label,
+            })),
+        },
+        {
+          name: "follow_up_action",
+          label: "Việc cần làm tiếp",
+          options: Object.entries(followUpActionLabels).map(([value, label]) => ({
+            value,
             label,
           })),
         },
@@ -235,6 +256,17 @@ export default function TestAdequacyPanel({
                 label: `${test?.key || "Ca kiểm thử"} · ${valueLabel(result.status)} · ${new Date(result.updated_at || result.created_at).toLocaleString()}`,
               };
             }),
+          ],
+        },
+        {
+          name: "defect_id",
+          label: "Lỗi liên quan (không bắt buộc)",
+          options: [
+            { value: "", label: "Chưa liên kết lỗi" },
+            ...defects.map((defect) => ({
+              value: defect._id,
+              label: `${defect.defect_key || "Lỗi"} · ${defect.title || ""}`,
+            })),
           ],
         },
         { name: "note", label: "Ghi chú", multiline: true },
@@ -659,6 +691,13 @@ export default function TestAdequacyPanel({
                                 {test?.key || "Ca kiểm thử"} ·{" "}
                                 {executionOutcomeLabels[entry.outcome] || valueLabel(entry.outcome)}
                               </span>
+                              {entry.follow_up_action && entry.follow_up_action !== "NONE" && (
+                                <p className="mt-1 text-xs text-ink-muted">
+                                  Việc cần làm tiếp:{" "}
+                                  {followUpActionLabels[entry.follow_up_action] ||
+                                    valueLabel(entry.follow_up_action)}
+                                </p>
+                              )}
                               {entry.note && (
                                 <p className="mt-1 whitespace-pre-wrap text-ink-muted">
                                   {entry.note}
@@ -669,12 +708,17 @@ export default function TestAdequacyPanel({
                                   {new Date(entry.recorded_at).toLocaleString()}
                                 </p>
                               )}
-                              {entry.test_result_id && (
-                                <p
-                                  className="mt-1 text-xs text-ink-faint"
-                                  title={entry.test_result_id}
-                                >
-                                  Đã liên kết kết quả chạy
+                              <p
+                                className="mt-1 text-xs text-ink-faint"
+                                title={entry.test_result_id || undefined}
+                              >
+                                {entry.test_result_id
+                                  ? "Đã liên kết kết quả chạy"
+                                  : "Chưa có kết quả chạy liên kết; chỉ là ghi nhận thủ công"}
+                              </p>
+                              {entry.defect_id && (
+                                <p className="mt-1 text-xs text-ink-faint">
+                                  Đã liên kết lỗi được ghi nhận
                                 </p>
                               )}
                             </div>

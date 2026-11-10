@@ -109,7 +109,7 @@ export default function TestabilityBenchmarkPanel() {
     <div className="space-y-5">
       {error && <ErrorState message={error} />}
       <Panel
-        title="Kiểm tra AI trên tình huống thử"
+        title="Kiểm thử kỹ thuật trên dữ liệu tổng hợp"
         className="benchmark-run-panel"
         actions={
           <button
@@ -118,7 +118,7 @@ export default function TestabilityBenchmarkPanel() {
             disabled={running}
             onClick={() => void runBenchmark()}
           >
-            {running ? "Đang so sánh các cách xử lý…" : "Chạy đánh giá"}
+            {running ? "Đang chạy các phương pháp AI…" : "Chạy kiểm thử kỹ thuật"}
           </button>
         }
       >
@@ -201,13 +201,13 @@ export default function TestabilityBenchmarkPanel() {
         </Panel>
       )}
 
-      <Panel title="Lịch sử các lượt đánh giá">
+      <Panel title="Lịch sử kiểm thử trên dữ liệu tổng hợp">
         {loading ? (
           <LoadingState />
         ) : (
           <DataTable
             items={runs}
-            empty="Chưa có lượt đánh giá tổng hợp"
+            empty="Chưa có lượt kiểm thử kỹ thuật nào"
             columns={[
               {
                 key: "dataset_id",

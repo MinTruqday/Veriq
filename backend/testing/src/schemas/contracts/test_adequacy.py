@@ -55,6 +55,7 @@ class CoverageExecutionFeedbackInput(BaseModel):
         "NOT_EXECUTED",
         "NEEDS_TEST_ADDITION",
     ]
+    follow_up_action: Literal["NONE", "ADD_TEST_CASE", "INVESTIGATE"] = "NONE"
     test_result_id: str | None = Field(default=None, max_length=200)
     test_result_revision: int | None = Field(default=None, ge=1)
     defect_id: str | None = Field(default=None, max_length=200)
