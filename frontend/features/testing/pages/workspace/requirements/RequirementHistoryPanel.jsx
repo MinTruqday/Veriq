@@ -22,7 +22,12 @@ export default function RequirementHistoryPanel({
         <DataTable
           items={versions}
           columns={[
-            { key: "version", label: "Phiên bản", render: (item) => `v${item.version}` },
+            {
+              key: "version",
+              label: "Phiên bản",
+              align: "center",
+              render: (item) => `v${item.version}`,
+            },
             { key: "title", label: "Tên" },
             {
               key: "status",

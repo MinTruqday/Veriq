@@ -244,7 +244,7 @@ export default function TestGovernancePage({ project }) {
                 </span>
               ),
             },
-            { key: "version", label: "Phiên bản", minWidth: 72 },
+            { key: "version", label: "Phiên bản", align: "center", minWidth: 72 },
             {
               key: "status",
               label: "Trạng thái",

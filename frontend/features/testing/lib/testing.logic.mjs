@@ -1,3 +1,5 @@
+import { formatDateOnly, formatDateTime } from "../../../shared/lib/dateTime.mjs";
+
 export function emptyDoc() {
   return { type: "doc", content: [] };
 }
@@ -569,29 +571,12 @@ export function valueLabel(value) {
   return valueLabels[value] || valueLabels[normalizedValue] || statusLabel(value);
 }
 
-export function formatDate(value) {
-  if (!value) return "Chưa có";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "Chưa có"
-    : date.toLocaleString(undefined, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+export function formatDate(value, options = {}) {
+  return formatDateTime(value, options);
 }
 
-export function formatCalendarDate(value) {
-  if (!value) return "Chưa có";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+export function formatCalendarDate(value, options = {}) {
+  return formatDateOnly(value, options);
 }
 
 export function messageOf(reason) {

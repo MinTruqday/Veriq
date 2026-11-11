@@ -15,13 +15,16 @@ import {
   StatusPill,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
-import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
 import { formatProjectDate } from "../../lib/projectSchedule.logic.mjs";
 import { taskProgressPresentation } from "../../lib/projectProgress.logic.mjs";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 
-function projectOverviewDescription(project) {
-  const start = project.planned_start_at ? formatProjectDate(project.planned_start_at) : null;
-  const end = project.planned_end_at ? formatProjectDate(project.planned_end_at) : null;
+function projectOverviewDescription(project, locale) {
+  const start = project.planned_start_at
+    ? formatProjectDate(project.planned_start_at, locale)
+    : null;
+  const end = project.planned_end_at ? formatProjectDate(project.planned_end_at, locale) : null;
   if (start && end) return `${start} – ${end}`;
   if (start) return `Từ ${start}`;
   if (end) return `Đến ${end}`;
@@ -34,11 +37,11 @@ function latestRunLabel(run) {
   return name && !containsInternalCode ? name : "Lần chạy kiểm thử";
 }
 
-function latestRunContext(run) {
+function latestRunContext(run, dateTimeOptions) {
   const details = [];
   if (run?.build) details.push(`Bản dựng ${run.build}`);
   if (run?.environment) details.push(`Môi trường ${valueLabel(run.environment)}`);
-  if (run?.created_at) details.push(formatDate(run.created_at));
+  if (run?.created_at) details.push(formatDateValue(run.created_at, dateTimeOptions));
   return details.join(" · ");
 }
 
@@ -49,6 +52,8 @@ function formatCoveragePercent(value) {
 
 export default function DashboardPage({ project }) {
   const { user } = useAuth();
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const [value, setValue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -127,8 +132,14 @@ export default function DashboardPage({ project }) {
   const hasQualityMetrics =
     Boolean(dashboard && (can("testcase.read") || can("testrun.read") || can("impact.read"))) ||
     hasDetailedCoverage;
+  const hasDashboardLeftColumn =
+    canReadAgentRuns || Boolean(dashboard && can("requirement.read") && can("impact.read"));
+  const hasDashboardRightColumn = Boolean(dashboard && (can("defect.read") || can("testrun.read")));
   return (
-    <WorkspacePage title={project.name} description={projectOverviewDescription(project)}>
+    <WorkspacePage
+      title={project.name}
+      description={projectOverviewDescription(project, user?.locale)}
+    >
       {error && (
         <div className="space-y-3">
           <ErrorState message={error} />
@@ -278,8 +289,18 @@ export default function DashboardPage({ project }) {
               </div>
             </details>
           )}
-          <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,1fr)]">
-            <div className="grid min-w-0 content-start gap-5">
+          <div
+            className={`grid min-w-0 items-start gap-5 ${
+              !hasDashboardLeftColumn && !hasDashboardRightColumn
+                ? "hidden"
+                : hasDashboardLeftColumn && hasDashboardRightColumn
+                  ? "xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,1fr)]"
+                  : "grid-cols-1"
+            }`}
+          >
+            <div
+              className={`grid min-w-0 content-start gap-5 ${hasDashboardLeftColumn ? "" : "hidden"}`}
+            >
               {canReadAgentRuns && <AgentRunPanel project={project} compact />}
               {dashboard && can("requirement.read") && can("impact.read") && (
                 <Panel title="Thay đổi gần đây">
@@ -296,7 +317,7 @@ export default function DashboardPage({ project }) {
                         {
                           key: "created_at",
                           label: "Cập nhật lúc",
-                          render: (item) => formatDate(item.created_at),
+                          render: (item) => formatDate(item.created_at, dateTimeOptions),
                         },
                       ]}
                     />
@@ -308,7 +329,9 @@ export default function DashboardPage({ project }) {
                 </Panel>
               )}
             </div>
-            <div className="grid min-w-0 content-start gap-5">
+            <div
+              className={`grid min-w-0 content-start gap-5 ${hasDashboardRightColumn ? "" : "hidden"}`}
+            >
               {dashboard && can("defect.read") && (
                 <Panel title="Lỗi đang mở theo mức độ">
                   {openDefectSeverities.length > 0 ? (
@@ -343,9 +366,9 @@ export default function DashboardPage({ project }) {
                         </Link>
                         <StatusPill value={dashboard.latest_run.status} />
                       </div>
-                      {latestRunContext(dashboard.latest_run) && (
+                      {latestRunContext(dashboard.latest_run, dateTimeOptions) && (
                         <p className="text-[12px] text-ink-muted">
-                          {latestRunContext(dashboard.latest_run)}
+                          {latestRunContext(dashboard.latest_run, dateTimeOptions)}
                         </p>
                       )}
                       <div className="flex flex-wrap gap-2 text-[12px]">

@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Plus, RefreshCw } from "lucide-react";
@@ -12,9 +13,11 @@ import {
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
-import { formatCalendarDate, messageOf } from "../../lib/testing";
+import { formatCalendarDate as formatCalendarDateValue, messageOf } from "../../lib/testing";
 
 export default function ReleasesPage({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatCalendarDate = (value) => formatCalendarDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [releases, setReleases] = useState([]);
   const [readiness, setReadiness] = useState({});

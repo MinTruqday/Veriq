@@ -1,9 +1,10 @@
 import ThresholdStatus from "./ThresholdStatus";
+import { formatNumber } from "@/shared/lib/locale.mjs";
 
-export default function QualityMetricCard({ definition, snapshot }) {
+export default function QualityMetricCard({ definition, snapshot, locale }) {
   const displayedValue =
     snapshot && definition.aggregation === "RATIO"
-      ? `${(Number(snapshot.value) * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`
+      ? `${formatNumber(Number(snapshot.value) * 100, locale, { maximumFractionDigits: 2 })}%`
       : snapshot
         ? `${snapshot.value} ${snapshot.unit || definition.unit || ""}`.trim()
         : "Chưa đo";

@@ -1360,8 +1360,7 @@ export default function TestCaseCompareWorkspace({
                 <div className="mt-3 space-y-1 text-sm">
                   <p className="font-medium">{result.title || "Chưa có tên ca"}</p>
                   <p className="text-ink-muted">
-                    {result.test_case_key} · {result.steps?.length || 0} bước · Bản nháp lần cập
-                    nhật {context.draft.revision}
+                    {result.test_case_key} · {result.steps?.length || 0} bước · Bản nháp hiện tại
                   </p>
                   <p className="text-xs text-ink-muted">
                     {editable ? "Chọn từng trường hoặc tự chỉnh sửa bên dưới." : "Chế độ chỉ đọc."}

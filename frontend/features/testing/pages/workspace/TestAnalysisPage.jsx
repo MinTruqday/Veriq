@@ -21,6 +21,8 @@ import { docText, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 import SearchField from "@/shared/components/ui/SearchField";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
+import { formatDateTime } from "@/shared/lib/dateTime.mjs";
 
 const blueprintMetricLabels = {
   source_quote_validity: "Tính hợp lệ của trích dẫn",
@@ -66,6 +68,7 @@ const techniqueLabel = (value) => techniqueLabels[value] || valueLabel(value);
 const severityLabel = (value) => valueLabel(value);
 
 export default function TestAnalysisPage({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
   const router = useRouter();
   const { ask, dialog } = useActionDialog();
   const [conditions, setConditions] = useState([]);
@@ -267,7 +270,7 @@ export default function TestAnalysisPage({ project }) {
           <ProjectCrumb projectId={project._id} />
           {can("testcondition.create") && (
             <button
-              className="apple-button"
+              className="apple-button shrink-0"
               type="button"
               onClick={() => {
                 setSelected(null);
@@ -292,7 +295,7 @@ export default function TestAnalysisPage({ project }) {
       )}
       {can("testcondition.read") && (
         <div
-          className="grid min-w-0 gap-5 lg:grid-cols-[minmax(17rem,0.78fr)_minmax(0,1.65fr)] lg:items-start"
+          className="mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:grid-cols-2 lg:items-start"
           hidden={visibleTab !== "conditions"}
           style={{ display: visibleTab === "conditions" ? "grid" : "none" }}
         >
@@ -747,7 +750,7 @@ export default function TestAnalysisPage({ project }) {
                               ? "Bản đồ điều kiện kiểm thử và đánh giá thực nghiệm"
                               : "Bản đồ điều kiện kiểm thử"}
                             {result.created_at
-                              ? ` · ${new Date(result.created_at).toLocaleString("vi-VN")}`
+                              ? ` · ${formatDateTime(result.created_at, dateTimeOptions)}`
                               : ""}
                           </summary>
                           <div className="mt-3 space-y-4 text-sm">

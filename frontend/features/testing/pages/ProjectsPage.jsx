@@ -6,6 +6,7 @@ import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { isSupportedTimeZone } from "@/shared/lib/timeZone.mjs";
+import { safeLocale } from "@/shared/lib/locale.mjs";
 import {
   EmptyState,
   ErrorState,
@@ -24,9 +25,11 @@ import {
   minimumProjectEndDate,
 } from "../lib/projectSchedule.logic.mjs";
 
-function projectSchedule(project) {
-  const start = project.planned_start_at ? formatProjectDate(project.planned_start_at) : null;
-  const end = project.planned_end_at ? formatProjectDate(project.planned_end_at) : null;
+function projectSchedule(project, locale) {
+  const start = project.planned_start_at
+    ? formatProjectDate(project.planned_start_at, locale)
+    : null;
+  const end = project.planned_end_at ? formatProjectDate(project.planned_end_at, locale) : null;
   if (start && end) return `${start} – ${end}`;
   if (start) return `Từ ${start}`;
   if (end) return `Đến ${end}`;
@@ -44,18 +47,18 @@ function projectIncludesDate(project, day) {
   return (start == null || start <= selectedDayEnd) && (end == null || end >= selectedDayStart);
 }
 
-function formatProjectUpdatedAt(value, configuredTimeZone) {
+function formatProjectUpdatedAt(value, configuredTimeZone, locale) {
   if (!value) return "Chưa có thông tin";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Chưa có thông tin";
   const timeZone = isSupportedTimeZone(configuredTimeZone) ? configuredTimeZone : undefined;
-  const dateLabel = date.toLocaleDateString(undefined, {
+  const dateLabel = date.toLocaleDateString(safeLocale(locale), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     ...(timeZone ? { timeZone } : {}),
   });
-  const timeLabel = date.toLocaleTimeString(undefined, {
+  const timeLabel = date.toLocaleTimeString(safeLocale(locale), {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
@@ -526,7 +529,7 @@ export default function ProjectsPage() {
             </div>
             {visibleProjects.map((item) => {
               const taskProgress = taskProgressPresentation(item.task_summary);
-              const schedule = projectSchedule(item);
+              const schedule = projectSchedule(item, user?.locale);
               const activityDate = item.updated_at || item.created_at;
               const activityLabel = item.updated_at
                 ? "Cập nhật"
@@ -619,10 +622,10 @@ export default function ProjectsPage() {
                     />
                     <p
                       className="text-[11px] text-ink-muted 2xl:text-right"
-                      title={`${activityLabel}${activityDate ? ` ${formatProjectUpdatedAt(activityDate, user?.timezone)}` : ""}`}
+                      title={`${activityLabel}${activityDate ? ` ${formatProjectUpdatedAt(activityDate, user?.timezone, user?.locale)}` : ""}`}
                     >
                       {activityDate
-                        ? `${activityLabel} ${formatProjectUpdatedAt(activityDate, user?.timezone)}`
+                        ? `${activityLabel} ${formatProjectUpdatedAt(activityDate, user?.timezone, user?.locale)}`
                         : activityLabel}
                     </p>
                     {item.status === "archived" &&

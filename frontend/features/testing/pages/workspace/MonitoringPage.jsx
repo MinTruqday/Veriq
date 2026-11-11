@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import ExitCriteriaPanel from "../../components/ExitCriteriaPanel";
@@ -15,7 +16,12 @@ import {
   WorkspacePage,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
-import { formatCalendarDate, formatDate, messageOf, valueLabel } from "../../lib/testing";
+import {
+  formatCalendarDate as formatCalendarDateValue,
+  formatDate as formatDateValue,
+  messageOf,
+  valueLabel,
+} from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 
 const controlTypes = [
@@ -33,7 +39,7 @@ const controlTypes = [
 
 function displayDeviationValue(value) {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value)) {
-    return formatCalendarDate(value);
+    return formatCalendarDateValue(value);
   }
   return value ?? "—";
 }
@@ -58,6 +64,9 @@ const controlTypeLabels = {
 };
 
 export default function MonitoringPage({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
+  const formatCalendarDate = (value) => formatCalendarDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [plans, setPlans] = useState([]);
   const [members, setMembers] = useState([]);

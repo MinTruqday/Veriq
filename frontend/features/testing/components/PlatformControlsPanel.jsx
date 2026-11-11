@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useState } from "react";
 import { platformApi } from "@/features/authentication/services/platform.service";
 import DataTable from "./DataTable";
@@ -11,7 +12,7 @@ import {
   useActionDialog,
 } from "./WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
-import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../lib/testing";
 import {
   Modal,
   ModalContent,
@@ -47,6 +48,8 @@ function editableConfigValue(value) {
 }
 
 export default function PlatformControlsPanel() {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -446,7 +449,7 @@ export default function PlatformControlsPanel() {
             items={data?.versions?.services || []}
             columns={[
               { key: "service", label: "Dịch vụ" },
-              { key: "runtime_version", label: "Phiên bản" },
+              { key: "runtime_version", label: "Phiên bản", align: "center" },
               {
                 key: "healthy",
                 label: "Trạng thái",

@@ -1,8 +1,9 @@
 "use client";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, RotateCcw } from "lucide-react";
-import { docText, formatDate, messageOf, textDoc } from "../lib/testing";
+import { docText, formatDate as formatDateValue, messageOf, textDoc } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { ErrorState, Panel, StatusPill } from "./WorkspacePrimitives";
 
@@ -14,6 +15,8 @@ export default function ReviewCommentsPanel({
   permissions = [],
   currentUserId,
 }) {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const [items, setItems] = useState([]);
   const [body, setBody] = useState("");
   const [status, setStatus] = useState("OPEN");

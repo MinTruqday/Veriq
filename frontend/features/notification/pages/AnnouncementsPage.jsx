@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Check, Trash2 } from "lucide-react";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { isSupportedTimeZone } from "@/shared/lib/timeZone.mjs";
+import { safeLocale } from "@/shared/lib/locale.mjs";
 import EmptyState from "@/shared/components/common/EmptyState";
 import PageLoader from "@/shared/components/common/PageLoader";
 import { Button } from "@/shared/components/ui/Button";
@@ -16,7 +17,7 @@ function formatDate(value, locale, configuredTimeZone) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Chưa ghi nhận";
   const timeZone = isSupportedTimeZone(configuredTimeZone) ? configuredTimeZone : undefined;
-  return new Intl.DateTimeFormat(locale || undefined, {
+  return new Intl.DateTimeFormat(safeLocale(locale), {
     dateStyle: "medium",
     timeStyle: "short",
     ...(timeZone ? { timeZone } : {}),

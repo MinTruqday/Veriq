@@ -114,7 +114,12 @@ export const designTestingApi = {
     testingRequest(`/du-an/${id}/tim-kiem?q=${encodeURIComponent(query)}&limit=50`),
   listRequirementPage: (id, query = "") => listPage(`/du-an/${id}/yeu-cau`, query),
   listRequirements: (id, query = "") =>
-    listPage(`/du-an/${id}/yeu-cau`, query).then((result) => result.items),
+    listPage(`/du-an/${id}/yeu-cau`, query).then((result) => {
+      if (!Array.isArray(result?.items)) {
+        throw new Error("Máy chủ trả về danh sách yêu cầu không đúng định dạng. Hãy thử tải lại.");
+      }
+      return result.items;
+    }),
   createRequirement: (id, payload) =>
     testingRequest(`/du-an/${id}/yeu-cau`, { method: "POST", body: JSON.stringify(payload) }),
   updateRequirementDraft: (projectId, requirementId, payload) =>

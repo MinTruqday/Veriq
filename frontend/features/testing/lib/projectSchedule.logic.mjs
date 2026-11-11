@@ -18,7 +18,7 @@ export function invalidTimelineRange(startDate, endDate, allowSameDay = false) {
   return allowSameDay ? endTime < startTime : endTime <= startTime;
 }
 
-export function formatProjectDate(value) {
+export function formatProjectDate(value, locale) {
   if (!value) return "Chưa đặt";
   const datePart = String(value).slice(0, 10);
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
@@ -31,7 +31,7 @@ export function formatProjectDate(value) {
   ) {
     return "Ngày không hợp lệ";
   }
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(safeLocale(locale), {
     timeZone: "UTC",
     day: "2-digit",
     month: "2-digit",
@@ -52,3 +52,4 @@ export function projectPlannedDurationDays(startValue, endValue) {
   }
   return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
 }
+import { safeLocale } from "../../../shared/lib/locale.mjs";

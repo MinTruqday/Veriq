@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
@@ -13,7 +14,7 @@ import SearchField from "@/shared/components/ui/SearchField";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
 import { testingApi } from "../services/testing.service";
-import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../lib/testing";
 
 function scriptFormatLabel(value, labels) {
   if (!value) return "";
@@ -22,6 +23,8 @@ function scriptFormatLabel(value, labels) {
 }
 
 export default function AutomationScriptsPanel({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);

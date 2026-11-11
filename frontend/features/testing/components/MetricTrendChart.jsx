@@ -1,4 +1,11 @@
+"use client";
+
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
+import { formatDateOnly } from "@/shared/lib/dateTime.mjs";
+import { formatNumber } from "@/shared/lib/locale.mjs";
+
 export default function MetricTrendChart({ snapshots = [], aggregation }) {
+  const dateTimeOptions = useDateTimeOptions();
   const values = snapshots.slice(0, 12).reverse();
   const maximum = Math.max(1, ...values.map((item) => Number(item.value) || 0));
   return (
@@ -13,7 +20,7 @@ export default function MetricTrendChart({ snapshots = [], aggregation }) {
             <li className="flex min-w-0 flex-col items-center gap-1.5" key={item._id}>
               <span className="text-xs font-medium text-ink">
                 {aggregation === "RATIO"
-                  ? `${((Number(item.value) || 0) * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`
+                  ? `${formatNumber((Number(item.value) || 0) * 100, dateTimeOptions.locale, { maximumFractionDigits: 2 })}%`
                   : `${item.value ?? "—"}${item.unit ? ` ${item.unit}` : ""}`}
               </span>
               <span aria-hidden="true" className="flex h-24 w-full items-end justify-center">
@@ -24,9 +31,9 @@ export default function MetricTrendChart({ snapshots = [], aggregation }) {
               </span>
               <span className="text-center text-xs text-ink-muted">
                 {item.measured_at
-                  ? new Date(item.measured_at).toLocaleDateString(undefined, {
-                      day: "numeric",
-                      month: "short",
+                  ? formatDateOnly(item.measured_at, {
+                      ...dateTimeOptions,
+                      options: { day: "numeric", month: "short" },
                     })
                   : `Lần ${index + 1}`}
               </span>

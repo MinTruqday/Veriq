@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
 import {
@@ -10,7 +11,7 @@ import {
   useActionDialog,
 } from "./WorkspacePrimitives";
 import { testingApi } from "../services/testing.service";
-import { formatDate, messageOf } from "../lib/testing";
+import { formatDate as formatDateValue, messageOf } from "../lib/testing";
 import SearchField from "@/shared/components/ui/SearchField";
 import {
   Modal,
@@ -32,6 +33,8 @@ const splitTags = (value) =>
   );
 
 export default function TestCaseTemplatesPanel({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);

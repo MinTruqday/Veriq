@@ -1,3 +1,5 @@
+import { formatDateTime } from "../../../shared/lib/dateTime.mjs";
+
 const RETRYABLE_STATUSES = new Set(["FAILED", "DEGRADED"]);
 
 const checkpointPhaseLabels = {
@@ -62,7 +64,7 @@ export function workflowForSelectedAgentRun(runs, selectedRunId) {
   return selected?.workflow && typeof selected.workflow === "object" ? selected.workflow : null;
 }
 
-export function agentCheckpointView(checkpoint) {
+export function agentCheckpointView(checkpoint, dateTimeOptions = {}) {
   if (!checkpoint || typeof checkpoint !== "object") return null;
 
   const detail =
@@ -90,10 +92,10 @@ export function agentCheckpointView(checkpoint) {
   if (typeof checkpoint.created_at === "string" || checkpoint.created_at instanceof Date) {
     const date = new Date(checkpoint.created_at);
     if (!Number.isNaN(date.getTime())) {
-      createdAt = new Intl.DateTimeFormat(undefined, {
-        dateStyle: "short",
-        timeStyle: "medium",
-      }).format(date);
+      createdAt = formatDateTime(date, {
+        ...dateTimeOptions,
+        options: { dateStyle: "short", timeStyle: "medium" },
+      });
     }
   }
 

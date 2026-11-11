@@ -1,7 +1,10 @@
+"use client";
+
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { Check, Play } from "lucide-react";
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
-import { formatDate, valueLabel } from "../lib/testing";
+import { formatDate as formatDateValue, valueLabel } from "../lib/testing";
 
 export default function TestControlActionPanel({
   items,
@@ -12,6 +15,8 @@ export default function TestControlActionPanel({
   onCreate,
   onUpdate,
 }) {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   return (
     <div className="space-y-4">
       {canCreate && (

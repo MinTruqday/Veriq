@@ -18,6 +18,8 @@ import { messageOf, valueLabel } from "../../lib/testing";
 import DocumentEditor from "../../editor/DocumentEditor";
 import { documentToMarkdown, emptyRichDocument } from "../../lib/knowledgeMarkdown.mjs";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
+import { formatDateTime } from "@/shared/lib/dateTime.mjs";
 
 const sourceTypes = [
   ["SRS", "Đặc tả yêu cầu phần mềm"],
@@ -84,6 +86,8 @@ const sourceHierarchyFor = (blocks) => {
 };
 
 export default function KnowledgePage({ project, initialQuery = "", useGlobalSearch = false }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatMetadataDate = (value) => formatDateTime(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [query, setQuery] = useState(initialQuery);
   const [result, setResult] = useState(null);
@@ -1147,13 +1151,13 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             [
                               "Thời điểm duyệt",
                               metadata.approved_at
-                                ? new Date(metadata.approved_at).toLocaleString()
+                                ? formatMetadataDate(metadata.approved_at)
                                 : null,
                             ],
                             [
                               "Thời điểm có hiệu lực",
                               metadata.effective_from
-                                ? new Date(metadata.effective_from).toLocaleString()
+                                ? formatMetadataDate(metadata.effective_from)
                                 : null,
                             ],
                             [
@@ -1245,20 +1249,18 @@ export default function KnowledgePage({ project, initialQuery = "", useGlobalSea
                             [
                               "Thời điểm tài liệu được tạo",
                               metadata.source_created_at
-                                ? new Date(metadata.source_created_at).toLocaleString()
+                                ? formatMetadataDate(metadata.source_created_at)
                                 : null,
                             ],
                             [
                               "Thời điểm tài liệu được cập nhật",
                               metadata.source_updated_at
-                                ? new Date(metadata.source_updated_at).toLocaleString()
+                                ? formatMetadataDate(metadata.source_updated_at)
                                 : null,
                             ],
                             [
                               "Thời điểm lập chỉ mục",
-                              metadata.indexed_at
-                                ? new Date(metadata.indexed_at).toLocaleString()
-                                : null,
+                              metadata.indexed_at ? formatMetadataDate(metadata.indexed_at) : null,
                             ],
                             [
                               "Số ký tự / từ",

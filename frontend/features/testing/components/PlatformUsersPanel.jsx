@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, Pencil, X } from "lucide-react";
 import { platformApi } from "@/features/authentication/services/platform.service";
@@ -12,10 +13,12 @@ import {
 } from "./WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
-import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../lib/testing";
 import SearchField from "@/shared/components/ui/SearchField";
 
 export default function PlatformUsersPanel() {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [users, setUsers] = useState([]);
   const [query, setQuery] = useState("");

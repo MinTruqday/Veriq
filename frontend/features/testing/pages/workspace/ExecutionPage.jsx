@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -19,7 +20,13 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { testingApi } from "../../services/testing.service";
-import { docText, formatDate, messageOf, textDoc, valueLabel } from "../../lib/testing";
+import {
+  docText,
+  formatDate as formatDateValue,
+  messageOf,
+  textDoc,
+  valueLabel,
+} from "../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import SearchField from "@/shared/components/ui/SearchField";
 import RunExecutionWorkspace from "./execution/RunExecutionWorkspace";
@@ -48,6 +55,8 @@ const testPlanFindingLabels = {
 };
 
 export default function ExecutionPage({ project, section, workspaceView }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const router = useRouter();
   const searchParams = useSearchParams();

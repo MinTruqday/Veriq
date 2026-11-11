@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import WorkReportsPanel from "../../components/WorkReportsPanel";
@@ -17,35 +18,42 @@ import {
   WorkspacePage,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
-import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
+import { formatNumber } from "@/shared/lib/locale.mjs";
 
-function metricRate(value) {
+function metricRate(value, locale) {
   if (value === null || value === undefined || value === "") return "Chưa đủ dữ liệu";
   const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? `${Math.round(numericValue * 100)}%` : "Chưa đủ dữ liệu";
+  return Number.isFinite(numericValue)
+    ? `${formatNumber(Math.round(numericValue * 100), locale)}%`
+    : "Chưa đủ dữ liệu";
 }
 
-function metricPercentage(value) {
+function metricPercentage(value, locale) {
   if (value === null || value === undefined || value === "") return "Chưa đủ dữ liệu";
   const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? `${Math.round(numericValue)}%` : "Chưa đủ dữ liệu";
+  return Number.isFinite(numericValue)
+    ? `${formatNumber(Math.round(numericValue), locale)}%`
+    : "Chưa đủ dữ liệu";
 }
 
-function metricCount(value) {
+function metricCount(value, locale) {
   if (value === null || value === undefined || value === "") return "Chưa đủ dữ liệu";
   const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : "Chưa đủ dữ liệu";
+  return Number.isFinite(numericValue)
+    ? formatNumber(numericValue, locale, { maximumFractionDigits: 0 })
+    : "Chưa đủ dữ liệu";
 }
 
-function metricDuration(milliseconds) {
+function metricDuration(milliseconds, locale) {
   if (milliseconds === null || milliseconds === undefined || milliseconds === "") {
     return "Chưa đủ dữ liệu";
   }
   const value = Number(milliseconds);
   if (!Number.isFinite(value) || value < 0) return "Chưa đủ dữ liệu";
   if (value < 1000) return `${Math.round(value)} ms`;
-  return `${(value / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} giây`;
+  return `${formatNumber(value / 1000, locale, { maximumFractionDigits: 1 })} giây`;
 }
 
 function metricDays(value, openCount) {
@@ -155,6 +163,12 @@ function ReportMetric({ label, value, detail }) {
 }
 
 export default function ReportsPage({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
+  const formatMetricRate = (value) => metricRate(value, dateTimeOptions.locale);
+  const formatMetricPercentage = (value) => metricPercentage(value, dateTimeOptions.locale);
+  const formatMetricCount = (value) => metricCount(value, dateTimeOptions.locale);
+  const formatMetricDuration = (value) => metricDuration(value, dateTimeOptions.locale);
   const { ask, dialog } = useActionDialog();
   const [value, setValue] = useState(null);
   const [releases, setReleases] = useState([]);
@@ -188,6 +202,7 @@ export default function ReportsPage({ project }) {
   const canReadAiAnalytics = can("analytics.ai.read");
   const canCreateSnapshot = canReadCoverage && can("coverage.snapshot.create");
   const canFilterScope = can("release.read") || can("build.read") || can("environment.read");
+  const scopeFilterCount = ["environment.read", "release.read", "build.read"].filter(can).length;
   const hasScopedFilter = Boolean(
     scope.release_id ||
       scope.release ||
@@ -284,7 +299,10 @@ export default function ReportsPage({ project }) {
     results.forEach((result, index) => {
       const [key] = requests[index];
       if (result.status === "fulfilled") data[key] = result.value;
-      else if (result.reason?.status !== 403) errors.push(messageOf(result.reason));
+      else {
+        data[key] = null;
+        if (result.reason?.status !== 403) errors.push(messageOf(result.reason));
+      }
     });
     setValue((current) => ({
       dashboard: null,
@@ -329,7 +347,7 @@ export default function ReportsPage({ project }) {
     };
   }, [permissions, project._id]);
   useEffect(() => {
-    if (visibleTab === "summary") void load();
+    if (visibleTab === "summary" || visibleTab === "ai") void load();
   }, [load, visibleTab]);
   return (
     <WorkspacePage
@@ -448,7 +466,9 @@ export default function ReportsPage({ project }) {
                 )}
               </div>
               {canFilterScope && (
-                <div className="grid gap-3 border-y border-border py-4 sm:grid-cols-3">
+                <div
+                  className={`grid gap-3 border-y border-border py-4 ${scopeFilterCount === 1 ? "sm:grid-cols-1" : scopeFilterCount === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}
+                >
                   {can("environment.read") && (
                     <select
                       aria-label="Lọc theo môi trường"
@@ -552,23 +572,23 @@ export default function ReportsPage({ project }) {
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-5 xl:grid-cols-5">
                     <ReportMetric
                       label="Yêu cầu có liên kết kiểm thử"
-                      value={metricPercentage(value.coverage.requirement_coverage)}
+                      value={formatMetricPercentage(value.coverage.requirement_coverage)}
                     />
                     <ReportMetric
                       label="Tiêu chí chấp nhận có liên kết"
-                      value={metricPercentage(value.coverage.acceptance_criterion_coverage)}
+                      value={formatMetricPercentage(value.coverage.acceptance_criterion_coverage)}
                     />
                     <ReportMetric
                       label="Liên kết còn hiệu lực"
-                      value={metricPercentage(value.coverage.fresh_coverage)}
+                      value={formatMetricPercentage(value.coverage.fresh_coverage)}
                     />
                     <ReportMetric
                       label="Ca kiểm thử đã chạy"
-                      value={metricPercentage(value.coverage.execution_coverage)}
+                      value={formatMetricPercentage(value.coverage.execution_coverage)}
                     />
                     <ReportMetric
                       label="Ca kiểm thử cần cập nhật"
-                      value={metricCount(value.coverage.stale_tests)}
+                      value={formatMetricCount(value.coverage.stale_tests)}
                     />
                   </dl>
                 </section>
@@ -593,7 +613,7 @@ export default function ReportsPage({ project }) {
                     {value.execution && (
                       <ReportMetric
                         label="Kết quả kiểm thử đạt"
-                        value={metricRate(value.execution.pass_rate)}
+                        value={formatMetricRate(value.execution.pass_rate)}
                         detail={
                           value.execution.terminal_result_count
                             ? `${value.execution.result_counts?.PASS || 0} trên ${value.execution.terminal_result_count} kết quả đã kết thúc`
@@ -629,19 +649,19 @@ export default function ReportsPage({ project }) {
                     {value.dashboard && (
                       <ReportMetric
                         label="Lỗi đang mở"
-                        value={metricCount(value.dashboard.open_defects)}
+                        value={formatMetricCount(value.dashboard.open_defects)}
                       />
                     )}
                     {value.defects && (
                       <ReportMetric
                         label="Số lần mở lại lỗi"
-                        value={metricCount(value.defects.reopened_count)}
+                        value={formatMetricCount(value.defects.reopened_count)}
                       />
                     )}
                     {value.maintenance && (
                       <ReportMetric
                         label="Lượt phân tích ảnh hưởng"
-                        value={metricCount(value.maintenance.impact_analysis_count)}
+                        value={formatMetricCount(value.maintenance.impact_analysis_count)}
                       />
                     )}
                     {value.ai && (
@@ -654,18 +674,22 @@ export default function ReportsPage({ project }) {
                           return (
                             <ReportMetric
                               label="Yêu cầu AI cần xem lại hoặc gặp lỗi"
-                              value={requestCount ? metricCount(degradedCount) : "Chưa đủ dữ liệu"}
+                              value={
+                                requestCount ? formatMetricCount(degradedCount) : "Chưa đủ dữ liệu"
+                              }
                               detail={
                                 degradedRate === null
                                   ? "Chưa ghi nhận lượt yêu cầu AI"
-                                  : `${metricRate(degradedRate)} trên ${metricCount(requestCount)} lượt yêu cầu`
+                                  : `${formatMetricRate(degradedRate)} trên ${formatMetricCount(requestCount)} lượt yêu cầu`
                               }
                             />
                           );
                         })()}
                         <ReportMetric
                           label="Thời gian phản hồi AI trung bình"
-                          value={metricDuration(value.ai.ai_request_metrics?.average_latency_ms)}
+                          value={formatMetricDuration(
+                            value.ai.ai_request_metrics?.average_latency_ms,
+                          )}
                         />
                       </>
                     )}
@@ -734,7 +758,7 @@ export default function ReportsPage({ project }) {
                             {
                               key: "coverage",
                               label: "Yêu cầu có liên kết",
-                              render: (item) => metricPercentage(item.coverage),
+                              render: (item) => formatMetricPercentage(item.coverage),
                             },
                           ]}
                         />
@@ -761,9 +785,11 @@ export default function ReportsPage({ project }) {
                             />
                             <p className="mt-2 text-xs text-ink-muted">
                               Thành công:{" "}
-                              {metricCount(value.ai.ai_request_metrics?.by_status?.SUCCESS || 0)} ·
-                              Cần xem lại:{" "}
-                              {metricCount(value.ai.ai_request_metrics?.degraded_count || 0)}
+                              {formatMetricCount(
+                                value.ai.ai_request_metrics?.by_status?.SUCCESS || 0,
+                              )}{" "}
+                              · Cần xem lại:{" "}
+                              {formatMetricCount(value.ai.ai_request_metrics?.degraded_count || 0)}
                               {value.ai.ai_request_metrics?.sample_truncated
                                 ? " · Số liệu không bao gồm toàn bộ lịch sử"
                                 : ""}
@@ -781,9 +807,11 @@ export default function ReportsPage({ project }) {
                             />
                             <p className="mt-2 text-xs text-ink-muted">
                               Có dẫn chứng nguồn:{" "}
-                              {metricCount(value.ai.ai_result_metrics?.grounded_record_count || 0)}{" "}
+                              {formatMetricCount(
+                                value.ai.ai_result_metrics?.grounded_record_count || 0,
+                              )}{" "}
                               · Chưa có tham chiếu nguồn:{" "}
-                              {metricCount(
+                              {formatMetricCount(
                                 value.ai.ai_result_metrics?.without_evidence_ref_count || 0,
                               )}
                               {value.ai.ai_result_metrics?.sample_truncated
@@ -819,11 +847,13 @@ export default function ReportsPage({ project }) {
                               Tỷ lệ được chấp nhận:{" "}
                               {value.ai.proposal_acceptance_rate == null
                                 ? "Chưa đủ dữ liệu"
-                                : metricRate(value.ai.proposal_acceptance_rate)}{" "}
+                                : formatMetricRate(value.ai.proposal_acceptance_rate)}{" "}
                               · Đề xuất bị từ chối có ghi lý do:{" "}
-                              {metricCount(value.ai.rejection_review_note_recorded_count || 0)} ·
-                              Chưa ghi lý do:{" "}
-                              {metricCount(value.ai.rejection_review_note_missing_count || 0)}
+                              {formatMetricCount(
+                                value.ai.rejection_review_note_recorded_count || 0,
+                              )}{" "}
+                              · Chưa ghi lý do:{" "}
+                              {formatMetricCount(value.ai.rejection_review_note_missing_count || 0)}
                             </p>
                             <p className="mt-2 text-xs text-ink-muted">
                               Báo cáo chỉ tổng hợp dữ liệu đã lưu. Những quyết định cũ chưa có mã lý
@@ -871,7 +901,7 @@ export default function ReportsPage({ project }) {
                             </div>
                             <p className="mt-2 text-xs text-ink-muted">
                               Đã từ chối nhưng chưa chọn lý do:{" "}
-                              {metricCount(
+                              {formatMetricCount(
                                 value.ai.decision_feedback?.decisions_without_reason_code || 0,
                               )}
                               {value.ai.decision_feedback?.sample_truncated
@@ -950,15 +980,15 @@ export default function ReportsPage({ project }) {
                             </div>
                             <p className="mt-3 text-xs text-ink-muted">
                               Đề xuất đã tạo:{" "}
-                              {metricCount(
+                              {formatMetricCount(
                                 value.ai.ai_test_case_feedback?.generated_draft_count || 0,
                               )}{" "}
                               · Yêu cầu chỉnh sửa:{" "}
-                              {metricCount(
+                              {formatMetricCount(
                                 value.ai.ai_test_case_feedback?.changes_requested_count || 0,
                               )}{" "}
                               · Ca kiểm thử AI đã duyệt trong báo cáo:{" "}
-                              {metricCount(
+                              {formatMetricCount(
                                 Object.values(
                                   value.ai.ai_test_case_feedback?.approved_decision_counts || {},
                                 ).reduce((total, count) => total + Number(count || 0), 0),
@@ -989,17 +1019,19 @@ export default function ReportsPage({ project }) {
                           {
                             key: "requirement_coverage",
                             label: "Yêu cầu có liên kết",
-                            render: (item) => metricPercentage(item.metrics?.requirement_coverage),
+                            render: (item) =>
+                              formatMetricPercentage(item.metrics?.requirement_coverage),
                           },
                           {
                             key: "fresh_coverage",
                             label: "Liên kết còn hiệu lực",
-                            render: (item) => metricPercentage(item.metrics?.fresh_coverage),
+                            render: (item) => formatMetricPercentage(item.metrics?.fresh_coverage),
                           },
                           {
                             key: "execution_coverage",
                             label: "Ca kiểm thử đã chạy",
-                            render: (item) => metricPercentage(item.metrics?.execution_coverage),
+                            render: (item) =>
+                              formatMetricPercentage(item.metrics?.execution_coverage),
                           },
                         ]}
                       />

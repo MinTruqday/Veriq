@@ -68,7 +68,7 @@ export default function TestwareHandoverPanel({ handover = [], archived = [], en
               label: "Khả dụng",
               render: (item) => valueLabel(item.availability || item.status),
             },
-            { key: "revision", label: "Phiên bản" },
+            { key: "revision", label: "Phiên bản", align: "center" },
           ]}
         />
       </div>

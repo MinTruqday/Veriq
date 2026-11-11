@@ -1,7 +1,10 @@
+"use client";
+
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import DataTable from "./DataTable";
 import { UserRound } from "lucide-react";
 import { StatusPill } from "./WorkspacePrimitives";
-import { formatDate, valueLabel } from "../lib/testing";
+import { formatDate as formatDateValue, valueLabel } from "../lib/testing";
 
 const actionTypeLabels = {
   CORRECTIVE: "Khắc phục",
@@ -16,6 +19,8 @@ const nextStatusLabels = {
 };
 
 export default function PreventiveActionTable({ items = [], canManage, onAssign, onAdvance }) {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const next = {
     OPEN: "IN_PROGRESS",
     IN_PROGRESS: "IMPLEMENTED",

@@ -225,7 +225,7 @@ export default function ChangesPage({ project }) {
     <WorkspacePage title="Phân tích thay đổi" actions={<ProjectCrumb projectId={project._id} />}>
       {error && <ErrorState message={error} />}
       {can("changeset.read") && (
-        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(17rem,0.78fr)_minmax(0,1.65fr)] lg:items-start">
+        <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:grid-cols-2 lg:items-start">
           <div className="min-w-0 lg:sticky lg:top-4">
             <Panel title="Lịch sử thay đổi yêu cầu">
               <details className="border-b border-border p-4">
@@ -286,6 +286,7 @@ export default function ChangesPage({ project }) {
                   {
                     key: "versions",
                     label: "Phiên bản",
+                    align: "center",
                     render: (item) =>
                       item.from_version_label && item.to_version_label
                         ? `${item.from_version_label} → ${item.to_version_label}`

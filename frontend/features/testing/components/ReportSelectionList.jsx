@@ -1,7 +1,12 @@
-import { formatDate } from "../lib/testing";
+"use client";
+
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
+import { formatDate as formatDateValue } from "../lib/testing";
 import { StatusPill } from "./WorkspacePrimitives";
 
 export default function ReportSelectionList({ items, selectedId, onSelect, label, emptyMessage }) {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   if (!items.length) {
     return (
       <p className="px-4 py-5 text-sm text-ink-muted" role="status">

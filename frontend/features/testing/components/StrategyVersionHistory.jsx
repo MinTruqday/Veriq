@@ -1,15 +1,20 @@
+"use client";
+
 import { Eye } from "lucide-react";
 import DataTable from "./DataTable";
 import { StatusPill } from "./WorkspacePrimitives";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
+import { formatDateTime } from "@/shared/lib/dateTime.mjs";
 
 export default function StrategyVersionHistory({ items, lineageId, onSelect }) {
+  const dateTimeOptions = useDateTimeOptions();
   const versions = items.filter((item) => item.lineage_id === lineageId);
   return (
     <DataTable
       items={versions}
       empty="Chưa có lịch sử phiên bản"
       columns={[
-        { key: "version", label: "Phiên bản" },
+        { key: "version", label: "Phiên bản", align: "center" },
         {
           key: "status",
           label: "Trạng thái",
@@ -18,7 +23,7 @@ export default function StrategyVersionHistory({ items, lineageId, onSelect }) {
         {
           key: "updated_at",
           label: "Cập nhật",
-          render: (item) => new Date(item.updated_at).toLocaleString(),
+          render: (item) => formatDateTime(item.updated_at, dateTimeOptions),
         },
         {
           key: "actions",

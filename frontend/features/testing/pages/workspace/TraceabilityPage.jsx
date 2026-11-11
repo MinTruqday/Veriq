@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, ChevronLeft, ChevronRight, RotateCcw, X } from "lucide-react";
@@ -13,9 +14,10 @@ import {
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
-import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import SearchField from "@/shared/components/ui/SearchField";
+import { formatNumber } from "@/shared/lib/locale.mjs";
 
 const PAGE_SIZE = 25;
 
@@ -62,6 +64,8 @@ function linkOriginLabel(origin) {
 }
 
 export default function TraceabilityPage({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [matrix, setMatrix] = useState({ trace_links: [], requirements: [], test_cases: [] });
   const [coverage, setCoverage] = useState(null);
@@ -475,7 +479,7 @@ export default function TraceabilityPage({ project }) {
 
       <Panel
         title="Liên kết yêu cầu với ca kiểm thử"
-        description={`${filteredLinks.length.toLocaleString()} liên kết phù hợp`}
+        description={`${formatNumber(filteredLinks.length, dateTimeOptions.locale, { maximumFractionDigits: 0 })} liên kết phù hợp`}
         actions={
           <div className="grid w-full min-w-0 gap-2 sm:grid-cols-[minmax(220px,1fr)_210px]">
             <SearchField

@@ -39,7 +39,8 @@ import {
   testDesignSectionItems,
 } from "@/shared/components/layout/navigation";
 import { testingApi } from "../../services/testing.service";
-import { docText, messageOf, valueLabel } from "../../lib/testing";
+import { docText, formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import ApiArtifactsPanel from "./test-design/ApiArtifactsPanel";
 import DataSetsPanel from "./test-design/DataSetsPanel";
 import ScenariosPanel from "./test-design/ScenariosPanel";
@@ -91,6 +92,8 @@ function ChallengeProvenance({ challenges }) {
 }
 
 export default function TestDesignPage({ project, workspaceView }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const currentUserId = project.current_membership?.user_id;
   const { ask, dialog } = useActionDialog();
   const pathname = usePathname();
@@ -1813,6 +1816,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                 {
                   key: "version",
                   label: "Phiên bản",
+                  align: "center",
                   minWidth: 100,
                   render: (item) => `v${item.current_version?.version}`,
                 },
@@ -1990,7 +1994,12 @@ export default function TestDesignPage({ project, workspaceView }) {
             empty="Chưa có phiên bản"
             columns={[
               { key: "test_case_key", label: "Mã" },
-              { key: "version", label: "Phiên bản", render: (item) => `v${item.version}` },
+              {
+                key: "version",
+                label: "Phiên bản",
+                align: "center",
+                render: (item) => `v${item.version}`,
+              },
               {
                 key: "title",
                 label: "Tên",

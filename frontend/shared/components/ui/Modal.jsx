@@ -117,14 +117,16 @@ export function Modal({
         )}
       >
         {showCloseButton && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="sticky top-0 z-30 ml-auto -mb-10 mr-4 flex h-10 w-10 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-quiet hover:text-ink"
-            aria-label="Đóng"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="relative sticky top-0 z-30 h-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-control bg-surface text-ink-muted shadow-sm transition-colors hover:bg-surface-quiet hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+              aria-label="Đóng"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         )}
         {children}
       </div>

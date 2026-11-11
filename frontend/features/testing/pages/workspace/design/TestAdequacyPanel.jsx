@@ -1,8 +1,12 @@
+"use client";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { testingApi } from "../../../services/testing.service";
 import { messageOf, valueLabel } from "../../../lib/testing";
 import { LoadingState, useActionDialog } from "../../../components/WorkspacePrimitives";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../../routes";
+import { useDateTimeOptions } from "../../../hooks/useDateTimeOptions";
+import { formatDateOnly, formatDateTime } from "@/shared/lib/dateTime.mjs";
 
 const labels = {
   UNASSESSED: "Chưa đánh giá",
@@ -98,6 +102,7 @@ export default function TestAdequacyPanel({
   canApprove = false,
   canSubmit = false,
 }) {
+  const dateTimeOptions = useDateTimeOptions();
   const { ask, dialog } = useActionDialog();
   const [assessment, setAssessment] = useState(null);
   const [filter, setFilter] = useState("");
@@ -259,7 +264,7 @@ export default function TestAdequacyPanel({
               const test = cases.find((candidate) => candidate.id === result.test_case_version_id);
               return {
                 value: result._id,
-                label: `${test?.key || "Ca kiểm thử"} · ${valueLabel(result.status)} · ${new Date(result.updated_at || result.created_at).toLocaleString()}`,
+                label: `${test?.key || "Ca kiểm thử"} · ${valueLabel(result.status)} · ${formatDateTime(result.updated_at || result.created_at, dateTimeOptions)}`,
               };
             }),
           ],
@@ -426,7 +431,7 @@ export default function TestAdequacyPanel({
       {item.decision?.decided_at && (
         <div className="mt-1 text-xs text-ink-muted">
           Ghi nhận bởi {decisionActorLabel(item.decision.decided_by, members)} ·{" "}
-          {new Date(item.decision.decided_at).toLocaleString()}
+          {formatDateTime(item.decision.decided_at, dateTimeOptions)}
         </div>
       )}
       {item.decision?.clarification_id && (
@@ -438,13 +443,13 @@ export default function TestAdequacyPanel({
           <div>
             Rà soát lại{" "}
             {item.decision?.waiver_review_at
-              ? new Date(item.decision.waiver_review_at).toLocaleDateString()
+              ? formatDateOnly(item.decision.waiver_review_at, dateTimeOptions)
               : "Chưa có"}
           </div>
           <div>
             Hết hạn{" "}
             {item.decision?.waiver_expires_at
-              ? new Date(item.decision.waiver_expires_at).toLocaleDateString()
+              ? formatDateOnly(item.decision.waiver_expires_at, dateTimeOptions)
               : "Chưa có"}
           </div>
           {item.decision?.waiver_expired_at && <div>Chấp nhận có điều kiện đã hết hạn</div>}
@@ -711,7 +716,7 @@ export default function TestAdequacyPanel({
                               )}
                               {entry.recorded_at && (
                                 <p className="mt-1 text-xs text-ink-faint">
-                                  {new Date(entry.recorded_at).toLocaleString()}
+                                  {formatDateTime(entry.recorded_at, dateTimeOptions)}
                                 </p>
                               )}
                               <p

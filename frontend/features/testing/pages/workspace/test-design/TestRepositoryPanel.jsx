@@ -7,6 +7,8 @@ import { LoadingState, Panel } from "../../../components/WorkspacePrimitives";
 import { testingApi } from "../../../services/testing.service";
 import { docText, messageOf, textDoc } from "../../../lib/testing";
 import { Modal, ModalFooter, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
+import { useDateTimeOptions } from "../../../hooks/useDateTimeOptions";
+import { formatDateTime } from "@/shared/lib/dateTime.mjs";
 
 function RepositoryBranch({
   node,
@@ -81,6 +83,7 @@ function RepositoryBranch({
 }
 
 export default function TestRepositoryPanel({ project, can, ask, onError, focus = "" }) {
+  const dateTimeOptions = useDateTimeOptions(project);
   const [nodes, setNodes] = useState([]);
   const [steps, setSteps] = useState([]);
   const [nodeName, setNodeName] = useState("");
@@ -252,13 +255,7 @@ export default function TestRepositoryPanel({ project, can, ask, onError, focus 
       .toLocaleLowerCase()
       .includes(stepsQuery.trim().toLocaleLowerCase()),
   );
-  const formatDate = (value) => {
-    if (!value) return "";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
-      ? ""
-      : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
-  };
+  const formatDate = (value) => (value ? formatDateTime(value, dateTimeOptions) : "");
   return (
     <div className={`grid items-start gap-6 ${focus ? "" : "xl:grid-cols-2"}`}>
       {focus !== "reusable-steps" && (

@@ -16,21 +16,20 @@ export function taskProgressPresentation(summary) {
     ? summary.applicable_total
     : total;
   const blocked = Number.isFinite(summary.blocked) ? summary.blocked : null;
-  if (Number.isFinite(summary.completion_percent)) {
+  if (applicableTotal === 0) {
     return {
-      label: "",
-      completionPercent: summary.completion_percent,
+      label: "Chưa có công việc",
+      completionPercent: null,
       completed,
       total,
       applicableTotal,
       blocked,
     };
   }
-
-  if (applicableTotal === 0) {
+  if (Number.isFinite(summary.completion_percent)) {
     return {
-      label: "Chưa có công việc",
-      completionPercent: null,
+      label: "",
+      completionPercent: summary.completion_percent,
       completed,
       total,
       applicableTotal,

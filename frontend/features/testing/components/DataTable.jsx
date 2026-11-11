@@ -92,6 +92,12 @@ export default function DataTable({
     column.render ? column.render(item) : String(item[column.key] ?? "");
   const renderMobileValue = (column, item) =>
     column.mobileRender ? column.mobileRender(item) : renderValue(column, item);
+  const columnAlignmentClass = (column) =>
+    column.align === "center"
+      ? "text-center"
+      : column.align === "right"
+        ? "text-right"
+        : "text-left";
   const desktopTableWidth = Math.max(
     minTableWidth,
     visibleColumns.reduce((width, column) => width + (column.minWidth || 144), 0) +
@@ -186,7 +192,7 @@ export default function DataTable({
                 )}
                 {visibleColumns.map((column) => (
                   <th
-                    className="whitespace-nowrap px-4 py-3 font-semibold"
+                    className={`whitespace-nowrap px-4 py-3 font-semibold ${columnAlignmentClass(column)}`}
                     key={column.key}
                     style={
                       fixedTable && (column.width || column.minWidth)
@@ -230,7 +236,7 @@ export default function DataTable({
                   )}
                   {visibleColumns.map((column) => (
                     <td
-                      className="min-w-0 break-words px-4 py-3 align-top [overflow-wrap:anywhere] [&_button]:whitespace-nowrap"
+                      className={`min-w-0 break-words px-4 py-3 align-top [overflow-wrap:anywhere] [&_button]:whitespace-nowrap ${columnAlignmentClass(column)}`}
                       key={column.key}
                       style={
                         fixedTable && (column.width || column.minWidth)
@@ -314,7 +320,9 @@ export default function DataTable({
                       <dt className="min-w-0 break-words text-[12px] font-semibold leading-5 text-ink-muted">
                         {column.label}
                       </dt>
-                      <dd className="min-w-0 break-words [overflow-wrap:anywhere] text-[13px] text-ink">
+                      <dd
+                        className={`min-w-0 break-words [overflow-wrap:anywhere] text-[13px] text-ink ${columnAlignmentClass(column)}`}
+                      >
                         {value}
                       </dd>
                     </div>

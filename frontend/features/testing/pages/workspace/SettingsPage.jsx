@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import ProjectNotificationsPanel from "../../components/ProjectNotificationsPanel";
@@ -14,7 +15,7 @@ import {
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
 import { testingApi } from "../../services/testing.service";
-import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
 import {
   invalidProjectDateRange,
   minimumProjectEndDate,
@@ -23,6 +24,7 @@ import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
 import { Plus, RefreshCw, Trash2, UserCheck, UserX, X } from "lucide-react";
+import { formatNumber } from "@/shared/lib/locale.mjs";
 
 const AUDIT_PAGE_SIZE = 25;
 
@@ -125,17 +127,18 @@ function responsibilityLabel(value) {
     .replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase())}`;
 }
 
-function analyticsValue(value, suffix = "", sampleCount) {
+function analyticsValue(value, suffix = "", sampleCount, locale) {
   if (value === null || value === undefined || value === "" || sampleCount === 0)
     return "Chưa có dữ liệu";
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) return "Chưa có dữ liệu";
   if (suffix === "ms") {
     if (numericValue >= 1000)
-      return `${(numericValue / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} giây`;
+      return `${formatNumber(numericValue / 1000, locale, { maximumFractionDigits: 1 })} giây`;
     return `${Math.round(numericValue)} ms`;
   }
-  return suffix ? `${numericValue} ${suffix}` : String(numericValue);
+  const displayedValue = formatNumber(numericValue, locale, { maximumFractionDigits: 2 });
+  return suffix ? `${displayedValue} ${suffix}` : displayedValue;
 }
 
 const settingValueLabels = {
@@ -144,6 +147,10 @@ const settingValueLabels = {
 };
 
 export default function SettingsPage({ project, onProjectChange, workspaceView }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatAnalyticsValue = (value, suffix = "", sampleCount) =>
+    analyticsValue(value, suffix, sampleCount, dateTimeOptions.locale);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [audit, setAudit] = useState([]);
   const [auditPage, setAuditPage] = useState(1);
@@ -1320,13 +1327,13 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   <>
                     <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
                       <p className="text-2xl font-semibold text-ink">
-                        {analyticsValue(analytics?.impact_analysis_count)}
+                        {formatAnalyticsValue(analytics?.impact_analysis_count)}
                       </p>
                       <p className="mt-2 text-sm text-ink-muted">Phân tích ảnh hưởng</p>
                     </div>
                     <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
                       <p className="text-2xl font-semibold text-ink">
-                        {analyticsValue(analytics?.tests_stale)}
+                        {formatAnalyticsValue(analytics?.tests_stale)}
                       </p>
                       <p className="mt-2 text-sm text-ink-muted">Ca kiểm thử cũ</p>
                     </div>
@@ -1336,7 +1343,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                   <>
                     <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
                       <p className="text-2xl font-semibold text-ink">
-                        {analyticsValue(analytics?.degraded_count)}
+                        {formatAnalyticsValue(analytics?.degraded_count)}
                       </p>
                       <p className="mt-2 text-sm text-ink-muted">
                         Lượt phân tích ảnh hưởng bị suy giảm hoặc không thành công
@@ -1344,7 +1351,7 @@ export default function SettingsPage({ project, onProjectChange, workspaceView }
                     </div>
                     <div className="min-w-0 rounded-lg border border-border bg-surface p-4">
                       <p className="text-2xl font-semibold text-ink">
-                        {analyticsValue(
+                        {formatAnalyticsValue(
                           analytics?.average_latency_ms,
                           "ms",
                           analytics?.impact_analysis_count,

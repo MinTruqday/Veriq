@@ -6,8 +6,11 @@ import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimi
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { runReleaseQualityAction } from "./releaseQualityActions.mjs";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
+import { formatDateTime } from "@/shared/lib/dateTime.mjs";
 
 export default function ReleaseQualityPanel({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
   const [releases, setReleases] = useState([]);
@@ -101,7 +104,7 @@ export default function ReleaseQualityPanel({ project }) {
             { value: "", label: "Chọn mốc giám sát" },
             ...monitoring.map((item) => ({
               value: item._id,
-              label: `${item.name || (item.created_at ? new Date(item.created_at).toLocaleString() : "Mốc giám sát")} · ${item.effective_quality_gate_status || item.quality_gate_status || "Chưa đánh giá"}`,
+              label: `${item.name || (item.created_at ? formatDateTime(item.created_at, dateTimeOptions) : "Mốc giám sát")} · ${item.effective_quality_gate_status || item.quality_gate_status || "Chưa đánh giá"}`,
             })),
           ],
         },
@@ -113,7 +116,7 @@ export default function ReleaseQualityPanel({ project }) {
             value: item._id,
             label:
               item.name ||
-              (item.created_at ? new Date(item.created_at).toLocaleString() : "Mốc đo lường"),
+              (item.created_at ? formatDateTime(item.created_at, dateTimeOptions) : "Mốc đo lường"),
           })),
           initialValue: [],
         },

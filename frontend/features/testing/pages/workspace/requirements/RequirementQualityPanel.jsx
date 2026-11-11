@@ -16,7 +16,7 @@ function severityLabel(severity) {
 export default function RequirementQualityPanel({ lint, loading = false, onOpenClarifications }) {
   if (!lint) {
     return (
-      <Panel title="Gợi ý hoàn thiện Requirement">
+      <Panel title="Gợi ý hoàn thiện yêu cầu">
         <p className="px-5 py-4 text-sm text-ink-muted" role="status" aria-live="polite">
           {loading
             ? "Đang tải kết quả đã lưu…"
@@ -43,7 +43,7 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
       ? "AI đã trả kết quả nhưng nội dung không vượt qua kiểm tra cấu trúc hoặc căn cứ nguồn. Phần đó đã bị loại; các kiểm tra dữ liệu vẫn được giữ."
       : "Lượt AI chưa tạo được đề xuất. Các điều kiện dữ liệu do hệ thống kiểm tra vẫn có sẵn.";
   return (
-    <Panel title="Gợi ý hoàn thiện Requirement">
+    <Panel title="Gợi ý hoàn thiện yêu cầu">
       {lint.is_stale && (
         <p className="px-5 pt-4 text-sm text-warning" role="status">
           Kết quả này thuộc phiên bản hoặc lần sửa trước. Hãy chạy kiểm tra AI lại nếu nội dung đã
@@ -52,8 +52,8 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
       )}
       <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-quiet px-3 py-2">
         <p className="text-sm text-ink-muted">
-          AI chỉ đưa ra nhận xét và đề xuất bổ sung; không tự sửa, không đánh dấu Requirement là lỗi
-          và không gửi rà soát. Việc chấp nhận do người có quyền thực hiện.
+          AI chỉ đưa ra nhận xét và đề xuất bổ sung; không tự sửa, không đánh dấu yêu cầu là lỗi và
+          không gửi rà soát. Việc chấp nhận do người có quyền thực hiện.
         </p>
       </div>
       {lint.artifact_revision && (

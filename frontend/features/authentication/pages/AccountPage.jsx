@@ -7,6 +7,7 @@ import { Pagination } from "@/shared/components/ui/Pagination";
 import NotificationPreferencesPanel from "@/features/notification/components/NotificationPreferencesPanel";
 import PasswordField from "../components/PasswordField";
 import { isSupportedTimeZone, timeZoneOptions } from "@/shared/lib/timeZone.mjs";
+import { isSupportedLocale, safeLocale } from "@/shared/lib/locale.mjs";
 import {
   changeMyPassword,
   listMySessions,
@@ -33,6 +34,7 @@ export default function AccountPage() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [timezoneError, setTimezoneError] = useState("");
+  const [localeError, setLocaleError] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [sessionAction, setSessionAction] = useState("");
@@ -80,6 +82,11 @@ export default function AccountPage() {
   }, [loadSessions, userId]);
   const submitProfile = async (event) => {
     event.preventDefault();
+    if (profile.locale && !isSupportedLocale(profile.locale)) {
+      setLocaleError("Nhập mã ngôn ngữ hợp lệ, ví dụ vi-VN hoặc en-US.");
+      setStatus("");
+      return;
+    }
     if (!isSupportedTimeZone(profile.timezone)) {
       setTimezoneError("Chọn múi giờ hợp lệ từ danh sách trước khi lưu.");
       setStatus("");
@@ -89,6 +96,7 @@ export default function AccountPage() {
     setStatus("");
     setError("");
     setTimezoneError("");
+    setLocaleError("");
     try {
       await updateMyProfile(profile);
       await refreshUser();
@@ -157,6 +165,7 @@ export default function AccountPage() {
   const visibleSessions = sessionsOwnerId === userId ? sessions : [];
   const userTimeZoneOptions = useMemo(() => timeZoneOptions(profile.timezone), [profile.timezone]);
   const timezoneIsValid = isSupportedTimeZone(profile.timezone);
+  const localeIsValid = !profile.locale || isSupportedLocale(profile.locale);
   const timezoneMessage =
     timezoneError ||
     (!timezoneIsValid
@@ -206,8 +215,22 @@ export default function AccountPage() {
             <input
               className="apple-input mt-2 w-full"
               value={profile.locale}
-              onChange={(event) => setProfile({ ...profile, locale: event.target.value })}
+              aria-invalid={!localeIsValid || Boolean(localeError)}
+              aria-describedby={localeError ? "account-locale-error" : undefined}
+              onChange={(event) => {
+                setProfile({ ...profile, locale: event.target.value });
+                setLocaleError("");
+              }}
             />
+            {localeError && (
+              <span
+                className="mt-2 block text-sm text-danger"
+                id="account-locale-error"
+                role="alert"
+              >
+                {localeError}
+              </span>
+            )}
           </label>
           <label className="field-label">
             Múi giờ
@@ -329,7 +352,7 @@ export default function AccountPage() {
                     </p>
                     <p className="text-xs text-ink-muted">
                       {session.created_at
-                        ? new Date(session.created_at).toLocaleString(user?.locale || undefined, {
+                        ? new Date(session.created_at).toLocaleString(safeLocale(user?.locale), {
                             day: "2-digit",
                             month: "2-digit",
                             year: "numeric",

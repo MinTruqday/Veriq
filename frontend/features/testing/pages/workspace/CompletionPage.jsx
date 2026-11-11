@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 
 import { Pencil } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,7 +20,7 @@ import {
   StatusPill,
   useActionDialog,
 } from "../../components/WorkspacePrimitives";
-import { formatDate, messageOf, valueLabel } from "../../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 
@@ -40,6 +41,8 @@ function lines(value, category) {
 }
 
 export default function CompletionPage({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [reports, setReports] = useState([]);
   const [snapshots, setSnapshots] = useState([]);

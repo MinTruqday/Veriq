@@ -18,6 +18,7 @@ import { preferredSummaryLocale } from "../lib/summaryLanguage";
 import { testingApi } from "../services/testing.service";
 import { ErrorState, LoadingState, Panel, StatusPill } from "./WorkspacePrimitives";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 
 const activeStatuses = new Set(["QUEUED", "RUNNING"]);
 
@@ -167,6 +168,7 @@ export default function AgentRunPanel({
   targetArtifactLabels = {},
 }) {
   const { user } = useAuth();
+  const dateTimeOptions = useDateTimeOptions(project);
   const currentUserId = project.current_membership?.user_id;
   const permissions = project.current_permissions || [];
   const permissionKey = permissions.join("|");
@@ -661,7 +663,7 @@ export default function AgentRunPanel({
         )
       }
     >
-      <div className={`grid gap-3 px-4 ${compact ? "py-3" : "pb-4 pt-3"}`}>
+      <div className={`grid gap-3 px-4 ${compact ? "pb-3 pt-0" : "pb-4 pt-3"}`}>
         {contextContent}
         {!compact && !loading && !error && !canStartAgent && (
           <section
@@ -785,8 +787,8 @@ export default function AgentRunPanel({
                     </span>
                     <span className="block text-xs text-ink-muted">
                       {compact
-                        ? formatDate(item.created_at)
-                        : `${agentOriginLabel(item)}${item.created_at ? ` · ${formatDate(item.created_at)}` : ""}`}
+                        ? formatDate(item.created_at, dateTimeOptions)
+                        : `${agentOriginLabel(item)}${item.created_at ? ` · ${formatDate(item.created_at, dateTimeOptions)}` : ""}`}
                     </span>
                   </span>
                   <StatusPill
@@ -1151,7 +1153,7 @@ export default function AgentRunPanel({
                         <h3 className="font-semibold text-ink">Các bước đã thực hiện</h3>
                         <ol className="mt-2 grid gap-2">
                           {checkpoints.map((checkpoint) => {
-                            const item = agentCheckpointView(checkpoint);
+                            const item = agentCheckpointView(checkpoint, dateTimeOptions);
                             if (!item) return null;
                             return (
                               <li

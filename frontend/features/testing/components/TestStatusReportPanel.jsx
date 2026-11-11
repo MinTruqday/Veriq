@@ -12,6 +12,7 @@ import { testingApi } from "../services/testing.service";
 import { StructuredValueView } from "./StructuredValueEditor";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { preferredSummaryLocale } from "../lib/summaryLanguage";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 
 function lines(value) {
   return String(value || "")
@@ -20,12 +21,12 @@ function lines(value) {
     .filter(Boolean);
 }
 
-function forecastText(value) {
+function forecastText(value, dateTimeOptions) {
   if (!value) return "";
   if (typeof value === "string") return value;
   return [
     value.expected_completion_at
-      ? `Dự kiến hoàn tất ${formatDate(value.expected_completion_at)}`
+      ? `Dự kiến hoàn tất ${formatDate(value.expected_completion_at, dateTimeOptions)}`
       : "",
     value.confidence === null || value.confidence === undefined
       ? ""
@@ -38,6 +39,7 @@ function forecastText(value) {
 
 export default function TestStatusReportPanel({ project }) {
   const { user } = useAuth();
+  const dateTimeOptions = useDateTimeOptions(project);
   const { ask, dialog } = useActionDialog();
   const [reports, setReports] = useState([]);
   const [snapshots, setSnapshots] = useState([]);
@@ -164,7 +166,7 @@ export default function TestStatusReportPanel({ project }) {
           required: true,
           options: snapshots.map((item) => ({
             value: item._id,
-            label: formatDate(item.snapshot_at),
+            label: formatDate(item.snapshot_at, dateTimeOptions),
           })),
         },
         {
@@ -372,7 +374,7 @@ export default function TestStatusReportPanel({ project }) {
           required: true,
           options: candidates.map((item) => ({
             value: item._id,
-            label: `Lần ${item.sequence} · ${formatDate(item.created_at)}`,
+            label: `Lần ${item.sequence} · ${formatDate(item.created_at, dateTimeOptions)}`,
           })),
         },
       ],
@@ -448,8 +450,8 @@ export default function TestStatusReportPanel({ project }) {
                       <div className="min-w-0 sm:col-span-2 xl:col-span-1">
                         <dt className="text-xs text-ink-muted">Kỳ báo cáo</dt>
                         <dd className="mt-1 break-words text-sm font-medium">
-                          {formatDate(selected.reporting_period.start_at)} đến{" "}
-                          {formatDate(selected.reporting_period.end_at)}
+                          {formatDate(selected.reporting_period.start_at, dateTimeOptions)} đến{" "}
+                          {formatDate(selected.reporting_period.end_at, dateTimeOptions)}
                         </dd>
                       </div>
                     )}
@@ -465,7 +467,7 @@ export default function TestStatusReportPanel({ project }) {
                       <dt className="text-xs text-ink-muted">Mốc dữ liệu</dt>
                       <dd className="mt-1 break-words text-sm font-medium">
                         {selected.snapshot_basis?.snapshot_at
-                          ? formatDate(selected.snapshot_basis.snapshot_at)
+                          ? formatDate(selected.snapshot_basis.snapshot_at, dateTimeOptions)
                           : "Chưa có thời điểm"}
                       </dd>
                     </div>
@@ -591,7 +593,10 @@ export default function TestStatusReportPanel({ project }) {
                       {[
                         ["Tóm tắt điều hành", narrativeResult.suggestions[0].executive_summary],
                         ["Diễn giải rủi ro", narrativeResult.suggestions[0].risk_explanation],
-                        ["Dự báo", forecastText(narrativeResult.suggestions[0].forecast)],
+                        [
+                          "Dự báo",
+                          forecastText(narrativeResult.suggestions[0].forecast, dateTimeOptions),
+                        ],
                         [
                           "Diễn giải khuyến nghị",
                           narrativeResult.suggestions[0].recommendation_narrative,
@@ -655,7 +660,7 @@ export default function TestStatusReportPanel({ project }) {
                     ["Độ phủ", selected.coverage_summary],
                     ["Lỗi", selected.defect_summary],
                     ["Diễn giải rủi ro", selected.risk_explanation],
-                    ["Dự báo", forecastText(selected.forecast)],
+                    ["Dự báo", forecastText(selected.forecast, dateTimeOptions)],
                     ["Khuyến nghị", valueLabel(selected.recommendation)],
                     ["Diễn giải khuyến nghị", selected.recommendation_narrative],
                   ].map(([label, value]) => (

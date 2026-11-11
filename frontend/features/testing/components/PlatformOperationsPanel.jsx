@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useState } from "react";
 import { Activity, Gauge, Pause, Play, PlugZap, Power, RotateCcw, Trash2, X } from "lucide-react";
 import { platformApi } from "@/features/authentication/services/platform.service";
@@ -11,11 +12,13 @@ import {
   useActionDialog,
 } from "./WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
-import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../lib/testing";
 import PlatformControlsPanel from "./PlatformControlsPanel";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 
 export default function PlatformOperationsPanel() {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { user, isLoading: authLoading } = useAuth();
   const isPlatformAdmin = user?.system_role === "ADMIN";
   const { ask, dialog } = useActionDialog();
@@ -380,7 +383,7 @@ export default function PlatformOperationsPanel() {
                 label: "Trạng thái",
                 render: (item) => valueLabel(String(item.status).toUpperCase()),
               },
-              { key: "membership_revision", label: "Phiên bản" },
+              { key: "membership_revision", label: "Phiên bản", align: "center" },
             ]}
           />
         </Panel>
@@ -550,7 +553,7 @@ export default function PlatformOperationsPanel() {
           columns={[
             { key: "provider_id", label: "Nhà cung cấp" },
             { key: "model", label: "Mô hình" },
-            { key: "version", label: "Phiên bản" },
+            { key: "version", label: "Phiên bản", align: "center" },
             {
               key: "enabled",
               label: "Trạng thái",

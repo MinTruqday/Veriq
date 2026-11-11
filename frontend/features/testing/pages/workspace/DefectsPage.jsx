@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, Pencil } from "lucide-react";
 import { uploadAssetAPI } from "@/features/cloud/services/upload.service";
@@ -16,7 +17,13 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import { testingApi } from "../../services/testing.service";
-import { docText, formatDate, messageOf, textDoc, valueLabel } from "../../lib/testing";
+import {
+  docText,
+  formatDate as formatDateValue,
+  messageOf,
+  textDoc,
+  valueLabel,
+} from "../../lib/testing";
 import { shouldReloadAfterAmbiguousMutation } from "../../lib/executionRecovery.logic.mjs";
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
@@ -63,6 +70,8 @@ function displayEnvironment(value) {
 }
 
 export default function DefectsPage({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [classificationOptions, setClassificationOptions] = useState({

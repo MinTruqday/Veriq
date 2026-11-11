@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
@@ -14,6 +15,7 @@ import {
   GitBranch,
   GripVertical,
   History,
+  Minus,
   Pencil,
   Play,
   Plus,
@@ -30,7 +32,13 @@ import {
 } from "../../components/WorkspacePrimitives";
 import DataTable from "../../components/DataTable";
 import { testingApi } from "../../services/testing.service";
-import { formatCalendarDate, messageOf, valueLabel } from "../../lib/testing";
+import {
+  formatCalendarDate as formatCalendarDateValue,
+  messageOf,
+  valueLabel,
+} from "../../lib/testing";
+import { formatDateTime } from "@/shared/lib/dateTime.mjs";
+import { safeLocale } from "@/shared/lib/locale.mjs";
 import {
   invalidTimelineRange,
   projectPlannedDurationDays,
@@ -183,13 +191,23 @@ function sortWorkItems(items, sort) {
 const PRIORITY_BADGE_CLASS = "border-border bg-surface-quiet text-ink";
 
 function PriorityMark({ value, prefix = "" }) {
-  const label = String(value || "").trim() || "Chưa đặt mức ưu tiên";
+  const rawValue = String(value || "").trim();
+  const label = rawValue ? valueLabel(rawValue) : "Chưa đặt mức ưu tiên";
+  const normalizedValue = rawValue.toUpperCase();
+  const PriorityIcon = ["HIGHEST", "HIGH"].includes(normalizedValue)
+    ? ArrowUp
+    : ["LOW", "LOWEST"].includes(normalizedValue)
+      ? ArrowDown
+      : ["MEDIUM", "NORMAL"].includes(normalizedValue)
+        ? Minus
+        : null;
   return (
     <span
       aria-label={`Mức ưu tiên: ${label}`}
       className="inline-flex items-center gap-1"
       title={`Mức ưu tiên: ${label}`}
     >
+      {PriorityIcon && <PriorityIcon aria-hidden="true" size={14} />}
       {prefix}
       {label}
     </span>
@@ -260,6 +278,8 @@ function readPlanningFilters(projectId) {
 }
 
 export default function PlanningPage({ project, section }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatCalendarDate = (value) => formatCalendarDateValue(value, dateTimeOptions);
   const { ask, dialog } = useActionDialog();
   const [items, setItems] = useState([]);
   const [projectMembers, setProjectMembers] = useState([]);
@@ -924,6 +944,7 @@ export default function PlanningPage({ project, section }) {
           items={filteredItems}
           totalCount={filterScopeItems.length}
           allItems={items}
+          formatCalendarDate={formatCalendarDate}
           dependencies={roadmap?.dependencies || []}
           memberLabels={memberLabels}
           canReadProjectMembers={canReadProjectMembers}
@@ -939,6 +960,7 @@ export default function PlanningPage({ project, section }) {
           <WorkItemList
             items={listItems}
             allItems={items}
+            formatCalendarDate={formatCalendarDate}
             memberLabels={memberLabels}
             canReadProjectMembers={canReadProjectMembers}
             totalCount={items.length}
@@ -956,6 +978,8 @@ export default function PlanningPage({ project, section }) {
           projectId={project._id}
           items={filteredItems}
           allItems={items}
+          formatCalendarDate={formatCalendarDate}
+          dateTimeOptions={dateTimeOptions}
           board={boardValue?.board}
           workflow={boardValue?.workflow}
           sprints={sprints}
@@ -1087,6 +1111,7 @@ export default function PlanningPage({ project, section }) {
         <Roadmap
           value={roadmap}
           project={project}
+          dateTimeOptions={dateTimeOptions}
           sprints={isScrum ? sprints : []}
           filters={planningFilters}
           memberLabels={memberLabels}
@@ -1533,6 +1558,7 @@ function Backlog({
   items,
   totalCount,
   allItems,
+  formatCalendarDate,
   dependencies,
   memberLabels,
   canReadProjectMembers,
@@ -1753,6 +1779,7 @@ function Backlog({
 function WorkItemList({
   items,
   allItems,
+  formatCalendarDate,
   memberLabels,
   canReadProjectMembers,
   totalCount,
@@ -1983,6 +2010,8 @@ function Board({
   projectId,
   items,
   allItems,
+  formatCalendarDate,
+  dateTimeOptions,
   board,
   workflow,
   planningMethod,
@@ -2533,7 +2562,7 @@ function Board({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <strong className="text-sm">{auditActionLabel(event.action)}</strong>
                     <time className="text-xs text-ink-muted" dateTime={event.created_at}>
-                      {event.created_at ? new Date(event.created_at).toLocaleString() : ""}
+                      {event.created_at ? formatDateTime(event.created_at, dateTimeOptions) : ""}
                     </time>
                   </div>
                   <p className="mt-1 text-xs text-ink-muted">
@@ -2566,6 +2595,7 @@ function Board({
 function Roadmap({
   value,
   project,
+  dateTimeOptions,
   sprints = [],
   filters,
   memberLabels,
@@ -2592,12 +2622,12 @@ function Roadmap({
   };
   const formatTimelineDate = (date) =>
     date
-      ? date.toLocaleDateString(undefined, {
+      ? new Intl.DateTimeFormat(safeLocale(dateTimeOptions.locale), {
           timeZone: "UTC",
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
-        })
+        }).format(date)
       : "Chưa có";
   const items = [
     ...(value?.items || []),
@@ -2728,12 +2758,10 @@ function Roadmap({
     while (cursor <= lastTick) {
       timelineTicks.push({
         date: new Date(cursor),
-        label: cursor.toLocaleDateString(
-          undefined,
-          yearlyTicks
-            ? { timeZone: "UTC", year: "numeric" }
-            : { timeZone: "UTC", month: "short", year: "numeric" },
-        ),
+        label: new Intl.DateTimeFormat(safeLocale(dateTimeOptions.locale), {
+          timeZone: "UTC",
+          ...(yearlyTicks ? { year: "numeric" } : { month: "short", year: "numeric" }),
+        }).format(cursor),
       });
       if (yearlyTicks) cursor.setUTCFullYear(cursor.getUTCFullYear() + yearInterval);
       else cursor.setUTCMonth(cursor.getUTCMonth() + 1);
@@ -2741,7 +2769,10 @@ function Roadmap({
     if (yearlyTicks && timelineTicks.at(-1)?.date.getTime() !== lastTick.getTime()) {
       timelineTicks.push({
         date: new Date(lastTick),
-        label: lastTick.toLocaleDateString(undefined, { timeZone: "UTC", year: "numeric" }),
+        label: new Intl.DateTimeFormat(safeLocale(dateTimeOptions.locale), {
+          timeZone: "UTC",
+          year: "numeric",
+        }).format(lastTick),
       });
     }
   }

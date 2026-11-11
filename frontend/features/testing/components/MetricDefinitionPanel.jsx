@@ -16,6 +16,8 @@ import QualityMetricCard from "./QualityMetricCard";
 import { ErrorState, Panel, StatusPill, useActionDialog } from "./WorkspacePrimitives";
 import { messageOf } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
+import { formatNumber } from "@/shared/lib/locale.mjs";
 
 const METRICS = {
   REQUIREMENT_COVERAGE: ["Độ phủ yêu cầu", "Yêu cầu được bao phủ trên tổng yêu cầu", "%", "RATIO"],
@@ -100,14 +102,15 @@ const METRICS = {
 
 const metricLabel = (key) => METRICS[key]?.[0] || "Chỉ số khác";
 
-function measurementValue(value, key, unit) {
+function measurementValue(value, key, unit, locale) {
   if (value === null || value === undefined || value === "") return "Chưa có số liệu";
   if (METRICS[key]?.[3] === "RATIO")
-    return `${(Number(value) * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+    return `${formatNumber(Number(value) * 100, locale, { maximumFractionDigits: 2 })}%`;
   return `${value}${unit ? ` ${unit}` : ""}`;
 }
 
 export default function MetricDefinitionPanel({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
   const [definitions, setDefinitions] = useState([]);
   const [snapshots, setSnapshots] = useState([]);
   const [releases, setReleases] = useState([]);
@@ -276,7 +279,13 @@ export default function MetricDefinitionPanel({ project }) {
               {
                 key: "value",
                 label: "Giá trị",
-                render: (item) => measurementValue(item.value, item.measurement_key, item.unit),
+                render: (item) =>
+                  measurementValue(
+                    item.value,
+                    item.measurement_key,
+                    item.unit,
+                    dateTimeOptions.locale,
+                  ),
               },
             ]}
           />
@@ -289,6 +298,7 @@ export default function MetricDefinitionPanel({ project }) {
             <QualityMetricCard
               definition={item}
               snapshot={latestByDefinition[item._id]}
+              locale={dateTimeOptions.locale}
               key={item._id}
             />
           ))}
@@ -298,7 +308,7 @@ export default function MetricDefinitionPanel({ project }) {
         empty="Chưa có định nghĩa đo lường"
         columns={[
           { key: "name", label: "Chỉ số" },
-          { key: "version", label: "Phiên bản" },
+          { key: "version", label: "Phiên bản", align: "center" },
           {
             key: "status",
             label: "Trạng thái",

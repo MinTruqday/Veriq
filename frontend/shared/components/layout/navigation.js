@@ -327,6 +327,7 @@ export function navigationGroupsFor(pathname, planningMethod = null) {
             href: `${root}/${PROJECT_SECTION_SLUGS.reports}`,
             icon: BarChart3,
             anyPermission: [
+              "workreport.read",
               "report.read",
               "analytics.read",
               "analytics.ai.read",

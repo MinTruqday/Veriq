@@ -248,13 +248,18 @@ export default function RequirementClarificationPanel({
               )}
               {canAnswer && item.status === "OPEN" && (
                 <div className="mt-3 flex flex-col gap-2">
-                  <textarea
-                    aria-label="Câu trả lời cho phiếu làm rõ"
-                    className="apple-input min-h-20 w-full"
-                    value={answers[item._id] || ""}
-                    onChange={(event) => setAnswers({ ...answers, [item._id]: event.target.value })}
-                    placeholder="Trả lời để làm căn cứ cập nhật bản nháp yêu cầu"
-                  />
+                  <label className="grid gap-2 text-sm font-medium text-ink">
+                    Câu trả lời
+                    <textarea
+                      aria-label="Câu trả lời cho phiếu làm rõ"
+                      className="apple-input min-h-20 w-full"
+                      value={answers[item._id] || ""}
+                      onChange={(event) =>
+                        setAnswers({ ...answers, [item._id]: event.target.value })
+                      }
+                      placeholder="Trả lời để làm căn cứ cập nhật bản nháp yêu cầu"
+                    />
+                  </label>
                   <button
                     type="button"
                     className="apple-button self-start"
@@ -293,15 +298,18 @@ export default function RequirementClarificationPanel({
                 item.change_requested_requirement_revision != null &&
                 requirementRevision > item.change_requested_requirement_revision && (
                   <div className="mt-3 flex flex-col gap-2">
-                    <textarea
-                      aria-label="Trích dẫn yêu cầu để xác nhận giải quyết"
-                      className="apple-input min-h-16 w-full"
-                      value={evidence[item._id] || ""}
-                      onChange={(event) =>
-                        setEvidence({ ...evidence, [item._id]: event.target.value })
-                      }
-                      placeholder={`Trích dẫn bằng chứng trong ${item.source_ref || "nguồn của phiếu"}`}
-                    />
+                    <label className="grid gap-2 text-sm font-medium text-ink">
+                      Bằng chứng xử lý
+                      <textarea
+                        aria-label="Trích dẫn yêu cầu để xác nhận giải quyết"
+                        className="apple-input min-h-16 w-full"
+                        value={evidence[item._id] || ""}
+                        onChange={(event) =>
+                          setEvidence({ ...evidence, [item._id]: event.target.value })
+                        }
+                        placeholder={`Trích dẫn bằng chứng trong ${item.source_ref || "nguồn của phiếu"}`}
+                      />
+                    </label>
                     <button
                       type="button"
                       className="apple-button self-start"

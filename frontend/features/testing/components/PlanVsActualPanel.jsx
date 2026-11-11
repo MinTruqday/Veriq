@@ -1,7 +1,12 @@
+"use client";
+
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import DataTable from "./DataTable";
-import { formatCalendarDate } from "../lib/testing";
+import { formatCalendarDate as formatCalendarDateValue } from "../lib/testing";
 
 export default function PlanVsActualPanel({ snapshot }) {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatCalendarDate = (value) => formatCalendarDateValue(value, dateTimeOptions);
   const metrics = snapshot?.metrics || {};
   const rows = [
     {

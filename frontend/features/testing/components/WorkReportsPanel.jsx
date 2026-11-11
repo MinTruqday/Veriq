@@ -11,6 +11,8 @@ import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { testingApi, testingRequest } from "../services/testing.service";
 import { reportDateInput, reportDateTime } from "../lib/reportTime.mjs";
 import { preferredSummaryLocale } from "../lib/summaryLanguage";
+import { formatDateTime } from "@/shared/lib/dateTime.mjs";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { ErrorState, LoadingState, Panel, useActionDialog } from "./WorkspacePrimitives";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
 import FilePicker from "./FilePicker";
@@ -79,17 +81,9 @@ function normalizeSettings(value, timezoneFallback) {
 
 export default function WorkReportsPanel({ project }) {
   const { user } = useAuth();
+  const dateTimeOptions = useDateTimeOptions(project);
   const { ask, dialog } = useActionDialog();
-  const date = (value) =>
-    value
-      ? new Date(value).toLocaleString(user?.locale || project.locale || undefined, {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "—";
+  const date = (value) => formatDateTime(value, dateTimeOptions);
   const can = (permission) => project.current_permissions?.includes(permission);
   const root = `/du-an/${project._id}/bao-cao-cong-viec`;
   const [tab, setTab] = useState("mine");

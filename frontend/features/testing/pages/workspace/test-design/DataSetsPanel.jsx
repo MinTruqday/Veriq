@@ -138,6 +138,7 @@ export default function DataSetsPanel({
           {
             key: "version",
             label: "Phiên bản",
+            align: "center",
             render: (item) => `v${item.current_version?.version || 1}`,
           },
           {

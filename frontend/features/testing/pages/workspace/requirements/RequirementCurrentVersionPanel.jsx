@@ -394,36 +394,48 @@ export default function RequirementCurrentVersionPanel({
         </div>
         {current.status === "DRAFT" && draft && can("requirement.update") ? (
           <div className="space-y-4 md:col-span-3">
-            <input
-              aria-label="Tên yêu cầu"
-              className="apple-input"
-              value={draft.title}
-              onChange={(event) => onDraftChange({ title: event.target.value })}
-            />
+            <label className="grid gap-2 text-sm font-medium text-ink">
+              Tên yêu cầu
+              <input
+                aria-label="Tên yêu cầu"
+                className="apple-input"
+                value={draft.title}
+                onChange={(event) => onDraftChange({ title: event.target.value })}
+              />
+            </label>
             <div className="grid gap-3 sm:grid-cols-3">
-              <input
-                aria-label="Loại yêu cầu"
-                className="apple-input"
-                maxLength={100}
-                value={draft.type}
-                onChange={(event) => onDraftChange({ type: event.target.value })}
-              />
-              <input
-                aria-label="Ưu tiên yêu cầu"
-                className="apple-input"
-                value={draft.priority}
-                maxLength={100}
-                placeholder="Mức ưu tiên theo quy ước dự án"
-                onChange={(event) => onDraftChange({ priority: event.target.value })}
-              />
-              <input
-                aria-label="Rủi ro yêu cầu"
-                className="apple-input"
-                value={draft.risk}
-                maxLength={100}
-                placeholder="Mức rủi ro theo quy ước dự án"
-                onChange={(event) => onDraftChange({ risk: event.target.value })}
-              />
+              <label className="grid gap-2 text-sm font-medium text-ink">
+                Loại yêu cầu
+                <input
+                  aria-label="Loại yêu cầu"
+                  className="apple-input"
+                  maxLength={100}
+                  value={draft.type}
+                  onChange={(event) => onDraftChange({ type: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-ink">
+                Mức ưu tiên
+                <input
+                  aria-label="Ưu tiên yêu cầu"
+                  className="apple-input"
+                  value={draft.priority}
+                  maxLength={100}
+                  placeholder="Theo quy ước dự án"
+                  onChange={(event) => onDraftChange({ priority: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-ink">
+                Mức rủi ro
+                <input
+                  aria-label="Rủi ro yêu cầu"
+                  className="apple-input"
+                  value={draft.risk}
+                  maxLength={100}
+                  placeholder="Theo quy ước dự án"
+                  onChange={(event) => onDraftChange({ risk: event.target.value })}
+                />
+              </label>
             </div>
             <div>
               <p className="field-label mb-2">Nội dung yêu cầu</p>
@@ -445,27 +457,36 @@ export default function RequirementCurrentVersionPanel({
               />
             </label>
             <div className="grid gap-3 lg:grid-cols-3">
-              <textarea
-                aria-label="Quy tắc nghiệp vụ"
-                className="apple-input min-h-24"
-                value={draft.businessRules}
-                onChange={(event) => onDraftChange({ businessRules: event.target.value })}
-                placeholder="Mỗi dòng nhập một quy tắc nghiệp vụ"
-              />
-              <textarea
-                aria-label="Tác nhân"
-                className="apple-input min-h-24"
-                value={draft.actors}
-                onChange={(event) => onDraftChange({ actors: event.target.value })}
-                placeholder="Nhập các tác nhân, phân cách bằng dấu phẩy"
-              />
-              <textarea
-                aria-label="Phụ thuộc yêu cầu"
-                className="apple-input min-h-24"
-                value={draft.dependencies}
-                onChange={(event) => onDraftChange({ dependencies: event.target.value })}
-                placeholder="Mỗi dòng nhập một yêu cầu phụ thuộc"
-              />
+              <label className="grid gap-2 text-sm font-medium text-ink">
+                Quy tắc nghiệp vụ
+                <textarea
+                  aria-label="Quy tắc nghiệp vụ"
+                  className="apple-input min-h-24"
+                  value={draft.businessRules}
+                  onChange={(event) => onDraftChange({ businessRules: event.target.value })}
+                  placeholder="Mỗi dòng nhập một quy tắc nghiệp vụ"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-ink">
+                Tác nhân
+                <textarea
+                  aria-label="Tác nhân"
+                  className="apple-input min-h-24"
+                  value={draft.actors}
+                  onChange={(event) => onDraftChange({ actors: event.target.value })}
+                  placeholder="Nhập các tác nhân, phân cách bằng dấu phẩy"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-ink">
+                Phụ thuộc yêu cầu
+                <textarea
+                  aria-label="Phụ thuộc yêu cầu"
+                  className="apple-input min-h-24"
+                  value={draft.dependencies}
+                  onChange={(event) => onDraftChange({ dependencies: event.target.value })}
+                  placeholder="Mỗi dòng nhập một yêu cầu phụ thuộc"
+                />
+              </label>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <input

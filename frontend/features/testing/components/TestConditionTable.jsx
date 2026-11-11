@@ -37,11 +37,17 @@ export default function TestConditionTable({ items, selectedId, onSelect }) {
               <Eye aria-hidden="true" className="text-ink-muted" size={15} />
             </span>
           </button>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pl-4 text-[11px] text-ink-muted">
-            <ContentOriginBadge origin={item.origin || "manual"} />
-            <span>{item.category ? valueLabel(item.category) : "Chưa phân loại"}</span>
-            <span>Ưu tiên: {valueLabel(item.priority)}</span>
-            <span>Khả năng kiểm thử: {valueLabel(item.testability_status)}</span>
+          <div className="grid min-w-0 grid-cols-2 items-center gap-x-3 gap-y-2 px-4 pb-3 text-[11px] text-ink-muted">
+            <span className="min-w-0 justify-self-start">
+              <ContentOriginBadge origin={item.origin || "manual"} />
+            </span>
+            <span className="min-w-0 break-words">
+              {item.category ? valueLabel(item.category) : "Chưa phân loại"}
+            </span>
+            <span className="min-w-0 break-words">Ưu tiên: {valueLabel(item.priority)}</span>
+            <span className="min-w-0 break-words">
+              Khả năng kiểm thử: {valueLabel(item.testability_status)}
+            </span>
           </div>
         </article>
       ))}

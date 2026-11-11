@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ErrorState, LoadingState } from "../components/WorkspacePrimitives";
 import { useProject } from "../hooks/useProject";
 import { PROJECTS_ROUTE, PROJECT_SECTION_SLUGS, projectRoute } from "../routes";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
+import { formatDateTime } from "@/shared/lib/dateTime.mjs";
 import {
   hasNavigationPermission,
   PROJECT_SETTINGS_PERMISSIONS,
@@ -65,6 +67,7 @@ const ReleasesPage = dynamic(() => import("./workspace/ReleasesPage"), {
 export default function ProjectWorkspacePage({ projectId, section, initialQuery = "" }) {
   const router = useRouter();
   const state = useProject(projectId);
+  const dateTimeOptions = useDateTimeOptions(state.project);
   const areaBySlug = {
     [PROJECT_SECTION_SLUGS.governance]: "governance",
     [PROJECT_SECTION_SLUGS.testAnalysis]: "test-analysis",
@@ -294,7 +297,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
       {state.project.access_context?.mode === "BREAK_GLASS" && (
         <div className="border-b border-warning/40 bg-warning-soft px-5 py-3 text-[13px] font-semibold text-warning">
           Quyền truy cập khẩn cấp đang hoạt động đến{" "}
-          {new Date(state.project.access_context.expires_at).toLocaleString()}
+          {formatDateTime(state.project.access_context.expires_at, dateTimeOptions)}
         </div>
       )}
       {pages[area] || <DashboardPage {...props} />}

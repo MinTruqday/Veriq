@@ -1,4 +1,5 @@
 "use client";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import DataTable from "../components/DataTable";
@@ -15,10 +16,11 @@ import {
 } from "../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import SegmentedTabs from "@/shared/components/navigation/SegmentedTabs";
-import { formatDate, messageOf, valueLabel } from "../lib/testing";
+import { formatDate as formatDateValue, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 import { useRouter } from "next/navigation";
+import { formatNumber } from "@/shared/lib/locale.mjs";
 
 const taskLabels = {
   impact_analysis: "Phân tích ảnh hưởng",
@@ -32,12 +34,12 @@ const modelLabels = {
   risk_scoring: "Chấm điểm rủi ro",
 };
 
-function formatStorageSize(value) {
+function formatStorageSize(value, locale) {
   if (value == null || value === "") return "Chưa có dữ liệu";
   const bytes = Number(value);
   if (!Number.isFinite(bytes)) return "Chưa có dữ liệu";
   if (bytes === 0) return "0 byte";
-  if (bytes < 1000) return `${Math.round(bytes).toLocaleString()} byte`;
+  if (bytes < 1000) return `${formatNumber(Math.round(bytes), locale)} byte`;
   const units = ["kB", "MB", "GB", "TB"];
   let size = bytes;
   let unitIndex = -1;
@@ -45,10 +47,12 @@ function formatStorageSize(value) {
     size /= 1000;
     unitIndex += 1;
   }
-  return `${size.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
+  return `${formatNumber(size, locale, { maximumFractionDigits: 1 })} ${units[unitIndex]}`;
 }
 
 export default function OperationsPage() {
+  const dateTimeOptions = useDateTimeOptions();
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const [section, setSection] = useState("overview");
@@ -232,6 +236,7 @@ export default function OperationsPage() {
                       {
                         key: "version",
                         label: "Phiên bản",
+                        align: "center",
                         render: (item) => modelLabels[item.version] || item.version,
                       },
                     ]}
@@ -371,7 +376,7 @@ export default function OperationsPage() {
                     {
                       key: "bytes",
                       label: "Dung lượng",
-                      render: (item) => formatStorageSize(item.bytes),
+                      render: (item) => formatStorageSize(item.bytes, dateTimeOptions.locale),
                     },
                   ]}
                 />

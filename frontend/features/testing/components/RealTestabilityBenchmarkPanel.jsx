@@ -1,8 +1,10 @@
 "use client";
+import { useDateTimeOptions } from "../hooks/useDateTimeOptions";
+import { formatDateOnly } from "@/shared/lib/dateTime.mjs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DataTable from "./DataTable";
 import { ErrorState, LoadingState, Panel } from "./WorkspacePrimitives";
-import { docText, formatDate, messageOf, valueLabel } from "../lib/testing";
+import { docText, formatDate as formatDateValue, messageOf, valueLabel } from "../lib/testing";
 import { testingApi } from "../services/testing.service";
 import { useAuth } from "@/features/authentication/contexts/AuthContext";
 
@@ -241,6 +243,8 @@ function benchmarkResultRows(report) {
 }
 
 export default function RealTestabilityBenchmarkPanel({ project }) {
+  const dateTimeOptions = useDateTimeOptions(project);
+  const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const { user } = useAuth();
   const canManageBenchmark = user?.system_role === "ADMIN";
   const [requirements, setRequirements] = useState([]);
@@ -352,7 +356,7 @@ export default function RealTestabilityBenchmarkPanel({ project }) {
     try {
       const dataset = await testingApi.createTestabilityBenchmarkDataset({
         dataset_id: `${benchmarkPath}${project._id}:${crypto.randomUUID()}`,
-        title: `Yêu cầu đã duyệt · ${project.name || project.key || project._id} · ${new Date().toLocaleDateString("vi-VN")}`,
+        title: `Yêu cầu đã duyệt · ${project.name || project.key || project._id} · ${formatDateOnly(new Date(), dateTimeOptions)}`,
         project_id: project._id,
         reference_provenance: referenceProvenance,
         cases: preparedCases,
