@@ -81,6 +81,8 @@ export default function TestCaseCreateModal({
   setForm,
   dataSets,
   testConditions,
+  strategyTestLevels = [],
+  strategyTestTypes = [],
   repositoryNodes,
   reusableSteps,
   customFields,
@@ -124,10 +126,16 @@ export default function TestCaseCreateModal({
     matchesConditionScope(condition, requirementIds, scopedCriterionIds, scenarioConditionIds),
   );
   const testLevelOptions = [
-    ...new Set(scopedTestConditions.map((item) => item.test_level).filter(Boolean)),
+    ...new Set([
+      ...strategyTestLevels,
+      ...scopedTestConditions.map((item) => item.test_level).filter(Boolean),
+    ]),
   ];
   const testKindOptions = [
-    ...new Set(scopedTestConditions.map((item) => item.test_type).filter(Boolean)),
+    ...new Set([
+      ...strategyTestTypes,
+      ...scopedTestConditions.map((item) => item.test_type).filter(Boolean),
+    ]),
   ];
   const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
     conditionIds.filter((conditionId) => {

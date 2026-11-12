@@ -8,6 +8,8 @@ export default function ScenarioCreateModal({
   form,
   setForm,
   testConditions,
+  strategyTestLevels = [],
+  strategyTestTypes = [],
   saving,
   onSubmit,
   title = "Tạo kịch bản",
@@ -50,14 +52,22 @@ export default function ScenarioCreateModal({
   );
   const testLevelOptions = [
     ...new Set(
-      [...conditionsForClassification.map((condition) => condition.test_level), form.test_level]
+      [
+        ...strategyTestLevels,
+        ...conditionsForClassification.map((condition) => condition.test_level),
+        form.test_level,
+      ]
         .map((item) => String(item || "").trim())
         .filter(Boolean),
     ),
   ];
   const testKindOptions = [
     ...new Set(
-      [...conditionsForClassification.map((condition) => condition.test_type), form.test_kind]
+      [
+        ...strategyTestTypes,
+        ...conditionsForClassification.map((condition) => condition.test_type),
+        form.test_kind,
+      ]
         .map((item) => String(item || "").trim())
         .filter(Boolean),
     ),
@@ -195,7 +205,12 @@ export default function ScenarioCreateModal({
                   className="apple-input mt-2"
                   aria-label={label}
                   value={form[key] || ""}
-                  disabled={!canReadTestConditions || !options.length}
+                  disabled={
+                    !options.length ||
+                    (!canReadTestConditions &&
+                      !strategyTestLevels.length &&
+                      !strategyTestTypes.length)
+                  }
                   onChange={(event) => update({ [key]: event.target.value })}
                 >
                   <option value="">Chưa chọn</option>

@@ -122,6 +122,7 @@ export default function TestDesignPage({ project, workspaceView }) {
   const linkedCaseId = searchParams.get("case") || "";
   const [requirements, setRequirements] = useState([]);
   const [testConditions, setTestConditions] = useState([]);
+  const [testStrategies, setTestStrategies] = useState([]);
   const [scenarios, setScenarios] = useState([]);
   const [dataSets, setDataSets] = useState([]);
   const [drafts, setDrafts] = useState([]);
@@ -269,6 +270,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       setApiImport({ filename: "openapi.json", format: "openapi", content: "" });
       setRequirements([]);
       setTestConditions([]);
+      setTestStrategies([]);
       setScenarios([]);
       setDataSets([]);
       setDrafts([]);
@@ -308,6 +310,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       const [
         requirementValues,
         testConditionValues,
+        strategyValues,
         scenarioValues,
         dataSetValues,
         draftValues,
@@ -334,6 +337,9 @@ export default function TestDesignPage({ project, workspaceView }) {
           : Promise.resolve([]),
         (showCases || showScenarios) && permissions.includes("testcondition.read")
           ? testingApi.listTestConditions(project._id, { status: "APPROVED", page_size: 200 })
+          : Promise.resolve({ items: [] }),
+        (showCases || showScenarios) && permissions.includes("teststrategy.read")
+          ? testingApi.listTestStrategies(project._id, { status: "APPROVED", page_size: 200 })
           : Promise.resolve({ items: [] }),
         (showScenarios || showCases) && permissions.includes("testscenario.read")
           ? testingApi.listScenarios(project._id, scenarioFilters)
@@ -380,6 +386,7 @@ export default function TestDesignPage({ project, workspaceView }) {
       }
       setRequirements(requirementValues);
       setTestConditions(testConditionValues.items || []);
+      setTestStrategies(strategyValues.items || []);
       setScenarios(scenarioValues);
       setDataSets(dataSetValues);
       setDrafts(draftValues);
@@ -480,6 +487,9 @@ export default function TestDesignPage({ project, workspaceView }) {
   const selectedRequirementRecord = requirements.find(
     (item) => item.current_version_id === selectedRequirement,
   );
+  const activeTestStrategy = testStrategies.find((item) => item.active_approved) || null;
+  const strategyTestLevels = activeTestStrategy?.test_levels || [];
+  const strategyTestTypes = activeTestStrategy?.test_types || [];
   const requirementLabels = Object.fromEntries(
     requirements
       .filter((item) => item.current_version_id)
@@ -496,18 +506,18 @@ export default function TestDesignPage({ project, workspaceView }) {
   const actionableDrafts = drafts.filter((item) => item.status !== "APPROVED");
   const editableDrafts = actionableDrafts.filter((item) => item.status !== "IN_REVIEW");
   const selectedDraft = actionableDrafts.find((item) => item._id === selectedDraftId) || null;
-  const draftTestLevelOptions = draftConditionValues(
-    selectedDraft,
-    testConditions,
-    "test_level",
-    draftEdit?.test_level,
-  );
-  const draftTestKindOptions = draftConditionValues(
-    selectedDraft,
-    testConditions,
-    "test_type",
-    draftEdit?.test_kind,
-  );
+  const draftTestLevelOptions = [
+    ...new Set([
+      ...strategyTestLevels,
+      ...draftConditionValues(selectedDraft, testConditions, "test_level", draftEdit?.test_level),
+    ]),
+  ];
+  const draftTestKindOptions = [
+    ...new Set([
+      ...strategyTestTypes,
+      ...draftConditionValues(selectedDraft, testConditions, "test_type", draftEdit?.test_kind),
+    ]),
+  ];
   const lintDraftId = selectedDraft?._id;
   const lintDraftRevision = selectedDraft?.revision;
   useEffect(() => {
@@ -2848,6 +2858,8 @@ export default function TestDesignPage({ project, workspaceView }) {
           setForm={setForm}
           dataSets={dataSets}
           testConditions={testConditions}
+          strategyTestLevels={strategyTestLevels}
+          strategyTestTypes={strategyTestTypes}
           repositoryNodes={repositoryNodes}
           reusableSteps={reusableSteps}
           customFields={testCaseCustomFields}
@@ -2883,6 +2895,8 @@ export default function TestDesignPage({ project, workspaceView }) {
           form={scenarioForm}
           setForm={setScenarioForm}
           testConditions={testConditions}
+          strategyTestLevels={strategyTestLevels}
+          strategyTestTypes={strategyTestTypes}
           onSubmit={createScenario}
           requirements={requirements}
           members={projectMembers}
