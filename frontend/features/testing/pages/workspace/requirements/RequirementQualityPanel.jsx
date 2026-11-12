@@ -146,13 +146,19 @@ export default function RequirementQualityPanel({
         </p>
       )}
       {lint.warnings?.includes("AI_UNGROUNDED_CANDIDATES_REJECTED") && !lint.degraded_mode && (
-        <p className="mt-3 text-sm text-warning" role="status">
+        <p
+          className="mx-5 my-3 break-words rounded-control bg-warning-soft px-3 py-2 text-sm leading-5 text-warning [overflow-wrap:anywhere]"
+          role="status"
+        >
           Một số nhận xét AI không khớp nguồn nên đã bị loại. Những nhận xét còn lại vẫn cần người
           dùng rà soát.
         </p>
       )}
       {lint.degraded_mode && (
-        <p className="mt-3 text-sm text-warning" role="status">
+        <p
+          className="mx-5 my-3 break-words rounded-control bg-warning-soft px-3 py-2 text-sm leading-5 text-warning [overflow-wrap:anywhere]"
+          role="status"
+        >
           {aiDegradedMessage}
         </p>
       )}
