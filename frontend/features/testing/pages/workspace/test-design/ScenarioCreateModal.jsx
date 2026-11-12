@@ -1,5 +1,6 @@
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
+import { valueLabel } from "../../../lib/testing";
 
 export default function ScenarioCreateModal({
   isOpen,
@@ -32,7 +33,9 @@ export default function ScenarioCreateModal({
   );
   const selectedCriterionIds = new Set(acceptanceCriterionIds);
   const selectedRequirementIds = new Set(requirementVersionIds);
+  const selectedConditionIds = new Set(testConditionIds);
   const relevantConditions = testConditions.filter((condition) => {
+    if (selectedConditionIds.has(condition._id)) return true;
     const references = condition.basis_refs || [];
     return references.some((reference) => {
       const id = reference.artifact_version_id || reference.artifact_id;
@@ -42,6 +45,23 @@ export default function ScenarioCreateModal({
       );
     });
   });
+  const conditionsForClassification = relevantConditions.filter(
+    (condition) => !testConditionIds.length || selectedConditionIds.has(condition._id),
+  );
+  const testLevelOptions = [
+    ...new Set(
+      [...conditionsForClassification.map((condition) => condition.test_level), form.test_level]
+        .map((item) => String(item || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  const testKindOptions = [
+    ...new Set(
+      [...conditionsForClassification.map((condition) => condition.test_type), form.test_kind]
+        .map((item) => String(item || "").trim())
+        .filter(Boolean),
+    ),
+  ];
 
   return (
     <Modal
@@ -153,8 +173,6 @@ export default function ScenarioCreateModal({
             {[
               ["risk", "Mức rủi ro theo quy ước dự án"],
               ["priority", "Mức ưu tiên theo quy ước dự án"],
-              ["test_level", "Cấp kiểm thử"],
-              ["test_kind", "Loại kiểm thử"],
             ].map(([key, label]) => (
               <label className="field-label" key={key}>
                 {label}
@@ -162,9 +180,38 @@ export default function ScenarioCreateModal({
                   className="apple-input mt-2"
                   maxLength={100}
                   required={key === "risk" || key === "priority"}
-                  value={form[key]}
+                  value={form[key] ? valueLabel(form[key]) : ""}
                   onChange={(event) => update({ [key]: event.target.value })}
                 />
+              </label>
+            ))}
+            {[
+              ["test_level", "Cấp kiểm thử", testLevelOptions],
+              ["test_kind", "Loại kiểm thử", testKindOptions],
+            ].map(([key, label, options]) => (
+              <label className="field-label" key={key}>
+                {label}
+                <select
+                  className="apple-input mt-2"
+                  aria-label={label}
+                  value={form[key] || ""}
+                  disabled={!canReadTestConditions || !options.length}
+                  onChange={(event) => update({ [key]: event.target.value })}
+                >
+                  <option value="">Chưa chọn</option>
+                  {options.map((option) => (
+                    <option value={option} key={option}>
+                      {valueLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                {!options.length && (
+                  <span className="mt-1 block text-xs font-normal text-ink-muted">
+                    {canReadTestConditions
+                      ? "Chọn yêu cầu và điều kiện kiểm thử đã duyệt để có lựa chọn phù hợp."
+                      : "Cần quyền xem điều kiện kiểm thử để chọn giá trị đã duyệt."}
+                  </span>
+                )}
               </label>
             ))}
             <label className="field-label">

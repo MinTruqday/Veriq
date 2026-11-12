@@ -687,7 +687,7 @@ export default function TestPlanEditor({
                   </option>
                 ))}
                 {value.test_level && !selectedStrategy?.test_levels?.includes(value.test_level) && (
-                  <option value={value.test_level}>{value.test_level}</option>
+                  <option value={value.test_level}>{valueLabel(value.test_level)}</option>
                 )}
               </select>
             </label>

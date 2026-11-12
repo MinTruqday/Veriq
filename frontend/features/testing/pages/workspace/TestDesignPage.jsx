@@ -2172,7 +2172,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       className="apple-input mt-2"
                       required
                       maxLength={100}
-                      value={draftEdit.type}
+                      value={draftEdit.type ? valueLabel(draftEdit.type) : ""}
                       onChange={(event) => changeDraftEdit({ type: event.target.value })}
                       placeholder="Ví dụ: Chức năng, hồi quy"
                     />
@@ -2184,7 +2184,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       className="apple-input mt-2"
                       maxLength={100}
                       placeholder="Theo quy ước dự án"
-                      value={draftEdit.priority}
+                      value={draftEdit.priority ? valueLabel(draftEdit.priority) : ""}
                       onChange={(event) => changeDraftEdit({ priority: event.target.value })}
                     />
                   </label>
@@ -2195,7 +2195,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       className="apple-input mt-2"
                       maxLength={100}
                       placeholder="Theo quy ước dự án"
-                      value={draftEdit.risk}
+                      value={draftEdit.risk ? valueLabel(draftEdit.risk) : ""}
                       onChange={(event) => changeDraftEdit({ risk: event.target.value })}
                     />
                   </label>
@@ -2251,7 +2251,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                       aria-label="Ảnh hưởng dự kiến bản nháp"
                       className="apple-input mt-2"
                       maxLength={100}
-                      value={draftEdit.expected_impact}
+                      value={draftEdit.expected_impact ? valueLabel(draftEdit.expected_impact) : ""}
                       onChange={(event) => changeDraftEdit({ expected_impact: event.target.value })}
                     />
                   </label>

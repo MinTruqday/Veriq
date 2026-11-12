@@ -540,6 +540,8 @@ const valueLabels = {
   minor: "Nhỏ",
   mobile: "Ứng dụng di động",
   negative: "Tình huống lỗi",
+  "negative testing": "Kiểm thử tình huống lỗi",
+  negative_testing: "Kiểm thử tình huống lỗi",
   non_functional: "Phi chức năng",
   number: "Số",
   other: "Khác",

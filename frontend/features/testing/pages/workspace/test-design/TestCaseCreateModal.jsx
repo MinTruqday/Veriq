@@ -235,7 +235,7 @@ export default function TestCaseCreateModal({
               className="apple-input"
               maxLength={100}
               placeholder="Nhập mức ưu tiên theo quy ước dự án"
-              value={form.priority}
+              value={form.priority ? valueLabel(form.priority) : ""}
               onChange={(event) => update({ priority: event.target.value })}
             />
           </label>
@@ -246,7 +246,7 @@ export default function TestCaseCreateModal({
               className="apple-input"
               maxLength={100}
               placeholder="Nhập mức rủi ro theo quy ước dự án"
-              value={form.risk}
+              value={form.risk ? valueLabel(form.risk) : ""}
               onChange={(event) => update({ risk: event.target.value })}
             />
           </label>
@@ -262,7 +262,7 @@ export default function TestCaseCreateModal({
               {freeText ? (
                 <input
                   className="apple-input mt-2"
-                  value={form[field]}
+                  value={form[field] ? valueLabel(form[field]) : ""}
                   aria-label={label}
                   maxLength={100}
                   onChange={(event) => update({ [field]: event.target.value })}
@@ -272,11 +272,12 @@ export default function TestCaseCreateModal({
                   className="apple-input mt-2"
                   value={form[field] || ""}
                   aria-label={label}
+                  disabled={!options.length}
                   onChange={(event) => update({ [field]: event.target.value })}
                 >
                   <option value="">Chưa chọn</option>
                   {form[field] && !options.includes(form[field]) && (
-                    <option value={form[field]}>{form[field]}</option>
+                    <option value={form[field]}>{valueLabel(form[field])}</option>
                   )}
                   {options.map((option) => (
                     <option key={option} value={option}>
