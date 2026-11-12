@@ -6,6 +6,16 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 
+class RiskRankingWeights(BaseModel):
+    risk_weight: float | None = Field(default=0.45, ge=0, le=1)
+    priority_weight: float | None = Field(default=0.25, ge=0, le=1)
+    unassessed_score: float | None = Field(default=0.5, ge=0, le=1)
+    staleness_penalty: float | None = Field(default=0.2, ge=0, le=1)
+    failure_penalty_per_occurrence: float | None = Field(default=0.1, ge=0, le=1)
+    failure_penalty_cap: float | None = Field(default=0.4, ge=0, le=1)
+    maximum_score: float | None = Field(default=1.0, gt=0, le=1)
+
+
 class RiskModel(BaseModel):
     probability_scale: list[dict[str, Any]] = Field(min_length=1, max_length=20)
     impact_scale: list[dict[str, Any]] = Field(min_length=1, max_length=20)
@@ -13,6 +23,7 @@ class RiskModel(BaseModel):
     blocking_severities: list[str] = Field(default_factory=list, max_length=20)
     critical_severities: list[str] = Field(default_factory=list, max_length=20)
     priority_scale: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
+    ranking_weights: RiskRankingWeights = Field(default_factory=RiskRankingWeights)
     risk_exposure_formula: str = Field(min_length=1, max_length=1000)
     thresholds: list[dict[str, Any]] = Field(min_length=1, max_length=50)
     mandatory_test_depth: dict[str, Any] = Field(default_factory=dict)

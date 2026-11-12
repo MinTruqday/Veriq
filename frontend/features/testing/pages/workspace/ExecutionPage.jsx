@@ -38,7 +38,7 @@ import {
   shouldReloadAfterAmbiguousMutation,
 } from "../../lib/executionRecovery.logic.mjs";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
-import { withRiskModelDefaults } from "../../components/riskModel.helpers";
+import { withRiskModelDefaults } from "../../components/RiskModelEditor";
 
 const testPlanFindingLabels = {
   TEST_PLAN_STRATEGY_REQUIRED:

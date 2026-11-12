@@ -72,7 +72,7 @@ import {
   UNASSESSED_VALUE,
   buildTestCaseDraftChanges,
 } from "./test-design/testDesign.model";
-import { withRiskModelDefaults } from "../../components/riskModel.helpers";
+import { withRiskModelDefaults } from "../../components/RiskModelEditor";
 
 function draftConditionValues(draft, conditions, field, currentValue) {
   const requirementIds = new Set(draft?.requirement_version_ids || []);

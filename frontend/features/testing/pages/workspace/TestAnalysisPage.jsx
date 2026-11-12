@@ -5,7 +5,7 @@ import { BadgeCheck, Check, FilePlus2, Pencil, UserRoundPlus } from "lucide-reac
 import DataTable from "../../components/DataTable";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import TestConditionEditor from "../../components/TestConditionEditor";
-import { withRiskModelDefaults } from "../../components/riskModel.helpers";
+import { withRiskModelDefaults } from "../../components/RiskModelEditor";
 import TestConditionTable from "../../components/TestConditionTable";
 import {
   ErrorState,
