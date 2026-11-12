@@ -475,6 +475,17 @@ export default function TestDesignPage({ project, workspaceView }) {
   const actionableDrafts = drafts.filter((item) => item.status !== "APPROVED");
   const editableDrafts = actionableDrafts.filter((item) => item.status !== "IN_REVIEW");
   const selectedDraft = actionableDrafts.find((item) => item._id === selectedDraftId) || null;
+  const conditionOptions = (field, currentValue) => [
+    ...new Set(
+      [UNASSESSED_VALUE, ...testConditions.map((item) => item[field]), currentValue].filter(
+        Boolean,
+      ),
+    ),
+  ];
+  const draftLevelOptions = conditionOptions("test_level", draftEdit?.test_level);
+  const draftKindOptions = conditionOptions("test_type", draftEdit?.test_kind);
+  const draftRiskOptions = conditionOptions("risk", draftEdit?.risk);
+  const draftPriorityOptions = conditionOptions("priority", draftEdit?.priority);
   const lintDraftId = selectedDraft?._id;
   const lintDraftRevision = selectedDraft?.revision;
   useEffect(() => {
@@ -2132,52 +2143,71 @@ export default function TestDesignPage({ project, workspaceView }) {
                   />
                 </label>
                 <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
-                  <input
-                    aria-label="Loại bản nháp ca kiểm thử"
-                    className="apple-input"
-                    required
-                    maxLength={100}
-                    value={draftEdit.type}
-                    onChange={(event) => changeDraftEdit({ type: event.target.value })}
-                    placeholder="Nhập loại ca kiểm thử"
-                  />
-                  <input
-                    aria-label="Ưu tiên bản nháp ca kiểm thử"
-                    className="apple-input"
-                    maxLength={100}
-                    placeholder="Mức ưu tiên theo quy ước dự án"
-                    value={draftEdit.priority}
-                    onChange={(event) => changeDraftEdit({ priority: event.target.value })}
-                  />
-                  <input
-                    aria-label="Rủi ro bản nháp ca kiểm thử"
-                    className="apple-input"
-                    maxLength={100}
-                    placeholder="Mức rủi ro theo quy ước dự án"
-                    value={draftEdit.risk}
-                    onChange={(event) => changeDraftEdit({ risk: event.target.value })}
-                  />
+                  <label className="field-label">
+                    Loại ca kiểm thử
+                    <input
+                      aria-label="Loại ca kiểm thử bản nháp"
+                      className="apple-input mt-2"
+                      required
+                      maxLength={100}
+                      value={draftEdit.type}
+                      onChange={(event) => changeDraftEdit({ type: event.target.value })}
+                      placeholder="Nhập loại ca theo quy ước dự án"
+                    />
+                  </label>
+                  {[
+                    ["priority", "Mức ưu tiên", draftPriorityOptions],
+                    ["risk", "Mức rủi ro", draftRiskOptions],
+                  ].map(([field, label, options]) => (
+                    <label className="field-label" key={field}>
+                      {label}
+                      <select
+                        aria-label={`${label} bản nháp`}
+                        className="apple-input mt-2"
+                        value={draftEdit[field] || UNASSESSED_VALUE}
+                        onChange={(event) => changeDraftEdit({ [field]: event.target.value })}
+                      >
+                        {options.map((option) => (
+                          <option key={option} value={option}>
+                            {valueLabel(option)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
                 </div>
                 <div className="grid gap-3 lg:col-span-2 sm:grid-cols-3">
                   <label className="field-label">
                     Cấp kiểm thử
-                    <input
+                    <select
                       aria-label="Cấp kiểm thử bản nháp"
                       className="apple-input mt-2"
-                      maxLength={100}
-                      value={draftEdit.test_level}
+                      value={draftEdit.test_level || ""}
                       onChange={(event) => changeDraftEdit({ test_level: event.target.value })}
-                    />
+                    >
+                      <option value="">Chưa chọn</option>
+                      {draftLevelOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {valueLabel(option)}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="field-label">
                     Loại kiểm thử
-                    <input
+                    <select
                       aria-label="Loại kiểm thử bản nháp"
                       className="apple-input mt-2"
-                      maxLength={100}
-                      value={draftEdit.test_kind}
+                      value={draftEdit.test_kind || ""}
                       onChange={(event) => changeDraftEdit({ test_kind: event.target.value })}
-                    />
+                    >
+                      <option value="">Chưa chọn</option>
+                      {draftKindOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {valueLabel(option)}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="field-label">
                     Ảnh hưởng dự kiến

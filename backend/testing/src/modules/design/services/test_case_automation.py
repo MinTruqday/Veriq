@@ -33,6 +33,7 @@ async def generate_test_case_draft_records(version_id, payload, user):
         version,
         criteria,
         payload,
+        user,
         scenario=False,
         acceptance_criteria_snapshot_ids=[item["_id"] for item in all_criteria],
     )

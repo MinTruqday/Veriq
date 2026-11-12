@@ -144,7 +144,7 @@ export default function TestConditionEditor({
             )}
             {levels.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {valueLabel(item)}
               </option>
             ))}
           </select>
@@ -163,7 +163,7 @@ export default function TestConditionEditor({
             )}
             {types.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {valueLabel(item)}
               </option>
             ))}
           </select>

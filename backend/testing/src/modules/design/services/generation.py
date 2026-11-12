@@ -260,7 +260,7 @@ def generated_cases_have_equivalent_actions(left, right):
 
 
 async def generate_requirement_drafts(
-    version, criteria, payload, scenario=False, acceptance_criteria_snapshot_ids=None
+    version, criteria, payload, user, scenario=False, acceptance_criteria_snapshot_ids=None
 ):
     if len(criteria) > 99:
         raise HTTPException(

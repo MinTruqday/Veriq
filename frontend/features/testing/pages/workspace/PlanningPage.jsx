@@ -2375,6 +2375,14 @@ function Board({
                                   >
                                     <PriorityMark value={item.priority} />
                                   </span>
+                                  {item.estimate != null && (
+                                    <span className="inline-flex min-h-7 items-center gap-1 rounded-full bg-surface-quiet px-2.5 text-xs text-ink-muted">
+                                      <span className="font-medium">Ước lượng</span>
+                                      <span className="font-semibold text-ink">
+                                        {item.estimate}
+                                      </span>
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex shrink-0 items-center gap-1">
                                   {canReadAudit && (
@@ -2479,16 +2487,6 @@ function Board({
                                     {item.due_at ? formatCalendarDate(item.due_at) : "Chưa đặt"}
                                   </dd>
                                 </div>
-                                {item.estimate != null && (
-                                  <div className="flex min-w-0 items-baseline gap-1.5">
-                                    <dt className="shrink-0 font-semibold text-ink-muted">
-                                      Ước lượng:
-                                    </dt>
-                                    <dd className="min-w-0 break-words font-semibold text-ink">
-                                      {item.estimate}
-                                    </dd>
-                                  </div>
-                                )}
                                 {item.requirement_ids?.length > 0 && (
                                   <div className="min-w-0">
                                     <dt className="font-semibold text-ink-muted">

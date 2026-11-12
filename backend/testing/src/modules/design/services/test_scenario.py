@@ -310,7 +310,9 @@ async def generate_test_scenario_records(version_id, payload, user):
     await require_current_baselined_version(version)
     criteria = await test_design_repository.list_acceptance_criteria(version_id)
     criteria = select_generation_criteria(criteria, payload.acceptance_criterion_ids)
-    drafts, result = await generate_requirement_drafts(version, criteria, payload, scenario=True)
+    drafts, result = await generate_requirement_drafts(
+        version, criteria, payload, user, scenario=True
+    )
     await require_current_baselined_version(version)
     current_criteria = select_generation_criteria(
         await test_design_repository.list_acceptance_criteria(version_id),

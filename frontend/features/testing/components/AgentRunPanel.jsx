@@ -634,7 +634,7 @@ export default function AgentRunPanel({
       <h3 className="text-sm font-semibold text-ink">Hoạt động gần đây</h3>
       <button
         aria-label="Tải lại hoạt động AI"
-        className="icon-button h-8 w-8 shrink-0"
+        className="icon-button inline-flex h-8 w-8 shrink-0 items-center justify-center self-center"
         disabled={loading || refreshingRuns}
         onClick={() => void refreshRunList()}
         title="Tải lại hoạt động AI"
