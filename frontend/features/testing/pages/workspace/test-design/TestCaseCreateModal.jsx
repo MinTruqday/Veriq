@@ -84,6 +84,7 @@ export default function TestCaseCreateModal({
   strategyTestLevels = [],
   strategyTestTypes = [],
   strategyPriorityLevels = [],
+  strategyRiskLevels = [],
   repositoryNodes,
   reusableSteps,
   customFields,
@@ -143,6 +144,11 @@ export default function TestCaseCreateModal({
       [...strategyPriorityLevels, form.priority]
         .map((value) => String(value || "").trim())
         .filter(Boolean),
+    ),
+  ];
+  const riskOptions = [
+    ...new Set(
+      [...strategyRiskLevels, form.risk].map((value) => String(value || "").trim()).filter(Boolean),
     ),
   ];
   const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
@@ -278,14 +284,30 @@ export default function TestCaseCreateModal({
           </label>
           <label className="field-label">
             Rủi ro
-            <input
-              aria-label="Rủi ro ca kiểm thử"
-              className="apple-input"
-              maxLength={100}
-              placeholder="Nhập mức rủi ro theo quy ước dự án"
-              value={form.risk ? valueLabel(form.risk) : ""}
-              onChange={(event) => update({ risk: event.target.value })}
-            />
+            {riskOptions.length ? (
+              <select
+                aria-label="Rủi ro ca kiểm thử"
+                className="apple-input mt-2"
+                value={form.risk || ""}
+                onChange={(event) => update({ risk: event.target.value })}
+              >
+                <option value="">Chọn mức rủi ro theo chiến lược dự án</option>
+                {riskOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {valueLabel(value)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                aria-label="Rủi ro ca kiểm thử"
+                className="apple-input mt-2"
+                maxLength={100}
+                placeholder="Nhập mức rủi ro theo quy ước dự án"
+                value={form.risk ? valueLabel(form.risk) : ""}
+                onChange={(event) => update({ risk: event.target.value })}
+              />
+            )}
           </label>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">

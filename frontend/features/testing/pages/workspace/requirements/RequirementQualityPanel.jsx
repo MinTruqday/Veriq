@@ -145,22 +145,19 @@ export default function RequirementQualityPanel({
           Chưa có đề xuất bổ sung cho phiên bản này.
         </p>
       )}
-      {lint.warnings?.includes("AI_UNGROUNDED_CANDIDATES_REJECTED") && !lint.degraded_mode && (
-        <p
-          className="mx-5 my-3 break-words rounded-control bg-warning-soft px-3 py-2 text-sm leading-5 text-warning [overflow-wrap:anywhere]"
-          role="status"
-        >
-          Một số nhận xét AI không khớp nguồn nên đã bị loại. Những nhận xét còn lại vẫn cần người
-          dùng rà soát.
-        </p>
-      )}
-      {lint.degraded_mode && (
-        <p
-          className="mx-5 my-3 break-words rounded-control bg-warning-soft px-3 py-2 text-sm leading-5 text-warning [overflow-wrap:anywhere]"
-          role="status"
-        >
-          {aiDegradedMessage}
-        </p>
+      {((lint.warnings?.includes("AI_UNGROUNDED_CANDIDATES_REJECTED") && !lint.degraded_mode) ||
+        lint.degraded_mode) && (
+        <div className="px-5 pb-4 pt-3">
+          <p
+            className="w-full min-w-0 break-words rounded-control border border-warning/20 bg-warning-soft px-3 py-2 text-sm leading-5 text-warning [overflow-wrap:anywhere]"
+            role="status"
+            aria-live="polite"
+          >
+            {lint.degraded_mode
+              ? aiDegradedMessage
+              : "Một số nhận xét AI không khớp nguồn nên đã bị loại. Những nhận xét còn lại vẫn cần người dùng rà soát."}
+          </p>
+        </div>
       )}
       {lint.suggestions?.length > 0 && (
         <div className="mt-4">

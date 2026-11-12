@@ -72,6 +72,7 @@ import {
   UNASSESSED_VALUE,
   buildTestCaseDraftChanges,
 } from "./test-design/testDesign.model";
+import { withRiskModelDefaults } from "../../components/riskModel.helpers";
 
 function draftConditionValues(draft, conditions, field, currentValue) {
   const requirementIds = new Set(draft?.requirement_version_ids || []);
@@ -490,8 +491,12 @@ export default function TestDesignPage({ project, workspaceView }) {
   const activeTestStrategy = testStrategies.find((item) => item.active_approved) || null;
   const strategyTestLevels = activeTestStrategy?.test_levels || [];
   const strategyTestTypes = activeTestStrategy?.test_types || [];
-  const strategyPriorityLevels = (activeTestStrategy?.risk_model?.priority_scale || [])
+  const activeRiskModel = withRiskModelDefaults(activeTestStrategy?.risk_model);
+  const strategyPriorityLevels = activeRiskModel.priority_scale
     .map((item) => String(item.label || "").trim())
+    .filter(Boolean);
+  const strategyRiskLevels = activeRiskModel.thresholds
+    .map((item) => String(item.level || "").trim())
     .filter(Boolean);
   const requirementLabels = Object.fromEntries(
     requirements
@@ -2864,6 +2869,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           strategyTestLevels={strategyTestLevels}
           strategyTestTypes={strategyTestTypes}
           strategyPriorityLevels={strategyPriorityLevels}
+          strategyRiskLevels={strategyRiskLevels}
           repositoryNodes={repositoryNodes}
           reusableSteps={reusableSteps}
           customFields={testCaseCustomFields}

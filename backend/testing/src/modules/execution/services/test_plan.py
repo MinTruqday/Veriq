@@ -440,7 +440,7 @@ async def get_test_plan_record(plan_id, user, permission="testplan.read"):
 
 
 async def validate_test_plan_record(plan_id, user):
-    plan = await get_test_plan_record(plan_id, user, "testplan.review")
+    plan = await get_test_plan_record(plan_id, user, "testplan.read")
     settings = await test_plan_repository.find_project_settings(plan["project_id"])
     return plan_completeness(plan, settings)
 

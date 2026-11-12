@@ -74,6 +74,32 @@ export function createDefaultRiskModel() {
   };
 }
 
+export function withRiskModelDefaults(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const defaults = createDefaultRiskModel();
+  const result = { ...defaults, ...source };
+  const defaultedLists = [
+    "probability_scale",
+    "impact_scale",
+    "severity_scale",
+    "blocking_severities",
+    "critical_severities",
+    "priority_scale",
+    "thresholds",
+    "regression_priority_rules",
+  ];
+  for (const key of defaultedLists) {
+    if (!Array.isArray(source[key]) || source[key].length === 0) result[key] = defaults[key];
+  }
+  if (!String(source.risk_exposure_formula || "").trim()) {
+    result.risk_exposure_formula = defaults.risk_exposure_formula;
+  }
+  if (!source.mandatory_test_depth || !Object.keys(source.mandatory_test_depth).length) {
+    result.mandatory_test_depth = defaults.mandatory_test_depth;
+  }
+  return normalizeRiskModel(result);
+}
+
 export function normalizeRiskModel(value = {}) {
   const severityLabels = (Array.isArray(value.severity_scale) ? value.severity_scale : [])
     .map((item) => String(item?.label || "").trim())

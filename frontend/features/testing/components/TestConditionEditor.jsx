@@ -22,6 +22,8 @@ export default function TestConditionEditor({
   initialValue,
   requirements,
   strategies = [],
+  riskLevels = [],
+  priorityLevels = [],
   projectId,
   onSave,
   onCancel,
@@ -61,6 +63,16 @@ export default function TestConditionEditor({
   const types = [
     ...new Set(
       [...strategies.flatMap((item) => item.test_types || []), value.test_type].filter(Boolean),
+    ),
+  ];
+  const configuredRiskLevels = [
+    ...new Set(
+      [...riskLevels, value.risk].map((item) => String(item || "").trim()).filter(Boolean),
+    ),
+  ];
+  const configuredPriorityLevels = [
+    ...new Set(
+      [...priorityLevels, value.priority].map((item) => String(item || "").trim()).filter(Boolean),
     ),
   ];
   return (
@@ -192,24 +204,60 @@ export default function TestConditionEditor({
           </p>
         )}
         <label className="field-label">
-          Mức rủi ro theo quy ước dự án
-          <input
-            className="apple-input mt-2"
-            value={value.risk}
-            onChange={(event) => setField("risk", event.target.value)}
-            maxLength={100}
-            required
-          />
+          Mức rủi ro
+          {configuredRiskLevels.length ? (
+            <select
+              aria-label="Mức rủi ro điều kiện kiểm thử"
+              className="apple-input mt-2"
+              value={value.risk}
+              onChange={(event) => setField("risk", event.target.value)}
+              required
+            >
+              <option value="">Chọn mức rủi ro theo chiến lược dự án</option>
+              {configuredRiskLevels.map((item) => (
+                <option key={item} value={item}>
+                  {valueLabel(item)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              className="apple-input mt-2"
+              value={value.risk}
+              onChange={(event) => setField("risk", event.target.value)}
+              maxLength={100}
+              placeholder="Nhập theo quy ước dự án"
+              required
+            />
+          )}
         </label>
         <label className="field-label">
-          Mức ưu tiên theo quy ước dự án
-          <input
-            className="apple-input mt-2"
-            value={value.priority}
-            onChange={(event) => setField("priority", event.target.value)}
-            maxLength={100}
-            required
-          />
+          Mức ưu tiên
+          {configuredPriorityLevels.length ? (
+            <select
+              aria-label="Mức ưu tiên điều kiện kiểm thử"
+              className="apple-input mt-2"
+              value={value.priority}
+              onChange={(event) => setField("priority", event.target.value)}
+              required
+            >
+              <option value="">Chọn mức ưu tiên theo chiến lược dự án</option>
+              {configuredPriorityLevels.map((item) => (
+                <option key={item} value={item}>
+                  {valueLabel(item)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              className="apple-input mt-2"
+              value={value.priority}
+              onChange={(event) => setField("priority", event.target.value)}
+              maxLength={100}
+              placeholder="Nhập theo quy ước dự án"
+              required
+            />
+          )}
         </label>
         <label className="field-label">
           Khả năng kiểm thử

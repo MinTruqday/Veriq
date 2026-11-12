@@ -38,6 +38,7 @@ import {
   shouldReloadAfterAmbiguousMutation,
 } from "../../lib/executionRecovery.logic.mjs";
 import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
+import { withRiskModelDefaults } from "../../components/riskModel.helpers";
 
 const testPlanFindingLabels = {
   TEST_PLAN_STRATEGY_REQUIRED:
@@ -466,10 +467,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       .filter(Boolean)
       .join("\n");
     const activeStrategy = strategies.find((item) => item.active_approved);
-    const defectSeverities = (activeStrategy?.risk_model?.severity_scale || [])
+    const activeRiskModel = withRiskModelDefaults(activeStrategy?.risk_model);
+    const defectSeverities = activeRiskModel.severity_scale
       .map((item) => String(item.label || "").trim())
       .filter(Boolean);
-    const defectPriorities = (activeStrategy?.risk_model?.priority_scale || [])
+    const defectPriorities = activeRiskModel.priority_scale
       .map((item) => String(item.label || "").trim())
       .filter(Boolean);
     const initialPriority = String(version.priority || "").toLowerCase();
@@ -1520,7 +1522,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                               <Pencil size={16} aria-hidden="true" />
                             </button>
                           )}
-                          {can("testplan.review") && (
+                          {can("testplan.read") && (
                             <button
                               className="icon-button h-10 w-10"
                               type="button"

@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import RiskModelEditor from "./RiskModelEditor";
 import StructuredValueEditor from "./StructuredValueEditor";
-import { createDefaultRiskModel, normalizeRiskModel } from "./riskModel.helpers";
+import {
+  createDefaultRiskModel,
+  normalizeRiskModel,
+  withRiskModelDefaults,
+} from "./riskModel.helpers";
 import { messageOf } from "../lib/testing";
 
 const emptyValue = {
@@ -62,7 +66,7 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
         ? {
             ...emptyValue,
             ...strategy,
-            risk_model: normalizeRiskModel({ ...createDefaultRiskModel(), ...strategy.risk_model }),
+            risk_model: withRiskModelDefaults(strategy.risk_model),
           }
         : emptyValue,
     );

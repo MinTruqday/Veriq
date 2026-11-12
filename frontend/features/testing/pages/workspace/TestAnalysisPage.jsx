@@ -5,6 +5,7 @@ import { BadgeCheck, Check, FilePlus2, Pencil, UserRoundPlus } from "lucide-reac
 import DataTable from "../../components/DataTable";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import TestConditionEditor from "../../components/TestConditionEditor";
+import { withRiskModelDefaults } from "../../components/riskModel.helpers";
 import TestConditionTable from "../../components/TestConditionTable";
 import {
   ErrorState,
@@ -98,6 +99,14 @@ export default function TestAnalysisPage({ project }) {
     [project.current_permissions],
   );
   const can = useCallback((permission) => permissions.includes(permission), [permissions]);
+  const activeStrategy = strategies.find((item) => item.active_approved) || null;
+  const activeRiskModel = withRiskModelDefaults(activeStrategy?.risk_model);
+  const conditionRiskLevels = (activeRiskModel.thresholds || [])
+    .map((item) => String(item.level || "").trim())
+    .filter(Boolean);
+  const conditionPriorityLevels = activeRiskModel.priority_scale
+    .map((item) => String(item.label || "").trim())
+    .filter(Boolean);
   const load = useCallback(async () => {
     if (loadedProjectId.current !== project._id) {
       loadedProjectId.current = project._id;
@@ -1258,6 +1267,8 @@ export default function TestAnalysisPage({ project }) {
           }
           requirements={requirements}
           strategies={strategies}
+          riskLevels={conditionRiskLevels}
+          priorityLevels={conditionPriorityLevels}
           projectId={project._id}
           onCancel={() => setEditing(false)}
           onSave={async (payload) => {
