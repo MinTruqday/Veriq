@@ -689,22 +689,30 @@ export default function TestPlanEditor({
                 )}
               </select>
             </label>
-            <label className="field-label md:col-span-2">
-              Loại kiểm thử mỗi dòng một giá trị
-              <textarea
-                className="apple-input mt-2 min-h-24"
-                value={(value.test_types || []).join("\n")}
-                onChange={(event) =>
-                  setField(
-                    "test_types",
-                    event.target.value
-                      .split("\n")
-                      .map((item) => item.trim())
-                      .filter(Boolean),
-                  )
-                }
-              />
-            </label>
+            <div className="md:col-span-2">
+              <p className="field-label">Loại kiểm thử</p>
+              <div className="mt-2">
+                <MultiSelect
+                  label="Chọn loại kiểm thử"
+                  options={[
+                    ...new Set([
+                      ...(selectedStrategy?.test_types || []),
+                      ...(value.test_types || []),
+                    ]),
+                  ].map((item) => ({ value: item, label: item }))}
+                  value={value.test_types || []}
+                  onChange={(items) => setField("test_types", items)}
+                  disabled={!selectedStrategy?.test_types?.length}
+                  emptyMessage="Phiên bản chiến lược chưa khai báo loại kiểm thử"
+                  searchPlaceholder="Tìm loại kiểm thử"
+                />
+                {!selectedStrategy?.test_types?.length && (
+                  <p className="mt-2 text-sm text-ink-muted">
+                    Chọn phiên bản chiến lược đã duyệt có khai báo loại kiểm thử.
+                  </p>
+                )}
+              </div>
+            </div>
             <label className="field-label">
               Môi trường mặc định
               <input

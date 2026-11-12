@@ -197,6 +197,9 @@ export default function DocumentReaderPage({ project, section = [] }) {
   const { user } = useAuth();
   const documentId = section[0] || "";
   const canSummarize = project?.current_permissions?.includes("ai.ask_project");
+  const canDownloadOriginal = project?.current_permissions?.includes(
+    "requirement_document.download",
+  );
   const [document, setDocument] = useState(null);
   const [content, setContent] = useState("");
   const [nextOffset, setNextOffset] = useState(null);
@@ -619,14 +622,16 @@ export default function DocumentReaderPage({ project, section = [] }) {
               )}
             </>
           )}
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={downloadLoading}
-            onClick={downloadOriginal}
-          >
-            {downloadLoading ? "Đang tải…" : "Tải tệp gốc"}
-          </button>
+          {canDownloadOriginal && (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={downloadLoading}
+              onClick={downloadOriginal}
+            >
+              {downloadLoading ? "Đang tải…" : "Tải tệp gốc"}
+            </button>
+          )}
         </div>
       </div>
 

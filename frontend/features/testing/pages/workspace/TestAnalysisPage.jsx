@@ -142,7 +142,8 @@ export default function TestAnalysisPage({ project }) {
             })
           : Promise.resolve([]),
       ]);
-      setConditions(conditionResult.items || []);
+      const nextConditions = conditionResult.items || [];
+      setConditions(nextConditions);
       setRequirements(requirementValues);
       setCoverage(coverageValue);
       setFindings(findingValues.items || []);
@@ -151,7 +152,8 @@ export default function TestAnalysisPage({ project }) {
       setMembers(memberValues || []);
       setError(memberLoadError);
       setSelected(
-        (current) => conditionResult.items?.find((item) => item._id === current?._id) || current,
+        (current) =>
+          nextConditions.find((item) => item._id === current?._id) || nextConditions[0] || null,
       );
       initialDataLoaded.current = true;
       setInitialLoadFailed(false);
@@ -295,7 +297,7 @@ export default function TestAnalysisPage({ project }) {
       )}
       {can("testcondition.read") && (
         <div
-          className="mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:grid-cols-2 lg:items-start"
+          className={`mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:items-start ${conditions.length || selected ? "lg:grid-cols-2" : "lg:grid-cols-1"}`}
           hidden={visibleTab !== "conditions"}
           style={{ display: visibleTab === "conditions" ? "grid" : "none" }}
         >
@@ -1256,6 +1258,7 @@ export default function TestAnalysisPage({ project }) {
           }
           requirements={requirements}
           strategies={strategies}
+          projectId={project._id}
           onCancel={() => setEditing(false)}
           onSave={async (payload) => {
             const value = selected?._id

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from src.api.internal import router as internal_router
+from src.api.passkey import router as passkey_router
 from src.api.platform import router as platform_router
 from src.api.platform_controls import router as platform_controls_router
 from src.api.session import router as session_router
@@ -36,6 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(session_router)
+app.include_router(passkey_router)
 app.include_router(internal_router)
 app.include_router(platform_router)
 app.include_router(platform_controls_router)

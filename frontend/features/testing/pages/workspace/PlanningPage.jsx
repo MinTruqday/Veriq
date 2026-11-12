@@ -2174,7 +2174,7 @@ function Board({
             return (
               <div
                 key={column.status}
-                className={`h-full min-w-0 transition-opacity duration-150 ${draggedColumnStatus === column.status ? "opacity-45" : "opacity-100"}`}
+                className={`${collapsedStatuses.includes(column.status) ? "h-fit self-start" : "h-full"} min-w-0 transition-opacity duration-150 ${draggedColumnStatus === column.status ? "opacity-45" : "opacity-100"}`}
                 onDragOver={(event) => {
                   if (
                     draggedColumnStatus &&
@@ -2195,7 +2195,7 @@ function Board({
                 }}
               >
                 <Panel
-                  className={`flex h-full flex-col ${
+                  className={`flex ${collapsed ? "h-fit" : "h-full"} flex-col ${
                     collapsed
                       ? "[&_.workspace-panel-header]:block [&_.workspace-panel-header]:p-2 [&_.workspace-panel-heading]:w-full [&_.workspace-panel-heading]:min-w-0 [&_.workspace-panel-heading]:flex-none"
                       : ""
@@ -2480,9 +2480,13 @@ function Board({
                                   </dd>
                                 </div>
                                 {item.estimate != null && (
-                                  <div className="min-w-0">
-                                    <dt className="font-semibold text-ink-muted">Ước lượng:</dt>
-                                    <dd className="mt-1 font-semibold text-ink">{item.estimate}</dd>
+                                  <div className="flex min-w-0 items-baseline gap-1.5">
+                                    <dt className="shrink-0 font-semibold text-ink-muted">
+                                      Ước lượng:
+                                    </dt>
+                                    <dd className="min-w-0 break-words font-semibold text-ink">
+                                      {item.estimate}
+                                    </dd>
                                   </div>
                                 )}
                                 {item.requirement_ids?.length > 0 && (

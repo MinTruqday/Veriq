@@ -22,6 +22,7 @@ export default function TestConditionEditor({
   initialValue,
   requirements,
   strategies = [],
+  projectId,
   onSave,
   onCancel,
 }) {
@@ -52,6 +53,8 @@ export default function TestConditionEditor({
     }));
   }, [initialValue, strategies]);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
+  const levels = [...new Set(strategies.flatMap((item) => item.test_levels || []))];
+  const types = [...new Set(strategies.flatMap((item) => item.test_types || []))];
   return (
     <form
       className="space-y-4 p-5"
@@ -129,34 +132,59 @@ export default function TestConditionEditor({
         </label>
         <label className="field-label">
           Cấp kiểm thử
-          <input
+          <select
             className="apple-input mt-2"
-            list="test-condition-level-options"
             value={value.test_level}
             onChange={(event) => setField("test_level", event.target.value)}
             required
-          />
-          <datalist id="test-condition-level-options">
-            {[...new Set(strategies.flatMap((item) => item.test_levels || []))].map((item) => (
-              <option key={item} value={item} />
+          >
+            <option value="">Chọn cấp kiểm thử</option>
+            {value.test_level && !levels.includes(value.test_level) && (
+              <option value={value.test_level}>{value.test_level}</option>
+            )}
+            {levels.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
             ))}
-          </datalist>
+          </select>
         </label>
         <label className="field-label">
           Loại kiểm thử
-          <input
+          <select
             className="apple-input mt-2"
-            list="test-condition-type-options"
             value={value.test_type}
             onChange={(event) => setField("test_type", event.target.value)}
             required
-          />
-          <datalist id="test-condition-type-options">
-            {[...new Set(strategies.flatMap((item) => item.test_types || []))].map((item) => (
-              <option key={item} value={item} />
+          >
+            <option value="">Chọn loại kiểm thử</option>
+            {value.test_type && !types.includes(value.test_type) && (
+              <option value={value.test_type}>{value.test_type}</option>
+            )}
+            {types.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
             ))}
-          </datalist>
+          </select>
         </label>
+        {(!levels.length || !types.length) && (
+          <p className="text-sm text-ink-muted md:col-span-2">
+            {!levels.length && !types.length
+              ? "Chiến lược đã duyệt chưa có cấp và loại kiểm thử."
+              : !levels.length
+                ? "Chiến lược đã duyệt chưa có cấp kiểm thử."
+                : "Chiến lược đã duyệt chưa có loại kiểm thử."}{" "}
+            {projectId && (
+              <a
+                className="font-medium text-brand underline"
+                href={`/du-an/${projectId}/quan-tri-kiem-thu`}
+              >
+                Mở chiến lược kiểm thử
+              </a>
+            )}
+          </p>
+        )}
         <label className="field-label">
           Mức rủi ro theo quy ước dự án
           <input

@@ -56,7 +56,11 @@ export default function AccountPage() {
     try {
       const data = await listMySessions();
       if (currentRequest !== sessionsRequestId.current) return;
-      setSessions(Array.isArray(data) ? data : []);
+      const nextSessions = Array.isArray(data) ? data : [];
+      setSessions(nextSessions);
+      setSessionPage((current) =>
+        Math.min(current, Math.max(1, Math.ceil(nextSessions.length / sessionPageSize))),
+      );
       setSessionsOwnerId(userId);
     } catch (reason) {
       if (currentRequest !== sessionsRequestId.current) return;

@@ -88,6 +88,7 @@ class UserInDB(UserBase):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True
     is_kyc_verified: bool = False
+    passkeys: List[Dict[str, Any]] = Field(default_factory=list)
     last_password_change: Optional[datetime] = None
     last_bank_update: Optional[datetime] = None
 
@@ -96,6 +97,7 @@ class UserResponse(UserBase):
     email: str
     id: str = Field(alias="_id")
     created_at: datetime
+    has_passkey: bool = False
 
 
 class ProfileUpdate(BaseModel):
@@ -165,3 +167,12 @@ class ModerationActionRequest(BaseModel):
 
 class NoteRequest(BaseModel):
     note: str
+
+
+class PasskeyRequest(BaseModel):
+    email: EmailStr
+
+
+class PasskeyFinishRequest(BaseModel):
+    email: EmailStr
+    credential: dict

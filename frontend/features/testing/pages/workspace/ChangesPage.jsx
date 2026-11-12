@@ -225,7 +225,9 @@ export default function ChangesPage({ project }) {
     <WorkspacePage title="Phân tích thay đổi" actions={<ProjectCrumb projectId={project._id} />}>
       {error && <ErrorState message={error} />}
       {can("changeset.read") && (
-        <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:grid-cols-2 lg:items-start">
+        <div
+          className={`mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:items-start ${sets.length || selected ? "lg:grid-cols-2" : "lg:grid-cols-1"}`}
+        >
           <div className="min-w-0 lg:sticky lg:top-4">
             <Panel title="Lịch sử thay đổi yêu cầu">
               <details className="border-b border-border p-4">
@@ -412,7 +414,7 @@ export default function ChangesPage({ project }) {
               </div>
             )}
 
-            {!selected && (
+            {!selected && sets.length > 0 && (
               <Panel title="Chi tiết thay đổi">
                 <p className="px-4 py-5 text-sm text-ink-muted" role="status">
                   Chọn một thay đổi trong danh sách để xem nội dung và tác động kiểm thử.

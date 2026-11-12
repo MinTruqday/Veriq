@@ -169,3 +169,24 @@ export const verifyEmailAPI = async (token) => {
   if (!res.ok) throw new Error(errorMessage(data, "Không thể xác minh địa chỉ thư điện tử"));
   return data?.data || data;
 };
+export const passkeyLoginBeginAPI = async (email) => {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/khoa-bao-mat/dang-nhap/bat-dau`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(errorMessage(data, "Không thể tạo luồng đăng nhập chứng thư số"));
+  return data?.data || data;
+};
+export const passkeyLoginFinishAPI = async (email, credential) => {
+  const res = await fetchWithNetworkError(`${API_URL}/xac-thuc/khoa-bao-mat/dang-nhap/hoan-tat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, credential }),
+    credentials: "include",
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(errorMessage(data, "Lỗi hoàn tất luồng đăng nhập chứng thư số"));
+  return data?.data || data;
+};

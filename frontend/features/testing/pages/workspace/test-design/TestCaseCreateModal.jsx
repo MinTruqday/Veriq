@@ -123,6 +123,12 @@ export default function TestCaseCreateModal({
   const scopedTestConditions = testConditions.filter((condition) =>
     matchesConditionScope(condition, requirementIds, scopedCriterionIds, scenarioConditionIds),
   );
+  const testLevelOptions = [
+    ...new Set(scopedTestConditions.map((item) => item.test_level).filter(Boolean)),
+  ];
+  const testKindOptions = [
+    ...new Set(scopedTestConditions.map((item) => item.test_type).filter(Boolean)),
+  ];
   const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
     conditionIds.filter((conditionId) => {
       const condition = testConditions.find((item) => item._id === conditionId);
@@ -247,11 +253,11 @@ export default function TestCaseCreateModal({
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { field: "testLevel", label: "Cấp kiểm thử", freeText: true },
-            { field: "testKind", label: "Loại kiểm thử", freeText: true },
+            { field: "testLevel", label: "Cấp kiểm thử", options: testLevelOptions },
+            { field: "testKind", label: "Loại kiểm thử", options: testKindOptions },
             { field: "expectedImpact", label: "Ảnh hưởng dự kiến", freeText: true },
-          ].map(({ field, label, freeText }) => (
-            <label className="field-label" key={field}>
+          ].map(({ field, label, options, freeText }) => (
+            <label className="field-label font-medium" key={field}>
               {label}
               {freeText ? (
                 <input
@@ -261,7 +267,29 @@ export default function TestCaseCreateModal({
                   maxLength={100}
                   onChange={(event) => update({ [field]: event.target.value })}
                 />
-              ) : null}
+              ) : (
+                <select
+                  className="apple-input mt-2"
+                  value={form[field] || ""}
+                  aria-label={label}
+                  onChange={(event) => update({ [field]: event.target.value })}
+                >
+                  <option value="">Chưa chọn</option>
+                  {form[field] && !options.includes(form[field]) && (
+                    <option value={form[field]}>{form[field]}</option>
+                  )}
+                  {options.map((option) => (
+                    <option key={option} value={option}>
+                      {valueLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {!freeText && !options.length && (
+                <span className="mt-1 block text-xs font-normal text-ink-muted">
+                  Chọn điều kiện kiểm thử để có danh sách giá trị phù hợp.
+                </span>
+              )}
             </label>
           ))}
         </div>

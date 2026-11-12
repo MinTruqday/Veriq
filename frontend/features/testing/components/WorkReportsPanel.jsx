@@ -152,6 +152,15 @@ export default function WorkReportsPanel({ project }) {
   const referenceSequence = useRef(0);
   const operationKey = useRef(key());
   const userId = user?._id || user?.id;
+  const reportSnapshot =
+    selected?.snapshot && typeof selected.snapshot === "object" ? selected.snapshot : null;
+  const reportSnapshotMetrics =
+    reportSnapshot?.metrics && typeof reportSnapshot.metrics === "object"
+      ? reportSnapshot.metrics
+      : {};
+  const reportSnapshotWorkItems = Array.isArray(reportSnapshot?.work_items)
+    ? reportSnapshot.work_items
+    : [];
   const assignedAuthor =
     selected &&
     can("workreport.write") &&
@@ -1896,28 +1905,38 @@ export default function WorkReportsPanel({ project }) {
                     </button>
                   )}
                   <p className="mt-3 text-sm text-ink-muted">
-                    Dữ liệu chốt lúc {date(selected.snapshot.captured_at)}. Số giờ làm không được
-                    suy ra từ lần cập nhật công việc.
+                    {reportSnapshot?.captured_at
+                      ? `Dữ liệu chốt lúc ${date(reportSnapshot.captured_at)}.`
+                      : "Phiên bản này chưa có thời điểm chốt dữ liệu."}{" "}
+                    Số giờ làm không được suy ra từ lần cập nhật công việc.
                   </p>
                   <div className="mt-3 grid grid-cols-3 gap-4 text-sm">
                     <p>
-                      Công việc: <strong>{selected.snapshot.metrics.work_items_total}</strong>
+                      Công việc: <strong>{reportSnapshotMetrics.work_items_total ?? "—"}</strong>
                     </p>
                     <p>
                       Đã hoàn thành khi chốt:{" "}
-                      <strong>{selected.snapshot.metrics.work_items_completed_at_capture}</strong>
+                      <strong>
+                        {reportSnapshotMetrics.work_items_completed_at_capture ?? "—"}
+                      </strong>
                     </p>
                     <p>
                       Thay đổi trong kỳ:{" "}
-                      <strong>{selected.snapshot.metrics.work_items_changed_in_period}</strong>
+                      <strong>{reportSnapshotMetrics.work_items_changed_in_period ?? "—"}</strong>
                     </p>
                   </div>
                   <ul className="mt-3 divide-y divide-border">
-                    {selected.snapshot.work_items.map((item) => (
-                      <li key={item._id} className="py-2 text-sm">
-                        {item.title} · {valueLabel(item.status)}
+                    {reportSnapshotWorkItems.length ? (
+                      reportSnapshotWorkItems.map((item) => (
+                        <li key={item._id} className="py-2 text-sm">
+                          {item.title} · {valueLabel(item.status)}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="py-2 text-sm text-ink-muted">
+                        Chưa có danh sách công việc được chốt cho phiên bản này.
                       </li>
-                    ))}
+                    )}
                   </ul>
                 </details>
                 <section

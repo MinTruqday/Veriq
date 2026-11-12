@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
@@ -302,4 +303,52 @@ class IdentityRepository:
                 }
             },
             return_document=ReturnDocument.AFTER,
+        )
+
+    @staticmethod
+    async def set_redis_passkey_challenge(email: str, challenge: bytes):
+        await redis.setex(
+            f"passkey_challenge:{email.lower()}",
+            300,
+            base64.b64encode(challenge).decode("ascii"),
+        )
+
+    @staticmethod
+    async def upsert_passkey_challenge(email: str, challenge: bytes):
+        now = datetime.now(timezone.utc)
+        return await mongo.update_one(
+            "passkey_challenges",
+            {"_id": email.lower()},
+            {
+                "$set": {
+                    "challenge": challenge,
+                    "created_at": now,
+                    "expires_at": now + timedelta(seconds=300),
+                }
+            },
+            upsert=True,
+        )
+
+    @staticmethod
+    async def consume_passkey_challenge(email: str):
+        document = await mongo.get_db()["passkey_challenges"].find_one_and_delete(
+            {"_id": email.lower(), "expires_at": {"$gt": datetime.now(timezone.utc)}}
+        )
+        await redis.delete(f"passkey_challenge:{email.lower()}")
+        return document.get("challenge") if document else None
+
+    @staticmethod
+    async def update_passkey_sign_count(user_id: str, credential_id: str, sign_count: int):
+        return await mongo.update_one(
+            "auth_credentials",
+            {"_id": user_id, "passkeys.credential_id": credential_id},
+            {"$set": {"passkeys.$.sign_count": sign_count}},
+        )
+
+    @staticmethod
+    async def add_passkey(user_id: str, passkey: dict):
+        return await mongo.update_one(
+            "auth_credentials",
+            {"_id": user_id, "passkeys.credential_id": {"$ne": passkey["credential_id"]}},
+            {"$push": {"passkeys": passkey}},
         )
