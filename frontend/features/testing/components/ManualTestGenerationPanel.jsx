@@ -3,10 +3,10 @@ import Link from "next/link";
 import { Panel, ErrorState } from "./WorkspacePrimitives";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import { testingApi } from "../services/testing.service";
-import { docText, messageOf } from "../lib/testing";
+import { docText, messageOf, valueLabel } from "../lib/testing";
 
 function assessmentLabel(value) {
-  return value && value !== "unassessed" ? value : "Chưa đánh giá";
+  return valueLabel(value || "unassessed");
 }
 
 export default function ManualTestGenerationPanel({ projectId, requirements, mode, onSaved }) {
@@ -228,7 +228,7 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
                   <div>
                     <dt>Nhóm kiểm thử</dt>
                     <dd className="mt-0.5 font-medium text-ink">
-                      {item.draft.category || item.draft.type || "Chưa phân loại"}
+                      {valueLabel(item.draft.category || item.draft.type || "Chưa phân loại")}
                     </dd>
                   </div>
                   <div>
