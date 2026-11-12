@@ -1,6 +1,11 @@
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import { valueLabel } from "../../../lib/testing";
+import {
+  TEST_LEVEL_VALUES,
+  TEST_TYPE_VALUES,
+  testDesignValues,
+} from "../../../lib/testDesignOptions.mjs";
 
 export default function ScenarioCreateModal({
   isOpen,
@@ -43,12 +48,16 @@ export default function ScenarioCreateModal({
       );
     });
   });
-  const testLevelOptions = [
-    ...new Set(relevantConditions.map((item) => item.test_level).filter(Boolean)),
-  ];
-  const testKindOptions = [
-    ...new Set(relevantConditions.map((item) => item.test_type).filter(Boolean)),
-  ];
+  const testLevelOptions = testDesignValues(
+    relevantConditions.map((item) => item.test_level).filter(Boolean),
+    form.test_level ? [form.test_level] : [],
+    TEST_LEVEL_VALUES,
+  );
+  const testKindOptions = testDesignValues(
+    relevantConditions.map((item) => item.test_type).filter(Boolean),
+    form.test_kind ? [form.test_kind] : [],
+    TEST_TYPE_VALUES,
+  );
 
   return (
     <Modal

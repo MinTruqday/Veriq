@@ -7,6 +7,11 @@ import TestCaseCustomValues from "./TestCaseCustomValues";
 import TestCaseOwnerRecommendation from "./TestCaseOwnerRecommendation";
 import RequirementCoverageSelector from "./RequirementCoverageSelector";
 import { emptyDoc } from "../../../lib/testing.logic.mjs";
+import {
+  TEST_LEVEL_VALUES,
+  TEST_TYPE_VALUES,
+  testDesignValues,
+} from "../../../lib/testDesignOptions.mjs";
 
 function TestDataEntries({ label, entries, onChange }) {
   const updateEntry = (index, patch) =>
@@ -123,12 +128,16 @@ export default function TestCaseCreateModal({
   const scopedTestConditions = testConditions.filter((condition) =>
     matchesConditionScope(condition, requirementIds, scopedCriterionIds, scenarioConditionIds),
   );
-  const testLevelOptions = [
-    ...new Set(scopedTestConditions.map((item) => item.test_level).filter(Boolean)),
-  ];
-  const testKindOptions = [
-    ...new Set(scopedTestConditions.map((item) => item.test_type).filter(Boolean)),
-  ];
+  const testLevelOptions = testDesignValues(
+    scopedTestConditions.map((item) => item.test_level).filter(Boolean),
+    form.testLevel ? [form.testLevel] : [],
+    TEST_LEVEL_VALUES,
+  );
+  const testKindOptions = testDesignValues(
+    scopedTestConditions.map((item) => item.test_type).filter(Boolean),
+    form.testKind ? [form.testKind] : [],
+    TEST_TYPE_VALUES,
+  );
   const riskOptions = [
     ...new Set(
       [
@@ -168,7 +177,7 @@ export default function TestCaseCreateModal({
       <ModalHeader>
         <ModalTitle>Tạo ca kiểm thử</ModalTitle>
       </ModalHeader>
-      <form onSubmit={onSubmit} className="space-y-4 p-5">
+      <form onSubmit={onSubmit} className="test-design-form space-y-4 p-5">
         <label className="field-label block">
           Kịch bản kiểm thử
           <select
@@ -273,7 +282,7 @@ export default function TestCaseCreateModal({
             { field: "testKind", label: "Loại kiểm thử", options: testKindOptions },
             { field: "expectedImpact", label: "Ảnh hưởng dự kiến", freeText: true },
           ].map(({ field, label, options, freeText }) => (
-            <label className="field-label font-medium" key={field}>
+            <label className="field-label text-sm font-semibold text-ink" key={field}>
               {label}
               {freeText ? (
                 <input

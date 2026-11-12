@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import TestBasisPanel from "./TestBasisPanel";
 import ContentOriginBadge from "../../../shared/components/common/ContentOriginBadge";
 import { messageOf, textDoc, valueLabel } from "../lib/testing";
+import { TEST_LEVEL_VALUES, TEST_TYPE_VALUES, testDesignValues } from "../lib/testDesignOptions";
 
 const defaults = {
   title: "",
@@ -53,11 +54,19 @@ export default function TestConditionEditor({
     }));
   }, [initialValue, strategies]);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
-  const levels = [...new Set(strategies.flatMap((item) => item.test_levels || []))];
-  const types = [...new Set(strategies.flatMap((item) => item.test_types || []))];
+  const levels = testDesignValues(
+    strategies.flatMap((item) => item.test_levels || []),
+    value.test_level ? [value.test_level] : [],
+    TEST_LEVEL_VALUES,
+  );
+  const types = testDesignValues(
+    strategies.flatMap((item) => item.test_types || []),
+    value.test_type ? [value.test_type] : [],
+    TEST_TYPE_VALUES,
+  );
   return (
     <form
-      className="space-y-4 p-5"
+      className="test-design-form space-y-4 p-5"
       onSubmit={async (event) => {
         event.preventDefault();
         setError("");
@@ -133,6 +142,7 @@ export default function TestConditionEditor({
         <label className="field-label">
           Cấp kiểm thử
           <select
+            aria-label="Cấp kiểm thử"
             className="apple-input mt-2"
             value={value.test_level}
             onChange={(event) => setField("test_level", event.target.value)}
@@ -152,6 +162,7 @@ export default function TestConditionEditor({
         <label className="field-label">
           Loại kiểm thử
           <select
+            aria-label="Loại kiểm thử"
             className="apple-input mt-2"
             value={value.test_type}
             onChange={(event) => setField("test_type", event.target.value)}
@@ -168,13 +179,10 @@ export default function TestConditionEditor({
             ))}
           </select>
         </label>
-        {(!levels.length || !types.length) && (
+        {!strategies.some((item) => item.status === "APPROVED") && (
           <p className="text-sm text-ink-muted md:col-span-2">
-            {!levels.length && !types.length
-              ? "Chiến lược đã duyệt chưa có cấp và loại kiểm thử."
-              : !levels.length
-                ? "Chiến lược đã duyệt chưa có cấp kiểm thử."
-                : "Chiến lược đã duyệt chưa có loại kiểm thử."}{" "}
+            Có thể chọn danh mục chuẩn; chiến lược kiểm thử đã duyệt sẽ bổ sung lựa chọn riêng của
+            dự án.{" "}
             {projectId && (
               <a
                 className="font-medium text-brand underline"

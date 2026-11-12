@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import RiskModelEditor from "./RiskModelEditor";
 import StructuredValueEditor from "./StructuredValueEditor";
 import { createDefaultRiskModel, normalizeRiskModel } from "./riskModel.helpers";
-import { messageOf } from "../lib/testing";
+import { messageOf, valueLabel } from "../lib/testing";
+import MultiSelect from "@/shared/components/ui/MultiSelect";
+import { TEST_LEVEL_VALUES, TEST_TYPE_VALUES, testDesignValues } from "../lib/testDesignOptions";
 
 const emptyValue = {
   key: "",
@@ -70,7 +72,7 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
   const setField = (key, fieldValue) => setValue((current) => ({ ...current, [key]: fieldValue }));
   return (
     <form
-      className="space-y-5 p-5"
+      className="test-design-form space-y-5 p-5"
       onSubmit={async (event) => {
         event.preventDefault();
         setError("");
@@ -157,24 +159,38 @@ export default function TestStrategyEditor({ strategy, onSave, onCancel }) {
             required
           />
         </label>
-        {arrayFields.map(([key, label]) => (
-          <label className="field-label" key={key}>
-            {label} mỗi dòng một giá trị
-            <textarea
-              className="apple-input mt-2 min-h-24"
-              value={(value[key] || []).join("\n")}
-              onChange={(event) =>
-                setField(
-                  key,
-                  event.target.value
-                    .split("\n")
-                    .map((item) => item.trim())
-                    .filter(Boolean),
-                )
-              }
+        {arrayFields.map(([key, label]) =>
+          key === "test_levels" || key === "test_types" ? (
+            <MultiSelect
+              key={key}
+              label={label}
+              options={testDesignValues(
+                key === "test_levels" ? TEST_LEVEL_VALUES : TEST_TYPE_VALUES,
+                value[key] || [],
+              ).map((item) => ({ value: item, label: valueLabel(item) }))}
+              value={value[key] || []}
+              onChange={(items) => setField(key, items)}
+              searchPlaceholder={`Tìm ${label.toLocaleLowerCase()}`}
             />
-          </label>
-        ))}
+          ) : (
+            <label className="field-label" key={key}>
+              {label} mỗi dòng một giá trị
+              <textarea
+                className="apple-input mt-2 min-h-24"
+                value={(value[key] || []).join("\n")}
+                onChange={(event) =>
+                  setField(
+                    key,
+                    event.target.value
+                      .split("\n")
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  )
+                }
+              />
+            </label>
+          ),
+        )}
       </div>
       <RiskModelEditor
         value={value.risk_model}

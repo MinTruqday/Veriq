@@ -32,6 +32,11 @@ import {
 } from "../../components/WorkspacePrimitives";
 import { Pagination } from "@/shared/components/ui/Pagination";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
+import {
+  TEST_LEVEL_VALUES,
+  TEST_TYPE_VALUES,
+  testDesignValues,
+} from "../../lib/testDesignOptions.mjs";
 import SearchField from "@/shared/components/ui/SearchField";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import {
@@ -475,15 +480,18 @@ export default function TestDesignPage({ project, workspaceView }) {
   const actionableDrafts = drafts.filter((item) => item.status !== "APPROVED");
   const editableDrafts = actionableDrafts.filter((item) => item.status !== "IN_REVIEW");
   const selectedDraft = actionableDrafts.find((item) => item._id === selectedDraftId) || null;
-  const conditionOptions = (field, currentValue) => [
-    ...new Set(
-      [UNASSESSED_VALUE, ...testConditions.map((item) => item[field]), currentValue].filter(
-        Boolean,
-      ),
-    ),
-  ];
-  const draftLevelOptions = conditionOptions("test_level", draftEdit?.test_level);
-  const draftKindOptions = conditionOptions("test_type", draftEdit?.test_kind);
+  const conditionOptions = (field, currentValue, defaults = []) =>
+    testDesignValues(
+      testConditions.map((item) => item[field]).filter(Boolean),
+      currentValue ? [currentValue] : [],
+      defaults,
+    );
+  const draftLevelOptions = conditionOptions(
+    "test_level",
+    draftEdit?.test_level,
+    TEST_LEVEL_VALUES,
+  );
+  const draftKindOptions = conditionOptions("test_type", draftEdit?.test_kind, TEST_TYPE_VALUES);
   const draftRiskOptions = conditionOptions("risk", draftEdit?.risk);
   const draftPriorityOptions = conditionOptions("priority", draftEdit?.priority);
   const lintDraftId = selectedDraft?._id;
@@ -2124,7 +2132,7 @@ export default function TestDesignPage({ project, workspaceView }) {
                 </p>
               )}
             {canDraft("testcase.update", selectedDraft) && selectedDraft.status === "DRAFT" ? (
-              <div className="grid gap-4 p-5 lg:grid-cols-2">
+              <div className="test-design-form grid gap-4 p-5 lg:grid-cols-2">
                 <label className="field-label lg:col-span-2">
                   Tên ca kiểm thử
                   <input
