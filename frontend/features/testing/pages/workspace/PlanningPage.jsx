@@ -1964,9 +1964,11 @@ function WorkItemList({
             </dd>
           </div>
           {selectedItem.estimate != null && (
-            <div className="min-w-0 border-t border-border py-2.5">
-              <dt className="text-[13px] font-semibold text-ink-muted">Ước lượng:</dt>
-              <dd className="mt-1 text-sm font-semibold text-ink">{selectedItem.estimate}</dd>
+            <div className="flex min-w-0 items-baseline gap-1.5 border-t border-border py-2.5">
+              <dt className="shrink-0 text-[13px] font-semibold text-ink-muted">Ước lượng:</dt>
+              <dd className="min-w-0 break-words text-sm font-semibold text-ink">
+                {selectedItem.estimate}
+              </dd>
             </div>
           )}
           {selectedItem.requirement_ids?.length > 0 && (

@@ -297,7 +297,7 @@ export default function TestAnalysisPage({ project }) {
       )}
       {can("testcondition.read") && (
         <div
-          className={`mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:items-start ${conditions.length || selected ? "lg:grid-cols-2" : "lg:grid-cols-1"}`}
+          className={`mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:items-start ${conditions.length || selected ? "lg:grid-cols-[minmax(20rem,0.85fr)_minmax(0,1.15fr)]" : "lg:grid-cols-1"}`}
           hidden={visibleTab !== "conditions"}
           style={{ display: visibleTab === "conditions" ? "grid" : "none" }}
         >
@@ -582,13 +582,13 @@ export default function TestAnalysisPage({ project }) {
                 />
               </Panel>
             </div>
-          ) : (
+          ) : conditions.length ? (
             <Panel title="Chi tiết điều kiện">
               <p className="px-4 py-5 text-sm text-ink-muted" role="status">
                 Chọn một điều kiện để xem căn cứ, kết quả phân tích và thao tác rà soát.
               </p>
             </Panel>
-          )}
+          ) : null}
         </div>
       )}
       {can("testanalysis.read") && (

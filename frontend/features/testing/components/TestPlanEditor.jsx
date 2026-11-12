@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import StructuredValueEditor from "./StructuredValueEditor";
 import { testingApi } from "../services/testing.service";
-import { messageOf } from "../lib/testing";
+import { messageOf, valueLabel } from "../lib/testing";
 
 const aiPlanFields = [
   ["objective", "Mục tiêu", true],
@@ -677,11 +678,12 @@ export default function TestPlanEditor({
                 value={value.test_level}
                 onChange={(event) => setField("test_level", event.target.value)}
                 required
+                disabled={!selectedStrategy?.test_levels?.length && !value.test_level}
               >
                 <option value="">Chọn cấp kiểm thử</option>
                 {(selectedStrategy?.test_levels || []).map((level) => (
                   <option key={level} value={level}>
-                    {level}
+                    {valueLabel(level)}
                   </option>
                 ))}
                 {value.test_level && !selectedStrategy?.test_levels?.includes(value.test_level) && (
@@ -699,20 +701,32 @@ export default function TestPlanEditor({
                       ...(selectedStrategy?.test_types || []),
                       ...(value.test_types || []),
                     ]),
-                  ].map((item) => ({ value: item, label: item }))}
+                  ].map((item) => ({ value: item, label: valueLabel(item) }))}
                   value={value.test_types || []}
                   onChange={(items) => setField("test_types", items)}
-                  disabled={!selectedStrategy?.test_types?.length}
+                  disabled={!selectedStrategy?.test_types?.length && !value.test_types?.length}
                   emptyMessage="Phiên bản chiến lược chưa khai báo loại kiểm thử"
                   searchPlaceholder="Tìm loại kiểm thử"
                 />
-                {!selectedStrategy?.test_types?.length && (
+                {!selectedStrategy?.test_types?.length && !value.test_types?.length && (
                   <p className="mt-2 text-sm text-ink-muted">
-                    Chọn phiên bản chiến lược đã duyệt có khai báo loại kiểm thử.
+                    Chọn chiến lược đã duyệt có khai báo loại kiểm thử.
                   </p>
                 )}
               </div>
             </div>
+            {!selectedStrategy && !readOnly && !value.test_level && !value.test_types?.length && (
+              <p className="text-sm text-ink-muted md:col-span-2" role="status">
+                Dự án chưa có chiến lược kiểm thử được phê duyệt. Cấp và loại kiểm thử được lấy từ
+                chiến lược của dự án.{" "}
+                <Link
+                  className="font-medium text-brand underline"
+                  href={`/du-an/${encodeURIComponent(projectId)}/quan-tri-kiem-thu`}
+                >
+                  Mở chiến lược kiểm thử
+                </Link>
+              </p>
+            )}
             <label className="field-label">
               Môi trường mặc định
               <input

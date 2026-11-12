@@ -53,8 +53,16 @@ export default function TestConditionEditor({
     }));
   }, [initialValue, strategies]);
   const setField = (key, next) => setValue((current) => ({ ...current, [key]: next }));
-  const levels = [...new Set(strategies.flatMap((item) => item.test_levels || []))];
-  const types = [...new Set(strategies.flatMap((item) => item.test_types || []))];
+  const levels = [
+    ...new Set(
+      [...strategies.flatMap((item) => item.test_levels || []), value.test_level].filter(Boolean),
+    ),
+  ];
+  const types = [
+    ...new Set(
+      [...strategies.flatMap((item) => item.test_types || []), value.test_type].filter(Boolean),
+    ),
+  ];
   return (
     <form
       className="space-y-4 p-5"
@@ -133,18 +141,17 @@ export default function TestConditionEditor({
         <label className="field-label">
           Cấp kiểm thử
           <select
+            aria-label="Cấp kiểm thử"
             className="apple-input mt-2"
             value={value.test_level}
             onChange={(event) => setField("test_level", event.target.value)}
             required
+            disabled={!levels.length}
           >
             <option value="">Chọn cấp kiểm thử</option>
-            {value.test_level && !levels.includes(value.test_level) && (
-              <option value={value.test_level}>{value.test_level}</option>
-            )}
             {levels.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {valueLabel(item)}
               </option>
             ))}
           </select>
@@ -152,18 +159,17 @@ export default function TestConditionEditor({
         <label className="field-label">
           Loại kiểm thử
           <select
+            aria-label="Loại kiểm thử"
             className="apple-input mt-2"
             value={value.test_type}
             onChange={(event) => setField("test_type", event.target.value)}
             required
+            disabled={!types.length}
           >
             <option value="">Chọn loại kiểm thử</option>
-            {value.test_type && !types.includes(value.test_type) && (
-              <option value={value.test_type}>{value.test_type}</option>
-            )}
             {types.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {valueLabel(item)}
               </option>
             ))}
           </select>

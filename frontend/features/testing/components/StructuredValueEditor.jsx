@@ -166,7 +166,7 @@ export default function StructuredValueEditor({
   );
 }
 
-export function StructuredValueView({ value }) {
+export function StructuredValueView({ value, depth = 0 }) {
   if (value === null || value === undefined) {
     return <span className="text-ink-muted">Chưa có giá trị</span>;
   }
@@ -179,13 +179,17 @@ export function StructuredValueView({ value }) {
     <dl className="min-w-0 space-y-2">
       {entries.map(([key, item]) => (
         <div
-          className="grid min-w-0 gap-1 sm:grid-cols-[minmax(8rem,0.45fr)_minmax(0,1fr)]"
+          className={
+            depth === 0
+              ? "grid min-w-0 gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,0.45fr)_minmax(0,1fr)]"
+              : "min-w-0 border-l border-border/70 pl-2"
+          }
           key={key}
         >
           <dt className="break-words text-sm font-medium text-ink-muted">{key}</dt>
           <dd className="min-w-0 break-words text-sm text-ink">
             {item !== null && typeof item === "object" ? (
-              <StructuredValueView value={item} />
+              <StructuredValueView value={item} depth={depth + 1} />
             ) : item === null ? (
               <span className="text-ink-muted">Không có giá trị</span>
             ) : (
