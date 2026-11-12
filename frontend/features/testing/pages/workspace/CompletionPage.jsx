@@ -2,6 +2,7 @@
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 
 import { Pencil } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import CompletionReportEditor from "../../components/CompletionReportEditor";
 import DataTable from "../../components/DataTable";
@@ -23,6 +24,7 @@ import {
 import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/testing";
 import { testingApi } from "../../services/testing.service";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
+import { PROJECT_SECTION_SLUGS, projectRoute } from "../../routes";
 
 function lines(value, category) {
   return String(value || "")
@@ -411,6 +413,40 @@ export default function CompletionPage({ project }) {
           <ErrorState message={error} />
         </div>
       )}
+      {!initialLoading &&
+        !initialLoadFailed &&
+        canCreateCompletion &&
+        (!snapshots.length || !builds.length) && (
+          <div className="border-t border-border/70 px-5 py-4 text-sm" role="status">
+            <p className="text-ink-muted">
+              Để tạo báo cáo hoàn tất, trước hết cần có bản chụp số liệu giám sát và bản dựng.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+              {!snapshots.length && can("testmonitor.snapshot.create") && (
+                <Link
+                  className="font-medium text-brand underline underline-offset-2"
+                  href={projectRoute(project._id, PROJECT_SECTION_SLUGS.monitoring)}
+                >
+                  Mở Giám sát kiểm thử để lưu mốc giám sát
+                </Link>
+              )}
+              {!builds.length && can("build.create") && (
+                <Link
+                  className="font-medium text-brand underline underline-offset-2"
+                  href={projectRoute(project._id, PROJECT_SECTION_SLUGS.execution)}
+                >
+                  Mở Thực thi để tạo bản dựng
+                </Link>
+              )}
+              {(!snapshots.length && !can("testmonitor.snapshot.create")) ||
+              (!builds.length && !can("build.create")) ? (
+                <span className="text-ink-muted">
+                  Tài khoản hiện tại chưa có quyền tạo một hoặc nhiều dữ liệu cần thiết.
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )}
       {initialLoading ? (
         <div className="p-5">
           <LoadingState />

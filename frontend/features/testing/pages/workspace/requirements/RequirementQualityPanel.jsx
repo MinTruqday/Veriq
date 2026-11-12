@@ -13,7 +13,14 @@ function severityLabel(severity) {
   );
 }
 
-export default function RequirementQualityPanel({ lint, loading = false, onOpenClarifications }) {
+export default function RequirementQualityPanel({
+  lint,
+  loading = false,
+  onOpenClarifications,
+  onRecheckAI,
+  recheckingAI = false,
+  draftDirty = false,
+}) {
   if (!lint) {
     return (
       <Panel title="Gợi ý hoàn thiện yêu cầu">
@@ -44,11 +51,24 @@ export default function RequirementQualityPanel({ lint, loading = false, onOpenC
       : "Lượt AI chưa tạo được đề xuất. Các điều kiện dữ liệu do hệ thống kiểm tra vẫn có sẵn.";
   return (
     <Panel title="Gợi ý hoàn thiện yêu cầu">
-      {lint.is_stale && (
-        <p className="px-5 pt-4 text-sm text-warning" role="status">
-          Kết quả này thuộc phiên bản hoặc lần sửa trước. Hãy chạy kiểm tra AI lại nếu nội dung đã
-          thay đổi.
-        </p>
+      {(lint.is_stale || draftDirty) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4" role="status">
+          <p className="text-sm text-warning">
+            {draftDirty
+              ? "Yêu cầu đang có chỉnh sửa chưa lưu; kết quả AI chưa phản ánh các thay đổi này."
+              : "Kết quả này thuộc phiên bản hoặc lần sửa trước. Hãy kiểm tra lại nội dung hiện tại."}
+          </p>
+          {onRecheckAI && (
+            <button
+              className="secondary-button shrink-0"
+              type="button"
+              disabled={recheckingAI}
+              onClick={onRecheckAI}
+            >
+              {recheckingAI ? "Đang kiểm tra…" : "Kiểm tra AI lại"}
+            </button>
+          )}
+        </div>
       )}
       <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-border bg-surface-quiet px-3 py-2">
         <p className="text-sm text-ink-muted">

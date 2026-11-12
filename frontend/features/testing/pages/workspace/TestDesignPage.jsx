@@ -490,6 +490,9 @@ export default function TestDesignPage({ project, workspaceView }) {
   const activeTestStrategy = testStrategies.find((item) => item.active_approved) || null;
   const strategyTestLevels = activeTestStrategy?.test_levels || [];
   const strategyTestTypes = activeTestStrategy?.test_types || [];
+  const strategyPriorityLevels = (activeTestStrategy?.risk_model?.priority_scale || [])
+    .map((item) => String(item.label || "").trim())
+    .filter(Boolean);
   const requirementLabels = Object.fromEntries(
     requirements
       .filter((item) => item.current_version_id)
@@ -2860,6 +2863,7 @@ export default function TestDesignPage({ project, workspaceView }) {
           testConditions={testConditions}
           strategyTestLevels={strategyTestLevels}
           strategyTestTypes={strategyTestTypes}
+          strategyPriorityLevels={strategyPriorityLevels}
           repositoryNodes={repositoryNodes}
           reusableSteps={reusableSteps}
           customFields={testCaseCustomFields}

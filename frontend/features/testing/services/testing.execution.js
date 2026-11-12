@@ -102,6 +102,21 @@ export const executionTestingApi = {
     const value = listQuery(query);
     return testingRequest(`/du-an/${id}/ban-dung${value ? `?${value}` : ""}`);
   },
+  createBuild: (projectId, payload) =>
+    testingRequest(`/du-an/${projectId}/ban-dung`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateBuild: (buildId, payload) =>
+    testingRequest(`/ban-dung/${buildId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  setCurrentBuild: (buildId, expectedRevision) =>
+    testingRequest(`/ban-dung/${buildId}/dat-hien-tai`, {
+      method: "POST",
+      body: JSON.stringify({ expected_revision: expectedRevision }),
+    }),
   listEnvironments: (id) => testingRequest(`/du-an/${id}/moi-truong`),
   createEnvironment: (projectId, payload) =>
     testingRequest(`/du-an/${projectId}/moi-truong`, {

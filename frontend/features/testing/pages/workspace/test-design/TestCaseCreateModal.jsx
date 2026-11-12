@@ -83,6 +83,7 @@ export default function TestCaseCreateModal({
   testConditions,
   strategyTestLevels = [],
   strategyTestTypes = [],
+  strategyPriorityLevels = [],
   repositoryNodes,
   reusableSteps,
   customFields,
@@ -136,6 +137,13 @@ export default function TestCaseCreateModal({
       ...strategyTestTypes,
       ...scopedTestConditions.map((item) => item.test_type).filter(Boolean),
     ]),
+  ];
+  const priorityOptions = [
+    ...new Set(
+      [...strategyPriorityLevels, form.priority]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
   ];
   const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
     conditionIds.filter((conditionId) => {
@@ -238,14 +246,35 @@ export default function TestCaseCreateModal({
           </label>
           <label className="field-label">
             Ưu tiên
-            <input
-              aria-label="Ưu tiên ca kiểm thử"
-              className="apple-input"
-              maxLength={100}
-              placeholder="Nhập mức ưu tiên theo quy ước dự án"
-              value={form.priority ? valueLabel(form.priority) : ""}
-              onChange={(event) => update({ priority: event.target.value })}
-            />
+            {priorityOptions.length ? (
+              <select
+                aria-label="Ưu tiên ca kiểm thử"
+                className="apple-input mt-2"
+                value={form.priority || ""}
+                onChange={(event) => update({ priority: event.target.value })}
+              >
+                <option value="">Chọn theo thang ưu tiên dự án</option>
+                {priorityOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {valueLabel(value)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                aria-label="Ưu tiên ca kiểm thử"
+                className="apple-input mt-2"
+                maxLength={100}
+                placeholder="Nhập mức ưu tiên theo quy ước dự án"
+                value={form.priority ? valueLabel(form.priority) : ""}
+                onChange={(event) => update({ priority: event.target.value })}
+              />
+            )}
+            {!priorityOptions.length && (
+              <span className="mt-1 block text-xs font-normal text-ink-muted">
+                Chiến lược dự án chưa khai báo thang ưu tiên.
+              </span>
+            )}
           </label>
           <label className="field-label">
             Rủi ro

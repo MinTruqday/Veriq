@@ -1525,6 +1525,9 @@ export default function RequirementsPage({ project, section, workspaceView }) {
             <RequirementQualityPanel
               lint={lint}
               loading={lintLoading}
+              draftDirty={draftDirty}
+              recheckingAI={checkingWithAi}
+              onRecheckAI={can("ai.run_lint") ? checkRequirementWithAI : null}
               onOpenClarifications={
                 can("requirement.read") ? () => setDetailTab("clarifications") : null
               }

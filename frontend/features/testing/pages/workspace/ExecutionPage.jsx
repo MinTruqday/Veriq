@@ -646,6 +646,92 @@ export default function ExecutionPage({ project, section, workspaceView }) {
       },
     });
   };
+  const createBuild = async () => {
+    await ask({
+      title: "Tạo bản dựng",
+      description: "Khai báo bản dựng để liên kết với kế hoạch, lần chạy và báo cáo hoàn tất.",
+      confirmLabel: "Tạo bản dựng",
+      fields: [
+        {
+          name: "identifier",
+          label: "Mã bản dựng",
+          required: true,
+          maxLength: 200,
+          autoFocus: true,
+        },
+        { name: "version", label: "Phiên bản", required: true, maxLength: 120 },
+        {
+          name: "release_id",
+          label: "Bản phát hành",
+          options: [
+            { value: "", label: "Chưa liên kết" },
+            ...releases.map((item) => ({
+              value: item._id,
+              label: `${item.key} · ${item.name}`,
+            })),
+          ],
+        },
+        { name: "commit_ref", label: "Mã commit hoặc tham chiếu", maxLength: 300 },
+        { name: "notes", label: "Ghi chú", multiline: true, maxLength: 5000 },
+      ],
+      onConfirm: async (values) => {
+        try {
+          await testingApi.createBuild(project._id, {
+            identifier: values.identifier.trim(),
+            version: values.version.trim(),
+            release_id: values.release_id || null,
+            commit_ref: values.commit_ref || null,
+            notes: values.notes || "",
+            idempotency_key: crypto.randomUUID(),
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
+    });
+  };
+  const manageBuild = async (build) => {
+    await ask({
+      title: `Sửa bản dựng ${build.identifier}`,
+      confirmLabel: "Lưu thay đổi",
+      fields: [
+        {
+          name: "commit_ref",
+          label: "Mã commit hoặc tham chiếu",
+          initialValue: build.commit_ref || "",
+          maxLength: 300,
+        },
+        {
+          name: "notes",
+          label: "Ghi chú",
+          initialValue: build.notes || "",
+          multiline: true,
+          maxLength: 5000,
+        },
+      ],
+      onConfirm: async (values) => {
+        try {
+          await testingApi.updateBuild(build._id, {
+            expected_revision: build.revision,
+            commit_ref: values.commit_ref || null,
+            notes: values.notes || "",
+          });
+          await load();
+        } catch (reason) {
+          throw new Error(messageOf(reason));
+        }
+      },
+    });
+  };
+  const setCurrentBuild = async (build) => {
+    try {
+      await testingApi.setCurrentBuild(build._id, build.revision);
+      await load();
+    } catch (reason) {
+      setError(messageOf(reason));
+    }
+  };
   const updateSuite = async (item) => {
     await ask({
       title: "Sửa bộ kiểm thử",
@@ -770,6 +856,11 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                 Tạo lần chạy
               </button>
             )}
+          {can("build.create") && (
+            <button className="secondary-button" type="button" onClick={createBuild}>
+              Tạo bản dựng
+            </button>
+          )}
         </div>
       }
     >
@@ -785,6 +876,60 @@ export default function ExecutionPage({ project, section, workspaceView }) {
           onChange={setRunSubsection}
           tabs={runSubsectionTabs}
         />
+      )}
+      {can("build.read") && (
+        <Panel title="Bản dựng của dự án">
+          {builds.length ? (
+            <ul className="divide-y divide-border" aria-label="Bản dựng của dự án">
+              {builds.map((build) => (
+                <li
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+                  key={build._id}
+                >
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-medium text-ink">
+                      {build.identifier} · {build.version}
+                      {build.is_current ? " · Bản dựng hiện tại" : ""}
+                    </p>
+                    <p className="mt-1 break-words text-xs text-ink-muted">
+                      {build.release_id
+                        ? releases.find((release) => release._id === build.release_id)?.key ||
+                          "Đã liên kết bản phát hành"
+                        : "Chưa liên kết bản phát hành"}
+                      {build.commit_ref ? ` · ${build.commit_ref}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {can("build.manage") && (
+                      <button
+                        className="icon-button h-9 w-9"
+                        type="button"
+                        aria-label={`Sửa bản dựng ${build.identifier}`}
+                        title={`Sửa bản dựng ${build.identifier}`}
+                        onClick={() => manageBuild(build)}
+                      >
+                        <Pencil size={16} aria-hidden="true" />
+                      </button>
+                    )}
+                    {!build.is_current && can("build.manage") && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => setCurrentBuild(build)}
+                      >
+                        Đặt làm hiện tại
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-5 py-4 text-sm text-ink-muted" role="status">
+              Chưa có bản dựng. Tạo bản dựng để liên kết với lần chạy và báo cáo hoàn tất.
+            </p>
+          )}
+        </Panel>
       )}
       <>
         {viewingPlan && (
@@ -1386,6 +1531,7 @@ export default function ExecutionPage({ project, section, workspaceView }) {
                                   setPlanValidation({
                                     ...(await testingApi.validatePlan(item._id)),
                                     planId: item._id,
+                                    revision: item.revision,
                                   });
                                 } catch (reason) {
                                   setError(messageOf(reason));
