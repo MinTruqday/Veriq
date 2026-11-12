@@ -1,11 +1,5 @@
 import { Modal, ModalHeader, ModalTitle } from "@/shared/components/ui/Modal";
 import MultiSelect from "@/shared/components/ui/MultiSelect";
-import { valueLabel } from "../../../lib/testing";
-import {
-  TEST_LEVEL_VALUES,
-  TEST_TYPE_VALUES,
-  testDesignValues,
-} from "../../../lib/testDesignOptions.mjs";
 
 export default function ScenarioCreateModal({
   isOpen,
@@ -48,16 +42,6 @@ export default function ScenarioCreateModal({
       );
     });
   });
-  const testLevelOptions = testDesignValues(
-    relevantConditions.map((item) => item.test_level).filter(Boolean),
-    form.test_level ? [form.test_level] : [],
-    TEST_LEVEL_VALUES,
-  );
-  const testKindOptions = testDesignValues(
-    relevantConditions.map((item) => item.test_type).filter(Boolean),
-    form.test_kind ? [form.test_kind] : [],
-    TEST_TYPE_VALUES,
-  );
 
   return (
     <Modal
@@ -169,6 +153,8 @@ export default function ScenarioCreateModal({
             {[
               ["risk", "Mức rủi ro theo quy ước dự án"],
               ["priority", "Mức ưu tiên theo quy ước dự án"],
+              ["test_level", "Cấp kiểm thử"],
+              ["test_kind", "Loại kiểm thử"],
             ].map(([key, label]) => (
               <label className="field-label" key={key}>
                 {label}
@@ -179,35 +165,6 @@ export default function ScenarioCreateModal({
                   value={form[key]}
                   onChange={(event) => update({ [key]: event.target.value })}
                 />
-              </label>
-            ))}
-            {[
-              ["test_level", "Cấp kiểm thử", testLevelOptions],
-              ["test_kind", "Loại kiểm thử", testKindOptions],
-            ].map(([key, label, options]) => (
-              <label className="field-label" key={key}>
-                {label}
-                <select
-                  className="apple-input mt-2"
-                  aria-label={label}
-                  value={form[key] || ""}
-                  onChange={(event) => update({ [key]: event.target.value })}
-                >
-                  <option value="">Chưa chọn</option>
-                  {form[key] && !options.includes(form[key]) && (
-                    <option value={form[key]}>{valueLabel(form[key])}</option>
-                  )}
-                  {options.map((option) => (
-                    <option key={option} value={option}>
-                      {valueLabel(option)}
-                    </option>
-                  ))}
-                </select>
-                {!options.length && (
-                  <span className="mt-1 block text-xs font-normal text-ink-muted">
-                    Chọn yêu cầu có điều kiện kiểm thử đã duyệt để có danh sách phù hợp.
-                  </span>
-                )}
               </label>
             ))}
             <label className="field-label">

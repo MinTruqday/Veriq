@@ -112,8 +112,8 @@ export default function TestAnalysisPage({ project }) {
         coverageValue,
         findingValues,
         aiResultValues,
-        strategyValues,
         memberValues,
+        strategyValues,
       ] = await Promise.all([
         can("testcondition.read")
           ? testingApi.listTestConditions(project._id, { q: query, status, page_size: 200 })
@@ -337,27 +337,6 @@ export default function TestAnalysisPage({ project }) {
               selectedId={selected?._id}
               onSelect={setSelected}
             />
-            {!conditions.length && (
-              <div className="mx-4 mb-4 grid gap-2 rounded-control border border-dashed border-border bg-surface-quiet/50 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                <div>
-                  <h3 className="text-sm font-semibold text-ink">
-                    Bắt đầu từ Requirement đã duyệt
-                  </h3>
-                  <p className="mt-1 text-sm text-ink-muted">
-                    Tạo điều kiện kiểm thử thủ công hoặc mở tab Đề xuất AI để tạo bản nháp có dẫn
-                    chứng.
-                  </p>
-                </div>
-                {can("requirement.read") && (
-                  <a
-                    className="secondary-button justify-self-start"
-                    href={projectRoute(project._id, PROJECT_SECTION_SLUGS.requirements)}
-                  >
-                    Mở yêu cầu
-                  </a>
-                )}
-              </div>
-            )}
           </Panel>
           {selected?._id ? (
             <div className="min-w-0" hidden={visibleTab !== "conditions"}>
@@ -603,13 +582,13 @@ export default function TestAnalysisPage({ project }) {
                 />
               </Panel>
             </div>
-          ) : conditions.length ? (
+          ) : (
             <Panel title="Chi tiết điều kiện">
               <p className="px-4 py-5 text-sm text-ink-muted" role="status">
                 Chọn một điều kiện để xem căn cứ, kết quả phân tích và thao tác rà soát.
               </p>
             </Panel>
-          ) : null}
+          )}
         </div>
       )}
       {can("testanalysis.read") && (

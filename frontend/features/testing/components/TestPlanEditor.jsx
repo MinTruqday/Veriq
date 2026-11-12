@@ -3,8 +3,7 @@ import MultiSelect from "@/shared/components/ui/MultiSelect";
 import ContentOriginBadge from "@/shared/components/common/ContentOriginBadge";
 import StructuredValueEditor from "./StructuredValueEditor";
 import { testingApi } from "../services/testing.service";
-import { messageOf, valueLabel } from "../lib/testing";
-import { TEST_LEVEL_VALUES, TEST_TYPE_VALUES, testDesignValues } from "../lib/testDesignOptions";
+import { messageOf } from "../lib/testing";
 
 const aiPlanFields = [
   ["objective", "Mục tiêu", true],
@@ -184,23 +183,12 @@ export default function TestPlanEditor({
     (!value.strategy_version_id
       ? strategies.find((item) => item.status === "APPROVED" && item.active_approved)
       : null);
-  const planTestLevels = testDesignValues(
-    selectedStrategy?.test_levels || [],
-    value.test_level ? [value.test_level] : [],
-    TEST_LEVEL_VALUES,
-  );
-  const planTestTypes = testDesignValues(
-    selectedStrategy?.test_types || [],
-    value.test_types || [],
-    TEST_TYPE_VALUES,
-  );
   useEffect(() => {
     if (initialValue) return;
     const strategy = selectedStrategy;
     if (!strategy) return;
     setValue((current) => ({
       ...current,
-      strategy_version_id: current.strategy_version_id || strategy._id,
       test_level: current.test_level || strategy.test_levels?.[0] || "",
       test_types: current.test_types.length > 0 ? current.test_types : strategy.test_types || [],
       test_approach: current.test_approach || strategy.approach || "",
@@ -312,17 +300,13 @@ export default function TestPlanEditor({
   };
   return (
     <form
-      className="test-design-form space-y-5 p-5"
+      className="space-y-5 p-5"
       onSubmit={async (event) => {
         event.preventDefault();
         if (readOnly) return;
         if (savingRef.current) return;
         setError("");
         try {
-          if (!(value.test_types || []).length) {
-            setError("Chọn ít nhất một loại kiểm thử.");
-            return;
-          }
           const effortAllocations = value.estimation.effort_allocations || [];
           if (effortAllocations.some((item) => !item.user_id)) {
             setError("Chọn thành viên cho từng dòng phân bổ giờ.");
@@ -689,18 +673,20 @@ export default function TestPlanEditor({
             <label className="field-label">
               Cấp kiểm thử
               <select
-                aria-label="Cấp kiểm thử"
                 className="apple-input mt-2"
                 value={value.test_level}
                 onChange={(event) => setField("test_level", event.target.value)}
                 required
               >
                 <option value="">Chọn cấp kiểm thử</option>
-                {planTestLevels.map((level) => (
+                {(selectedStrategy?.test_levels || []).map((level) => (
                   <option key={level} value={level}>
-                    {valueLabel(level)}
+                    {level}
                   </option>
                 ))}
+                {value.test_level && !selectedStrategy?.test_levels?.includes(value.test_level) && (
+                  <option value={value.test_level}>{value.test_level}</option>
+                )}
               </select>
             </label>
             <div className="md:col-span-2">
@@ -708,12 +694,23 @@ export default function TestPlanEditor({
               <div className="mt-2">
                 <MultiSelect
                   label="Chọn loại kiểm thử"
-                  options={planTestTypes.map((item) => ({ value: item, label: valueLabel(item) }))}
+                  options={[
+                    ...new Set([
+                      ...(selectedStrategy?.test_types || []),
+                      ...(value.test_types || []),
+                    ]),
+                  ].map((item) => ({ value: item, label: item }))}
                   value={value.test_types || []}
                   onChange={(items) => setField("test_types", items)}
-                  emptyMessage="Không có loại kiểm thử phù hợp"
+                  disabled={!selectedStrategy?.test_types?.length}
+                  emptyMessage="Phiên bản chiến lược chưa khai báo loại kiểm thử"
                   searchPlaceholder="Tìm loại kiểm thử"
                 />
+                {!selectedStrategy?.test_types?.length && (
+                  <p className="mt-2 text-sm text-ink-muted">
+                    Chọn phiên bản chiến lược đã duyệt có khai báo loại kiểm thử.
+                  </p>
+                )}
               </div>
             </div>
             <label className="field-label">

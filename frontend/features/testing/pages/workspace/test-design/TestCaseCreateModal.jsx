@@ -7,11 +7,6 @@ import TestCaseCustomValues from "./TestCaseCustomValues";
 import TestCaseOwnerRecommendation from "./TestCaseOwnerRecommendation";
 import RequirementCoverageSelector from "./RequirementCoverageSelector";
 import { emptyDoc } from "../../../lib/testing.logic.mjs";
-import {
-  TEST_LEVEL_VALUES,
-  TEST_TYPE_VALUES,
-  testDesignValues,
-} from "../../../lib/testDesignOptions.mjs";
 
 function TestDataEntries({ label, entries, onChange }) {
   const updateEntry = (index, patch) =>
@@ -128,33 +123,11 @@ export default function TestCaseCreateModal({
   const scopedTestConditions = testConditions.filter((condition) =>
     matchesConditionScope(condition, requirementIds, scopedCriterionIds, scenarioConditionIds),
   );
-  const testLevelOptions = testDesignValues(
-    scopedTestConditions.map((item) => item.test_level).filter(Boolean),
-    form.testLevel ? [form.testLevel] : [],
-    TEST_LEVEL_VALUES,
-  );
-  const testKindOptions = testDesignValues(
-    scopedTestConditions.map((item) => item.test_type).filter(Boolean),
-    form.testKind ? [form.testKind] : [],
-    TEST_TYPE_VALUES,
-  );
-  const riskOptions = [
-    ...new Set(
-      [
-        "unassessed",
-        ...scopedTestConditions.map((item) => item.risk).filter(Boolean),
-        form.risk,
-      ].filter(Boolean),
-    ),
+  const testLevelOptions = [
+    ...new Set(scopedTestConditions.map((item) => item.test_level).filter(Boolean)),
   ];
-  const priorityOptions = [
-    ...new Set(
-      [
-        "unassessed",
-        ...scopedTestConditions.map((item) => item.priority).filter(Boolean),
-        form.priority,
-      ].filter(Boolean),
-    ),
+  const testKindOptions = [
+    ...new Set(scopedTestConditions.map((item) => item.test_type).filter(Boolean)),
   ];
   const retainScopedConditionIds = (conditionIds, scopedRequirements, scopedCriteria) =>
     conditionIds.filter((conditionId) => {
@@ -177,7 +150,7 @@ export default function TestCaseCreateModal({
       <ModalHeader>
         <ModalTitle>Tạo ca kiểm thử</ModalTitle>
       </ModalHeader>
-      <form onSubmit={onSubmit} className="test-design-form space-y-4 p-5">
+      <form onSubmit={onSubmit} className="space-y-4 p-5">
         <label className="field-label block">
           Kịch bản kiểm thử
           <select
@@ -244,37 +217,39 @@ export default function TestCaseCreateModal({
             </select>
           </label>
           <label className="field-label">
-            Loại ca kiểm thử
+            Loại
             <input
               aria-label="Loại ca kiểm thử"
-              className="apple-input mt-2"
+              className="apple-input"
               required
               maxLength={100}
               value={form.type}
               onChange={(event) => update({ type: event.target.value })}
-              placeholder="Nhập loại ca theo quy ước dự án"
+              placeholder="Nhập loại ca kiểm thử"
             />
           </label>
-          {[
-            ["priority", "Mức ưu tiên", priorityOptions],
-            ["risk", "Mức rủi ro", riskOptions],
-          ].map(([field, label, options]) => (
-            <label className="field-label" key={field}>
-              {label}
-              <select
-                aria-label={label}
-                className="apple-input mt-2"
-                value={form[field] || "unassessed"}
-                onChange={(event) => update({ [field]: event.target.value })}
-              >
-                {options.map((option) => (
-                  <option key={option} value={option}>
-                    {valueLabel(option)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
+          <label className="field-label">
+            Ưu tiên
+            <input
+              aria-label="Ưu tiên ca kiểm thử"
+              className="apple-input"
+              maxLength={100}
+              placeholder="Nhập mức ưu tiên theo quy ước dự án"
+              value={form.priority}
+              onChange={(event) => update({ priority: event.target.value })}
+            />
+          </label>
+          <label className="field-label">
+            Rủi ro
+            <input
+              aria-label="Rủi ro ca kiểm thử"
+              className="apple-input"
+              maxLength={100}
+              placeholder="Nhập mức rủi ro theo quy ước dự án"
+              value={form.risk}
+              onChange={(event) => update({ risk: event.target.value })}
+            />
+          </label>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           {[
@@ -282,7 +257,7 @@ export default function TestCaseCreateModal({
             { field: "testKind", label: "Loại kiểm thử", options: testKindOptions },
             { field: "expectedImpact", label: "Ảnh hưởng dự kiến", freeText: true },
           ].map(({ field, label, options, freeText }) => (
-            <label className="field-label text-sm font-semibold text-ink" key={field}>
+            <label className="field-label font-medium" key={field}>
               {label}
               {freeText ? (
                 <input
@@ -301,7 +276,7 @@ export default function TestCaseCreateModal({
                 >
                   <option value="">Chưa chọn</option>
                   {form[field] && !options.includes(form[field]) && (
-                    <option value={form[field]}>{valueLabel(form[field])}</option>
+                    <option value={form[field]}>{form[field]}</option>
                   )}
                   {options.map((option) => (
                     <option key={option} value={option}>

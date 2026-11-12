@@ -80,49 +80,32 @@ export default function ChangesPage({ project }) {
     void load();
   }, [load]);
 
-  const openChangeSet = useCallback(
-    async (item, { clearError = true } = {}) => {
-      try {
-        const detail = await testingApi.getChangeSet(item._id);
-        setSelected(detail);
-        setImpact(null);
-        setRegression(null);
-        if (can("impact.read") && ["ANALYZED", "REVIEWED"].includes(detail.status)) {
-          try {
-            const analysis = await testingApi.getChangeSetImpact(item._id);
-            setImpact(analysis);
-            if (analysis.status === "REVIEWED" && can("regression.read")) {
-              try {
-                setRegression(await testingApi.getChangeSetRegression(item._id));
-              } catch (reason) {
-                if (reason.status !== 404) throw reason;
-              }
+  const openChangeSet = async (item, { clearError = true } = {}) => {
+    try {
+      const detail = await testingApi.getChangeSet(item._id);
+      setSelected(detail);
+      setImpact(null);
+      setRegression(null);
+      if (can("impact.read") && ["ANALYZED", "REVIEWED"].includes(detail.status)) {
+        try {
+          const analysis = await testingApi.getChangeSetImpact(item._id);
+          setImpact(analysis);
+          if (analysis.status === "REVIEWED" && can("regression.read")) {
+            try {
+              setRegression(await testingApi.getChangeSetRegression(item._id));
+            } catch (reason) {
+              if (reason.status !== 404) throw reason;
             }
-          } catch (reason) {
-            if (reason.status !== 404) throw reason;
           }
+        } catch (reason) {
+          if (reason.status !== 404) throw reason;
         }
-        if (clearError) setError("");
-      } catch (reason) {
-        setError(messageOf(reason));
       }
-    },
-    [can],
-  );
-
-  useEffect(() => {
-    if (!sets.length) {
-      if (selected) {
-        setSelected(null);
-        setImpact(null);
-        setRegression(null);
-      }
-      return;
+      if (clearError) setError("");
+    } catch (reason) {
+      setError(messageOf(reason));
     }
-    if (!sets.some((item) => item._id === selected?._id)) {
-      void openChangeSet(sets[0]);
-    }
-  }, [openChangeSet, selected, sets]);
+  };
 
   const reviewSelectedChangeSet = async () => {
     if (!selected || selected.status !== "READY" || !can("changeset.review")) return;
@@ -243,7 +226,7 @@ export default function ChangesPage({ project }) {
       {error && <ErrorState message={error} />}
       {can("changeset.read") && (
         <div
-          className={`mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:items-start ${sets.length || selected ? "lg:grid-cols-[minmax(20rem,0.8fr)_minmax(0,1.2fr)]" : "lg:grid-cols-1"}`}
+          className={`mx-auto grid w-full min-w-0 max-w-7xl gap-5 lg:items-start ${sets.length || selected ? "lg:grid-cols-2" : "lg:grid-cols-1"}`}
         >
           <div className="min-w-0 lg:sticky lg:top-4">
             <Panel title="Lịch sử thay đổi yêu cầu">
@@ -617,23 +600,21 @@ export default function ChangesPage({ project }) {
                 </div>
               </Panel>
             )}
+
+            {(can("automation.read") || can("proposal.read")) && (
+              <Panel title="Nhật ký AI">
+                <div className="p-4">
+                  <Link
+                    className="secondary-button"
+                    href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
+                  >
+                    Mở nhật ký AI
+                  </Link>
+                </div>
+              </Panel>
+            )}
           </div>
         </div>
-      )}
-      {(can("automation.read") || can("proposal.read")) && (
-        <Panel className="mt-5" title="Nhật ký AI">
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <p className="text-sm text-ink-muted">
-              Xem các lượt AI đã chạy trong dự án, kể cả những lượt chưa gắn với thay đổi yêu cầu.
-            </p>
-            <Link
-              className="secondary-button"
-              href={projectRoute(project._id, PROJECT_SECTION_SLUGS.aiReview)}
-            >
-              Mở nhật ký AI
-            </Link>
-          </div>
-        </Panel>
       )}
     </WorkspacePage>
   );
