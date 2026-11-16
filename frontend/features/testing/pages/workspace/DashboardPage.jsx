@@ -296,7 +296,7 @@ export default function DashboardPage({ project }) {
               !hasDashboardLeftColumn && !hasDashboardRightColumn
                 ? "hidden"
                 : hasDashboardLeftColumn && hasDashboardRightColumn
-                  ? "2xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,1fr)]"
+                  ? "xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,1fr)]"
                   : "grid-cols-1"
             }`}
           >
@@ -400,7 +400,7 @@ export default function DashboardPage({ project }) {
               </h2>
               <nav
                 aria-label="Khu vực dự án"
-                className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 2xl:grid-cols-4"
+                className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 xl:grid-cols-4"
               >
                 {navigationCards.map(([href, label]) => (
                   <Link
