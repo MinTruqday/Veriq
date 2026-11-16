@@ -3,6 +3,7 @@ export const OPERATIONS_ROUTE = "/van-hanh";
 
 export const PROJECT_SECTION_SLUGS = Object.freeze({
   governance: "quan-tri-kiem-thu",
+  workflow: "quy-trinh-kiem-thu",
   testAnalysis: "phan-tich-kiem-thu",
   monitoring: "giam-sat-kiem-thu",
   projectTasks: "cong-viec",

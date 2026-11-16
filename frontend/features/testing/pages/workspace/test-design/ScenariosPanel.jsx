@@ -35,7 +35,59 @@ export default function ScenariosPanel({
   const [editForm, setEditForm] = useState(null);
   const [editError, setEditError] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [selectedApprovalIds, setSelectedApprovalIds] = useState([]);
+  const [approvingSelected, setApprovingSelected] = useState(false);
+  const [approvalNotice, setApprovalNotice] = useState("");
   const editInFlight = useRef(false);
+  const reviewableScenarios = scenarios.filter(
+    (item) => item.status === "in_review" && canReview && can("testscenario.update"),
+  );
+  const selectedReviewableScenarios = reviewableScenarios.filter((item) =>
+    selectedApprovalIds.includes(item._id),
+  );
+  const allReviewableScenariosSelected =
+    reviewableScenarios.length > 0 &&
+    reviewableScenarios.every((item) => selectedApprovalIds.includes(item._id));
+  const approveSelected = () =>
+    ask({
+      title: `Duyệt ${selectedReviewableScenarios.length} kịch bản đã chọn`,
+      description:
+        "Mỗi kịch bản vẫn được kiểm tra điều kiện phê duyệt riêng. Mục không hợp lệ sẽ được giữ lại để xử lý.",
+      confirmLabel: "Duyệt các mục đã chọn",
+      fields: [{ name: "note", label: "Nhận xét", multiline: true }],
+      onConfirm: async (answer) => {
+        setApprovingSelected(true);
+        setApprovalNotice("");
+        const failures = [];
+        let approvedCount = 0;
+        try {
+          for (const item of selectedReviewableScenarios) {
+            try {
+              await testingApi.transitionScenario(item._id, "phe-duyet", {
+                expected_revision: item.revision,
+                review_note: answer.note || "",
+              });
+              approvedCount += 1;
+            } catch (reason) {
+              failures.push(`${item.scenario_key || item.title}: ${messageOf(reason)}`);
+            }
+          }
+          setSelectedApprovalIds([]);
+          await reload();
+          if (failures.length) {
+            const summary = `Đã duyệt ${approvedCount}/${selectedReviewableScenarios.length} kịch bản. ${failures.join(" · ")}`;
+            setApprovalNotice(summary);
+            if (!approvedCount) onError(summary);
+          } else {
+            setApprovalNotice(`Đã duyệt ${approvedCount} kịch bản.`);
+          }
+        } catch (reason) {
+          onError(messageOf(reason));
+        } finally {
+          setApprovingSelected(false);
+        }
+      },
+    });
   const transition = async (item, action, label) => {
     await ask({
       title: label,
@@ -288,33 +340,98 @@ export default function ScenariosPanel({
         </div>
       </details>
       {scenarios.length ? (
-        <ul className="divide-y divide-border" aria-label="Danh sách kịch bản kiểm thử">
-          {scenarios.map((item) => (
-            <li className="flex min-w-0 items-start justify-between gap-4 px-4 py-4" key={item._id}>
+        <>
+          {reviewableScenarios.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-quiet px-4 py-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={allReviewableScenariosSelected}
+                    disabled={approvingSelected}
+                    onChange={(event) =>
+                      setSelectedApprovalIds(
+                        event.target.checked ? reviewableScenarios.map((item) => item._id) : [],
+                      )
+                    }
+                  />
+                  Chọn tất cả đang chờ duyệt ({reviewableScenarios.length})
+                </label>
+                {selectedApprovalIds.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-brand underline"
+                    disabled={approvingSelected}
+                    onClick={() => setSelectedApprovalIds([])}
+                  >
+                    Bỏ chọn
+                  </button>
+                )}
+              </div>
               <button
-                className="min-w-0 flex-1 text-left"
                 type="button"
-                aria-label={`Mở kịch bản ${item.scenario_key || item.title}`}
-                onClick={() => void openScenario(item)}
+                className="apple-button"
+                disabled={!selectedReviewableScenarios.length || approvingSelected}
+                onClick={() => void approveSelected()}
               >
-                <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="font-mono text-xs text-ink-muted">{item.scenario_key}</span>
-                  <StatusPill value={item.status} />
-                </span>
-                <span className="mt-2 block break-words font-medium text-ink [overflow-wrap:anywhere]">
-                  {item.title}
-                </span>
-                <span className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-muted">
-                  {item.category && <span>{valueLabel(item.category)}</span>}
-                  {item.priority && <span>Ưu tiên {valueLabel(item.priority)}</span>}
-                  {item.risk && <span>Rủi ro {valueLabel(item.risk)}</span>}
-                  {item.origin && <span>{valueLabel(item.origin)}</span>}
-                </span>
+                {approvingSelected
+                  ? "Đang duyệt…"
+                  : `Duyệt đã chọn${selectedReviewableScenarios.length ? ` (${selectedReviewableScenarios.length})` : ""}`}
               </button>
-              {scenarioActions(item)}
-            </li>
-          ))}
-        </ul>
+              {approvalNotice && (
+                <p className="basis-full text-sm text-ink-muted" role="status">
+                  {approvalNotice}
+                </p>
+              )}
+            </div>
+          )}
+          <ul className="divide-y divide-border" aria-label="Danh sách kịch bản kiểm thử">
+            {scenarios.map((item) => (
+              <li
+                className="flex min-w-0 items-start justify-between gap-4 px-4 py-4"
+                key={item._id}
+              >
+                {item.status === "in_review" && canReview && can("testscenario.update") && (
+                  <input
+                    className="mt-2"
+                    type="checkbox"
+                    aria-label={`Chọn kịch bản ${item.scenario_key || item.title} để duyệt`}
+                    checked={selectedApprovalIds.includes(item._id)}
+                    disabled={approvingSelected}
+                    onChange={(event) =>
+                      setSelectedApprovalIds((current) =>
+                        event.target.checked
+                          ? [...new Set([...current, item._id])]
+                          : current.filter((id) => id !== item._id),
+                      )
+                    }
+                  />
+                )}
+                <button
+                  className="min-w-0 flex-1 text-left"
+                  type="button"
+                  aria-label={`Mở kịch bản ${item.scenario_key || item.title}`}
+                  onClick={() => void openScenario(item)}
+                >
+                  <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="font-mono text-xs text-ink-muted">{item.scenario_key}</span>
+                    <StatusPill value={item.status} />
+                  </span>
+                  <span className="mt-2 block break-words font-medium text-ink [overflow-wrap:anywhere]">
+                    {item.title}
+                  </span>
+                  <span className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-muted">
+                    {item.category && <span>{valueLabel(item.category)}</span>}
+                    {item.priority && <span>Ưu tiên {valueLabel(item.priority)}</span>}
+                    {item.risk && <span>Rủi ro {valueLabel(item.risk)}</span>}
+                    {item.origin && <span>{valueLabel(item.origin)}</span>}
+                  </span>
+                </button>
+                {scenarioActions(item)}
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
         <div className="p-5 text-sm text-ink-muted">
           {filters.q || filters.category || filters.risk || filters.status

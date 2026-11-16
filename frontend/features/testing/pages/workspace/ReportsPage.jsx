@@ -1,6 +1,7 @@
 "use client";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import DataTable from "../../components/DataTable";
 import WorkReportsPanel from "../../components/WorkReportsPanel";
 import TestStatusReportPanel from "../../components/TestStatusReportPanel";
@@ -163,6 +164,7 @@ function ReportMetric({ label, value, detail }) {
 }
 
 export default function ReportsPage({ project }) {
+  const searchParams = useSearchParams();
   const dateTimeOptions = useDateTimeOptions(project);
   const formatDate = (value) => formatDateValue(value, dateTimeOptions);
   const formatMetricRate = (value) => metricRate(value, dateTimeOptions.locale);
@@ -191,6 +193,13 @@ export default function ReportsPage({ project }) {
   const loadGeneration = useRef(0);
   const optionsGeneration = useRef(0);
   const loadedProjectId = useRef(project._id);
+  useEffect(() => {
+    if (searchParams.get("tab") === "reports") setActiveTab("reports");
+    if (searchParams.get("testReport") === "completion") {
+      setActiveTab("reports");
+      setActiveTestReportTab("completion");
+    }
+  }, [searchParams]);
   const permissions = useMemo(
     () => project.current_permissions || [],
     [project.current_permissions],

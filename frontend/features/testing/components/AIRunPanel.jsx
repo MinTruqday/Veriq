@@ -883,7 +883,7 @@ export default function AIRunPanel({
         >
           {showRecentActivity && visibleRuns.length > 0 && (
             <div
-              className={`grid min-w-0 content-start gap-2 text-sm ${!compact && run ? "lg:sticky lg:top-44" : ""}`}
+              className={`grid min-w-0 content-start gap-3 text-sm ${!compact && run ? "lg:sticky lg:top-44" : ""}`}
             >
               {recentActivityHeading}
               {visibleRuns.slice(0, compact ? 3 : 10).map((item) => (

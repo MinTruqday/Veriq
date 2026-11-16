@@ -54,6 +54,9 @@ const TestGovernancePage = dynamic(() => import("./workspace/TestGovernancePage"
 const TestAnalysisPage = dynamic(() => import("./workspace/TestAnalysisPage"), {
   loading: workspaceLoading,
 });
+const ProjectWorkflowPage = dynamic(() => import("./workspace/ProjectWorkflowPage"), {
+  loading: workspaceLoading,
+});
 const MonitoringPage = dynamic(() => import("./workspace/MonitoringPage"), {
   loading: workspaceLoading,
 });
@@ -70,6 +73,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   const dateTimeOptions = useDateTimeOptions(state.project);
   const areaBySlug = {
     [PROJECT_SECTION_SLUGS.governance]: "governance",
+    [PROJECT_SECTION_SLUGS.workflow]: "workflow",
     [PROJECT_SECTION_SLUGS.testAnalysis]: "test-analysis",
     [PROJECT_SECTION_SLUGS.monitoring]: "monitoring",
     [PROJECT_SECTION_SLUGS.planning]: "planning",
@@ -138,6 +142,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
     planning: "project.read",
     releases: "release.read",
     dashboard: "project.read",
+    workflow: "project.read",
     requirements: "requirement.read",
     "test-design": "testcase.read",
     traceability: "trace.read",
@@ -265,6 +270,7 @@ export default function ProjectWorkspacePage({ projectId, section, initialQuery 
   };
   const pages = {
     governance: <TestGovernancePage {...props} />,
+    workflow: <ProjectWorkflowPage {...props} />,
     "test-analysis": <TestAnalysisPage {...props} />,
     monitoring: <MonitoringPage {...props} />,
     planning: <PlanningPage {...props} />,

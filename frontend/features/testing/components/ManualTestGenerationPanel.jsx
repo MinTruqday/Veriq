@@ -202,6 +202,37 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
             {!preview.items?.length && (
               <p className="text-sm text-ink-muted">Chưa có đề xuất phù hợp với nguồn đã chọn.</p>
             )}
+            {preview.items?.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface-quiet px-3 py-2">
+                <p className="text-sm text-ink-muted" aria-live="polite">
+                  Đã chọn {selected.length}/{preview.items.length} đề xuất
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={busy || selected.length === preview.items.length}
+                    onClick={() => {
+                      saveIdempotencyKey.current = null;
+                      setSelected(preview.items.map((_, index) => index));
+                    }}
+                  >
+                    Chọn tất cả
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={busy || !selected.length}
+                    onClick={() => {
+                      saveIdempotencyKey.current = null;
+                      setSelected([]);
+                    }}
+                  >
+                    Bỏ chọn
+                  </button>
+                </div>
+              </div>
+            )}
             {preview.items?.map((item, index) => (
               <div key={index} className="space-y-2 rounded-control border border-border p-4">
                 <label className="flex items-start gap-3 font-medium">
@@ -317,7 +348,7 @@ export default function ManualTestGenerationPanel({ projectId, requirements, mod
               >
                 {busy
                   ? "Đang lưu"
-                  : `Lưu ${selected.length} ${mode === "scenarios" ? "kịch bản" : "ca kiểm thử"} nháp đã chọn`}
+                  : `Lưu ${selected.length} ${mode === "scenarios" ? "kịch bản" : "ca kiểm thử"} đã chọn thành bản nháp`}
               </button>
             )}
           </div>

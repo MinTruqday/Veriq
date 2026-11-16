@@ -19,6 +19,7 @@ import { formatDate as formatDateValue, messageOf, valueLabel } from "../../lib/
 import { formatProjectDate } from "../../lib/projectSchedule.logic.mjs";
 import { taskProgressPresentation } from "../../lib/projectProgress.logic.mjs";
 import { useDateTimeOptions } from "../../hooks/useDateTimeOptions";
+import { ProjectWorkflowSummary } from "./ProjectWorkflowPage";
 
 function projectOverviewDescription(project, locale) {
   const start = project.planned_start_at
@@ -236,6 +237,7 @@ export default function DashboardPage({ project }) {
               )}
             </div>
           </Panel>
+          {can("project.read") && <ProjectWorkflowSummary project={project} />}
           {project.current_permissions?.includes("ai.ask_project") && (
             <details onToggle={(event) => setShowAiReview(event.currentTarget.open)}>
               <summary className="cursor-pointer border-y border-border py-3 text-sm font-medium">
@@ -294,7 +296,7 @@ export default function DashboardPage({ project }) {
               !hasDashboardLeftColumn && !hasDashboardRightColumn
                 ? "hidden"
                 : hasDashboardLeftColumn && hasDashboardRightColumn
-                  ? "xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,1fr)]"
+                  ? "2xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,1fr)]"
                   : "grid-cols-1"
             }`}
           >
@@ -398,7 +400,7 @@ export default function DashboardPage({ project }) {
               </h2>
               <nav
                 aria-label="Khu vực dự án"
-                className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 xl:grid-cols-4"
+                className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 2xl:grid-cols-4"
               >
                 {navigationCards.map(([href, label]) => (
                   <Link
